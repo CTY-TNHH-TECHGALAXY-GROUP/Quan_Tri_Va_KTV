@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ktvMatchesSeg } from '@/app/api/ktv/booking/_shared/utils';
 // Đã chuyển sang dùng REST API /api/ktv/... thay vì server actions trực tiếp
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -303,7 +304,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 } catch { segs = []; }
                 
                 const mySegs = segs.filter((seg: any) => 
-                    seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase()
+                                    ktvMatchesSeg(seg.ktvId, ktvId)
                 );
                 allMySegs.push(...mySegs);
             }
@@ -389,7 +390,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase());
+            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
             allMySegsForStatus.push(...mySegs);
         }
 
@@ -675,7 +676,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             } catch { segs = []; }
                             
                             const mySegs = segs.filter((seg: any) => 
-                                seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase()
+                                                                ktvMatchesSeg(seg.ktvId, ktvId)
                             );
                             
                             // 🔧 Gắn _itemId để phục vụ rule MERGE
@@ -1032,7 +1033,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 try {
                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                 } catch { segs = []; }
-                const mySegs = segs.filter((seg: any) => seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase());
+                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
                 allMySegs.push(...mySegs);
             }
 
@@ -1143,7 +1144,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         try {
                             segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                         } catch { segs = []; }
-                        const mySegs = segs.filter((seg: any) => seg.ktvId?.toLowerCase() === ktvId.toLowerCase());
+                        const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
                         if (mySegs.some((s: any) => s.actualStartTime)) {
                             hasStarted = true;
                             break;
@@ -1245,7 +1246,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 try {
                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                 } catch { segs = []; }
-                const mySegs = segs.filter((seg: any) => seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase());
+                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
                 
                 mySegs.forEach((seg: any) => seg._itemId = ai.id); // 🔥 Explicitly inject _itemId
                 allMySegs.push(...mySegs);
@@ -1294,7 +1295,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase());
+            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
             allMySegs.push(...mySegsWithId);
         }
@@ -1341,7 +1342,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => seg.ktvId && ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase());
+            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
             allMySegs.push(...mySegsWithId);
         }
@@ -1525,7 +1526,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             ? JSON.parse(item.segments) 
                             : (item.segments || []);
                         const mySegs = segs.filter((seg: any) => 
-                            seg.ktvId && seg.ktvId.toLowerCase() === ktvId.toLowerCase()
+                                            ktvMatchesSeg(seg.ktvId, ktvId)
                         );
                         if (mySegs.length > 0) {
                             totalMins += mySegs.reduce((sum: number, seg: any) => {

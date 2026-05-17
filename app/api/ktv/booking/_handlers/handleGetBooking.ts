@@ -26,7 +26,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getBusinessDate } from '../_shared/utils';
+import { getBusinessDate, ktvMatchesSeg } from '../_shared/utils';
 
 export async function handleGetBooking(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
@@ -61,7 +61,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
                     } catch { segs = []; }
                     
-                    const mySegs = segs.filter((s: any) => s.ktvId && s.ktvId.toLowerCase() === technicianCode.toLowerCase());
+                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
                     const isStillWorking = mySegs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
                     
                     if (isStillWorking) {
@@ -230,7 +230,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             for (const item of ktvItems) {
                 let segs: any[] = [];
                 try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
-                const mySegs = segs.filter((s: any) => s.ktvId && s.ktvId.trim().toUpperCase() === technicianCode?.trim().toUpperCase());
+                const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 if (runningIdx !== -1) {
                     activeItemId = item.id;
@@ -247,7 +247,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     statusSource = 'item_status';
                     let segs: any[] = [];
                     try { segs = typeof inProgressItem.segments === 'string' ? JSON.parse(inProgressItem.segments) : (Array.isArray(inProgressItem.segments) ? inProgressItem.segments : []); } catch { segs = []; }
-                    const mySegs = segs.filter((s: any) => s.ktvId && s.ktvId.trim().toUpperCase() === technicianCode?.trim().toUpperCase());
+                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
                 }
@@ -323,7 +323,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
             segs.forEach((s: any) => {
-                if (s.ktvId && technicianCode && s.ktvId.trim().toUpperCase() === technicianCode.trim().toUpperCase()) {
+                if (ktvMatchesSeg(s.ktvId, technicianCode)) {
                     mySegments.push({
                         origStart: s.startTime || item.timeStart || '',
                         duration: Number(s.duration) || Number(item.duration) || 60,

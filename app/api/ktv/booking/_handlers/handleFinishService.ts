@@ -37,7 +37,7 @@
  * ============================================================
  */
 
-import { HandlerContext, HandlerResult } from '../_shared/utils';
+import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
 
 export async function handleFinishService(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, status, allItemIdsForThisKTV } = ctx;
@@ -54,7 +54,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
         originalItemsData[item.id] = [...segs];
         segs.forEach((seg: any, idx: number) => {
-            if (seg.ktvId?.toLowerCase() === technicianCode?.toLowerCase()) {
+            if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
                 allGlobalSegs.push({ item, idx, seg, _itemId: item.id });
             }
         });

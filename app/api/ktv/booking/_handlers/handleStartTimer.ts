@@ -31,7 +31,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { HandlerContext, HandlerResult } from '../_shared/utils';
+import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
 
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, action, turnForSync, allItemIdsForThisKTV, body } = ctx;
@@ -87,7 +87,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
             let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
             originalItemsData[item.id] = [...segs]; // Backup the entire array
             segs.forEach((seg: any, idx: number) => {
-                if (seg.ktvId?.toLowerCase() === technicianCode?.toLowerCase()) allGlobalSegs.push({ item, idx, seg });
+                if (ktvMatchesSeg(seg.ktvId, technicianCode)) allGlobalSegs.push({ item, idx, seg });
             });
         }
         allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
