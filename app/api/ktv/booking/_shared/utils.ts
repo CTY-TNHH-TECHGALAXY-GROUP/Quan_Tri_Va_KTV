@@ -12,6 +12,9 @@
  */
 
 import { NextResponse } from 'next/server';
+// Re-export từ lib/ktvUtils (client-safe) để API handlers dùng cùng logic
+export { ktvMatchesSeg } from '@/lib/ktvUtils';
+
 
 /**
  * Get business date in Vietnam timezone (VN = UTC+7).
@@ -57,22 +60,4 @@ export interface HandlerResult {
     earlyResponse?: NextResponse;               // → 403/400 response (bypass normal flow)
     // NOTE: Handlers tự xử lý BookingItems/TurnQueue/KtvAssignments DB ops bên trong
     // Chỉ trả bookingUpdatePayload cho orchestrator apply vào Bookings table
-}
-
-/**
- * ============================================================
- * 🔑 KTV SEGMENT OWNERSHIP CHECK
- * ============================================================
- * 
- * Kiểm tra xem segment có thuộc về KTV không.
- * Hỗ trợ 2 format:
- *   - 1 KTV:    ktvId = "NH001"
- *   - 2 KTV:    ktvId = "NH001 - NH011"  (song song, chung 1 segment)
- *   - 3+ KTV:   ktvId = "NH001 - NH011 - NH021"
- * 
- * ⚠️ PHẢI dùng hàm này THAY CHO direct === comparison ở mọi nơi.
- */
-export function ktvMatchesSeg(segKtvId: string | undefined | null, ktvCode: string | undefined | null): boolean {
-    if (!segKtvId || !ktvCode) return false;
-    return segKtvId.split(' - ').map(s => s.trim()).some(s => s.toLowerCase() === ktvCode.trim().toLowerCase());
 }

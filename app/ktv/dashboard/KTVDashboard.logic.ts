@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ktvMatchesSeg } from '@/app/api/ktv/booking/_shared/utils';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
 // Đã chuyển sang dùng REST API /api/ktv/... thay vì server actions trực tiếp
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -190,7 +190,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
         try {
             const savedScreen = localStorage.getItem('ktv_active_screen') as ScreenState;
             const savedBookingId = localStorage.getItem(POST_SERVICE_BOOKING_KEY) || localStorage.getItem('ktv_active_booking_id');
-            if (savedScreen && ['REVIEW', 'HANDOVER', 'REWARD'].includes(savedScreen) && savedBookingId) {
+            const savedKtvId = localStorage.getItem('ktv_active_ktv_id');
+            // 🔒 Chỉ restore nếu đúng ktvId đang đăng nhập — tránh KTV2 kế thừa state của KTV1
+            const ktvIdMatches = !savedKtvId || !ktvId || savedKtvId === ktvId;
+            if (savedScreen && ['REVIEW', 'HANDOVER', 'REWARD'].includes(savedScreen) && savedBookingId && ktvIdMatches) {
                 setScreenState(savedScreen);
                 prevBookingIdRef.current = savedBookingId;
                 postServiceBookingIdRef.current = savedBookingId;
@@ -198,9 +201,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 localStorage.removeItem('ktv_active_screen');
                 localStorage.removeItem('ktv_active_booking_id');
                 localStorage.removeItem(POST_SERVICE_BOOKING_KEY);
+                localStorage.removeItem('ktv_active_ktv_id');
             }
         } catch (e) {}
-    }, []);
+    }, [ktvId]);
     useEffect(() => { bookingRef.current = booking; }, [booking]);
     useEffect(() => { isPreppingRef.current = isPrepping; }, [isPrepping]);
     useEffect(() => { isTimerRunningRef.current = isTimerRunning; }, [isTimerRunning]);
@@ -473,9 +477,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setScreen('TIMER');
         } 
         else if (currentStatus === 'IN_PROGRESS') {
-            // Guard: KHÔNG kéo ngược KTV đã hoàn thành (COMPLETED/CLEANING/DONE) về TIMER
+            // Guard: KHÔNG kéo ngược KTV đã hoàn thành về TIMER
+            // Ngoại lệ: Nếu postServiceBookingId khác booking hiện tại → KTV đã chuyển sang đơn mới → XÓA guard
             const postServiceScreens = ['REVIEW', 'HANDOVER', 'REWARD'];
-            if (postServiceScreens.includes(currentScreen)) return;
+            const isSamePostServiceBooking = postServiceBookingIdRef.current && postServiceBookingIdRef.current === booking?.id;
+            if (postServiceScreens.includes(currentScreen) && isSamePostServiceBooking) return;
 
             if (currentScreen !== 'TIMER' || isPreppingRef.current) {
                 setScreen('TIMER');
@@ -486,7 +492,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
         else if (['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE'].includes(currentStatus)) {
             if (!postServiceBookingIdRef.current && booking?.id) {
                 postServiceBookingIdRef.current = booking.id;
-                try { localStorage.setItem(POST_SERVICE_BOOKING_KEY, booking.id); } catch (e) {}
+                try { 
+                    localStorage.setItem(POST_SERVICE_BOOKING_KEY, booking.id);
+                    // 🔒 Lưu kèm ktvId để restore có thể kiểm tra đúng người
+                    if (ktvId) localStorage.setItem('ktv_active_ktv_id', ktvId); 
+                } catch (e) {}
             }
             // 🔑 KTV bắt buộc phải đi đúng trình tự: REVIEW -> HANDOVER -> REWARD
             // KHÔNG ép setHasSubmittedReview(true) tự động để tránh lỗi nhảy cóc (skip).
@@ -1077,6 +1087,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             const currentSecs = currentSegDuration * 60;
             
+            // 🔒 GUARD: Chỉ sync khi có actualStartTime thực sự từ DB
+            // Nếu chỉ có tStart (giờ đặt lịch), KHÔNG dùng để tính elapsed → sẽ ra sai
+            if (!activeSegStartTime || activeSegStartTime === tStart) {
+                // Chưa có actualStartTime thật → dùng timerStartMsRef hiện tại (client-local)
+                // Không update gì cả để tránh override timer về 0
+                return;
+            }
+            
             if (activeSegStartTime && typeof activeSegStartTime === 'string' && /^\d{1,2}:\d{2}/.test(activeSegStartTime)) {
                 const [h, m] = activeSegStartTime.split(':').map(Number);
                 const d = new Date(); d.setHours(h, m, 0, 0);
@@ -1099,7 +1117,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 
                 // 🔥 Smooth Timer Override: 
                 // Chỉ set nếu chênh lệch > 2 giây để tránh làm khựng đồng hồ do độ trễ mạng lúc mới bắt đầu
+                // 🔒 HARD GUARD: KHÔNG cho override về 0 nếu timer mới chạy < 10 giây
+                const timerRunningForMs = now - timerStartMsRef.current;
                 setTimeRemaining(prev => {
+                    if (newRemaining === 0 && timerRunningForMs < 10000) {
+                        console.warn(`🛡️ [Timer Sync] Blocked override to 0 — timer just started (${timerRunningForMs}ms ago)`);
+                        return prev;
+                    }
                     if (Math.abs(prev - newRemaining) > 2) {
                         return newRemaining;
                     }
@@ -1317,6 +1341,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
         });
         const res = await response.json();
         if (res.success) {
+            // 🔥 Set refs NGAY LẬP TỨC để interval countdown chạy được
+            // Không cần chờ recalcTimerFromServer (sẽ chạy sau khi server refresh)
+            const initDuration = shouldMerge
+                ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
+                : (allMySegs.length > 0 ? (Number(allMySegs[0].duration) || 60) : (booking?.assignedItem?.duration || 60));
+            timerStartMsRef.current = Date.now() + timeOffsetRef.current;
+            timerTotalSecsRef.current = initDuration * 60;
             setIsTimerRunning(true);
         } else {
             console.error('❌ [KTV Logic] Start error:', res.error);
