@@ -417,25 +417,31 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 } catch(e) {}
             }
 
-            // Chỉ override nếu đã xong, chưa xong thì lấy theo status chung
             if (allFeedback) currentStatus = 'FEEDBACK';
             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
-            else if (isAnyStarted && !['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
-
-            // ⚠️ DO NOT REMOVE — Fix commit a37440d + simulation 16/05/2026
-            // FIX: KTV chưa bắt đầu (chưa có actualStartTime) nhưng item bị CLEANING/FEEDBACK/DONE
-            // do đồng nghiệp xong trước hoặc do điều phối lẻ sau → ép về IN_PROGRESS để KTV còn bấm BẮT ĐẦU
-            if (!isAnyStarted && !allDone && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
-                console.log(`🔧 [ScreenEngine] KTV ${ktvId} chưa bắt đầu nhưng item=${currentStatus} → ép IN_PROGRESS`);
-                currentStatus = 'IN_PROGRESS';
+            else if (isAnyStarted) {
+                // ⚠️ FIX: Nếu KTV này ĐÃ BẮT ĐẦU nhưng CHƯA XONG (chưa có actualEndTime)
+                // Phải ép giữ ở trạng thái IN_PROGRESS để không bị hoàn thành đột ngột
+                if (!allDone) {
+                    currentStatus = 'IN_PROGRESS';
+                } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS'].includes(currentStatus)) {
+                    currentStatus = 'IN_PROGRESS';
+                }
+            } else {
+                // ⚠️ FIX: Nếu KTV này CHƯA BẮT ĐẦU (chưa có actualStartTime)
+                // nhưng Booking/Item lại đang là IN_PROGRESS / CLEANING / FEEDBACK
+                // (do đồng nghiệp làm trước trong ca nối tiếp, hoặc do ép status), 
+                // thì BẮT BUỘC ép KTV này về lại PREPARING để họ còn thấy nút "Xác nhận chuẩn bị" / "Bắt đầu".
+                // Tuyệt đối KHÔNG ép lên IN_PROGRESS, vì sẽ làm Timer tự chạy sai giờ.
+                if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+                    console.log(`🔧 [ScreenEngine] KTV ${ktvId} chưa bắt đầu nhưng item=${currentStatus} → ép về PREPARING/READY`);
+                    if (isPreppingRef.current && screenRef.current === 'TIMER') {
+                        currentStatus = 'READY';
+                    } else {
+                        currentStatus = 'PREPARING';
+                    }
+                }
             }
-        }
-        
-        // Co-working sync: CHỈ cho tiến (PREPARING/READY → IN_PROGRESS), KHÔNG cho lùi
-        if (booking.status === 'IN_PROGRESS' 
-            && (currentStatus === 'PREPARING' || currentStatus === 'READY') 
-            && assignedItem?.timeStart) {
-            currentStatus = 'IN_PROGRESS';
         }
 
         const currentScreen = screenRef.current;
@@ -677,17 +683,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             allMySegs.push(...mySegsWithId);
                         }
 
-                        // Kiểm tra Rule Merge Timer
-                        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId));
-                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+                        // Kiểm tra Rule Merge Timer: CÙNG PHÒNG → merge 1 timer tổng
+                        // (khác phòng → chia chặng riêng)
+                        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
+                        const shouldMerge = allMySegs.length > 1 && uniqueRoomIds.size === 1;
 
-                        // 🚀 Status item-level ưu tiên tuyệt đối + co-working forward-only sync
                         let currentStatus = assignedItem?.status || res.data.status;
-                        if (res.data.status === 'IN_PROGRESS' 
-                            && (currentStatus === 'PREPARING' || currentStatus === 'READY') 
-                            && assignedItem?.timeStart) {
-                            currentStatus = 'IN_PROGRESS';
-                        }
                         
                         // 🚀 KTV-Specific Local Status Override
                         if (allMySegs.length > 0) {
@@ -699,9 +700,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                 if (!seg.actualEndTime) allDone = false;
                                 if (!seg.feedbackTime) allFeedback = false;
                             });
+                            
                             if (allFeedback) currentStatus = 'FEEDBACK';
                             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
-                            else if (isAnyStarted && !['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
+                            else if (isAnyStarted) {
+                                if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
+                            } else {
+                                // ⚠️ FIX: Nếu KTV này CHƯA BẮT ĐẦU (chưa có actualStartTime)
+                                if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+                                    if (isPreppingRef.current && screenRef.current === 'TIMER') {
+                                        currentStatus = 'READY';
+                                    } else {
+                                        currentStatus = 'PREPARING';
+                                    }
+                                }
+                            }
                         }
 
                         // Debug log 
@@ -987,7 +1000,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [isPrepping, prepTimeRemaining, isTimerRunning, timeRemaining]);
+    }, [isPrepping, isTimerRunning]); // Bỏ timeRemaining và prepTimeRemaining khỏi deps để không bị khựng clock do clearInterval chạy lại mỗi giây
 
     // 📱 Tự động đồng bộ & recalculate Timer khi có data mới từ Lễ tân hoặc khi mở lại app
     useEffect(() => {
@@ -1044,7 +1057,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     }
                 }
             }
-            const isMergeSync = allMySegs.length > 1 && segItemIdSet.size === allMySegs.length;
+            // Merge: cùng phòng → 1 timer tổng
+            const isMergeSync = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
 
             let currentSegDuration: number;
             let activeSegStartTime: string | null = null;
@@ -1081,7 +1095,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                 const newRemaining = Math.max(0, currentSecs - elapsed);
                 console.log(`📱 [Timer Sync] Recalculated timer: ${newRemaining}s remaining (duration: ${currentSegDuration}m, merged: ${isMergeSync})`);
-                setTimeRemaining(newRemaining);
+                
+                // 🔥 Smooth Timer Override: 
+                // Chỉ set nếu chênh lệch > 2 giây để tránh làm khựng đồng hồ do độ trễ mạng lúc mới bắt đầu
+                setTimeRemaining(prev => {
+                    if (Math.abs(prev - newRemaining) > 2) {
+                        return newRemaining;
+                    }
+                    return prev;
+                });
             }
         };
 
@@ -1106,10 +1128,44 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // 🏁 Auto-finish: trigger khi timer đạt 0 (tách riêng khỏi countdown để React xử lý đúng)
     useEffect(() => {
         if (isTimerRunning && !isPrepping && timeRemaining === 0) {
-            console.log('🏁 [AutoFinish] Timer reached 0, calling handleFinishTimer...');
-            handleFinishTimerRef.current();
+            // Guard an toàn: chỉ kích hoạt nếu KTV đã thực sự bắt đầu (có actualStartTime)
+            // Tránh trường hợp lỗi fetch data khiến timeRemaining = 0 ảo ngay lúc mount
+            let hasStarted = false;
+            if (booking && ktvId) {
+                try {
+                    const allItems: any[] = booking.BookingItems || [];
+                    const allAssignedItems = allItems.filter((bi: any) => {
+                        const codes: string[] = bi.technicianCodes || [];
+                        return codes.map((c: string) => c.toLowerCase()).includes(ktvId.toLowerCase());
+                    });
+                    for (const ai of allAssignedItems) {
+                        let segs: any[] = [];
+                        try {
+                            segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                        } catch { segs = []; }
+                        const mySegs = segs.filter((seg: any) => seg.ktvId?.toLowerCase() === ktvId.toLowerCase());
+                        if (mySegs.some((s: any) => s.actualStartTime)) {
+                            hasStarted = true;
+                            break;
+                        }
+                    }
+                } catch(e) {
+                    // Nếu lỗi parse → vẫn cho phép AutoFinish chạy để KTV không bị kẹt
+                    hasStarted = true;
+                }
+            } else {
+                // Không có booking data → vẫn cho AutoFinish để không bị kẹt
+                hasStarted = true;
+            }
+
+            if (hasStarted) {
+                console.log('🏁 [AutoFinish] Timer reached 0, calling handleFinishTimer...');
+                handleFinishTimerRef.current();
+            } else {
+                console.warn('⚠️ [AutoFinish] Blocked — no actualStartTime found. Possibly stale data on mount.');
+            }
         }
-    }, [timeRemaining, isTimerRunning, isPrepping]);
+    }, [timeRemaining, isTimerRunning, isPrepping, booking, ktvId]);
 
     const toggleChecklist = (index: number) => {
         setPrepChecklist(prev => prev.map((v, i) => i === index ? !v : v));
@@ -1203,7 +1259,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             // Tính shouldMerge để set timer đúng tổng nếu cần
             const segItemIds = new Set(allMySegs.map((s: any) => s._itemId).filter(Boolean));
-            const isMerge = allMySegs.length > 1 && segItemIds.size === allMySegs.length;
+            const isMerge = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
 
             const initDuration = isMerge
                 ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
@@ -1243,8 +1299,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             allMySegs.push(...mySegsWithId);
         }
         
-        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId));
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+        // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
+        const shouldMerge = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
 
         setIsLoading(true);
         const response = await fetch('/api/ktv/booking', {
@@ -1291,8 +1347,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
         allMySegs.sort((a, b) => (a.startTime || '23:59').localeCompare(b.startTime || '23:59'));
 
-        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId));
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+        // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
+        const shouldMerge = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
 
         const currentIdx = activeSegmentIndex;
         // Nếu shouldMerge = true, bỏ qua advance và coi như đã làm xong chặng cuối
