@@ -174,6 +174,68 @@
 
 ---
 
+### 5.1. KTVLeaveRequests ✅ CHỦ LỰC
+**Nhiệm vụ**: Quản lý lịch nghỉ (OFF) của KTV. Mỗi ngày OFF = 1 record riêng. KTV có thể đăng ký OFF nhiều ngày (gửi mảng dates → hệ thống tạo nhiều records).
+**Realtime**: ✅ (KTV Hub cập nhật live)
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `employeeId` | text | Mã KTV xin nghỉ |
+| `employeeName` | text | Tên KTV (cache hiển thị) |
+| `date` | date | **Ngày muốn nghỉ** (YYYY-MM-DD) — key quan trọng nhất |
+| `reason` | text | Lý do xin nghỉ |
+| `status` | text | `PENDING` / `APPROVED` / `REJECTED` |
+| `is_extension` | boolean | Có phải gia hạn nghỉ (nối liền chuỗi OFF trước đó) |
+| `is_sudden_off` | boolean | Nghỉ đột xuất (hết lượt gia hạn) |
+| `reviewedBy` | text | ID admin duyệt |
+| `reviewedAt` | timestamptz | Thời điểm duyệt |
+| `createdAt` | timestamptz | Thời điểm tạo yêu cầu |
+
+**Lưu ý quan trọng**:
+- Auto-approved khi đăng ký trước deadline (19h hôm trước)
+- Gia hạn nghỉ: có quota `max_leave_extensions_per_month` (SystemConfigs)
+- Bảng này **khác** `KTVAttendance` (chấm công GPS). Dùng bảng này khi check lịch OFF cho VIP Menu.
+- Query mẫu: `SELECT "employeeId" FROM "KTVLeaveRequests" WHERE date = '2026-05-17' AND status IN ('APPROVED', 'PENDING')`
+
+---
+
+### 5.2. KTVShiftRecords ✅ CHỦ LỰC
+**Nhiệm vụ**: Quản lý ca làm việc của KTV (Ca 1/2/3, Ca tự do, Làm khách yêu cầu).
+**Realtime**: ✅ (KTV Hub cập nhật live)
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `employee_id` | text | Mã KTV |
+| `shift_type` | text | Loại ca: `SHIFT_1` (09-17h), `SHIFT_2` (11-19h), `SHIFT_3` (17-00h), `FREE`, `REQUEST` |
+| `status` | text | `ACTIVE` / `PENDING` / `REJECTED` |
+| `effective_from` | date | Ngày bắt đầu áp dụng ca |
+| `previous_shift` | text | Ca trước đó (nếu đổi ca) |
+| `reason` | text | Lý do đổi ca |
+| `reviewed_by` | text | Admin duyệt |
+| `reviewed_at` | timestamptz | Thời điểm duyệt |
+| `created_at` | timestamptz | Thời điểm tạo |
+
+---
+
+### 5.3. DailyAttendance ✅ CHỦ LỰC
+**Nhiệm vụ**: Bảng điểm danh hàng ngày (admin set trạng thái). Khác `KTVAttendance` (KTV tự bấm GPS).
+**Realtime**: ✅
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `employee_id` | text | Mã KTV |
+| `date` | date | Ngày điểm danh |
+| `status` | text | `on_duty` / `absent` / `off_leave` / `off_duty` |
+| `check_in_time` | time | Giờ bắt đầu ca |
+| `check_out_time` | time | Giờ tan ca |
+
+**Constraint**: `UNIQUE(employee_id, date)` — mỗi KTV chỉ 1 record/ngày
+
+---
+
 ### 6. Staff ✅ CHỦ LỰC
 **Nhiệm vụ**: Danh sách nhân viên — KTV, lễ tân, admin.
 
