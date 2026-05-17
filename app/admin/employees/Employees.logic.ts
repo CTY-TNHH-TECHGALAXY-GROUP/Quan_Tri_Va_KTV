@@ -9,7 +9,7 @@ import { getStaffList, deleteStaffMember } from './actions';
 const DEFAULT_SKILLS = {
     hairCut: false, shampoo: true, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
     machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false,
+    shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false, bodyMix: false,
     foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
 };
 

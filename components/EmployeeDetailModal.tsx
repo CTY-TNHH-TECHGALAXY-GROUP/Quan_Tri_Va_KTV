@@ -85,6 +85,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     oilBody: 'Body Dầu',
     hotStoneBody: 'Body Đá Nóng',
     scrubBody: 'Scrub Body',
+    bodyMix: 'Body Mix',
     foot: 'Foot',
     heelScrub: 'Bào Gót',
     nailCombo: 'Nail Combo',

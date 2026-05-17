@@ -49,6 +49,7 @@ export interface EmployeeSkills {
   oilBody: SkillLevel;
   hotStoneBody: SkillLevel;
   scrubBody: SkillLevel;
+  bodyMix: SkillLevel;
   foot: SkillLevel;
   heelScrub: SkillLevel;
   nailCombo: SkillLevel;

@@ -163,6 +163,11 @@ export default function EmployeeManagementPage() {
                                                         {t.skillFacial}
                                                     </span>
                                                 )}
+                                                {emp.skills.bodyMix && (
+                                                    <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
+                                                        {t.skillBodyMix}
+                                                    </span>
+                                                )}
                                                 <span className="px-2 py-0.5 bg-gray-50 text-gray-500 text-[10px] rounded border border-gray-100">...</span>
                                             </div>
                                         </td>
