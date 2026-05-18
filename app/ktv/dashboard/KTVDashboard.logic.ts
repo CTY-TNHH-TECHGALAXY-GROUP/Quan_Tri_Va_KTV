@@ -1159,18 +1159,31 @@ export function useKTVDashboard(config?: DashboardConfig) {
         // Chạy ngay khi booking thay đổi (do Lễ tân update hoặc Realtime)
         recalcTimerFromServer();
 
-        const handleVisibilityChange = () => {
+        const handleVisibilityChange = async () => {
             if (document.visibilityState === 'visible') {
+                // 🔥 Fetch dữ liệu MỚI từ server trước khi recalc
+                // Nếu dùng bookingRef cũ (stale), actualStartTime có thể = undefined
+                // → guard return sớm → timer không được sync → hiện sai
+                if (fetchBookingRef.current) {
+                    await fetchBookingRef.current();
+                }
                 recalcTimerFromServer();
             }
         };
 
+        const handleFocus = async () => {
+            if (fetchBookingRef.current) {
+                await fetchBookingRef.current();
+            }
+            recalcTimerFromServer();
+        };
+
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('focus', recalcTimerFromServer);
+        window.addEventListener('focus', handleFocus);
 
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('focus', recalcTimerFromServer);
+            window.removeEventListener('focus', handleFocus);
         };
     }, [booking, isTimerRunning, ktvId]);
 

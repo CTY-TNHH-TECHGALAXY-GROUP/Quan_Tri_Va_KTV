@@ -1,14 +1,34 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase';
 import { Bell, UserCircle, LogOut, Menu } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Avatar from '@radix-ui/react-avatar';
 
 export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const { user, role, login, logout } = useAuth();
+  const [staffAvatar, setStaffAvatar] = useState(user?.avatarUrl || '');
 
+  // Fetch latest avatar from Staff table (not cached session)
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchAvatar = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('Staff')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (data?.avatar_url) {
+          setStaffAvatar(data.avatar_url);
+        }
+      } catch (e) { /* keep cached */ }
+    };
+    fetchAvatar();
+  }, [user?.id]);
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-4">
@@ -31,7 +51,7 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
           <DropdownMenu.Trigger asChild>
             <button className="flex items-center gap-2 hover:bg-gray-50 p-1 pr-3 rounded-full border border-transparent hover:border-gray-200 transition-all">
               <Avatar.Root className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
-                <Avatar.Image src={user?.avatarUrl} alt={user?.name} className="w-full h-full object-cover" />
+                <Avatar.Image src={staffAvatar} alt={user?.name} className="w-full h-full object-cover" />
                 <Avatar.Fallback className="flex items-center justify-center w-full h-full text-sm font-medium text-gray-500">
                   {user?.name?.charAt(0)}
                 </Avatar.Fallback>
