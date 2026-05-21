@@ -373,7 +373,7 @@ export default function DispatchBoardPage() {
       if (tData && sData) {
         const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
           ...t,
-          staff: (sData as StaffData[]).find(s => s.id === t.employee_id)
+          staff: (sData as unknown as StaffData[]).find(s => s.id === t.employee_id)
         }));
         setTurns(merged);
       }
@@ -441,7 +441,7 @@ export default function DispatchBoardPage() {
 
               if (techCodes.length > 0) {
                   staffList = techCodes.map((tCode: string) => {
-                      const staff = (sData as StaffData[])?.find((s: any) => s.id === tCode);
+                      const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
                       const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
                       
                       let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
@@ -471,7 +471,7 @@ export default function DispatchBoardPage() {
                   });
               } else if (finalItemTurns.length > 0) {
                   staffList = finalItemTurns.map((t: any) => {
-                      const staff = (sData as StaffData[])?.find((s: any) => s.id === t.employee_id);
+                      const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
                       let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
                       
                       if (segments.length === 0) {
