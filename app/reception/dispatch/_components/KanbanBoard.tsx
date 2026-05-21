@@ -330,7 +330,12 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             {order.customerName.charAt(0)}
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <p className="font-black text-sm text-gray-900 leading-none mb-1 truncate">{order.customerName}</p>
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                              <p className="font-black text-sm text-gray-900 leading-none truncate">{order.customerName}</p>
+                                                              {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
+                                                                <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
+                                                              )}
+                                                            </div>
                                                             <div className="flex flex-col gap-1 items-start">
                                                                 {(!order.paymentMethod || order.paymentMethod === 'Unpaid') && (
                                                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1 w-fit">

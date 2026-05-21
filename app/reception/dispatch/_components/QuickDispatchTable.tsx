@@ -797,7 +797,7 @@ const ServiceGroupCard = ({
                   <div className="text-2xl font-black text-red-600 uppercase leading-tight">
                       {tName} ({ticketDur}&apos;)
                   </div>
-                  {serviceDescription && (
+                  {serviceDescription && tName === serviceName && (
                       <p className="mt-1.5 text-sm font-bold text-gray-600 leading-relaxed">
                           {serviceDescription}
                       </p>
@@ -828,11 +828,7 @@ const ServiceGroupCard = ({
                   </p>
                   <div className="flex flex-wrap gap-2">
 
-                    {customerReqs.genderReq && (
-                        <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-purple-50 text-purple-700 border-purple-100 shadow-sm">
-                            🧑 KTV: {customerReqs.genderReq}
-                        </span>
-                    )}
+                    {/* Giới tính KTV: Không cần in ra phiếu cho KTV */}
                     {customerReqs.strength && (
                         <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-orange-50 text-orange-700 border-orange-100 shadow-sm">
                             💪 Lực: {customerReqs.strength}

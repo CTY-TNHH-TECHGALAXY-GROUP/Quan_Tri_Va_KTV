@@ -545,7 +545,7 @@ export const DispatchStaffRow = ({
                                     <div className="text-2xl font-black text-red-600 uppercase leading-tight">
                                         {displayName || serviceName} ({svcDuration}&apos;)
                                     </div>
-                                    {serviceDescription && (
+                                    {serviceDescription && (!displayName || displayName === serviceName) && (
                                         <p className="mt-1.5 text-sm font-bold text-gray-600 leading-relaxed">
                                             {serviceDescription}
                                         </p>
@@ -586,11 +586,7 @@ export const DispatchStaffRow = ({
                                         </p>
                                         <div className="flex flex-wrap gap-2">
 
-                                            {genderReq && (
-                                                <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-purple-50 text-purple-700 border-purple-100 shadow-sm">
-                                                    🧑 KTV: {genderReq}
-                                                </span>
-                                            )}
+                                            {/* Giới tính KTV: Không cần in ra phiếu cho KTV */}
                                             {strength && (
                                                 <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-orange-50 text-orange-700 border-orange-100 shadow-sm">
                                                     💪 Lực: {strength}

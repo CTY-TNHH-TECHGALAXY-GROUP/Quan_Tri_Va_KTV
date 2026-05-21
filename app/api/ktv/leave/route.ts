@@ -96,6 +96,35 @@ export async function POST(request: Request) {
                 continue;
             }
 
+            // ─── VIP BOOKING CONFLICT CHECK (Sudden OFF Guard) ───
+            const { data: vipBookings } = await supabase
+                .from('Bookings')
+                .select('id, billCode, notes, bookingDate')
+                .in('status', ['NEW', 'PENDING_CONFIRM', 'WAITING'])
+                .textSearch('notes', 'VIP_APPOINTMENT'); // Fast check if notes contain VIP
+
+            let hasVipConflict = false;
+            if (vipBookings) {
+                for (const b of vipBookings) {
+                    try {
+                        const notesObj = typeof b.notes === 'string' ? JSON.parse(b.notes) : b.notes;
+                        if (notesObj?.type !== 'VIP_APPOINTMENT') continue;
+                        
+                        const apptDate = notesObj.appointmentDate || b.bookingDate?.split('T')[0];
+                        if (apptDate === d && notesObj.selectedStaffIds?.includes(employeeId)) {
+                            errors.push(`Ngày ${d} bạn đang có lịch hẹn VIP (${b.billCode}). Không thể xin nghỉ!`);
+                            hasVipConflict = true;
+                            break;
+                        }
+                    } catch (e) {
+                        // ignore parsing error
+                    }
+                }
+            }
+
+            if (hasVipConflict) continue;
+            // ────────────────────────────────────────────────────────
+
             // Admin đăng ký giúp → bỏ qua deadline
             if (!registeredByAdmin) {
                 const [yyyy, mm, dd] = d.split('-').map(Number);
