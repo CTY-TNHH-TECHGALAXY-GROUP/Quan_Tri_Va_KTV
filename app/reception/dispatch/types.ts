@@ -48,6 +48,7 @@ export interface PendingOrder {
   billCode: string;
   customerName: string;
   phone: string;
+  email?: string;
   source?: string;
   timeBooking?: string | null;
   vipWarnings?: string[];

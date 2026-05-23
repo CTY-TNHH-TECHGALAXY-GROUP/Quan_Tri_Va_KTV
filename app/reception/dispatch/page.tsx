@@ -415,6 +415,7 @@ export default function DispatchBoardPage() {
               customerName: b.customerName || 'Khách vãng lai',
               customerLang: b.customerLang || 'vi',
               phone: b.customerPhone || '',
+              email: b.customerEmail || '',
               time: b.timeBooking || (b.createdAt ? new Date(b.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'),
               dispatchStatus: dStatus,
               createdAt: b.createdAt || new Date().toISOString(),
