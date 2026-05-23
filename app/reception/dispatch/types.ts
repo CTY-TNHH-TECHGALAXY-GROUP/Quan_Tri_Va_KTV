@@ -50,6 +50,8 @@ export interface PendingOrder {
   phone: string;
   source?: string;
   timeBooking?: string | null;
+  vipWarnings?: string[];
+  vipConfidence?: string;
   time: string;
   services: ServiceBlock[];
   dispatchStatus: DispatchStatus;

@@ -426,6 +426,8 @@ export default function DispatchBoardPage() {
               accessToken: b.accessToken || null,
               rating: calculatedRating,
               feedbackNote: b.feedbackNote || null,
+              vipWarnings: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.warnings : []; } catch { return []; } })() : [],
+              vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
             timeStart: b.timeStart || null,
             customerLang: b.customerLang,
             rawNotes: b.notes,
@@ -457,12 +459,7 @@ export default function DispatchBoardPage() {
                   
                   if (parsedNotes) {
                       if (parsedNotes.type === 'VIP_APPOINTMENT') {
-                          finalAdminNote = `Gói VIP (${parsedNotes.duration} phút).`;
-                          if (parsedNotes.timeSlot) finalAdminNote += ` Giờ hẹn: ${parsedNotes.timeSlot}.`;
-                          if (parsedNotes.confidence !== 'CONFIRMED') finalAdminNote += ` (Cần xác nhận).`;
-                          if (parsedNotes.warnings && parsedNotes.warnings.length > 0) {
-                              finalAdminNote += `\n⚠️ Cảnh báo: ${parsedNotes.warnings.join(', ')}`;
-                          }
+                          finalAdminNote = parsedNotes.receptionNote || '';
                       } else {
                           finalAdminNote = typeof b.notes === 'string' ? b.notes : JSON.stringify(b.notes);
                       }
@@ -1087,12 +1084,8 @@ if (!hasPermission('dispatch_board')) {
       if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
           try {
               const parsed = JSON.parse(clonedOrder.rawNotes);
-              if (parsed.type === 'VIP_APPOINTMENT') {
-                  finalNotesToSave = clonedOrder.rawNotes; // Preserve VIP JSON
-              } else {
-                  parsed.receptionNote = primaryService?.adminNote;
-                  finalNotesToSave = JSON.stringify(parsed);
-              }
+              parsed.receptionNote = primaryService?.adminNote;
+              finalNotesToSave = JSON.stringify(parsed);
           } catch {
               finalNotesToSave = primaryService?.adminNote || '';
           }
@@ -1261,12 +1254,8 @@ if (!hasPermission('dispatch_board')) {
       if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
           try {
               const parsed = JSON.parse(clonedOrder.rawNotes);
-              if (parsed.type === 'VIP_APPOINTMENT') {
-                  finalNotesToSave = clonedOrder.rawNotes; // Preserve VIP JSON
-              } else {
-                  parsed.receptionNote = primaryService?.adminNote;
-                  finalNotesToSave = JSON.stringify(parsed);
-              }
+              parsed.receptionNote = primaryService?.adminNote;
+              finalNotesToSave = JSON.stringify(parsed);
           } catch {
               finalNotesToSave = primaryService?.adminNote || '';
           }
@@ -1689,7 +1678,7 @@ if (!hasPermission('dispatch_board')) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                    <h2 className="font-black text-gray-900 text-base truncate">Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName}</h2>
+                    <h2 className="font-black text-gray-900 text-base truncate">Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName}{selectedSubOrder.originalOrder.phone ? ` — ${selectedSubOrder.originalOrder.phone}` : ''}</h2>
                   </div>
                   <div className="flex items-center gap-2 mt-1 ml-4">
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Đang điều phối</p>

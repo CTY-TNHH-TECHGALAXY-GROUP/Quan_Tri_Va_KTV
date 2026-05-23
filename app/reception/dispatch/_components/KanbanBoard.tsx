@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
@@ -351,8 +351,17 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                 </div>
                                                               )}
                                                             </div>
-                                                            <div className="flex flex-col gap-1 items-start">
-                                                                {(!order.paymentMethod || order.paymentMethod === 'Unpaid') && (
+                                                              <div className="flex flex-col gap-1 items-start">
+                                                                  {order.vipWarnings && order.vipWarnings.length > 0 && (
+                                                                      <div className="flex flex-col gap-0.5 mt-1">
+                                                                          {order.vipWarnings.map((w: string, i: number) => (
+                                                                              <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1 w-fit">
+                                                                                  ⚠️ {w}
+                                                                              </span>
+                                                                          ))}
+                                                                      </div>
+                                                                  )}
+                                                                  {(!order.paymentMethod || order.paymentMethod === 'Unpaid') && (
                                                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1 w-fit">
                                                                         <AlertCircle size={9} /> Chưa TT
                                                                     </span>
@@ -373,7 +382,48 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                     </div>
                                                     {(() => {
                                                         const subOrderTotal = services.reduce((acc: number, svc: any) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0);
-                                                        return <p className="text-sm font-black text-gray-900 shrink-0">{formatVND(subOrderTotal)}</p>;
+                                                        const pm = order.paymentMethod;
+                                                        let pmIcon = null;
+                                                        let pmText = '';
+                                                        let colorClass = '';
+                                                        let bgClass = '';
+                                                        
+                                                        if (!pm || pm === 'Unpaid') {
+                                                            pmIcon = <AlertCircle size={10} className="text-rose-600" />;
+                                                            pmText = 'Chưa thanh toán';
+                                                            colorClass = 'text-rose-600';
+                                                            bgClass = 'bg-rose-50 border-rose-100';
+                                                        } else if (pm === 'Tiền mặt' || pm === 'Cash') {
+                                                            pmIcon = <Banknote size={10} className="text-emerald-600" />;
+                                                            pmText = 'Tiền mặt';
+                                                            colorClass = 'text-emerald-600';
+                                                            bgClass = 'bg-emerald-50 border-emerald-100';
+                                                        } else if (pm === 'Chuyển khoản' || pm === 'Bank') {
+                                                            pmIcon = <QrCode size={10} className="text-indigo-600" />;
+                                                            pmText = 'Chuyển khoản';
+                                                            colorClass = 'text-indigo-600';
+                                                            bgClass = 'bg-indigo-50 border-indigo-100';
+                                                        } else if (pm.includes('Thẻ') || pm === 'Credit') {
+                                                            pmIcon = <CreditCard size={10} className="text-amber-600" />;
+                                                            pmText = 'Quẹt thẻ';
+                                                            colorClass = 'text-amber-600';
+                                                            bgClass = 'bg-amber-50 border-amber-100';
+                                                        } else {
+                                                            pmIcon = <CheckCircle2 size={10} className="text-gray-500" />;
+                                                            pmText = pm;
+                                                            colorClass = 'text-gray-600';
+                                                            bgClass = 'bg-gray-50 border-gray-100';
+                                                        }
+
+                                                        return (
+                                                          <div className="flex flex-col items-end shrink-0 gap-1.5">
+                                                            <p className="text-sm font-black text-gray-900 leading-none">{formatVND(subOrderTotal)}</p>
+                                                            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${bgClass}`} title={pmText}>
+                                                              {pmIcon}
+                                                              <span className={`text-[9px] font-bold ${colorClass}`}>{pmText}</span>
+                                                            </div>
+                                                          </div>
+                                                        );
                                                     })()}
                                                 </div>
 
@@ -493,7 +543,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                         }`}>
                                                             {subOrder.rating ? (
                                                                 <>
-                                                                    <Check size={12} /> Đánh giá: {subOrder.rating >= 5 ? 'Xuất sắc' : subOrder.rating >= 4 ? 'Tốt' : subOrder.rating >= 3 ? 'Khá' : 'Trung bình'} ({subOrder.rating}/5)
+                                                                    <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
                                                                 </>
                                                             ) : (
                                                                 <><Star size={12} /> Đánh giá: Chờ khách...</>
@@ -503,7 +553,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                         {/* Ngôi sao để chấm điểm hộ khách (chỉ khi chưa đánh giá) */}
                                                         {!subOrder.rating && (
                                                             <div className="flex items-center gap-1 mt-1">
-                                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                                {[1, 2, 3, 4].map((star) => (
                                                                     <button
                                                                         key={star}
                                                                         onClick={(e) => {
@@ -537,13 +587,14 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
 
                                                 {/* ✅ RATING RESULT: Chỉ hiện ở cột "Hoàn tất" */}
                                                 {subOrder.dispatchStatus === 'DONE' && subOrder.rating && (() => {
-                                                    const ratingLabel = subOrder.rating >= 5 ? 'Xuất sắc' : subOrder.rating >= 4 ? 'Tốt' : subOrder.rating >= 3 ? 'Khá' : subOrder.rating >= 2 ? 'Trung bình' : 'Cần cải thiện';
-                                                    const ratingColor = subOrder.rating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : subOrder.rating >= 3 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                    const currentRating = Math.min(subOrder.rating, 4);
+                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
+                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
                                                     return (
                                                         <div className={`mb-3 rounded-xl px-3 py-2 border ${ratingColor}`}>
                                                             <div className="flex items-center gap-1">
-                                                                {[1, 2, 3, 4, 5].map((s) => (
-                                                                    <Star key={s} size={14} fill={subOrder.rating >= s ? 'currentColor' : 'none'} strokeWidth={subOrder.rating >= s ? 0 : 2} className={subOrder.rating >= s ? '' : 'opacity-30'} />
+                                                                {[1, 2, 3, 4].map((s) => (
+                                                                    <Star key={s} size={14} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
                                                                 ))}
                                                                 <span className="ml-1.5 text-[11px] font-black">{ratingLabel}</span>
                                                             </div>
