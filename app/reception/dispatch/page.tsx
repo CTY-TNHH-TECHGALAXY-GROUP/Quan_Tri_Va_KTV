@@ -427,7 +427,8 @@ export default function DispatchBoardPage() {
               rating: calculatedRating,
               feedbackNote: b.feedbackNote || null,
             timeStart: b.timeStart || null,
-            timeEnd: b.timeEnd || null,
+            customerLang: b.customerLang,
+            rawNotes: b.notes,
             services: (b.BookingItems || []).map((bi: any) => {
               const itemTurns = assignedTurns.filter((t: any) => {
                   if (!t.booking_item_id) return false;
@@ -1082,12 +1083,27 @@ if (!hasPermission('dispatch_board')) {
           };
       });
 
+      let finalNotesToSave = primaryService?.adminNote || '';
+      if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
+          try {
+              const parsed = JSON.parse(clonedOrder.rawNotes);
+              if (parsed.type === 'VIP_APPOINTMENT') {
+                  finalNotesToSave = clonedOrder.rawNotes; // Preserve VIP JSON
+              } else {
+                  parsed.receptionNote = primaryService?.adminNote;
+                  finalNotesToSave = JSON.stringify(parsed);
+              }
+          } catch {
+              finalNotesToSave = primaryService?.adminNote || '';
+          }
+      }
+
       const { saveDraftDispatch } = await import('./actions');
       const res = await saveDraftDispatch(clonedOrder.id, {
         technicianCode: combinedTechCodes,
         bedId: primarySeg?.bedId || null,
         roomName: primarySeg?.roomId || null,
-        notes: primaryService?.adminNote || '',
+        notes: finalNotesToSave,
         itemUpdates: itemUpdates
       });
 
@@ -1241,14 +1257,27 @@ if (!hasPermission('dispatch_board')) {
           };
       });
 
+      let finalNotesToSave = primaryService?.adminNote || '';
+      if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
+          try {
+              const parsed = JSON.parse(clonedOrder.rawNotes);
+              if (parsed.type === 'VIP_APPOINTMENT') {
+                  finalNotesToSave = clonedOrder.rawNotes; // Preserve VIP JSON
+              } else {
+                  parsed.receptionNote = primaryService?.adminNote;
+                  finalNotesToSave = JSON.stringify(parsed);
+              }
+          } catch {
+              finalNotesToSave = primaryService?.adminNote || '';
+          }
+      }
+
       const isPartial = !!specificSvcId;
-      // ⚠️ Khi dispatch lẻ: KHÔNG gửi status để tránh lỗi backward transition
-      // VD: Booking đang IN_PROGRESS (DV1 xong), dispatch lẻ DV3 → gửi PREPARING sẽ bị RPC block
-      const bookingStatus = isPartial 
-        ? null  // null → RPC giữ nguyên booking status hiện tại (COALESCE)
-        : ((clonedOrder.rawStatus && !['NEW', 'pending', 'WAITING'].includes(clonedOrder.rawStatus)) 
-            ? clonedOrder.rawStatus 
-            : 'PREPARING');
+      // ⚠️ Khi dispatch: KHÔNG gửi status để tránh lỗi backward transition nếu đang IN_PROGRESS/CLEANING
+      // Chỉ gửi PREPARING nếu trạng thái thực sự là NEW, pending, hoặc WAITING (chưa điều phối)
+      const isPending = !clonedOrder.rawStatus || ['NEW', 'pending', 'WAITING'].includes(clonedOrder.rawStatus);
+      const bookingStatus = isPartial ? null : (isPending ? 'PREPARING' : clonedOrder.rawStatus);
+      
       const res = await processDispatch(clonedOrder.id, {
         status: bookingStatus as any,
         technicianCode: isPartial ? undefined : combinedTechCodes,
@@ -1256,7 +1285,7 @@ if (!hasPermission('dispatch_board')) {
         roomName: isPartial ? undefined : (primarySeg?.roomId || null),
         staffAssignments: mergedAssignments,
         date: selectedDate,
-        notes: isPartial ? undefined : (primaryService?.adminNote || ''),
+        notes: isPartial ? undefined : finalNotesToSave,
         itemUpdates: itemUpdates
       });
 

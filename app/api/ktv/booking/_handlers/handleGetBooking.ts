@@ -187,6 +187,13 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 const strength = opts.strength || '';
                 const therapistGender = opts.therapist || ''; 
 
+                let finalDuration = svc?.duration || (sId.includes('nhs0000') ? 1 : 60);
+                if (opts?.vipDuration) {
+                    finalDuration = Number(opts.vipDuration);
+                } else if (opts?.duration) {
+                    finalDuration = Number(opts.duration);
+                }
+
                 const getI18nStr = (val: any, fallback: string = '') => {
                     if (typeof val === 'object' && val !== null) return val.vn || val.en || String(val);
                     return val || fallback;
@@ -198,7 +205,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
                     procedure: svc?.procedure || null,
                     focusConfig: svc?.focusConfig || null,
-                    duration: i.duration || svc?.duration || (sId.includes('nhs0000') ? 1 : 60),
+                    duration: finalDuration,
                     is_utility: svc?.is_utility ?? (sId === 'nhs0900'), // ✅ Truyền is_utility xuống KTVDashboard
                     customerNote: customerNote,
                     noteForKtv: noteForKtv,

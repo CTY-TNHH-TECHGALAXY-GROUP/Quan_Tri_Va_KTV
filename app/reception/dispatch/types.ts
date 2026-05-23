@@ -48,6 +48,8 @@ export interface PendingOrder {
   billCode: string;
   customerName: string;
   phone: string;
+  source?: string;
+  timeBooking?: string | null;
   time: string;
   services: ServiceBlock[];
   dispatchStatus: DispatchStatus;
@@ -63,6 +65,7 @@ export interface PendingOrder {
   accessToken?: string | null;
   rating?: number | null;
   feedbackNote?: string | null;
+  rawNotes?: any;
 }
 
 export type StaffData = {

@@ -330,10 +330,25 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             {order.customerName.charAt(0)}
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <div className="flex items-center gap-1.5 mb-1">
-                                                              <p className="font-black text-sm text-gray-900 leading-none truncate">{order.customerName}</p>
-                                                              {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
-                                                                <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
+                                                            <div className="flex flex-col gap-0.5 mb-1.5">
+                                                              <div className="flex items-center gap-1.5">
+                                                                <p className="font-black text-sm text-gray-900 leading-none truncate">{order.customerName}</p>
+                                                                {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
+                                                                  <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
+                                                                )}
+                                                              </div>
+                                                              {order.phone && <p className="text-[10px] text-gray-500 font-bold">{order.phone}</p>}
+                                                              {order.source && order.source.includes('VIP') && (
+                                                                <div className="flex items-center gap-1 mt-0.5">
+                                                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-tighter">
+                                                                    {order.source === 'VIP_BOOKING' ? 'Khách Đặt Hẹn' : (order.source === 'VIP_WALK_IN' ? 'Khách Tại Quầy' : order.source)}
+                                                                  </span>
+                                                                  {order.timeBooking && (
+                                                                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 tracking-tighter">
+                                                                        🕒 {order.timeBooking}
+                                                                     </span>
+                                                                  )}
+                                                                </div>
                                                               )}
                                                             </div>
                                                             <div className="flex flex-col gap-1 items-start">
