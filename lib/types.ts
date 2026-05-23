@@ -9,6 +9,7 @@ export type ModuleId =
   | 'finance_management'
   | 'web_booking'
   | 'service_menu'
+  | 'customer_reminders'
   | 'role_management'
   | 'employee_management'
   | 'ktv_hub'

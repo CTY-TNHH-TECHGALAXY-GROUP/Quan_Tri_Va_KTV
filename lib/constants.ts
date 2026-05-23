@@ -11,6 +11,7 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'finance_management', name: 'Thu Ngân KTV', group: 'Tài Chính & Kế Toán' },
   { id: 'web_booking', name: 'Đơn Đặt Lịch Web', group: 'Vận Hành' },
   { id: 'service_menu', name: 'Menu Dịch Vụ', group: 'Thiết Lập Nội Dung' },
+  { id: 'customer_reminders', name: 'Câu Hỏi Khảo Sát', group: 'Thiết Lập Nội Dung' },
   { id: 'role_management', name: 'Phân Quyền', group: 'Hệ Thống' },
   { id: 'employee_management', name: 'Nhân Viên', group: 'Hệ Thống' },
   { id: 'ktv_dashboard', name: 'KTV Dashboard', group: 'Kỹ Thuật Viên' },

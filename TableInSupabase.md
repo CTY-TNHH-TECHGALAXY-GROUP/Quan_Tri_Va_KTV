@@ -367,6 +367,23 @@
 
 ---
 
+### 8.6. Reminders_Customer ✅ CHỦ LỰC
+**Nhiệm vụ**: Lưu trữ 6 câu hỏi feedback của khách hàng trên màn hình Journey (đa ngôn ngữ).
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `contentVN` | text | Câu hỏi tiếng Việt |
+| `contentEN` | text | Câu hỏi tiếng Anh |
+| `contentCN` | text | Câu hỏi tiếng Trung |
+| `contentJP` | text | Câu hỏi tiếng Nhật |
+| `contentKR` | text | Câu hỏi tiếng Hàn |
+| `is_active` | boolean | Trạng thái hiển thị (ẩn/hiện) |
+| `order_index` | integer | Thứ tự sắp xếp hiển thị |
+| `created_at` | timestamptz | Thời điểm tạo |
+
+---
+
 ## NHÓM 4: CƠ SỞ VẬT CHẤT & KHÁCH HÀNG (Infra & CRM)
 
 ### 9. Rooms ✅ CHỦ LỰC

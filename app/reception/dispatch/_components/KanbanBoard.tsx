@@ -572,9 +572,8 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                 <button 
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        const ratingUrl = `${window.location.origin}/rating/${subOrder.bookingId}`;
-                                                                        navigator.clipboard.writeText(ratingUrl);
-                                                                        alert(`Link đánh giá đã copy:\n${ratingUrl}`);
+                                                                        const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                        window.open(ratingUrl, '_blank');
                                                                     }}
                                                                     className="ml-auto text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5"
                                                                 >
