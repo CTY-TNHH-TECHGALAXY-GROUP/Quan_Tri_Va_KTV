@@ -187,7 +187,17 @@ export default function DispatchBoardPage() {
     setMounted(true);
     fetchData();
 
-    const channel = supabase
+    
+      let fetchTimeout: NodeJS.Timeout;
+      const debouncedFetchData = () => {
+        clearTimeout(fetchTimeout);
+        fetchTimeout = setTimeout(() => {
+          console.log('⚡ [Dispatch] Debounced fetch triggering...');
+          fetchData();
+        }, 1000);
+      };
+      
+      const channel = supabase
       .channel('dispatch_board_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Bookings' }, (payload) => {
         const newBooking = payload.new;
@@ -197,7 +207,7 @@ export default function DispatchBoardPage() {
         
         // NotificationProvider will handle the sound via StaffNotifications trigger
         // Always refetch on INSERT to get related BookingItems & mapping
-        fetchData();
+        debouncedFetchData();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Bookings' }, (payload: any) => {
         console.log("🔄 [Dispatch] Booking updated:", payload.new.id, payload.new.status);
@@ -222,7 +232,7 @@ export default function DispatchBoardPage() {
           console.log('🛡️ [Dispatch] Status patched locally — deferring full fetchData until form closes');
           return;
         }
-        fetchData();
+        debouncedFetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, (payload: any) => {
         console.log("🔄 [Dispatch] TurnQueue change:", payload.eventType);
@@ -237,7 +247,7 @@ export default function DispatchBoardPage() {
           if (selectedOrderIdRef.current) {
             needsRefreshRef.current = true;
           } else {
-            fetchData();
+            debouncedFetchData();
           }
         }
       })
@@ -247,7 +257,7 @@ export default function DispatchBoardPage() {
           needsRefreshRef.current = true;
           return;
         }
-        fetchData();
+        debouncedFetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
         const newItem = payload.new as any;
@@ -268,7 +278,7 @@ export default function DispatchBoardPage() {
           needsRefreshRef.current = true;
           return;
         }
-        fetchData();
+        debouncedFetchData();
       })
       .subscribe();
 
@@ -1678,7 +1688,11 @@ if (!hasPermission('dispatch_board')) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                    <h2 className="font-black text-gray-900 text-base truncate">Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName}{selectedSubOrder.originalOrder.phone ? ` — ${selectedSubOrder.originalOrder.phone}` : ''}</h2>
+                    <h2 className="font-black text-gray-900 text-base truncate">
+                      Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName} — {
+                        [selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'
+                      }
+                    </h2>
                   </div>
                   <div className="flex items-center gap-2 mt-1 ml-4">
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Đang điều phối</p>
