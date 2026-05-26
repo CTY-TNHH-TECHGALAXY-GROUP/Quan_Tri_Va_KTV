@@ -253,6 +253,11 @@ export async function GET(request: Request) {
                 if (shiftType === 'SHIFT_2') basePoints = s2Bonus;
                 else if (shiftType === 'SHIFT_3') basePoints = s3Bonus;
                 
+                // Điểm thưởng giảm nửa nếu KTV được gán dưới 60 phút
+                if (totalDuration < 60) {
+                    basePoints = basePoints / 2;
+                }
+                
                 // Collect ALL unique KTVs across ALL items in this booking
                 const allKtvCodes = new Set<string>();
                 const allItems = (items || []).filter((i: any) => i.bookingId === b.id);

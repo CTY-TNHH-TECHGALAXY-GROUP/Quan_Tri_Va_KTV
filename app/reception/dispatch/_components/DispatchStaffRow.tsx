@@ -543,7 +543,7 @@ export const DispatchStaffRow = ({
                                 <div>
 
                                     <div className="text-2xl font-black text-red-600 uppercase leading-tight">
-                                        {displayName || serviceName} ({svcDuration}&apos;)
+                                        {displayName || serviceName} ({row.segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0)}&apos;)
                                     </div>
                                     {serviceDescription && (!displayName || displayName === serviceName) && (
                                         <p className="mt-1.5 text-sm font-bold text-gray-600 leading-relaxed">

@@ -191,6 +191,11 @@ async function processLedgerSync(targetDateStr: string) {
             const bookingRating = Math.max(bRating, maxItemRating);
 
             if (bookingRating >= 4) {
+                let adjustedBasePoints = basePoints;
+                if (totalDuration < 60) {
+                    adjustedBasePoints = basePoints / 2;
+                }
+
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
                     if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
@@ -198,7 +203,7 @@ async function processLedgerSync(targetDateStr: string) {
                     }
                 }
                 const totalUniqueKTVs = allKtvCodes.size || 1;
-                const bonusPts = Math.floor(basePoints / totalUniqueKTVs);
+                const bonusPts = Math.floor(adjustedBasePoints / totalUniqueKTVs);
                 total_bonus += bonusPts;
 
                 // Record for KTVBonusLedger (only when feature is ON)
@@ -208,7 +213,7 @@ async function processLedgerSync(targetDateStr: string) {
                         booking_id: b.id,
                         points: bonusPts,
                         type: 'EARN',
-                        description: `Bonus ${bonusPts}đ (${basePoints}/${totalUniqueKTVs} KTV) - Rating ${bookingRating}★`,
+                        description: `Bonus ${bonusPts}đ (${adjustedBasePoints}/${totalUniqueKTVs} KTV) - Rating ${bookingRating}★`,
                         date: targetDateStr
                     });
                 }

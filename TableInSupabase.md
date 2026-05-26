@@ -386,6 +386,23 @@
 
 ---
 
+### 8.7. SpaPolicies ✅ CHỦ LỰC
+**Nhiệm vụ**: Lưu trữ các điều khoản và chính sách của Spa hiển thị trên giao diện khách hàng (đa ngôn ngữ).
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `contentVN` | text | Nội dung chính sách tiếng Việt |
+| `contentEN` | text | Nội dung chính sách tiếng Anh |
+| `contentCN` | text | Nội dung chính sách tiếng Trung |
+| `contentJP` | text | Nội dung chính sách tiếng Nhật |
+| `contentKR` | text | Nội dung chính sách tiếng Hàn |
+| `is_active` | boolean | Trạng thái hiển thị (ẩn/hiện) |
+| `order_index` | integer | Thứ tự sắp xếp hiển thị |
+| `created_at` | timestamptz | Thời điểm tạo |
+
+---
+
 ## NHÓM 4: CƠ SỞ VẬT CHẤT & KHÁCH HÀNG (Infra & CRM)
 
 ### 9. Rooms ✅ CHỦ LỰC
