@@ -182,6 +182,11 @@ export async function GET(request: Request) {
             const bookingRating = Math.max(bRating, maxItemRating);
 
             if (bookingRating >= 4) {
+                let adjustedBasePoints = basePoints;
+                if (totalDuration < 60) {
+                    adjustedBasePoints = basePoints / 2;
+                }
+
                 // Collect ALL unique KTVs across ALL items in this booking
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
@@ -190,7 +195,7 @@ export async function GET(request: Request) {
                     }
                 }
                 const totalUniqueKTVs = allKtvCodes.size || 1;
-                rt_bonus += Math.floor(basePoints / totalUniqueKTVs);
+                rt_bonus += Math.floor(adjustedBasePoints / totalUniqueKTVs);
             }
         }
 
