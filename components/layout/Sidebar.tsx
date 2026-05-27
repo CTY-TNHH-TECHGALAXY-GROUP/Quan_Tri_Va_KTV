@@ -70,6 +70,7 @@ const ICONS: Record<string, React.ReactNode> = {
   room_management: <DoorOpen size={20} />,
   staff_notifications: <Bell size={20} />,
   staff_features: <ToggleLeft size={20} />,
+  notification_settings: <Bell size={20} />,
   settings: <Settings size={20} />,
 };
 
@@ -102,6 +103,7 @@ const PATHS: Record<string, string> = {
   room_management: '/reception/rooms',
   staff_notifications: '/admin/notifications',
   staff_features: '/admin/settings/features',
+  notification_settings: '/admin/settings/notifications',
   settings: '/settings',
 };
 

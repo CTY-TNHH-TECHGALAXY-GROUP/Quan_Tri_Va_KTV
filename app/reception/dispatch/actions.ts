@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
+import { createNotification } from '@/lib/notification-helper';
 
 
 
@@ -364,20 +365,12 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                 if (existingNotif && existingNotif.length > 0) continue;
 
-                await supabase.from('StaffNotifications').insert({
+                await createNotification({
                     bookingId: bookingId,
                     employeeId: String(staffId),
                     type: 'NEW_ORDER',
                     message: message,
-                    isRead: false
                 });
-
-                await sendPushNotification({
-                    title: 'Bạn có ca làm mới! 💆',
-                    message: message,
-                    targetStaffIds: [String(staffId)],
-                    url: '/ktv/dashboard'
-                }).catch(err => console.error('Push error:', err));
             }
         }
 
@@ -1144,23 +1137,13 @@ export async function createQuickBooking(data: {
 
         if (iError) throw iError;
 
-        // 4. Insert Realtime StaffNotification
+        // 4. Insert Realtime StaffNotification & Push
         const msg = `Khách ${data.customerName} vừa được tạo đơn. Hãy nhanh chóng điều phối!`;
-        await supabase.from('StaffNotifications').insert({
+        await createNotification({
             bookingId: bookingId,
-            employeeId: null, // Global cho quầy
             type: 'NEW_ORDER',
             message: msg,
-            isRead: false
         });
-
-        // 5. Send background push to Receptionists/Admins
-        await sendPushNotification({
-            title: 'Có Đơn Hàng Mới! 📋',
-            message: msg,
-            targetRoles: ['ADMIN', 'RECEPTIONIST'],
-            url: '/reception/dispatch'
-        }).catch(err => console.error('Push error:', err));
 
         return { success: true, bookingId: booking.id };
     } catch (error: any) {
@@ -1364,30 +1347,13 @@ export async function addAddonServices(bookingId: string, items: { serviceId: st
             }
         }
 
-        // 7. Tạo StaffNotification (Ghi nhận log hệ thống)
+        // 7. Tạo StaffNotification & Push
         const addedServiceNames = detailedItems.map(i => i.name).join(', ');
-        await supabase
-            .from('StaffNotifications')
-            .insert({
-                bookingId: bookingId,
-                employeeId: null,
-                type: 'ADDON_SERVICE',
-                message: `Phát sinh chưa thu: Đơn ${booking.billCode || bookingId} vừa được thêm ${addedServiceNames} (${totalVND.toLocaleString()}đ).`,
-                isRead: false,
-                createdAt: vnTimeStr
-            });
-
-        // 8. Gửi Push Notification cho Lễ tân
-        try {
-            await sendPushNotification({
-                title: 'Dịch vụ phát sinh (Chưa thu)',
-                message: `Đơn ${booking.billCode || bookingId} vừa thêm: ${addedServiceNames}`,
-                targetRoles: ['RECEPTIONIST', 'ADMIN'],
-                url: `/reception/dispatch?bookingId=${bookingId}`
-            });
-        } catch (pushErr) {
-            console.error('⚠️ [Add-on] Failed to send push notification:', pushErr);
-        }
+        await createNotification({
+            bookingId: bookingId,
+            type: 'ADDON_SERVICE',
+            message: `Phát sinh chưa thu: Đơn ${booking.billCode || bookingId} vừa được thêm ${addedServiceNames} (${totalVND.toLocaleString()}đ).`,
+        });
 
         return { success: true, newTotalAmount, newItems: itemsToInsert };
     } catch (error: any) {
@@ -1670,31 +1636,15 @@ export async function editBookingService(bookingId: string, itemId: string, newS
             }
         }
 
-        // 8. Ghi log Notifications
+        // 8. Ghi log Notifications & Push
         let diffText = priceDiff > 0 ? `Thu thêm ${(priceDiff).toLocaleString()}đ` : priceDiff < 0 ? `Thối lại ${Math.abs(priceDiff).toLocaleString()}đ` : 'Không chênh lệch giá';
         const notifMsg = `Đổi dịch vụ đơn ${booking.billCode || bookingId}: từ "${oldServiceName}" thành "${newServiceName}". Tính tiền: ${diffText}.`;
 
-        await supabase
-            .from('StaffNotifications')
-            .insert({
-                bookingId: bookingId,
-                type: 'SYSTEM_LOG',
-                message: notifMsg,
-                isRead: false,
-                createdAt: vnTimeStr
-            });
-
-        // 9. Gửi Push Notification (Tùy chọn)
-        try {
-            await sendPushNotification({
-                title: 'Thay đổi dịch vụ đơn hàng',
-                message: notifMsg,
-                targetRoles: ['RECEPTIONIST', 'ADMIN'],
-                url: `/reception/dispatch?bookingId=${bookingId}`
-            });
-        } catch (e) {
-            console.error('Push error on edit service:', e);
-        }
+        await createNotification({
+            bookingId: bookingId,
+            type: 'SYSTEM_LOG',
+            message: notifMsg,
+        });
 
         return { 
             success: true, 

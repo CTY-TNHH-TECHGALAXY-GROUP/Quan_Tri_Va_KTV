@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -145,11 +146,10 @@ export async function PATCH(request: Request) {
             else ktvMessage = '❌ Admin từ chối tan ca.';
         }
 
-        await supabase.from('StaffNotifications').insert({
-            type: 'CHECK_IN',
+        await createNotification({
+            type: 'ATTENDANCE',
             message: ktvMessage,
             employeeId: attendance.employeeId,  // gán riêng cho KTV
-            isRead: false,
         });
 
         console.log(`✅ [Attendance CONFIRM] ${attendance.employeeName}: ${action} ${attendance.checkType}`);

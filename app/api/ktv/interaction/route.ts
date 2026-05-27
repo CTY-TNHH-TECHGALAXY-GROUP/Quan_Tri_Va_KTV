@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 
 /**
  * API Gửi tương tác từ KTV
@@ -64,35 +65,16 @@ export async function POST(request: Request) {
         // Ưu tiên custom message từ client (dùng cho Room Issue Report)
         const finalMessage = customMessage || messageMap[type] || `Yêu cầu (${type}) tại ${roomInfo}`;
 
-        // 3. Lưu vào bảng StaffNotifications để Lễ tân nhận Realtime
+        // 3. Lưu vào bảng StaffNotifications và tự động gửi Push
         console.log(`💾 [API KTV Interaction] Inserting notification:`, { bookingId, type, message: finalMessage });
-        const { data: nData, error: nError } = await supabase
-            .from('StaffNotifications')
-            .insert({
-                bookingId,
-                type,
-                message: finalMessage,
-                isRead: false
-            })
-            .select()
-            .single();
-
-        if (nError) {
-            console.error('❌ [API KTV Interaction] Failed to insert notification:', nError);
-            return NextResponse.json({ success: false, error: 'Failed to create internal notification' }, { status: 500 });
-        }
-        
-        console.log('✅ [API KTV Interaction] Notification stored successfully:', nData);
-        console.log(`🔔 [API KTV Interaction] Booking ${bookingId} (${roomInfo}) sent ${type}: ${finalMessage}`);
-        
-        // 4. Gửi thông báo Push
-        const { sendPushNotification } = await import('@/lib/push-helper');
-        sendPushNotification({
-            title: `Yêu cầu từ ${roomUpper}`,
+        await createNotification({
+            type,
             message: finalMessage,
-            targetRoles: ['ADMIN', 'RECEPTIONIST'],
-            url: '/reception/dispatch',
-        }).catch(err => console.error('❌ [API KTV Interaction] Push notification failed:', err));
+            bookingId
+        });
+        
+        console.log(`✅ [API KTV Interaction] Notification stored & push handled successfully.`);
+        console.log(`🔔 [API KTV Interaction] Booking ${bookingId} (${roomInfo}) sent ${type}: ${finalMessage}`);
 
         return NextResponse.json({ success: true, message: finalMessage });
     } catch (error: any) {

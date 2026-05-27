@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 
 /**
  * Debug endpoint: Test StaffNotifications insert
@@ -15,15 +16,17 @@ export async function GET() {
         .select('*')
         .limit(1);
     
-    // 2. Try insert with minimal fields
-    const { data: inserted, error: insertErr } = await supabase
-        .from('StaffNotifications')
-        .insert({
-            type: 'CHECK_IN',
-            message: '🧪 TEST: Điểm danh debug - nếu bạn thấy thông báo này là OK! [AID:test-123]',
-        })
-        .select()
-        .single();
+    // 2. Try createNotification
+    let insertErr = null;
+    let inserted = null;
+    try {
+        inserted = await createNotification({
+            type: 'NEW_ORDER',
+            message: '🎉 [TEST] Có đơn đặt phòng mới ảo từ Web Booking! Vui lòng vào check!',
+        });
+    } catch (e: any) {
+        insertErr = e;
+    }
 
     return NextResponse.json({
         selectResult: cols,

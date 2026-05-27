@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 
 // 🔧 SHIFT CONFIGURATION
 const SHIFT_TYPES = {
@@ -350,11 +351,10 @@ export async function POST(request: Request) {
 
             // Notify KTV
             const shiftLabel = SHIFT_TYPES[shiftType as keyof typeof SHIFT_TYPES]?.label || shiftType;
-            await supabase.from('StaffNotifications').insert({
-                type: 'CHECK_IN',
+            await createNotification({
+                type: 'SHIFT_RESPONSE',
                 message: `📋 Bạn đã được gán ${shiftLabel} (${SHIFT_TYPES[shiftType as keyof typeof SHIFT_TYPES]?.start} - ${SHIFT_TYPES[shiftType as keyof typeof SHIFT_TYPES]?.end}).`,
                 employeeId,
-                isRead: false,
             });
 
             console.log(`✅ [Shift] Admin assigned ${shiftLabel} to ${employeeName || employeeId}`);
@@ -410,10 +410,9 @@ export async function POST(request: Request) {
             ? SHIFT_TYPES[currentActive.shiftType as keyof typeof SHIFT_TYPES]?.label
             : 'Chưa có';
         
-        await supabase.from('StaffNotifications').insert({
-            type: 'CHECK_IN',
+        await createNotification({
+            type: 'SHIFT_CHANGE',
             message: `📋 ${employeeName || employeeId} đã đổi ca: ${prevLabel} → ${shiftLabel}`,
-            isRead: false,
         });
 
         console.log(`✅ [Shift] ${employeeName} changed shift to ${shiftLabel} (auto-approved)`);
@@ -485,11 +484,10 @@ export async function PATCH(request: Request) {
 
             // Notify KTV
             const shiftLabel = SHIFT_TYPES[shiftReq.shiftType as keyof typeof SHIFT_TYPES]?.label || shiftReq.shiftType;
-            await supabase.from('StaffNotifications').insert({
-                type: 'CHECK_IN',
+            await createNotification({
+                type: 'SHIFT_RESPONSE',
                 message: `✅ Yêu cầu đổi sang ${shiftLabel} đã được duyệt!`,
                 employeeId: shiftReq.employeeId,
-                isRead: false,
             });
 
             console.log(`✅ [Shift PATCH] APPROVED: ${shiftReq.employeeName} → ${shiftLabel}`);
@@ -511,11 +509,10 @@ export async function PATCH(request: Request) {
 
             // Notify KTV
             const shiftLabel = SHIFT_TYPES[shiftReq.shiftType as keyof typeof SHIFT_TYPES]?.label || shiftReq.shiftType;
-            await supabase.from('StaffNotifications').insert({
-                type: 'CHECK_IN',
+            await createNotification({
+                type: 'SHIFT_RESPONSE',
                 message: `❌ Yêu cầu đổi sang ${shiftLabel} đã bị từ chối.`,
                 employeeId: shiftReq.employeeId,
-                isRead: false,
             });
 
             console.log(`✅ [Shift PATCH] REJECTED: ${shiftReq.employeeName} → ${shiftLabel}`);

@@ -33,17 +33,25 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 // --- CONFIG ---
 const SOUND_MAP: Record<string, string> = {
     'EMERGENCY': '/sounds/quay-bao-khan-cap.wav',
-    'SOS': '/sounds/quay-bao-khan-cap.wav',           // Alias của EMERGENCY
-    'ADD_SERVICE': '/sounds/reception-notification.wav', // Alias của BUY_MORE
+    'SOS': '/sounds/quay-bao-khan-cap.wav',
+    'SUDDEN_OFF': '/sounds/quay-bao-khan-cap.wav',
+    'ADD_SERVICE': '/sounds/reception-notification.wav',
     'COMPLAINT': '/sounds/quay-danh-gia-te.wav',
     'EARLY_EXIT': '/sounds/quay-khach-ve-som.wav',
     'WATER': '/sounds/reception-notification.wav',
     'BUY_MORE': '/sounds/reception-notification.wav',
     'SUPPORT': '/sounds/reception-notification.wav',
-    'NEW_ORDER': '/sounds/quay-don-hang-moi.wav', // Mặc định cho quầy
+    'NEW_ORDER': '/sounds/quay-don-hang-moi.wav',
     'KTV_NEW_ORDER': '/sounds/ktv-don-hang-moi.wav',
     'REWARD': '/sounds/ktv-nhan-thuong.wav',
-    'CHECK_IN': '/sounds/reception-notification.wav', // KTV điểm danh
+    'ATTENDANCE': '/sounds/reception-notification.wav',
+    'CHECK_IN': '/sounds/reception-notification.wav',
+    'LEAVE_REQUEST': '/sounds/reception-notification.wav',
+    'LEAVE_RESPONSE': '/sounds/reception-notification.wav',
+    'SHIFT_CHANGE': '/sounds/reception-notification.wav',
+    'SHIFT_RESPONSE': '/sounds/reception-notification.wav',
+    'WALLET': '/sounds/reception-notification.wav',
+    'KTV_REVIEW': '/sounds/reception-notification.wav',
     'default': '/sounds/reception-notification.wav'
 };
 
@@ -52,11 +60,22 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     const [toastQueue, setToastQueue] = useState<Notification[]>([]);
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [ktvScreen, setKtvScreen] = useState<string>('DASHBOARD');
+    const [notifRules, setNotifRules] = useState<Record<string, any>>({});
     const audioUnlockedRef = useRef<boolean>(false);
     const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
     const lastSoundTimeRef = useRef<number>(0);
     const pushRegisteredRef = useRef<boolean>(false);
     const router = useRouter();
+
+    // 🔧 Fetch notification rules from SystemConfigs on mount
+    useEffect(() => {
+        fetch('/api/admin/notification-rules')
+            .then(r => r.json())
+            .then(d => {
+                if (d.success && d.data) setNotifRules(d.data);
+            })
+            .catch(err => console.warn('⚠️ [NotifRules] Fetch failed:', err));
+    }, []);
 
     // 🔧 VAPID KEY for Push Subscription (same as in usePushNotifications.ts and push API)
     const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BNEVJHwVmuU6e7vYPOm1S2hpAWprAhUNl6ew85ktt_HBH2osu4wkrbMXnC8uFj5IZtYXBawvSa1C33bVHTeo6lE';
@@ -271,36 +290,65 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
         console.log(`📡 [NotificationProvider] Listening for ${roleId}...`);
 
-        // Handler for incoming realtime notifications
+        // Handler for incoming realtime notifications — Rules-based filtering
         const handleRealtimePayload = (payload: { new: unknown }) => {
             const newNotif = payload.new as Notification;
             console.log('🔔 [NotificationProvider] New notification received:', newNotif);
 
-            if (roleId === 'admin') {
-                const isGlobal = !newNotif.employeeId;
-                const isComplaint = newNotif.type === 'COMPLAINT';
-                if (isGlobal || isComplaint) addToast(newNotif);
-            } else if (isKtv) {
-                if (newNotif.employeeId === user.id) {
-                    // ✅ Hiện toast + phát âm thanh cho tất cả notification types
-                    // NEW_ORDER/KTV_NEW_ORDER: Đơn hàng mới → toast "Đơn hàng mới" + âm thanh
-                    // REWARD: Điểm thưởng → toast "Phần thưởng mới" + âm thanh
-                    // COMPLAINT: Khiếu nại → toast "Thông báo khẩn" + âm thanh
-                    if (newNotif.type === 'NEW_ORDER') {
-                        // Fallback: force correct sound even if trigger chưa apply migration
-                        addToast({ ...newNotif, type: 'KTV_NEW_ORDER' });
-                    } else {
-                        addToast(newNotif);
-                    }
-                }
-            } else if (isReception && (!newNotif.employeeId || newNotif.employeeId === '')) {
-                addToast(newNotif);
-            } else {
-                console.log('⏭️ [NotificationProvider] Notification ignored by filter:', {
-                    roleId,
-                    userId: user.id,
-                    notifTech: newNotif.employeeId
+            const notifType = (newNotif.type || '').toUpperCase();
+            const rule = notifRules[notifType];
+
+            // If rules loaded and this type exists → check enabled
+            if (rule && rule.enabled === false) {
+                console.log('⏭️ [NotificationProvider] Type disabled by admin:', notifType);
+                return;
+            }
+
+            // Check 1: Role in allowed_roles?
+            const roleAllowed = rule?.allowed_roles?.includes(roleId) ?? false;
+
+            // Check 2: Is target employee? (employeeId matches current user)
+            const isTargetEmployee = rule?.include_target_employee !== false
+                && newNotif.employeeId
+                && newNotif.employeeId === user.id;
+
+            // Must pass at least one condition
+            if (rule && !roleAllowed && !isTargetEmployee) {
+                console.log('⏭️ [NotificationProvider] Filtered out by rules:', {
+                    notifType, roleId, roleAllowed, isTargetEmployee
                 });
+                return;
+            }
+
+            // Check 3: On-shift requirement (ONLY for KTV role)
+            // Admin/Reception always receive — no on-shift check
+            if (isKtv && rule?.require_on_shift) {
+                // KTV off-shift → skip (unless they are target employee for personal notifs)
+                // For now, KTV who is target employee always receives regardless
+                if (!isTargetEmployee) {
+                    console.log('⏭️ [NotificationProvider] KTV off-shift, skipping:', notifType);
+                    return;
+                }
+            }
+
+            // Fallback for legacy types without rules: use old logic
+            if (!rule) {
+                if (roleId === 'admin') {
+                    const isGlobal = !newNotif.employeeId;
+                    const isComplaint = notifType === 'COMPLAINT';
+                    if (!isGlobal && !isComplaint) return;
+                } else if (isKtv) {
+                    if (newNotif.employeeId !== user.id) return;
+                } else if (isReception && newNotif.employeeId) {
+                    return;
+                }
+            }
+
+            // 🔊 Sound: use rule-configured sound or fallback to SOUND_MAP
+            if (isKtv && notifType === 'NEW_ORDER') {
+                addToast({ ...newNotif, type: 'KTV_NEW_ORDER' });
+            } else {
+                addToast(newNotif);
             }
         };
 
@@ -453,10 +501,12 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                                 onMarkDone={() => markAsRead(n.id)}
                                 onRedirect={() => {
                                     const t = (n.type || '').toUpperCase();
-                                    if (t === 'CHECK_IN') {
+                                    if (t === 'CHECK_IN' || t === 'ATTENDANCE' || t === 'LEAVE_REQUEST' || t === 'SUDDEN_OFF') {
                                         router.push('/reception/ktv-hub');
                                     } else if (t === 'REWARD') {
                                         router.push('/ktv/history');
+                                    } else if (t === 'SHIFT_CHANGE') {
+                                        router.push('/reception/ktv-hub');
                                     } else {
                                         router.push('/reception/dispatch');
                                     }
@@ -474,8 +524,11 @@ const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: {
     const isLocked = currentScreen === 'REVIEW';
     const type = notification.type?.toUpperCase();
     const isComplaint = type === 'COMPLAINT';
-    const isCheckIn = type === 'CHECK_IN';
+    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE';
     const isKtvNewOrder = type === 'KTV_NEW_ORDER';
+    const isShift = type === 'SHIFT_RESPONSE';
+    const isLeave = type === 'LEAVE_RESPONSE';
+    const isWallet = type === 'WALLET';
     
     // Determine title and icon based on notification type
     let title = 'Phần thưởng mới';
@@ -502,6 +555,24 @@ const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: {
         iconBg = 'bg-blue-500';
         borderClass = 'border-blue-100';
         titleColor = 'text-blue-600';
+    } else if (isShift) {
+        title = 'Thông báo ca';
+        iconElement = <Info size={20} className="text-white" />;
+        iconBg = 'bg-indigo-500';
+        borderClass = 'border-indigo-100';
+        titleColor = 'text-indigo-600';
+    } else if (isLeave) {
+        title = 'Kết quả nghỉ phép';
+        iconElement = <Info size={20} className="text-white" />;
+        iconBg = 'bg-violet-500';
+        borderClass = 'border-violet-100';
+        titleColor = 'text-violet-600';
+    } else if (isWallet) {
+        title = 'Thông báo ví';
+        iconElement = <Info size={20} className="text-white" />;
+        iconBg = 'bg-teal-500';
+        borderClass = 'border-teal-100';
+        titleColor = 'text-teal-600';
     }
 
     return (
@@ -558,13 +629,17 @@ const Toast = ({
     const [confirmLoading, setConfirmLoading] = React.useState<'confirm' | 'reject' | null>(null);
 
     const type = notification.type?.toUpperCase();
-    const isCritical = type === 'EMERGENCY' || type === 'SOS' || type === 'COMPLAINT';
+    const isCritical = type === 'EMERGENCY' || type === 'SOS' || type === 'COMPLAINT' || type === 'SUDDEN_OFF';
     const isEarlyExit = type === 'EARLY_EXIT';
     const isWater = type === 'WATER';
     const isBuyMore = type === 'BUY_MORE' || type === 'ADD_SERVICE' || type === 'NORMAL';
     const isReward = type === 'REWARD';
     const isNewOrder = type === 'NEW_ORDER';
-    const isCheckIn = type === 'CHECK_IN';
+    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE';
+    const isLeaveReq = type === 'LEAVE_REQUEST';
+    const isShiftChange = type === 'SHIFT_CHANGE';
+    const isKtvReview = type === 'KTV_REVIEW';
+    const isWalletNotif = type === 'WALLET';
 
     // Parse attendanceId from message tag [AID:uuid] — bookingId FK cannot be used
     const aidMatch = notification.message?.match(/\[AID:([a-f0-9-]+)\]/i);
@@ -602,7 +677,7 @@ const Toast = ({
         bgColor = notification.isRead ? 'bg-rose-900/40' : 'bg-rose-600';
         borderColor = 'border-rose-500';
         icon = <ShieldAlert className="text-white animate-pulse" size={22} />;
-        title = type === 'COMPLAINT' ? '🚨 Đánh giá tệ' : '🆘 Khẩn cấp';
+        title = type === 'COMPLAINT' ? '🚨 Đánh giá tệ' : type === 'SUDDEN_OFF' ? '⚠️ Nghỉ đột xuất' : '🆘 Khẩn cấp';
     } else if (isEarlyExit) {
         bgColor = notification.isRead ? 'bg-amber-100/40' : 'bg-amber-50';
         borderColor = 'border-amber-200';
@@ -622,7 +697,7 @@ const Toast = ({
         bgColor = notification.isRead ? 'bg-emerald-100/40' : 'bg-emerald-50';
         borderColor = 'border-emerald-200';
         icon = <CheckCircle className="text-emerald-600" size={20} />;
-        title = '🎁 Bạn nhận thưởng';
+        title = '🎁 Khách thưởng';
     } else if (isNewOrder) {
         bgColor = notification.isRead ? 'bg-blue-100/40' : 'bg-blue-50';
         borderColor = 'border-blue-200';
@@ -633,6 +708,26 @@ const Toast = ({
         borderColor = 'border-violet-200';
         icon = <MapPin className="text-violet-600" size={20} />;
         title = '📍 KTV điểm danh';
+    } else if (isLeaveReq) {
+        bgColor = notification.isRead ? 'bg-orange-100/40' : 'bg-orange-50';
+        borderColor = 'border-orange-200';
+        icon = <Info className="text-orange-600" size={20} />;
+        title = '📋 KTV xin nghỉ';
+    } else if (isShiftChange) {
+        bgColor = notification.isRead ? 'bg-indigo-100/40' : 'bg-indigo-50';
+        borderColor = 'border-indigo-200';
+        icon = <Info className="text-indigo-600" size={20} />;
+        title = '🔄 KTV đổi ca';
+    } else if (isKtvReview) {
+        bgColor = notification.isRead ? 'bg-teal-100/40' : 'bg-teal-50';
+        borderColor = 'border-teal-200';
+        icon = <Info className="text-teal-600" size={20} />;
+        title = '📝 KTV đánh giá khách';
+    } else if (isWalletNotif) {
+        bgColor = notification.isRead ? 'bg-cyan-100/40' : 'bg-cyan-50';
+        borderColor = 'border-cyan-200';
+        icon = <Info className="text-cyan-600" size={20} />;
+        title = '💰 Thông báo ví';
     }
 
     return (

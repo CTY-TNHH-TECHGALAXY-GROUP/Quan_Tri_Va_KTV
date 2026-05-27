@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requireBusinessUser } from '@/lib/auth-server';
+import { createNotification } from '@/lib/notification-helper';
 
 /**
  * POST /api/ktv/review
@@ -100,14 +101,11 @@ export async function POST(request: Request) {
                     return NextResponse.json({ success: false, error: 'Failed to update booking notes' }, { status: 500 });
                 }
                 
-                const { error: notifErr } = await supabase.from('StaffNotifications').insert({
-                    type: 'SYSTEM',
-                    message: `📢 KTV ${techCode} vừa đánh giá khách hàng đơn ${currentB?.billCode || bookingId}: ${notes}`
+                await createNotification({
+                    type: 'KTV_REVIEW',
+                    message: `📢 KTV ${techCode} vừa đánh giá khách hàng đơn ${currentB?.billCode || bookingId}: ${notes}`,
+                    bookingId
                 });
-                
-                if (notifErr) {
-                    console.error('Failed to insert StaffNotification:', notifErr);
-                }
             }
         }
 

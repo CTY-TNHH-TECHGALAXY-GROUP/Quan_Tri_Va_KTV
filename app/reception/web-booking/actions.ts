@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { sendPushNotification } from '@/lib/push-helper';
+import { createNotification } from '@/lib/notification-helper';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -182,22 +182,12 @@ export async function confirmWebBooking(bookingId: string) {
 
     const msg = `Đơn ${bookingId} đã được xác nhận. Vui lòng vào Điều Phối để phân công KTV.`;
     
-    // 1. Insert Realtime StaffNotification for UI Toasts
-    await supabase.from('StaffNotifications').insert({
+    // 1. Insert Realtime StaffNotification for UI Toasts & Push
+    await createNotification({
         bookingId: bookingId,
-        employeeId: null, // Global cho quầy
         type: 'NEW_ORDER',
         message: msg,
-        isRead: false
     });
-
-    // 2. Notify reception/admin via OS push notification
-    await sendPushNotification({
-      title: '✅ Đơn web đã xác nhận!',
-      message: msg,
-      targetRoles: ['ADMIN', 'RECEPTIONIST'],
-      url: '/reception/dispatch',
-    }).catch((err) => console.error('Push error:', err));
 
     return { success: true };
   } catch (error: any) {

@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 
 /**
  * GET /api/ktv/leave
@@ -297,11 +298,10 @@ export async function POST(request: Request) {
             notifMessage = `📋 ${employeeName || employeeId} đăng ký OFF ${validDates.length} ngày (${validDates.join(', ')}) (Lý do: ${reason})`;
         }
 
-        const { error: notifError } = await supabase
-            .from('StaffNotifications')
-            .insert({ type: isSuddenOff ? 'SOS' : 'CHECK_IN', message: notifMessage });
-
-        if (notifError) console.error('❌ [Leave] StaffNotifications insert FAILED:', notifError);
+        await createNotification({
+            type: isSuddenOff ? 'SUDDEN_OFF' : 'LEAVE_REQUEST',
+            message: notifMessage
+        });
 
         return NextResponse.json({
             success: true,
@@ -369,11 +369,10 @@ export async function PATCH(request: Request) {
         const statusText = action === 'APPROVE' ? '✅ được duyệt' : '❌ bị từ chối';
         const ktvMessage = `📋 Yêu cầu OFF ngày ${leave.date} đã ${statusText}.`;
 
-        await supabase.from('StaffNotifications').insert({
-            type: 'CHECK_IN',
+        await createNotification({
+            type: 'LEAVE_RESPONSE',
             message: ktvMessage,
             employeeId: leave.employeeId,
-            isRead: false,
         });
 
         console.log(`✅ [Leave PATCH] ${leave.employeeName}: ${action} for ${leave.date}`);

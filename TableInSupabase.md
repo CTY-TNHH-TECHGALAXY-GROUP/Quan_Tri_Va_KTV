@@ -263,6 +263,7 @@
 | `weight` | integer | Cân nặng (kg) |
   | is_active_vip_menu | boolean | Hiển thị lên VIP Menu (true/false) |
   | is_home_spa | boolean | Đi được Home Spa (true/false) |
+| `feature_flags` | jsonb | Cờ bật/tắt tính năng per-staff (VD: `{"laundry_deduction": true, "sudden_leave_penalty": false}`). Default: `{}` |
 | `skills` | jsonb | Kỹ năng chuyên môn |
 | `created_at` | timestamptz | Thời điểm tạo |
 

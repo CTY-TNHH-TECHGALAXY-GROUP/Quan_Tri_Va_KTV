@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { createNotification } from '@/lib/notification-helper';
 import sharp from 'sharp';
 
 // 🔧 CONFIG
@@ -395,12 +396,10 @@ export async function POST(request: Request) {
         // Cập nhật: Không hiển thị lý do vào thông báo (Spa thoáng)
         const notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
 
-        await supabase
-            .from('StaffNotifications')
-            .insert({
-                type: 'CHECK_IN',
-                message: notifMessage,
-            });
+        await createNotification({
+            type: 'ATTENDANCE',
+            message: notifMessage,
+        });
 
         return NextResponse.json({
             success: true,

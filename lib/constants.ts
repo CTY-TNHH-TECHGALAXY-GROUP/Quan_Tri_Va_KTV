@@ -26,6 +26,7 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'ai_features', name: 'AI Assistant', group: 'Hệ Thống' },
   { id: 'device_management', name: 'Thiết Bị', group: 'Hệ Thống' },
   { id: 'staff_features', name: 'Quản Lý Tính Năng', group: 'Hệ Thống' },
+  { id: 'notification_settings', name: 'Cài Đặt Thông Báo', group: 'Hệ Thống' },
   { id: 'settings', name: 'Cài Đặt', group: 'Hệ Thống' },
 ];
 

@@ -256,7 +256,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                 return;
                                             }
                                             // Kéo lùi được chấp nhận
-                                            onUpdateStatus(draggedSubOrder.bookingId, newStatus, itemIds, true, targetKtvIds, true);
+                                            onUpdateStatus(draggedSubOrder.bookingId, newStatus, itemIds, true, targetKtvIds);
                                             setDraggedSubOrderId(null);
                                             return;
                                         }
@@ -267,7 +267,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                     }
 
                                     // if column is 'COMPLETED', use 'COMPLETED'
-                                    onUpdateStatus(draggedSubOrder.bookingId, newStatus, itemIds, false, targetKtvIds, false);
+                                    onUpdateStatus(draggedSubOrder.bookingId, newStatus, itemIds, false, targetKtvIds);
                                 }
                                 setDraggedSubOrderId(null);
                             }
