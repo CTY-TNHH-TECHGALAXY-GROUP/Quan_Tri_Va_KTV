@@ -1397,6 +1397,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
         });
         const res = await response.json();
         if (res.success) {
+            // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
+            supabase.channel('dispatch_board_realtime').send({
+                type: 'broadcast',
+                event: 'KTV_STARTED',
+                payload: {
+                    bookingId: booking.id,
+                    ktvId: ktvId,
+                    startTime: new Date().toISOString()
+                }
+            }).catch(e => console.error("Broadcast failed", e));
+
             // 🔥 Set refs NGAY LẬP TỨC để interval countdown chạy được
             // Không cần chờ recalcTimerFromServer (sẽ chạy sau khi server refresh)
             const initDuration = shouldMerge
@@ -1495,6 +1506,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
             });
             const res = await response.json();
             if (res.success) {
+                // 🚀 Gửi tín hiệu Broadcast sang Lễ tân
+                supabase.channel('dispatch_board_realtime').send({
+                    type: 'broadcast',
+                    event: 'KTV_FINISHED',
+                    payload: {
+                        bookingId: booking.id,
+                        ktvId: ktvId,
+                        finishTime: new Date().toISOString()
+                    }
+                }).catch(e => console.error("Broadcast failed", e));
+
                 setIsTimerRunning(false);
                 postServiceBookingIdRef.current = booking.id;
                 try { localStorage.setItem(POST_SERVICE_BOOKING_KEY, booking.id); } catch (e) {}

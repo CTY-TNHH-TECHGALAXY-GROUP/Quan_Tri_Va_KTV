@@ -232,7 +232,9 @@ export default function DispatchBoardPage() {
           console.log('🛡️ [Dispatch] Status patched locally — deferring full fetchData until form closes');
           return;
         }
-        debouncedFetchData();
+        // 🚀 [Tối ưu API]: Bỏ qua fetchData đối với sự kiện UPDATE của Bookings 
+        // để tiết kiệm quota DB. (Do UI đã patch cục bộ rồi).
+        // debouncedFetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, (payload: any) => {
         console.log("🔄 [Dispatch] TurnQueue change:", payload.eventType);
@@ -278,7 +280,81 @@ export default function DispatchBoardPage() {
           needsRefreshRef.current = true;
           return;
         }
-        debouncedFetchData();
+        
+        // 🚀 [Tối ưu API]: Chỉ gọi fetch nếu là sự kiện Thêm/Xóa
+        if (payload.eventType !== 'UPDATE') {
+            debouncedFetchData();
+        } else {
+            // 🛡️ HYBRID FALLBACK: Nếu UI đã cập nhật qua Broadcast rồi thì thôi. 
+            // Nếu UI chưa cập nhật (lỗi Broadcast rớt mạng) -> ép fetch làm phao cứu sinh
+            setOrders(prev => {
+                const order = prev.find(o => o.id === newItem.bookingId);
+                const svc = order?.services.find((s: any) => s.id === newItem.id);
+                // Nếu status server là IN_PROGRESS mà RAM vẫn là PREPARING -> rớt Broadcast -> fetch!
+                if (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') {
+                    console.log('⚠️ [Hybrid Fallback] Rớt Broadcast! Kích hoạt phao cứu sinh.');
+                    debouncedFetchData();
+                }
+                return prev;
+            });
+        }
+      })
+      .on('broadcast', { event: 'KTV_STARTED' }, (payload: any) => {
+        console.log("🚀 [Dispatch] Broadcast KTV_STARTED nhận được (< 50ms):", payload.payload);
+        const { bookingId, ktvId, startTime } = payload.payload;
+        // Optimistic UI Update: Đổi status = IN_PROGRESS và cập nhật actualStartTime
+        setOrders(prev => prev.map(o => {
+            if (o.id === bookingId) {
+                const updatedServices = o.services.map((svc: any) => ({
+                    ...svc,
+                    status: 'IN_PROGRESS',
+                    staffList: svc.staffList.map((staff: any) => {
+                        if (staff.ktvId === ktvId) {
+                            return {
+                                ...staff,
+                                segments: staff.segments.map((seg: any, idx: number) => {
+                                    // Chèn startTime vào chặng đầu tiên chưa có startTime
+                                    if (idx === 0 || !seg.actualStartTime) {
+                                        return { ...seg, actualStartTime: startTime };
+                                    }
+                                    return seg;
+                                })
+                            };
+                        }
+                        return staff;
+                    })
+                }));
+                return { ...o, dispatchStatus: 'IN_PROGRESS', rawStatus: 'IN_PROGRESS', services: updatedServices };
+            }
+            return o;
+        }));
+      })
+      .on('broadcast', { event: 'KTV_FINISHED' }, (payload: any) => {
+        console.log("🚀 [Dispatch] Broadcast KTV_FINISHED nhận được:", payload.payload);
+        const { bookingId, ktvId, finishTime } = payload.payload;
+        setOrders(prev => prev.map(o => {
+            if (o.id === bookingId) {
+                const updatedServices = o.services.map((svc: any) => ({
+                    ...svc,
+                    staffList: svc.staffList.map((staff: any) => {
+                        if (staff.ktvId === ktvId) {
+                            return {
+                                ...staff,
+                                segments: staff.segments.map((seg: any, idx: number, arr: any[]) => {
+                                    if (idx === arr.length - 1 || !seg.actualEndTime) {
+                                        return { ...seg, actualEndTime: finishTime };
+                                    }
+                                    return seg;
+                                })
+                            };
+                        }
+                        return staff;
+                    })
+                }));
+                return { ...o, services: updatedServices };
+            }
+            return o;
+        }));
       })
       .subscribe();
 
