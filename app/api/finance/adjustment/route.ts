@@ -8,9 +8,9 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { staff_id, amount, reason, type } = body;
+        const { staff_id, amount, reason, type, wallet_type } = body;
 
-        if (!staff_id || !amount || !type || !reason) {
+        if (!staff_id || !amount || !type || !reason || !wallet_type) {
             return NextResponse.json({ success: false, error: 'Vui lòng nhập đủ thông tin' }, { status: 400 });
         }
 
@@ -29,6 +29,7 @@ export async function POST(request: Request) {
                 staff_id,
                 amount: type === 'PENALTY' ? -Math.abs(numericAmount) : Math.abs(numericAmount),
                 type,
+                wallet_type,
                 reason,
                 created_by: 'Admin'
             });

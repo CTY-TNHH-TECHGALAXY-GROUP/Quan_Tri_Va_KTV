@@ -244,22 +244,7 @@ async function processLedgerSync(targetDateStr: string) {
         }
     }
 
-    // 7. Bulk UPSERT KTVBonusLedger (only when feature is ON)
-    if (isBonusWalletEnabled && bonusRecords.length > 0) {
-        const { error: bonusErr } = await supabase
-            .from('KTVBonusLedger')
-            .upsert(bonusRecords, {
-                onConflict: 'staff_id, booking_id',
-                ignoreDuplicates: true
-            });
-
-        if (bonusErr) {
-            console.error('Bonus Ledger Upsert Error:', bonusErr);
-            // Non-blocking: log but don't throw
-        } else {
-            console.log(`[Cron] Inserted ${bonusRecords.length} bonus records into KTVBonusLedger`);
-        }
-    }
+    // (Loại bỏ KTVBonusLedger vì đã gộp chung vào KTVDailyLedger)
 
     return NextResponse.json({ success: true, message: `Synced ${upsertRows.length} ledgers for ${targetDateStr}` });
 }

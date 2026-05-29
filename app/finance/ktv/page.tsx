@@ -11,8 +11,9 @@ export default function FinanceKTVPage() {
     const { 
         user, canAccessPage, withdrawals, summaries, bonusSummaries, isLoading, isProcessing, 
         activeTab, setActiveTab, isHistoryExpanded, setIsHistoryExpanded,
+        filterType, setFilterType, fromDate, setFromDate, toDate, setToDate,
         handleApprove, handleReject, refresh,
-        isAdjustmentModalOpen, selectedKtv, adjAmount, setAdjAmount, adjType, setAdjType, adjReason, setAdjReason, setIsAdjustmentModalOpen, handleOpenAdjustment, handleSubmitAdjustment
+        isAdjustmentModalOpen, selectedKtv, adjAmount, setAdjAmount, adjType, setAdjType, adjWalletType, setAdjWalletType, adjReason, setAdjReason, setIsAdjustmentModalOpen, handleOpenAdjustment, handleSubmitAdjustment
     } = useFinanceKTV();
 
     if (!user || !canAccessPage) {
@@ -64,7 +65,7 @@ export default function FinanceKTVPage() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {pendingRequests.map(req => {
-                                const isBonus = req.note?.includes('[QUY ĐỔI BONUS]');
+                                const isBonus = req.wallet_type === 'BONUS';
                                 return (
                                 <div key={req.id} className={`bg-white rounded-3xl p-6 border-2 shadow-xl relative overflow-hidden ${isBonus ? 'border-amber-100 shadow-amber-900/5' : 'border-rose-100 shadow-rose-900/5'}`}>
                                     <div className={`absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r ${isBonus ? 'from-amber-400 to-orange-500' : 'from-rose-400 to-amber-400'}`} />
@@ -159,7 +160,7 @@ export default function FinanceKTVPage() {
                                         </tr>
                                     ) : (
                                         historyRequests.map((req) => {
-                                            const isBonus = req.note?.includes('[QUY ĐỔI BONUS]');
+                                            const isBonus = req.wallet_type === 'BONUS';
                                             return (
                                             <tr key={req.id} className={`hover:bg-slate-50/50 ${isBonus ? 'bg-amber-50/20' : ''}`}>
                                                 <td className="px-6 py-4">
@@ -234,6 +235,37 @@ export default function FinanceKTVPage() {
                             <PiggyBank size={16} />
                             Ví Tích Luỹ
                         </button>
+
+                        {/* BỘ LỌC NGÀY */}
+                        <div className="ml-auto flex items-center gap-2">
+                            <select 
+                                value={filterType}
+                                onChange={(e) => setFilterType(e.target.value as any)}
+                                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="ALL">Tất cả thời gian</option>
+                                <option value="TODAY">Hôm nay</option>
+                                <option value="CUSTOM">Tùy chọn...</option>
+                            </select>
+
+                            {filterType === 'CUSTOM' && (
+                                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <input 
+                                        type="date" 
+                                        value={fromDate}
+                                        onChange={(e) => setFromDate(e.target.value)}
+                                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium focus:outline-none"
+                                    />
+                                    <span className="text-slate-400 font-black">-</span>
+                                    <input 
+                                        type="date" 
+                                        value={toDate}
+                                        onChange={(e) => setToDate(e.target.value)}
+                                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium focus:outline-none"
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
@@ -378,7 +410,7 @@ export default function FinanceKTVPage() {
                             <div className="p-6 space-y-5">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Loại điều chỉnh</label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
                                         <button 
                                             onClick={() => setAdjType('GIFT')}
                                             className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${adjType === 'GIFT' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-100 text-slate-400'}`}
@@ -392,7 +424,24 @@ export default function FinanceKTVPage() {
                                             Phạt (-)
                                         </button>
                                     </div>
+
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Áp dụng cho Ví</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button 
+                                            onClick={() => setAdjWalletType('TUA')}
+                                            className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${adjWalletType === 'TUA' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-400'}`}
+                                        >
+                                            <Zap size={16} className="inline mr-1" /> Ví Tua
+                                        </button>
+                                        <button 
+                                            onClick={() => setAdjWalletType('BONUS')}
+                                            className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${adjWalletType === 'BONUS' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-slate-100 text-slate-400'}`}
+                                        >
+                                            <Star size={16} className="inline mr-1" /> Ví Bonus
+                                        </button>
+                                    </div>
                                 </div>
+
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Số tiền (VNĐ)</label>

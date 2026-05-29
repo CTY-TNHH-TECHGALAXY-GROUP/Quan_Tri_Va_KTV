@@ -12,30 +12,45 @@ export function useFinanceKTV() {
     // UI States
     const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS' | 'TICH_LUY'>('TUA');
     const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+    
+    // Date Filters
+    const [filterType, setFilterType] = useState<'ALL' | 'TODAY' | 'CUSTOM'>('ALL');
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
 
     // Adjustment Modal State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
     const [selectedKtv, setSelectedKtv] = useState<{id: string, name: string} | null>(null);
     const [adjAmount, setAdjAmount] = useState('');
     const [adjType, setAdjType] = useState('GIFT');
+    const [adjWalletType, setAdjWalletType] = useState('TUA'); // TUA or BONUS
     const [adjReason, setAdjReason] = useState('');
     
     const canAccessPage = hasPermission('finance_management');
 
     const fetchData = useCallback(async () => {
         try {
-            // Lấy Withdrawals
+            let queryParams = '';
+            if (filterType === 'TODAY') {
+                const today = new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
+                const todayStr = new Date(today).toISOString().split('T')[0];
+                queryParams = `?fromDate=${todayStr}&toDate=${todayStr}`;
+            } else if (filterType === 'CUSTOM' && fromDate && toDate) {
+                queryParams = `?fromDate=${fromDate}&toDate=${toDate}`;
+            }
+
+            // Lấy Withdrawals (Luôn lấy mới nhất không phụ thuộc ngày)
             const res = await fetch('/api/finance/withdrawals?limit=50');
             const json = await res.json();
             if (json.success) setWithdrawals(json.data);
 
             // Lấy Summaries (Phase 3)
-            const resSum = await fetch('/api/finance/ktv-summary');
+            const resSum = await fetch(`/api/finance/ktv-summary${queryParams}`);
             const jsonSum = await resSum.json();
             if (jsonSum.success) setSummaries(jsonSum.data);
 
             // Lấy Bonus Summaries
-            const resBonus = await fetch('/api/finance/ktv-bonus-summary');
+            const resBonus = await fetch(`/api/finance/ktv-bonus-summary${queryParams}`);
             const jsonBonus = await resBonus.json();
             if (jsonBonus.success) setBonusSummaries(jsonBonus.data);
         } catch (error) {
@@ -43,7 +58,7 @@ export function useFinanceKTV() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [filterType, fromDate, toDate]);
 
     useEffect(() => {
         fetchData();
@@ -118,6 +133,7 @@ export function useFinanceKTV() {
         setAdjAmount('');
         setAdjReason('');
         setAdjType('GIFT');
+        setAdjWalletType('TUA');
         setIsAdjustmentModalOpen(true);
     };
 
@@ -144,6 +160,7 @@ export function useFinanceKTV() {
                         staff_id: selectedKtv.id,
                         amount: numericAmount,
                         type: adjType,
+                        wallet_type: adjWalletType,
                         reason: adjReason
                     })
                 });
@@ -177,12 +194,20 @@ export function useFinanceKTV() {
         setActiveTab,
         isHistoryExpanded,
         setIsHistoryExpanded,
+        filterType,
+        setFilterType,
+        fromDate,
+        setFromDate,
+        toDate,
+        setToDate,
         isAdjustmentModalOpen,
         selectedKtv,
         adjAmount,
         setAdjAmount,
         adjType,
         setAdjType,
+        adjWalletType,
+        setAdjWalletType,
         adjReason,
         setAdjReason,
         setIsAdjustmentModalOpen,

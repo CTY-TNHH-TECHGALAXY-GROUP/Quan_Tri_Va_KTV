@@ -1,0 +1,332 @@
+[
+  {
+    "id": "50471b91-f1c3-4865-9fa5-14dc5dda65f2",
+    "staff_id": "NH007",
+    "amount": 500000,
+    "status": "REJECTED",
+    "note": "test",
+    "request_date": "2026-05-05T12:25:59.422154+00:00",
+    "processed_at": "2026-05-05T16:21:54.066+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "fbc31a98-cd75-45b5-a9c1-10b581aba9e5",
+    "staff_id": "NH007",
+    "amount": 200000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-05T17:12:13.110786+00:00",
+    "processed_at": "2026-05-05T17:12:28.17+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "7a0557a6-5a28-4ad4-ba00-a6fb3d226aa4",
+    "staff_id": "NH007",
+    "amount": 25000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-06T08:45:49.197658+00:00",
+    "processed_at": "2026-05-06T08:46:42.211+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "976f9a2b-1f82-4588-923e-597c8f1b13f4",
+    "staff_id": "NH007",
+    "amount": 50000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-06T11:29:34.216029+00:00",
+    "processed_at": "2026-05-06T11:30:15.826+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "81a3dc8e-cbba-46fe-b6a5-0eb468d0084d",
+    "staff_id": "NH007",
+    "amount": 10000,
+    "status": "REJECTED",
+    "note": "nhập sai",
+    "request_date": "2026-05-06T11:30:56.637152+00:00",
+    "processed_at": "2026-05-06T11:31:08.755+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "f190cedb-eeac-4655-99d0-27aaa43bb8bf",
+    "staff_id": "NH018",
+    "amount": 700000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-06T12:31:52.79102+00:00",
+    "processed_at": "2026-05-06T13:53:13.07+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "8a7a5b77-0535-40ee-a358-eba00f7b900f",
+    "staff_id": "NH025",
+    "amount": 1155000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-06T17:13:04.397753+00:00",
+    "processed_at": "2026-05-06T17:36:31.878+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "d8f0d361-0180-4348-8c61-4392b884ae41",
+    "staff_id": "NH007",
+    "amount": 50000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-07T05:01:14.345612+00:00",
+    "processed_at": "2026-05-08T07:54:35.848+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "179c7f26-f0e3-49ed-9dd9-18bec5de1c57",
+    "staff_id": "NH027",
+    "amount": 840000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-09T12:32:40.61923+00:00",
+    "processed_at": "2026-05-09T12:44:50.171+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "d1f09b61-3762-40c6-97ef-e29c97ca1688",
+    "staff_id": "NH011",
+    "amount": 2020000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-10T11:51:36.997983+00:00",
+    "processed_at": "2026-05-10T12:11:38.308+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "95b2b623-664c-4d0f-a9a0-4d24edc811b7",
+    "staff_id": "NH027",
+    "amount": 325000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-10T12:09:05.379932+00:00",
+    "processed_at": "2026-05-10T12:14:06.802+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "1c05daea-9e3d-458a-8613-64d4c5977391",
+    "staff_id": "NH018",
+    "amount": 1190000,
+    "status": "REJECTED",
+    "note": "nhập sai",
+    "request_date": "2026-05-10T14:52:04.679713+00:00",
+    "processed_at": "2026-05-10T16:57:45.573+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "0f56d28e-6d2a-4f82-9629-bb62f67f2c41",
+    "staff_id": "NH018",
+    "amount": 1090000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-10T16:58:20.273127+00:00",
+    "processed_at": "2026-05-10T19:31:54.821+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "0b90b3d8-9845-4a4a-be20-1858f9e9e948",
+    "staff_id": "NH018",
+    "amount": 300000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-11T12:11:46.263647+00:00",
+    "processed_at": "2026-05-11T12:42:39.943+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "79822210-5470-4ab6-82ba-b0a94e3972e8",
+    "staff_id": "NH025",
+    "amount": 2520000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-11T17:02:52.010829+00:00",
+    "processed_at": "2026-05-11T17:04:31.601+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "5a0c9836-90e3-4504-8de5-03beab767379",
+    "staff_id": "NH001",
+    "amount": 750000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-12T09:56:24.469651+00:00",
+    "processed_at": "2026-05-12T10:09:19.672+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "13f14c14-ce49-4022-bef4-c4efb84804c0",
+    "staff_id": "NH018",
+    "amount": 430000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-12T13:00:06.451732+00:00",
+    "processed_at": "2026-05-12T13:03:18.684+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "acaea71d-7f12-457a-9b6d-8004ae2bd1ea",
+    "staff_id": "NH018",
+    "amount": 300000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-13T12:51:06.223966+00:00",
+    "processed_at": "2026-05-13T13:13:38.857+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "77f3e9af-1b93-4381-bda5-0c4327fce32c",
+    "staff_id": "NH018",
+    "amount": 250000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-15T12:05:31.645444+00:00",
+    "processed_at": "2026-05-15T12:07:56.569+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "aeb20311-7539-481a-aa61-4dd5161545a0",
+    "staff_id": "NH002",
+    "amount": 760000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-15T12:32:31.634846+00:00",
+    "processed_at": "2026-05-15T12:40:30.17+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "33407d04-8f3e-41a3-b7f0-62214b7884d6",
+    "staff_id": "NH018",
+    "amount": 480000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-16T13:01:24.296076+00:00",
+    "processed_at": "2026-05-16T13:52:28.76+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "ebb58b28-0f60-48cb-8b82-dbf6619a8a9b",
+    "staff_id": "NH027",
+    "amount": 1290000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-17T12:08:19.522836+00:00",
+    "processed_at": "2026-05-17T12:15:04.279+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "17c176d3-2953-4633-b737-c7d830199fb9",
+    "staff_id": "NH018",
+    "amount": 345000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-17T12:40:19.464012+00:00",
+    "processed_at": "2026-05-17T15:11:52.338+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "d5be91bb-75f4-4531-9131-c9d4b4922739",
+    "staff_id": "NH001",
+    "amount": 950000,
+    "status": "REJECTED",
+    "note": "hẹn mai rút",
+    "request_date": "2026-05-19T09:57:48.403368+00:00",
+    "processed_at": "2026-05-19T10:18:21.011+00:00",
+    "processed_by": "Developer (8de3f0a8-1783-4fdd-8d06-cd8488eb0c1c)"
+  },
+  {
+    "id": "a5d8b28c-b84e-4ab1-a461-718a3d05c9ff",
+    "staff_id": "NH079",
+    "amount": 834000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-20T08:15:15.968942+00:00",
+    "processed_at": "2026-05-20T08:16:32.214+00:00",
+    "processed_by": "Developer (8de3f0a8-1783-4fdd-8d06-cd8488eb0c1c)"
+  },
+  {
+    "id": "828fcd99-e0a4-45e1-b205-275f3814268e",
+    "staff_id": "NH001",
+    "amount": 1050000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-20T10:20:35.357969+00:00",
+    "processed_at": "2026-05-20T10:33:09.989+00:00",
+    "processed_by": "Developer (8de3f0a8-1783-4fdd-8d06-cd8488eb0c1c)"
+  },
+  {
+    "id": "31cf009f-289c-4e1c-b6fe-86bb9d87b079",
+    "staff_id": "NH002",
+    "amount": 540000,
+    "status": "REJECTED",
+    "note": "Hẹn mai rút",
+    "request_date": "2026-05-20T12:04:03.405095+00:00",
+    "processed_at": "2026-05-20T12:05:50.128+00:00",
+    "processed_by": "Developer (8de3f0a8-1783-4fdd-8d06-cd8488eb0c1c)"
+  },
+  {
+    "id": "352324db-f2ff-4379-a6e7-2cc84bf3d624",
+    "staff_id": "NH018",
+    "amount": 425000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-20T10:14:39.134465+00:00",
+    "processed_at": "2026-05-20T17:00:34.214+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "d3701f56-0882-4f7a-97a8-87e94f855685",
+    "staff_id": "NH025",
+    "amount": 2545000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-20T16:57:00.888452+00:00",
+    "processed_at": "2026-05-20T17:08:54.865+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "d32cb54a-a0b3-4caa-9ec8-7d70b121fb24",
+    "staff_id": "NH002",
+    "amount": 540000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-21T12:00:43.553364+00:00",
+    "processed_at": "2026-05-21T12:10:00.04+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "5e9e10c8-de9c-4d86-9ab2-336a43da052a",
+    "staff_id": "NH027",
+    "amount": 1065000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-24T12:01:04.69524+00:00",
+    "processed_at": "2026-05-24T14:47:14.69+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "ac868c12-449e-4fa2-9b6c-7f124ac47615",
+    "staff_id": "NH001",
+    "amount": 1500000,
+    "status": "REJECTED",
+    "note": "thay đổi",
+    "request_date": "2026-05-28T09:27:09.957017+00:00",
+    "processed_at": "2026-05-28T10:26:14.018+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  },
+  {
+    "id": "f235473f-f661-46ba-bfbf-4a46d66bb675",
+    "staff_id": "NH001",
+    "amount": 1490000,
+    "status": "APPROVED",
+    "note": null,
+    "request_date": "2026-05-28T10:26:31.664965+00:00",
+    "processed_at": "2026-05-28T10:28:03.307+00:00",
+    "processed_by": "Quản Trị Viên (Mặc định) (cmlxhhysl0000d76c7xvak9gs)"
+  }
+]

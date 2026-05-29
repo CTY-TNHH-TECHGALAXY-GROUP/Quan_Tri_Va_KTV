@@ -28,17 +28,22 @@ const getMinsFromTimes = (start: string, end: string) => {
     return mins2 - mins1;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        const { searchParams } = new URL(request.url);
+        const fromDate = searchParams.get('fromDate');
+        const toDate = searchParams.get('toDate');
+
         const GLOBAL_START_DATE_STR = '2026-05-04';
         const GLOBAL_START_DATE_ISO = '2026-05-04T00:00:00.000Z';
 
         // 1. Get configs
-        const [{ data: milestoneConf }, { data: rateConf }, { data: depositConf }, { data: penaltyConf }] = await Promise.all([
+        const [{ data: milestoneConf }, { data: rateConf }, { data: depositConf }, { data: penaltyConf }, { data: bonusConfigs }] = await Promise.all([
             supabase.from('SystemConfigs').select('value').eq('key', 'ktv_commission_milestones').single(),
             supabase.from('SystemConfigs').select('value').eq('key', 'ktv_commission_per_60min').single(),
             supabase.from('SystemConfigs').select('value').eq('key', 'ktv_min_deposit').single(),
-            supabase.from('SystemConfigs').select('value').eq('key', 'enable_penalty_deduction').single()
+            supabase.from('SystemConfigs').select('value').eq('key', 'enable_penalty_deduction').single(),
+            supabase.from('SystemConfigs').select('key, value').in('key', ['ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus'])
         ]);
         
         let milestones = { "1": 2000, "30": 50000, "45": 75000, "60": 100000, "70": 115000, "90": 150000, "100": 165000, "120": 200000, "180": 300000, "300": 500000 };
@@ -57,6 +62,13 @@ export async function GET() {
         
         const isPenaltyEnabled = penaltyConf?.value === 'true';
 
+        // Bonus config per shift
+        const bonusMap: Record<string, number> = {};
+        (bonusConfigs || []).forEach((c: any) => { bonusMap[c.key] = Number(c.value) || 20; });
+        const s1Bonus = bonusMap['ktv_shift_1_bonus'] || 20;
+        const s2Bonus = bonusMap['ktv_shift_2_bonus'] || 20;
+        const s3Bonus = bonusMap['ktv_shift_3_bonus'] || 40;
+
         // 2. Fetch KTVs
         const { data: ktvs } = await supabase
             .from('Staff')
@@ -67,6 +79,25 @@ export async function GET() {
             
         if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, data: [] });
 
+        // Fetch KTV shifts to determine bonus per KTV
+        const { data: shiftsData } = await supabase
+            .from('KTVShifts')
+            .select('employeeId, shiftType')
+            .in('employeeId', ktvs.map(k => k.id))
+            .eq('status', 'ACTIVE')
+            .order('effectiveFrom', { ascending: false });
+        
+        // Build map: employeeId -> basePoints (only keep latest per KTV)
+        const ktvShiftMap: Record<string, number> = {};
+        (shiftsData || []).forEach(s => {
+            if (!ktvShiftMap[s.employeeId]) {
+                let bp = s1Bonus;
+                if (s.shiftType === 'SHIFT_2') bp = s2Bonus;
+                else if (s.shiftType === 'SHIFT_3') bp = s3Bonus;
+                ktvShiftMap[s.employeeId] = bp;
+            }
+        });
+
         // --- CƠ CHẾ DYNAMIC BRIDGE (Đã fix lỗi trùng lặp dữ liệu) ---
         // Lấy ngày hiện tại ở Việt Nam (YYYY-MM-DD)
         const nowVn = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
@@ -75,10 +106,16 @@ export async function GET() {
         const todayStr = localTimeVn.toISOString().split('T')[0];
 
         // 3. Fetch Ledger (Chỉ lấy các ngày trước ngày hôm nay để tránh đụng độ Realtime)
-        const { data: ledgers } = await supabase
+        let ledgerQuery = supabase
             .from('KTVDailyLedger')
-            .select('date, staff_id, total_commission, total_tip, total_bonus, total_penalty, total_adjustment, total_withdrawn')
-            .gte('date', GLOBAL_START_DATE_STR);
+            .select('date, staff_id, total_commission, total_tip, total_bonus, total_penalty, total_adjustment, total_withdrawn');
+            
+        if (fromDate) ledgerQuery = ledgerQuery.gte('date', fromDate);
+        else ledgerQuery = ledgerQuery.gte('date', GLOBAL_START_DATE_STR);
+        
+        if (toDate) ledgerQuery = ledgerQuery.lte('date', toDate);
+
+        const { data: ledgers } = await ledgerQuery;
 
         let realtimeStartStr = `${GLOBAL_START_DATE_STR}T00:00:00+07:00`;
         const ledgerMap: Record<string, any> = {};
@@ -112,8 +149,13 @@ export async function GET() {
             }
         }
 
+        // Cập nhật realtimeStartStr nếu có fromDate
+        if (fromDate && realtimeStartStr < `${fromDate}T00:00:00+07:00`) {
+            realtimeStartStr = `${fromDate}T00:00:00+07:00`;
+        }
+
         // 4. Fetch Realtime Bookings from realtimeStartStr
-        const { data: bookings } = await supabase
+        let bookingQuery = supabase
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode,
@@ -121,6 +163,10 @@ export async function GET() {
             `)
             .gte('timeStart', realtimeStartStr)
             .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
+            
+        if (toDate) bookingQuery = bookingQuery.lte('timeStart', `${toDate}T23:59:59+07:00`);
+
+        const { data: bookings } = await bookingQuery;
 
         const { data: services } = await supabase.from('Services').select('id, duration');
         const svcDurationMap: Record<string, number> = {};
@@ -128,16 +174,31 @@ export async function GET() {
 
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
 
-        // 5. Fetch Realtime Adjustments and Withdrawals (Luôn lấy từ GLOBAL_START_DATE_ISO)
-        const { data: realtimeAdjustments } = await supabase.from('WalletAdjustments').select('staff_id, amount').gte('created_at', GLOBAL_START_DATE_ISO);
-        const { data: realtimeWithdrawals } = await supabase.from('KTVWithdrawals').select('staff_id, amount, status').gte('request_date', GLOBAL_START_DATE_ISO);
-        const { data: pendingWithdrawals } = await supabase.from('KTVWithdrawals').select('staff_id, amount').eq('status', 'PENDING').gte('request_date', GLOBAL_START_DATE_ISO);
+        // 5. Fetch Realtime Adjustments and Withdrawals
+        let adjQuery = supabase.from('WalletAdjustments').select('staff_id, amount');
+        if (fromDate) adjQuery = adjQuery.gte('created_at', `${fromDate}T00:00:00+07:00`);
+        else adjQuery = adjQuery.gte('created_at', GLOBAL_START_DATE_ISO);
+        if (toDate) adjQuery = adjQuery.lte('created_at', `${toDate}T23:59:59+07:00`);
+        const { data: realtimeAdjustments } = await adjQuery;
+
+        let wthQuery = supabase.from('KTVWithdrawals').select('staff_id, amount, status');
+        if (fromDate) wthQuery = wthQuery.gte('request_date', `${fromDate}T00:00:00+07:00`);
+        else wthQuery = wthQuery.gte('request_date', GLOBAL_START_DATE_ISO);
+        if (toDate) wthQuery = wthQuery.lte('request_date', `${toDate}T23:59:59+07:00`);
+        const { data: realtimeWithdrawals } = await wthQuery;
+
+        let pWthQuery = supabase.from('KTVWithdrawals').select('staff_id, amount').eq('status', 'PENDING');
+        if (fromDate) pWthQuery = pWthQuery.gte('request_date', `${fromDate}T00:00:00+07:00`);
+        else pWthQuery = pWthQuery.gte('request_date', GLOBAL_START_DATE_ISO);
+        if (toDate) pWthQuery = pWthQuery.lte('request_date', `${toDate}T23:59:59+07:00`);
+        const { data: pendingWithdrawals } = await pWthQuery;
 
         // 5. Calculate per KTV
         const summaries = ktvs.map(ktv => {
             const techCode = ktv.id;
             let rt_commission = 0;
             let rt_tip = 0;
+            let rt_bonus = 0;
 
             for (const b of validBookings) {
                 const relevantItems = (b.BookingItems || []).filter((i: any) =>
@@ -167,6 +228,35 @@ export async function GET() {
 
                 rt_commission += calcCommission(totalDuration || 60, milestones, ratePer60);
                 rt_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
+
+                // === Calculate Bonus ===
+                const bRating = Number(b.rating) || 0;
+                const maxItemRating = Math.max(...(b.BookingItems || []).map((i: any) => Number(i.itemRating) || 0), 0);
+                const bookingRating = Math.max(bRating, maxItemRating);
+
+                if (bookingRating >= 4) {
+                    let fullTotalDuration = 0;
+                    for (const item of (b.BookingItems || [])) {
+                        let segs: any[] = [];
+                        try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
+                        if (segs.length > 0) fullTotalDuration += segs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+                        else fullTotalDuration += Number(item.duration) || 60;
+                    }
+
+                    // Use basePoints from KTV's shift config
+                    let adjustedBasePoints = ktvShiftMap[techCode] || s1Bonus;
+                    if (fullTotalDuration < 60) adjustedBasePoints = Math.floor(adjustedBasePoints / 2);
+
+                    const allKtvCodes = new Set<string>();
+                    for (const item of (b.BookingItems || [])) {
+                        if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                            item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+                        }
+                    }
+                    const totalUniqueKTVs = allKtvCodes.size || 1;
+                    const bonusPts = Math.floor(adjustedBasePoints / totalUniqueKTVs);
+                    rt_bonus += bonusPts;
+                }
             }
 
             const rt_adjustment = (realtimeAdjustments || []).filter(a => a.staff_id === techCode).reduce((sum, a) => sum + Number(a.amount), 0);
@@ -176,7 +266,7 @@ export async function GET() {
             const ledger = ledgerMap[techCode];
             const total_commission = ledger.comm + rt_commission;
             const total_tip = ledger.tip + rt_tip;
-            const total_bonus = ledger.bonus; // Thưởng rating — hiển thị riêng (ví điểm bonus)
+            const total_bonus = ledger.bonus + rt_bonus; // Đã bao gồm thưởng rating của hôm nay
             const total_penalty = isPenaltyEnabled ? ledger.penalty : 0; // ⚠️ Feature flag bật/tắt phạt đột xuất
 
             // ✅ Bonus KHÔNG cộng vào gross_income — tách sang ví điểm bonus riêng
