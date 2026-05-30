@@ -63,14 +63,30 @@ export async function GET(request: Request) {
         const timeline: any[] = [];
 
         // 1. Commission & Tips (from Bookings & BookingItems)
-        const { data: bookings } = await supabase
-            .from('Bookings')
-            .select(`
-                id, timeStart, timeEnd, status, technicianCode, billCode, createdAt,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip )
-            `)
-            .gte('timeStart', START_DATE)
-            .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
+        let allBookings: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        
+        while (true) {
+            const { data, error } = await supabase
+                .from('Bookings')
+                .select(`
+                    id, timeStart, timeEnd, status, technicianCode, billCode, createdAt,
+                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip )
+                `)
+                .gte('timeStart', START_DATE)
+                .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING'])
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+                
+            if (error) {
+                console.error("Pagination error timeline:", error);
+                break;
+            }
+            if (!data || data.length === 0) break;
+            allBookings = allBookings.concat(data);
+            page++;
+        }
+        const bookings = allBookings;
 
         const { data: services } = await supabase.from('Services').select('id, duration');
         const svcDurationMap: Record<string, number> = {};
