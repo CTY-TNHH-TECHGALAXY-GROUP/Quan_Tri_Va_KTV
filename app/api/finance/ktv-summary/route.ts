@@ -99,11 +99,10 @@ export async function GET(request: Request) {
         });
 
         // --- CƠ CHẾ DYNAMIC BRIDGE (Đã fix lỗi trùng lặp dữ liệu) ---
-        // Lấy ngày hiện tại ở Việt Nam (YYYY-MM-DD)
-        const nowVn = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-        const tzOffsetVn = 7 * 60;
-        const localTimeVn = new Date(nowVn.getTime() + tzOffsetVn * 60 * 1000);
-        const todayStr = localTimeVn.toISOString().split('T')[0];
+        // Lấy ngày hiện tại ở Việt Nam (YYYY-MM-DD) — dùng cách tính giống cron job
+        const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+        const nowVnDate = new Date(Date.now() + VN_OFFSET_MS);
+        const todayStr = nowVnDate.toISOString().split('T')[0];
 
         // 3. Fetch Ledger (Chỉ lấy các ngày trước ngày hôm nay để tránh đụng độ Realtime)
         let ledgerQuery = supabase
@@ -140,10 +139,9 @@ export async function GET(request: Request) {
                 });
 
                 // Tính toán chính xác ngày tiếp theo mà không bị lệch múi giờ
-                const lastDate = new Date(`${maxDateStr}T00:00:00+07:00`);
-                const nextDate = new Date(lastDate.getTime() + 24 * 60 * 60 * 1000);
-                const localNextDate = new Date(nextDate.getTime() + tzOffsetVn * 60 * 1000);
-                const nextDateStr = localNextDate.toISOString().split('T')[0];
+                const lastDateMs = new Date(`${maxDateStr}T00:00:00+07:00`).getTime();
+                const nextDateVn = new Date(lastDateMs + 24 * 60 * 60 * 1000 + VN_OFFSET_MS);
+                const nextDateStr = nextDateVn.toISOString().split('T')[0];
                 
                 realtimeStartStr = `${nextDateStr}T00:00:00+07:00`;
             }
@@ -159,7 +157,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode, rating,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, duration, itemRating )
+                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating )
             `)
             .gte('timeStart', realtimeStartStr)
             .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
@@ -181,17 +179,17 @@ export async function GET(request: Request) {
         if (toDate) adjQuery = adjQuery.lte('created_at', `${toDate}T23:59:59+07:00`);
         const { data: realtimeAdjustments } = await adjQuery;
 
-        let wthQuery = supabase.from('KTVWithdrawals').select('staff_id, amount, status');
-        if (fromDate) wthQuery = wthQuery.gte('request_date', `${fromDate}T00:00:00+07:00`);
-        else wthQuery = wthQuery.gte('request_date', GLOBAL_START_DATE_ISO);
-        if (toDate) wthQuery = wthQuery.lte('request_date', `${toDate}T23:59:59+07:00`);
-        const { data: realtimeWithdrawals } = await wthQuery;
+        // Withdrawals: LUÔN query FULL range vì ảnh hưởng đến số dư hiện tại (không filter theo fromDate/toDate)
+        const { data: realtimeWithdrawals } = await supabase
+            .from('KTVWithdrawals')
+            .select('staff_id, amount, status')
+            .gte('request_date', GLOBAL_START_DATE_ISO);
 
-        let pWthQuery = supabase.from('KTVWithdrawals').select('staff_id, amount').eq('status', 'PENDING');
-        if (fromDate) pWthQuery = pWthQuery.gte('request_date', `${fromDate}T00:00:00+07:00`);
-        else pWthQuery = pWthQuery.gte('request_date', GLOBAL_START_DATE_ISO);
-        if (toDate) pWthQuery = pWthQuery.lte('request_date', `${toDate}T23:59:59+07:00`);
-        const { data: pendingWithdrawals } = await pWthQuery;
+        const { data: pendingWithdrawals } = await supabase
+            .from('KTVWithdrawals')
+            .select('staff_id, amount')
+            .eq('status', 'PENDING')
+            .gte('request_date', GLOBAL_START_DATE_ISO);
 
         // 5. Calculate per KTV
         const summaries = ktvs.map(ktv => {
@@ -240,7 +238,7 @@ export async function GET(request: Request) {
                         let segs: any[] = [];
                         try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
                         if (segs.length > 0) fullTotalDuration += segs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
-                        else fullTotalDuration += Number(item.duration) || 60;
+                        else fullTotalDuration += svcDurationMap[String(item.serviceId)] || 60;
                     }
 
                     // Use basePoints from KTV's shift config
