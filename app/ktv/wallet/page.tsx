@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKTVWallet } from './KTVWallet.logic';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank } from 'lucide-react';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle } from 'lucide-react';
 
 const THEME = {
   primary: 'bg-emerald-600',
@@ -21,8 +21,67 @@ export default function KTVWalletPage() {
     const { 
         user, canViewWallet, activeTab, setActiveTab, canViewBonus, canViewPiggyBank,
         walletBalance, walletTimeline, bonusBalance, bonusTimeline, 
-        isLoading, handleWithdraw, handleRedeemBonus 
+        isLoading, submitWithdraw, submitRedeemBonus 
     } = useKTVWallet();
+
+    const [withdrawModal, setWithdrawModal] = useState<{ isOpen: boolean, type: 'TUA' | 'BONUS', maxAmount: number } | null>(null);
+    const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleOpenWithdrawModal = (type: 'TUA' | 'BONUS') => {
+        if (type === 'TUA') {
+            if (!walletBalance) return;
+            const max = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
+            if (max <= 0) {
+                alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
+                return;
+            }
+            setWithdrawModal({ isOpen: true, type, maxAmount: max });
+        } else {
+            if (!bonusBalance || bonusBalance.points <= 0) {
+                alert('Bạn chưa có điểm thưởng nào để quy đổi.');
+                return;
+            }
+            setWithdrawModal({ isOpen: true, type, maxAmount: bonusBalance.points });
+        }
+        setWithdrawAmountStr('');
+    };
+
+    const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(/,/g, '').replace(/\D/g, '');
+        if (!val) {
+            setWithdrawAmountStr('');
+            return;
+        }
+        setWithdrawAmountStr(Number(val).toLocaleString('en-US'));
+    };
+
+    const handleWithdrawAll = () => {
+        if (!withdrawModal) return;
+        setWithdrawAmountStr(withdrawModal.maxAmount.toLocaleString('en-US'));
+    };
+
+    const handleSubmitWithdraw = async () => {
+        if (!withdrawModal) return;
+        const amount = Number(withdrawAmountStr.replace(/,/g, ''));
+        if (!amount || amount <= 0 || isNaN(amount)) {
+            alert(withdrawModal.type === 'TUA' ? 'Vui lòng nhập số tiền hợp lệ.' : 'Vui lòng nhập số điểm hợp lệ.');
+            return;
+        }
+
+        setIsSubmitting(true);
+        let success = false;
+        if (withdrawModal.type === 'TUA') {
+            success = await submitWithdraw(amount);
+        } else {
+            success = await submitRedeemBonus(amount);
+        }
+        setIsSubmitting(false);
+        if (success) {
+            setWithdrawModal(null);
+            setWithdrawAmountStr('');
+        }
+    };
 
     const groupedTimeline = useMemo(() => {
         const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : []);
@@ -128,7 +187,7 @@ export default function KTVWalletPage() {
                                     </div>
                                 </div>
                                 <button 
-                                    onClick={handleWithdraw}
+                                    onClick={() => handleOpenWithdrawModal('TUA')}
                                     className="w-full py-3.5 bg-white text-emerald-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-[0.98] transition-transform shadow-lg shadow-white/10 flex justify-center items-center gap-2"
                                 >
                                     <Banknote size={16} /> Tạo Lệnh Rút Tiền
@@ -158,7 +217,7 @@ export default function KTVWalletPage() {
                                 </div>
                                 
                                 <button 
-                                    onClick={handleRedeemBonus}
+                                    onClick={() => handleOpenWithdrawModal('BONUS')}
                                     className="w-full py-3.5 bg-white text-orange-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-[0.98] transition-transform shadow-lg shadow-white/10 flex justify-center items-center gap-2"
                                 >
                                     <Banknote size={16} /> Yêu Cầu Quy Đổi Tiền
@@ -270,6 +329,76 @@ export default function KTVWalletPage() {
                     </>
                 )}
             </div>
+
+            {withdrawModal && withdrawModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <button 
+                            onClick={() => setWithdrawModal(null)}
+                            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 p-1.5 rounded-full transition-colors"
+                        >
+                            <XCircle size={24} />
+                        </button>
+                        <div className="text-center mb-6 mt-2">
+                            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${withdrawModal.type === 'TUA' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-500'}`}>
+                                <Banknote size={32} />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800">
+                                {withdrawModal.type === 'TUA' ? 'Rút Tiền Mặt' : 'Quy Đổi Điểm'}
+                            </h3>
+                            <p className="text-sm text-slate-500 mt-1">
+                                {withdrawModal.type === 'TUA' ? 'Nhập số tiền bạn muốn rút' : 'Nhập số điểm bạn muốn quy đổi'}
+                            </p>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+                                        {withdrawModal.type === 'TUA' ? 'Số tiền rút' : 'Số điểm quy đổi'}
+                                    </label>
+                                    <span className="text-xs font-medium text-slate-500">
+                                        Tối đa: <span className={`font-bold ${withdrawModal.type === 'TUA' ? 'text-emerald-600' : 'text-amber-500'}`}>{withdrawModal.maxAmount.toLocaleString('en-US')}</span>
+                                    </span>
+                                </div>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        value={withdrawAmountStr}
+                                        onChange={handleAmountChange}
+                                        placeholder="0"
+                                        className={`w-full text-2xl font-black text-slate-800 border-2 rounded-2xl p-4 pr-16 outline-none transition-colors ${withdrawModal.type === 'TUA' ? 'focus:border-emerald-500 border-slate-200' : 'focus:border-amber-500 border-slate-200'}`}
+                                    />
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
+                                        {withdrawModal.type === 'TUA' ? 'VNĐ' : 'Điểm'}
+                                    </div>
+                                </div>
+                                {withdrawModal.type === 'BONUS' && withdrawAmountStr && (
+                                    <p className="text-xs text-center font-medium text-amber-600 mt-2 bg-amber-50 py-1.5 rounded-lg">
+                                        = {(Number(withdrawAmountStr.replace(/,/g, '')) * 1000).toLocaleString('en-US')} VNĐ
+                                    </p>
+                                )}
+                            </div>
+
+                            <button 
+                                onClick={handleWithdrawAll}
+                                className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${withdrawModal.type === 'TUA' ? 'border-emerald-100 text-emerald-600 hover:bg-emerald-50' : 'border-amber-100 text-amber-600 hover:bg-amber-50'}`}
+                            >
+                                Rút hết toàn bộ
+                            </button>
+
+                            <button 
+                                onClick={handleSubmitWithdraw}
+                                disabled={!withdrawAmountStr || isSubmitting}
+                                className={`w-full py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${withdrawModal.type === 'TUA' ? 'bg-emerald-600 shadow-lg shadow-emerald-600/20' : 'bg-amber-500 shadow-lg shadow-amber-500/20'}`}
+                            >
+                                {isSubmitting ? 'Đang xử lý...' : 'Xác Nhận'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

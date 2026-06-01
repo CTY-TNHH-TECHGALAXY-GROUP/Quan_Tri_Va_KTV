@@ -61,93 +61,76 @@ export const useKTVWallet = () => {
         }
     }, [ktvId, canViewWallet, fetchWallet]);
 
-    const handleWithdraw = async () => {
-        if (!walletBalance) return;
+    const submitWithdraw = async (amount: number) => {
+        if (!walletBalance) return false;
         const maxWithdraw = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
-        if (maxWithdraw <= 0) {
-            alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
-            return;
+        if (amount > maxWithdraw) {
+            alert('Số tiền vượt quá mức khả dụng!');
+            return false;
         }
-        const amountStr = prompt(`Nhập số tiền muốn rút (Tối đa: ${maxWithdraw.toLocaleString()}đ):`);
-        if (amountStr) {
-            const amount = Number(amountStr.replace(/,/g, ''));
-            if (!isNaN(amount) && amount > 0) {
-                if (amount > maxWithdraw) {
-                    alert('Số tiền vượt quá mức khả dụng!');
-                    return;
-                }
-                try {
-                    const res = await fetch('/api/ktv/wallet/withdraw', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ techCode: ktvId, amount })
-                    });
-                    const json = await res.json();
-                    if (json.success) {
-                        alert('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!');
-                        fetchWallet();
-                    } else {
-                        alert('Lỗi: ' + json.error);
-                    }
-                } catch (e) {
-                    alert('Lỗi hệ thống khi tạo lệnh rút tiền.');
-                }
+        try {
+            const res = await fetch('/api/ktv/wallet/withdraw', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ techCode: ktvId, amount })
+            });
+            const json = await res.json();
+            if (json.success) {
+                alert('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!');
+                fetchWallet();
+                return true;
             } else {
-                alert('Số tiền không hợp lệ.');
+                alert('Lỗi: ' + json.error);
+                return false;
             }
+        } catch (e) {
+            alert('Lỗi hệ thống khi tạo lệnh rút tiền.');
+            return false;
         }
     };
 
-    const handleRedeemBonus = async () => {
-        if (!bonusBalance || bonusBalance.points <= 0) {
-            alert('Bạn chưa có điểm thưởng nào để quy đổi.');
-            return;
-        }
+    const submitRedeemBonus = async (pointsToRedeem: number) => {
+        if (!bonusBalance || bonusBalance.points <= 0) return false;
         
-        const amountStr = prompt(`Nhập số điểm muốn quy đổi (Tối đa: ${bonusBalance.points}đ):\n\nTỷ giá: 1 điểm = 1,000 VNĐ.`);
-        if (amountStr) {
-            const pointsToRedeem = Number(amountStr.replace(/,/g, ''));
-            if (!isNaN(pointsToRedeem) && pointsToRedeem > 0) {
-                if (pointsToRedeem > bonusBalance.points) {
-                    alert('Số điểm vượt quá mức khả dụng!');
-                    return;
-                }
-                const vndAmount = pointsToRedeem * 1000;
-                const confirmMsg = `XÁC NHẬN QUY ĐỔI\n\nBạn đang yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()} VNĐ.\n\nĐồng ý?`;
-                
-                if (!window.confirm(confirmMsg)) return;
+        if (pointsToRedeem > bonusBalance.points) {
+            alert('Số điểm vượt quá mức khả dụng!');
+            return false;
+        }
+        const vndAmount = pointsToRedeem * 1000;
+        const confirmMsg = `XÁC NHẬN QUY ĐỔI\n\nBạn đang yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()} VNĐ.\n\nĐồng ý?`;
+        
+        if (!window.confirm(confirmMsg)) return false;
 
-                try {
-                    const res = await fetch('/api/ktv/wallet/withdraw', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            techCode: ktvId, 
-                            amount: vndAmount,
-                            note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
-                        })
-                    });
-                    const json = await res.json();
-                    if (json.success) {
-                        await supabase.from('KTVBonusLedger').insert({
-                            staff_id: ktvId,
-                            points: -pointsToRedeem,
-                            type: 'REDEEM',
-                            description: `Quy đổi ${pointsToRedeem} điểm sang ${vndAmount.toLocaleString()}đ`,
-                            date: new Date().toISOString().split('T')[0]
-                        });
-                        
-                        alert(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`);
-                        fetchWallet();
-                    } else {
-                        alert('Lỗi: ' + json.error);
-                    }
-                } catch (e) {
-                    alert('Lỗi hệ thống khi tạo lệnh quy đổi.');
-                }
+        try {
+            const res = await fetch('/api/ktv/wallet/withdraw', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    techCode: ktvId, 
+                    amount: vndAmount,
+                    note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
+                })
+            });
+            const json = await res.json();
+            if (json.success) {
+                await supabase.from('KTVBonusLedger').insert({
+                    staff_id: ktvId,
+                    points: -pointsToRedeem,
+                    type: 'REDEEM',
+                    description: `Quy đổi ${pointsToRedeem} điểm sang ${vndAmount.toLocaleString()}đ`,
+                    date: new Date().toISOString().split('T')[0]
+                });
+                
+                alert(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`);
+                fetchWallet();
+                return true;
             } else {
-                alert('Số điểm không hợp lệ.');
+                alert('Lỗi: ' + json.error);
+                return false;
             }
+        } catch (e) {
+            alert('Lỗi hệ thống khi tạo lệnh quy đổi.');
+            return false;
         }
     };
 
@@ -163,8 +146,8 @@ export const useKTVWallet = () => {
         bonusBalance,
         bonusTimeline,
         isLoading,
-        handleWithdraw,
-        handleRedeemBonus,
+        submitWithdraw,
+        submitRedeemBonus,
         refresh: fetchWallet
     };
 };

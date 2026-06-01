@@ -45,6 +45,112 @@ const KTVAttendancePage = () => {
     const [estimatedEndTime, setEstimatedEndTime] = React.useState<string>('');
     const [deviceIP, setDeviceIP] = React.useState<string>('');
 
+    // WebRTC Camera States
+    const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+    const [stream, setStream] = React.useState<MediaStream | null>(null);
+    const videoRef = React.useRef<HTMLVideoElement>(null);
+
+    const openWebRTCCamera = async () => {
+        try {
+            const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' } 
+            });
+            setStream(mediaStream);
+            setIsCameraOpen(true);
+        } catch (err) {
+            alert('Không thể truy cập Camera. Vui lòng kiểm tra quyền hoặc dùng nút "Tải từ máy".');
+        }
+    };
+
+    const closeWebRTCCamera = () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            setStream(null);
+        }
+        setIsCameraOpen(false);
+    };
+
+    React.useEffect(() => {
+        return () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, [stream]);
+
+    React.useEffect(() => {
+        if (isCameraOpen && videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+        }
+    }, [isCameraOpen, stream]);
+
+    const captureFromVideo = () => {
+        if (!videoRef.current || photos.length >= MAX_PHOTOS) return;
+        const video = videoRef.current;
+        let { videoWidth: width, videoHeight: height } = video;
+        
+        const maxWidth = 800;
+        if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.drawImage(video, 0, 0, width, height);
+
+        // Watermark
+        const now = new Date();
+        const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const timeStr = `${pad(vnTime.getHours())}:${pad(vnTime.getMinutes())}:${pad(vnTime.getSeconds())}`;
+        const dateStr = `${pad(vnTime.getDate())}/${pad(vnTime.getMonth() + 1)}/${vnTime.getFullYear()}`;
+        const line1 = `${timeStr}  ${dateStr}`;
+        const line2 = `IP: ${deviceIP || 'N/A'}`;
+
+        const fontSize = Math.max(WATERMARK_FONT_SIZE, Math.floor(canvas.width * 0.03));
+        const padding = WATERMARK_PADDING;
+        ctx.font = `bold ${fontSize}px Arial, Helvetica, sans-serif`;
+        ctx.textBaseline = 'top';
+
+        const line1Width = ctx.measureText(line1).width;
+        const line2Width = ctx.measureText(line2).width;
+        const boxWidth = Math.max(line1Width, line2Width) + padding * 2;
+        const lineHeight = fontSize + 4;
+        const boxHeight = lineHeight * 2 + padding * 2;
+        const boxX = 8;
+        const boxY = 8;
+
+        ctx.fillStyle = `rgba(0, 0, 0, ${WATERMARK_BG_OPACITY})`;
+        ctx.beginPath();
+        const r = 8;
+        ctx.moveTo(boxX + r, boxY);
+        ctx.lineTo(boxX + boxWidth - r, boxY);
+        ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + r);
+        ctx.lineTo(boxX + boxWidth, boxY + boxHeight - r);
+        ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - r, boxY + boxHeight);
+        ctx.lineTo(boxX + r, boxY + boxHeight);
+        ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - r);
+        ctx.lineTo(boxX, boxY + r);
+        ctx.quadraticCurveTo(boxX, boxY, boxX + r, boxY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(line1, boxX + padding, boxY + padding);
+        ctx.fillText(line2, boxX + padding, boxY + padding + lineHeight);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        setPhotos(prev => {
+            if (prev.length < MAX_PHOTOS) return [...prev, dataUrl];
+            return prev;
+        });
+    };
+
     // Fetch public IP on mount
     React.useEffect(() => {
         const fetchIP = async () => {
@@ -534,13 +640,19 @@ const KTVAttendancePage = () => {
                                         )}
 
                                         {photos.length < MAX_PHOTOS && (
-                                            <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 focus:ring-2 focus:ring-emerald-500 transition-all rounded-xl cursor-pointer">
-                                                <Camera size={24} className="text-gray-400 mb-1" />
-                                                <span className="text-sm font-medium text-gray-500">
-                                                    {photos.length === 0 ? t.openCamera : t.addPhoto(photos.length + 1, MAX_PHOTOS)}
-                                                </span>
-                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleCapture} />
-                                            </label>
+                                            <div className="flex gap-3">
+                                                <button 
+                                                    onClick={openWebRTCCamera}
+                                                    className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition-all rounded-xl cursor-pointer"
+                                                >
+                                                    <Camera size={24} className="text-emerald-500 mb-1" />
+                                                    <span className="text-sm font-medium text-emerald-700">Chụp ảnh</span>
+                                                </button>
+                                                <label className="flex-[0.7] flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 focus:ring-2 focus:ring-emerald-500 transition-all rounded-xl cursor-pointer">
+                                                    <span className="text-xs font-medium text-gray-500">Tải từ máy</span>
+                                                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleCapture} />
+                                                </label>
+                                            </div>
                                         )}
                                     </div>
 
@@ -574,6 +686,53 @@ const KTVAttendancePage = () => {
                                     <CheckCircle2 size={18} /> Gửi
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                    </div>
+                )}
+
+                {/* WEBRTC CAMERA MODAL */}
+                {isCameraOpen && (
+                    <div className="fixed inset-0 bg-black z-[70] flex flex-col">
+                        <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
+                            <video 
+                                ref={videoRef} 
+                                autoPlay 
+                                playsInline 
+                                className="w-full h-full object-cover"
+                            />
+                            <button 
+                                onClick={closeWebRTCCamera}
+                                className="absolute top-4 left-4 bg-black/50 text-white p-2 rounded-full backdrop-blur z-10"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                            <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1.5 rounded-full text-sm font-bold backdrop-blur flex items-center gap-2 z-10">
+                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                                Đã chụp: {photos.length}/{MAX_PHOTOS}
+                            </div>
+                        </div>
+                        <div className="bg-black p-6 pb-12 flex items-center justify-between">
+                            <div className="w-16">
+                                {photos.length > 0 && (
+                                    <div className="w-12 h-12 rounded-lg border-2 border-white overflow-hidden shadow-lg shadow-black">
+                                        <img src={photos[photos.length - 1]} className="w-full h-full object-cover" />
+                                    </div>
+                                )}
+                            </div>
+                            <button 
+                                onClick={captureFromVideo}
+                                disabled={photos.length >= MAX_PHOTOS}
+                                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center bg-transparent active:scale-95 transition-transform disabled:opacity-50 mx-auto"
+                            >
+                                <div className="w-16 h-16 rounded-full bg-white transition-transform active:scale-90"></div>
+                            </button>
+                            <button 
+                                onClick={closeWebRTCCamera}
+                                className="w-16 text-white font-bold text-sm text-right"
+                            >
+                                Xong
+                            </button>
                         </div>
                     </div>
                 )}
