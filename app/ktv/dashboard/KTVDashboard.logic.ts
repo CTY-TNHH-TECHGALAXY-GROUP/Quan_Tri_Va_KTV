@@ -720,7 +720,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         // Kiểm tra Rule Merge Timer: CÙNG PHÒNG → merge 1 timer tổng
                         // (khác phòng → chia chặng riêng)
                         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
-                        const shouldMerge = allMySegs.length > 1 && uniqueRoomIds.size === 1;
+                        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
+                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
 
                         let currentStatus = assignedItem?.status || res.data.status;
                         
@@ -1380,8 +1381,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
             allMySegs.push(...mySegsWithId);
         }
         
-        // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
-        const shouldMerge = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
+        // Merge: gộp tất cả các dịch vụ riêng biệt (bất kể phòng nào) thành 1 chặng liên tục
+        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
 
         setIsLoading(true);
         const response = await fetch('/api/ktv/booking', {
@@ -1449,7 +1451,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         allMySegs.sort((a, b) => (a.startTime || '23:59').localeCompare(b.startTime || '23:59'));
 
         // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
-        const shouldMerge = allMySegs.length > 1 && new Set(allMySegs.map((s: any) => s.roomId || 'unknown')).size === 1;
+        const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
 
         const currentIdx = activeSegmentIndex;
         // Nếu shouldMerge = true, bỏ qua advance và coi như đã làm xong chặng cuối

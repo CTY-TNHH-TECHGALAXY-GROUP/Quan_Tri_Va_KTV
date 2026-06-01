@@ -166,8 +166,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 });
 
                 timeGroups.forEach((groupInfo, origStart) => {
-                    // Unique ID cho subOrder CỐ ĐỊNH: dựa trên origStart để thẻ Kanban không bị mất/nhảy ID
-                    const ktvSignature = `${svc.id}_${origStart.replace(/:/g, '')}`; 
+                    // Group by the exact set of KTVs so 1 KTV with 3 services becomes 1 Kanban Card
+                    const assignedKtvIds = groupInfo.staffs.map((s: any) => s.ktvId).filter(Boolean).sort().join('-');
+                    const ktvSignature = assignedKtvIds ? `ktvgrp_${assignedKtvIds}` : `svc_${svc.id}_${origStart.replace(/:/g, '')}`; 
                     
                     if (!ktvGroups.has(ktvSignature)) {
                         ktvGroups.set(ktvSignature, []);
@@ -222,10 +223,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             const statuses = services.map(s => s.status || 'NEW');
             let dispatchStatus = 'PREPARING';
             if (statuses.includes('IN_PROGRESS')) dispatchStatus = 'IN_PROGRESS';
+            else if (statuses.includes('PREPARING') || statuses.includes('NEW') || statuses.includes('WAITING')) dispatchStatus = 'PREPARING';
             else if (statuses.includes('CLEANING')) dispatchStatus = 'CLEANING';
             else if (statuses.includes('FEEDBACK')) dispatchStatus = 'FEEDBACK';
-            else if (statuses.includes('DONE') || statuses.includes('CANCELLED')) dispatchStatus = 'DONE';
-            else if (statuses.includes('PREPARING')) dispatchStatus = 'PREPARING';
+            else dispatchStatus = 'DONE';
 
             resultForOrder.push({
                 id: `${order.id}_${ktvSignature}`,

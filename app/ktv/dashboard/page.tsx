@@ -45,6 +45,32 @@ const ANIMATION = {
 // Fallback URL for QR
 const DEFAULT_BOOKING_URL = 'https://nganha.vercel.app/';
 
+// Helper format multi-service names
+const formatMultiServiceNames = (segments: any[]) => {
+    if (!segments || segments.length === 0) return '';
+    if (segments.length === 1) return segments[0]?._serviceName || 'Dịch vụ';
+    
+    const groups = new Map<string, Set<string>>();
+    
+    segments.forEach(seg => {
+        const roomName = seg.roomId || '';
+        const serviceName = seg._serviceName || 'Dịch vụ';
+        
+        if (!groups.has(roomName)) {
+            groups.set(roomName, new Set());
+        }
+        groups.get(roomName)!.add(serviceName.toUpperCase());
+    });
+    
+    const parts: string[] = [];
+    groups.forEach((serviceSet, roomName) => {
+        const servicesStr = Array.from(serviceSet).join(' - ');
+        parts.push(roomName ? `${servicesStr} ${roomName}` : servicesStr);
+    });
+    
+    return parts.join(' + ');
+};
+
 // ─── WebBookingQR Component ─────────────────────────────────────────────────
 const WebBookingQR = () => {
   const [url, setUrl] = React.useState(DEFAULT_BOOKING_URL);
@@ -305,7 +331,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
     } else if (Array.isArray(i?.segments)) {
         segs = i.segments;
     }
-    return segs.filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase()).map((s: any) => ({ ...s, _itemId: i.id }));
+    return segs.filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase()).map((s: any) => ({ ...s, _itemId: i.id, _serviceName: i.service_name }));
   }).sort((a: any, b: any) => {
       const timeA = a.startTime || '23:59';
       const timeB = b.startTime || '23:59';
@@ -424,7 +450,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <div className="mb-4">
                    <div className="flex flex-col">
                       <h3 className="font-black text-3xl text-emerald-700 leading-tight tracking-tight">
-                        {allServiceNames.length > 1 ? allServiceNames.join(' + ') : item.service_name}
+                        {allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
@@ -587,7 +613,7 @@ function ScreenTimer({ logic }: { logic: any }) {
     }
     return segs
       .filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase())
-      .map((s: any) => ({ ...s, _itemId: i.id }));
+      .map((s: any) => ({ ...s, _itemId: i.id, _serviceName: i.service_name }));
   }).sort((a: any, b: any) => {
       const timeA = a.startTime || '23:59';
       const timeB = b.startTime || '23:59';
@@ -649,7 +675,7 @@ function ScreenTimer({ logic }: { logic: any }) {
       <div className="flex justify-between items-start mb-6 px-2">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-black text-emerald-700 leading-tight tracking-tight">
-            {allTimerServiceNames.length > 1 ? allTimerServiceNames.join(' + ') : item.service_name}
+            {allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}
           </h1>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-slate-800 font-black">
@@ -1100,6 +1126,23 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
 
   if (!booking) return null;
 
+  // Parse dispatcher note to avoid showing raw JSON from AI
+  let displayDispatcherNote = booking?.dispatcherNote;
+  if (displayDispatcherNote && typeof displayDispatcherNote === 'string' && displayDispatcherNote.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(displayDispatcherNote);
+      if (parsed.receptionNote || parsed.note) {
+        displayDispatcherNote = parsed.receptionNote || parsed.note;
+      } else if (parsed.type === 'VIP_APPOINTMENT' || parsed.selectedSkills) {
+        displayDispatcherNote = null; // Hide raw AI metadata
+      } else {
+        displayDispatcherNote = null; // Hide other raw JSON objects
+      }
+    } catch (e) {
+      // Not a valid JSON string, leave as is
+    }
+  }
+
   return (
     <div className="border-t border-slate-50 mt-2">
       <button 
@@ -1156,11 +1199,11 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
               </div>
 
               {/* 2. Ghi chú của quầy */}
-              {booking.dispatcherNote && (
+              {displayDispatcherNote && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Ghi chú của quầy</span>
-                  <div className="bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 font-medium whitespace-pre-wrap border border-slate-100 shadow-sm leading-relaxed">
-                    {booking.dispatcherNote}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 font-medium whitespace-pre-wrap border border-slate-100 shadow-sm leading-relaxed break-words overflow-hidden">
+                    {displayDispatcherNote}
                   </div>
                 </div>
               )}
