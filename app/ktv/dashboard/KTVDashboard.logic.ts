@@ -120,6 +120,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const handleFinishTimerRef = useRef<() => Promise<void>>(async () => {});
     const timeOffsetRef = useRef<number>(0);
     const fetchBookingRef = useRef<(() => Promise<void>) | null>(null);
+    const recalcTimerRef = useRef<(() => void) | null>(null);
     const targetBookingIdRef = useRef<string | null>(config?.targetBookingId || null);
     const isTransitioningRef = useRef<boolean>(false);
     // ⚠️ DO NOT REMOVE — Fix timer drift 16/05/2026
@@ -1173,6 +1174,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         };
 
         // Chạy ngay khi booking thay đổi (do Lễ tân update hoặc Realtime)
+        recalcTimerRef.current = recalcTimerFromServer;
         recalcTimerFromServer();
 
         const handleVisibilityChange = async () => {
@@ -1823,8 +1825,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         settings,
         walletBalance,
         walletTimeline,
-        forceRefresh: () => {
-            if (fetchBookingRef.current) fetchBookingRef.current();
+        forceRefresh: async () => {
+            if (fetchBookingRef.current) await fetchBookingRef.current();
+            if (recalcTimerRef.current) recalcTimerRef.current();
         },
         fetchWalletBalance: async () => {
             if (!ktvId) return;

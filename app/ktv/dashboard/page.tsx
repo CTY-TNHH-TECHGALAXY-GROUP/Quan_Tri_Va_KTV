@@ -713,7 +713,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
                 <RefreshCw size={22} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter">Đồng bộ</span>
+              <span className="text-[10px] font-black uppercase tracking-tighter">Tải lại</span>
             </button>
           )}
           <button 
