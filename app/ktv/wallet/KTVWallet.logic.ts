@@ -72,7 +72,7 @@ export const useKTVWallet = () => {
             const res = await fetch('/api/ktv/wallet/withdraw', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ techCode: ktvId, amount })
+                body: JSON.stringify({ techCode: ktvId, amount, walletType: 'TUA' })
             });
             const json = await res.json();
             if (json.success) {
@@ -108,6 +108,7 @@ export const useKTVWallet = () => {
                 body: JSON.stringify({ 
                     techCode: ktvId, 
                     amount: vndAmount,
+                    walletType: 'BONUS',
                     note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
                 })
             });

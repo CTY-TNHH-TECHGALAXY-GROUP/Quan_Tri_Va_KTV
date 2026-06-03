@@ -362,32 +362,50 @@ export default function KTVWalletPage() {
                                         Tối đa: <span className={`font-bold ${withdrawModal.type === 'TUA' ? 'text-emerald-600' : 'text-amber-500'}`}>{withdrawModal.maxAmount.toLocaleString('en-US')}</span>
                                     </span>
                                 </div>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        inputMode="numeric"
-                                        value={withdrawAmountStr}
-                                        onChange={handleAmountChange}
-                                        placeholder="0"
-                                        className={`w-full text-2xl font-black text-slate-800 border-2 rounded-2xl p-4 pr-16 outline-none transition-colors ${withdrawModal.type === 'TUA' ? 'focus:border-emerald-500 border-slate-200' : 'focus:border-amber-500 border-slate-200'}`}
-                                    />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
-                                        {withdrawModal.type === 'TUA' ? 'VNĐ' : 'Điểm'}
+                                {withdrawModal.type === 'TUA' ? (
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            inputMode="numeric"
+                                            value={withdrawAmountStr}
+                                            onChange={handleAmountChange}
+                                            placeholder="0"
+                                            className="w-full text-2xl font-black text-slate-800 border-2 rounded-2xl p-4 pr-16 outline-none transition-colors focus:border-emerald-500 border-slate-200"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
+                                            VNĐ
+                                        </div>
                                     </div>
-                                </div>
-                                {withdrawModal.type === 'BONUS' && withdrawAmountStr && (
-                                    <p className="text-xs text-center font-medium text-amber-600 mt-2 bg-amber-50 py-1.5 rounded-lg">
-                                        = {(Number(withdrawAmountStr.replace(/,/g, '')) * 1000).toLocaleString('en-US')} VNĐ
-                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {[50, 100, 200, 500].map(amount => (
+                                            <button
+                                                key={amount}
+                                                onClick={() => setWithdrawAmountStr(amount.toString())}
+                                                className={`py-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                                                    withdrawAmountStr === amount.toString()
+                                                        ? 'border-amber-500 bg-amber-50 text-amber-600'
+                                                        : 'border-slate-200 text-slate-500 hover:border-amber-200 hover:bg-amber-50/50'
+                                                }`}
+                                            >
+                                                <span className="text-xl font-black">{amount} Điểm</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                                    = {(amount * 1000).toLocaleString('en-US')} VNĐ
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
 
-                            <button 
-                                onClick={handleWithdrawAll}
-                                className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${withdrawModal.type === 'TUA' ? 'border-emerald-100 text-emerald-600 hover:bg-emerald-50' : 'border-amber-100 text-amber-600 hover:bg-amber-50'}`}
-                            >
-                                Rút hết toàn bộ
-                            </button>
+                            {withdrawModal.type === 'TUA' && (
+                                <button 
+                                    onClick={handleWithdrawAll}
+                                    className="w-full py-2.5 rounded-xl text-sm font-bold border-2 transition-colors border-emerald-100 text-emerald-600 hover:bg-emerald-50"
+                                >
+                                    Rút hết toàn bộ
+                                </button>
+                            )}
 
                             <button 
                                 onClick={handleSubmitWithdraw}

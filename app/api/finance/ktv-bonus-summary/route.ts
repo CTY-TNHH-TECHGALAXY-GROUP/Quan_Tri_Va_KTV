@@ -203,10 +203,9 @@ export async function GET(request: Request) {
             }
         });
 
-        // Sum Redeemed
         (withdrawals || []).forEach(tx => {
             if (statsMap[tx.staff_id]) {
-                statsMap[tx.staff_id].totalRedeemed += Number(tx.amount || 0);
+                statsMap[tx.staff_id].totalRedeemed += (Number(tx.amount || 0) / 1000);
             }
         });
 

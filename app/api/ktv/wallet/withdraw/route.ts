@@ -8,7 +8,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { techCode, amount } = body;
+        const { techCode, amount, walletType = 'TUA' } = body;
 
         if (!techCode || !amount || isNaN(amount) || amount <= 0) {
             return NextResponse.json({ success: false, error: 'Dữ liệu không hợp lệ. Số tiền phải lớn hơn 0.' }, { status: 400 });
@@ -21,6 +21,7 @@ export async function POST(request: Request) {
             .from('KTVWithdrawals')
             .select('id')
             .eq('staff_id', techCode)
+            .eq('wallet_type', walletType)
             .eq('status', 'PENDING');
 
         if (pendingError) {
@@ -35,29 +36,30 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // 2. Kiểm tra số dư hiện tại
-        const { data: balanceResult, error: balanceError } = await supabase.rpc('get_ktv_wallet_balance', {
-            p_staff_id: techCode
-        });
+        if (walletType === 'TUA') {
+            const { data: balanceResult, error: balanceError } = await supabase.rpc('get_ktv_wallet_balance', {
+                p_staff_id: techCode
+            });
 
-        if (balanceError) {
-            console.error('Error getting balance:', balanceError);
-            return NextResponse.json({ success: false, error: 'Lỗi lấy thông tin số dư' }, { status: 500 });
-        }
+            if (balanceError) {
+                console.error('Error getting balance:', balanceError);
+                return NextResponse.json({ success: false, error: 'Lỗi lấy thông tin số dư' }, { status: 500 });
+            }
 
-        const balanceData = typeof balanceResult === 'string' ? JSON.parse(balanceResult) : balanceResult;
-        
-        const effectiveBalance = Number(balanceData.effective_balance || 0);
-        const minDeposit = Number(balanceData.min_deposit || 500000);
+            const balanceData = typeof balanceResult === 'string' ? JSON.parse(balanceResult) : balanceResult;
+            
+            const effectiveBalance = Number(balanceData.effective_balance || 0);
+            const minDeposit = Number(balanceData.min_deposit || 500000);
 
-        // 3. Validation Core Logic
-        const remainingAfterWithdrawal = effectiveBalance - requestAmount;
-        
-        if (remainingAfterWithdrawal < minDeposit) {
-            return NextResponse.json({ 
-                success: false, 
-                error: `Không thể rút. Số dư còn lại sau khi rút (${remainingAfterWithdrawal.toLocaleString()}đ) thấp hơn mức cọc tối thiểu yêu cầu (${minDeposit.toLocaleString()}đ).`
-            }, { status: 400 });
+            // Validation Core Logic for TUA
+            const remainingAfterWithdrawal = effectiveBalance - requestAmount;
+            
+            if (remainingAfterWithdrawal < minDeposit) {
+                return NextResponse.json({ 
+                    success: false, 
+                    error: `Không thể rút. Số dư còn lại sau khi rút (${remainingAfterWithdrawal.toLocaleString()}đ) thấp hơn mức cọc tối thiểu yêu cầu (${minDeposit.toLocaleString()}đ).`
+                }, { status: 400 });
+            }
         }
 
         // 4. Tạo lệnh rút tiền
@@ -66,6 +68,7 @@ export async function POST(request: Request) {
             .insert({
                 staff_id: techCode,
                 amount: requestAmount,
+                wallet_type: walletType,
                 status: 'PENDING'
             })
             .select()

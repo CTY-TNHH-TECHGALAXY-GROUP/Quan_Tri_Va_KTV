@@ -150,7 +150,7 @@ export async function GET(request: Request) {
             else totalPoints -= Math.abs(amt);
         });
 
-        const totalRedeemed = (withdrawals || []).reduce((sum, record) => sum + Number(record.amount || 0), 0);
+        const totalRedeemed = (withdrawals || []).reduce((sum, record) => sum + (Number(record.amount || 0) / 1000), 0);
         
         totalPoints -= totalRedeemed;
         if (totalPoints < 0) totalPoints = 0;

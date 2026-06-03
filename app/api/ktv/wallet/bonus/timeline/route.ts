@@ -174,9 +174,9 @@ export async function GET(request: Request) {
             timeline.push({
                 id: `wth-${w.request_date}`,
                 date: w.request_date,
-                points: Number(w.amount),
+                points: Number(w.amount) / 1000,
                 type: 'REDEEM',
-                desc: `Rút điểm (${w.status})`,
+                desc: `Quy đổi điểm (${w.status})`,
                 status: w.status
             });
         });
