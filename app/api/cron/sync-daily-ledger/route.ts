@@ -184,11 +184,36 @@ async function processLedgerSync(targetDateStr: string) {
             total_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
             
             // Bonus: per booking, chia đều unique KTVs, Math.floor
-            const bRating = Number(b.rating) || 0;
-            const maxItemRating = Math.max(...(b.BookingItems || []).map((i: any) => Number(i.itemRating) || 0), 0);
-            const bookingRating = Math.max(bRating, maxItemRating);
+            let maxKtvRating = 0;
+            for (const item of (b.BookingItems || [])) {
+                const isTechInvolved = item.technicianCodes && Array.isArray(item.technicianCodes) &&
+                    item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                
+                if (isTechInvolved) {
+                    let ktvRating = 0;
+                    let parsedKtvRatings = item.ktvRatings;
+                    if (typeof parsedKtvRatings === 'string') {
+                        try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
+                    }
+                    if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
+                        const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode.toLowerCase());
+                        if (key) {
+                            ktvRating = Number(parsedKtvRatings[key]) || 0;
+                        }
+                    }
+                    if (ktvRating === 0) {
+                        ktvRating = Number(item.itemRating) || 0;
+                    }
+                    if (ktvRating === 0) {
+                        ktvRating = Number(b.rating) || 0;
+                    }
+                    if (ktvRating > maxKtvRating) {
+                        maxKtvRating = ktvRating;
+                    }
+                }
+            }
 
-            if (bookingRating >= 4) {
+            if (maxKtvRating >= 4) {
                 let adjustedBasePoints = basePoints;
                 if (totalDuration < 60) {
                     adjustedBasePoints = basePoints / 2;
@@ -211,7 +236,7 @@ async function processLedgerSync(targetDateStr: string) {
                         booking_id: b.id,
                         points: bonusPts,
                         type: 'EARN',
-                        description: `Bonus ${bonusPts}đ (${adjustedBasePoints}/${totalUniqueKTVs} KTV) - Rating ${bookingRating}★`,
+                        description: `Bonus ${bonusPts}đ (${adjustedBasePoints}/${totalUniqueKTVs} KTV) - Rating ${maxKtvRating}★`,
                         date: targetDateStr
                     });
                 }

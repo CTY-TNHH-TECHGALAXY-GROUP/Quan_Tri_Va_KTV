@@ -100,23 +100,49 @@ export async function GET(request: Request) {
 
         let rt_bonus = 0;
         (bookings || []).forEach(b => {
-            const bRating = Number(b.rating) || 0;
-            const maxItemRating = Math.max(...(b.BookingItems || []).map((i: any) => Number(i.itemRating) || 0), 0);
-            const bookingRating = Math.max(bRating, maxItemRating);
-
-            if (bookingRating >= 4) {
-                let isInvovled = false;
-                const allKtvCodes = new Set<string>();
+            let isInvovled = false;
+            const allKtvCodes = new Set<string>();
+            for (const item of (b.BookingItems || [])) {
+                if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                    item.technicianCodes.forEach((tc: string) => {
+                        allKtvCodes.add(tc.toLowerCase());
+                        if (tc.toLowerCase() === techCode.toLowerCase()) isInvovled = true;
+                    });
+                }
+            }
+            
+            if (isInvovled) {
+                // Tính rating lớn nhất của KTV này từ các dịch vụ họ trực tiếp làm trong đơn
+                let maxKtvRating = 0;
                 for (const item of (b.BookingItems || [])) {
-                    if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                        item.technicianCodes.forEach((tc: string) => {
-                            allKtvCodes.add(tc.toLowerCase());
-                            if (tc.toLowerCase() === techCode.toLowerCase()) isInvovled = true;
-                        });
+                    const isTechInvolved = item.technicianCodes && Array.isArray(item.technicianCodes) &&
+                        item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                    
+                    if (isTechInvolved) {
+                        let ktvRating = 0;
+                        let parsedKtvRatings = item.ktvRatings;
+                        if (typeof parsedKtvRatings === 'string') {
+                            try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
+                        }
+                        if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
+                            const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode.toLowerCase());
+                            if (key) {
+                                ktvRating = Number(parsedKtvRatings[key]) || 0;
+                            }
+                        }
+                        if (ktvRating === 0) {
+                            ktvRating = Number(item.itemRating) || 0;
+                        }
+                        if (ktvRating === 0) {
+                            ktvRating = Number(b.rating) || 0;
+                        }
+                        if (ktvRating > maxKtvRating) {
+                            maxKtvRating = ktvRating;
+                        }
                     }
                 }
-                
-                if (isInvovled) {
+
+                if (maxKtvRating >= 4) {
                     let totalDuration = 0;
                     for (const item of (b.BookingItems || [])) {
                         let segs: any[] = [];
@@ -125,7 +151,6 @@ export async function GET(request: Request) {
                         const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
                         if (mySegs.length > 0) {
                             totalDuration += mySegs.reduce((sum: number, seg: any) => {
-                                // fallback to duration if real times are empty
                                 return sum + (Number(seg.duration) || 0);
                             }, 0);
                         } else if (item.technicianCodes && item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase())) {
