@@ -72,20 +72,7 @@ const formatMultiServiceNames = (segments: any[]) => {
 };
 
 // ─── WebBookingQR Component ─────────────────────────────────────────────────
-const WebBookingQR = () => {
-  const [url, setUrl] = React.useState(DEFAULT_BOOKING_URL);
-
-  React.useEffect(() => {
-    fetch('/api/system/config')
-      .then(r => r.json())
-      .then(json => {
-        if (json.success && json.data?.web_booking_url) {
-          setUrl(json.data.web_booking_url);
-        }
-      })
-      .catch(() => { /* use fallback */ });
-  }, []);
-
+const WebBookingQR = ({ url }: { url: string }) => {
   return (
     <Image
       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`}
@@ -311,6 +298,18 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
 
 function ScreenDashboard({ logic }: { logic: any }) {
   const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline } = logic;
+  const [bookingUrl, setBookingUrl] = React.useState(DEFAULT_BOOKING_URL);
+
+  React.useEffect(() => {
+    fetch('/api/system/config')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.web_booking_url) {
+          setBookingUrl(json.data.web_booking_url);
+        }
+      })
+      .catch(() => { /* use fallback */ });
+  }, []);
 
   // Lấy tất cả dịch vụ mà KTV này được gán (hỗ trợ multi-item)
   const allItemIds: string[] = booking?.assignedItemIds?.length > 0
@@ -391,15 +390,24 @@ function ScreenDashboard({ logic }: { logic: any }) {
                <div className="relative group mb-4">
                   <div className="absolute -inset-2 bg-emerald-50 rounded-[2rem] blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   <div className="relative p-3 bg-white rounded-[2rem] shadow-xl border border-emerald-100/50 transition-transform active:scale-95 duration-300">
-                     <WebBookingQR />
+                     <WebBookingQR url={bookingUrl} />
                   </div>
                </div>
-               <div className="space-y-1">
+               <div className="space-y-1 text-center flex flex-col items-center">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
                     <QrCode size={12} className="text-emerald-500" />
                     QR MENU KHÁCH HÀNG
                   </p>
                   <p className="text-[9px] text-slate-300 font-medium">Khách quét để xem menu & đặt lịch</p>
+                  <a
+                    href={bookingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:scale-95 rounded-xl text-xs font-black transition-all border border-emerald-100 shadow-sm"
+                  >
+                    Mở liên kết
+                    <ArrowRight size={12} />
+                  </a>
                </div>
             </div>
 

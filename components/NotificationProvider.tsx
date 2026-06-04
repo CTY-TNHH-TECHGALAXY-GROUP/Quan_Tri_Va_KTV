@@ -45,6 +45,8 @@ const SOUND_MAP: Record<string, string> = {
     'KTV_NEW_ORDER': '/sounds/ktv-don-hang-moi.wav',
     'REWARD': '/sounds/ktv-nhan-thuong.wav',
     'ATTENDANCE': '/sounds/reception-notification.wav',
+    'ATTENDANCE_REQUEST': '/sounds/reception-notification.wav',
+    'ATTENDANCE_RESPONSE': '/sounds/reception-notification.wav',
     'CHECK_IN': '/sounds/reception-notification.wav',
     'LEAVE_REQUEST': '/sounds/reception-notification.wav',
     'LEAVE_RESPONSE': '/sounds/reception-notification.wav',
@@ -501,7 +503,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                                 onMarkDone={() => markAsRead(n.id)}
                                 onRedirect={() => {
                                     const t = (n.type || '').toUpperCase();
-                                    if (t === 'CHECK_IN' || t === 'ATTENDANCE' || t === 'LEAVE_REQUEST' || t === 'SUDDEN_OFF') {
+                                    if (t === 'CHECK_IN' || t === 'ATTENDANCE' || t === 'ATTENDANCE_REQUEST' || t === 'ATTENDANCE_RESPONSE' || t === 'LEAVE_REQUEST' || t === 'SUDDEN_OFF') {
                                         router.push('/reception/ktv-hub');
                                     } else if (t === 'REWARD') {
                                         router.push('/ktv/history');
@@ -524,7 +526,7 @@ const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: {
     const isLocked = currentScreen === 'REVIEW';
     const type = notification.type?.toUpperCase();
     const isComplaint = type === 'COMPLAINT';
-    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE';
+    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE' || type === 'ATTENDANCE_REQUEST' || type === 'ATTENDANCE_RESPONSE';
     const isKtvNewOrder = type === 'KTV_NEW_ORDER';
     const isShift = type === 'SHIFT_RESPONSE';
     const isLeave = type === 'LEAVE_RESPONSE';
@@ -635,7 +637,7 @@ const Toast = ({
     const isBuyMore = type === 'BUY_MORE' || type === 'ADD_SERVICE' || type === 'NORMAL';
     const isReward = type === 'REWARD';
     const isNewOrder = type === 'NEW_ORDER';
-    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE';
+    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE' || type === 'ATTENDANCE_REQUEST' || type === 'ATTENDANCE_RESPONSE';
     const isLeaveReq = type === 'LEAVE_REQUEST';
     const isShiftChange = type === 'SHIFT_CHANGE';
     const isKtvReview = type === 'KTV_REVIEW';

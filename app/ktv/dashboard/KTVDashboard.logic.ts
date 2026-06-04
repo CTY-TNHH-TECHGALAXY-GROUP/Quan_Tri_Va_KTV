@@ -1635,9 +1635,28 @@ export function useKTVDashboard(config?: DashboardConfig) {
                        && !sName.includes('phong rieng');
             });
 
-            // Tổng tất cả segment duration của KTV này across all assigned items
-            let totalMins = 0;
+            const milestones = settings.ktv_commission_milestones || {
+                '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, 
+                '90': 150000, '120': 200000, '180': 300000, '300': 500000
+            };
+            const rate60 = Number(settings.ktv_commission_per_60min || 100000);
+
+            const calculateCommissionForMins = (mins: number) => {
+                if (mins <= 0) return 0;
+                const minsStr = String(mins);
+                if (milestones[minsStr]) {
+                    return Number(milestones[minsStr]);
+                } else {
+                    return Math.round(((mins / 60) * rate60) / 1000) * 1000;
+                }
+            };
+
+            // Tính tiền cho TỪNG dịch vụ riêng biệt rồi cộng lại (Thay vì cộng dồn phút rồi mới tính tiền)
+            let totalCommission = 0;
+            let totalMins = 0; // Vẫn tính totalMins để log
+            
             for (const item of serviceItems) {
+                let itemMins = 0;
                 if (item?.segments) {
                     try {
                         const segs = typeof item.segments === 'string' 
@@ -1647,21 +1666,31 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                             ktvMatchesSeg(seg.ktvId, ktvId)
                         );
                         if (mySegs.length > 0) {
-                            totalMins += mySegs.reduce((sum: number, seg: any) => {
+                            itemMins = mySegs.reduce((sum: number, seg: any) => {
                                 const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
                                 if (realMins > 0) return sum + realMins;
                                 return sum + (Number(seg.duration) || 0);
                             }, 0);
                         } else {
-                            totalMins += item.duration || 60;
+                            itemMins = item.duration || 60;
                         }
-                    } catch { totalMins += item.duration || 60; }
+                    } catch { itemMins = item.duration || 60; }
                 } else {
-                    totalMins += item?.duration || 60;
+                    itemMins = item?.duration || 60;
                 }
+                
+                if (itemMins === 0) itemMins = 60; // fallback per item
+                totalMins += itemMins;
+                totalCommission += calculateCommissionForMins(itemMins);
             }
-            if (totalMins === 0) totalMins = 60; // fallback
-            console.log("💰 [Commission] Items:", itemIds.length, "Total Duration:", totalMins);
+            
+            // Fallback nếu không có item nào
+            if (serviceItems.length === 0) {
+                totalMins = 60;
+                totalCommission = calculateCommissionForMins(60);
+            }
+
+            console.log("💰 [Commission] Items:", itemIds.length, "Total Duration:", totalMins, "Total Commission:", totalCommission);
 
             // 1. Giải phóng KTV khỏi TurnQueue
             const response = await fetch('/api/ktv/booking', {
@@ -1680,23 +1709,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 console.error('Lỗi khi giải phóng KTV:', res.error);
             }
 
-            const milestones = settings.ktv_commission_milestones || {
-                '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, 
-                '90': 150000, '120': 200000, '180': 300000, '300': 500000
-            };
-            
-            let calculatedCommission = 0;
-            const minsStr = String(totalMins);
-
-            if (milestones[minsStr]) {
-                calculatedCommission = Number(milestones[minsStr]);
-            } else {
-                const rate = Number(settings.ktv_commission_per_60min || 100000);
-                const rawCommission = (totalMins / 60) * rate;
-                calculatedCommission = Math.round(rawCommission / 1000) * 1000;
-            }
-            
-            setCommission(calculatedCommission);
+            setCommission(totalCommission);
 
             // KHÔNG xoá booking ở đây để Reward còn lấy được rating/points
             setPrepChecklist(prev => prev.map(() => false));

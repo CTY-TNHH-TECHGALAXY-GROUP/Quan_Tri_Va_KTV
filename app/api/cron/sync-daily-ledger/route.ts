@@ -154,26 +154,33 @@ async function processLedgerSync(targetDateStr: string) {
             if (relevantItems.length === 0) continue;
 
             let totalDuration = 0;
+            let bookingCommission = 0;
 
             for (const item of relevantItems) {
-                // Tính duration
+                // Tính duration cho từng item
+                let itemDuration = 0;
                 let segs: any[] = [];
                 try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
 
                 const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
 
                 if (mySegs.length > 0) {
-                    totalDuration += mySegs.reduce((sum: number, seg: any) => {
+                    itemDuration = mySegs.reduce((sum: number, seg: any) => {
                         const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
                         if (realMins > 0) return sum + realMins;
                         return sum + (Number(seg.duration) || 0);
                     }, 0);
                 } else {
-                    totalDuration += svcDurationMap[String(item.serviceId)] || 60;
+                    itemDuration = svcDurationMap[String(item.serviceId)] || 60;
                 }
+
+                if (itemDuration <= 0) itemDuration = 60;
+                totalDuration += itemDuration;
+                // Tính commission CHO TỪNG DỊCH VỤ rồi cộng dồn
+                bookingCommission += calcCommission(itemDuration, milestones, ratePer60);
             }
 
-            total_commission += calcCommission(totalDuration || 60, milestones, ratePer60);
+            total_commission += bookingCommission || calcCommission(60, milestones, ratePer60);
             total_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
             
             // Bonus: per booking, chia đều unique KTVs, Math.floor

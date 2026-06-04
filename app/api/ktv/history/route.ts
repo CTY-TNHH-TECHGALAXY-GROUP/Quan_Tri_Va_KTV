@@ -201,7 +201,9 @@ export async function GET(request: Request) {
 
             // Duration: lấy từ segments mà admin gán cho KTV này
             let totalDuration = 0;
+            let commission = 0;
             for (const item of relevantItems) {
+                let itemDuration = 0;
                 let segs: any[] = [];
                 try {
                     segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []);
@@ -211,7 +213,7 @@ export async function GET(request: Request) {
                     seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase())
                 );
                 if (mySegs.length > 0) {
-                    totalDuration += mySegs.reduce((sum: number, seg: any) => {
+                    itemDuration = mySegs.reduce((sum: number, seg: any) => {
                         // Ưu tiên tính thời gian thực tế quầy gán (endTime - startTime)
                         const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
                         if (realMins > 0) return sum + realMins;
@@ -220,10 +222,14 @@ export async function GET(request: Request) {
                     }, 0);
                 } else {
                     // Fallback: dùng service duration nếu không có segments
-                    totalDuration += svcDurationMap[String(item.serviceId)] || 60;
+                    itemDuration = svcDurationMap[String(item.serviceId)] || 60;
                 }
+                if (itemDuration <= 0) itemDuration = 60;
+                totalDuration += itemDuration;
+                // Tính commission CHO TỪNG DỊCH VỤ rồi cộng dồn
+                commission += calcCommission(itemDuration, milestones, rate);
             }
-            const commission = calcCommission(totalDuration || 60, milestones, rate);
+            if (commission === 0) commission = calcCommission(60, milestones, rate);
 
             const serviceNames = relevantItems
                 .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())

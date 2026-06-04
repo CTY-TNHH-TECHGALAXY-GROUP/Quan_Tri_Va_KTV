@@ -147,7 +147,7 @@ export async function PATCH(request: Request) {
         }
 
         await createNotification({
-            type: 'ATTENDANCE',
+            type: 'ATTENDANCE_RESPONSE',
             message: ktvMessage,
             employeeId: attendance.employeeId,  // gán riêng cho KTV
         });

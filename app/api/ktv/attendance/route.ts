@@ -397,7 +397,7 @@ export async function POST(request: Request) {
         const notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
 
         await createNotification({
-            type: 'ATTENDANCE',
+            type: 'ATTENDANCE_REQUEST',
             message: notifMessage,
         });
 
