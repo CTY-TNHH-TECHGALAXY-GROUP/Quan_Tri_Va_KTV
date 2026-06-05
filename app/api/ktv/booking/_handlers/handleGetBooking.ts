@@ -98,21 +98,67 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             const today = getBusinessDate();
             const { data: assign } = await supabase
                 .from('KtvAssignments')
-                .select('status')
+                .select('id, status, booking_item_id, room_id, bed_id')
                 .eq('employee_id', technicianCode)
                 .eq('booking_id', bookingId)
                 .eq('business_date', today)
                 .maybeSingle();
             
             if (assign && (assign.status === 'QUEUED' || assign.status === 'READY')) {
+                // 2a. Tự động giải phóng các active assignment khác bị kẹt của KTV này trong ngày
+                const { data: activeAssigns } = await supabase
+                    .from('KtvAssignments')
+                    .select('id, booking_id')
+                    .eq('employee_id', technicianCode)
+                    .eq('business_date', today)
+                    .eq('status', 'ACTIVE')
+                    .neq('booking_id', bookingId);
+                
+                if (activeAssigns && activeAssigns.length > 0) {
+                    const activeBookingIds = activeAssigns.map(a => a.booking_id);
+                    await supabase
+                        .from('KtvAssignments')
+                        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                        .in('id', activeAssigns.map(a => a.id));
+                    
+                    console.log(`[KTV API] Auto-completed prior active assignments for KTV ${technicianCode} on bookings: ${activeBookingIds.join(', ')}`);
+                }
+
+                // 2b. Kích hoạt assignment của đơn mới thành ACTIVE
                 await supabase
                     .from('KtvAssignments')
                     .update({ status: 'ACTIVE', updated_at: new Date().toISOString() })
-                    .eq('employee_id', technicianCode)
-                    .eq('booking_id', bookingId)
-                    .eq('business_date', today);
+                    .eq('id', assign.id);
                 
                 console.log(`[KTV API] Auto-activated assignment for KTV ${technicianCode} on booking ${bookingId}`);
+
+                // 2c. Đồng bộ thông tin đơn mới sang TurnQueue
+                const { data: currentTurn } = await supabase
+                    .from('TurnQueue')
+                    .select('status')
+                    .eq('employee_id', technicianCode)
+                    .eq('date', today)
+                    .maybeSingle();
+
+                const newStatus = (currentTurn?.status === 'off') ? 'off' : 'assigned';
+
+                await supabase
+                    .from('TurnQueue')
+                    .update({
+                        status: newStatus,
+                        current_order_id: bookingId,
+                        booking_item_id: assign.booking_item_id,
+                        booking_item_ids: assign.booking_item_id ? [assign.booking_item_id] : [],
+                        room_id: assign.room_id,
+                        bed_id: assign.bed_id,
+                        start_time: null,
+                        estimated_end_time: null,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('employee_id', technicianCode)
+                    .eq('date', today);
+                
+                console.log(`[KTV API] Synced TurnQueue for KTV ${technicianCode} to new booking ${bookingId}`);
             }
         }
 
