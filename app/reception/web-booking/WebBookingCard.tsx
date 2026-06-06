@@ -32,6 +32,8 @@ const SOURCE_MAP: Record<string, { label: string; color: string; bg: string }> =
   VIP_WALK_IN: { label: 'App VIP (Walk-in)', color: 'text-orange-600', bg: 'bg-orange-50' },
   STANDARD_BOOKING: { label: 'App Standard', color: 'text-emerald-600', bg: 'bg-emerald-50' },
   STANDARD_WALK_IN: { label: 'Tại quầy', color: 'text-gray-600', bg: 'bg-gray-100' },
+  MIXED_WALK_IN: { label: 'Hỗn hợp (Tại quầy)', color: 'text-rose-600', bg: 'bg-rose-50' },
+  MIXED_BOOKING: { label: 'Web đặt (Hỗn hợp)', color: 'text-teal-600', bg: 'bg-teal-50' },
 };
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';

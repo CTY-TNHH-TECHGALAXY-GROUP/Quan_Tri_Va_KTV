@@ -202,7 +202,7 @@ export default function DispatchBoardPage() {
       .channel('dispatch_board_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Bookings' }, (payload) => {
         const newBooking = payload.new;
-        if (!['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU'].includes(newBooking?.source)) return;
+        if (!['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'].includes(newBooking?.source)) return;
         
         console.log("🔔 [Dispatch] New Booking detected!", newBooking.id);
         
