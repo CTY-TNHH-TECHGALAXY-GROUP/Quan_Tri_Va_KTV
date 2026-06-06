@@ -63,7 +63,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .gte('bookingDate', startOfRange)
       .lte('bookingDate', endOfRange)
       .neq('status', 'CANCELLED')
-      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING'])
+      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_WALK_IN', 'MIXED_BOOKING'])
       .order('createdAt', { ascending: false });
 
     if (bError) throw bError;
@@ -172,7 +172,11 @@ export async function confirmWebBooking(bookingId: string) {
       .single();
 
     let newSource = 'STANDARD_WALK_IN';
-    if (bData?.source === 'VIP_BOOKING') newSource = 'VIP_WALK_IN';
+    if (bData?.source === 'VIP_BOOKING') {
+      newSource = 'VIP_WALK_IN';
+    } else if (bData?.source === 'MIXED_BOOKING' || bData?.source === 'MIXED_WALK_IN') {
+      newSource = 'MIXED_WALK_IN';
+    }
 
     const { error } = await supabase
       .from('Bookings')

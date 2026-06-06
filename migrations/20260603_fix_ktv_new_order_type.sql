@@ -29,6 +29,14 @@ BEGIN
 
     -- THỨ NHẤT: KHI CÓ ĐƠN HÀNG MỚI (INSERT) -> THÔNG BÁO CHO QUẦY/ADMIN (CÓ Tên khách)
     IF (TG_OP = 'INSERT') THEN
+        -- Bảo mật AccessToken cho các đơn hàng từ Web khách hàng
+        IF (NEW.source IN ('WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_WALK_IN', 'MIXED_BOOKING')) THEN
+            IF (NEW."accessToken" IS NULL OR NEW."accessToken" != 'NGANHA_SECURE_TOKEN_2026') THEN
+                -- Nếu Token không đúng, bỏ qua không tạo thông báo (Chống Spam)
+                RETURN NEW;
+            END IF;
+        END IF;
+
         INSERT INTO public."StaffNotifications" (
             "bookingId", "type", "message", "isRead", "createdAt"
         ) VALUES (

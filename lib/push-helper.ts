@@ -56,12 +56,13 @@ export async function sendPushNotification(payload: PushPayload) {
             // Lấy danh sách nhân viên có role tương ứng
             const { data: usersData, error: usersErr } = await supabase
                 .from('Users')
-                .select('code')
+                .select('id, code')
                 .in('role', mappedRoles);
                 
             if (!usersErr && usersData) {
                 usersData.forEach(u => {
-                    if (u.code) finalStaffIds.add(u.code);
+                    if (u.id) finalStaffIds.add(u.id);
+                    if (u.code && u.code !== u.id) finalStaffIds.add(u.code);
                 });
             } else {
                 console.warn('⚠️ [Push Helper] Error fetching users by roles:', usersErr);
@@ -72,11 +73,12 @@ export async function sendPushNotification(payload: PushPayload) {
         if (!targetStaffIds && !targetRoles) {
             const { data: defaultUsers } = await supabase
                 .from('Users')
-                .select('code')
+                .select('id, code')
                 .in('role', ['ADMIN', 'RECEPTIONIST']);
             if (defaultUsers) {
                 defaultUsers.forEach(u => {
-                    if (u.code) finalStaffIds.add(u.code);
+                    if (u.id) finalStaffIds.add(u.id);
+                    if (u.code && u.code !== u.id) finalStaffIds.add(u.code);
                 });
             }
         }
