@@ -252,6 +252,29 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
         }
     };
 
+    // 🔊 Auto-unlock Audio Context on first user interaction (critical for iOS/Android mobile browsers)
+    useEffect(() => {
+        const handleFirstInteraction = () => {
+            console.log('👆 [NotificationProvider] User interaction detected, priming audio context...');
+            unlockAudio();
+            // Remove listeners immediately
+            document.removeEventListener('click', handleFirstInteraction);
+            document.removeEventListener('touchstart', handleFirstInteraction);
+        };
+
+        if (typeof window !== 'undefined') {
+            document.addEventListener('click', handleFirstInteraction);
+            document.addEventListener('touchstart', handleFirstInteraction);
+        }
+
+        return () => {
+            if (typeof window !== 'undefined') {
+                document.removeEventListener('click', handleFirstInteraction);
+                document.removeEventListener('touchstart', handleFirstInteraction);
+            }
+        };
+    }, [user]);
+
     const playSound = (type: string) => {
         if (!soundEnabled || !audioInstanceRef.current) return;
         const normalizedType = (type || 'default').toUpperCase().trim();
