@@ -683,6 +683,7 @@ function ScreenTimer({ logic }: { logic: any }) {
   React.useEffect(() => {
       if (isCameraOpen && videoRef.current && stream) {
           videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.error("Camera play error:", e));
       }
   }, [isCameraOpen, stream]);
 
@@ -1068,6 +1069,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               ref={videoRef} 
               autoPlay 
               playsInline 
+              muted
               className="w-full h-full object-cover"
             />
             <button 
