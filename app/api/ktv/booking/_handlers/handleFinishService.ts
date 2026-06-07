@@ -61,7 +61,14 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     }
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
-    const isMerged = allGlobalSegs.length > 1 && uniqueItemIds.size === allGlobalSegs.length;
+    // 🔒 MERGE GUARD: Chỉ merge khi TẤT CẢ segments đều có actualStartTime
+    // (đã được đóng dấu lúc START_TIMER). Nếu segment nào không có → DV gán sau, không gộp.
+    const allStarted = allGlobalSegs.every((s: any) => !!s.seg.actualStartTime);
+    const isMerged = allGlobalSegs.length > 1 && uniqueItemIds.size === allGlobalSegs.length && allStarted;
+    
+    if (!allStarted && allGlobalSegs.length > 1) {
+        console.log(`⚠️ [FinishService] Merge skipped: ${allGlobalSegs.filter((s: any) => !s.seg.actualStartTime).length}/${allGlobalSegs.length} segments missing actualStartTime (added after KTV started)`);
+    }
 
     // ─── 2. isMerged TIME ALLOCATION ───
     if (isMerged && (status === 'CLEANING' || isFeedback)) {
@@ -95,8 +102,14 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         originalItemsData[lastTarget.item.id][lastTarget.idx] = lastTarget.seg;
         
     } else {
-        // Logic cũ (non-merged)
+        // Logic cũ (non-merged) — CHỈ hoàn tất segments đã có actualStartTime
         allGlobalSegs.forEach((target: any) => {
+            // 🛡️ GUARD: Bỏ qua segments chưa bắt đầu (DV gán sau khi KTV đã làm)
+            // Segments này sẽ chờ KTV bắt đầu riêng trong phiên tiếp theo
+            if (!target.seg.actualStartTime) {
+                console.log(`⏭️ [FinishService] Skipping segment ${target.seg.id || target._itemId} — no actualStartTime (added after KTV started)`);
+                return;
+            }
             if (status === 'CLEANING' || isFeedback) {
                 if (!target.seg.actualEndTime) target.seg.actualEndTime = nowISO;
                 if (isFeedback && !target.seg.feedbackTime) target.seg.feedbackTime = nowISO;
@@ -113,19 +126,25 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
 
         // 🧠 SMART STATUS: Only set CLEANING when ALL segments in item have actualEndTime
         //    Prevents sequential bug (KTV1 done but KTV2 not started yet)
-        const allSegsDone = segs.every((s: any) => !!s.actualEndTime);
+        //    Bỏ qua segments chưa bắt đầu (không có actualStartTime) khi tính allSegsDone
+        const startedSegs = segs.filter((s: any) => !!s.actualStartTime);
+        const allSegsDone = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.actualEndTime);
+        const hasUnstartedSegs = segs.some((s: any) => !s.actualStartTime && s.ktvId);
         const alreadyRated = (item as any).itemRating !== null && (item as any).itemRating !== undefined;
 
         // 🧠 DUAL-CONDITION COMPLETION:
         // Booking chỉ DONE khi CẢ HAI điều kiện: KTV xong + Khách đã rate
         // Xử lý cả 2 thứ tự: KTV xong trước hoặc Khách rate trước
+        // 🛡️ Nếu còn segments chưa bắt đầu (DV gán muộn), giữ IN_PROGRESS cho item đó
         const newItemStatus = (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
-            : (alreadyRated && allSegsDone)
-                ? 'DONE'                      // 🧠 Khách đã rate + KTV xong → hoàn tất
-                : allSegsDone
-                    ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
-                    : 'IN_PROGRESS';
+            : hasUnstartedSegs
+                ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
+                : (alreadyRated && allSegsDone)
+                    ? 'DONE'                  // 🧠 Khách đã rate + KTV xong → hoàn tất
+                    : allSegsDone
+                        ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
+                        : 'IN_PROGRESS';
         
         await supabase.from('BookingItems').update({ segments: JSON.stringify(segs), status: newItemStatus }).eq('id', item.id);
         console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated} → ${newItemStatus}`);

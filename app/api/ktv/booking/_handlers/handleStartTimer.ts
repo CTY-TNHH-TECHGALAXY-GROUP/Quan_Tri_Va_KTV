@@ -129,6 +129,24 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                 
                 allGlobalSegs[startIdx].seg.actualStartTime = sharedTimeStart;
                 
+                // 🔒 MERGE LOCK: Khi START_TIMER với nhiều DV (merge scenario),
+                // đóng dấu actualStartTime lên TẤT CẢ segments của KTV này.
+                // Mục đích: Nếu Quầy gán thêm DV sau khi KTV đã bắt đầu,
+                // segment mới sẽ KHÔNG có actualStartTime → server biết nó là thẻ riêng,
+                // không gộp vào nhóm hiện tại khi hoàn tất.
+                if (action === 'START_TIMER' && allGlobalSegs.length > 1) {
+                    const mergeItemIds = new Set(allGlobalSegs.map((s: any) => s.item?.id));
+                    const isMergeAtStart = mergeItemIds.size === allGlobalSegs.length;
+                    if (isMergeAtStart) {
+                        console.log(`🔒 [Merge Lock] Stamping actualStartTime on ${allGlobalSegs.length} segments for ${technicianCode}`);
+                        allGlobalSegs.forEach((itemSeg: any, i: number) => {
+                            if (i !== startIdx && !itemSeg.seg.actualStartTime) {
+                                itemSeg.seg.actualStartTime = sharedTimeStart;
+                            }
+                        });
+                    }
+                }
+
                 // Đồng bộ startPhotoUrl vào tất cả segment của KTV này trong đơn hàng này
                 if (startPhotoUrl) {
                     allGlobalSegs.forEach((itemSeg: any) => {
@@ -149,6 +167,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                 // 🤝 PARALLEL START SYNC: Removed to allow independent starts for KTVs entering at different times
             }
         }
+
 
         for (const item of currentItems || []) {
             await supabase.from('BookingItems').update({ segments: JSON.stringify(originalItemsData[item.id]) }).eq('id', item.id);
