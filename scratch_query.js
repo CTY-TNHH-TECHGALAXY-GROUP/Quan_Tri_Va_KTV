@@ -15,17 +15,27 @@ fileContent.split(/\r?\n/).forEach(line => {
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-async function checkKTVDailyLedgerSchema() {
-  const { data: ledger, error } = await supabase
-    .from('KTVDailyLedger')
-    .select('*')
-    .limit(1);
+async function checkBooking011Details() {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString: env.DIRECT_URL });
+  await client.connect();
+
+  console.log('--- Querying Booking 11NDK-011-06062026 details ---');
+  const res = await client.query(`
+    SELECT id, "bookingId", "serviceId", "technicianCodes", "itemRating", "ktvRatings", segments
+    FROM "BookingItems"
+    WHERE "bookingId" = '11NDK-011-06062026';
+  `);
   
-  if (error) {
-    console.error('Error fetching ledger:', error);
-  } else {
-    console.log('KTVDailyLedger columns:', Object.keys(ledger[0] || {}));
-  }
+  res.rows.forEach(r => {
+    console.log(`Item: ${r.id}`);
+    console.log(`  Techs: ${JSON.stringify(r.technicianCodes)}`);
+    console.log(`  ktvRatings: ${JSON.stringify(r.ktvRatings)}`);
+    console.log(`  itemRating: ${r.itemRating}`);
+    console.log(`  Segments: ${r.segments}`);
+  });
+
+  await client.end();
 }
 
-checkKTVDailyLedgerSchema().catch(console.error);
+checkBooking011Details().catch(console.error);

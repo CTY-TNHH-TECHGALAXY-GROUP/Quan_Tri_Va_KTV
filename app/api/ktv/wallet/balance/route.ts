@@ -146,13 +146,8 @@ export async function GET(request: Request) {
             .eq('employeeId', techCode)
             .lte('effectiveFrom', todayStr)
             .in('status', ['ACTIVE', 'REPLACED'])
-            .order('effectiveFrom', { ascending: false })
-            .order('createdAt', { ascending: false })
-            .limit(1);
-        const shiftType = shiftsData?.[0]?.shiftType || 'SHIFT_1';
-        let basePoints = s1Bonus;
-        if (shiftType === 'SHIFT_2') basePoints = s2Bonus;
-        else if (shiftType === 'SHIFT_3') basePoints = s3Bonus;
+            .order('effectiveFrom', { ascending: true })
+            .order('createdAt', { ascending: true });
 
         const { data: services } = await supabase.from('Services').select('id, duration');
         const svcDurationMap: Record<string, number> = {};
@@ -198,9 +193,21 @@ export async function GET(request: Request) {
             const bookingRating = Math.max(bRating, maxItemRating);
 
             if (bookingRating >= 4) {
-                let adjustedBasePoints = basePoints;
+                const bookingDateStr = b.timeStart ? b.timeStart.slice(0, 10) : todayStr;
+                let currentShift = 'SHIFT_1';
+                for (const s of (shiftsData || [])) {
+                    const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+                    if (effDate && effDate <= bookingDateStr) {
+                        currentShift = s.shiftType;
+                    }
+                }
+
+                let adjustedBasePoints = s1Bonus;
+                if (currentShift === 'SHIFT_2') adjustedBasePoints = s2Bonus;
+                else if (currentShift === 'SHIFT_3') adjustedBasePoints = s3Bonus;
+
                 if (totalDuration < 60) {
-                    adjustedBasePoints = basePoints / 2;
+                    adjustedBasePoints = adjustedBasePoints / 2;
                 }
 
                 // Collect ALL unique KTVs across ALL items in this booking

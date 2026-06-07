@@ -100,7 +100,8 @@ export async function GET(request: Request) {
             // Do shiftsData đã được sort theo effectiveFrom asc, ta lấy cái cuối cùng <= dateStr
             let activeForDate = currentShift;
             for (const s of (shiftsData || [])) {
-                if (s.effectiveFrom <= dateStr) {
+                const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+                if (effDate && effDate <= dateStr) {
                     activeForDate = s.shiftType;
                 }
             }

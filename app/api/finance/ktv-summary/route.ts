@@ -82,21 +82,11 @@ export async function GET(request: Request) {
         // Fetch KTV shifts to determine bonus per KTV
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
-            .select('employeeId, shiftType')
+            .select('employeeId, shiftType, effectiveFrom')
             .in('employeeId', ktvs.map(k => k.id))
-            .eq('status', 'ACTIVE')
-            .order('effectiveFrom', { ascending: false });
-        
-        // Build map: employeeId -> basePoints (only keep latest per KTV)
-        const ktvShiftMap: Record<string, number> = {};
-        (shiftsData || []).forEach(s => {
-            if (!ktvShiftMap[s.employeeId]) {
-                let bp = s1Bonus;
-                if (s.shiftType === 'SHIFT_2') bp = s2Bonus;
-                else if (s.shiftType === 'SHIFT_3') bp = s3Bonus;
-                ktvShiftMap[s.employeeId] = bp;
-            }
-        });
+            .in('status', ['ACTIVE', 'REPLACED'])
+            .order('effectiveFrom', { ascending: true })
+            .order('createdAt', { ascending: true });
 
         // --- CƠ CHẾ DYNAMIC BRIDGE (Đã fix lỗi trùng lặp dữ liệu) ---
         // Lấy ngày hiện tại ở Việt Nam (YYYY-MM-DD) — dùng cách tính giống cron job
@@ -248,7 +238,20 @@ export async function GET(request: Request) {
                     }
 
                     // Use basePoints from KTV's shift config
-                    let adjustedBasePoints = ktvShiftMap[techCode] || s1Bonus;
+                    const bookingDateStr = b.timeStart ? b.timeStart.slice(0, 10) : todayStr;
+                    let currentShift = 'SHIFT_1';
+                    const ktvShifts = (shiftsData || []).filter(s => s.employeeId === techCode);
+                    for (const s of ktvShifts) {
+                        const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+                        if (effDate && effDate <= bookingDateStr) {
+                            currentShift = s.shiftType;
+                        }
+                    }
+
+                    let adjustedBasePoints = s1Bonus;
+                    if (currentShift === 'SHIFT_2') adjustedBasePoints = s2Bonus;
+                    else if (currentShift === 'SHIFT_3') adjustedBasePoints = s3Bonus;
+
                     if (fullTotalDuration < 60) adjustedBasePoints = Math.floor(adjustedBasePoints / 2);
 
                     const allKtvCodes = new Set<string>();

@@ -44,20 +44,11 @@ export async function GET(request: Request) {
         // Fetch KTV shifts to determine bonus per KTV
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
-            .select('employeeId, shiftType')
+            .select('employeeId, shiftType, effectiveFrom')
             .in('employeeId', staffIds)
-            .eq('status', 'ACTIVE')
-            .order('effectiveFrom', { ascending: false });
-        
-        const ktvShiftMap: Record<string, number> = {};
-        (shiftsData || []).forEach(s => {
-            if (!ktvShiftMap[s.employeeId]) {
-                let bp = s1Bonus;
-                if (s.shiftType === 'SHIFT_2') bp = s2Bonus;
-                else if (s.shiftType === 'SHIFT_3') bp = s3Bonus;
-                ktvShiftMap[s.employeeId] = bp;
-            }
-        });
+            .in('status', ['ACTIVE', 'REPLACED'])
+            .order('effectiveFrom', { ascending: true })
+            .order('createdAt', { ascending: true });
 
         // 2. Fetch Earned Bonus from KTVDailyLedger
         let ledgerQuery = supabase
@@ -175,10 +166,23 @@ export async function GET(request: Request) {
 
                 // Per-KTV bonus based on shift
                 if (totalUniqueKTVs > 0) {
+                    const bookingDateStr = b.timeStart ? b.timeStart.slice(0, 10) : todayStr;
                     allKtvCodes.forEach(techCode => {
                         const sId = staffIds.find(id => id.toLowerCase() === techCode);
                         if (sId && statsMap[sId]) {
-                            let basePoints = ktvShiftMap[sId] || s1Bonus;
+                            let currentShift = 'SHIFT_1';
+                            const ktvShifts = (shiftsData || []).filter(s => s.employeeId === sId);
+                            for (const s of ktvShifts) {
+                                const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+                                if (effDate && effDate <= bookingDateStr) {
+                                    currentShift = s.shiftType;
+                                }
+                            }
+
+                            let basePoints = s1Bonus;
+                            if (currentShift === 'SHIFT_2') basePoints = s2Bonus;
+                            else if (currentShift === 'SHIFT_3') basePoints = s3Bonus;
+
                             if (totalDuration < 60) basePoints = Math.floor(basePoints / 2);
                             const bonusPts = Math.floor(basePoints / totalUniqueKTVs);
                             statsMap[sId].totalEarned += bonusPts;

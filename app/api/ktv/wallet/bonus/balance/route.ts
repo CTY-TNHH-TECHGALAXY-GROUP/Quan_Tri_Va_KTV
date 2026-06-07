@@ -75,7 +75,8 @@ export async function GET(request: Request) {
 
         let currentShift = 'SHIFT_1';
         for (const s of (shiftsData || [])) {
-            if (s.effectiveFrom <= todayStr) currentShift = s.shiftType;
+            const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+            if (effDate && effDate <= todayStr) currentShift = s.shiftType;
         }
 
         const targetMonthDay = todayStr.slice(5, 10);
