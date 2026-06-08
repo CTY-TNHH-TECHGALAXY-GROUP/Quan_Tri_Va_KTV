@@ -684,7 +684,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const response = await fetch(url);
                 const res = await response.json();
                 
-                if (res.success && res.data) {
+                if (res.success && res.data && res.data.id) {
                     if (isTransitioningRef.current) {
                         console.log("🛡️ [KTV] Skipping fetch update due to manual transition");
                         return;
@@ -896,7 +896,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         }
                         return prev;
                     });
-                } else if (res.success && !res.data) {
+                } else if (res.success && (!res.data || !res.data.id)) {
+                    // 🛡️ BẢO VỆ STATE: Giữ nguyên booking cũ, chỉ append nextBookingId, KHÔNG ghi đè null/object thiếu id
+                    if (res.data?.nextBookingId) {
+                        setBooking((prev: any) => prev ? { ...prev, nextBookingId: res.data.nextBookingId } : res.data);
+                    }
+
                     // Chỉ xóa booking khỏi state nếu KHÔNG phải màn hình hậu kỳ
                     const isPostService = ['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current);
                     
@@ -905,7 +910,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     const isTimerWithActiveBooking = screenRef.current === 'TIMER' && bookingRef.current?.id;
                     
                     if (!isPostService && !isTimerWithActiveBooking) {
-                        setBooking(null);
+                        setBooking(res.data?.nextBookingId ? res.data : null);
                         setScreen('DASHBOARD');
                         setIsTimerRunning(false);
                         setIsPrepping(false);

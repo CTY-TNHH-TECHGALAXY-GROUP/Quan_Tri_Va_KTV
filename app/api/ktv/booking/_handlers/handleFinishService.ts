@@ -61,14 +61,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     }
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
-    // 🔒 MERGE GUARD: Chỉ merge khi TẤT CẢ segments đều có actualStartTime
-    // (đã được đóng dấu lúc START_TIMER). Nếu segment nào không có → DV gán sau, không gộp.
-    const allStarted = allGlobalSegs.every((s: any) => !!s.seg.actualStartTime);
-    const isMerged = allGlobalSegs.length > 1 && uniqueItemIds.size === allGlobalSegs.length && allStarted;
-    
-    if (!allStarted && allGlobalSegs.length > 1) {
-        console.log(`⚠️ [FinishService] Merge skipped: ${allGlobalSegs.filter((s: any) => !s.seg.actualStartTime).length}/${allGlobalSegs.length} segments missing actualStartTime (added after KTV started)`);
-    }
+    // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
+    // tự động gộp và phân bổ thời gian liên tục (kể cả DV gán thêm lúc đang làm).
+    const isMerged = allGlobalSegs.length > 1 && uniqueItemIds.size === allGlobalSegs.length;
 
     // ─── 2. isMerged TIME ALLOCATION ───
     if (isMerged && (status === 'CLEANING' || isFeedback)) {
