@@ -44,20 +44,20 @@ export async function POST(request: Request) {
         }
 
         // 🧹 DỌN DẸP SPAM
+        // 🧹 DỌN DẸP SPAM: Xoá các user khác trên cùng 1 thiết bị (cùng endpoint)
         try {
-            const { data: allSubs } = await supabase.from('StaffPushSubscriptions').select('staff_id, subscription');
-            if (allSubs) {
-                const targetEndpoint = subscription.endpoint;
-                for (const sub of allSubs) {
-                    const ep = (sub.subscription as any)?.endpoint;
-                    if (ep === targetEndpoint && sub.staff_id !== staffId) {
-                        await supabase
-                            .from('StaffPushSubscriptions')
-                            .delete()
-                            .eq('staff_id', sub.staff_id)
-                            .eq('subscription', sub.subscription);
-                        console.log(`🧹 [Push Sync API] Xoá subscription cũ của user ${sub.staff_id} do trùng thiết bị.`);
-                    }
+            const targetEndpoint = subscription.endpoint;
+            if (targetEndpoint) {
+                const { error: cleanupErr, count } = await supabase
+                    .from('StaffPushSubscriptions')
+                    .delete({ count: 'exact' })
+                    .neq('staff_id', staffId)
+                    .eq('subscription->>endpoint', targetEndpoint);
+                    
+                if (!cleanupErr && count && count > 0) {
+                    console.log(`🧹 [Push Sync API] Đã xoá ${count} subscription cũ do trùng thiết bị với ${staffId}.`);
+                } else if (cleanupErr) {
+                    console.error('⚠️ [Push Sync API] Cleanup old subscriptions query failed:', cleanupErr);
                 }
             }
         } catch (cleanupErr) {
