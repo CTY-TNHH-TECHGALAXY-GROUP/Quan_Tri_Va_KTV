@@ -406,6 +406,11 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
             // Fallback for legacy types without rules: use old logic
             if (!rule) {
+                // Hardcode safety for KTV specific notifications
+                if (notifType === 'KTV_NEW_ORDER' || notifType === 'REWARD') {
+                    if (!isKtv || newNotif.employeeId !== user.id) return;
+                }
+
                 if (roleId === 'admin') {
                     const isGlobal = !newNotif.employeeId;
                     const isComplaint = notifType === 'COMPLAINT';
@@ -413,6 +418,9 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 } else if (isKtv) {
                     if (newNotif.employeeId !== user.id) return;
                 } else if (isReception && newNotif.employeeId) {
+                    return;
+                } else if (newNotif.employeeId && newNotif.employeeId !== user.id) {
+                    // Catch-all safety for other roles (Manager, Dev)
                     return;
                 }
             }
