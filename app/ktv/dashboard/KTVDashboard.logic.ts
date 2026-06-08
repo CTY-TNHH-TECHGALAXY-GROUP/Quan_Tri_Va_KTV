@@ -1147,10 +1147,39 @@ export function useKTVDashboard(config?: DashboardConfig) {
             let currentSegDuration: number;
             let activeSegStartTime: string | null = null;
 
+            const parseTimeHelper = (timeStr: string) => {
+                if (!timeStr) return new Date().getTime();
+                if (typeof timeStr === 'string' && /^\d{1,2}:\d{2}/.test(timeStr)) {
+                    const [h, m] = timeStr.split(':').map(Number);
+                    const d = new Date(); d.setHours(h, m, 0, 0);
+                    return d.getTime();
+                }
+                if (typeof timeStr === 'string' && !timeStr.includes('Z') && !timeStr.includes('+')) {
+                    return new Date(timeStr.replace(' ', 'T') + 'Z').getTime();
+                }
+                return new Date(timeStr).getTime();
+            };
+
             if (isMergeSync) {
-                // 🔥 Merged: tổng duration tất cả segments
+                // 🔥 Smart Merge: Tính tổng duration
                 currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0);
-                activeSegStartTime = allMySegs[0].actualStartTime || tStart;
+                
+                // Nếu chưa có actualStartTime thật sự từ DB, giữ nguyên để GUARD chặn lại
+                if (!allMySegs[0].actualStartTime || allMySegs[0].actualStartTime === tStart) {
+                    activeSegStartTime = tStart;
+                } else {
+                    // Smart Merge Sequential Time Allocation
+                    let currentVirtualEndMs = parseTimeHelper(allMySegs[0].actualStartTime);
+                    for (const s of allMySegs) {
+                        const durMs = (Number(s.duration) || 60) * 60 * 1000;
+                        const dispatchTimeMs = parseTimeHelper(s.startTime || s.actualStartTime || tStart);
+                        const segmentStartMs = Math.max(currentVirtualEndMs, dispatchTimeMs);
+                        currentVirtualEndMs = segmentStartMs + durMs;
+                    }
+                    // Tính toán activeSegStartTime ảo để timer đếm ngược chính xác từ tổng duration
+                    const synthesizedStartMs = currentVirtualEndMs - (currentSegDuration * 60 * 1000);
+                    activeSegStartTime = new Date(synthesizedStartMs).toISOString();
+                }
             } else {
                 // Normal: duration chặng hiện tại
                 const currentSeg = allMySegs[calculatedSegIdx] || allMySegs[0] || {};
