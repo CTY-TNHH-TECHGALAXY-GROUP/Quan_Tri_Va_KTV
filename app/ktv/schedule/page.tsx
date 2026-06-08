@@ -50,7 +50,7 @@ const KTVSchedulePage = () => {
     const {
         mounted, canAccessPage, user,
         activeTab, setActiveTab,
-        currentShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift,
+        currentShift, tomorrowShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift,
         selectedDates, toggleDate, isSubmittingOff, leaveList, isLoadingLeaves,
         offError, offSuccess, setOffError, handleSubmitOff, confirmDialog, setConfirmDialog,
         calendarMonth, goToPrevMonth, goToNextMonth, goToToday, WEEKDAY_LABELS,
@@ -414,6 +414,7 @@ const KTVSchedulePage = () => {
                 {activeTab === 'shift' && (
                     <ShiftTab
                         currentShift={currentShift}
+                        tomorrowShift={tomorrowShift}
                         shiftHistory={shiftHistory}
                         isLoadingShift={isLoadingShift}
                         newShiftType={newShiftType}
@@ -433,27 +434,47 @@ const KTVSchedulePage = () => {
 // ════════════════════════════════════════════════════════════════
 // SHIFT TAB COMPONENT
 // ════════════════════════════════════════════════════════════════
-const ShiftTab = ({ currentShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift }: any) => {
+const ShiftTab = ({ currentShift, tomorrowShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift }: any) => {
     if (isLoadingShift) {
         return (<div className="flex items-center justify-center py-16 gap-2 text-gray-400"><Loader2 size={20} className="animate-spin" /><span className="text-sm">{t.shiftLoading}</span></div>);
     }
     const availableShifts = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].filter(s => s !== currentShift?.shiftType);
+    const nowHour = new Date().getHours();
+    const isPast19 = nowHour >= 19;
+
     return (
         <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4">
-            {currentShift ? (
-                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-indigo-100 text-sm font-medium">{t.shiftCurrent}</span>
-                        <Briefcase size={20} className="text-indigo-200" />
+            <div className="flex gap-3">
+                {currentShift ? (
+                    <div className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-5 text-white shadow-lg shadow-indigo-200">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-indigo-100 text-xs font-medium">{t.shiftCurrent}</span>
+                            <Briefcase size={16} className="text-indigo-200" />
+                        </div>
+                        <div className="text-xl font-black tracking-tight">{SHIFT_LABELS[currentShift.shiftType] || currentShift.shiftType}</div>
                     </div>
-                    <div className="text-2xl font-black tracking-tight">{SHIFT_LABELS[currentShift.shiftType] || currentShift.shiftType}</div>
-                </div>
-            ) : (
-                <div className="bg-gray-100 rounded-3xl p-6 text-gray-500 text-center border-2 border-dashed border-gray-200">
-                    <Briefcase size={32} className="mx-auto mb-3 opacity-50" />
-                    <p className="font-medium">{t.shiftCurrentEmpty}</p>
-                </div>
-            )}
+                ) : (
+                    <div className="flex-1 bg-gray-100 rounded-3xl p-5 text-gray-500 text-center border-2 border-dashed border-gray-200 flex flex-col justify-center">
+                        <p className="font-medium text-sm">{t.shiftCurrentEmpty}</p>
+                    </div>
+                )}
+
+                {isPast19 && (
+                    tomorrowShift ? (
+                        <div className="flex-1 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-3xl p-5 text-white shadow-lg shadow-emerald-200 opacity-90">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-emerald-100 text-xs font-medium">Ca ngày mai</span>
+                                <CalendarDays size={16} className="text-emerald-200" />
+                            </div>
+                            <div className="text-xl font-black tracking-tight">{SHIFT_LABELS[tomorrowShift.shiftType] || tomorrowShift.shiftType}</div>
+                        </div>
+                    ) : (
+                        <div className="flex-1 bg-gray-100 rounded-3xl p-5 text-gray-500 text-center border-2 border-dashed border-gray-200 flex flex-col justify-center opacity-80">
+                            <p className="font-medium text-xs">Chưa có ca ngày mai</p>
+                        </div>
+                    )
+                )}
+            </div>
 
             <div className="bg-white rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
                 <div className="px-6 pt-6 pb-2">

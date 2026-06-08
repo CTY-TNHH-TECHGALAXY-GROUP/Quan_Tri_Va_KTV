@@ -100,7 +100,15 @@ export async function GET(request: NextRequest) {
             // ─── LỌC CA THEO NGÀY (Lịch sử + Tự động khôi phục ca tạm thời) ───
             const dedupMap = new Map<string, typeof data[0]>();
 
-            for (const shift of (data || [])) {
+            // Lọc ưu tiên: lấy các ca ACTIVE trước, sau đó đến REPLACED
+            const sortedData = (data || []).sort((a, b) => {
+                if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+                if (b.status === 'ACTIVE' && a.status !== 'ACTIVE') return 1;
+                // Nếu cùng status, ưu tiên theo thời gian tạo mới nhất
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+
+            for (const shift of sortedData) {
                 // Tự động dọn dẹp (revert) ca tạm thời trong DB nếu nó đang ACTIVE và đã qua ngày hôm nay
                 const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST';
                 
@@ -125,7 +133,7 @@ export async function GET(request: NextRequest) {
                     shift.effectiveFrom = businessDateStr;
                 }
 
-                // Nếu chưa có trong map, đây là bản ghi mới nhất trước hoặc bằng fetchDate
+                // Nếu chưa có trong map, đây là bản ghi mới nhất (đã ưu tiên ACTIVE) trước hoặc bằng fetchDate
                 if (!dedupMap.has(shift.employeeId)) {
                     const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST';
                     const isExpiredForTarget = isTempShift && shift.effectiveFrom < fetchDate;
@@ -167,12 +175,15 @@ export async function GET(request: NextRequest) {
         }
 
         if (employeeId) {
+            const tomorrow = new Date(businessNow.getTime() + 24 * 60 * 60 * 1000);
+            const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
             // Fetch current active shift + history for a specific KTV
-            let { data: shifts, error: activeError } = await supabase
+            let { data: allShifts, error: activeError } = await supabase
                 .from('KTVShifts')
                 .select('*')
                 .eq('employeeId', employeeId)
-                .lte('effectiveFrom', businessDateStr)
+                .lte('effectiveFrom', tomorrowStr)
                 .in('status', ['ACTIVE', 'REPLACED'])
                 .order('effectiveFrom', { ascending: false })
                 .order('createdAt', { ascending: false });
@@ -182,8 +193,17 @@ export async function GET(request: NextRequest) {
             }
 
             let activeShift = null;
-            if (shifts && shifts.length > 0) {
-                activeShift = shifts[0];
+            let tomorrowShift = null;
+
+            if (allShifts && allShifts.length > 0) {
+                // Ca cho ngày mai là ca ACTIVE có hiệu lực <= tomorrowStr
+                tomorrowShift = allShifts.find(s => s.status === 'ACTIVE') || allShifts[0];
+
+                // Ca cho hôm nay là ca có hiệu lực <= businessDateStr
+                const shiftsToday = allShifts.filter(s => s.effectiveFrom <= businessDateStr);
+                if (shiftsToday.length > 0) {
+                    activeShift = shiftsToday.find(s => s.status === 'ACTIVE') || shiftsToday[0];
+                }
             }
 
             // Tự động dọn dẹp (revert) ca tạm thời trong DB nếu nó đang ACTIVE và đã qua ngày hôm nay
@@ -230,6 +250,8 @@ export async function GET(request: NextRequest) {
 
             // Đè ca làm việc nếu là ngày lễ
             let currentShift = activeShift || null;
+            let computedTomorrowShift = tomorrowShift || null;
+
             if (isHolidayOverride) {
                 currentShift = currentShift ? { ...currentShift, shiftType: 'SHIFT_2' } : {
                     id: 'holiday-override',
@@ -237,8 +259,11 @@ export async function GET(request: NextRequest) {
                     shiftType: 'SHIFT_2',
                     status: 'ACTIVE',
                     reason: 'Tự động áp dụng ngày Lễ',
-                    effectiveFrom: new Date().toISOString().split('T')[0]
+                    effectiveFrom: businessDateStr
                 };
+                
+                // Giả định ngày lễ cũng đè lên ca ngày mai nếu ngày mai cũng là ngày lễ (tạm thời áp dụng cho hôm nay)
+                // Để đơn giản, ta chỉ đổi ca hôm nay theo isHolidayOverride.
             }
 
             // Cut-off time is already calculated at the top as businessDateStr
@@ -257,6 +282,7 @@ export async function GET(request: NextRequest) {
                 success: true,
                 data: {
                     currentShift,
+                    tomorrowShift: computedTomorrowShift,
                     pendingRequest: pendingShift || null,
                     history: history || [],
                     isOffToday

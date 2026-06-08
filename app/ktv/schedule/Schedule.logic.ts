@@ -64,6 +64,7 @@ export const useKTVSchedule = () => {
 
     // ── Shift state ──
     const [currentShift, setCurrentShift] = useState<ShiftRecord | null>(null);
+    const [tomorrowShift, setTomorrowShift] = useState<ShiftRecord | null>(null);
     const [pendingRequest, setPendingRequest] = useState<ShiftRecord | null>(null);
     const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>([]);
     const [shiftTypes, setShiftTypes] = useState<ShiftTypes>({});
@@ -130,6 +131,7 @@ export const useKTVSchedule = () => {
 
             if (result.success) {
                 setCurrentShift(result.data.currentShift);
+                setTomorrowShift(result.data.tomorrowShift);
                 setPendingRequest(result.data.pendingRequest);
                 setShiftHistory(result.data.history || []);
                 setShiftTypes(result.shiftTypes || {});
@@ -289,6 +291,7 @@ export const useKTVSchedule = () => {
 
         // Shift
         currentShift,
+        tomorrowShift,
         pendingRequest,
         shiftHistory,
         shiftTypes,
