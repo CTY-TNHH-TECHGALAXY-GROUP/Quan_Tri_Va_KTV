@@ -749,10 +749,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                                                 ktvMatchesSeg(seg.ktvId, ktvId)
                             );
                             
-                            // 🔧 Gắn _itemId để phục vụ rule MERGE
                             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
                             allMySegs.push(...mySegsWithId);
                         }
+
+                        allMySegs.sort((a, b) => {
+                            const timeA = a.startTime || '23:59';
+                            const timeB = b.startTime || '23:59';
+                            return timeA.localeCompare(timeB);
+                        });
 
                         // Kiểm tra Rule Merge Timer: CÙNG PHÒNG → merge 1 timer tổng
                         // (khác phòng → chia chặng riêng)
@@ -1178,7 +1183,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0);
                 
                 // Nếu chưa có actualStartTime thật sự từ DB, giữ nguyên để GUARD chặn lại
-                if (!allMySegs[0].actualStartTime || allMySegs[0].actualStartTime === tStart) {
+                if (!allMySegs[0].actualStartTime) {
                     activeSegStartTime = tStart;
                 } else {
                     // Smart Merge Sequential Time Allocation
@@ -1204,7 +1209,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             // 🔒 GUARD: Chỉ sync khi có actualStartTime thực sự từ DB
             // Nếu chỉ có tStart (giờ đặt lịch), KHÔNG dùng để tính elapsed → sẽ ra sai
-            if (!activeSegStartTime || activeSegStartTime === tStart) {
+            if (!activeSegStartTime || !allMySegs[0]?.actualStartTime) {
                 // Chưa có actualStartTime thật → dùng timerStartMsRef hiện tại (client-local)
                 // Không update gì cả để tránh override timer về 0
                 return;
