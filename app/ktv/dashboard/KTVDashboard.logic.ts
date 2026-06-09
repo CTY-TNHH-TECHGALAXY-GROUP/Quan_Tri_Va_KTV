@@ -1722,16 +1722,26 @@ export function useKTVDashboard(config?: DashboardConfig) {
                        && !sName.includes('phong rieng');
             });
 
-            const milestones = settings.ktv_commission_milestones || {
+            let parsedMilestones: any = null;
+            if (typeof settings.ktv_commission_milestones === 'string') {
+                try {
+                    parsedMilestones = JSON.parse(settings.ktv_commission_milestones);
+                } catch (e) {}
+            } else if (settings.ktv_commission_milestones && typeof settings.ktv_commission_milestones === 'object') {
+                parsedMilestones = settings.ktv_commission_milestones;
+            }
+
+            const milestones = parsedMilestones || {
                 '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, 
                 '90': 150000, '120': 200000, '180': 300000, '300': 500000
             };
-            const rate60 = Number(settings.ktv_commission_per_60min || 100000);
+            let rate60 = Number(settings.ktv_commission_per_60min);
+            if (isNaN(rate60) || rate60 <= 0) rate60 = 100000;
 
             const calculateCommissionForMins = (mins: number) => {
-                if (mins <= 0) return 0;
+                if (isNaN(mins) || mins <= 0) return 0;
                 const minsStr = String(mins);
-                if (milestones[minsStr]) {
+                if (milestones[minsStr] != null) {
                     return Number(milestones[minsStr]);
                 } else {
                     return Math.round(((mins / 60) * rate60) / 1000) * 1000;
@@ -1756,19 +1766,28 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             itemMins = mySegs.reduce((sum: number, seg: any) => {
                                 const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
                                 if (realMins > 0) return sum + realMins;
-                                return sum + (Number(seg.duration) || 0);
+                                const dur = Number(seg.duration);
+                                return sum + (isNaN(dur) ? 0 : dur);
                             }, 0);
                         } else {
-                            itemMins = item.duration || 60;
+                            const dur = Number(item.duration);
+                            itemMins = isNaN(dur) || dur <= 0 ? 60 : dur;
                         }
-                    } catch { itemMins = item.duration || 60; }
+                    } catch { 
+                        const dur = Number(item.duration);
+                        itemMins = isNaN(dur) || dur <= 0 ? 60 : dur; 
+                    }
                 } else {
-                    itemMins = item?.duration || 60;
+                    const dur = Number(item?.duration);
+                    itemMins = isNaN(dur) || dur <= 0 ? 60 : dur;
                 }
                 
-                if (itemMins === 0) itemMins = 60; // fallback per item
+                itemMins = Number(itemMins);
+                if (isNaN(itemMins) || itemMins <= 0) itemMins = 60; // fallback per item
+                
                 totalMins += itemMins;
-                totalCommission += calculateCommissionForMins(itemMins);
+                const comm = calculateCommissionForMins(itemMins);
+                totalCommission += (isNaN(comm) ? 0 : comm);
             }
             
             // Fallback nếu không có item nào
@@ -1776,6 +1795,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 totalMins = 60;
                 totalCommission = calculateCommissionForMins(60);
             }
+            
+            if (isNaN(totalCommission)) totalCommission = 0;
 
             console.log("💰 [Commission] Items:", itemIds.length, "Total Duration:", totalMins, "Total Commission:", totalCommission);
 
