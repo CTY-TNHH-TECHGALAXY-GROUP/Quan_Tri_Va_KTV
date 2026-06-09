@@ -326,7 +326,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && selectedShiftType === 'FREE') ? estimatedEndTime : null
+            (formType === 'CHECK_IN' && isOffToday && selectedShiftType === 'FREE') ? estimatedEndTime : null
         );
     };
 
@@ -361,7 +361,7 @@ const KTVAttendancePage = () => {
                                     onClick={() => openForm('CHECK_IN')}
                                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
                                 >
-                                    Điểm Danh VÀO CA
+                                    Ngân Hà Xin Chào
                                 </button>
                             </div>
                         </>
@@ -502,7 +502,7 @@ const KTVAttendancePage = () => {
                                         disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
                                         className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                                     >
-                                        <LogOut size={22} /> {t.checkOut}
+                                        <LogOut size={22} /> Ngân Hà Xin Cảm ơn
                                     </button>
                                 </>
                             )}
@@ -549,8 +549,8 @@ const KTVAttendancePage = () => {
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
-                                {formType === 'CHECK_IN' ? 'Điểm danh vào ca' :
-                                 formType === 'CHECK_OUT' ? 'Điểm danh tan ca' :
+                                {formType === 'CHECK_IN' ? 'Ngân Hà Xin Chào' :
+                                 formType === 'CHECK_OUT' ? 'Ngân Hà Xin Cảm ơn' :
                                  'Điểm danh bổ sung'}
                             </h3>
 
@@ -594,7 +594,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && selectedShiftType === 'FREE' && (
+                            {formType === 'CHECK_IN' && isOffToday && selectedShiftType === 'FREE' && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -691,7 +691,7 @@ const KTVAttendancePage = () => {
                                 <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                 <button 
                                    onClick={handleSubmitForm}
-                                   disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && !estimatedEndTime))}
+                                   disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && isOffToday && selectedShiftType === 'FREE' && !estimatedEndTime))}
                                    className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                     <CheckCircle2 size={18} /> Gửi
                                 </button>
