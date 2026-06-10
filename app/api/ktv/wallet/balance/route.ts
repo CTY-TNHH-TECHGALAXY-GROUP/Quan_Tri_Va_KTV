@@ -235,6 +235,7 @@ export async function GET(request: Request) {
             .from('KTVWithdrawals')
             .select('amount, status')
             .eq('staff_id', techCode)
+            .or('wallet_type.eq.TUA,wallet_type.is.null')
             .gte('request_date', GLOBAL_START_DATE_ISO);
             
         const total_withdrawn = (withdrawals || [])
@@ -280,3 +281,4 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
