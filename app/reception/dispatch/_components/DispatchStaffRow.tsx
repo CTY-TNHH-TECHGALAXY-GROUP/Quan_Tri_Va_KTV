@@ -123,7 +123,7 @@ export const DispatchStaffRow = ({
     }, []);
 
     const handleChange = (patch: Partial<StaffAssignment>) => {
-        onUpdate(orderId, svcId, row.id, { ...row, ...patch });
+        onUpdate(orderId, svcId, row.id, patch);
     };
 
     // 🖨️ Show KTV Turn Ticket Preview

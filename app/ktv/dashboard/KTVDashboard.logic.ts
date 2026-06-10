@@ -763,7 +763,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         // (khác phòng → chia chặng riêng)
                         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
                         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
-                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+                        const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
+                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
                         let currentStatus = assignedItem?.status || res.data.status;
                         
@@ -1427,8 +1428,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             // Tính shouldMerge để set timer đúng tổng nếu cần
             const segItemIds = new Set(allMySegs.map((s: any) => s._itemId).filter(Boolean));
+            const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
             const uniqueItemIdsForPrep = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
-            const isMerge = allMySegs.length > 1 && uniqueItemIdsForPrep.size === allMySegs.length;
+            const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
+            const isMerge = allMySegs.length > 1 && uniqueItemIdsForPrep.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
             const initDuration = isMerge
                 ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
@@ -1468,9 +1471,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             allMySegs.push(...mySegsWithId);
         }
         
-        // Merge: gộp tất cả các dịch vụ riêng biệt (bất kể phòng nào) thành 1 chặng liên tục
+        // Merge: gộp tất cả các dịch vụ riêng biệt (cùng phòng) thành 1 chặng liên tục
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+        const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
         setIsLoading(true);
         const response = await fetch('/api/ktv/booking', {
@@ -1542,8 +1547,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
         allMySegs.sort((a, b) => (a.startTime || '23:59').localeCompare(b.startTime || '23:59'));
 
         // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length;
+        const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
         const currentIdx = activeSegmentIndex;
         // Nếu shouldMerge = true, bỏ qua advance và coi như đã làm xong chặng cuối
