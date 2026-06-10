@@ -521,3 +521,4 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
+

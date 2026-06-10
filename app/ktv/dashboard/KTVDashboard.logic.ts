@@ -817,7 +817,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                         break;
                                     }
                                 }
-                                if (foundIdx >= 0) calculatedSegIdx = foundIdx;
+                                if (foundIdx >= 0) { calculatedSegIdx = foundIdx; } else { const nextIdx = allMySegs.findIndex(s => !s.actualStartTime); if (nextIdx !== -1) calculatedSegIdx = nextIdx; }
                             } else if (currentStatus === 'IN_PROGRESS' && res.data.timeStart) {
                                 // Fallback đếm ngược ảo nếu chưa có segments time tracking
                                 let tStart = res.data.timeStart;
@@ -1985,3 +1985,4 @@ export function useKTVDashboard(config?: DashboardConfig) {
         canViewWallet
     };
 }
+

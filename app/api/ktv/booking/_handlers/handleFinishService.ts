@@ -61,9 +61,20 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     }
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
+    const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
+    
+    // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
+    const hasFinishedSegment = allGlobalSegs.some((s: any) => 
+        s.item.status === 'DONE' || 
+        (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS')
+    );
+
     // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
     // tự động gộp và phân bổ thời gian liên tục (kể cả DV gán thêm lúc đang làm).
-    const isMerged = allGlobalSegs.length > 1 && uniqueItemIds.size === allGlobalSegs.length;
+    const isMerged = allGlobalSegs.length > 1 
+        && uniqueItemIds.size === allGlobalSegs.length
+        && uniqueRoomIds.size === 1
+        && !hasFinishedSegment;
 
     // ─── 2. isMerged TIME ALLOCATION ───
     if (isMerged && (status === 'CLEANING' || isFeedback)) {

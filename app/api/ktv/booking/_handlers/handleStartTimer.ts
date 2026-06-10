@@ -122,10 +122,14 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         }
 
         if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
-            const startIdx = action === 'START_TIMER' ? 0 : activeSegmentIndex;
+            const startIdx = activeSegmentIndex; // Use activeSegmentIndex from client or logic
             if (allGlobalSegs[startIdx]) {
                 const myStartTime = allGlobalSegs[startIdx].seg.startTime;
-                if (action === 'NEXT_SEGMENT' && startIdx > 0) allGlobalSegs[startIdx - 1].seg.actualEndTime = sharedTimeStart;
+                if (action === 'NEXT_SEGMENT' && startIdx > 0) {
+                    if (!allGlobalSegs[startIdx - 1].seg.actualEndTime) {
+                        allGlobalSegs[startIdx - 1].seg.actualEndTime = sharedTimeStart;
+                    }
+                }
                 
                 allGlobalSegs[startIdx].seg.actualStartTime = sharedTimeStart;
                 
@@ -136,7 +140,14 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                 // không gộp vào nhóm hiện tại khi hoàn tất.
                 if (action === 'START_TIMER' && allGlobalSegs.length > 1) {
                     const mergeItemIds = new Set(allGlobalSegs.map((s: any) => s.item?.id));
-                    const isMergeAtStart = mergeItemIds.size === allGlobalSegs.length;
+                    const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
+                    const hasFinishedSegment = allGlobalSegs.some((s: any) => s.item.status === 'DONE' || (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS'));
+                    
+                    const isMergeAtStart = allGlobalSegs.length > 1 
+                        && mergeItemIds.size === allGlobalSegs.length
+                        && uniqueRoomIds.size === 1
+                        && !hasFinishedSegment;
+                        
                     if (isMergeAtStart) {
                         console.log(`🔒 [Merge Lock] Stamping actualStartTime on ${allGlobalSegs.length} segments for ${technicianCode}`);
                         allGlobalSegs.forEach((itemSeg: any, i: number) => {
@@ -230,3 +241,4 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
 
     return { bookingUpdatePayload };
 }
+
