@@ -166,9 +166,13 @@ export interface Service {
   
   showCustomForYou?: boolean;
   showNotes?: boolean;
-  showPreferences?: boolean;
+  showGender?: boolean;
+  showStrength?: boolean;
+  showFocus?: boolean;
+  showPreferences?: boolean; // Legacy
   
   focusConfig?: FocusConfig | null;
   tags?: (string | Record<string, string>)[] | null;
   hint?: any;
 }
+

@@ -151,7 +151,9 @@ export function EditServiceDrawer({ isOpen, onClose, service, onSuccess }: EditS
         isBestSeller: formData.isBestSeller,
         showCustomForYou: formData.showCustomForYou,
         showNotes: formData.showNotes,
-        showPreferences: formData.showPreferences,
+        showGender: formData.showGender,
+        showStrength: formData.showStrength,
+        showFocus: formData.showFocus,
 
         focusConfig: formData.focusConfig,
         tags: formData.tags?.filter(t => {
@@ -415,8 +417,18 @@ export function EditServiceDrawer({ isOpen, onClose, service, onSuccess }: EditS
                     </label>
                     
                     <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
-                      <span className="text-sm font-medium text-gray-700">Mục Lực đấm / Giới tính</span>
-                      <input type="checkbox" name="showPreferences" checked={formData.showPreferences !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                      <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
+                      <input type="checkbox" name="showStrength" checked={formData.showStrength !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                    </label>
+                    
+                    <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                      <span className="text-sm font-medium text-gray-700">Chọn Giới tính KTV</span>
+                      <input type="checkbox" name="showGender" checked={formData.showGender !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                      <span className="text-sm font-medium text-gray-700">Chọn Vị trí (Focus/Avoid)</span>
+                      <input type="checkbox" name="showFocus" checked={formData.showFocus !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
                     </label>
                   </div>
                 </div>

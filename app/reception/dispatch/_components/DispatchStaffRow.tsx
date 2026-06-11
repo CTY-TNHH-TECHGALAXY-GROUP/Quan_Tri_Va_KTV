@@ -606,8 +606,11 @@ export const DispatchStaffRow = ({
                                             <AlertCircle size={14} className="text-amber-500" /> Yêu Cầu Khách Hàng
                                         </p>
                                         <div className="flex flex-wrap gap-2">
-
-                                            {/* Giới tính KTV: Không cần in ra phiếu cho KTV */}
+                                            {genderReq && (
+                                                <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-purple-50 text-purple-700 border-purple-100 shadow-sm">
+                                                    👩 {genderReq}
+                                                </span>
+                                            )}
                                             {strength && (
                                                 <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-orange-50 text-orange-700 border-orange-100 shadow-sm">
                                                     💪 Lực: {strength}
