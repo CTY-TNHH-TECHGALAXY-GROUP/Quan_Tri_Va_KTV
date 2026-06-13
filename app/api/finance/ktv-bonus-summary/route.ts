@@ -6,8 +6,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const fromDate = searchParams.get('fromDate');
+        let fromDate = searchParams.get('fromDate');
         const toDate = searchParams.get('toDate');
+
+        // Yêu cầu: Lấy dữ liệu từ ngày 1/6/2026 trở đi khi ở lựa chọn "Tất cả"
+        if (!fromDate) {
+            fromDate = '2026-06-01';
+        }
 
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'No admin client' }, { status: 500 });
