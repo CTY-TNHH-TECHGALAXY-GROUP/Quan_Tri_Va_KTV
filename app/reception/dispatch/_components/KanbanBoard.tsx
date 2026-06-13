@@ -334,9 +334,14 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                         >
                                             <div className="p-4">
                                                 <div className="flex items-center justify-between mb-4">
-                                                    <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2 py-0.5 rounded-lg tracking-wider">
-                                                        {order.billCode} {services.length < order.services.length && '(Tách)'}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2 py-0.5 rounded-lg tracking-wider">
+                                                            {order.billCode} {services.length < order.services.length && '(Tách)'}
+                                                        </span>
+                                                        {order.hasVat && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
                                                         <Clock size={11} className="text-indigo-400" /> ra ca {getEstimatedEndTime(order, services)}
                                                     </div>
@@ -440,11 +445,6 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                               {pmIcon}
                                                               <span className={`text-[9px] font-bold ${colorClass}`}>{pmText}</span>
                                                             </div>
-                                                            {order.hasVat && (
-                                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md border bg-blue-50 border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">
-                                                                    <span className="text-[9px] font-black text-blue-600">VAT</span>
-                                                                </div>
-                                                            )}
                                                           </div>
                                                         );
                                                     })()}
