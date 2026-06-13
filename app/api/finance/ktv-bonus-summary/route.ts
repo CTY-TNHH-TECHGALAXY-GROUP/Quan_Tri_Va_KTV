@@ -83,7 +83,7 @@ export async function GET(request: Request) {
                 .from('Bookings')
                 .select(`
                     id, timeStart, timeEnd, status, technicianCode, rating,
-                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating )
+                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings )
                 `)
                 .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
 
@@ -142,59 +142,78 @@ export async function GET(request: Request) {
             }
         });
 
-        // Sum Earned from Realtime Bookings
+        // Sum Earned from Realtime Bookings (ĐỒNG BỘ LOGIC VỚI API VÍ KTV bonus/balance)
         realtimeBookings.forEach(b => {
-            const bRating = Number(b.rating) || 0;
-            const maxItemRating = Math.max(...(b.BookingItems || []).map((i: any) => Number(i.itemRating) || 0), 0);
-            const bookingRating = Math.max(bRating, maxItemRating);
+            // Collect all KTV codes in this booking
+            const allKtvCodes = new Set<string>();
+            for (const item of (b.BookingItems || [])) {
+                if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                    item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+                }
+            }
+            const totalUniqueKTVs = allKtvCodes.size || 1;
 
-            if (bookingRating >= 4) {
-                // Calculate duration
+            // Per-KTV: tính rating và duration RIÊNG cho từng KTV
+            allKtvCodes.forEach(techCode => {
+                const sId = staffIds.find(id => id.toLowerCase() === techCode);
+                if (!sId || !statsMap[sId]) return;
+
+                // 1. Tính rating riêng cho KTV này (giống wallet API)
+                let maxKtvRating = 0;
+                for (const item of (b.BookingItems || [])) {
+                    const isTechInvolved = item.technicianCodes && Array.isArray(item.technicianCodes) &&
+                        item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode);
+
+                    if (isTechInvolved) {
+                        let ktvRating = 0;
+                        // Fallback chain: ktvRatings → itemRating → booking.rating
+                        let parsedKtvRatings = (item as any).ktvRatings;
+                        if (typeof parsedKtvRatings === 'string') {
+                            try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
+                        }
+                        if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
+                            const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode);
+                            if (key) ktvRating = Number(parsedKtvRatings[key]) || 0;
+                        }
+                        if (ktvRating === 0) ktvRating = Number(item.itemRating) || 0;
+                        if (ktvRating === 0) ktvRating = Number(b.rating) || 0;
+                        if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
+                    }
+                }
+
+                if (maxKtvRating < 4) return; // Không đủ rating → bỏ qua
+
+                // 2. Tính duration RIÊNG cho KTV này (chỉ segment của họ)
                 let totalDuration = 0;
                 for (const item of (b.BookingItems || [])) {
                     let segs: any[] = [];
                     try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
-                    if (segs.length > 0) totalDuration += segs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
-                    else totalDuration += 60;
-                }
 
-                let adjustedBasePoints = 20; // Sẽ bị override ở dưới
-                if (totalDuration < 60) adjustedBasePoints = 10;
-
-                const allKtvCodes = new Set<string>();
-                for (const item of (b.BookingItems || [])) {
-                    if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                        item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+                    const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode));
+                    if (mySegs.length > 0) {
+                        totalDuration += mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+                    } else if (item.technicianCodes && item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode)) {
+                        totalDuration += 60; // Fallback
                     }
                 }
-                const totalUniqueKTVs = allKtvCodes.size || 1;
 
-                // Per-KTV bonus based on shift
-                if (totalUniqueKTVs > 0) {
-                    const bookingDateStr = b.timeStart ? b.timeStart.slice(0, 10) : todayStr;
-                    allKtvCodes.forEach(techCode => {
-                        const sId = staffIds.find(id => id.toLowerCase() === techCode);
-                        if (sId && statsMap[sId]) {
-                            let currentShift = 'SHIFT_1';
-                            const ktvShifts = (shiftsData || []).filter(s => s.employeeId === sId);
-                            for (const s of ktvShifts) {
-                                const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
-                                if (effDate && effDate <= bookingDateStr) {
-                                    currentShift = s.shiftType;
-                                }
-                            }
-
-                            let basePoints = s1Bonus;
-                            if (currentShift === 'SHIFT_2') basePoints = s2Bonus;
-                            else if (currentShift === 'SHIFT_3') basePoints = s3Bonus;
-
-                            if (totalDuration < 60) basePoints = Math.floor(basePoints / 2);
-                            const bonusPts = Math.floor(basePoints / totalUniqueKTVs);
-                            statsMap[sId].totalEarned += bonusPts;
-                        }
-                    });
+                // 3. Tính base points theo ca làm
+                const bookingDateStr = b.timeStart ? b.timeStart.slice(0, 10) : todayStr;
+                let currentShift = 'SHIFT_1';
+                const ktvShifts = (shiftsData || []).filter(s => s.employeeId === sId);
+                for (const s of ktvShifts) {
+                    const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+                    if (effDate && effDate <= bookingDateStr) currentShift = s.shiftType;
                 }
-            }
+
+                let basePoints = s1Bonus;
+                if (currentShift === 'SHIFT_2') basePoints = s2Bonus;
+                else if (currentShift === 'SHIFT_3') basePoints = s3Bonus;
+
+                if (totalDuration < 60) basePoints = basePoints / 2;
+                const bonusPts = Math.floor(basePoints / totalUniqueKTVs);
+                statsMap[sId].totalEarned += bonusPts;
+            });
         });
 
         // Sum Deducted / Gifted

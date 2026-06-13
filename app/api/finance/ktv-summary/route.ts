@@ -147,7 +147,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode, rating,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating )
+                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
             `)
             .gte('timeStart', realtimeStartStr)
             .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
@@ -223,18 +223,36 @@ export async function GET(request: Request) {
                 rt_commission += bookingCommission || calcCommission(60, milestones, ratePer60);
                 rt_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
 
-                // === Calculate Bonus ===
-                const bRating = Number(b.rating) || 0;
-                const maxItemRating = Math.max(...(b.BookingItems || []).map((i: any) => Number(i.itemRating) || 0), 0);
-                const bookingRating = Math.max(bRating, maxItemRating);
+                // === Calculate Bonus (ĐỒNG BỘ LOGIC VỚI API VÍ KTV bonus/balance) ===
+                let maxKtvRating = 0;
+                for (const item of relevantItems) {
+                    let ktvRating = 0;
+                    // Fallback chain: ktvRatings → itemRating → booking.rating
+                    let parsedKtvRatings = (item as any).ktvRatings;
+                    if (typeof parsedKtvRatings === 'string') {
+                        try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
+                    }
+                    if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
+                        const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode.toLowerCase());
+                        if (key) ktvRating = Number(parsedKtvRatings[key]) || 0;
+                    }
+                    if (ktvRating === 0) ktvRating = Number(item.itemRating) || 0;
+                    if (ktvRating === 0) ktvRating = Number(b.rating) || 0;
+                    if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
+                }
 
-                if (bookingRating >= 4) {
-                    let fullTotalDuration = 0;
+                if (maxKtvRating >= 4) {
+                    // Tính duration RIÊNG cho KTV này (chỉ segment của họ)
+                    let myTotalDuration = 0;
                     for (const item of (b.BookingItems || [])) {
                         let segs: any[] = [];
                         try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
-                        if (segs.length > 0) fullTotalDuration += segs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
-                        else fullTotalDuration += svcDurationMap[String(item.serviceId)] || 60;
+                        const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
+                        if (mySegs.length > 0) {
+                            myTotalDuration += mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+                        } else if (item.technicianCodes && item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase())) {
+                            myTotalDuration += 60; // Fallback
+                        }
                     }
 
                     // Use basePoints from KTV's shift config
@@ -243,16 +261,14 @@ export async function GET(request: Request) {
                     const ktvShifts = (shiftsData || []).filter(s => s.employeeId === techCode);
                     for (const s of ktvShifts) {
                         const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
-                        if (effDate && effDate <= bookingDateStr) {
-                            currentShift = s.shiftType;
-                        }
+                        if (effDate && effDate <= bookingDateStr) currentShift = s.shiftType;
                     }
 
                     let adjustedBasePoints = s1Bonus;
                     if (currentShift === 'SHIFT_2') adjustedBasePoints = s2Bonus;
                     else if (currentShift === 'SHIFT_3') adjustedBasePoints = s3Bonus;
 
-                    if (fullTotalDuration < 60) adjustedBasePoints = Math.floor(adjustedBasePoints / 2);
+                    if (myTotalDuration < 60) adjustedBasePoints = adjustedBasePoints / 2;
 
                     const allKtvCodes = new Set<string>();
                     for (const item of (b.BookingItems || [])) {
