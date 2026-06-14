@@ -20,7 +20,8 @@ export async function GET() {
             auto_finish_on_timer_end: true,
             push_notifications_enabled: true,
             allow_early_checkout: true,
-            spa_day_cutoff_hours: 6
+            spa_day_cutoff_hours: 6,
+            min_photo_brightness: 40
         };
 
         if (error || !configs || configs.length === 0) {

@@ -61,6 +61,7 @@ export const useKTVAttendance = () => {
     const [dayCutoffHours, setDayCutoffHours] = useState(6);
     const [shiftFetchError, setShiftFetchError] = useState(false);
     const [shiftRetryCount, setShiftRetryCount] = useState(0);
+    const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -86,6 +87,9 @@ export const useKTVAttendance = () => {
                         }
                         if (settingsData.data?.spa_day_cutoff_hours !== undefined) {
                             setDayCutoffHours(Number(settingsData.data.spa_day_cutoff_hours));
+                        }
+                        if (settingsData.data?.min_photo_brightness !== undefined) {
+                            setMinPhotoBrightness(Number(settingsData.data.min_photo_brightness));
                         }
                     }
                 }
@@ -371,6 +375,7 @@ export const useKTVAttendance = () => {
         handleRetry,
         clearError,
         isOffToday,
-        allowEarlyCheckout
+        allowEarlyCheckout,
+        minPhotoBrightness
     };
 };

@@ -31,6 +31,7 @@ const KTVAttendancePage = () => {
         retryFetchShift,
         isOffToday,
         allowEarlyCheckout,
+        minPhotoBrightness,
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -38,6 +39,19 @@ const KTVAttendancePage = () => {
     const WATERMARK_FONT_SIZE = 18;
     const WATERMARK_PADDING = 12;
     const WATERMARK_BG_OPACITY = 0.55;
+
+    const getAverageBrightness = (canvas: HTMLCanvasElement): number => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return 255;
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let total = 0;
+        let count = 0;
+        for (let i = 0; i < data.length; i += 40) { // Sample mỗi 10 pixel
+            total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            count++;
+        }
+        return count > 0 ? total / count : 255;
+    };
 
     const [isFormOpen, setIsFormOpen] = React.useState(false);
     const [formType, setFormType] = React.useState<'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN'>('CHECK_IN');
@@ -114,6 +128,13 @@ const KTVAttendancePage = () => {
         if (!ctx) return;
         
         ctx.drawImage(video, 0, 0, width, height);
+
+        // 🔆 Kiểm tra độ sáng trước khi chấp nhận
+        const brightness = getAverageBrightness(canvas);
+        if (brightness < minPhotoBrightness) {
+            alert('⚠️ Ảnh quá tối! Vui lòng bật đèn hoặc di chuyển đến nơi có đủ ánh sáng rồi chụp lại.');
+            return;
+        }
 
         // Watermark
         const now = new Date();
@@ -226,6 +247,13 @@ const KTVAttendancePage = () => {
                 if (!ctx) { reject(new Error('Canvas not supported')); return; }
                 ctx.drawImage(img, 0, 0, width, height);
 
+                // 🔆 Kiểm tra độ sáng
+                const brightness = getAverageBrightness(canvas);
+                if (brightness < minPhotoBrightness) {
+                    reject(new Error('TOO_DARK'));
+                    return;
+                }
+
                 // === WATERMARK: Timestamp + IP ===
                 const now = new Date();
                 const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
@@ -290,7 +318,11 @@ const KTVAttendancePage = () => {
                     if (prev.length < MAX_PHOTOS) return [...prev, compressed];
                     return prev;
                 });
-            } catch {
+            } catch (err: any) {
+                if (err?.message === 'TOO_DARK') {
+                    alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
+                    continue;
+                }
                 // Fallback to raw FileReader if compression fails
                 const reader = new FileReader();
                 reader.onload = (ev) => {
