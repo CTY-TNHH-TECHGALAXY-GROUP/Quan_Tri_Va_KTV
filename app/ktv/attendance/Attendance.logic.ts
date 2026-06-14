@@ -59,6 +59,8 @@ export const useKTVAttendance = () => {
     const [isOffToday, setIsOffToday] = useState(false);
     const [allowEarlyCheckout, setAllowEarlyCheckout] = useState(true);
     const [dayCutoffHours, setDayCutoffHours] = useState(6);
+    const [shiftFetchError, setShiftFetchError] = useState(false);
+    const [shiftRetryCount, setShiftRetryCount] = useState(0);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -127,20 +129,24 @@ export const useKTVAttendance = () => {
 
                 if (result.success && result.data?.currentShift && !isOff) {
                     setActiveShiftType(result.data.currentShift.shiftType);
+                    setShiftFetchError(false);
                 } else {
-                    setActiveShiftType(null); // no shift assigned or is OFF today → allow checkout
+                    setActiveShiftType(null);
+                    // Flag lỗi nếu KTV không OFF nhưng không tìm thấy ca
+                    setShiftFetchError(!isOff);
                 }
 
             } catch {
                 setActiveShiftType(null);
                 setIsOffToday(false);
+                setShiftFetchError(true);
             } finally {
                 setIsLoadingShift(false);
             }
         };
 
         fetchShift();
-    }, [checkStatus, user?.id]);
+    }, [checkStatus, user?.id, shiftRetryCount]);
 
     // --- Realtime subscription ---
     useEffect(() => {
@@ -212,6 +218,11 @@ export const useKTVAttendance = () => {
         setIsLate(late);
         return late;
     }, [activeShiftType, dayCutoffHours]);
+
+    const retryFetchShift = useCallback(() => {
+        setShiftFetchError(false);
+        setShiftRetryCount(prev => prev + 1);
+    }, []);
 
     const handleAttendance = useCallback(async (
         checkType: 'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN' | 'SUDDEN_OFF',
@@ -352,6 +363,8 @@ export const useKTVAttendance = () => {
         checkoutBlockedUntil,
         isLoadingShift,
         activeShiftType,
+        shiftFetchError,
+        retryFetchShift,
         isLate,
         checkIsLate,
         handleAttendance,

@@ -27,6 +27,8 @@ const KTVAttendancePage = () => {
         handleRetry,
         clearError,
         activeShiftType,
+        shiftFetchError,
+        retryFetchShift,
         isOffToday,
         allowEarlyCheckout,
     } = useKTVAttendance();
@@ -580,15 +582,30 @@ const KTVAttendancePage = () => {
                                                     <span>Hôm nay là ngày OFF của bạn.</span>
                                                 </div>
                                             )}
-                                            <select 
-                                                value={selectedShiftType}
-                                                onChange={(e) => setSelectedShiftType(e.target.value)}
-                                                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium text-gray-700"
-                                            >
-                                                <option value="FREE">Ca tự do (Linh hoạt)</option>
-                                                <option value="REQUEST">Làm khách yêu cầu</option>
-                                                {!isOffToday && <option value="SUDDEN_OFF">Nghỉ đột xuất</option>}
-                                            </select>
+                                            {!isOffToday && shiftFetchError ? (
+                                                <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
+                                                    <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
+                                                        <AlertCircle size={14} className="shrink-0" />
+                                                        Không tải được ca làm việc. Vui lòng thử lại.
+                                                    </p>
+                                                    <button 
+                                                        onClick={() => retryFetchShift()}
+                                                        className="w-full py-2 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-lg transition-colors"
+                                                    >
+                                                        🔄 Tải lại ca làm việc
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <select 
+                                                    value={selectedShiftType}
+                                                    onChange={(e) => setSelectedShiftType(e.target.value)}
+                                                    className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium text-gray-700"
+                                                >
+                                                    <option value="FREE">Ca tự do (Linh hoạt)</option>
+                                                    <option value="REQUEST">Làm khách yêu cầu</option>
+                                                    {!isOffToday && <option value="SUDDEN_OFF">Nghỉ đột xuất</option>}
+                                                </select>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -691,7 +708,7 @@ const KTVAttendancePage = () => {
                                 <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                 <button 
                                    onClick={handleSubmitForm}
-                                   disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && !estimatedEndTime))}
+                                   disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                    className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                     <CheckCircle2 size={18} /> Gửi
                                 </button>
