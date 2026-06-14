@@ -594,6 +594,32 @@ function ScreenTimer({ logic }: { logic: any }) {
   } = logic;
 
   // 📸 CAMERA WEBRTC STATE & LOGIC FOR START TIMER
+  const MIN_BRIGHTNESS_FALLBACK = 40;
+  const [minBrightness, setMinBrightness] = React.useState(MIN_BRIGHTNESS_FALLBACK);
+
+  React.useEffect(() => {
+      fetch('/api/ktv/settings')
+          .then(r => r.json())
+          .then(json => {
+              if (json.success && json.data?.min_photo_brightness !== undefined) {
+                  setMinBrightness(Number(json.data.min_photo_brightness));
+              }
+          })
+          .catch(() => { /* use fallback */ });
+  }, []);
+
+  const getAverageBrightness = (canvas: HTMLCanvasElement): number => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return 255;
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let total = 0;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 40) {
+          total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          count++;
+      }
+      return count > 0 ? total / count : 255;
+  };
   const [isCameraOpen, setIsCameraOpen] = React.useState(false);
   const [stream, setStream] = React.useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = React.useState<'user' | 'environment'>('environment');
@@ -648,6 +674,14 @@ function ScreenTimer({ logic }: { logic: any }) {
       if (!ctx) return;
       
       ctx.drawImage(video, 0, 0, width, height);
+
+      // 🔆 Kiểm tra độ sáng
+      const brightness = getAverageBrightness(canvas);
+      console.log(`🔆 [Brightness Check] Giá trị: ${brightness.toFixed(1)} | Ngưỡng: ${minBrightness}`);
+      if (brightness < minBrightness) {
+          alert(`⚠️ Ảnh quá tối (độ sáng: ${brightness.toFixed(0)}/255)!\nVui lòng bật đèn hoặc di chuyển đến nơi có đủ ánh sáng rồi chụp lại.`);
+          return;
+      }
 
       // Watermark
       const now = new Date();
@@ -705,6 +739,13 @@ function ScreenTimer({ logic }: { logic: any }) {
               if (!ctx) { reject(new Error('Canvas not supported')); return; }
               ctx.drawImage(img, 0, 0, width, height);
 
+              // 🔆 Kiểm tra độ sáng
+              const brightness = getAverageBrightness(canvas);
+              if (brightness < minBrightness) {
+                  reject(new Error('TOO_DARK'));
+                  return;
+              }
+
               const now = new Date();
               const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
               const pad = (n: number) => String(n).padStart(2, '0');
@@ -735,13 +776,17 @@ function ScreenTimer({ logic }: { logic: any }) {
       try {
           const compressed = await compressImage(file);
           logic.setStartPhotoBase64(compressed);
-      } catch (err) {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-              const result = ev.target?.result as string;
-              if (result) logic.setStartPhotoBase64(result);
-          };
-          reader.readAsDataURL(file);
+      } catch (err: any) {
+          if (err?.message === 'TOO_DARK') {
+              alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
+          } else {
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                  const result = ev.target?.result as string;
+                  if (result) logic.setStartPhotoBase64(result);
+              };
+              reader.readAsDataURL(file);
+          }
       }
       if (e.target) e.target.value = '';
   };
