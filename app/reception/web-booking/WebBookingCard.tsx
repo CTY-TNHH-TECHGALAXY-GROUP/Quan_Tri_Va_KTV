@@ -126,6 +126,11 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
                 <Phone size={9} /> {booking.customerPhone}
               </p>
             )}
+            {booking.customerEmail && !booking.customerEmail.includes('no-email.com') && (
+              <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5 truncate">
+                <span className="font-bold">@</span> {booking.customerEmail}
+              </p>
+            )}
           </div>
         </div>
 

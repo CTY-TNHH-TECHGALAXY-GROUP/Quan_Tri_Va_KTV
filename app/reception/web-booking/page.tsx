@@ -156,7 +156,7 @@ export default function WebBookingPage() {
 
   if (!hasPermission('order_management')) {
     return (
-      <AppLayout title="Đơn Đặt Lịch Web">
+      <AppLayout title="Đơn Đặt Lịch Web Nội Bộ">
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <ShieldAlert size={48} className="text-red-500 mb-4" />
           <h2 className="text-xl font-bold text-gray-900">Không có quyền truy cập</h2>
@@ -241,7 +241,7 @@ export default function WebBookingPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <AppLayout title="Đơn Đặt Lịch Web">
+    <AppLayout title="Đơn Đặt Lịch Web Nội Bộ">
       <div className="h-[calc(100vh-1rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden">
 
         {/* ── Page Header ── */}
@@ -250,7 +250,7 @@ export default function WebBookingPage() {
           <div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
               <Globe2 size={20} className="text-indigo-500" />
-              Đơn Đặt Lịch Web Booking
+              Đơn Đặt Lịch Web Nội Bộ
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
               {isLoading ? (
