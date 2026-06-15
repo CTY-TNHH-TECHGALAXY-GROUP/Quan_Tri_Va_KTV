@@ -63,7 +63,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .gte('bookingDate', startOfRange)
       .lte('bookingDate', endOfRange)
       .neq('status', 'CANCELLED')
-      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING'])
+      .in('source', ['WEB_BOOKING', 'WEB_NOI_BO_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING'])
       .order('createdAt', { ascending: false });
 
     if (bError) throw bError;

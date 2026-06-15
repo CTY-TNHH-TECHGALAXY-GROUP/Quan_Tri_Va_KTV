@@ -28,7 +28,8 @@ export default function FinanceKTVPage() {
         );
     }
 
-    const pendingRequests = withdrawals.filter(w => w.status === 'PENDING');
+    const pendingRequests = withdrawals.filter(w => w.status === 'PENDING' && w.amount > 0);
+    const intentRequests = withdrawals.filter(w => w.status === 'PENDING' && w.amount === 0);
     const allHistoryRequests = withdrawals.filter(w => w.status !== 'PENDING');
     const historyRequests = isHistoryExpanded ? allHistoryRequests : allHistoryRequests.slice(0, 3);
 
@@ -51,10 +52,42 @@ export default function FinanceKTVPage() {
                     </button>
                 </div>
 
+                {/* 🟠 DANH SÁCH BÁO TRƯỚC (INTENT) */}
+                {intentRequests.length > 0 && (
+                    <div className="mb-8">
+                        <h2 className="text-lg font-bold text-amber-600 mb-4 flex items-center gap-2 uppercase tracking-widest text-sm">
+                            <Clock size={18} /> Báo trước rút tiền ({intentRequests.length})
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {intentRequests.map(req => (
+                                <div key={req.id} className="bg-amber-50 rounded-2xl p-4 border border-amber-200 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                                            <Star size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black text-slate-800">{req.staff_id} - {req.Staff?.full_name}</p>
+                                            <p className="text-[10px] text-amber-700 font-medium">Muốn rút tiền mặt (Chưa báo số tiền)</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleReject(req.id)}
+                                        disabled={isProcessing}
+                                        title="Đã ghi nhận, ẩn thông báo"
+                                        className="p-2 bg-white rounded-lg text-amber-600 shadow-sm border border-amber-100 hover:bg-amber-100 transition-colors"
+                                    >
+                                        <CheckCircle size={18} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* 🔴 DANH SÁCH CHỜ GIAO TIỀN */}
                 <div>
                     <h2 className="text-lg font-bold text-rose-600 mb-4 flex items-center gap-2 uppercase tracking-widest text-sm">
-                        <Clock size={18} /> Đang chờ ra quầy lấy tiền ({pendingRequests.length})
+                        <Banknote size={18} /> Đang chờ ra quầy lấy tiền ({pendingRequests.length})
                     </h2>
 
                     {pendingRequests.length === 0 ? (

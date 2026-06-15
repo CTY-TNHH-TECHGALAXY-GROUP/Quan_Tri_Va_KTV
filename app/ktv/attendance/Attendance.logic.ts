@@ -233,7 +233,8 @@ export const useKTVAttendance = () => {
         photosBase64?: string[] | null,
         reason?: string | null,
         selectedShiftType?: string | null,
-        estimatedEndTime?: string | null
+        estimatedEndTime?: string | null,
+        wantsToWithdraw?: boolean
     ) => {
         setErrorMsg(null);
         setCheckStatus('LOADING_GPS'); // Will rename this state eventually, keeping string for now to avoid breaking UI
@@ -253,6 +254,7 @@ export const useKTVAttendance = () => {
                     locationText: null,
                     selectedShiftType: selectedShiftType || null,
                     estimatedEndTime: estimatedEndTime || null,
+                    wantsToWithdraw: wantsToWithdraw || false,
                 }),
             });
 

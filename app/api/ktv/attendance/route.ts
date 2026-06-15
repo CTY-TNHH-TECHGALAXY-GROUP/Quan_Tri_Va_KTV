@@ -11,7 +11,7 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { employeeId, employeeName: empNameInput, checkType = 'CHECK_IN', latitude, longitude, locationText, photoBase64, reason, selectedShiftType, estimatedEndTime } = body;
+        const { employeeId, employeeName: empNameInput, checkType = 'CHECK_IN', latitude, longitude, locationText, photoBase64, reason, selectedShiftType, estimatedEndTime, wantsToWithdraw } = body;
 
         if (!employeeId) {
             return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
@@ -382,8 +382,21 @@ export async function POST(request: Request) {
 
         const autoSuffix = isAutoApprove ? ' [AUTO]' : '';
         
-        // Cập nhật: Không hiển thị lý do vào thông báo (Spa thoáng)
-        const notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
+        let notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
+        
+        if (wantsToWithdraw && staffCode) {
+            notifMessage += `\n💰 Báo Thu ngân chuẩn bị tiền mặt.`;
+            
+            // Insert intent to KTVWithdrawals
+            const { error: withdrawErr } = await supabase.from('KTVWithdrawals').insert({
+                staff_id: staffCode,
+                amount: 0,
+                status: 'PENDING',
+                note: 'Báo trước lúc điểm danh (Chưa chốt số tiền)',
+                wallet_type: 'TUA'
+            });
+            if (withdrawErr) console.error('❌ [Withdrawal Intent] Insert Error:', withdrawErr);
+        }
 
         await createNotification({
             type: 'ATTENDANCE_REQUEST',

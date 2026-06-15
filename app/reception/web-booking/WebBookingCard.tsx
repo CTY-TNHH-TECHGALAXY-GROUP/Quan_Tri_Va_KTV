@@ -27,6 +27,7 @@ const LANG_FLAG: Record<string, string> = {
 
 const SOURCE_MAP: Record<string, { label: string; color: string; bg: string }> = {
   WEB_BOOKING: { label: 'Web Booking', color: 'text-blue-600', bg: 'bg-blue-50' },
+  WEB_NOI_BO_BOOKING: { label: 'Web Nội Bộ', color: 'text-blue-600', bg: 'bg-blue-50' },
   HOME_BOOKING: { label: 'Đặt tại nhà', color: 'text-indigo-600', bg: 'bg-indigo-50' },
   VIP_BOOKING: { label: 'App VIP', color: 'text-amber-600', bg: 'bg-amber-50' },
   VIP_WALK_IN: { label: 'App VIP (Walk-in)', color: 'text-orange-600', bg: 'bg-orange-50' },
@@ -75,6 +76,8 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
               if (parsedNotes.warnings && parsedNotes.warnings.length > 0) {
                   finalNote += ` Cảnh báo: ${parsedNotes.warnings.join(', ')}`;
               }
+          } else if (parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
+              finalNote = 'Ghi chú: Khách đặt trước qua Web Nội Bộ.';
           }
       } catch(e) {}
   }

@@ -60,6 +60,7 @@ const KTVAttendancePage = () => {
     const [selectedShiftType, setSelectedShiftType] = React.useState<string>('');
     const [estimatedEndTime, setEstimatedEndTime] = React.useState<string>('');
     const [deviceIP, setDeviceIP] = React.useState<string>('');
+    const [wantsToWithdraw, setWantsToWithdraw] = React.useState(false);
 
     // WebRTC Camera States
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
@@ -361,7 +362,8 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && selectedShiftType === 'FREE') ? estimatedEndTime : null
+            (formType === 'CHECK_IN' && selectedShiftType === 'FREE') ? estimatedEndTime : null,
+            wantsToWithdraw
         );
     };
 
@@ -641,6 +643,25 @@ const KTVAttendancePage = () => {
                                             )}
                                         </>
                                     )}
+                                </div>
+                            )}
+
+                            {formType === 'CHECK_IN' && selectedShiftType !== 'SUDDEN_OFF' && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
+                                    <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
+                                        <div className="flex items-center h-5 mt-0.5">
+                                            <input
+                                                type="checkbox"
+                                                checked={wantsToWithdraw}
+                                                onChange={(e) => setWantsToWithdraw(e.target.checked)}
+                                                className="w-4 h-4 text-indigo-600 bg-white border-gray-300 rounded focus:ring-indigo-500 focus:ring-2"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-indigo-900">Hôm nay tôi muốn rút tiền mặt</span>
+                                            <span className="text-xs text-indigo-600 font-medium mt-0.5">Vui lòng báo Thu ngân chuẩn bị giúp tôi</span>
+                                        </div>
+                                    </label>
                                 </div>
                             )}
 
