@@ -45,10 +45,10 @@ export async function GET(request: Request) {
         // ─── 1. Fetch completed bookings in date range ───────────────────
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, bookingDate, createdAt, status, totalAmount, tip, technicianCode, customerId, customerLang')
-            .in('status', COMPLETED_STATUSES)
+            .select('id, billCode, bookingDate, createdAt, status, totalAmount, tip, technicianCode, customerId, customerLang, source')
             .gte('bookingDate', `${dateFrom} 00:00:00`)
             .lte('bookingDate', `${dateTo} 23:59:59`)
+            .neq('status', 'CANCELLED')
             .order('bookingDate', { ascending: true });
 
         if (bErr) throw bErr;
@@ -67,7 +67,11 @@ export async function GET(request: Request) {
             'vi': ['vi', 'vn'], 'ko': ['ko', 'kr'], 'zh': ['zh', 'cn'],
             'en': ['en'], 'jp': ['jp', 'ja'],
         };
-        let completedBookings = allBookings || [];
+        const PAID_SOURCES = ['VIP_WALK_IN', 'STANDARD_WALK_IN', 'MIXED_WALK_IN', 'VIP_MENU', 'STANDARD_MENU'];
+        let completedBookings = (allBookings || []).filter(b => 
+            COMPLETED_STATUSES.includes(b.status) || PAID_SOURCES.includes(b.source)
+        );
+        
         if (lang && lang !== 'all') {
             const aliases = Object.entries(LANG_ALIASES).find(([, v]) => v.includes(lang.toLowerCase()));
             const matchLangs = aliases ? aliases[1] : [lang.toLowerCase()];
@@ -86,12 +90,15 @@ export async function GET(request: Request) {
             .lte('bookingDate', `${dateTo} 23:59:59`);
 
         const allRankedBookingIds = (allRankedBookings || []).map(b => b.id);
+        const completedBookingIds = completedBookings.map(b => b.id);
+        const uniqueIdsToFetch = [...new Set([...allRankedBookingIds, ...completedBookingIds])];
+
         let allItems: any[] = [];
         
-        if (allRankedBookingIds.length > 0) {
+        if (uniqueIdsToFetch.length > 0) {
             const batchSize = 50;
-            for (let i = 0; i < allRankedBookingIds.length; i += batchSize) {
-                const batch = allRankedBookingIds.slice(i, i + batchSize);
+            for (let i = 0; i < uniqueIdsToFetch.length; i += batchSize) {
+                const batch = uniqueIdsToFetch.slice(i, i + batchSize);
                 const { data: batchItems } = await supabase
                     .from('BookingItems')
                     .select('id, bookingId, serviceId, price, tip, itemRating, technicianCodes, roomName, quantity, segments')
@@ -362,6 +369,27 @@ export async function GET(request: Request) {
             svcBreakdown[key].revenue += Number(i.price) || 0;
             svcBreakdown[key].count += 1;
         });
+
+        // ─── Fallback cho Menu VIP / Walk-in không có BookingItems ────────
+        completedBookings.forEach(b => {
+            const hasItems = items.some(i => i.bookingId === b.id);
+            if (!hasItems && b.totalAmount && Number(b.totalAmount) > 0) {
+                const key = b.source === 'VIP_MENU' ? 'VIP_MENU_FALLBACK' : 
+                            b.source === 'STANDARD_MENU' ? 'STANDARD_MENU_FALLBACK' :
+                            (b.source || 'UNKNOWN_SOURCE');
+                
+                let name = b.source === 'VIP_MENU' ? 'Gói Menu VIP' :
+                           b.source === 'STANDARD_MENU' ? 'Gói Menu Thường' :
+                           b.source === 'VIP_WALK_IN' ? 'Gói VIP (Tại quầy)' :
+                           b.source === 'STANDARD_WALK_IN' ? 'Gói Thường (Tại quầy)' :
+                           'Dịch vụ Khác';
+                           
+                if (!svcBreakdown[key]) svcBreakdown[key] = { name, revenue: 0, count: 0 };
+                svcBreakdown[key].revenue += Number(b.totalAmount);
+                svcBreakdown[key].count += 1;
+            }
+        });
+
         const serviceBreakdown = Object.values(svcBreakdown)
             .sort((a, b) => b.revenue - a.revenue);
 
