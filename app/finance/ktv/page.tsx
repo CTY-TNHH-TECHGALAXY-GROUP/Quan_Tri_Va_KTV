@@ -195,6 +195,7 @@ export default function FinanceKTVPage() {
                                     ) : (
                                         historyRequests.map((req) => {
                                             const isBonus = req.wallet_type === 'BONUS';
+                                            const isIntent = Math.abs(Number(req.amount)) === 1 && (req.note?.includes('Báo trước') || req.note?.includes('Đã chuẩn bị'));
                                             return (
                                             <tr key={req.id} className={`hover:bg-slate-50/50 ${isBonus ? 'bg-amber-50/20' : ''}`}>
                                                 <td className="px-6 py-4">
@@ -202,14 +203,24 @@ export default function FinanceKTVPage() {
                                                     <span className="text-xs text-slate-400 ml-2">{req.Staff?.full_name}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{req.amount.toLocaleString()}đ</span>
-                                                    {isBonus && <span className="ml-2 text-[9px] font-bold text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded uppercase">Bonus</span>}
+                                                    {isIntent ? (
+                                                        <span className="font-bold text-slate-400 uppercase text-[10px] tracking-widest bg-slate-100 px-2 py-1 rounded">Báo trước</span>
+                                                    ) : (
+                                                        <>
+                                                            <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{req.amount.toLocaleString()}đ</span>
+                                                            {isBonus && <span className="ml-2 text-[9px] font-bold text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded uppercase">Bonus</span>}
+                                                        </>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-500">
                                                     {format(new Date(req.request_date), 'HH:mm dd/MM', { locale: vi })}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    {req.status === 'APPROVED' ? (
+                                                    {isIntent ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-bold uppercase">
+                                                            <CheckCircle size={12} /> Đã ghi nhận
+                                                        </span>
+                                                    ) : req.status === 'APPROVED' ? (
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold uppercase">
                                                             <CheckCircle size={12} /> Đã giao tiền
                                                         </span>
@@ -218,7 +229,7 @@ export default function FinanceKTVPage() {
                                                             <XCircle size={12} /> Bị từ chối
                                                         </span>
                                                     )}
-                                                    {req.note && !isBonus && <div className="text-[10px] text-slate-400 mt-1 max-w-[150px] truncate" title={req.note}>Lý do: {req.note}</div>}
+                                                    {!isIntent && req.note && !isBonus && <div className="text-[10px] text-slate-400 mt-1 max-w-[150px] truncate" title={req.note}>Lý do: {req.note}</div>}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-col">
