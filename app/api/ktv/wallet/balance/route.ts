@@ -233,16 +233,18 @@ export async function GET(request: Request) {
         // 5. Fetch Withdrawals (Luôn lấy từ GLOBAL_START_DATE_ISO để khớp Timeline, KHÔNG dùng ledger)
         const { data: withdrawals } = await supabase
             .from('KTVWithdrawals')
-            .select('amount, status')
+            .select('amount, status, note')
             .eq('staff_id', techCode)
             .or('wallet_type.eq.TUA,wallet_type.is.null')
             .gte('request_date', GLOBAL_START_DATE_ISO);
             
         const total_withdrawn = (withdrawals || [])
-            .filter(w => w.status === 'APPROVED')
+            .filter(w => w.status === 'APPROVED' && !(Math.abs(Number(w.amount)) === 1 && w.note?.includes('Báo trước')))
             .reduce((sum, w) => sum + Math.abs(Number(w.amount)), 0);
             
-        const total_pending = (withdrawals || []).filter(w => w.status === 'PENDING').reduce((sum, w) => sum + Math.abs(Number(w.amount)), 0);
+        const total_pending = (withdrawals || [])
+            .filter(w => w.status === 'PENDING' && !(Math.abs(Number(w.amount)) === 1 && w.note?.includes('Báo trước')))
+            .reduce((sum, w) => sum + Math.abs(Number(w.amount)), 0);
 
         // 6. Calculate Final Balances (Kết hợp Ledger và Realtime)
         const total_commission = ledgerSummary.comm + rt_commission;

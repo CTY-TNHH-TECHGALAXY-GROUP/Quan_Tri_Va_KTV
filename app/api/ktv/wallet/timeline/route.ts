@@ -182,6 +182,9 @@ export async function GET(request: Request) {
             .gte('request_date', START_DATE);
 
         (withdrawals || []).forEach(w => {
+            const isIntent = Math.abs(Number(w.amount)) === 1 && w.note && w.note.includes('Báo trước');
+            if (isIntent) return; // Ẩn giao dịch "Báo trước" khỏi timeline của KTV
+            
             timeline.push({
                 id: w.id,
                 type: 'WITHDRAWAL',

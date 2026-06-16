@@ -177,7 +177,7 @@ export async function GET(request: Request) {
 
         const { data: pendingWithdrawals } = await supabase
             .from('KTVWithdrawals')
-            .select('staff_id, amount')
+            .select('staff_id, amount, note')
             .eq('status', 'PENDING')
             .gte('request_date', GLOBAL_START_DATE_ISO);
 
@@ -284,7 +284,9 @@ export async function GET(request: Request) {
 
             const rt_adjustment = (realtimeAdjustments || []).filter(a => a.staff_id === techCode).reduce((sum, a) => sum + Number(a.amount), 0);
             const rt_withdrawn = (realtimeWithdrawals || []).filter(w => w.staff_id === techCode && w.status === 'APPROVED').reduce((sum, w) => sum + Number(w.amount), 0);
-            const total_pending = (pendingWithdrawals || []).filter(w => w.staff_id === techCode).reduce((sum, w) => sum + Number(w.amount), 0);
+            const total_pending = (pendingWithdrawals || [])
+                .filter(w => w.staff_id === techCode && !(Math.abs(Number(w.amount)) === 1 && w.note?.includes('Báo trước')))
+                .reduce((sum, w) => sum + Number(w.amount), 0);
 
             const ledger = ledgerMap[techCode];
             const total_commission = ledger.comm + rt_commission;
