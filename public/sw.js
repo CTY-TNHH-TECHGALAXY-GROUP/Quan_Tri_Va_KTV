@@ -51,6 +51,10 @@ self.addEventListener('fetch', (event) => {
 
   // Skip API routes & Supabase calls — always go to network
   const url = new URL(request.url);
+  
+  // Ignore non-HTTP(S) schemes (e.g., chrome-extension://)
+  if (!url.protocol.startsWith('http')) return;
+
   if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase')) return;
 
   event.respondWith(
