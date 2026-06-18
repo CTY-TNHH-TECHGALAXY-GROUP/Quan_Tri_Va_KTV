@@ -4,9 +4,9 @@
 const ANIMATION_DURATION = 0.2;
 const CARD_BORDER_RADIUS = 'rounded-2xl';
 
-import React from 'react';
-import { motion } from 'motion/react';
-import { Clock, User, Phone, DollarSign, MessageSquare, CheckCircle2, XCircle, ChevronRight, CalendarDays, Globe } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Clock, User, Phone, DollarSign, MessageSquare, CheckCircle2, XCircle, ChevronRight, CalendarDays, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 import { WebBooking } from './actions';
 
 // ─── STATUS CONFIG ────────────────────────────────────────────────────────────
@@ -60,6 +60,7 @@ interface WebBookingCardProps {
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 
 const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading }: WebBookingCardProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const cfg = STATUS_CONFIG[booking.status] ?? STATUS_CONFIG.NEW;
   const isNew = booking.status === 'NEW';
   const flag = LANG_FLAG[booking.customerLang ?? 'vi'] ?? '🌐';
@@ -158,15 +159,44 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
 
         {/* Services preview */}
         {booking.items.length > 0 && (
-          <div className="bg-gray-50/80 rounded-xl p-2.5 mb-3 space-y-1.5">
-            {booking.items.slice(0, 2).map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-2">
-                <span className="text-[11px] text-gray-600 font-medium truncate">{item.serviceName}</span>
-                <span className="text-[10px] text-gray-400 shrink-0">{item.duration}p</span>
-              </div>
-            ))}
+          <div className="bg-gray-50/80 rounded-xl p-2.5 mb-3 space-y-1.5 transition-all">
+            <AnimatePresence initial={false}>
+              {booking.items.slice(0, isExpanded ? booking.items.length : 2).map((item) => (
+                <motion.div 
+                  key={item.id} 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex flex-col gap-0.5 overflow-hidden"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-gray-600 font-medium truncate">{item.serviceName}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{item.duration}p</span>
+                  </div>
+                  {item.requestedKTVs && item.requestedKTVs.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {item.requestedKTVs.map((ktv, idx) => (
+                        <span key={idx} className="text-[9px] text-pink-700 bg-pink-100/50 border border-pink-100 rounded-[4px] px-1.5 py-0.5 flex items-center gap-1 font-bold shadow-sm">
+                          <User size={8} className="text-pink-500" /> 
+                          {ktv.name} {ktv.skills && <span className="text-pink-500/80 font-normal">({ktv.skills})</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
             {booking.items.length > 2 && (
-              <p className="text-[10px] text-gray-400 italic">+{booking.items.length - 2} dịch vụ khác</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                className="text-[10px] text-indigo-500 font-bold hover:text-indigo-700 transition-colors flex items-center gap-1 mt-1 pt-1 border-t border-gray-200/50 w-full"
+              >
+                {isExpanded ? (
+                  <><ChevronUp size={12} /> Thu gọn</>
+                ) : (
+                  <><ChevronDown size={12} /> +{booking.items.length - 2} dịch vụ khác</>
+                )}
+              </button>
             )}
           </div>
         )}

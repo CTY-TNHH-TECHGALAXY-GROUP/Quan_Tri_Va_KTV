@@ -47,6 +47,22 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
   const isNew = booking?.status === 'NEW';
   const totalDuration = booking?.items.reduce((sum, i) => sum + i.duration * i.quantity, 0) ?? 0;
 
+  let parsedNotes: any = null;
+  let finalNote = booking?.notes || '';
+  if (booking?.notes && typeof booking.notes === 'string' && booking.notes.trim().startsWith('{')) {
+      try {
+          parsedNotes = JSON.parse(booking.notes);
+          if (parsedNotes.type === 'VIP_APPOINTMENT') {
+              finalNote = 'Khách đặt trước qua App VIP.';
+              if (parsedNotes.warnings && parsedNotes.warnings.length > 0) {
+                  finalNote += ` Cảnh báo: ${parsedNotes.warnings.join(', ')}`;
+              }
+          } else if (parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
+              finalNote = 'Khách đặt trước qua Web Nội Bộ.';
+          }
+      } catch(e) {}
+  }
+
   const handleReject = () => {
     if (!booking) return;
     onReject(booking.id);
@@ -175,16 +191,31 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
                     </div>
                   ) : (
                     booking.items.map((item, idx) => (
-                      <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center justify-between">
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm text-gray-900 truncate">{item.serviceName}</p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            {item.duration}p {item.quantity > 1 && `× ${item.quantity}`}
-                          </p>
+                      <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm text-gray-900 truncate">{item.serviceName}</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5">
+                              {item.duration}p {item.quantity > 1 && `× ${item.quantity}`}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-black text-sm text-gray-900">{formatVND(item.price)}</p>
+                          </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-black text-sm text-gray-900">{formatVND(item.price)}</p>
-                        </div>
+                        {item.requestedKTVs && item.requestedKTVs.length > 0 && (
+                          <div className="flex flex-col gap-1.5 mt-1 border-t border-dashed border-gray-100 pt-2">
+                            <span className="text-[9px] font-black text-pink-400 uppercase tracking-widest">KTV Yêu Cầu</span>
+                            <div className="flex flex-wrap gap-1.5">
+                                {item.requestedKTVs.map((ktv, idx) => (
+                                  <div key={idx} className="text-[11px] text-pink-700 bg-pink-50 border border-pink-100 rounded-lg px-2 py-1 flex items-center gap-1.5 font-bold shadow-sm">
+                                    <User size={12} className="text-pink-400" /> 
+                                    {ktv.name} {ktv.skills && <span className="text-pink-600/70 font-medium">({ktv.skills})</span>}
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
@@ -198,14 +229,14 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               </div>
 
               {/* Notes */}
-              {booking.notes && (
+              {finalNote && (
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">
                     Ghi chú từ khách
                   </p>
                   <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
                     <MessageSquare size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-sm text-amber-800">{booking.notes}</p>
+                    <p className="text-sm text-amber-800">{finalNote}</p>
                   </div>
                 </div>
               )}

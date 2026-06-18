@@ -1416,19 +1416,28 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
 
   // Parse dispatcher note to avoid showing raw JSON from AI
   let displayDispatcherNote = booking?.dispatcherNote;
-  if (displayDispatcherNote && typeof displayDispatcherNote === 'string' && displayDispatcherNote.trim().startsWith('{')) {
-    try {
-      const parsed = JSON.parse(displayDispatcherNote);
-      if (parsed.receptionNote || parsed.note) {
-        displayDispatcherNote = parsed.receptionNote || parsed.note;
-      } else if (parsed.type === 'VIP_APPOINTMENT' || parsed.selectedSkills) {
-        displayDispatcherNote = null; // Hide raw AI metadata
-      } else {
-        displayDispatcherNote = null; // Hide other raw JSON objects
+  if (displayDispatcherNote && typeof displayDispatcherNote === 'string') {
+    let currentStr = displayDispatcherNote.trim();
+    while (currentStr.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(currentStr);
+        if (parsed.receptionNote || parsed.note) {
+          currentStr = parsed.receptionNote || parsed.note;
+        } else if (parsed.type === 'VIP_APPOINTMENT' || parsed.selectedSkills) {
+          currentStr = ''; // Hide raw AI metadata
+          break;
+        } else if (parsed.type === 'WEB_ADVANCE_BOOKING') {
+          currentStr = 'Khách đặt trước qua Web/App Nội Bộ.';
+          break;
+        } else {
+          currentStr = ''; // Hide other raw JSON objects
+          break;
+        }
+      } catch (e) {
+        break; // Not a valid JSON string, leave as is
       }
-    } catch (e) {
-      // Not a valid JSON string, leave as is
     }
+    displayDispatcherNote = currentStr || null;
   }
 
   return (

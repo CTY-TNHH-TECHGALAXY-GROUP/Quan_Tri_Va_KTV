@@ -20,6 +20,7 @@ export interface WebBookingItem {
   price: number;
   quantity: number;
   options?: Record<string, any>;
+  requestedKTVs?: { code: string; name: string; skills: string }[];
 }
 
 export interface WebBooking {
@@ -33,6 +34,7 @@ export interface WebBooking {
   customerEmail: string | null;
   customerLang: string | null;
   notes: string | null;
+  technicianCode: string | null;
   totalAmount: number;
   status: WebBookingStatus;
   createdAt: string;
@@ -88,6 +90,28 @@ export async function getWebBookings(startDate: string, endDate: string) {
       });
     }
 
+    // Fetch all staff for name resolution
+    const { data: allStaff } = await supabase
+      .from('Staff')
+      .select('id, full_name, skills')
+      .limit(1000);
+
+    const staffMap: Record<string, { name: string; skills: string }> = {};
+    if (allStaff) {
+      allStaff.forEach((s: any) => {
+         let skillsText = '';
+         try {
+             if (s.skills && typeof s.skills === 'string') {
+                 const parsed = JSON.parse(s.skills);
+                 if (Array.isArray(parsed)) skillsText = parsed.join(', ');
+             } else if (Array.isArray(s.skills)) {
+                 skillsText = s.skills.join(', ');
+             }
+         } catch(e) {}
+         staffMap[String(s.id).toLowerCase()] = { name: s.full_name || s.id, skills: skillsText };
+      });
+    }
+
     // Fetch BookingItems for all bookings
     const bookingIds = bookings.map((b: any) => b.id);
     const { data: items } = await supabase
@@ -97,9 +121,19 @@ export async function getWebBookings(startDate: string, endDate: string) {
 
     // Map to WebBooking type
     const result: WebBooking[] = bookings.map((b: any) => {
+      let requestedKtvCodes: string[] = [];
+
       const bookingItems: WebBookingItem[] = (items || [])
         .filter((i: any) => i.bookingId === b.id)
         .map((i: any) => {
+          let requestedKTVs: { code: string; name: string; skills: string }[] = [];
+          if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
+              requestedKtvCodes.push(...i.technicianCodes);
+              requestedKTVs = i.technicianCodes.map((code: string) => {
+                  const sInfo = staffMap[String(code).toLowerCase()];
+                  return { code, name: sInfo?.name || code, skills: sInfo?.skills || '' };
+              });
+          }
           const svcKey = String(i.serviceId || '').toLowerCase();
           const svcInfo = servicesMap[svcKey];
           
@@ -123,6 +157,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
             price: i.price ?? svcInfo?.price ?? 0,
             quantity: i.quantity ?? 1,
             options: parsedOptions,
+            requestedKTVs,
           };
         });
 
@@ -137,6 +172,9 @@ export async function getWebBookings(startDate: string, endDate: string) {
         customerEmail: b.customerEmail || null,
         customerLang: b.customerLang || 'vi',
         notes: b.notes || null,
+        technicianCode: requestedKtvCodes.length > 0 
+           ? Array.from(new Set(requestedKtvCodes)).join(', ') 
+           : (b.technicianCode || null),
         totalAmount: Number(b.totalAmount) || 0,
         status: (b.status as WebBookingStatus) || 'NEW',
         createdAt: b.createdAt || '',
