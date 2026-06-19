@@ -106,6 +106,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [walletBalance, setWalletBalance] = useState<any>(null);
     const [walletTimeline, setWalletTimeline] = useState<any[]>([]);
 
+    const [onCallState, setOnCallState] = useState<{ allow_on_call: boolean; is_on_call: boolean; travel_time_mins: number } | null>(null);
+
     const lastAcknowledgedIdRef = useRef<string | null>(null);
     const prevBookingIdRef = useRef<string | null>(null);
     const postServiceBookingIdRef = useRef<string | null>(null);
@@ -201,8 +203,35 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
             };
             fetchWallet();
+
+            const fetchOnCall = async () => {
+                try {
+                    const res = await fetch(`/api/ktv/on-call?techCode=${ktvId}`);
+                    const json = await res.json();
+                    if (json.success && json.data) {
+                        setOnCallState(json.data);
+                    }
+                } catch (e) {
+                    console.error('Error fetching on-call state:', e);
+                }
+            };
+            fetchOnCall();
         }
     }, [screen, booking?.id, ktvId]);
+
+    const handleToggleOnCall = async (isOnCall: boolean, mins: number) => {
+        if (!ktvId) return;
+        try {
+            setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
+            await fetch('/api/ktv/on-call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins })
+            });
+        } catch (e) {
+            console.error('Error toggling on call:', e);
+        }
+    };
 
     // 🔄 Full reset of ALL transient state when booking.id changes
     // Prevents timer/segment/prepping/review state from leaking from order 1 into order 2.
@@ -1955,6 +1984,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         settings,
         walletBalance,
         walletTimeline,
+        onCallState,
+        handleToggleOnCall,
+        canViewWallet,
         forceRefresh: async () => {
             if (fetchBookingRef.current) await fetchBookingRef.current();
             if (recalcTimerRef.current) recalcTimerRef.current();
