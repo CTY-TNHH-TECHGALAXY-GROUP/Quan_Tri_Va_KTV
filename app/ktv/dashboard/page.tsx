@@ -297,8 +297,14 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
 // ----------------------------------------------------
 
 function ScreenDashboard({ logic }: { logic: any }) {
-  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline } = logic;
+  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline, onCallState, handleToggleOnCall } = logic;
   const [bookingUrl, setBookingUrl] = React.useState(DEFAULT_BOOKING_URL);
+  const [showOnCallPopup, setShowOnCallPopup] = React.useState(false);
+  const [tempMins, setTempMins] = React.useState(onCallState?.travel_time_mins || 30);
+
+  React.useEffect(() => {
+    if (onCallState) setTempMins(onCallState.travel_time_mins);
+  }, [onCallState]);
 
   React.useEffect(() => {
     fetch('/api/system/config')
@@ -361,9 +367,93 @@ function ScreenDashboard({ logic }: { logic: any }) {
               Xin chào, <span className="text-emerald-600 ml-1">{logic.ktvId || 'Kỹ thuật viên'}</span>
             </h1>
           </div>
-          <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
-             <User size={20} />
+          <div className="flex items-center gap-3">
+             {onCallState?.allow_on_call && (
+               <button
+                 onClick={() => {
+                   if (onCallState.is_on_call) {
+                     handleToggleOnCall(false, onCallState.travel_time_mins);
+                   } else {
+                     setShowOnCallPopup(true);
+                   }
+                 }}
+                 className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all border shadow-sm ${
+                   onCallState.is_on_call
+                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                     : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                 }`}
+               >
+                 <div className={`w-2.5 h-2.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
+                 {onCallState.is_on_call ? 'Đang Sẵn Sàng (Ngoài giờ)' : 'Bật Nhận Đơn Ngoài Giờ'}
+               </button>
+             )}
+            <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
+               <User size={20} />
+            </div>
           </div>
+        </div>
+      )}
+
+      {showOnCallPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white rounded-[32px] w-full max-w-sm overflow-hidden shadow-2xl"
+          >
+            <div className="p-6">
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-4">
+                <Target size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận sẵn sàng</h3>
+              <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                Khi có khách đặt lịch, bạn cần bao nhiêu phút để di chuyển từ nhà đến Spa?
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
+                    Thời gian di chuyển (Phút)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setTempMins(Math.max(15, tempMins - 15))}
+                      className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
+                    >
+                      -15
+                    </button>
+                    <div className="flex-1 h-12 rounded-2xl border-2 border-emerald-100 flex items-center justify-center text-xl font-black text-emerald-700">
+                      {tempMins}
+                    </div>
+                    <button
+                      onClick={() => setTempMins(Math.min(120, tempMins + 15))}
+                      className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
+                    >
+                      +15
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setShowOnCallPopup(false)}
+                    className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-transform"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleToggleOnCall(true, tempMins);
+                      setShowOnCallPopup(false);
+                    }}
+                    className="flex-1 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold active:scale-95 transition-transform shadow-lg shadow-emerald-200"
+                  >
+                    Bật Nhận Đơn
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -381,6 +471,37 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <Link href="/ktv/wallet" className="bg-white text-emerald-700 font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-transform shadow-md flex items-center gap-2">
                 Mở Ví <ArrowRight size={16} />
               </Link>
+            </div>
+          )}
+
+          {/* Mobile On-Call Toggle */}
+          {onCallState?.allow_on_call && (
+            <div className="lg:hidden bg-white p-5 rounded-[32px] shadow-sm border border-emerald-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${onCallState.is_on_call ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">Ngoài giờ</h3>
+                  <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? `Sẵn sàng (${onCallState.travel_time_mins}p)` : 'Đang tắt'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                   if (onCallState.is_on_call) {
+                     handleToggleOnCall(false, onCallState.travel_time_mins);
+                   } else {
+                     setShowOnCallPopup(true);
+                   }
+                }}
+                className={`px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all ${
+                  onCallState.is_on_call 
+                    ? 'bg-slate-100 text-slate-600 active:scale-95' 
+                    : 'bg-emerald-600 text-white active:scale-95 shadow-md shadow-emerald-600/20'
+                }`}
+              >
+                {onCallState.is_on_call ? 'Tắt' : 'Bật'}
+              </button>
             </div>
           )}
 
