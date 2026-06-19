@@ -539,7 +539,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
             .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, current_order_id')
             .eq('date', today)
             .order('turns_completed', { ascending: true })
-            .order('queue_position', { ascending: true });
+            .order('check_in_order', { ascending: true });
 
         if (data) {
             const merged = data.map((t: TurnQueueData) => ({
@@ -558,7 +558,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
             if (isAOff && !isBOff) return 1;
             if (!isAOff && isBOff) return -1;
             if (a.turns_completed !== b.turns_completed) return a.turns_completed - b.turns_completed;
-            return a.queue_position - b.queue_position;
+            return a.check_in_order - b.check_in_order;
         });
     }, [suddenOffs]);
 
@@ -785,8 +785,8 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
                 </h4>
                 <ul className="space-y-2 text-xs text-indigo-700 font-medium">
                     {[
-                        'KTV điểm danh trước → Tua trước',
-                        'KTV hoàn thành đơn → Xuống cuối hàng đợi',
+                        'Hàng đợi luôn sắp xếp cố định theo số thứ tự điểm danh ban đầu',
+                        'Lễ tân sẽ tuỳ tình hình thực tế để ưu tiên ai nhận tua trước',
                         'Chỉ tính tua khi phục vụ 2 bill khác nhau',
                     ].map((rule, i) => (
                         <li key={i} className="flex items-start gap-2">
