@@ -32,11 +32,12 @@ export default function KTVWalletPage() {
         if (type === 'TUA') {
             if (!walletBalance) return;
             const max = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
-            if (max <= 0) {
-                alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
-                return;
-            }
-            setWithdrawModal({ isOpen: true, type, maxAmount: max });
+            // USER YÊU CẦU: Không chặn lệnh rút tiền
+            // if (max <= 0) {
+            //     alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
+            //     return;
+            // }
+            setWithdrawModal({ isOpen: true, type, maxAmount: Math.max(0, max) });
         } else {
             if (!bonusBalance || bonusBalance.points <= 0) {
                 alert('Bạn chưa có điểm thưởng nào để quy đổi.');

@@ -47,7 +47,7 @@ export async function PATCH(
 
         // Tùy chọn: Thêm Notification cho KTV
         let amountText = '';
-        if (data.amount === -1 || data.amount === 0) {
+        if (data.amount === -1 || data.amount === 0 || data.amount === 1) {
             amountText = 'đầu ngày';
         } else {
             amountText = `${data.amount.toLocaleString()}đ`;

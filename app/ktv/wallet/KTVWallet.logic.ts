@@ -63,11 +63,12 @@ export const useKTVWallet = () => {
 
     const submitWithdraw = async (amount: number) => {
         if (!walletBalance) return false;
-        const maxWithdraw = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
-        if (amount > maxWithdraw) {
-            alert('Số tiền vượt quá mức khả dụng!');
-            return false;
-        }
+        // Tắt check hạn mức, cho phép gửi lệnh rút làm thông báo
+        // const maxWithdraw = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
+        // if (amount > maxWithdraw) {
+        //     alert('Số tiền vượt quá mức khả dụng!');
+        //     return false;
+        // }
         try {
             const res = await fetch('/api/ktv/wallet/withdraw', {
                 method: 'POST',

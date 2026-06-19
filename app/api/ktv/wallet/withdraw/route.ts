@@ -37,12 +37,13 @@ export async function POST(request: Request) {
             // Validation Core Logic for TUA
             const remainingAfterWithdrawal = effectiveBalance - requestAmount;
             
-            if (remainingAfterWithdrawal < minDeposit) {
-                return NextResponse.json({ 
-                    success: false, 
-                    error: `Không thể rút. Số dư còn lại sau khi rút (${remainingAfterWithdrawal.toLocaleString()}đ) thấp hơn mức cọc tối thiểu yêu cầu (${minDeposit.toLocaleString()}đ).`
-                }, { status: 400 });
-            }
+            // USER YÊU CẦU: Không chặn lệnh rút tiền, chỉ gửi thông báo.
+            // if (remainingAfterWithdrawal < minDeposit) {
+            //     return NextResponse.json({ 
+            //         success: false, 
+            //         error: `Không thể rút. Số dư còn lại sau khi rút (${remainingAfterWithdrawal.toLocaleString()}đ) thấp hơn mức cọc tối thiểu yêu cầu (${minDeposit.toLocaleString()}đ).`
+            //     }, { status: 400 });
+            // }
         }
 
         // 4. Tạo lệnh rút tiền
