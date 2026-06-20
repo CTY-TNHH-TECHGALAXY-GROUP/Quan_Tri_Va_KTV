@@ -2022,8 +2022,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } catch (e) {
                 console.error('Error fetching wallet timeline:', e);
             }
-        },
-        canViewWallet
+        }
     };
 }
 
