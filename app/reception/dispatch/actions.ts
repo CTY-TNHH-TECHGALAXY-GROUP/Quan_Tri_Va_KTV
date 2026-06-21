@@ -166,7 +166,7 @@ export async function getDispatchData(date: string) {
                             options: parsedOptions,
                             service_name: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`,
                             serviceName: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`, // Thêm camelCase cho đồng bộ
-                            service_description: svcInfo?.description || '',
+                            service_description: b.source === 'VIP_MENU' ? '' : (svcInfo?.description || ''),
                             duration: finalDuration,
                             is_utility: svcInfo?.is_utility ?? (sId === 'nhs0900'), // ✅ is_utility, fallback legacy
                             timeStart: i.timeStart || null,
