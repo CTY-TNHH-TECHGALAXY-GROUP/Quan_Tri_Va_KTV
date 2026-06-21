@@ -183,7 +183,7 @@ export const useKTVAttendance = () => {
 
     // --- Handlers ---
     const checkIsLate = useCallback(() => {
-        if (user?.role === 'SUPPORT') {
+        if (user?.roleId === 'support') {
             setIsLate(false);
             return false;
         }

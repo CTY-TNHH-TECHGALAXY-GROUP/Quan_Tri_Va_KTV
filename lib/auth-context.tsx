@@ -66,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         else if (rawRole === 'MANAGER') roleId = 'branch_manager';
         else if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST') roleId = 'reception';
         else if (rawRole === 'TECHNICIAN' || rawRole === 'KTV') roleId = 'ktv';
+        else if (rawRole === 'SUPPORT') roleId = 'support';
 
         const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser.fullName || dbUser.username)}`;
         const finalUser = {
