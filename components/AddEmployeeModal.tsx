@@ -56,6 +56,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        role: 'TECHNICIAN',
         skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
     });
 
@@ -91,6 +92,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                 join_date: new Date().toISOString().split('T')[0], height: '', weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        role: 'TECHNICIAN',
                 skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
             });
         } else {
@@ -132,6 +134,16 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Mật khẩu đăng nhập *</label>
                                         <input required type="text" name="password" value={formData.password} onChange={handleChange} placeholder="VD: 123456" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Vai trò hệ thống (Role) *</label>
+                                        <select name="role" value={formData.role} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-indigo-50 font-bold text-indigo-700">
+                                            <option value="TECHNICIAN">Kỹ Thuật Viên</option>
+                                            <option value="SUPPORT">Nhân viên Hậu Cần</option>
+                                            <option value="RECEPTION">Lễ Tân</option>
+                                            <option value="MANAGER">Quản Lý</option>
+                                            <option value="ADMIN">Admin (Toàn quyền)</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>

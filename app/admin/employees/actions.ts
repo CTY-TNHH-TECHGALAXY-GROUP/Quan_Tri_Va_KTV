@@ -52,6 +52,8 @@ export async function createStaffMember(formData: any) {
             throw new Error("Vui lòng nhập mật khẩu đăng nhập cho nhân viên.");
         }
 
+        const role = formData.role || 'TECHNICIAN';
+
         const userPayload = {
             id: formData.id,
             username: formData.id, // Ensure username is the Employee ID (NV-001)
@@ -59,9 +61,14 @@ export async function createStaffMember(formData: any) {
             code: formData.id,
             fullName: formData.full_name,
             gender: formData.gender || null,
-            role: 'TECHNICIAN',
+            role: role,
             // Default KTV permissions mapping based on system defaults
-            permissions: [
+            permissions: role === 'SUPPORT' ? [
+                'support_dashboard',
+                'ktv_attendance',
+                'service_handbook',
+                'settings'
+            ] : role === 'TECHNICIAN' ? [
                 'ktv_dashboard',
                 'ktv_attendance',
                 'ktv_schedule',
@@ -69,7 +76,14 @@ export async function createStaffMember(formData: any) {
                 'ktv_history',
                 'service_handbook',
                 'settings'
-            ]
+            ] : role === 'RECEPTION' ? [
+                'reception_dispatch',
+                'reception_ktv_hub',
+                'reception_rooms'
+            ] : role === 'ADMIN' ? [
+                'role_management',
+                'employee_management'
+            ] : []
         };
 
         const { error: userError } = await supabase
@@ -86,7 +100,7 @@ export async function createStaffMember(formData: any) {
         const authResult = await createAuthUser(supabase, formData.id, password, {
             business_user_id: formData.id,
             techCode: formData.id,
-            role: 'TECHNICIAN',
+            role: role,
             fullName: formData.full_name
         });
         if (!authResult.success) {
