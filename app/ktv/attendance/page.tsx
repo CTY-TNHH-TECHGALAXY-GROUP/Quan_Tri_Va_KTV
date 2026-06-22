@@ -107,7 +107,11 @@ const KTVAttendancePage = () => {
 
     React.useEffect(() => {
         if (isCameraOpen && videoRef.current && stream) {
+            videoRef.current.muted = true;
+            videoRef.current.defaultMuted = true;
+            videoRef.current.playsInline = true;
             videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(e => console.error("Camera play error:", e));
         }
     }, [isCameraOpen, stream]);
 

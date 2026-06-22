@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, Suspense } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -837,6 +837,9 @@ function ScreenTimer({ logic }: { logic: any }) {
 
   React.useEffect(() => {
       if (isCameraOpen && videoRef.current && stream) {
+          videoRef.current.muted = true;
+          videoRef.current.defaultMuted = true;
+          videoRef.current.playsInline = true;
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(e => console.error("Camera play error:", e));
       }
