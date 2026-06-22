@@ -136,7 +136,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
         let groupName = module.group;
         
         // Đổi tên nhóm Kỹ Thuật Viên thành Hậu Cần nếu là nhân viên Hậu Cần
-        if (role?.id === 'SUPPORT' && groupName === 'Kỹ Thuật Viên') {
+        if (role?.id === 'support' && groupName === 'Kỹ Thuật Viên') {
             groupName = 'Hậu Cần';
         }
 
