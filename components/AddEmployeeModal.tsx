@@ -198,16 +198,6 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Cân nặng (kg)</label>
                                         <input type="number" name="weight" value={formData.weight} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
                                     </div>
-                                  <div className="flex flex-col justify-end space-y-2">
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                          <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-4 h-4 text-indigo-600 rounded" />
-                                          <span className="text-sm font-medium text-gray-700">VIP Menu</span>
-                                      </label>
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                          <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-4 h-4 text-indigo-600 rounded" />
-                                          <span className="text-sm font-medium text-gray-700">Home Spa</span>
-                                      </label>
-                                  </div>
                                 </div>
                             </div>
 
@@ -228,8 +218,19 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
 
                             {/* Skills Info - Only show for TECHNICIAN */}
                             {formData.role === 'TECHNICIAN' && (
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between border-b pb-2">
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên VIP Menu</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Home Spa</span>
+                                        </label>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b pb-2">
                                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
                                         <Award size={16} className="text-indigo-600" /> Kỹ năng chuyên môn
                                     </h3>
@@ -252,6 +253,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         );
                                     })}
                                 </div>
+                                    </div>
                                 </div>
                             )}
                         </form>
