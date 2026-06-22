@@ -457,7 +457,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                     actualStartTime: dbSeg.actualStartTime || incomingSeg.actualStartTime,
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
-                                    reviewTime: dbSeg.reviewTime || incomingSeg.reviewTime
+                                    reviewTime: dbSeg.reviewTime || incomingSeg.reviewTime,
+                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl
                                 };
                             }
                             return incomingSeg;

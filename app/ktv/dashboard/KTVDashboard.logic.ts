@@ -476,15 +476,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (!seg.reviewTime) allReview = false;
             });
             
-            // 🔒 Restore hasSubmittedReview from backend ONLY if the per-KTV per-booking localStorage flag confirms it.
-            // Prevents backend reviewTime (written by teammate or early) from bypassing per-KTV ownership.
+            // 🔒 Restore hasSubmittedReview từ Database hoặc localStorage
+            // Cho phép admin đăng nhập thiết bị khác (không có localStorage) vẫn tự động nhảy qua màn Review
             if (allReview && !hasSubmittedReview) {
+                setHasSubmittedReview(true);
+            } else if (!hasSubmittedReview) {
                 try {
                     const reviewKey = `ktv_review_submitted_${ktvId}_${booking?.id}`;
                     if (localStorage.getItem(reviewKey) === 'true') {
                         setHasSubmittedReview(true);
                     }
-                    // If flag absent: backend has reviewTime but this KTV never submitted → stay on REVIEW screen
                 } catch(e) {}
             }
 
