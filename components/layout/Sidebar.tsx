@@ -37,7 +37,8 @@ import {
   LogOut,
   DoorOpen,
   MessageSquare,
-  ToggleLeft
+  ToggleLeft,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -293,30 +294,59 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
           )}
         </div>
 
-        {/* Bottom Section for Settings */}
-        <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-10">
-          {hasPermission('settings') && (
-            <div className={`p-4 w-full ${!isExpanded && 'px-3'}`}>
-              <Link
-                href={PATHS.settings}
-                onClick={() => {
-                  if (window.innerWidth < 1024) onClose();
-                }}
-                title={!isExpanded ? "Cài Đặt" : undefined}
-                className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-0'} py-2.5 rounded-xl transition-all duration-200 ${pathname === PATHS.settings
-                  ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                <span className={pathname === PATHS.settings ? 'text-indigo-600' : 'text-gray-400'}>
-                  {ICONS.settings}
-                </span>
-                {isExpanded && <span className="text-sm font-medium">Cài Đặt</span>}
-              </Link>
-            </div>
+      {/* Bottom Section for Settings */}
+      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 flex flex-col">
+        {hasPermission('settings') && (
+          <div className={`p-4 pb-2 w-full ${!isExpanded && 'px-3'}`}>
+            <Link
+              href={PATHS.settings}
+              onClick={() => {
+                if (window.innerWidth < 1024) onClose();
+              }}
+              title={!isExpanded ? "Cài đặt" : undefined}
+              className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-0'} py-2.5 rounded-xl transition-all duration-200 ${pathname === PATHS.settings
+                ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              <span className={pathname === PATHS.settings ? 'text-indigo-600' : 'text-gray-400'}>
+                {ICONS.settings}
+              </span>
+              {isExpanded && <span className="text-sm font-medium">Cài đặt</span>}
+            </Link>
+          </div>
+        )}
+
+        {/* Version & Reload Button */}
+        <div className={`px-4 pt-3 pb-2 w-full flex flex-col ${isExpanded ? 'items-start' : 'items-center'} gap-2`}>
+          <button
+              onClick={() => {
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) {
+                      registration.unregister();
+                    }
+                    window.location.reload();
+                  });
+                } else {
+                  window.location.reload();
+                }
+              }}
+              title={!isExpanded ? "Tải lại App" : undefined}
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl transition-all duration-200 text-xs font-bold text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 w-full bg-gray-50 active:scale-95`}
+          >
+            <RefreshCw size={16} className="shrink-0" />
+            {isExpanded && <span>Làm mới Ứng dụng</span>}
+          </button>
+          
+          {isExpanded && (
+              <div className="text-[10px] text-gray-400 font-medium w-full text-center mt-1">
+                  Phiên bản: 1.0.1 (22/06/2026)
+              </div>
           )}
         </div>
-      </aside>
-    </>
+      </div>
+    </aside>
+  </>
   );
 }
