@@ -133,13 +133,20 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
     return MODULES
       .filter(m => m.id !== 'settings' && hasPermission(m.id as any))
       .reduce((acc, module) => {
-        if (!acc[module.group]) {
-          acc[module.group] = [];
+        let groupName = module.group;
+        
+        // Đổi tên nhóm Kỹ Thuật Viên thành Hậu Cần nếu là nhân viên Hậu Cần
+        if (role?.id === 'SUPPORT' && groupName === 'Kỹ Thuật Viên') {
+            groupName = 'Hậu Cần';
         }
-        acc[module.group].push(module);
+
+        if (!acc[groupName]) {
+          acc[groupName] = [];
+        }
+        acc[groupName].push(module);
         return acc;
       }, {} as Record<string, typeof MODULES>);
-  }, [hasPermission]);
+  }, [hasPermission, role?.id]);
 
   // Auto-expand groups that contain the active link
   React.useEffect(() => {
