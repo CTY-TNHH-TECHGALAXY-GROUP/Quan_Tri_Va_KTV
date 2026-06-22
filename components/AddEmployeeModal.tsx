@@ -70,7 +70,18 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+        const { name, value } = e.target;
+        setFormData(prev => {
+            const nextData = { ...prev, [name]: value };
+            if (name === 'role') {
+                if (value === 'SUPPORT') nextData.position = 'Nhân viên Hậu Cần';
+                else if (value === 'TECHNICIAN') nextData.position = 'Kỹ Thuật Viên';
+                else if (value === 'RECEPTION') nextData.position = 'Lễ Tân';
+                else if (value === 'MANAGER') nextData.position = 'Quản Lý';
+                else if (value === 'ADMIN') nextData.position = 'Quản Trị Viên';
+            }
+            return nextData;
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -215,9 +226,10 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                 </div>
                             </div>
 
-                            {/* Skills Info */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b pb-2">
+                            {/* Skills Info - Only show for TECHNICIAN */}
+                            {formData.role === 'TECHNICIAN' && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between border-b pb-2">
                                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
                                         <Award size={16} className="text-indigo-600" /> Kỹ năng chuyên môn
                                     </h3>
@@ -240,7 +252,8 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         );
                                     })}
                                 </div>
-                            </div>
+                                </div>
+                            )}
                         </form>
                     </div>
 
