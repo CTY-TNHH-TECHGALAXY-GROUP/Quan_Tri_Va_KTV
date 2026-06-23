@@ -536,6 +536,7 @@ export default function DispatchBoardPage() {
 
               let parsedNotes: any = null;
               let finalAdminNote = '';
+              let extractedCustomerNote = '';
               if (b.notes) {
                   if (typeof b.notes === 'string' && b.notes.trim().startsWith('{')) {
                       try { parsedNotes = JSON.parse(b.notes); } catch(e) {}
@@ -543,13 +544,16 @@ export default function DispatchBoardPage() {
                       parsedNotes = b.notes;
                   } else {
                       finalAdminNote = String(b.notes);
+                      extractedCustomerNote = String(b.notes);
                   }
                   
                   if (parsedNotes) {
-                      if (parsedNotes.type === 'VIP_APPOINTMENT') {
+                      if (parsedNotes.type === 'VIP_APPOINTMENT' || parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
                           finalAdminNote = parsedNotes.receptionNote || '';
+                          extractedCustomerNote = parsedNotes.customerNote || parsedNotes.note || '';
                       } else {
                           finalAdminNote = typeof b.notes === 'string' ? b.notes : JSON.stringify(b.notes);
+                          extractedCustomerNote = parsedNotes.customerNote || parsedNotes.note || '';
                       }
                   }
               }
@@ -653,6 +657,7 @@ export default function DispatchBoardPage() {
                 focus: Array.isArray(parsedOptions?.focus) ? parsedOptions.focus.join(', ') : (parsedOptions?.focus || b.focusAreaNote || ''),
                 avoid: Array.isArray(parsedOptions?.avoid) ? parsedOptions.avoid.join(', ') : (parsedOptions?.avoid || ''),
                 customerNote: [
+                  extractedCustomerNote,
                   parsedOptions?.note,
                   Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
                   b.focusAreaNote

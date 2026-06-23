@@ -237,7 +237,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 const sId = rawSId.toLowerCase();
                 const svc = svcMap.get(sId);
                 const opts = i.options || {};
-                const customerNote = opts.note || i.customerNote || '';
+                let bCustomerNote = '';
+                if (booking?.notes && typeof booking.notes === 'string' && booking.notes.trim().startsWith('{')) {
+                    try {
+                        const pNotes = JSON.parse(booking.notes);
+                        bCustomerNote = pNotes.customerNote || pNotes.note || '';
+                    } catch(e) {}
+                } else if (booking?.notes && typeof booking.notes === 'string' && !booking.notes.trim().startsWith('{')) {
+                    bCustomerNote = String(booking.notes);
+                }
+                const customerNote = [bCustomerNote, opts.note, i.customerNote].filter(Boolean).join(' | ');
                 const notesForKtvs = opts.notesForKtvs || {};
                 const noteForKtv = (technicianCode && notesForKtvs[technicianCode]) 
                     ? notesForKtvs[technicianCode] 

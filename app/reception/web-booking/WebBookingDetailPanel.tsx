@@ -57,8 +57,16 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               if (parsedNotes.warnings && parsedNotes.warnings.length > 0) {
                   finalNote += ` Cảnh báo: ${parsedNotes.warnings.join(', ')}`;
               }
+              const cNote = parsedNotes.customerNote || parsedNotes.note;
+              if (cNote) {
+                  finalNote += ` | Ghi chú khách: ${cNote}`;
+              }
           } else if (parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
               finalNote = 'Khách đặt trước qua Web Nội Bộ.';
+              const cNote = parsedNotes.customerNote || parsedNotes.note;
+              if (cNote) {
+                  finalNote += ` | Ghi chú khách: ${cNote}`;
+              }
           }
       } catch(e) {}
   }
