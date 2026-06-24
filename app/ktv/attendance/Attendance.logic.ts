@@ -17,6 +17,7 @@ const SHIFT_START_TIMES: Record<string, string> = {
     SHIFT_3: '17:00',
     FREE: '00:00',
     REQUEST: '00:00',
+    SUPPORT: '00:00',
 };
 const SHIFT_END_TIMES: Record<string, string> = {
     SHIFT_1: '17:00',
@@ -24,6 +25,7 @@ const SHIFT_END_TIMES: Record<string, string> = {
     SHIFT_3: '00:00', // treated as 24:00 of the same day
     FREE: '00:00',
     REQUEST: '00:00',
+    SUPPORT: '00:00',
 };
 
 // --- TYPES ---
@@ -122,6 +124,14 @@ export const useKTVAttendance = () => {
     useEffect(() => {
         if (!['IDLE', 'CONFIRMED'].includes(checkStatus) || !user?.id) return;
 
+        if (user.roleId === 'support') {
+            setIsLoadingShift(false);
+            setIsOffToday(false);
+            setShiftFetchError(false);
+            setActiveShiftType('SUPPORT');
+            return;
+        }
+
         const fetchShift = async () => {
             setIsLoadingShift(true);
             try {
@@ -194,7 +204,7 @@ export const useKTVAttendance = () => {
         }
 
         // Bỏ qua check đi muộn cho các ca linh hoạt
-        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST') {
+        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT') {
             setIsLate(false);
             return false;
         }
@@ -328,7 +338,7 @@ export const useKTVAttendance = () => {
         if (!activeShiftType || isLoadingShift) return { canCheckOut: true, checkoutBlockedUntil: null };
 
         // Ca tự do và Khách yêu cầu thì luôn cho phép về thẳng (không block, không tính đột xuất)
-        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST') {
+        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT') {
             return { canCheckOut: true, checkoutBlockedUntil: null };
         }
 
@@ -383,6 +393,7 @@ export const useKTVAttendance = () => {
         clearError,
         isOffToday,
         allowEarlyCheckout,
-        minPhotoBrightness
+        minPhotoBrightness,
+        user
     };
 };

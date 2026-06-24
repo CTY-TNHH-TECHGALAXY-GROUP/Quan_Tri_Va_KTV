@@ -332,7 +332,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
           
           {isExpanded && (
               <div className="text-[10px] text-gray-400 font-medium w-full text-center mt-1">
-                  Phiên bản: 1.0.1 (22/06/2026)
+                  Phiên bản: 1.0.2
               </div>
           )}
         </div>

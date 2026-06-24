@@ -32,6 +32,7 @@ const KTVAttendancePage = () => {
         isOffToday,
         allowEarlyCheckout,
         minPhotoBrightness,
+        user,
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -609,6 +610,7 @@ const KTVAttendancePage = () => {
                                                  activeShiftType === 'SHIFT_2' ? 'Ca 2 (11:00 - 19:00)' :
                                                  activeShiftType === 'SHIFT_3' ? 'Ca 3 (17:00 - 00:00)' : 
                                                  activeShiftType === 'FREE' ? 'Ca tự do (Linh hoạt)' :
+                                                 activeShiftType === 'SUPPORT' ? 'Ca Hành Chính (Hậu Cần)' :
                                                  activeShiftType === 'REQUEST' ? 'Làm khách yêu cầu' : activeShiftType}
                                             </option>
                                             <option value="SUDDEN_OFF">Nghỉ đột xuất</option>
@@ -650,7 +652,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && (
+                            {selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && user?.roleId !== 'support' && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
                                     <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
                                         <div className="flex items-center h-5 mt-0.5">
