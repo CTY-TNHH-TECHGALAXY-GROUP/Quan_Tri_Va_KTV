@@ -34,7 +34,7 @@ export async function getDispatchData(date: string) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -78,7 +78,8 @@ export async function getDispatchData(date: string) {
                     description: (typeof s.description === 'object' && s.description !== null) 
                         ? (s.description.vn || s.description.en || '') 
                         : (s.description || ''),
-                    is_utility: s.is_utility ?? false  // ✅ is_utility từ DB
+                    is_utility: s.is_utility ?? false,  // ✅ is_utility từ DB
+                    category: s.category
                 };
                 
                 // Trình dọn dẹp cuối cùng: Đảm bảo không còn object nào lọt vào UI
@@ -166,7 +167,7 @@ export async function getDispatchData(date: string) {
                             options: parsedOptions,
                             service_name: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`,
                             serviceName: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`, // Thêm camelCase cho đồng bộ
-                            service_description: b.source === 'VIP_MENU' ? '' : (svcInfo?.description || ''),
+                            service_description: (b.source === 'VIP_MENU' || parsedOptions?.vipDuration || parsedOptions?.selectedSkills) ? '' : (svcInfo?.description || ''),
                             duration: finalDuration,
                             is_utility: svcInfo?.is_utility ?? (sId === 'nhs0900'), // ✅ is_utility, fallback legacy
                             timeStart: i.timeStart || null,

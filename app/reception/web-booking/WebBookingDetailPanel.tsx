@@ -63,7 +63,16 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               }
           } else if (parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
               finalNote = 'Khách đặt trước qua Web Nội Bộ.';
-              const cNote = parsedNotes.customerNote || parsedNotes.note;
+              const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
+              if (cNote) {
+                  finalNote += ` | Ghi chú khách: ${cNote}`;
+              }
+          } else if (parsedNotes.type === 'CHECKOUT_CART') {
+              finalNote = 'Checkout Giỏ Hàng';
+              if (parsedNotes.vipCustomerNotes) {
+                  finalNote += ` | Ghi chú VIP: ${parsedNotes.vipCustomerNotes}`;
+              }
+              const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
               if (cNote) {
                   finalNote += ` | Ghi chú khách: ${cNote}`;
               }
@@ -211,6 +220,18 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
                             <p className="font-black text-sm text-gray-900">{formatVND(item.price)}</p>
                           </div>
                         </div>
+
+                        {/* Chi tiết Options từ Web Booking Giỏ hàng */}
+                        {item.options && (item.options.strength || item.options.focus?.length > 0 || item.options.avoid?.length > 0 || item.options.tags?.length > 0 || item.options.note || item.options.customerNotes || (item.options.therapist && item.options.therapist !== 'Ngẫu nhiên')) && (
+                          <div className="flex flex-col gap-1.5 mt-2 text-[12px] text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                             {(item.options.therapist && item.options.therapist !== 'Ngẫu nhiên') && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span> <span className="font-medium">Giới tính KTV:</span> <span className="text-pink-600 font-bold">{item.options.therapist}</span></p>}
+                             {item.options.strength && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> <span className="font-medium">Lực massage:</span> {item.options.strength}</p>}
+                             {item.options.focus && item.options.focus.length > 0 && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> <span className="font-medium">Tập trung:</span> {item.options.focus.join(', ')}</p>}
+                             {item.options.avoid && item.options.avoid.length > 0 && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-400"></span> <span className="font-medium">Tránh vùng:</span> {item.options.avoid.join(', ')}</p>}
+                             {item.options.tags && item.options.tags.length > 0 && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span> <span className="font-medium">Yêu cầu khác:</span> {item.options.tags.join(', ')}</p>}
+                             {(item.options.note || item.options.customerNotes) && <p className="flex gap-1 mt-0.5 text-gray-500 italic">" {item.options.note || item.options.customerNotes} "</p>}
+                          </div>
+                        )}
                         {item.requestedKTVs && item.requestedKTVs.length > 0 && (
                           <div className="flex flex-col gap-1.5 mt-1 border-t border-dashed border-gray-100 pt-2">
                             <span className="text-[9px] font-black text-pink-400 uppercase tracking-widest">KTV Yêu Cầu</span>

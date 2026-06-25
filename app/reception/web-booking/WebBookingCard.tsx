@@ -82,7 +82,16 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
               }
           } else if (parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
               finalNote = 'Ghi chú: Khách đặt trước qua Web Nội Bộ.';
-              const cNote = parsedNotes.customerNote || parsedNotes.note;
+              const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
+              if (cNote) {
+                  finalNote += ` | Ghi chú khách: ${cNote}`;
+              }
+          } else if (parsedNotes.type === 'CHECKOUT_CART') {
+              finalNote = 'Checkout Giỏ Hàng';
+              if (parsedNotes.vipCustomerNotes) {
+                  finalNote += ` | Ghi chú VIP: ${parsedNotes.vipCustomerNotes}`;
+              }
+              const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
               if (cNote) {
                   finalNote += ` | Ghi chú khách: ${cNote}`;
               }
@@ -181,6 +190,18 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
                     <span className="text-[11px] text-gray-600 font-medium truncate">{item.serviceName}</span>
                     <span className="text-[10px] text-gray-400 shrink-0">{item.duration}p</span>
                   </div>
+                  {/* Options Preview cho Web Booking Cart */}
+                  {item.options && (item.options.strength || item.options.focus?.length > 0 || item.options.avoid?.length > 0 || item.options.note || item.options.customerNotes || (item.options.therapist && item.options.therapist !== 'Ngẫu nhiên')) && (
+                      <div className="text-[9.5px] text-gray-500 truncate mt-0.5 mb-0.5">
+                         {[
+                           item.options.strength && `Lực: ${item.options.strength}`,
+                           item.options.focus?.length > 0 && `Tập trung: ${item.options.focus.join(', ')}`,
+                           item.options.avoid?.length > 0 && `Né: ${item.options.avoid.join(', ')}`,
+                           (item.options.therapist && item.options.therapist !== 'Ngẫu nhiên') && `KTV: ${item.options.therapist}`,
+                           (item.options.note || item.options.customerNotes) && `Ghi chú: ${item.options.note || item.options.customerNotes}`
+                         ].filter(Boolean).join(' | ')}
+                      </div>
+                  )}
                   {item.requestedKTVs && item.requestedKTVs.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {item.requestedKTVs.map((ktv, idx) => (
