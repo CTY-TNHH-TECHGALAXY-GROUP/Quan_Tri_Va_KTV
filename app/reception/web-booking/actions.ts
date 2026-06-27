@@ -203,10 +203,20 @@ export async function confirmWebBooking(bookingId: string) {
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
-    // Lấy thông tin hiện tại để map sang loại tương ứng và gửi thông báo KTV
+    // Lấy thông tin hiện tại để map sang loại tương ứng và gửi thông báo KTV, kèm thông tin chi tiết cho Email
     const { data: bData } = await supabase
       .from('Bookings')
-      .select('source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone')
+      .select(`
+        source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
+        bookingDate, timeBooking, totalAmount, id,
+        BookingItems (
+          quantity,
+          serviceId,
+          Services (
+            nameVN, nameEN, nameKR, nameJP, nameCN, duration
+          )
+        )
+      `)
       .eq('id', bookingId)
       .single();
 
@@ -295,13 +305,65 @@ export async function confirmWebBooking(bookingId: string) {
             }
         }
 
+        // 5. Lấy % cọc từ SystemConfigs
+        let depositPercent = 40;
+        try {
+            const { data: configData } = await supabase
+                .from('SystemConfigs')
+                .select('value')
+                .eq('key', 'web_booking_deposit_percent')
+                .maybeSingle();
+            if (configData && configData.value) {
+                depositPercent = parseInt(configData.value, 10);
+            }
+        } catch (e) {}
+
+        const depositAmountVND = bData.totalAmount ? (bData.totalAmount * depositPercent / 100) : 0;
+
+        // Bóc tách danh sách dịch vụ và tính tổng phút, số lượng khách
+        let totalDuration = 0;
+        let totalGuests = 0;
+        const serviceList: { name: string; duration: number }[] = [];
+
+        if (bData.BookingItems && Array.isArray(bData.BookingItems)) {
+            bData.BookingItems.forEach((item: any) => {
+                const qty = item.quantity || 1;
+                totalGuests += qty;
+                
+                if (item.Services) {
+                    const dur = item.Services.duration || 0;
+                    totalDuration += dur;
+                    
+                    // Lấy tên dịch vụ theo ngôn ngữ khách hàng
+                    let sName = item.Services.nameEN || 'Service';
+                    if (bData.customerLang === 'vi') sName = item.Services.nameVN || sName;
+                    else if (bData.customerLang === 'kr') sName = item.Services.nameKR || sName;
+                    else if (bData.customerLang === 'jp') sName = item.Services.nameJP || sName;
+                    else if (bData.customerLang === 'cn') sName = item.Services.nameCN || sName;
+                    
+                    serviceList.push({ name: sName, duration: dur });
+                }
+            });
+        }
+
+        const bookingDetails = {
+            bookingId: bData.billCode || bData.id || bookingId,
+            date: bData.bookingDate || '',
+            time: bData.timeBooking || '',
+            services: serviceList,
+            duration: totalDuration,
+            guests: totalGuests,
+            depositAmount: depositAmountVND
+        };
+
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
         try {
             await sendBookingConfirmationEmail(
                 bData.customerEmail,
                 bData.customerName || 'Quý khách',
                 bData.customerLang || 'vi',
-                isNewCustomer
+                isNewCustomer,
+                bookingDetails
             );
         } catch (err) {
             console.error('[WebBooking] Lỗi khi gửi email xác nhận:', err);

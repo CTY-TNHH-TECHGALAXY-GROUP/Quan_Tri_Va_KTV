@@ -13,10 +13,20 @@ const transporter = nodemailer.createTransport({
 
 // Nội dung templates theo ngôn ngữ
 // Mẹo: Sau này bạn muốn sửa nội dung, chỉ cần sửa các dòng chữ trong khối này là được.
+export interface BookingDetails {
+    bookingId: string;
+    date: string;
+    time: string;
+    services: { name: string; duration: number }[];
+    duration: number;
+    guests: number;
+    depositAmount: number;
+}
+
 const TEMPLATES = {
   vi: {
     subject: 'Xác nhận đặt lịch thành công - Ngan Ha Spa',
-    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string) => `
+    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => `
       <p>Xin chào <strong>${name}</strong>,</p>
       <p>Cảm ơn bạn đã tin tưởng và đặt dịch vụ tại Ngan Ha Spa.</p>
       <p>Chúng tôi xin thông báo đã nhận được đơn đặt lịch của bạn thành công.</p>
@@ -40,8 +50,63 @@ const TEMPLATES = {
     `,
   },
   en: {
-    subject: 'Booking Confirmation - Ngan Ha Spa',
-    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string) => `
+    subject: 'Booking Confirmation - Ngân Hà Spa',
+    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => {
+      const serviceHtml = details?.services?.map(s => `<li>- ${s.name} (${s.duration} Minutes)</li>`).join('') || '';
+      const depositStr = details?.depositAmount ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(details.depositAmount) : '...';
+      const dateStr = details?.date ? new Date(details.date).toLocaleDateString('en-US') : '[Date]';
+      const timeStr = details?.time || '[Time]';
+      const bookId = details?.bookingId || '[Booking ID]';
+      const guests = details?.guests || 1;
+
+      return `
+      <p>Dear <strong>${name}</strong>,</p>
+      <p>Thank you for booking with Ngân Hà Spa! We have received your reservation request, and we are looking forward to welcoming you soon.</p>
+      <p>Here are the details of your upcoming visit:</p>
+      <ul style="list-style: none; padding: 0;">
+        <li><strong>Booking Reference:</strong> #${bookId}</li>
+        <li><strong>Date & Time:</strong> ${dateStr} at ${timeStr}</li>
+        <li><strong>Service(s):</strong><br/>
+           <ul style="list-style: none; padding-left: 10px; margin: 5px 0;">${serviceHtml}</ul>
+        </li>
+        <li><strong>Guest(s):</strong> ${guests}</li>
+      </ul>
+      
+      ${isNewCustomer ? `
+      <h3>💳 Confirming Your Visit</h3>
+      <p>To officially secure your appointment and help us prepare your room and therapist, we kindly ask for a deposit of <strong>${depositStr}</strong> within the next 2 hours.</p>
+      <p>Please scan the appropriate QR code below to complete your payment:</p>
+      
+      <table width="100%" style="margin-top: 20px; max-width: 600px;">
+        <tr>
+           <td width="50%" align="center"><strong>International Guests (Global Apps / Cards)</strong></td>
+           <td width="50%" align="center"><strong>Local Guests (Vietnam Banks / VietQR)</strong></td>
+        </tr>
+        <tr>
+           <td align="center"><img src="${qr1}" alt="International QR" width="200" height="200" style="margin-top:10px; border:1px solid #eee; border-radius:8px;"/></td>
+           <td align="center"><img src="${qr2}" alt="Vietnam QR" width="200" height="200" style="margin-top:10px; border:1px solid #eee; border-radius:8px;"/></td>
+        </tr>
+        <tr>
+           <td align="center"><small>For international banking apps supporting QR payments.</small></td>
+           <td align="center"><small>For all Vietnamese local banks via Napas247 / VietQR.</small></td>
+        </tr>
+      </table>
+      
+      <p><strong>Important Note:</strong> To help our team verify your payment instantly, please include your Booking Reference <strong>#${bookId}</strong> and Your Name in the transaction description.</p>
+      
+      <h3>What Happens Next?</h3>
+      <p>Once we receive your deposit, our system will automatically send you a final confirmation email along with arrival instructions for your visit.</p>
+      ` : `
+      <h3>What Happens Next?</h3>
+      <p>As a returning customer, <strong>no advance payment is required</strong>. You can simply pay at the counter upon arrival.</p>
+      `}
+      
+      <p>Need to change your plans? If you need to reschedule or cancel your booking, please let us know at least 24 hours before your appointment by replying directly to this email.</p>
+      <p>If you have any questions at all, feel free to reach out. See you soon!</p>
+      <p>Best regards,<br/><strong>Ngân Hà Team | +84 903014164 (Whatsapp/Zalo/Kakaotalk)</strong></p>
+      `;
+    },
+  },
       <p>Dear <strong>${name}</strong>,</p>
       <p>Thank you for choosing Ngan Ha Spa.</p>
       <p>We are pleased to inform you that we have successfully received your booking.</p>
@@ -66,7 +131,7 @@ const TEMPLATES = {
   },
   kr: {
     subject: '예약 확인 - Ngan Ha Spa',
-    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string) => `
+    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => `
       <p>안녕하세요 <strong>${name}</strong>님,</p>
       <p>Ngan Ha Spa를 이용해 주셔서 진심으로 감사드립니다.</p>
       <p>고객님의 예약이 성공적으로 접수되었음을 알려드립니다.</p>
@@ -91,7 +156,7 @@ const TEMPLATES = {
   },
   jp: {
     subject: 'ご予約の確認 - Ngan Ha Spa',
-    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string) => `
+    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => `
       <p><strong>${name}</strong> 様</p>
       <p>Ngan Ha Spaをご利用いただき、誠にありがとうございます。</p>
       <p>ご予約を無事に承りましたことをお知らせいたします。</p>
@@ -116,7 +181,7 @@ const TEMPLATES = {
   },
   cn: {
     subject: '预约确认 - Ngan Ha Spa',
-    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string) => `
+    content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => `
       <p>尊敬的 <strong>${name}</strong>，您好：</p>
       <p>感谢您选择 Ngan Ha Spa。</p>
       <p>我们很高兴地通知您，您的预约已成功受理。</p>
@@ -145,17 +210,18 @@ export async function sendBookingConfirmationEmail(
   toEmail: string,
   customerName: string,
   language: string = 'vi',
-  isNewCustomer: boolean = true
+  isNewCustomer: boolean = true,
+  bookingDetails?: BookingDetails
 ) {
   try {
     const langKey = (Object.keys(TEMPLATES).includes(language) ? language : 'vi') as keyof typeof TEMPLATES;
     const template = TEMPLATES[langKey];
 
     // Placeholder cho 2 mã QR (sẽ chỉ hiện nếu isNewCustomer = true)
-    const qrPlaceholder1 = 'https://placehold.co/200x200/png?text=QR+Code+1';
-    const qrPlaceholder2 = 'https://placehold.co/200x200/png?text=QR+Code+2';
+    const qrPlaceholder1 = 'https://placehold.co/200x200/png?text=International+QR';
+    const qrPlaceholder2 = 'https://placehold.co/200x200/png?text=Vietnam+QR';
 
-    const htmlContent = template.content(customerName || 'Quý khách', isNewCustomer, qrPlaceholder1, qrPlaceholder2);
+    const htmlContent = template.content(customerName || 'Quý khách', isNewCustomer, qrPlaceholder1, qrPlaceholder2, bookingDetails);
 
     const info = await transporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
