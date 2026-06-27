@@ -1016,7 +1016,7 @@ function ScreenTimer({ logic }: { logic: any }) {
                   </div>
                 </div>
                 <button 
-                  onClick={() => openWebRTCCamera('environment')}
+                  onClick={() => logic.setStartPhotoBase64(null)}
                   className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
                 >
                   Chụp lại 🔄
