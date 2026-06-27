@@ -79,9 +79,13 @@ const KTVAttendancePage = () => {
                 setUseFallbackCamera(true);
                 throw new Error("Trình duyệt không hỗ trợ Camera, tự động chuyển sang chế độ dự phòng.");
             }
-            const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: { ideal: mode } } 
-            });
+            // Timeout 3s chống treo trên iOS
+            const mediaStream = await Promise.race([
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { ideal: mode } } 
+                }),
+                new Promise<MediaStream>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+            ]);
             setStream(mediaStream);
             setFacingMode(mode);
             setIsCameraOpen(true);
@@ -819,26 +823,37 @@ const KTVAttendancePage = () => {
                                 Đã chụp: {photos.length}/{MAX_PHOTOS}
                             </div>
                         </div>
-                        <div className="bg-black p-6 pb-12 flex items-center justify-between">
-                            <div className="w-16">
-                                {photos.length > 0 && (
-                                    <div className="w-12 h-12 rounded-lg border-2 border-white overflow-hidden shadow-lg shadow-black">
-                                        <img src={photos[photos.length - 1]} className="w-full h-full object-cover" />
-                                    </div>
-                                )}
+                        <div className="bg-black p-4 pb-8 flex flex-col items-center justify-center gap-4">
+                            <div className="flex items-center justify-between w-full px-6">
+                                <div className="w-16">
+                                    {photos.length > 0 && (
+                                        <div className="w-12 h-12 rounded-lg border-2 border-white overflow-hidden shadow-lg shadow-black">
+                                            <img src={photos[photos.length - 1]} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <button 
+                                    onClick={captureFromVideo}
+                                    disabled={photos.length >= MAX_PHOTOS}
+                                    className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center bg-transparent active:scale-95 transition-transform disabled:opacity-50 mx-auto"
+                                >
+                                    <div className="w-16 h-16 rounded-full bg-white transition-transform active:scale-90"></div>
+                                </button>
+                                <button 
+                                    onClick={closeWebRTCCamera}
+                                    className="w-16 text-white font-bold text-sm text-right"
+                                >
+                                    Xong
+                                </button>
                             </div>
-                            <button 
-                                onClick={captureFromVideo}
-                                disabled={photos.length >= MAX_PHOTOS}
-                                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center bg-transparent active:scale-95 transition-transform disabled:opacity-50 mx-auto"
+                            <button
+                              onClick={() => {
+                                closeWebRTCCamera();
+                                setUseFallbackCamera(true);
+                              }}
+                              className="px-4 py-2 mt-2 bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30 text-[11px] font-bold active:scale-95 transition-transform backdrop-blur flex items-center gap-2"
                             >
-                                <div className="w-16 h-16 rounded-full bg-white transition-transform active:scale-90"></div>
-                            </button>
-                            <button 
-                                onClick={closeWebRTCCamera}
-                                className="w-16 text-white font-bold text-sm text-right"
-                            >
-                                Xong
+                              ⚠️ Lỗi đen màn hình? Chụp dự phòng
                             </button>
                         </div>
                     </div>

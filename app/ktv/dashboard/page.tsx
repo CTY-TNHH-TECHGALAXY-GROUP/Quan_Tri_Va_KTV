@@ -756,9 +756,13 @@ function ScreenTimer({ logic }: { logic: any }) {
               setUseFallbackCamera(true);
               throw new Error("Trình duyệt không hỗ trợ Camera.");
           }
-          const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-              video: { facingMode: { ideal: mode } } 
-          });
+          // Timeout 3s chống treo trên iOS
+          const mediaStream = await Promise.race([
+              navigator.mediaDevices.getUserMedia({ 
+                  video: { facingMode: { ideal: mode } } 
+              }),
+              new Promise<MediaStream>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+          ]);
           setStream(mediaStream);
           setFacingMode(mode);
           setIsCameraOpen(true);
@@ -1275,12 +1279,21 @@ function ScreenTimer({ logic }: { logic: any }) {
               ⚠️ Vui lòng chụp ảnh khách của bạn để xác nhận bắt đầu làm việc.
             </div>
           </div>
-          <div className="bg-black p-6 pb-12 flex items-center justify-center">
+          <div className="bg-black p-6 pb-12 flex flex-col items-center justify-center gap-6">
             <button 
               onClick={captureFromVideo}
               className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center bg-transparent active:scale-95 transition-transform"
             >
               <div className="w-16 h-16 rounded-full bg-white transition-transform active:scale-90"></div>
+            </button>
+            <button
+              onClick={() => {
+                closeWebRTCCamera();
+                setUseFallbackCamera(true);
+              }}
+              className="px-4 py-2 bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30 text-[11px] font-bold active:scale-95 transition-transform backdrop-blur flex items-center gap-2"
+            >
+              ⚠️ Lỗi đen màn hình? Chụp dự phòng
             </button>
           </div>
         </div>
