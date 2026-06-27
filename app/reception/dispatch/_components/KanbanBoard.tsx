@@ -458,10 +458,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             const explicitStart = firstSeg?.actualStartTime || s.timeStart || firstSeg?.startTime;
                                                             const duration = Number(firstSeg?.duration) || Number(s.duration) || 60;
                                                             
-                                                            let displayStart = currentCumulativeStr || explicitStart;
-                                                            if (idx === 0 && firstSeg?.actualStartTime) {
-                                                                displayStart = firstSeg.actualStartTime;
-                                                            }
+                                                            let displayStart = firstSeg?.actualStartTime ? firstSeg.actualStartTime : (currentCumulativeStr || explicitStart);
                                                             
                                                             let displayEnd = firstSeg?.actualEndTime ? firstSeg.actualEndTime : (displayStart ? getDynamicEndTime(displayStart, duration) : (s.timeEnd || firstSeg?.endTime));
                                                             if (s.staffList && s.staffList.length > 1) {
