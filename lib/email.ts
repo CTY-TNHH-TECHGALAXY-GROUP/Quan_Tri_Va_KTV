@@ -107,28 +107,7 @@ const TEMPLATES = {
       `;
     },
   },
-      <p>Dear <strong>${name}</strong>,</p>
-      <p>Thank you for choosing Ngan Ha Spa.</p>
-      <p>We are pleased to inform you that we have successfully received your booking.</p>
-      
-      ${isNewCustomer ? `
-      <p>For your convenience, you can complete the payment by scanning one of the two QR codes below:</p>
-      <div style="display: flex; gap: 20px; margin-top: 20px;">
-        <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px;">
-          <img src="${qr1}" alt="QR Code 1" width="200" height="200" />
-        </div>
-        <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px;">
-          <img src="${qr2}" alt="QR Code 2" width="200" height="200" />
-        </div>
-      </div>
-      ` : `
-      <p>As a returning customer, <strong>no advance payment is required</strong>. You can simply pay at the counter upon arrival.</p>
-      `}
-      
-      <p style="margin-top: 20px;">If you have any questions or need to reschedule, please feel free to reply directly to this email. Our customer support team is always here to help.</p>
-      <p>Best regards,<br><strong>${process.env.SMTP_FROM_NAME}</strong></p>
-    `,
-  },
+
   kr: {
     subject: '예약 확인 - Ngan Ha Spa',
     content: (name: string, isNewCustomer: boolean, qr1: string, qr2: string, details?: BookingDetails) => `
