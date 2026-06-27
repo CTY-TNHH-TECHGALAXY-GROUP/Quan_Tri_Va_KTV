@@ -741,119 +741,7 @@ function ScreenTimer({ logic }: { logic: any }) {
       }
       return count > 0 ? total / count : 255;
   };
-  const [useFallbackCamera, setUseFallbackCamera] = React.useState(false);
-  const [isCameraOpen, setIsCameraOpen] = React.useState(false);
-  const [stream, setStream] = React.useState<MediaStream | null>(null);
-  const [facingMode, setFacingMode] = React.useState<'user' | 'environment'>('environment');
-  const videoRef = React.useRef<HTMLVideoElement>(null);
 
-  const openWebRTCCamera = async (mode: 'user' | 'environment' = 'environment') => {
-      try {
-          if (stream) {
-              stream.getTracks().forEach(track => track.stop());
-          }
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-              setUseFallbackCamera(true);
-              throw new Error("Trình duyệt không hỗ trợ Camera.");
-          }
-          // Timeout 3s chống treo trên iOS
-          const mediaStream = await Promise.race([
-              navigator.mediaDevices.getUserMedia({ 
-                  video: { facingMode: { ideal: mode } } 
-              }),
-              new Promise<MediaStream>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
-          ]);
-          setStream(mediaStream);
-          setFacingMode(mode);
-          setIsCameraOpen(true);
-      } catch (err) {
-          setUseFallbackCamera(true);
-          alert('Không thể truy cập Camera trực tiếp. Hệ thống tự động chuyển sang chế độ dự phòng.');
-      }
-  };
-
-  const closeWebRTCCamera = () => {
-      if (videoRef.current) {
-          videoRef.current.srcObject = null;
-      }
-      if (stream) {
-          stream.getTracks().forEach(track => {
-              track.stop();
-          });
-          setStream(null);
-      }
-      setTimeout(() => {
-          setIsCameraOpen(false);
-      }, 150);
-  };
-
-  const captureFromVideo = () => {
-      if (!videoRef.current) return;
-      const video = videoRef.current;
-      let { videoWidth: width, videoHeight: height } = video;
-      
-      const maxWidth = 600;
-      if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      ctx.drawImage(video, 0, 0, width, height);
-
-      // 🔆 Kiểm tra độ sáng
-      const brightness = getAverageBrightness(canvas);
-      console.log(`🔆 [Brightness Check] Giá trị: ${brightness.toFixed(1)} | Ngưỡng: ${minBrightness}`);
-      if (brightness < minBrightness) {
-          alert('⚠️ Ảnh quá tối!\nVui lòng bật đèn hoặc di chuyển đến nơi có đủ ánh sáng rồi chụp lại.');
-          return;
-      }
-
-      // Watermark
-      const now = new Date();
-      const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const timeStr = `${pad(vnTime.getHours())}:${pad(vnTime.getMinutes())}:${pad(vnTime.getSeconds())}`;
-      const dateStr = `${pad(vnTime.getDate())}/${pad(vnTime.getMonth() + 1)}/${vnTime.getFullYear()}`;
-      const watermarkText = `${timeStr}  ${dateStr}  Room ${booking?.assignedRoomId || booking?.roomName || ''}`;
-
-      const fontSize = Math.max(12, Math.floor(canvas.width * 0.04));
-      ctx.font = `bold ${fontSize}px Arial`;
-      ctx.textBaseline = 'top';
-      const textWidth = ctx.measureText(watermarkText).width;
-      
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.fillRect(8, 8, textWidth + 16, fontSize + 12);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(watermarkText, 16, 14);
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-      logic.setStartPhotoBase64(dataUrl);
-      closeWebRTCCamera();
-  };
-
-  React.useEffect(() => {
-      return () => {
-          if (stream) {
-              stream.getTracks().forEach(track => track.stop());
-          }
-      };
-  }, [stream]);
-
-  React.useEffect(() => {
-      if (isCameraOpen && videoRef.current && stream) {
-          videoRef.current.muted = true;
-          videoRef.current.defaultMuted = true;
-          videoRef.current.playsInline = true;
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(e => console.error("Camera play error:", e));
-      }
-  }, [isCameraOpen, stream]);
 
   const compressImage = (file: File, maxWidth = 600, quality = 0.5): Promise<string> => {
       return new Promise((resolve, reject) => {
@@ -1148,22 +1036,11 @@ function ScreenTimer({ logic }: { logic: any }) {
               </button>
             ) : (
               <div className="flex gap-3">
-                {useFallbackCamera ? (
-                  <label className="flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:active:scale-100">
-                    <Camera size={18} />
-                    {logic.canStart ? 'CHỤP DỰ PHÒNG' : 'CHƯA ĐẾN GIỜ'}
-                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
-                  </label>
-                ) : (
-                  <button
-                    onClick={() => openWebRTCCamera('environment')}
-                    disabled={logic.isLoading || !logic.canStart}
-                    className="flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all disabled:opacity-45 disabled:active:scale-100"
-                  >
-                    <Camera size={18} />
-                    {logic.canStart ? 'CHỤP ẢNH ĐỂ BẮT ĐẦU' : 'CHƯA ĐẾN GIỜ'}
-                  </button>
-                )}
+                <label className="flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:active:scale-100">
+                  <Camera size={18} />
+                  {logic.canStart ? 'CHỤP ẢNH ĐỂ BẮT ĐẦU' : 'CHƯA ĐẾN GIỜ'}
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
+                </label>
                 <label className="flex-[0.8] h-16 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh</span>
                   <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
@@ -1249,55 +1126,7 @@ function ScreenTimer({ logic }: { logic: any }) {
       )}
 
       {/* WebRTC Camera Overlay */}
-      {isCameraOpen && (
-        <div className="fixed inset-0 bg-black z-[90] flex flex-col animate-in fade-in duration-250">
-          <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted
-              className="w-full h-full object-cover"
-            />
-            <button 
-              onClick={closeWebRTCCamera}
-              className="absolute top-4 left-4 bg-black/50 text-white p-2 rounded-full backdrop-blur z-10 hover:bg-black/70 transition-colors"
-            >
-              <X size={24} />
-            </button>
-            <button 
-              onClick={() => openWebRTCCamera(facingMode === 'user' ? 'environment' : 'user')}
-              className="absolute top-4 left-16 bg-black/50 text-white p-2 rounded-full backdrop-blur z-10 hover:bg-black/70 transition-colors"
-            >
-              <RefreshCw size={24} />
-            </button>
-            <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur flex items-center gap-2 z-10">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              CHỤP ẢNH XÁC NHẬN
-            </div>
-            <div className="absolute bottom-6 left-4 right-4 bg-black/60 text-white p-3 rounded-2xl text-[10px] font-medium backdrop-blur border border-white/10 text-center leading-relaxed">
-              ⚠️ Vui lòng chụp ảnh khách của bạn để xác nhận bắt đầu làm việc.
-            </div>
-          </div>
-          <div className="bg-black p-6 pb-12 flex flex-col items-center justify-center gap-6">
-            <button 
-              onClick={captureFromVideo}
-              className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center bg-transparent active:scale-95 transition-transform"
-            >
-              <div className="w-16 h-16 rounded-full bg-white transition-transform active:scale-90"></div>
-            </button>
-            <button
-              onClick={() => {
-                closeWebRTCCamera();
-                setUseFallbackCamera(true);
-              }}
-              className="px-4 py-2 bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30 text-[11px] font-bold active:scale-95 transition-transform backdrop-blur flex items-center gap-2"
-            >
-              ⚠️ Lỗi đen màn hình? Chụp dự phòng
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
