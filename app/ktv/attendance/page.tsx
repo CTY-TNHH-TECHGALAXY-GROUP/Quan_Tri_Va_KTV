@@ -64,6 +64,7 @@ const KTVAttendancePage = () => {
     const [wantsToWithdraw, setWantsToWithdraw] = React.useState(false);
 
     // WebRTC Camera States
+    const [useFallbackCamera, setUseFallbackCamera] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
     const [stream, setStream] = React.useState<MediaStream | null>(null);
     const [facingMode, setFacingMode] = React.useState<'environment' | 'user'>('environment');
@@ -74,14 +75,19 @@ const KTVAttendancePage = () => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setUseFallbackCamera(true);
+                throw new Error("Trình duyệt không hỗ trợ Camera, tự động chuyển sang chế độ dự phòng.");
+            }
             const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode } 
+                video: { facingMode: { ideal: mode } } 
             });
             setStream(mediaStream);
             setFacingMode(mode);
             setIsCameraOpen(true);
         } catch (err) {
-            alert('Không thể truy cập Camera. Vui lòng kiểm tra quyền hoặc dùng nút "Tải từ máy".');
+            setUseFallbackCamera(true);
+            alert('Không thể truy cập Camera trực tiếp. Hệ thống đã tự động bật "Chụp dự phòng"!');
         }
     };
 
@@ -728,13 +734,21 @@ const KTVAttendancePage = () => {
 
                                         {photos.length < MAX_PHOTOS && (
                                             <div className="flex gap-3">
-                                                <button 
-                                                    onClick={() => openWebRTCCamera(facingMode)}
-                                                    className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition-all rounded-xl cursor-pointer"
-                                                >
-                                                    <Camera size={24} className="text-emerald-500 mb-1" />
-                                                    <span className="text-sm font-medium text-emerald-700">Chụp ảnh</span>
-                                                </button>
+                                                {useFallbackCamera ? (
+                                                    <label className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition-all rounded-xl cursor-pointer">
+                                                        <Camera size={24} className="text-emerald-500 mb-1" />
+                                                        <span className="text-sm font-medium text-emerald-700">Chụp dự phòng</span>
+                                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCapture} />
+                                                    </label>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => openWebRTCCamera(facingMode)}
+                                                        className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition-all rounded-xl cursor-pointer"
+                                                    >
+                                                        <Camera size={24} className="text-emerald-500 mb-1" />
+                                                        <span className="text-sm font-medium text-emerald-700">Chụp ảnh</span>
+                                                    </button>
+                                                )}
                                                 <label className="flex-[0.7] flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 focus:ring-2 focus:ring-emerald-500 transition-all rounded-xl cursor-pointer">
                                                     <span className="text-xs font-medium text-gray-500">Tải từ máy</span>
                                                     <input type="file" accept="image/*" multiple className="hidden" onChange={handleCapture} />
