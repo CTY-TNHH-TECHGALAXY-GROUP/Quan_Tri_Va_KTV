@@ -1,47 +1,46 @@
 ---
-description: Tạo API route mới trong Next.js App Router với Supabase
+description: Tạo API route mới trong Next.js App Router với Supabase (Chuẩn S.O.L.I.D - Service Layer)
 ---
 
-# 🔌 Tạo API Route Mới
+# 🔌 Tạo API Route Mới (Chuẩn S.O.L.I.D)
 
-> **Trigger**: Khi cần endpoint mới để CRUD data từ Supabase.
+> **Trigger**: Khi cần endpoint mới để xử lý nghiệp vụ hoặc CRUD data từ Supabase.
+> **Quy tắc cốt lõi (S.O.L.I.D - Single Responsibility)**: TUYỆT ĐỐI KHÔNG viết trực tiếp câu lệnh truy vấn Supabase (`supabase.from...`) hoặc logic nghiệp vụ phức tạp vào trong file `route.ts`. Phải tách thành tầng Service.
 
 ## Bước 1: Xác nhận thông tin
 
 - **Resource name**: VD `bookings`, `customers`, `services`
 - **Methods cần**: GET / POST / PUT / PATCH / DELETE
 - **Cần authentication?** (hầu hết là CÓ)
-- **Query params / Body schema**: Liệt kê fields
+- **Mức độ phức tạp**: Nếu chỉ là CRUD rất đơn giản (1 bảng) -> có thể viết nhanh. Nếu đụng chạm nhiều bảng hoặc có logic nghiệp vụ (VD: điểm danh, tính toán, bắn sự kiện) -> **Bắt buộc dùng Service Layer**.
 
-## Bước 2: Naming convention
+## Bước 2: Naming convention & Cấu trúc thư mục
 
 ```
-app/api/[resource-name]/route.ts          # Collection: GET (list), POST (create)
-app/api/[resource-name]/[id]/route.ts     # Item: GET (detail), PUT/PATCH (update), DELETE
+app/api/[resource-name]/route.ts                # Controller: Chỉ nhận Request và trả Response
+app/api/[resource-name]/[resource]Service.ts    # Service: Chứa Business Logic và gọi Supabase
 ```
 
 Ví dụ:
 ```
-app/api/bookings/route.ts           → GET /api/bookings, POST /api/bookings
-app/api/bookings/[id]/route.ts      → GET /api/bookings/123, PATCH /api/bookings/123
+app/api/attendance/route.ts                     # Nhận HTTP Request
+app/api/attendance/AttendanceService.ts         # Xử lý logic điểm danh
 ```
 
-## Bước 3: Template — Collection route
+## Bước 3: Template — Service Layer (Tầng Nghiệp vụ)
+
+Tạo file Service trước để xử lý toàn bộ logic:
 
 ```typescript
-// app/api/[resource]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/[resource]/[Resource]Service.ts
 import { createClient } from '@/lib/supabase';
 
-// GET — List all
-export async function GET(request: NextRequest) {
-  try {
+export class ResourceService {
+  /**
+   * Ví dụ hàm lấy danh sách (GET)
+   */
+  static async getList(page: number, limit: number) {
     const supabase = createClient();
-    const { searchParams } = new URL(request.url);
-    
-    // Pagination
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
     const offset = (page - 1) * limit;
 
     const { data, error, count } = await supabase
@@ -50,112 +49,97 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
-
-    return NextResponse.json({ data, total: count, page, limit });
-  } catch (error) {
-    console.error('[GET /api/[resource]]:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch data' },
-      { status: 500 }
-    );
+    if (error) throw new Error(error.message);
+    return { data, total: count, page, limit };
   }
-}
 
-// POST — Create new
-export async function POST(request: NextRequest) {
-  try {
+  /**
+   * Ví dụ hàm xử lý nghiệp vụ tạo mới (POST)
+   */
+  static async createItem(body: any, currentUserRole: string) {
     const supabase = createClient();
-    const body = await request.json();
 
-    // Validate required fields
+    // 1. Validate / Kiểm tra phân quyền (Role Check)
+    if (currentUserRole !== 'ADMIN' && currentUserRole !== 'TECHNICIAN') {
+        throw new Error('Bạn không có quyền thực hiện hành động này');
+    }
+
+    // 2. Logic nghiệp vụ (Tính toán, filter...)
     // ...
 
+    // 3. Gọi Database
     const { data, error } = await supabase
       .from('[table_name]')
       .insert(body)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) throw new Error(error.message);
+    
+    // 4. (Tương lai) Phát ra sự kiện (Event Driven) nếu cần
+    // EventEmitter.emit('ITEM_CREATED', data);
 
-    return NextResponse.json({ data }, { status: 201 });
-  } catch (error) {
-    console.error('[POST /api/[resource]]:', error);
-    return NextResponse.json(
-      { error: 'Failed to create' },
-      { status: 500 }
-    );
+    return data;
   }
 }
 ```
 
-## Bước 4: Template — Item route
+## Bước 4: Template — Controller (Tầng Giao tiếp HTTP)
+
+File `route.ts` giờ đây cực kỳ mỏng và sạch sẽ, chỉ đóng vai trò "Người chuyển phát":
 
 ```typescript
-// app/api/[resource]/[id]/route.ts
+// app/api/[resource]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase';
+import { ResourceService } from './[Resource]Service';
+import { useAuth } from '@/lib/hooks/useAuth'; // Hoặc middleware lấy user session
 
-type Params = { params: Promise<{ id: string }> };
-
-// GET — Detail
-export async function GET(request: NextRequest, { params }: Params) {
+// GET — List all
+export async function GET(request: NextRequest) {
   try {
-    const { id } = await params;
-    const supabase = createClient();
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
 
-    const { data, error } = await supabase
-      .from('[table_name]')
-      .select('*')
-      .eq('id', id)
-      .single();
+    // Gọi tầng Service
+    const result = await ResourceService.getList(page, limit);
 
-    if (error) throw error;
-    if (!data) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ data });
-  } catch (error) {
-    console.error('[GET /api/[resource]/[id]]:', error);
-    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error('[GET /api/[resource]]:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// PATCH — Update
-export async function PATCH(request: NextRequest, { params }: Params) {
+// POST — Create new
+export async function POST(request: NextRequest) {
   try {
-    const { id } = await params;
-    const supabase = createClient();
     const body = await request.json();
+    
+    // Giả lập lấy role của user đang request (nếu cần)
+    const userRole = 'ADMIN'; 
 
-    const { data, error } = await supabase
-      .from('[table_name]')
-      .update(body)
-      .eq('id', id)
-      .select()
-      .single();
+    // Gọi tầng Service xử lý toàn bộ logic nặng
+    const data = await ResourceService.createItem(body, userRole);
 
-    if (error) throw error;
-
-    return NextResponse.json({ data });
-  } catch (error) {
-    console.error('[PATCH /api/[resource]/[id]]:', error);
-    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
+    return NextResponse.json({ data }, { status: 201 });
+  } catch (error: any) {
+    console.error('[POST /api/[resource]]:', error.message);
+    // Tùy biến mã lỗi dựa theo loại Error nếu cần
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }
 ```
 
 ## Bước 5: Checklist cuối cùng
 
-- [ ] Error handling: try/catch + proper HTTP status codes
-- [ ] Validation: Check required fields trước khi query
-- [ ] Logging: `console.error` với route info để dễ debug
+- [ ] Route.ts đã hoàn toàn "sạch bóng" logic tính toán và lệnh `supabase.from()` chưa?
+- [ ] Mọi nghiệp vụ có phụ thuộc vào Role (vai trò) đã được check kỹ trong Service chưa?
+- [ ] Error handling: try/catch + ném Error từ Service ra Route.ts để trả về HTTP status code phù hợp.
 - [ ] Types: Định nghĩa request/response types trong `lib/types.ts`
 - [ ] KHÔNG hardcode Supabase URL/Key — dùng `createClient()`
 
 ## Bước 6: Thông báo user
 
-> *"API route `/api/[resource]` đã tạo xong. Hãy kiểm tra và commit:*
-> *`feat: thêm API [resource]`"*
+> *"API route `/api/[resource]` đã được tạo theo mô hình Service Layer (S.O.L.I.D). Hãy kiểm tra và commit:*
+> *`feat: thêm API [resource] với kiến trúc Service`"*

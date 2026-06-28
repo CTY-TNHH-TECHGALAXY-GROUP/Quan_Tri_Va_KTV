@@ -42,10 +42,11 @@ export async function PATCH(request: Request) {
         // Lấy staffCode từ Users table vì TurnQueue.employee_id lưu staffCode (vd: NH014)
         const { data: userRow } = await supabase
             .from('Users')
-            .select('code')
+            .select('code, role')
             .eq('id', attendance.employeeId)
             .maybeSingle();
         const staffCode = userRow?.code || attendance.employeeId;
+        const userRole = userRow?.role;
 
         const newStatus = action === 'CONFIRM' ? 'CONFIRMED' : 'REJECTED';
 
@@ -78,7 +79,7 @@ export async function PATCH(request: Request) {
         const businessDateStr = businessDateObj.toISOString().split('T')[0];
 
         // ─── If CONFIRMED CHECK_IN: upsert TurnQueue ────────────────────
-        if (action === 'CONFIRM' && (attendance.checkType === 'CHECK_IN' || attendance.checkType === 'LATE_CHECKIN')) {
+        if (action === 'CONFIRM' && (attendance.checkType === 'CHECK_IN' || attendance.checkType === 'LATE_CHECKIN') && userRole === 'TECHNICIAN') {
             const today = businessDateStr;
 
             const { data: existingTurn } = await supabase
@@ -119,11 +120,13 @@ export async function PATCH(request: Request) {
         if (action === 'CONFIRM' && (attendance.checkType === 'CHECK_OUT' || attendance.checkType === 'SUDDEN_OFF')) {
             const today = businessDateStr;
 
-            await supabase
-                .from('TurnQueue')
-                .update({ status: 'off' })
-                .eq('employee_id', staffCode)
-                .eq('date', today);
+            if (userRole === 'TECHNICIAN') {
+                await supabase
+                    .from('TurnQueue')
+                    .update({ status: 'off' })
+                    .eq('employee_id', staffCode)
+                    .eq('date', today);
+            }
                 
             await supabase
                 .from('Users')

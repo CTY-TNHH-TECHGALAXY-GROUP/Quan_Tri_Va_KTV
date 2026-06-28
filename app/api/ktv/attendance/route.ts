@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         // ─── Step 0: Resolve Staff Code and Real Name ─────────────
         const { data: userData, error: userError } = await supabase
             .from('Users')
-            .select('code, fullName')
+            .select('code, fullName, role')
             .eq('id', employeeId)
             .single();
 
@@ -219,7 +219,7 @@ export async function POST(request: Request) {
                     }
                 }
 
-                if (staffCode) {
+                if (staffCode && userData.role === 'TECHNICIAN') {
                     // 🔹 UPSERT into TurnQueue (using staffCode)
                     const { data: maxPosRow } = await supabase
                         .from('TurnQueue')
@@ -254,14 +254,12 @@ export async function POST(request: Request) {
                     if (turnQueueError) {
                          console.error('❌ [TurnQueue Upsert Error]:', turnQueueError);
                     }
-                } else {
-                    console.error('❌ [TurnQueue Error]: staffCode is null for user ID:', employeeId);
                 }
             } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
                 // 🔸 Deactivate shift for User
                 await supabase.from('Users').update({ isOnShift: false }).eq('id', employeeId);
 
-                if (staffCode) {
+                if (staffCode && userData.role === 'TECHNICIAN') {
                     // 🔸 Set status = off trong TurnQueue (hiển thị mờ ở cuối danh sách)
                     await supabase
                         .from('TurnQueue')

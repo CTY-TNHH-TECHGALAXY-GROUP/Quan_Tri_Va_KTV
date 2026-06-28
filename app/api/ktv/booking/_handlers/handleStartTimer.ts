@@ -32,6 +32,7 @@
 
 import { NextResponse } from 'next/server';
 import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
+import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, action, turnForSync, allItemIdsForThisKTV, body } = ctx;
@@ -202,33 +203,10 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                 
                 const estEnd = freshTurn?.estimated_end_time;
                 if (estEnd) {
-                    const shParts = String(turnForSync.start_time).split(':');
-                    const ehParts = String(estEnd).split(':');
-                    
-                    if (shParts.length >= 2 && ehParts.length >= 2) {
-                        const sh = Number(shParts[0]);
-                        const sm = Number(shParts[1]);
-                        const eh = Number(ehParts[0]);
-                        const em = Number(ehParts[1]);
-
-                        if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
-                            let durationMins = (eh * 60 + em) - (sh * 60 + sm);
-                            if (durationMins <= 0) durationMins += 24 * 60; // cross midnight
-
-                            const nhParts = nowVN.split(':');
-                            if (nhParts.length >= 2) {
-                                const nh = Number(nhParts[0]);
-                                const nm = Number(nhParts[1]);
-
-                                if (!isNaN(nh) && !isNaN(nm)) {
-                                    let endMins = nh * 60 + nm + durationMins;
-                                    const endH = Math.floor(endMins / 60) % 24;
-                                    const endM = endMins % 60;
-                                    turnUpdatePayload.estimated_end_time = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
-                                    console.log(`🔄 [KTV API] ${technicianCode}: Recalculated end ${estEnd} → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN}, dur: ${durationMins}m)`);
-                                }
-                            }
-                        }
+                    const newEnd = recalculateEstimatedEndTime(String(turnForSync.start_time), String(estEnd), nowVN);
+                    if (newEnd !== estEnd) {
+                        turnUpdatePayload.estimated_end_time = newEnd;
+                        console.log(`🔄 [KTV API] ${technicianCode}: Recalculated end ${estEnd} → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN})`);
                     }
                 }
             } catch (calcErr) {
