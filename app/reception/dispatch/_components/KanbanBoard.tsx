@@ -696,6 +696,19 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                         }
                                                         return null;
                                                     })()}
+                                                    {(!subOrder.rating && !['DONE', 'CANCELLED'].includes(subOrder.dispatchStatus)) && (
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                window.open(ratingUrl, '_blank');
+                                                            }}
+                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
+                                                            title="Link đánh giá"
+                                                        >
+                                                            <QrCode size={12} /> Link
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={e => { e.stopPropagation(); onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); }}
                                                         className="px-3 py-2.5 rounded-xl text-[11px] font-black text-gray-400 bg-gray-50 hover:bg-gray-100 transition-all border border-gray-100"
