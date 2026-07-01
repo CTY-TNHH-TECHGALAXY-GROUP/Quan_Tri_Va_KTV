@@ -329,7 +329,7 @@ export async function sendBookingConfirmationEmail(
     const template = TEMPLATES[langKey];
 
     // Placeholder cho mã QR Quốc tế (Cần thay thế bằng link thật sau)
-    const qrPlaceholder1 = 'https://placehold.co/200x200/png?text=International+QR';
+    const qrPlaceholder1 = 'cid:international-qr';
     
     // Tích hợp VietQR động cho mã QR Nội địa (MB Bank)
     let qrPlaceholder2 = 'https://placehold.co/200x200/png?text=Vietnam+QR';
@@ -344,12 +344,23 @@ export async function sendBookingConfirmationEmail(
 
     const htmlContent = template.content(customerName || 'Quý khách', isNewCustomer, qrPlaceholder1, qrPlaceholder2, bookingDetails);
 
+    const attachments: any[] = [];
+    if (isNewCustomer) {
+      // Đính kèm hình ảnh QR Code Quốc tế vào email
+      attachments.push({
+        filename: 'international-qr.png',
+        path: process.cwd() + '/public/images/international-qr.png',
+        cid: 'international-qr'
+      });
+    }
+
     const info = await transporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
       replyTo: process.env.SMTP_REPLY_TO,
       to: toEmail,
       subject: template.subject,
       html: htmlContent,
+      attachments: attachments
     });
 
     console.log('[EmailService] Confirmation email sent successfully to', toEmail, 'Message ID:', info.messageId);
