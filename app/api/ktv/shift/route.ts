@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
 
             for (const shift of sortedData) {
                 // Tự động dọn dẹp (revert) ca tạm thời trong DB nếu nó đang ACTIVE và đã qua ngày hôm nay
-                const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST';
+                const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh';
                 
                 if (shift.status === 'ACTIVE' && isTempShift && shift.effectiveFrom < businessDateStr) {
                     await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', shift.id);
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
 
                 // Nếu chưa có trong map, đây là bản ghi mới nhất (đã ưu tiên ACTIVE) trước hoặc bằng fetchDate
                 if (!dedupMap.has(shift.employeeId)) {
-                    const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST';
+                    const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh';
                     const isExpiredForTarget = isTempShift && shift.effectiveFrom < fetchDate;
 
                     if (isExpiredForTarget) {
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
 
             // Tự động dọn dẹp (revert) ca tạm thời trong DB nếu nó đang ACTIVE và đã qua ngày hôm nay
             if (activeShift && activeShift.status === 'ACTIVE') {
-                const isTempShift = activeShift.reason === 'Tự chọn ca lúc điểm danh' || activeShift.shiftType === 'FREE' || activeShift.shiftType === 'REQUEST';
+                const isTempShift = activeShift.reason === 'Tự chọn ca lúc điểm danh';
                 if (isTempShift && activeShift.effectiveFrom < businessDateStr) {
                     await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', activeShift.id);
                     
