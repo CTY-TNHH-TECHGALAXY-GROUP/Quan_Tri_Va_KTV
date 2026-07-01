@@ -170,7 +170,7 @@ export const usePayrollLogic = () => {
             const shiftStartTime = SHIFT_START_TIMES[shiftType];
             if (shiftStartTime) {
                 const [sh, sm] = shiftStartTime.split(':').map(Number);
-                const cutoffTimeInMins = sh * 60 + sm + 5; // 5 mins grace period
+                const cutoffTimeInMins = sh * 60 + sm + 45; // 45 mins grace period before marking as sudden off
                 const nowInMins = now.getHours() * 60 + now.getMinutes();
                 if (nowInMins >= cutoffTimeInMins) {
                     isPastGracePeriod = true;
