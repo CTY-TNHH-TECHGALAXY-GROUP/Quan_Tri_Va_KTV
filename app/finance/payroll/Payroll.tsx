@@ -20,7 +20,22 @@ const STATUS_COLORS = {
 };
 
 export const Payroll = () => {
-  const { selectedMonth, setSelectedMonth, dateRange, setDateRange, selectedStaffId, setSelectedStaffId, staffList, processedData, summary, loading, refresh } = usePayrollLogic();
+  const { 
+    selectedMonth, 
+    setSelectedMonth, 
+    dateRange, 
+    setDateRange, 
+    selectedStaffId, 
+    setSelectedStaffId, 
+    staffList, 
+    processedData,
+    displayData,
+    summary, 
+    loading, 
+    refresh,
+    activeCardFilter,
+    setActiveCardFilter 
+  } = usePayrollLogic();
   const lang = 'vi'; // Default to Vietnamese for now
 
   const nextMonth = () => setSelectedMonth(addMonths(selectedMonth, 1));
@@ -128,24 +143,21 @@ export const Payroll = () => {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 md:gap-6">
         {[
-          { 
-            label: selectedStaffId === 'ALL' ? 'ĐIỂM DANH HÔM NAY' : t[lang].summary.totalDays, 
-            value: selectedStaffId === 'ALL' ? summary.totalWorkingStaff : summary.totalDays, 
-            icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' 
-          },
-          { label: t[lang].summary.totalLate, value: summary.totalLate, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: t[lang].summary.totalSuddenOff, value: summary.totalSuddenOff, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50' },
-          { label: t[lang].summary.totalLeave, value: summary.totalLeave, icon: Calendar, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: t[lang].summary.freeShifts, value: summary.freeShifts, icon: Coffee, color: 'text-sky-600', bg: 'bg-sky-50' },
-          { label: t[lang].summary.requestShifts, value: summary.requestShifts, icon: Star, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
-          { label: t[lang].summary.forgotCheckOut, value: summary.forgotCheckOut, icon: LogOut, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { id: 'working', label: selectedStaffId === 'ALL' ? 'ĐIỂM DANH HÔM NAY' : t[lang].summary.totalDays, value: selectedStaffId === 'ALL' ? summary.totalWorkingStaff : summary.totalDays, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { id: 'late', label: t[lang].summary.totalLate, value: summary.totalLate, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { id: 'suddenOff', label: t[lang].summary.totalSuddenOff, value: summary.totalSuddenOff, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50' },
+          { id: 'off', label: t[lang].summary.totalLeave, value: summary.totalLeave, icon: Calendar, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { id: 'free', label: t[lang].summary.freeShifts, value: summary.freeShifts, icon: Coffee, color: 'text-sky-600', bg: 'bg-sky-50' },
+          { id: 'request', label: t[lang].summary.requestShifts, value: summary.requestShifts, icon: Star, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
+          { id: 'forgotCheckOut', label: t[lang].summary.forgotCheckOut, value: summary.forgotCheckOut, icon: LogOut, color: 'text-orange-600', bg: 'bg-orange-50' },
         ].map((item, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}
-            className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3"
+            onClick={() => setActiveCardFilter(prev => prev === item.id ? null : item.id)}
+            className={`bg-white p-5 rounded-3xl border shadow-sm space-y-3 cursor-pointer transition-all hover:-translate-y-1 ${activeCardFilter === item.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-100 hover:border-indigo-200'}`}
           >
             <div className={`w-10 h-10 ${item.bg} ${item.color} rounded-xl flex items-center justify-center`}>
               <item.icon size={20} />
@@ -167,13 +179,13 @@ export const Payroll = () => {
           </button>
         </div>
 
-        {selectedStaffId === 'ALL' ? (
+        {selectedStaffId === 'ALL' && !activeCardFilter ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
               <Users className="text-slate-400" size={24} />
             </div>
             <p className="text-sm font-black text-slate-400 uppercase tracking-widest">
-              Vui lòng chọn 1 KTV cụ thể để xem chi tiết chấm công
+              Vui lòng chọn 1 KTV hoặc nhấp vào 1 Thẻ Thống Kê ở trên để xem chi tiết
             </p>
           </div>
         ) : (
@@ -197,14 +209,14 @@ export const Payroll = () => {
                       <td colSpan={7} className="px-6 py-4"><div className="h-10 bg-slate-50 rounded-xl" /></td>
                     </tr>
                   ))
-                ) : processedData.length === 0 ? (
+                ) : displayData.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-sm font-bold text-slate-400 uppercase italic tracking-widest">
                       Chưa có dữ liệu cho tháng này
                     </td>
                   </tr>
                 ) : (
-                  processedData
+                  displayData
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Sort by date desc
                     .map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">

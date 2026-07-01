@@ -283,6 +283,30 @@ export const usePayrollLogic = () => {
     };
   }, [processedData, startDate]);
 
+  const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveCardFilter(null);
+  }, [selectedStaffId, selectedMonth, dateRange]);
+
+  const displayData = useMemo(() => {
+    if (!activeCardFilter) return processedData;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+    return processedData.filter(r => {
+      switch (activeCardFilter) {
+        case 'working': return selectedStaffId === 'ALL' ? !!r.checkIn : (r.status !== 'off' && r.status !== 'suddenOff');
+        case 'late': return r.status === 'late';
+        case 'suddenOff': return r.status === 'suddenOff';
+        case 'off': return r.status === 'off';
+        case 'free': return r.shiftType === 'FREE' && r.checkIn;
+        case 'request': return r.shiftType === 'REQUEST' && r.checkIn;
+        case 'forgotCheckOut': return r.checkIn && !r.checkOut && r.date < todayStr;
+        default: return true;
+      }
+    });
+  }, [processedData, activeCardFilter, selectedStaffId]);
+
   return {
     selectedMonth,
     setSelectedMonth,
@@ -292,8 +316,11 @@ export const usePayrollLogic = () => {
     setSelectedStaffId,
     staffList,
     processedData,
+    displayData,
     summary,
     loading,
-    refresh: fetchData
+    refresh: fetchData,
+    activeCardFilter,
+    setActiveCardFilter
   };
 };
