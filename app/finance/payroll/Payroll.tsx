@@ -128,7 +128,11 @@ export const Payroll = () => {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 md:gap-6">
         {[
-          { label: t[lang].summary.totalDays, value: summary.totalDays, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { 
+            label: selectedStaffId === 'ALL' ? 'ĐIỂM DANH HÔM NAY' : t[lang].summary.totalDays, 
+            value: selectedStaffId === 'ALL' ? summary.totalWorkingStaff : summary.totalDays, 
+            icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' 
+          },
           { label: t[lang].summary.totalLate, value: summary.totalLate, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: t[lang].summary.totalSuddenOff, value: summary.totalSuddenOff, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: t[lang].summary.totalLeave, value: summary.totalLeave, icon: Calendar, color: 'text-indigo-600', bg: 'bg-indigo-50' },
@@ -163,79 +167,90 @@ export const Payroll = () => {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.date}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.staff}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.shift}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.checkIn}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.checkOut}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.lateMins}</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.status}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td colSpan={7} className="px-6 py-4"><div className="h-10 bg-slate-50 rounded-xl" /></td>
-                  </tr>
-                ))
-              ) : processedData.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-20 text-center text-sm font-bold text-slate-400 uppercase italic tracking-widest">
-                    Chưa có dữ liệu cho tháng này
-                  </td>
+        {selectedStaffId === 'ALL' ? (
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+              <Users className="text-slate-400" size={24} />
+            </div>
+            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">
+              Vui lòng chọn 1 KTV cụ thể để xem chi tiết chấm công
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.date}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.staff}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.shift}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.checkIn}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.checkOut}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.lateMins}</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t[lang].table.status}</th>
                 </tr>
-              ) : (
-                processedData
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Sort by date desc
-                  .map((row, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <p className="text-xs font-black text-slate-700">{format(parseISO(row.date), 'dd/MM')}</p>
-                      <p className="text-[10px] font-bold text-slate-400">{format(parseISO(row.date), 'EEEE', { locale: vi })}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-[10px] font-black border border-indigo-100">
-                          {row.employeeId}
-                        </span>
-                        <p className="text-sm font-black text-slate-800">{row.employeeName}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${row.status === 'off' ? 'bg-slate-50 text-slate-400' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
-                        {/* @ts-ignore */}
-                        {row.status === 'off' ? 'OFF' : (t[lang].shifts[row.shiftType] || row.shiftType)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className={`text-sm font-black ${row.status === 'late' ? 'text-rose-600' : 'text-slate-700'}`}>
-                        {row.checkIn || '--:--'}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-black text-slate-700">{row.checkOut || '--:--'}</td>
-                    <td className="px-6 py-4">
-                      {row.lateMins > 0 ? (
-                        <span className="text-xs font-black text-rose-600">+{row.lateMins}m</span>
-                      ) : (
-                        <span className="text-xs font-bold text-slate-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1.5 rounded-full text-[10px] font-black border uppercase tracking-tighter ${STATUS_COLORS[row.status]}`}>
-                        {t[lang].status[row.status]}
-                      </span>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={7} className="px-6 py-4"><div className="h-10 bg-slate-50 rounded-xl" /></td>
+                    </tr>
+                  ))
+                ) : processedData.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center text-sm font-bold text-slate-400 uppercase italic tracking-widest">
+                      Chưa có dữ liệu cho tháng này
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  processedData
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Sort by date desc
+                    .map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <p className="text-xs font-black text-slate-700">{format(parseISO(row.date), 'dd/MM')}</p>
+                        <p className="text-[10px] font-bold text-slate-400">{format(parseISO(row.date), 'EEEE', { locale: vi })}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-[10px] font-black border border-indigo-100">
+                            {row.employeeId}
+                          </span>
+                          <p className="text-sm font-black text-slate-800">{row.employeeName}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${row.status === 'off' ? 'bg-slate-50 text-slate-400' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
+                          {/* @ts-ignore */}
+                          {row.status === 'off' ? 'OFF' : (t[lang].shifts[row.shiftType] || row.shiftType)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className={`text-sm font-black ${row.status === 'late' ? 'text-rose-600' : 'text-slate-700'}`}>
+                          {row.checkIn || '--:--'}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-black text-slate-700">{row.checkOut || '--:--'}</td>
+                      <td className="px-6 py-4">
+                        {row.lateMins > 0 ? (
+                          <span className="text-xs font-black text-rose-600">+{row.lateMins}m</span>
+                        ) : (
+                          <span className="text-xs font-bold text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1.5 rounded-full text-[10px] font-black border uppercase tracking-tighter ${STATUS_COLORS[row.status]}`}>
+                          {t[lang].status[row.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

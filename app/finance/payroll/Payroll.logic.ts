@@ -28,8 +28,20 @@ export interface AttendanceRecord {
 
 export const usePayrollLogic = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    return { start: todayStr, end: todayStr };
+  });
   const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL');
+
+  useEffect(() => {
+    if (selectedStaffId === 'ALL') {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      setDateRange({ start: todayStr, end: todayStr });
+    } else {
+      setDateRange(null);
+    }
+  }, [selectedStaffId]);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
@@ -261,6 +273,7 @@ export const usePayrollLogic = () => {
 
     return {
       totalDays: baseDays - totalLeave - totalSuddenOff,
+      totalWorkingStaff: processedData.filter(r => r.checkIn).length,
       totalLate: processedData.filter(r => r.status === 'late').length,
       totalSuddenOff,
       totalLeave,
