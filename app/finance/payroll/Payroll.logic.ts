@@ -134,11 +134,13 @@ export const usePayrollLogic = () => {
       const staffShifts = shifts.filter(s => s.employeeId === staff.id);
 
       days.forEach(day => {
-        if (day > new Date()) {
-          return; // Bỏ qua các ngày tương lai, đảm bảo SRP (không ép trạng thái ảo)
-        }
-
         const dateStr = format(day, 'yyyy-MM-dd');
+        const dayLeave = leaves.find(l => l.employeeId === staff.id && l.date === dateStr);
+
+        // Bỏ qua các ngày tương lai, TRỪ KHI ngày đó đã được đăng ký nghỉ phép
+        if (day > new Date() && !dayLeave) {
+          return;
+        }
         
         // Find the active shift for THIS day
         let shiftType = 'SHIFT_1'; // Default
@@ -149,8 +151,7 @@ export const usePayrollLogic = () => {
             }
         }
         
-        // Find leave
-        const dayLeave = leaves.find(l => l.employeeId === staff.id && l.date === dateStr);
+        // Find leave (đã được tìm ở trên để check tương lai)
         
         // Find attendance
         const dayAtt = attendance.find(a => a.employee_id === staff.id && a.date === dateStr);
