@@ -328,9 +328,19 @@ export async function sendBookingConfirmationEmail(
     const langKey = (Object.keys(TEMPLATES).includes(language) ? language : 'vi') as keyof typeof TEMPLATES;
     const template = TEMPLATES[langKey];
 
-    // Placeholder cho 2 mã QR (sẽ chỉ hiện nếu isNewCustomer = true)
+    // Placeholder cho mã QR Quốc tế (Cần thay thế bằng link thật sau)
     const qrPlaceholder1 = 'https://placehold.co/200x200/png?text=International+QR';
-    const qrPlaceholder2 = 'https://placehold.co/200x200/png?text=Vietnam+QR';
+    
+    // Tích hợp VietQR động cho mã QR Nội địa (MB Bank)
+    let qrPlaceholder2 = 'https://placehold.co/200x200/png?text=Vietnam+QR';
+    if (bookingDetails && bookingDetails.depositAmount && bookingDetails.bookingId) {
+      const bankBin = '970422'; // MB Bank
+      const accountNo = '8600289999';
+      const accountName = encodeURIComponent('CTY TNHH TECHGALAXY GROUP');
+      const amount = bookingDetails.depositAmount;
+      const addInfo = encodeURIComponent(bookingDetails.bookingId);
+      qrPlaceholder2 = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact.png?amount=${amount}&addInfo=${addInfo}&accountName=${accountName}`;
+    }
 
     const htmlContent = template.content(customerName || 'Quý khách', isNewCustomer, qrPlaceholder1, qrPlaceholder2, bookingDetails);
 

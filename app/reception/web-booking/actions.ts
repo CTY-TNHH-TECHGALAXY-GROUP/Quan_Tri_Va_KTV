@@ -318,7 +318,13 @@ export async function confirmWebBooking(bookingId: string) {
             }
         } catch (e) {}
 
-        const depositAmountVND = bData.totalAmount ? (bData.totalAmount * depositPercent / 100) : 0;
+        // Thuật toán: Lấy 50% tổng bill, làm tròn ĐẾN 100.000 gần nhất
+        let depositAmountVND = 0;
+        if (bData.totalAmount && bData.totalAmount > 0) {
+            const rawDeposit = (bData.totalAmount * 50) / 100;
+            // Làm tròn đến hàng trăm nghìn (vd: 525k -> 5.25 -> round=5 -> 500k)
+            depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
+        }
 
         // Bóc tách danh sách dịch vụ và tính tổng phút, số lượng khách
         let totalDuration = 0;
