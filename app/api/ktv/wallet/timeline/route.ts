@@ -59,10 +59,64 @@ export async function GET(request: Request) {
             if (rawDeposit) minDeposit = Number(rawDeposit);
         }
 
-        const START_DATE = '2026-05-04T00:00:00.000Z';
+        const GLOBAL_START_DATE_STR = '2026-05-04';
+        const START_DATE = `${GLOBAL_START_DATE_STR}T00:00:00.000Z`;
         const timeline: any[] = [];
 
-        // 1. Commission & Tips (from Bookings & BookingItems)
+        const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+        const nowVnDate = new Date(Date.now() + VN_OFFSET_MS);
+        const todayStr = nowVnDate.toISOString().split('T')[0];
+
+        // 1. Fetch Ledger (Chỉ lấy các ngày trước ngày hôm nay để tránh đụng độ Realtime)
+        const { data: ledgers } = await supabase
+            .from('KTVDailyLedger')
+            .select('date, total_commission, total_tip')
+            .eq('staff_id', techCode)
+            .gte('date', GLOBAL_START_DATE_STR);
+
+        let realtimeStartStr = `${GLOBAL_START_DATE_STR}T00:00:00+07:00`;
+
+        if (ledgers && ledgers.length > 0) {
+            const pastLedgers = ledgers.filter(l => l.date < todayStr);
+            
+            if (pastLedgers.length > 0) {
+                let maxDateStr = pastLedgers[0].date;
+                pastLedgers.forEach(l => {
+                    if (l.date > maxDateStr) maxDateStr = l.date;
+                    
+                    if (Number(l.total_commission) > 0) {
+                        timeline.push({
+                            id: `ledger_comm_${l.date}`,
+                            type: 'COMMISSION',
+                            title: `Tổng tiền tua ngày ${l.date.split('-').reverse().join('/')}`,
+                            amount: Number(l.total_commission),
+                            note: 'Chốt sổ cái',
+                            created_at: `${l.date}T23:59:59+07:00`,
+                            status: 'APPROVED'
+                        });
+                    }
+                    if (Number(l.total_tip) > 0) {
+                        timeline.push({
+                            id: `ledger_tip_${l.date}`,
+                            type: 'TIP',
+                            title: `Tổng tiền tip ngày ${l.date.split('-').reverse().join('/')}`,
+                            amount: Number(l.total_tip),
+                            note: 'Chốt sổ cái',
+                            created_at: `${l.date}T23:59:59+07:00`,
+                            status: 'APPROVED'
+                        });
+                    }
+                });
+
+                const lastDateMs = new Date(`${maxDateStr}T00:00:00+07:00`).getTime();
+                const nextDateVn = new Date(lastDateMs + 24 * 60 * 60 * 1000 + VN_OFFSET_MS);
+                const nextDateStr = nextDateVn.toISOString().split('T')[0];
+                
+                realtimeStartStr = `${nextDateStr}T00:00:00+07:00`;
+            }
+        }
+
+        // 2. Commission & Tips (from Bookings & BookingItems) CHỈ lấy từ ngày hiện tại
         let allBookings: any[] = [];
         let page = 0;
         const pageSize = 1000;
@@ -74,7 +128,7 @@ export async function GET(request: Request) {
                     id, timeStart, timeEnd, status, technicianCode, billCode, createdAt,
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip )
                 `)
-                .gte('timeStart', START_DATE)
+                .gte('timeStart', realtimeStartStr)
                 .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING'])
                 .range(page * pageSize, (page + 1) * pageSize - 1);
                 
@@ -148,7 +202,7 @@ export async function GET(request: Request) {
             }
         }
 
-        // 2. Adjustments
+        // 3. Adjustments
         const { data: adjustments } = await supabase
             .from('WalletAdjustments')
             .select('id, amount, reason, type, created_at')
@@ -173,7 +227,7 @@ export async function GET(request: Request) {
             });
         });
 
-        // 3. Withdrawals
+        // 4. Withdrawals
         const { data: withdrawals } = await supabase
             .from('KTVWithdrawals')
             .select('id, amount, note, request_date, status')
@@ -216,4 +270,3 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Internal Error' }, { status: 500 });
     }
 }
-
