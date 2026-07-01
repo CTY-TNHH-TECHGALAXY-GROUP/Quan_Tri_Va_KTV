@@ -161,7 +161,22 @@ export const usePayrollLogic = () => {
 
         const now = new Date();
         const todayAtZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const isPast1105 = day < todayAtZero || (day.getTime() === todayAtZero.getTime() && (now.getHours() > 11 || (now.getHours() === 11 && now.getMinutes() >= 5)));
+        
+        let isPastGracePeriod = false;
+        
+        if (day < todayAtZero) {
+            isPastGracePeriod = true;
+        } else if (day.getTime() === todayAtZero.getTime()) {
+            const shiftStartTime = SHIFT_START_TIMES[shiftType];
+            if (shiftStartTime) {
+                const [sh, sm] = shiftStartTime.split(':').map(Number);
+                const cutoffTimeInMins = sh * 60 + sm + 5; // 5 mins grace period
+                const nowInMins = now.getHours() * 60 + now.getMinutes();
+                if (nowInMins >= cutoffTimeInMins) {
+                    isPastGracePeriod = true;
+                }
+            }
+        }
 
         if (dayLeave) {
           // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
@@ -197,7 +212,7 @@ export const usePayrollLogic = () => {
           }
         } else {
           // No attendance and no leave request
-          if (isPast1105) {
+          if (isPastGracePeriod) {
               status = 'suddenOff';
           } else {
               status = 'absent';
