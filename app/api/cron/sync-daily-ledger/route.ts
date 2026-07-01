@@ -1,32 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-const calcCommission = (durationMins: number, milestones: any, ratePer60: number) => {
-    const sMins = String(durationMins);
-    if (milestones && milestones[sMins] !== undefined) {
-        return Number(milestones[sMins]);
-    }
-    const h = durationMins / 60;
-    const comm = Math.round(h * ratePer60);
-    return Math.round(comm / 1000) * 1000;
-};
-
-const getMinsFromTimes = (start: string, end: string) => {
-    if (!start || !end) return 0;
-    const [h1, m1] = start.split(':').map(Number);
-    const [h2, m2] = end.split(':').map(Number);
-    if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
-    let mins1 = h1 * 60 + m1;
-    let mins2 = h2 * 60 + m2;
-    if (mins2 < mins1) mins2 += 24 * 60;
-    return mins2 - mins1;
-};
 
 // Internal core logic for syncing ledger
 async function processLedgerSync(targetDateStr: string) {
@@ -36,29 +16,9 @@ async function processLedgerSync(targetDateStr: string) {
     const startTimeStr = `${targetDateStr}T00:00:00+07:00`;
     const endTimeStr = `${targetDateStr}T23:59:59.999+07:00`;
 
-    // 1. Get configs
-    const { data: configs } = await supabase
-        .from('SystemConfigs')
-        .select('key, value')
-        .in('key', ['ktv_commission_milestones', 'ktv_commission_per_60min', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus', 'ktv_sudden_off_penalty', 'enable_bonus_wallet']);
-        
-    const configMap: Record<string, any> = {};
-    (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
-
-    let milestones = { "1": 2000, "30": 50000, "45": 75000, "60": 100000, "70": 115000, "90": 150000, "100": 165000, "120": 200000, "180": 300000, "300": 500000 };
-    let ratePer60 = 100000;
-    
-    if (configMap['ktv_commission_milestones']) { try { milestones = typeof configMap['ktv_commission_milestones'] === 'string' ? JSON.parse(configMap['ktv_commission_milestones']) : configMap['ktv_commission_milestones']; } catch { } }
-    if (configMap['ktv_commission_per_60min']) {
-        const rawRate = String(configMap['ktv_commission_per_60min']).replace(/[^0-9]/g, '');
-        if (rawRate) ratePer60 = Number(rawRate);
-    }
-    
-    const s1Bonus = Number(configMap['ktv_shift_1_bonus'] || 20);
-    const s2Bonus = Number(configMap['ktv_shift_2_bonus'] || 20);
-    const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 40);
-    const suddenOffPenalty = Number(configMap['ktv_sudden_off_penalty'] || 50000);
-    const isBonusWalletEnabled = String(configMap['enable_bonus_wallet'] || '').replace(/"/g, '') === 'true';
+    // 1. Get configs from centralized service
+    const commConfig = await KtvCommissionService.getCommissionConfig(supabase);
+    const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
 
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
@@ -83,7 +43,12 @@ async function processLedgerSync(targetDateStr: string) {
 
     // Lấy config ngày lễ để đè ca 2
     let isHoliday = false;
-    const holidayDates = configMap['holiday_shift2_dates'];
+    const { data: holidayDatesRes } = await supabase.from('SystemConfigs').select('value').eq('key', 'holiday_shift2_dates').single();
+    let holidayDates: any = [];
+    if (holidayDatesRes?.value) {
+        try { holidayDates = typeof holidayDatesRes.value === 'string' ? JSON.parse(holidayDatesRes.value) : holidayDatesRes.value; } catch { }
+    }
+    
     if (holidayDates && Array.isArray(holidayDates)) {
         const targetMonthDay = targetDateStr.slice(5, 10);
         if (holidayDates.includes(targetMonthDay)) {
@@ -94,13 +59,20 @@ async function processLedgerSync(targetDateStr: string) {
     if (isHoliday) {
         ktvs.forEach(ktv => ktvShiftMap.set(ktv.id, 'SHIFT_2'));
     }
+    
+    // Convert to the array format that calculateBookingBonus expects
+    const processedShiftsData = Array.from(ktvShiftMap.entries()).map(([employeeId, shiftType]) => ({
+        employeeId,
+        shiftType,
+        effectiveFrom: targetDateStr
+    }));
 
     // 3. Fetch Bookings for the target date
     const { data: bookings } = await supabase
         .from('Bookings')
         .select(`
             id, timeStart, timeEnd, status, technicianCode, rating,
-            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating )
+            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
         `)
         .gte('timeStart', startTimeStr)
         .lte('timeStart', endTimeStr)
@@ -130,7 +102,7 @@ async function processLedgerSync(targetDateStr: string) {
     const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
 
     const upsertRows = [];
-    const bonusRecords: any[] = [];
+    const bonusRecords: any[] = []; // kept for compatibility if needed later, but removed insertion
 
     // 5. Calculate per KTV
     for (const ktv of ktvs) {
@@ -140,11 +112,6 @@ async function processLedgerSync(targetDateStr: string) {
         let total_bonus = 0;
         let total_penalty = 0; // Penalty now handled via WalletAdjustments (attendance API)
         
-        const shiftType = ktvShiftMap.get(techCode) || 'SHIFT_1';
-        let basePoints = s1Bonus;
-        if (shiftType === 'SHIFT_2') basePoints = s2Bonus;
-        else if (shiftType === 'SHIFT_3') basePoints = s3Bonus;
-
         for (const b of validBookings) {
             const relevantItems = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes && Array.isArray(i.technicianCodes) &&
@@ -153,94 +120,20 @@ async function processLedgerSync(targetDateStr: string) {
 
             if (relevantItems.length === 0) continue;
 
-            let totalDuration = 0;
             let bookingCommission = 0;
-
             for (const item of relevantItems) {
-                // Tính duration cho từng item
-                let itemDuration = 0;
-                let segs: any[] = [];
-                try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
-
-                const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
-
-                if (mySegs.length > 0) {
-                    itemDuration = mySegs.reduce((sum: number, seg: any) => {
-                        const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
-                        if (realMins > 0) return sum + realMins;
-                        return sum + (Number(seg.duration) || 0);
-                    }, 0);
-                } else {
-                    itemDuration = svcDurationMap[String(item.serviceId)] || 60;
-                }
-
+                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
-                totalDuration += itemDuration;
-                // Tính commission CHO TỪNG DỊCH VỤ rồi cộng dồn
-                bookingCommission += calcCommission(itemDuration, milestones, ratePer60);
+                bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
             }
 
-            total_commission += bookingCommission || calcCommission(60, milestones, ratePer60);
+            total_commission += bookingCommission || KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
             total_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
             
-            // Bonus: per booking, chia đều unique KTVs, Math.floor
-            let maxKtvRating = 0;
-            for (const item of (b.BookingItems || [])) {
-                const isTechInvolved = item.technicianCodes && Array.isArray(item.technicianCodes) &&
-                    item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
-                
-                if (isTechInvolved) {
-                    let ktvRating = 0;
-                    let parsedKtvRatings = (item as any).ktvRatings;
-                    if (typeof parsedKtvRatings === 'string') {
-                        try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
-                    }
-                    if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
-                        const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode.toLowerCase());
-                        if (key) {
-                            ktvRating = Number(parsedKtvRatings[key]) || 0;
-                        }
-                    }
-                    if (ktvRating === 0) {
-                        ktvRating = Number(item.itemRating) || 0;
-                    }
-                    if (ktvRating === 0) {
-                        ktvRating = Number(b.rating) || 0;
-                    }
-                    if (ktvRating > maxKtvRating) {
-                        maxKtvRating = ktvRating;
-                    }
-                }
-            }
-
-            if (maxKtvRating >= 4) {
-                let adjustedBasePoints = basePoints;
-                if (totalDuration < 60) {
-                    adjustedBasePoints = basePoints / 2;
-                }
-
-                const allKtvCodes = new Set<string>();
-                for (const item of (b.BookingItems || [])) {
-                    if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                        item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
-                    }
-                }
-                const totalUniqueKTVs = allKtvCodes.size || 1;
-                const bonusPts = Math.floor(adjustedBasePoints / totalUniqueKTVs);
-                total_bonus += bonusPts;
-
-                // Record for KTVBonusLedger (only when feature is ON)
-                if (isBonusWalletEnabled && bonusPts > 0) {
-                    bonusRecords.push({
-                        staff_id: techCode,
-                        booking_id: b.id,
-                        points: bonusPts,
-                        type: 'EARN',
-                        description: `Bonus ${bonusPts}đ (${adjustedBasePoints}/${totalUniqueKTVs} KTV) - Rating ${maxKtvRating}★`,
-                        date: targetDateStr
-                    });
-                }
-            }
+            // Bonus calculation via Service
+            const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig);
+            total_bonus += bookingBonus;
         }
 
         const ktvAdjustments = (adjustments || []).filter(a => a.staff_id === techCode);
@@ -275,8 +168,6 @@ async function processLedgerSync(targetDateStr: string) {
             throw upsertErr;
         }
     }
-
-    // (Loại bỏ KTVBonusLedger vì đã gộp chung vào KTVDailyLedger)
 
     return NextResponse.json({ success: true, message: `Synced ${upsertRows.length} ledgers for ${targetDateStr}` });
 }

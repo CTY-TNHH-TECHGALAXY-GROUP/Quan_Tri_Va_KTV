@@ -1,30 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-const DEFAULT_MILESTONES: Record<string, number> = {
-    '1': 2000, '30': 50000, '45': 75000, '60': 100000,
-    '70': 115000, '90': 150000, '120': 200000, '180': 300000, '300': 500000
-};
-
-const calcCommission = (durationMins: number, milestones: Record<string, number>, rate: number): number => {
-    const key = String(durationMins);
-    if (milestones[key]) return Number(milestones[key]);
-    return Math.round((durationMins / 60) * rate / 1000) * 1000;
-};
-
-const getMinsFromTimes = (start: string, end: string) => {
-    if (!start || !end) return 0;
-    const [h1, m1] = start.split(':').map(Number);
-    const [h2, m2] = end.split(':').map(Number);
-    if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
-    let mins1 = h1 * 60 + m1;
-    let mins2 = h2 * 60 + m2;
-    if (mins2 < mins1) mins2 += 24 * 60; // cross midnight
-    return mins2 - mins1;
-};
 
 /**
  * GET /api/ktv/history?techCode=NH016&dateFrom=2026-03-17&dateTo=2026-03-17
@@ -43,26 +22,8 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not init' }, { status: 500 });
 
     try {
-        const { data: configs } = await supabase
-            .from('SystemConfigs')
-            .select('key, value')
-            .in('key', ['ktv_commission_per_60min', 'ktv_commission_milestones', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus']);
-
-        const configMap: Record<string, any> = {};
-        (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
-        const rate = Number(configMap['ktv_commission_per_60min'] || 100000);
-        let milestones: Record<string, number> = DEFAULT_MILESTONES;
-        if (configMap['ktv_commission_milestones']) {
-            try { milestones = typeof configMap['ktv_commission_milestones'] === 'string'
-                ? JSON.parse(configMap['ktv_commission_milestones'])
-                : configMap['ktv_commission_milestones'];
-            } catch { /* use default */ }
-        }
-        
-        // Cấu hình Bonus theo ca
-        const s1Bonus = Number(configMap['ktv_shift_1_bonus'] || 20);
-        const s2Bonus = Number(configMap['ktv_shift_2_bonus'] || 20);
-        const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 40);
+        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any);
+        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any);
 
         // ─── Build date range ────────────────────────────────────────────
         const nowVn = new Date(Date.now() + VN_OFFSET_MS);
@@ -78,14 +39,22 @@ export async function GET(request: Request) {
         // ─── Fetch KTVShifts ─────────────────────────────────────────────
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
-            .select('effectiveFrom, shiftType')
+            .select('effectiveFrom, shiftType, employeeId')
             .eq('employeeId', techCode)
             .lte('effectiveFrom', toDate)
             .in('status', ['ACTIVE', 'REPLACED'])
             .order('effectiveFrom', { ascending: true })
             .order('createdAt', { ascending: true });
             
-        // Map ngày => Ca (Tính từ ngày effectiveFrom đến toDate)
+        // Áp dụng ngày lễ
+        let holidayDates: any = [];
+        try {
+            const { data: configData } = await supabase.from('SystemConfigs').select('value').eq('key', 'holiday_shift2_dates').maybeSingle();
+            if (configData?.value) {
+                holidayDates = typeof configData.value === 'string' ? JSON.parse(configData.value) : configData.value;
+            }
+        } catch (e) {}
+
         const shiftMap = new Map<string, string>();
         let currentShift = 'SHIFT_1';
         
@@ -96,8 +65,6 @@ export async function GET(request: Request) {
         for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
             const dateStr = d.toISOString().split('T')[0];
             
-            // Tìm shift có hiệu lực cho dateStr này
-            // Do shiftsData đã được sort theo effectiveFrom asc, ta lấy cái cuối cùng <= dateStr
             let activeForDate = currentShift;
             for (const s of (shiftsData || [])) {
                 const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
@@ -106,16 +73,11 @@ export async function GET(request: Request) {
                 }
             }
             
-            // Áp dụng ngày lễ
             const targetMonthDay = dateStr.slice(5, 10);
             let isHoliday = false;
-            try {
-                const { data: configData } = await supabase.from('SystemConfigs').select('value').eq('key', 'holiday_shift2_dates').maybeSingle();
-                const holidayDates = configData?.value || ['04-30', '09-02', '12-31'];
-                if (Array.isArray(holidayDates) && holidayDates.includes(targetMonthDay)) {
-                    isHoliday = true;
-                }
-            } catch (e) {}
+            if (Array.isArray(holidayDates) && holidayDates.includes(targetMonthDay)) {
+                isHoliday = true;
+            }
             
             shiftMap.set(dateStr, isHoliday ? 'SHIFT_2' : activeForDate);
         }
@@ -123,7 +85,7 @@ export async function GET(request: Request) {
         // ─── Fetch Bookings ──────────────────────────────────────────────
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, status, rating, tip, technicianCode')
+            .select('id, billCode, createdAt, timeStart, status, rating, tip, technicianCode')
             .ilike('technicianCode', `%${techCode}%`)
             .gte('createdAt', fromFilter)
             .lte('createdAt', toFilter)
@@ -141,12 +103,13 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating')
+            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
         // ─── Fetch Service names ─────────────────────────────────────────
         const allServiceIds = [...new Set((items || []).map((i: any) => i.serviceId).filter(Boolean))];
+
         let svcMap: Record<string, string> = {};
         let svcDurationMap: Record<string, number> = {};
         if (allServiceIds.length > 0) {
@@ -185,52 +148,33 @@ export async function GET(request: Request) {
         }))));
 
         const result = bookings.map((b: any) => {
+            const allItems = (items || []).filter((i: any) => i.bookingId === b.id);
+            
+            // Re-construct booking with nested items to use service methods
+            const fullBooking = { ...b, BookingItems: allItems };
+
             // Filter items belonging to this KTV in this booking
-            const myItems = (items || []).filter((i: any) =>
-                i.bookingId === b.id &&
+            const myItems = allItems.filter((i: any) =>
                 i.technicianCodes &&
                 Array.isArray(i.technicianCodes) &&
                 i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
             );
 
             // Fallback: first item if no techCode match (single-KTV booking)
-            const relevantItems = myItems.length > 0
-                ? myItems
-                : (items || []).filter((i: any) => i.bookingId === b.id);
+            const relevantItems = myItems.length > 0 ? myItems : allItems;
 
             console.log(`🔍 [DEBUG] Booking ${b.billCode}: myItems=${myItems.length}, relevant=${relevantItems.length}, tips=${relevantItems.map((i: any) => i.tip)}`);
 
-            // Duration: lấy từ segments mà admin gán cho KTV này
             let totalDuration = 0;
             let commission = 0;
             for (const item of relevantItems) {
-                let itemDuration = 0;
-                let segs: any[] = [];
-                try {
-                    segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []);
-                } catch { segs = []; }
-                // Tìm segments gán cho KTV này
-                const mySegs = segs.filter((seg: any) =>
-                    seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase())
-                );
-                if (mySegs.length > 0) {
-                    itemDuration = mySegs.reduce((sum: number, seg: any) => {
-                        // Ưu tiên tính thời gian thực tế quầy gán (endTime - startTime)
-                        const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
-                        if (realMins > 0) return sum + realMins;
-                        // Fallback về thuộc tính duration nếu không parse được thời gian
-                        return sum + (Number(seg.duration) || 0);
-                    }, 0);
-                } else {
-                    // Fallback: dùng service duration nếu không có segments
-                    itemDuration = svcDurationMap[String(item.serviceId)] || 60;
-                }
+                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 totalDuration += itemDuration;
-                // Tính commission CHO TỪNG DỊCH VỤ rồi cộng dồn
-                commission += calcCommission(itemDuration, milestones, rate);
+                commission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
             }
-            if (commission === 0) commission = calcCommission(60, milestones, rate);
+            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
 
             const serviceNames = relevantItems
                 .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
@@ -245,37 +189,18 @@ export async function GET(request: Request) {
                 return r > best ? r : best;
             }, 0) || null;
 
-            // ─── Bonus points: Per booking, chia đều unique KTVs, Math.floor ─────────────
-            let bonusPoints = 0;
-            const bRating = Number(b.rating) || 0;
-            const maxItemRating = itemRating || 0;
-            const bookingRating = Math.max(bRating, maxItemRating);
-
-            if (bookingRating >= 4) {
-                // Xác định ngày của booking (YYYY-MM-DD theo VN)
-                const bDateStr = new Date(new Date(b.createdAt).getTime() + VN_OFFSET_MS).toISOString().split('T')[0];
-                const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
-                
-                let basePoints = s1Bonus;
-                if (shiftType === 'SHIFT_2') basePoints = s2Bonus;
-                else if (shiftType === 'SHIFT_3') basePoints = s3Bonus;
-                
-                // Điểm thưởng giảm nửa nếu KTV được gán dưới 60 phút
-                if (totalDuration < 60) {
-                    basePoints = basePoints / 2;
-                }
-                
-                // Collect ALL unique KTVs across ALL items in this booking
-                const allKtvCodes = new Set<string>();
-                const allItems = (items || []).filter((i: any) => i.bookingId === b.id);
-                for (const item of allItems) {
-                    if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                        item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
-                    }
-                }
-                const totalUniqueKTVs = allKtvCodes.size || 1;
-                bonusPoints = Math.floor(basePoints / totalUniqueKTVs);
-            }
+            // ─── Bonus points ─────────────
+            const bDateStr = new Date(new Date(b.createdAt).getTime() + VN_OFFSET_MS).toISOString().split('T')[0];
+            const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
+            
+            // Build pseudo shiftsData for calculateBookingBonus
+            const dynamicShiftsData = [{
+                employeeId: techCode,
+                shiftType: shiftType,
+                effectiveFrom: bDateStr
+            }];
+            
+            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig);
 
             // ─── Tip: sum from this KTV's items ────────────────────────
             const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);

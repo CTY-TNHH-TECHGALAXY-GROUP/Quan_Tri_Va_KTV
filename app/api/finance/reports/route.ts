@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
     }
 
     try {
+        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any);
         // ─── 1. Fetch completed bookings in date range ───────────────────
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
@@ -417,27 +419,15 @@ export async function GET(request: Request) {
                 if (!code) return;
                 
                 let myTotalMins = 0;
-                if (i.segments) {
-                    try {
-                        const segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : i.segments;
-                        const mySegs = segs.filter((seg: any) => 
-                            seg.ktvId && seg.ktvId.toLowerCase().includes(code.toLowerCase())
-                        );
-                        if (mySegs.length > 0) {
-                            myTotalMins = mySegs.reduce((sum: number, seg: any) => {
-                                const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
-                                return sum + (realMins > 0 ? realMins : (Number(seg.duration) || 0));
-                            }, 0);
-                        }
-                    } catch {}
-                }
+                
+                const fallbackDuration = svcDurationMap[String(i.serviceId)] || 60;
+                myTotalMins = KtvCommissionService.calculateItemDuration(i, code, fallbackDuration);
                 
                 if (myTotalMins === 0) {
-                    myTotalMins = svcDurationMap[String(i.serviceId)] || 60;
-                    myTotalMins = myTotalMins / techs.length; // Fallback: divide duration by num KTVs
+                    myTotalMins = fallbackDuration / techs.length; // Fallback: divide duration by num KTVs
                 }
                 
-                const perKtvCommission = calcCommission(myTotalMins) * qty;
+                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
                 const perKtvTip = (Number(i.tip) || 0) / techs.length;
                 const hasRating = i.itemRating && Number(i.itemRating) > 0;
                 
