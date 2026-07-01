@@ -98,8 +98,8 @@ export const usePayrollLogic = () => {
               entry.status = 'on_duty'; // Vẫn tính có mặt, lateMins sẽ tính riêng
             }
           } else if (record.checkType === 'CHECK_OUT') {
-            if (record.checkOutTime || record.checkedAt) {
-              const raw = record.checkOutTime || record.checkedAt;
+            if (record.checkedAt) {
+              const raw = record.checkedAt;
               const d = new Date(raw);
               entry.check_out_time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
               entry.status = 'off_duty';
