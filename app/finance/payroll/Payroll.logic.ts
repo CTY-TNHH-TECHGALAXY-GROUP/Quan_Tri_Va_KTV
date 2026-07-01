@@ -8,10 +8,11 @@ const supabase = createClient();
 
 // 🔧 SHIFT CONFIGURATION
 const SHIFT_START_TIMES: Record<string, string> = {
-  'CA1': '09:00',
-  'CA2': '11:00',
-  'CA3': '17:00',
-  'FULL': '09:00',
+  'SHIFT_1': '09:00',
+  'SHIFT_2': '11:00',
+  'SHIFT_3': '17:00',
+  'FREE': '09:00',
+  'REQUEST': '09:00',
 };
 
 export interface AttendanceRecord {
@@ -45,22 +46,14 @@ export const usePayrollLogic = () => {
       const startDateISO = format(startDate, 'yyyy-MM-dd');
       const endDateISO = format(endDate, 'yyyy-MM-dd');
 
-      const [staffRes, attRes, shiftRes, leaveRes, usersRes] = await Promise.all([
+      const [staffRes, attRes, payrollDataRes, usersRes] = await Promise.all([
         supabase.from('Staff').select('id, full_name').eq('status', 'ĐANG LÀM'),
-        // ✅ Dùng KTVAttendance thay cho DailyAttendance (đã ngưng sử dụng)
         supabase.from('KTVAttendance')
-          .select('id, employeeId, date, checkType, status, checkedAt, checkOutTime')
+          .select('id, employeeId, date, checkType, status, checkedAt')
           .gte('date', startDateISO)
           .lte('date', endDateISO)
           .eq('status', 'CONFIRMED'),
-        supabase.from('KTVShifts')
-          .select('*')
-          .eq('status', 'ACTIVE'),
-        supabase.from('KTVLeaveRequests')
-          .select('*')
-          .gte('date', startDateISO)
-          .lte('date', endDateISO)
-          .eq('status', 'APPROVED'),
+        fetch(`/api/finance/payroll/shifts?dateFrom=${startDateISO}&dateTo=${endDateISO}`).then(r => r.json()).catch(() => ({ data: { shifts: [], leaves: [] } })),
         supabase.from('Users').select('id, code'),
       ]);
 
@@ -75,12 +68,20 @@ export const usePayrollLogic = () => {
         for (const record of attRes.data) {
           // Map UUID -> Mã NV (NH0xx). Nếu không có, dùng nguyên UUID.
           const staffCode = userMap.get(record.employeeId) || record.employeeId;
-          const key = `${staffCode}_${record.date}`;
+          // Lấy date từ record.date, nếu null thì extract từ checkedAt (lỗi CSDL cũ thiếu date)
+          let recordDate = record.date;
+          if (!recordDate && record.checkedAt) {
+            // Chuyển checkedAt sang giờ local VN (hoặc cắt chuỗi)
+            recordDate = format(new Date(record.checkedAt), 'yyyy-MM-dd');
+          }
+          if (!recordDate) continue; // Bỏ qua nếu không có cả date và checkedAt
+
+          const key = `${staffCode}_${recordDate}`;
 
           if (!dailyMap.has(key)) {
             dailyMap.set(key, {
               employee_id: staffCode,
-              date: record.date,
+              date: recordDate,
               check_in_time: null,
               check_out_time: null,
               status: 'on_duty'
@@ -109,8 +110,10 @@ export const usePayrollLogic = () => {
         setAttendance(Array.from(dailyMap.values()));
       }
       
-      if (shiftRes.data) setShifts(shiftRes.data);
-      if (leaveRes.data) setLeaves(leaveRes.data);
+      if (payrollDataRes.data) {
+        setShifts(payrollDataRes.data.shifts || []);
+        setLeaves(payrollDataRes.data.leaves || []);
+      }
     } catch (error) {
       console.error('Error fetching payroll data:', error);
     } finally {
@@ -127,12 +130,24 @@ export const usePayrollLogic = () => {
     const records: AttendanceRecord[] = [];
 
     staffList.forEach(staff => {
-      // Find the active shift for this staff
-      const staffShift = shifts.find(s => s.employeeId === staff.id);
-      const shiftType = staffShift?.shiftType || 'SHIFT_1'; // Default to SHIFT_1 instead of OFF to avoid "Nghi phep" spam
+      // Find all shifts for this staff (already sorted by effectiveFrom asc)
+      const staffShifts = shifts.filter(s => s.employeeId === staff.id);
 
       days.forEach(day => {
+        if (day > new Date()) {
+          return; // Bỏ qua các ngày tương lai, đảm bảo SRP (không ép trạng thái ảo)
+        }
+
         const dateStr = format(day, 'yyyy-MM-dd');
+        
+        // Find the active shift for THIS day
+        let shiftType = 'SHIFT_1'; // Default
+        for (const s of staffShifts) {
+            const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
+            if (effDate && effDate <= dateStr) {
+                shiftType = s.shiftType;
+            }
+        }
         
         // Find leave
         const dayLeave = leaves.find(l => l.employeeId === staff.id && l.date === dateStr);
@@ -143,44 +158,56 @@ export const usePayrollLogic = () => {
         let status: AttendanceRecord['status'] = 'absent';
         let lateMins = 0;
 
-        if (dayLeave) {
-          status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
-        } else if (dayAtt) {
-          if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
-            status = 'present';
-            // Calculate late mins based on check_in_time
-            if (dayAtt.check_in_time) {
-              const shiftStartTime = SHIFT_START_TIMES[shiftType];
-              if (shiftStartTime) {
-                const [sh, sm] = shiftStartTime.split(':').map(Number);
-                const [ah, am] = dayAtt.check_in_time.split(':').map(Number);
-                
-                const scheduledTotal = sh * 60 + sm;
-                const actualTotal = ah * 60 + am;
+        const now = new Date();
+        const todayAtZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const isPast1105 = day < todayAtZero || (day.getTime() === todayAtZero.getTime() && (now.getHours() > 11 || (now.getHours() === 11 && now.getMinutes() >= 5)));
 
-                if (actualTotal > scheduledTotal) {
-                  lateMins = actualTotal - scheduledTotal;
-                  if (lateMins > 0) status = 'late';
+        if (dayLeave) {
+          // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
+          status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
+        } else if (dayAtt && dayAtt.check_in_time) {
+          // They came to work!
+          if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
+            const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
+            
+            if (isFlexibleShift) {
+                status = shiftType === 'FREE' ? 'free' : 'request' as any; // Show explicitly as Tự do / Yêu cầu
+            } else {
+                status = 'present';
+                // Calculate late mins based on check_in_time
+                const shiftStartTime = SHIFT_START_TIMES[shiftType];
+                if (shiftStartTime) {
+                  const [sh, sm] = shiftStartTime.split(':').map(Number);
+                  const [ah, am] = dayAtt.check_in_time.split(':').map(Number);
+                  
+                  const scheduledTotal = sh * 60 + sm;
+                  const actualTotal = ah * 60 + am;
+
+                  if (actualTotal > scheduledTotal) {
+                    lateMins = actualTotal - scheduledTotal;
+                    if (lateMins > 0) status = 'late';
+                  }
                 }
-              }
             }
           } else if (dayAtt.status === 'off_leave') {
             status = 'off';
           } else if (dayAtt.status === 'absent') {
             status = 'absent';
           }
-        } else if (day > new Date()) {
-          status = 'off'; // Future dates
         } else {
-            // No attendance found for a past date
-            status = 'absent';
+          // No attendance and no leave request
+          if (isPast1105) {
+              status = 'suddenOff';
+          } else {
+              status = 'absent';
+          }
         }
 
         records.push({
           date: dateStr,
           employeeId: staff.id,
           employeeName: staff.full_name,
-          shiftType: status === 'off' ? 'OFF' : shiftType,
+          shiftType: shiftType,
           checkIn: dayAtt?.check_in_time || null,
           checkOut: dayAtt?.check_out_time || null,
           lateMins,
@@ -201,13 +228,30 @@ export const usePayrollLogic = () => {
   }, [staffList, attendance, shifts, leaves, startDate, endDate, dateRange, selectedStaffId]);
 
   const summary = useMemo(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const totalSuddenOff = processedData.filter(r => r.status === 'suddenOff').length;
+    const totalLeave = processedData.filter(r => r.status === 'off').length;
+
+    let baseDays = 30;
+    if (startDate) {
+        const month = startDate.getMonth(); // 0-11
+        if (month === 1) { // Feb
+            const year = startDate.getFullYear();
+            const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+            baseDays = isLeap ? 29 : 28;
+        }
+    }
+
     return {
-      totalDays: processedData.filter(r => r.status === 'present' || r.status === 'late').length,
+      totalDays: baseDays - totalLeave - totalSuddenOff,
       totalLate: processedData.filter(r => r.status === 'late').length,
-      totalSuddenOff: processedData.filter(r => r.status === 'suddenOff').length,
-      totalLeave: processedData.filter(r => r.status === 'off').length,
+      totalSuddenOff,
+      totalLeave,
+      freeShifts: processedData.filter(r => r.shiftType === 'FREE' && r.checkIn).length,
+      requestShifts: processedData.filter(r => r.shiftType === 'REQUEST' && r.checkIn).length,
+      forgotCheckOut: processedData.filter(r => r.checkIn && !r.checkOut && r.date < todayStr).length
     };
-  }, [processedData]);
+  }, [processedData, startDate]);
 
   return {
     selectedMonth,

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Calendar, Users, Clock, AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Download, X } from 'lucide-react';
+import { Calendar, Users, Clock, AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Download, X, Coffee, Star, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, addMonths, subMonths, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -15,6 +15,8 @@ const STATUS_COLORS = {
   off: 'bg-gray-50 text-gray-500 border-gray-100',
   suddenOff: 'bg-rose-50 text-rose-700 border-rose-100',
   absent: 'bg-slate-100 text-slate-400 border-slate-200',
+  free: 'bg-sky-50 text-sky-700 border-sky-100',
+  request: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
 };
 
 export const Payroll = () => {
@@ -124,12 +126,15 @@ export const Payroll = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 md:gap-6">
         {[
           { label: t[lang].summary.totalDays, value: summary.totalDays, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: t[lang].summary.totalLate, value: summary.totalLate, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: t[lang].summary.totalSuddenOff, value: summary.totalSuddenOff, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: t[lang].summary.totalLeave, value: summary.totalLeave, icon: Calendar, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { label: t[lang].summary.freeShifts, value: summary.freeShifts, icon: Coffee, color: 'text-sky-600', bg: 'bg-sky-50' },
+          { label: t[lang].summary.requestShifts, value: summary.requestShifts, icon: Star, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
+          { label: t[lang].summary.forgotCheckOut, value: summary.forgotCheckOut, icon: LogOut, color: 'text-orange-600', bg: 'bg-orange-50' },
         ].map((item, idx) => (
           <motion.div
             key={idx}
@@ -202,8 +207,9 @@ export const Payroll = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${row.shiftType === 'OFF' ? 'bg-slate-50 text-slate-400' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
-                        {row.shiftType}
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${row.status === 'off' ? 'bg-slate-50 text-slate-400' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
+                        {/* @ts-ignore */}
+                        {row.status === 'off' ? 'OFF' : (t[lang].shifts[row.shiftType] || row.shiftType)}
                       </span>
                     </td>
                     <td className="px-6 py-4">
