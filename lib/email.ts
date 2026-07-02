@@ -346,10 +346,12 @@ export async function sendBookingConfirmationEmail(
 
     const attachments: any[] = [];
     if (isNewCustomer) {
-      // Đính kèm hình ảnh QR Code Quốc tế vào email
+      // Đính kèm hình ảnh QR Code Quốc tế vào email bằng base64 để tránh lỗi đường dẫn trên Vercel
+      const { internationalQrBase64 } = require('./qr-base64');
       attachments.push({
         filename: 'international-qr.png',
-        path: process.cwd() + '/public/images/international-qr.png',
+        content: internationalQrBase64,
+        encoding: 'base64',
         cid: 'international-qr'
       });
     }
