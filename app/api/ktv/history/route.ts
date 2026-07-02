@@ -85,12 +85,12 @@ export async function GET(request: Request) {
         // ─── Fetch Bookings ──────────────────────────────────────────────
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, timeStart, status, rating, tip, technicianCode')
+            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, technicianCode')
             .ilike('technicianCode', `%${techCode}%`)
-            .gte('createdAt', fromFilter)
-            .lte('createdAt', toFilter)
+            .gte('bookingDate', fromFilter)
+            .lte('bookingDate', toFilter)
             .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE'])
-            .order('createdAt', { ascending: false })
+            .order('bookingDate', { ascending: false })
             .limit(100);
 
         if (bErr) throw bErr;
@@ -190,7 +190,7 @@ export async function GET(request: Request) {
             }, 0) || null;
 
             // ─── Bonus points ─────────────
-            const bDateStr = new Date(new Date(b.createdAt).getTime() + VN_OFFSET_MS).toISOString().split('T')[0];
+            const bDateStr = new Date(new Date(b.bookingDate || b.createdAt).getTime() + VN_OFFSET_MS).toISOString().split('T')[0];
             const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
             
             // Build pseudo shiftsData for calculateBookingBonus
@@ -209,6 +209,7 @@ export async function GET(request: Request) {
                 id: b.id,
                 billCode: b.billCode,
                 createdAt: b.createdAt,
+                bookingDate: b.bookingDate,
                 status: b.status,
                 rating: itemRating,
                 tip: ktvTip,
