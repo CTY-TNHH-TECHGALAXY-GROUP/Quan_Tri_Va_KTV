@@ -536,7 +536,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
         const { data } = await supabase
             .from('TurnQueue')
             // 🔧 EGRESS FIX: Select only needed columns
-            .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, current_order_id')
+            .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, current_order_id, estimated_end_time')
             .eq('date', today)
             .order('turns_completed', { ascending: true })
             .order('check_in_order', { ascending: true });
@@ -766,7 +766,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
                                     turn.status === 'assigned' ? <Clock size={10} /> :
                                         <Moon size={10} />}
                                 <span className="hidden sm:inline">
-                                    {turn.status === 'waiting' ? 'Sẵn sàng' : turn.status === 'working' ? 'Đang làm' : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
+                                    {turn.status === 'waiting' ? 'Sẵn sàng' : turn.status === 'working' ? (turn.estimated_end_time ? `Đang làm (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : 'Đang làm') : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
                                 </span>
                             </div>
 
