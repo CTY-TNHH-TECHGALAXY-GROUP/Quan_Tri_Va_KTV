@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKTVWallet } from './KTVWallet.logic';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle } from 'lucide-react';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown } from 'lucide-react';
 
 const THEME = {
   primary: 'bg-emerald-600',
@@ -27,6 +27,7 @@ export default function KTVWalletPage() {
     const [withdrawModal, setWithdrawModal] = useState<{ isOpen: boolean, type: 'TUA' | 'BONUS', maxAmount: number } | null>(null);
     const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     const handleOpenWithdrawModal = (type: 'TUA' | 'BONUS') => {
         if (type === 'TUA') {
@@ -127,32 +128,52 @@ export default function KTVWalletPage() {
                     </h1>
                 </div>
 
-                {/* TABS */}
-                <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                {/* DROPDOWN SELECTOR */}
+                <div className="relative mb-6 z-30">
                     <button 
-                        onClick={() => setActiveTab('TUA')}
-                        className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold whitespace-nowrap transition-all ${activeTab === 'TUA' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl font-bold shadow-sm border transition-all ${
+                            activeTab === 'TUA' ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-600/20' :
+                            activeTab === 'BONUS' ? 'bg-amber-500 text-white border-amber-400 shadow-amber-500/20' :
+                            'bg-indigo-600 text-white border-indigo-500 shadow-indigo-600/20'
+                        }`}
                     >
-                        <Zap size={18} className={activeTab === 'TUA' ? 'text-amber-300 fill-amber-300' : ''} />
-                        Ví Tua
+                        <div className="flex items-center gap-3">
+                            {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">Ví Tua</span></>}
+                            {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">Ví Bonus</span></>}
+                            {activeTab === 'TICH_LUY' && <><PiggyBank size={20} /> <span className="text-lg">Ví Tích Luỹ</span></>}
+                        </div>
+                        <ChevronDown size={20} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
-                    {canViewBonus && (
-                        <button 
-                            onClick={() => setActiveTab('BONUS')}
-                            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold whitespace-nowrap transition-all ${activeTab === 'BONUS' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                        >
-                            <Star size={18} className={activeTab === 'BONUS' ? 'fill-white' : ''} />
-                            Ví Bonus
-                        </button>
-                    )}
-                    {canViewPiggyBank && (
-                        <button 
-                            onClick={() => setActiveTab('TICH_LUY')}
-                            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold whitespace-nowrap transition-all ${activeTab === 'TICH_LUY' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                        >
-                            <PiggyBank size={18} />
-                            Ví Tích Luỹ
-                        </button>
+
+                    {isDropdownOpen && (
+                        <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2">
+                            <button 
+                                onClick={() => { setActiveTab('TUA'); setIsDropdownOpen(false); }}
+                                className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TUA' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                <Zap size={20} className={activeTab === 'TUA' ? 'text-emerald-500' : 'text-slate-400'} />
+                                <span className="font-bold">Ví Tua</span>
+                            </button>
+                            {canViewBonus && (
+                                <button 
+                                    onClick={() => { setActiveTab('BONUS'); setIsDropdownOpen(false); }}
+                                    className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <Star size={20} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
+                                    <span className="font-bold">Ví Bonus</span>
+                                </button>
+                            )}
+                            {canViewPiggyBank && (
+                                <button 
+                                    onClick={() => { setActiveTab('TICH_LUY'); setIsDropdownOpen(false); }}
+                                    className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TICH_LUY' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <PiggyBank size={20} className={activeTab === 'TICH_LUY' ? 'text-indigo-500' : 'text-slate-400'} />
+                                    <span className="font-bold">Ví Tích Luỹ</span>
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
 

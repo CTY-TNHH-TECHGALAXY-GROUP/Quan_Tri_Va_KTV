@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 
 export function useFinanceKTV() {
@@ -17,6 +17,7 @@ export function useFinanceKTV() {
     const [filterType, setFilterType] = useState<'ALL' | 'TODAY' | 'CUSTOM'>('ALL');
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
+    const [filterStaffId, setFilterStaffId] = useState('ALL');
 
     // Adjustment Modal State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
@@ -204,6 +205,23 @@ export function useFinanceKTV() {
         }
     };
 
+    const staffList = useMemo(() => {
+        const list = new Map<string, string>();
+        summaries.forEach(ktv => list.set(ktv.id, ktv.name));
+        bonusSummaries.forEach(ktv => list.set(ktv.id, ktv.name));
+        return Array.from(list.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id));
+    }, [summaries, bonusSummaries]);
+
+    const filteredSummaries = useMemo(() => {
+        if (filterStaffId === 'ALL') return summaries;
+        return summaries.filter(k => k.id === filterStaffId);
+    }, [summaries, filterStaffId]);
+
+    const filteredBonusSummaries = useMemo(() => {
+        if (filterStaffId === 'ALL') return bonusSummaries;
+        return bonusSummaries.filter(k => k.id === filterStaffId);
+    }, [bonusSummaries, filterStaffId]);
+
     return {
         user,
         canAccessPage,
@@ -238,6 +256,11 @@ export function useFinanceKTV() {
         handleAcknowledgeIntent,
         handleOpenAdjustment,
         handleSubmitAdjustment,
-        refresh: fetchData
+        refresh: fetchData,
+        filterStaffId,
+        setFilterStaffId,
+        staffList,
+        filteredSummaries,
+        filteredBonusSummaries
     };
 }

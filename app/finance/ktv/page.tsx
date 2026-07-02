@@ -14,8 +14,10 @@ export default function FinanceKTVPage() {
         filterType, setFilterType, fromDate, setFromDate, toDate, setToDate,
         handleApprove, handleReject, refresh,
         isAdjustmentModalOpen, selectedKtv, adjAmount, setAdjAmount, adjType, setAdjType, adjWalletType, setAdjWalletType, adjReason, setAdjReason, setIsAdjustmentModalOpen, handleOpenAdjustment, handleSubmitAdjustment,
-        handleAcknowledgeIntent
+        handleAcknowledgeIntent, filterStaffId, setFilterStaffId, staffList, filteredSummaries, filteredBonusSummaries
     } = useFinanceKTV();
+    
+    const [isWalletDropdownOpen, setIsWalletDropdownOpen] = React.useState(false);
 
     if (!user || !canAccessPage) {
         return (
@@ -257,32 +259,65 @@ export default function FinanceKTVPage() {
                         </h2>
                     </div>
 
-                    {/* TABS */}
-                    <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-                        <button 
-                            onClick={() => setActiveTab('TUA')}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all ${activeTab === 'TUA' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                        >
-                            <Zap size={16} className={activeTab === 'TUA' ? 'text-amber-300 fill-amber-300' : ''} />
-                            Ví Tua (VNĐ)
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('BONUS')}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all ${activeTab === 'BONUS' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                        >
-                            <Star size={16} className={activeTab === 'BONUS' ? 'fill-white' : ''} />
-                            Ví Bonus (Points)
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('TICH_LUY')}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all ${activeTab === 'TICH_LUY' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                        >
-                            <PiggyBank size={16} />
-                            Ví Tích Luỹ
-                        </button>
+                    {/* TABS (DROPDOWN) */}
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+                        <div className="relative z-30 w-full md:w-auto">
+                            <button 
+                                onClick={() => setIsWalletDropdownOpen(!isWalletDropdownOpen)}
+                                className={`w-full flex items-center gap-6 justify-between px-4 py-2.5 rounded-xl font-bold shadow-sm border transition-all ${
+                                    activeTab === 'TUA' ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-600/20' :
+                                    activeTab === 'BONUS' ? 'bg-amber-500 text-white border-amber-400 shadow-amber-500/20' :
+                                    'bg-purple-600 text-white border-purple-500 shadow-purple-600/20'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    {activeTab === 'TUA' && <><Zap size={16} className="text-amber-300 fill-amber-300" /> <span>Ví Tua (VNĐ)</span></>}
+                                    {activeTab === 'BONUS' && <><Star size={16} className="fill-white" /> <span>Ví Bonus (Points)</span></>}
+                                    {activeTab === 'TICH_LUY' && <><PiggyBank size={16} /> <span>Ví Tích Luỹ</span></>}
+                                </div>
+                                <ChevronDown size={16} className={`transition-transform duration-200 ${isWalletDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
 
-                        {/* BỘ LỌC NGÀY */}
-                        <div className="ml-auto flex items-center gap-2">
+                            {isWalletDropdownOpen && (
+                                <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2">
+                                    <button 
+                                        onClick={() => { setActiveTab('TUA'); setIsWalletDropdownOpen(false); }}
+                                        className={`flex items-center gap-2 px-4 py-3 transition-all ${activeTab === 'TUA' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <Zap size={16} className={activeTab === 'TUA' ? 'text-indigo-500' : 'text-slate-400'} />
+                                        <span className="font-bold text-sm">Ví Tua (VNĐ)</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => { setActiveTab('BONUS'); setIsWalletDropdownOpen(false); }}
+                                        className={`flex items-center gap-2 px-4 py-3 transition-all border-t border-slate-50 ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <Star size={16} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
+                                        <span className="font-bold text-sm">Ví Bonus (Points)</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => { setActiveTab('TICH_LUY'); setIsWalletDropdownOpen(false); }}
+                                        className={`flex items-center gap-2 px-4 py-3 transition-all border-t border-slate-50 ${activeTab === 'TICH_LUY' ? 'bg-purple-50 text-purple-600' : 'text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <PiggyBank size={16} className={activeTab === 'TICH_LUY' ? 'text-purple-500' : 'text-slate-400'} />
+                                        <span className="font-bold text-sm">Ví Tích Luỹ</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* BỘ LỌC NGÀY VÀ NHÂN VIÊN */}
+                        <div className="flex items-center gap-2">
+                            <select 
+                                value={filterStaffId}
+                                onChange={(e) => setFilterStaffId(e.target.value)}
+                                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 max-w-[150px] truncate"
+                            >
+                                <option value="ALL">Tất cả KTV</option>
+                                {staffList.map(staff => (
+                                    <option key={staff.id} value={staff.id}>{staff.id} - {staff.name}</option>
+                                ))}
+                            </select>
+
                             <select 
                                 value={filterType}
                                 onChange={(e) => setFilterType(e.target.value as any)}
@@ -330,12 +365,12 @@ export default function FinanceKTVPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 font-medium">
-                                    {summaries.length === 0 ? (
+                                    {filteredSummaries.length === 0 ? (
                                         <tr>
                                             <td colSpan={8} className="px-6 py-8 text-center text-slate-400">Chưa có dữ liệu thống kê KTV</td>
                                         </tr>
                                     ) : (
-                                        summaries.map((ktv) => (
+                                        filteredSummaries.map((ktv) => (
                                             <tr key={ktv.id} className="hover:bg-indigo-50/30 whitespace-nowrap">
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-slate-800 block">{ktv.name}</span>
@@ -401,12 +436,12 @@ export default function FinanceKTVPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 font-medium">
-                                    {bonusSummaries.length === 0 ? (
+                                    {filteredBonusSummaries.length === 0 ? (
                                         <tr>
                                             <td colSpan={5} className="px-6 py-8 text-center text-slate-400">Không có KTV nào được bật Ví Bonus hoặc chưa có dữ liệu</td>
                                         </tr>
                                     ) : (
-                                        bonusSummaries.map((ktv) => (
+                                        filteredBonusSummaries.map((ktv) => (
                                             <tr key={ktv.id} className="hover:bg-amber-50/30 whitespace-nowrap">
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-slate-800 block">{ktv.name}</span>
