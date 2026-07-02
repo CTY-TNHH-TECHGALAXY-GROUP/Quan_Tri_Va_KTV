@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 
 export async function GET(request: Request, context: { params: Promise<{ billCode: string }> | { billCode: string } }) {

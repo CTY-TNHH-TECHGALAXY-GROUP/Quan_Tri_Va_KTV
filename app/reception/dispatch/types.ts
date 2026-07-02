@@ -51,6 +51,7 @@ export interface PendingOrder {
   phone: string;
   email?: string;
   source?: string;
+  isWebBooking?: boolean;
   timeBooking?: string | null;
   vipWarnings?: string[];
   vipConfidence?: string;

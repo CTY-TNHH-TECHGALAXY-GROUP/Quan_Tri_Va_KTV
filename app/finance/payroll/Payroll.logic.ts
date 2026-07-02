@@ -23,7 +23,7 @@ export interface AttendanceRecord {
   checkIn: string | null;
   checkOut: string | null;
   lateMins: number;
-  status: 'present' | 'late' | 'off' | 'suddenOff' | 'absent';
+  status: 'present' | 'late' | 'off' | 'suddenOff' | 'absent' | 'free' | 'request';
 }
 
 export const usePayrollLogic = () => {
