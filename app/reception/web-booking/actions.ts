@@ -209,10 +209,10 @@ export async function confirmWebBooking(bookingId: string) {
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
         bookingDate, timeBooking, totalAmount, id,
-        BookingItems (
+        BookingItems!BookingItems_bookingId_fkey (
           quantity,
           serviceId,
-          Services (
+          Services!BookingItems_serviceId_fkey (
             nameVN, nameEN, nameKR, nameJP, nameCN, duration
           )
         )
