@@ -191,9 +191,17 @@ export const usePayrollLogic = () => {
         }
 
         if (dayLeave) {
-          // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
-          status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
-        } else if (dayAtt && dayAtt.check_in_time) {
+          if (dayLeave.reason === 'OVERRIDE:FREE') {
+            status = 'free';
+            shiftType = 'FREE';
+          } else if (dayLeave.reason === 'OVERRIDE:REQUEST') {
+            status = 'request';
+            shiftType = 'REQUEST';
+          } else {
+            // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
+            status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
+          }
+        } else if (dayAtt && (dayAtt.check_in_time || dayAtt.check_out_time)) {
           // They came to work!
           if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
             const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
@@ -204,7 +212,7 @@ export const usePayrollLogic = () => {
                 status = 'present';
                 // Calculate late mins based on check_in_time
                 const shiftStartTime = SHIFT_START_TIMES[shiftType];
-                if (shiftStartTime) {
+                if (shiftStartTime && dayAtt.check_in_time) {
                   const [sh, sm] = shiftStartTime.split(':').map(Number);
                   const [ah, am] = dayAtt.check_in_time.split(':').map(Number);
                   
@@ -237,8 +245,8 @@ export const usePayrollLogic = () => {
           employeeId: staff.id,
           employeeName: staff.full_name,
           shiftType: shiftType,
-          checkIn: dayAtt?.check_in_time || null,
-          checkOut: dayAtt?.check_out_time || null,
+          checkIn: (status === 'free' || status === 'request') ? (dayAtt?.check_in_time || '--:--') : (dayAtt?.check_in_time || null),
+          checkOut: (status === 'free' || status === 'request') ? (dayAtt?.check_out_time || '--:--') : (dayAtt?.check_out_time || null),
           lateMins,
           status
         });
@@ -307,6 +315,33 @@ export const usePayrollLogic = () => {
     });
   }, [processedData, activeCardFilter, selectedStaffId]);
 
+  const handleOverrideAttendance = async (employeeId: string, employeeName: string, date: string, newStatus: string) => {
+    try {
+      const res = await fetch('/api/finance/payroll/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          employeeName,
+          date,
+          newStatus
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData(); // reload
+        return true;
+      } else {
+        alert(data.error || 'Có lỗi xảy ra');
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi kết nối máy chủ');
+      return false;
+    }
+  };
+
   return {
     selectedMonth,
     setSelectedMonth,
@@ -321,6 +356,7 @@ export const usePayrollLogic = () => {
     loading,
     refresh: fetchData,
     activeCardFilter,
-    setActiveCardFilter
+    setActiveCardFilter,
+    handleOverrideAttendance
   };
 };
