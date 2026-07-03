@@ -281,10 +281,10 @@ export default function SystemSettingsPage() {
                             </div>
                         </div>
                     </div>
-
-                    <SystemConfigsTable />
-
                 </div>
+
+                {/* Bảng cấu hình nâng cao sẽ nằm ngoài Grid để full width */}
+                <SystemConfigsTable />
             </div>
         </AppLayout>
     );
