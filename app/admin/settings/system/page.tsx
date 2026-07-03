@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Settings, Save, CheckCircle2, AlertCircle, Loader2, Coins, CalendarDays, Percent } from 'lucide-react';
 import { motion } from 'motion/react';
+import { SystemConfigsTable } from './SystemConfigsTable';
 
 export default function SystemSettingsPage() {
     const [configs, setConfigs] = useState({
@@ -280,6 +281,8 @@ export default function SystemSettingsPage() {
                             </div>
                         </div>
                     </div>
+
+                    <SystemConfigsTable />
 
                 </div>
             </div>
