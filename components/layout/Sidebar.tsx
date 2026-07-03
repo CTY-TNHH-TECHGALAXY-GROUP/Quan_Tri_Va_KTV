@@ -75,6 +75,7 @@ const ICONS: Record<string, React.ReactNode> = {
   notification_settings: <Settings size={20} />,
   support_dashboard: <LayoutDashboard size={20} />,
   support_tasks_admin: <ClipboardCheck size={20} />,
+  system_settings: <Settings size={20} />,
   settings: <Settings size={20} />,
 };
 
@@ -110,6 +111,7 @@ const PATHS: Record<string, string> = {
   notification_settings: '/admin/settings/notifications',
   support_dashboard: '/support/dashboard',
   support_tasks_admin: '/admin/support-tasks',
+  system_settings: '/admin/settings/system',
   settings: '/settings',
 };
 

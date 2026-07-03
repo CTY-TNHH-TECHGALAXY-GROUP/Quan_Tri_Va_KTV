@@ -30,7 +30,8 @@ export type ModuleId =
   | 'notification_settings'
   | 'support_dashboard'
   | 'support_tasks_admin'
-  | 'settings';
+  | 'settings'
+  | 'system_settings';
 
 export interface ModuleDefinition {
   id: ModuleId;
