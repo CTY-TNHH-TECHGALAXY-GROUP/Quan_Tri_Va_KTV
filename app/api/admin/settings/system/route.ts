@@ -8,7 +8,8 @@ const DEFAULT_CONFIGS = {
     ktv_shift_2_bonus: 20,
     ktv_shift_3_bonus: 40,
     ktv_deposit_amount: 3000000,
-    ktv_sudden_off_penalty: 50000
+    ktv_sudden_off_penalty: 50000,
+    enable_web_advance_booking_email: false
 };
 
 export async function GET(request: Request) {

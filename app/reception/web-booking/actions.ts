@@ -264,8 +264,18 @@ export async function confirmWebBooking(bookingId: string) {
         }
     }
 
-    // 3. Gửi email xác nhận kèm mã QR nếu có email
-    if (bData?.customerEmail) {
+    // Kiểm tra cờ bật/tắt gửi email từ cấu hình hệ thống
+    const { data: configEmailData } = await supabase
+        .from('SystemConfigs')
+        .select('value')
+        .eq('key', 'enable_web_advance_booking_email')
+        .maybeSingle();
+    
+    // Mặc định false nếu không có cấu hình (chưa mở)
+    const isEmailEnabled = configEmailData?.value === true || configEmailData?.value === 'true';
+
+    // 3. Gửi email xác nhận kèm mã QR nếu có email và cờ này đang BẬT
+    if (bData?.customerEmail && isEmailEnabled) {
         // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
         let isNewCustomer = true;
         if (bData.customerPhone) {

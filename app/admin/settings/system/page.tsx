@@ -12,7 +12,8 @@ export default function SystemSettingsPage() {
         ktv_shift_2_bonus: 20,
         ktv_shift_3_bonus: 40,
         ktv_deposit_amount: 3000000,
-        ktv_sudden_off_penalty: 50000
+        ktv_sudden_off_penalty: 50000,
+        enable_web_advance_booking_email: false
     });
     
     const [isLoading, setIsLoading] = useState(true);
@@ -61,7 +62,7 @@ export default function SystemSettingsPage() {
         }
     };
 
-    const handleChange = (key: string, value: number) => {
+    const handleChange = (key: string, value: any) => {
         setConfigs(prev => ({ ...prev, [key]: value }));
     };
 
@@ -248,6 +249,34 @@ export default function SystemSettingsPage() {
                                 <p className="text-[11px] text-orange-800 font-medium leading-relaxed">
                                     Mọi thay đổi trong bảng cấu hình này sẽ lập tức có hiệu lực và ảnh hưởng đến các lần thanh toán, chia thưởng phát sinh <strong>TỪ THỜI ĐIỂM LƯU TRỞ ĐI</strong>. Vui lòng cân nhắc kỹ trước khi thay đổi.
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Card: Tính năng Web Booking */}
+                    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+                                <AlertCircle size={20} className="text-amber-500" />
+                            </div>
+                            <h2 className="text-lg font-black text-gray-900">Tính năng Web Booking</h2>
+                        </div>
+                        
+                        <div className="space-y-5">
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900">Gửi Email Yêu Cầu Đặt Cọc</h3>
+                                    <p className="text-xs text-gray-500 mt-1">Tự động gửi email yêu cầu đặt cọc cho khách khi Lễ tân bấm Xác nhận đơn từ Web.</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input 
+                                        type="checkbox" 
+                                        className="sr-only peer"
+                                        checked={configs.enable_web_advance_booking_email}
+                                        onChange={(e) => handleChange('enable_web_advance_booking_email', e.target.checked)}
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                                </label>
                             </div>
                         </div>
                     </div>
