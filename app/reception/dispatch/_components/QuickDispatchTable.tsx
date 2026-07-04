@@ -541,10 +541,17 @@ const ServiceGroupCard = ({
     }
   };
 
-  const filteredTurns = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
-    if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
-    return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
-  });
+  const filteredTurns = useMemo(() => {
+    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+      if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
+      return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
+    });
+
+    return filtered.sort((a, b) => {
+        if (a.turns_completed !== b.turns_completed) return (a.turns_completed || 0) - (b.turns_completed || 0);
+        return (a.check_in_order || 0) - (b.check_in_order || 0);
+    });
+  }, [availableTurns, state.selectedKtvIds, ktvSearch]);
 
   const dateFormatted = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const getBadgeBg = (i: number) => ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500'][i % 5];
