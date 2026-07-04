@@ -75,7 +75,7 @@ export const KtvWalletWithdrawSchema = z.object({
 // Schema cho API Push Sync (POST /api/ktv/push-sync)
 export const KtvPushSyncSchema = z.object({
   staffId: z.string().min(1, "staffId is required"),
-  subscription: z.any({ message: "subscription is required" }),
+  subscription: z.any(),
   userAgent: z.string().optional()
 });
 
