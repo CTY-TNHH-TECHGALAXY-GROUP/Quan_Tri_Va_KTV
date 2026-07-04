@@ -1,4 +1,4 @@
-import { syncTurnsForDate } from './lib/turn-sync';
+import { syncTurnsForDate } from '../lib/turn-sync';
 
 // Must load env before running
 import fs from 'fs';
