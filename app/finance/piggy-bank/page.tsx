@@ -142,6 +142,7 @@ export default function PiggyBankAdminPage() {
                     </div>
                 )}
             </div>
+            </div>
         </AppLayout>
     );
 }
