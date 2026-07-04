@@ -26,7 +26,7 @@ export const StaffFeaturePatchSchema = z.object({
   staffId: z.string().optional(),
   staffIds: z.array(z.string()).optional(),
   flagKey: z.string().min(1, "Missing flagKey"),
-  value: z.boolean({ required_error: "Missing value, must be boolean" })
+  value: z.boolean({ message: "Missing value, must be boolean" })
 }).refine(data => data.staffId || (data.staffIds && data.staffIds.length > 0), {
   message: "Missing staffId or staffIds",
   path: ["staffIds"]
