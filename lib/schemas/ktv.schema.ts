@@ -20,7 +20,7 @@ export const ShiftRequestSchema = z.object({
   employeeId: z.string().min(1, "Missing required field: employeeId"),
   employeeName: z.string().optional(),
   shiftType: z.enum(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'], {
-    errorMap: () => ({ message: "Invalid shiftType. Must be SHIFT_1, SHIFT_2, SHIFT_3, FREE, or REQUEST" })
+    message: "Invalid shiftType. Must be SHIFT_1, SHIFT_2, SHIFT_3, FREE, or REQUEST"
   }),
   reason: z.string().optional().nullable(),
   assignedByAdmin: z.boolean().optional(),
@@ -32,7 +32,7 @@ export const ShiftRequestSchema = z.object({
 export const ShiftPatchSchema = z.object({
   shiftId: z.string().min(1, "Missing shiftId"),
   action: z.enum(['APPROVE', 'REJECT'], {
-    errorMap: () => ({ message: "action must be APPROVE or REJECT" })
+    message: "action must be APPROVE or REJECT"
   }),
   adminId: z.string().optional().nullable()
 });
@@ -53,7 +53,7 @@ export const LeaveRequestSchema = z.object({
 export const LeavePatchSchema = z.object({
   leaveId: z.string().min(1, "Missing leaveId"),
   action: z.enum(['APPROVE', 'REJECT'], {
-    errorMap: () => ({ message: "action must be APPROVE or REJECT" })
+    message: "action must be APPROVE or REJECT"
   }),
   adminId: z.string().optional().nullable()
 });
@@ -89,7 +89,7 @@ export const KtvPushUnsubscribeSchema = z.object({
 export const KtvAttendanceConfirmSchema = z.object({
   attendanceId: z.string().min(1, "Missing attendanceId"),
   action: z.enum(['CONFIRM', 'REJECT'], {
-    errorMap: () => ({ message: "action must be CONFIRM or REJECT" })
+    message: "action must be CONFIRM or REJECT"
   }),
   adminId: z.string().optional().nullable()
 });
@@ -113,7 +113,7 @@ export const KtvBookingPatchSchema = z.object({
 export const KtvInteractionSchema = z.object({
   bookingId: z.string().min(1, "bookingId is required"),
   type: z.enum(['WATER', 'SUPPORT', 'EMERGENCY', 'BUY_MORE', 'EARLY_EXIT'], {
-    errorMap: () => ({ message: "type is required" })
+    message: "type is required"
   }),
   techCode: z.string().optional(),
   message: z.string().optional()
