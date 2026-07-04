@@ -120,7 +120,6 @@ export default function PiggyBankAdminPage() {
                                                 >
                                                     <option value="ACTIVE">Hoạt động</option>
                                                     <option value="CANCELLED">Tắt</option>
-                                                    <option value="COMPLETED" disabled>Hoàn tất</option>
                                                 </select>
                                             </td>
                                             <td className="p-4 text-center">
