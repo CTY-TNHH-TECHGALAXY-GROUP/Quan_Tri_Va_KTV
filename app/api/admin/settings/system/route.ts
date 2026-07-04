@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { SystemSettingsSchema } from '@/lib/schemas/admin.schema';
 
 // Các config mặc định nếu chưa có trong DB
 const DEFAULT_CONFIGS = {
@@ -42,12 +43,18 @@ export async function PATCH(request: Request) {
         if (!supabase) return NextResponse.json({ error: 'Supabase init failed' }, { status: 500 });
 
         const body = await request.json();
+        const parseResult = SystemSettingsSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        
+        const validBody = parseResult.data;
         
         // Upsert từng key
-        const promises = Object.keys(body).map(key => {
+        const promises = Object.keys(validBody).map(key => {
             return supabase.from('SystemConfigs').upsert({
                 key: key,
-                value: body[key],
+                value: validBody[key],
                 updated_at: new Date().toISOString()
             }, { onConflict: 'key' });
         });

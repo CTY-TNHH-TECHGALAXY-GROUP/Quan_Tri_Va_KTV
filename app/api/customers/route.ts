@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
 
 export async function GET() {
     try {
@@ -112,11 +113,12 @@ export async function GET() {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { id, notes } = body;
-
-        if (!id) {
-            return NextResponse.json({ success: false, error: 'Thiếu ID khách hàng' }, { status: 400 });
+        const parseResult = CustomerPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { id, notes } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase not initialized');

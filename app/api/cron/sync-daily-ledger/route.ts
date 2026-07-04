@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,7 +77,7 @@ async function processLedgerSync(targetDateStr: string) {
         `)
         .gte('timeStart', startTimeStr)
         .lte('timeStart', endTimeStr)
-        .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
+        .in('status', ['DONE', 'COMPLETED']);
 
     const { data: services } = await supabase.from('Services').select('id, duration');
     const svcDurationMap: Record<string, number> = {};
@@ -200,7 +201,10 @@ export async function POST(request: Request) {
         let targetDateStr = '';
         try {
             const body = await request.json();
-            targetDateStr = body.targetDate;
+            const parseResult = SyncDailyLedgerPostSchema.safeParse(body);
+            if (parseResult.success && parseResult.data.targetDate) {
+                targetDateStr = parseResult.data.targetDate;
+            }
         } catch { }
 
         if (!targetDateStr) {

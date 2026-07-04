@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { AttendanceSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 import sharp from 'sharp';
 
@@ -11,11 +12,25 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { employeeId, employeeName: empNameInput, checkType = 'CHECK_IN', latitude, longitude, locationText, photoBase64, reason, selectedShiftType, estimatedEndTime, wantsToWithdraw } = body;
-
-        if (!employeeId) {
-            return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
+        const parseResult = AttendanceSchema.safeParse(body);
+        
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { 
+            employeeId, 
+            employeeName: empNameInput, 
+            checkType, 
+            latitude, 
+            longitude, 
+            locationText, 
+            photoBase64, 
+            reason, 
+            selectedShiftType, 
+            estimatedEndTime, 
+            wantsToWithdraw 
+        } = parseResult.data;
 
         // Lấy IP của người dùng từ headers
         const forwardedFor = request.headers.get('x-forwarded-for');

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { NotificationRulesPatchSchema } from '@/lib/schemas/admin.schema';
 
 /**
  * GET /api/admin/notification-rules
@@ -38,11 +39,11 @@ export async function GET() {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { rules } = body;
-
-        if (!rules || typeof rules !== 'object') {
-            return NextResponse.json({ success: false, error: 'Missing or invalid rules object' }, { status: 400 });
+        const parseResult = NotificationRulesPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const { rules } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

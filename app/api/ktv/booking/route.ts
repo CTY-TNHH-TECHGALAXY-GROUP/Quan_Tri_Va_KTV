@@ -30,6 +30,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvBookingPatchSchema } from '@/lib/schemas/ktv.schema';
 import { getBusinessDate, HandlerContext, HandlerResult } from './_shared/utils';
 import { handleGetBooking } from './_handlers/handleGetBooking';
 import { handleStartTimer } from './_handlers/handleStartTimer';
@@ -56,14 +57,14 @@ export async function PATCH(request: Request) {
         const { searchParams } = new URL(request.url);
         const techCodeFromQuery = searchParams.get('techCode');
         const body = await request.json();
-        const { bookingId, status: rawStatus, action, techCode: techCodeFromBody } = body;
+        const parseResult = KtvBookingPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        const { bookingId, status: rawStatus, action, techCode: techCodeFromBody } = parseResult.data;
         
         let status = rawStatus;
         const technicianCode = techCodeFromQuery || techCodeFromBody;
-
-        if (!bookingId || !status) {
-            return NextResponse.json({ success: false, error: 'bookingId and status are required' }, { status: 400 });
-        }
 
         if (status === 'COMPLETED') status = 'CLEANING';
 

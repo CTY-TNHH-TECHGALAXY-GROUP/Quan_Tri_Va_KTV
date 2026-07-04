@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { RoomPatchSchema } from '@/lib/schemas/crm.schema';
 
 /**
  * API Quản lý Phòng
@@ -57,11 +58,12 @@ export async function GET() {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { roomId, prep_procedure, clean_procedure, allowed_services, default_reminders } = body;
-
-        if (!roomId) {
-            return NextResponse.json({ success: false, error: 'roomId is required' }, { status: 400 });
+        const parseResult = RoomPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { roomId, prep_procedure, clean_procedure, allowed_services, default_reminders } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');

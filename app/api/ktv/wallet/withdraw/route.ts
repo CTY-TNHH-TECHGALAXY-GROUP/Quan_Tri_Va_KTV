@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,11 +9,11 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { techCode, amount, walletType = 'TUA' } = body;
-
-        if (!techCode || !amount || isNaN(amount) || amount <= 0) {
-            return NextResponse.json({ success: false, error: 'Dữ liệu không hợp lệ. Số tiền phải lớn hơn 0.' }, { status: 400 });
+        const parseResult = KtvWalletWithdrawSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const { techCode, amount, walletType } = parseResult.data;
 
         const requestAmount = Number(amount);
 

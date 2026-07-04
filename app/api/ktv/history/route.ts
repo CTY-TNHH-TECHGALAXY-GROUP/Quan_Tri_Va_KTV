@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { KtvHistoryTipSchema } from '@/lib/schemas/ktv.schema';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -236,11 +237,11 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
     const body = await request.json();
-    const { bookingId, techCode, tip } = body;
-
-    if (!bookingId || !techCode || tip === undefined) {
-        return NextResponse.json({ success: false, error: 'bookingId, techCode, and tip are required' }, { status: 400 });
+    const parseResult = KtvHistoryTipSchema.safeParse(body);
+    if (!parseResult.success) {
+        return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
     }
+    const { bookingId, techCode, tip } = parseResult.data;
 
     const supabase = getSupabaseAdmin();
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not init' }, { status: 500 });

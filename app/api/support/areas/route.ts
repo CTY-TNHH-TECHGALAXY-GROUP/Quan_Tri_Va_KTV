@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { SupportAreaPostSchema } from '@/lib/schemas/support.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +33,11 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { area_name } = body;
-
-        if (!area_name) {
-            return NextResponse.json({ success: false, error: 'Missing area_name' }, { status: 400 });
+        const parseResult = SupportAreaPostSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const { area_name } = parseResult.data;
 
         const { data, error } = await supabase
             .from('SupportAreas')

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushNotification } from '@/lib/push-helper';
+import { WebhookRecordSchema } from '@/lib/schemas/notification.schema';
 
 interface NotifRule {
     allowed_roles: string[];
@@ -30,11 +31,13 @@ export async function POST(request: Request) {
 
         const body = await request.json();
         // Supabase DB Webhook format sends details in body.record
-        const record = body.record || body;
+        const rawRecord = body.record || body;
         
-        if (!record || !record.type || !record.message) {
-            return NextResponse.json({ success: false, error: 'Invalid payload record' }, { status: 400 });
+        const parseResult = WebhookRecordSchema.safeParse(rawRecord);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const record = parseResult.data;
 
         console.log('🔔 [Webhook] Received notification insert:', record.id, 'Type:', record.type);
 

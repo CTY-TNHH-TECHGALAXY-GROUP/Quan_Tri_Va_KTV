@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { ShiftRequestSchema, ShiftPatchSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 
 // 🔧 SHIFT CONFIGURATION
@@ -307,21 +308,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { employeeId, employeeName, shiftType, reason, assignedByAdmin, adminId, estimatedEndTime } = body;
-
-        if (!employeeId || !shiftType) {
-            return NextResponse.json(
-                { success: false, error: 'Missing required fields: employeeId, shiftType' },
-                { status: 400 }
-            );
+        const parseResult = ShiftRequestSchema.safeParse(body);
+        
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
 
-        if (!['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'].includes(shiftType)) {
-            return NextResponse.json(
-                { success: false, error: 'Invalid shiftType. Must be SHIFT_1, SHIFT_2, SHIFT_3, FREE, or REQUEST' },
-                { status: 400 }
-            );
-        }
+        const { employeeId, employeeName, shiftType, reason, assignedByAdmin, adminId, estimatedEndTime } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {
@@ -466,14 +459,13 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { shiftId, action, adminId } = body;
+        const parseResult = ShiftPatchSchema.safeParse(body);
 
-        if (!shiftId || !action) {
-            return NextResponse.json({ success: false, error: 'Missing shiftId or action' }, { status: 400 });
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
-        if (!['APPROVE', 'REJECT'].includes(action)) {
-            return NextResponse.json({ success: false, error: 'action must be APPROVE or REJECT' }, { status: 400 });
-        }
+        
+        const { shiftId, action, adminId } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

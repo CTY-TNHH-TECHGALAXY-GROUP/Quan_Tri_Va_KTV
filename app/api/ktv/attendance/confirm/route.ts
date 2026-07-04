@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvAttendanceConfirmSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 
 // 🔧 CONFIG
@@ -14,14 +15,11 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { attendanceId, action, adminId } = body;
-
-        if (!attendanceId || !action) {
-            return NextResponse.json({ success: false, error: 'Missing attendanceId or action' }, { status: 400 });
+        const parseResult = KtvAttendanceConfirmSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
-        if (!['CONFIRM', 'REJECT'].includes(action)) {
-            return NextResponse.json({ success: false, error: 'action must be CONFIRM or REJECT' }, { status: 400 });
-        }
+        const { attendanceId, action, adminId } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

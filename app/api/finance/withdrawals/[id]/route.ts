@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createNotification } from '@/lib/notification-helper';
+import { WithdrawalPatchSchema } from '@/lib/schemas/finance.schema';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -13,15 +14,12 @@ export async function PATCH(
     try {
         const { id } = await params;
         const body = await request.json();
-        const { status, note, adminId, adminName } = body;
-
-        if (!adminId) {
-            return NextResponse.json({ success: false, error: 'Thiếu thông tin người xử lý (adminId)' }, { status: 401 });
+        const parseResult = WithdrawalPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
-
-        if (status !== 'APPROVED' && status !== 'REJECTED') {
-            return NextResponse.json({ success: false, error: 'Trạng thái không hợp lệ' }, { status: 400 });
-        }
+        
+        const { status, note, adminId, adminName } = parseResult.data;
 
         // Đảm bảo chỉ update nếu trạng thái đang là PENDING (chống Race Condition)
         const { data, error } = await supabase

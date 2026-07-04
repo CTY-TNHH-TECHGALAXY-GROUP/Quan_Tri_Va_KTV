@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvReviewSchema } from '@/lib/schemas/ktv.schema';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
 
@@ -11,7 +12,12 @@ import { createNotification } from '@/lib/notification-helper';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { bookingId, notes } = body;
+        const parseResult = KtvReviewSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        const { bookingId, notes } = parseResult.data;
+        body.techCode = parseResult.data.techCode;
         
         // Compatibility Phase: KTV app hasn't fully migrated to Supabase Auth yet.
         // We attempt to get session, but don't hard-block if it fails.

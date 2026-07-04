@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { WifiIpPostSchema } from '@/lib/schemas/admin.schema';
 
 export async function GET(request: Request) {
     try {
@@ -45,7 +46,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { action, ipToRemove, rejectedIp } = body; // action: 'overwrite' | 'append' | 'remove' | 'append_rejected'
+        const parseResult = WifiIpPostSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        
+        const { action, ipToRemove, rejectedIp } = parseResult.data; // action: 'overwrite' | 'append' | 'remove' | 'append_rejected'
 
         const forwardedFor = request.headers.get('x-forwarded-for');
         const realIp = request.headers.get('x-real-ip');

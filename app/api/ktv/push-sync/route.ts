@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvPushSyncSchema } from '@/lib/schemas/ktv.schema';
 
 /**
  * POST /api/ktv/push-sync
@@ -9,14 +10,11 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { staffId, subscription, userAgent } = body;
-
-        if (!staffId || !subscription) {
-            return NextResponse.json(
-                { success: false, error: 'staffId and subscription are required' },
-                { status: 400 }
-            );
+        const parseResult = KtvPushSyncSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const { staffId, subscription, userAgent } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

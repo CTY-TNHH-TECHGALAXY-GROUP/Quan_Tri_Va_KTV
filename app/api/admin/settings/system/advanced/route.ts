@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { AdvancedSettingPostSchema, AdvancedSettingPatchSchema } from '@/lib/schemas/admin.schema';
 
 export async function GET(request: Request) {
     try {
@@ -25,11 +26,12 @@ export async function POST(request: Request) {
         if (!supabase) return NextResponse.json({ error: 'Supabase init failed' }, { status: 500 });
 
         const body = await request.json();
-        const { key, value, description } = body;
-
-        if (!key) {
-            return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
+        const parseResult = AdvancedSettingPostSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { key, value, description } = parseResult.data;
 
         const { data, error } = await supabase
             .from('SystemConfigs')
@@ -57,11 +59,12 @@ export async function PATCH(request: Request) {
         if (!supabase) return NextResponse.json({ error: 'Supabase init failed' }, { status: 500 });
 
         const body = await request.json();
-        const { id, key, value, description } = body;
-
-        if (!id) {
-            return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
+        const parseResult = AdvancedSettingPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { id, key, value, description } = parseResult.data;
 
         const updateData: any = { updated_at: new Date().toISOString() };
         if (key !== undefined) updateData.key = key;

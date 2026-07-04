@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { StaffFeaturePatchSchema } from '@/lib/schemas/admin.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,16 +61,14 @@ export async function GET() {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { staffId, staffIds, flagKey, value } = body;
-
-        if (!flagKey || typeof value !== 'boolean') {
-            return NextResponse.json({ success: false, error: 'Missing flagKey or value' }, { status: 400 });
+        const parseResult = StaffFeaturePatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { staffId, staffIds, flagKey, value } = parseResult.data;
 
         const targetIds: string[] = staffIds || (staffId ? [staffId] : []);
-        if (targetIds.length === 0) {
-            return NextResponse.json({ success: false, error: 'Missing staffId or staffIds' }, { status: 400 });
-        }
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

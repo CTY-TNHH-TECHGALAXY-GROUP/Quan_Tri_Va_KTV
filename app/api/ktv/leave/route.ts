@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { LeaveRequestSchema, LeavePatchSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 
 /**
@@ -51,7 +52,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { employeeId, employeeName, date, dates, reason, confirmExtension, confirmSuddenOff, registeredByAdmin } = body;
+        const parseResult = LeaveRequestSchema.safeParse(body);
+        
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+
+        const { employeeId, employeeName, date, dates, reason, confirmExtension, confirmSuddenOff, registeredByAdmin } = parseResult.data;
 
         const targetDates = dates || (date ? [date] : []);
 
@@ -323,14 +330,13 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
-        const { leaveId, action, adminId } = body;
+        const parseResult = LeavePatchSchema.safeParse(body);
 
-        if (!leaveId || !action) {
-            return NextResponse.json({ success: false, error: 'Missing leaveId or action' }, { status: 400 });
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
-        if (!['APPROVE', 'REJECT'].includes(action)) {
-            return NextResponse.json({ success: false, error: 'action must be APPROVE or REJECT' }, { status: 400 });
-        }
+        
+        const { leaveId, action, adminId } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

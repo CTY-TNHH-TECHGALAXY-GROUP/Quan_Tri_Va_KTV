@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { SupportTaskPostSchema, SupportTaskPatchSchema } from '@/lib/schemas/support.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,12 +42,11 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        // Support bulk insert
-        const tasks = Array.isArray(body) ? body : [body];
-
-        if (tasks.length === 0) {
-            return NextResponse.json({ success: false, error: 'No tasks provided' }, { status: 400 });
+        const parseResult = SupportTaskPostSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const tasks = Array.isArray(parseResult.data) ? parseResult.data : [parseResult.data];
 
         const { data, error } = await supabase
             .from('SupportTasks')
@@ -70,11 +70,11 @@ export async function PATCH(request: Request) {
         }
 
         const body = await request.json();
-        const { id, status, photo_url } = body;
-
-        if (!id || !status) {
-            return NextResponse.json({ success: false, error: 'Missing id or status' }, { status: 400 });
+        const parseResult = SupportTaskPatchSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        const { id, status, photo_url } = parseResult.data;
 
         const updateData: any = { status };
         if (status === 'DONE') {

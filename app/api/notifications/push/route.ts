@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { PushNotificationSchema } from '@/lib/schemas/notification.schema';
 
 // 🔧 VAPID CONFIGURATION
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -37,13 +38,16 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { title, message, url, targetStaffIds } = body;
+        const parseResult = PushNotificationSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        const { title, message, url, targetStaffIds, targetRoles } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
         // 1. Fetch subscriptions for target staff or by roles
-        const { targetRoles } = body; // Array of roles like ['ADMIN', 'RECEPTIONIST']
         
         let query = supabase.from('StaffPushSubscriptions').select(`
             subscription,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { PayrollOverrideSchema } from '@/lib/schemas/finance.schema';
 
 /**
  * POST /api/finance/payroll/override
@@ -8,11 +9,12 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { employeeId, employeeName, date, newStatus, reviewedBy } = body;
-
-        if (!employeeId || !date || !newStatus) {
-            return NextResponse.json({ success: false, error: 'Thiếu dữ liệu bắt buộc' }, { status: 400 });
+        const parseResult = PayrollOverrideSchema.safeParse(body);
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
+        
+        const { employeeId, employeeName, date, newStatus, reviewedBy } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'Lỗi khởi tạo DB' }, { status: 500 });
