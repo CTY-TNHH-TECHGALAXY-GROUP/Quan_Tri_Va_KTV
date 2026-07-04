@@ -68,7 +68,7 @@ export const KtvReviewSchema = z.object({
 // Schema cho API Rút tiền (POST /api/ktv/wallet/withdraw)
 export const KtvWalletWithdrawSchema = z.object({
   techCode: z.string().min(1, "Dữ liệu không hợp lệ"),
-  amount: z.number({ coerce: true }).positive("Số tiền phải lớn hơn 0"),
+  amount: z.coerce.number().positive("Số tiền phải lớn hơn 0"),
   walletType: z.string().optional().default('TUA')
 });
 
@@ -98,7 +98,7 @@ export const KtvAttendanceConfirmSchema = z.object({
 export const KtvHistoryTipSchema = z.object({
   bookingId: z.string().min(1, "bookingId is required"),
   techCode: z.string().min(1, "techCode is required"),
-  tip: z.number({ coerce: true }).nonnegative("tip must be >= 0")
+  tip: z.coerce.number().nonnegative("tip must be >= 0")
 });
 
 // Schema cho API Booking PATCH Orchestrator (PATCH /api/ktv/booking)
