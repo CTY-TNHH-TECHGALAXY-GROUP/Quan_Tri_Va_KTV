@@ -9,6 +9,7 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'payroll_commissions', name: 'Lương & Hoa Hồng', group: 'Tài Chính & Kế Toán' },
   { id: 'cashbook_supplies', name: 'Sổ Quỹ & Vật Tư', group: 'Tài Chính & Kế Toán' },
   { id: 'finance_management', name: 'Thu Ngân KTV', group: 'Tài Chính & Kế Toán' },
+  { id: 'finance_piggy_bank', name: 'Ví Tích Lũy KTV', group: 'Tài Chính & Kế Toán' },
   { id: 'web_booking', name: 'Đơn Đặt Lịch Web', group: 'Vận Hành' },
   { id: 'service_menu', name: 'Menu Dịch Vụ', group: 'Thiết Lập Nội Dung' },
   { id: 'customer_reminders', name: 'Câu Hỏi Khảo Sát', group: 'Thiết Lập Nội Dung' },

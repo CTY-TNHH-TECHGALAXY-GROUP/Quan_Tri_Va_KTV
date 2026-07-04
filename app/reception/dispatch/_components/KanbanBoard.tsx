@@ -59,6 +59,7 @@ interface KanbanBoardProps {
     onContextMenu?: (e: React.MouseEvent, orderId: string) => void;
     onPauseClick?: (orderId: string) => void;
     roomTransitionTime?: number;
+    onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services) => {
@@ -133,9 +134,11 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5 }: KanbanBoardProps) {
+export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName }: KanbanBoardProps) {
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
+    const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
+    const [tempCustomName, setTempCustomName] = useState<string>('');
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
 
     const subOrders = React.useMemo(() => {
@@ -355,14 +358,66 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-xl shadow-indigo-100 shrink-0">
-                                                            {order.customerName.charAt(0)}
+                                                            {(() => {
+                                                              const customNames = services[0]?.options?.customNames;
+                                                              const ktvId = subOrder.ktvIds?.[0];
+                                                              const display = (customNames && ktvId && customNames[ktvId]) ? customNames[ktvId] : order.customerName;
+                                                              return display ? display.charAt(0).toUpperCase() : '?';
+                                                            })()}
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="flex flex-col gap-0.5 mb-1.5">
                                                               <div className="flex items-center gap-1.5">
-                                                                <p className="font-black text-sm text-gray-900 leading-none truncate">{order.customerName}</p>
-                                                                {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
-                                                                  <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
+                                                                {editingNameSubOrderId === subOrder.id ? (
+                                                                  <input
+                                                                    autoFocus
+                                                                    value={tempCustomName}
+                                                                    onChange={e => setTempCustomName(e.target.value)}
+                                                                    onKeyDown={async (e) => {
+                                                                      if (e.key === 'Enter') {
+                                                                        if (onUpdateCustomerName) {
+                                                                          const itemIds = services.map((s: any) => s.id);
+                                                                          await onUpdateCustomerName(subOrder.bookingId, itemIds, subOrder.ktvIds, tempCustomName);
+                                                                        }
+                                                                        setEditingNameSubOrderId(null);
+                                                                      }
+                                                                      if (e.key === 'Escape') setEditingNameSubOrderId(null);
+                                                                    }}
+                                                                    onBlur={async () => {
+                                                                      if (onUpdateCustomerName) {
+                                                                        const itemIds = services.map((s: any) => s.id);
+                                                                        await onUpdateCustomerName(subOrder.bookingId, itemIds, subOrder.ktvIds, tempCustomName);
+                                                                      }
+                                                                      setEditingNameSubOrderId(null);
+                                                                    }}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="font-black text-sm text-gray-900 border-b border-indigo-500 focus:outline-none bg-transparent w-24"
+                                                                  />
+                                                                ) : (
+                                                                  <>
+                                                                    <p className="font-black text-sm text-gray-900 leading-none truncate flex items-center gap-1">
+                                                                      {(() => {
+                                                                         const customNames = services[0]?.options?.customNames;
+                                                                         const ktvId = subOrder.ktvIds?.[0];
+                                                                         return (customNames && ktvId && customNames[ktvId]) ? customNames[ktvId] : order.customerName;
+                                                                      })()}
+                                                                      <button 
+                                                                        onClick={(e) => {
+                                                                          e.stopPropagation();
+                                                                          const customNames = services[0]?.options?.customNames;
+                                                                          const ktvId = subOrder.ktvIds?.[0];
+                                                                          setTempCustomName((customNames && ktvId && customNames[ktvId]) ? customNames[ktvId] : order.customerName);
+                                                                          setEditingNameSubOrderId(subOrder.id);
+                                                                        }}
+                                                                        className="text-gray-300 hover:text-indigo-500 transition-colors ml-1"
+                                                                      >
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                                                      </button>
+                                                                    </p>
+                                                                    {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
+                                                                      <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
+                                                                    )}
+                                                                  </>
                                                                 )}
                                                               </div>
                                                               {order.phone && <p className="text-[10px] text-gray-500 font-bold">{order.phone}</p>}

@@ -7,6 +7,7 @@ export type ModuleId =
   | 'payroll_commissions'
   | 'cashbook_supplies'
   | 'finance_management'
+  | 'finance_piggy_bank'
   | 'web_booking'
   | 'service_menu'
   | 'customer_reminders'

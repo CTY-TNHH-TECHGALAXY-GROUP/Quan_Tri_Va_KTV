@@ -2058,6 +2058,20 @@ if (!hasPermission('dispatch_board')) {
           ) : (
             <KanbanBoard 
               orders={orders} 
+              onUpdateCustomerName={async (orderId, itemIds, ktvIds, newName) => {
+                try {
+                  const { updateSubOrderCustomerName } = await import('./actions');
+                  const res = await updateSubOrderCustomerName(itemIds, ktvIds, newName);
+                  if (res.success) {
+                    showNotification('Thành công', 'Đã cập nhật tên khách hàng hiển thị', 'success');
+                    loadData();
+                  } else {
+                    showNotification('Lỗi', res.error || 'Không thể cập nhật tên', 'error');
+                  }
+                } catch (err: any) {
+                  showNotification('Lỗi', 'Có lỗi xảy ra', 'error');
+                }
+              }}
               onUpdateStatus={handleUpdateStatus} 
               onOpenDetail={(orderId, subOrderId, status) => {
                 setLeftPanelTab((status || 'pending') as DispatchStatus);

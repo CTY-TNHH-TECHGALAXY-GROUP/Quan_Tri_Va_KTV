@@ -1288,3 +1288,48 @@ export async function searchCustomers(query: string) {
         return { success: false, error: err.message };
     }
 }
+
+export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: string[], newName: string) {
+    try {
+        if (!itemIds || itemIds.length === 0) return { success: true };
+
+        const { data: items, error: fetchError } = await supabase
+            .from('BookingItems')
+            .select('id, options')
+            .in('id', itemIds);
+            
+        if (fetchError || !items) throw fetchError;
+
+        for (const item of items) {
+            const currentOptions = item.options || {};
+            const customNames = currentOptions.customNames || {};
+            
+            for (const ktvId of ktvIds) {
+                if (newName && newName.trim() !== '') {
+                    customNames[ktvId] = newName.trim();
+                } else {
+                    delete customNames[ktvId];
+                }
+            }
+            
+            const newOptions = { ...currentOptions, customNames };
+            await supabase.from('BookingItems').update({ options: newOptions }).eq('id', item.id);
+        }
+        
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [Server] updateSubOrderCustomerName error:', error);
+        return { success: false, error: 'Cannot update custom name' };
+    }
+}
+
+export async function updateBookingCustomerName(bookingId: string, newName: string) {
+    try {
+        const { error } = await supabase.from('Bookings').update({ customerName: newName }).eq('id', bookingId);
+        if (error) throw error;
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [Server] updateBookingCustomerName error:', error);
+        return { success: false, error: 'Cannot update booking name' };
+    }
+}
