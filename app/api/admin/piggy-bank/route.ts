@@ -18,7 +18,7 @@ export async function GET() {
             
         const totalWeeks = parseInt(configData?.value as string) || 50;
 
-        // 2. Lấy tất cả KTV đang bật feature_flags enable_piggy_wallet
+        // 2. Lấy tất cả KTV đang làm việc
         const { data: staffList, error: staffError } = await supabase
             .from('Staff')
             .select('id, full_name, feature_flags')
@@ -26,9 +26,7 @@ export async function GET() {
 
         if (staffError) throw new Error(staffError.message);
 
-        const activeStaffIds = staffList
-            .filter((s: any) => s.feature_flags?.enable_piggy_wallet === true)
-            .map((s: any) => s.id);
+        const activeStaffIds = staffList.map((s: any) => s.id);
 
         if (activeStaffIds.length === 0) {
             return NextResponse.json({ success: true, data: [], totalWeeks });
