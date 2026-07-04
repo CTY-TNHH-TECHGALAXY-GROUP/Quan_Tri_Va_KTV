@@ -57,6 +57,7 @@ interface KanbanBoardProps {
     onConfirmAddonPayment?: (orderId: string) => void;
     selectedOrderId: string | null;
     onContextMenu?: (e: React.MouseEvent, orderId: string) => void;
+    onPauseClick?: (orderId: string) => void;
     roomTransitionTime?: number;
 }
 
@@ -132,7 +133,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, roomTransitionTime = 5 }: KanbanBoardProps) {
+export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5 }: KanbanBoardProps) {
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -709,6 +710,17 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             <QrCode size={12} /> Link
                                                         </button>
                                                     )}
+                                                    
+                                                    {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onPauseClick(order.id); }}
+                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1"
+                                                            title="Tạm dừng / Đổi KTV"
+                                                        >
+                                                            <AlertCircle size={12} /> Dừng
+                                                        </button>
+                                                    )}
+
                                                     <button
                                                         onClick={e => { e.stopPropagation(); onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); }}
                                                         className="px-3 py-2.5 rounded-xl text-[11px] font-black text-gray-400 bg-gray-50 hover:bg-gray-100 transition-all border border-gray-100"

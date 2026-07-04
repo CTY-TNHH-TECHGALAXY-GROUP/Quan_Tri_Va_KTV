@@ -19,6 +19,7 @@ import { QuickDispatchTable } from './_components/QuickDispatchTable';
 import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices } from './actions';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
+import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
 import { useNotifications } from '@/components/NotificationProvider';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
@@ -156,6 +157,8 @@ export default function DispatchBoardPage() {
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string } | null>(null);
+  const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
@@ -1423,6 +1426,30 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
+  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number) {
+    try {
+      const res = await fetch('/api/ktv/pause-swap-resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          bookingItemId,
+          oldKtvId,
+          newKtvId,
+          extraTimeMins,
+          businessDate: selectedDate
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Có lỗi xảy ra');
+      
+      // Thành công => Cập nhật lại UI
+      await fetchData(); // Tải lại toàn bộ dữ liệu Board
+    } catch (err: any) {
+      throw err;
+    }
+  }
+
   async function handleUpdateStatus(orderId: string, newStatus: string, itemIds?: string[], skipConfirm?: boolean, targetKtvIds?: string[], forceBackward: boolean = false) {
     // Determine context for confirmation
     const isPartial = itemIds && itemIds.length > 0;
@@ -2052,6 +2079,14 @@ if (!hasPermission('dispatch_board')) {
                 }
                 setContextMenu({ x, y, orderId });
               }}
+              onPauseClick={(orderId) => {
+                const o = orders.find(x => x.id === orderId);
+                if (o) {
+                  setPauseModalOrder(o);
+                  setPauseModalOpen(true);
+                  setContextMenu(null);
+                }
+              }}
             />
           )}
 
@@ -2262,13 +2297,22 @@ if (!hasPermission('dispatch_board')) {
               }
               if (order.dispatchStatus === 'IN_PROGRESS') {
                 return (
+                  <>
                   <button
                     onClick={() => handleUpdateStatus(contextMenu.orderId, 'CLEANING')}
                     className="w-full flex items-center gap-3 px-4 py-3 text-purple-600 hover:bg-purple-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
                   >
                     <CheckCircle2 size={18} className="shrink-0" />
-                    Hết giờ → Bắt đầu dọn phòng
+                    Hết giờ ➔ Bắt đầu dọn phòng
                   </button>
+                  <button
+                    onClick={() => { setPauseModalOrder(order); setPauseModalOpen(true); setContextMenu(null); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
+                  >
+                    <AlertTriangle size={18} className="shrink-0" />
+                    Tạm dừng / Đổi KTV
+                  </button>
+                  </>
                 );
               }
               if (order.dispatchStatus === 'CLEANING') {
@@ -2544,6 +2588,15 @@ if (!hasPermission('dispatch_board')) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal Tạm Dừng / Đổi KTV */}
+      <PauseSwapKtvModal
+        isOpen={pauseModalOpen}
+        onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); }}
+        order={pauseModalOrder}
+        availableKtvs={staffs.filter(s => s.status === 'ready')}
+        onConfirm={handleConfirmPauseSwap}
+      />
     </AppLayout>
   );
 }
