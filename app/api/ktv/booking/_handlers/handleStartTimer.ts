@@ -78,10 +78,10 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     }
 
     // ─── 3. SEGMENT actualStartTime LOGIC ───
+    let allGlobalSegs: any[] = [];
     if (allItemIdsForThisKTV.length > 0) {
         const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, timeStart').in('id', allItemIdsForThisKTV);
         const activeSegmentIndex = body.activeSegmentIndex || 0;
-        let allGlobalSegs: any[] = [];
         let originalItemsData: Record<string, any[]> = {};
         
         for (const item of currentItems || []) {
