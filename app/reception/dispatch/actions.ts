@@ -1293,6 +1293,9 @@ export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: stri
     try {
         if (!itemIds || itemIds.length === 0) return { success: true };
 
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
         const { data: items, error: fetchError } = await supabase
             .from('BookingItems')
             .select('id, options')
@@ -1325,6 +1328,9 @@ export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: stri
 
 export async function updateBookingCustomerName(bookingId: string, newName: string) {
     try {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        
         const { error } = await supabase.from('Bookings').update({ customerName: newName }).eq('id', bookingId);
         if (error) throw error;
         return { success: true };
