@@ -6,7 +6,8 @@ export const AdjustmentRequestSchema = z.object({
     message: "Số tiền không hợp lệ"
   }),
   type: z.enum(['GIFT', 'PENALTY', 'ADJUST'], {
-    errorMap: () => ({ message: "Loại điều chỉnh không hợp lệ" })
+    required_error: "Loại điều chỉnh không hợp lệ",
+    invalid_type_error: "Loại điều chỉnh không hợp lệ"
   }),
   wallet_type: z.string().min(1, "Loại ví không được để trống"),
   reason: z.string().min(1, "Lý do không được để trống")
