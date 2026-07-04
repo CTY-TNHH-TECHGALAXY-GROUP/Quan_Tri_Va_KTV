@@ -67,7 +67,7 @@ export async function GET() {
 // ----------------------------------------------------------------------
 export async function POST(request: Request) {
     try {
-        const { staff_id, weekly_amount, contributed_weeks } = await request.json();
+        const { staff_id, weekly_amount, contributed_weeks, status } = await request.json();
         if (!staff_id || weekly_amount === undefined || contributed_weeks === undefined) {
             return NextResponse.json({ success: false, error: 'Thiếu dữ liệu' }, { status: 400 });
         }
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
                 .update({ 
                     weekly_amount, 
                     contributed_weeks,
+                    status: status || 'ACTIVE',
                     updated_at: new Date().toISOString() 
                 })
                 .eq('id', existing.id);
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
                     staff_id,
                     weekly_amount,
                     contributed_weeks,
-                    status: 'ACTIVE'
+                    status: status || 'ACTIVE'
                 });
             if (insertError) throw new Error(insertError.message);
         }

@@ -14,6 +14,7 @@ export default function PiggyBankAdminPage() {
         savingId,
         handleAmountChange,
         handleWeeksChange,
+        handleStatusChange,
         saveAmount,
         refresh
     } = usePiggyBankAdminLogic();
@@ -73,7 +74,8 @@ export default function PiggyBankAdminPage() {
                                 {records.map(record => {
                                     const currentAmount = editingData[record.staff_id]?.amount ?? record.weekly_amount;
                                     const currentWeeks = editingData[record.staff_id]?.weeks ?? record.contributed_weeks;
-                                    const isChanged = currentAmount !== record.weekly_amount || currentWeeks !== record.contributed_weeks;
+                                    const currentStatus = editingData[record.staff_id]?.status ?? record.status ?? 'ACTIVE';
+                                    const isChanged = currentAmount !== record.weekly_amount || currentWeeks !== record.contributed_weeks || currentStatus !== (record.status ?? 'ACTIVE');
                                     const totalSaved = currentWeeks * currentAmount;
                                     
                                     return (
@@ -106,11 +108,20 @@ export default function PiggyBankAdminPage() {
                                                 {totalSaved.toLocaleString('vi-VN')}đ
                                             </td>
                                             <td className="p-4 text-center">
-                                                {record.status === 'COMPLETED' ? (
-                                                    <span className="text-emerald-500 font-medium text-sm">Đã xong</span>
-                                                ) : (
-                                                    <span className="text-blue-500 font-medium text-sm">Đang chạy</span>
-                                                )}
+                                                <select
+                                                    value={currentStatus}
+                                                    onChange={(e) => handleStatusChange(record.staff_id, e.target.value)}
+                                                    className={`px-3 py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${
+                                                        currentStatus !== (record.status ?? 'ACTIVE') ? 'border-amber-400 bg-amber-50 text-amber-700' : 
+                                                        currentStatus === 'COMPLETED' ? 'border-emerald-300 text-emerald-600 bg-emerald-50/50' : 
+                                                        currentStatus === 'CANCELLED' ? 'border-red-300 text-red-600 bg-red-50/50' :
+                                                        'border-slate-300 text-blue-600 bg-blue-50/50'
+                                                    }`}
+                                                >
+                                                    <option value="ACTIVE">Đang chạy</option>
+                                                    <option value="COMPLETED">Đã xong</option>
+                                                    <option value="CANCELLED">Đã huỷ</option>
+                                                </select>
                                             </td>
                                             <td className="p-4 text-center">
                                                 <button
