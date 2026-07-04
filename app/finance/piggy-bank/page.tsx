@@ -114,13 +114,13 @@ export default function PiggyBankAdminPage() {
                                                     className={`px-3 py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${
                                                         currentStatus !== (record.status ?? 'ACTIVE') ? 'border-amber-400 bg-amber-50 text-amber-700' : 
                                                         currentStatus === 'COMPLETED' ? 'border-emerald-300 text-emerald-600 bg-emerald-50/50' : 
-                                                        currentStatus === 'CANCELLED' ? 'border-red-300 text-red-600 bg-red-50/50' :
-                                                        'border-slate-300 text-blue-600 bg-blue-50/50'
+                                                        currentStatus === 'CANCELLED' ? 'border-slate-300 text-slate-600 bg-slate-50' :
+                                                        'border-blue-300 text-blue-600 bg-blue-50/50'
                                                     }`}
                                                 >
-                                                    <option value="ACTIVE">Đang chạy</option>
-                                                    <option value="COMPLETED">Đã xong</option>
-                                                    <option value="CANCELLED">Đã huỷ</option>
+                                                    <option value="ACTIVE">Hoạt động</option>
+                                                    <option value="CANCELLED">Tắt</option>
+                                                    <option value="COMPLETED" disabled>Hoàn tất</option>
                                                 </select>
                                             </td>
                                             <td className="p-4 text-center">
