@@ -6,7 +6,7 @@ export const PayrollOverrideSchema = z.object({
   employeeName: z.string().optional().nullable(),
   date: z.string().min(1, "Thiếu dữ liệu bắt buộc (date)"),
   newStatus: z.enum(['off', 'suddenOff', 'free', 'request', 'absent'], {
-    errorMap: () => ({ message: "Trạng thái (newStatus) không hợp lệ" })
+    message: "Trạng thái (newStatus) không hợp lệ"
   }),
   reviewedBy: z.string().optional().nullable()
 });
@@ -16,7 +16,7 @@ export const WithdrawalPatchSchema = z.object({
   adminId: z.string().min(1, "Thiếu thông tin người xử lý (adminId)"),
   adminName: z.string().optional().nullable(),
   status: z.enum(['APPROVED', 'REJECTED'], {
-    errorMap: () => ({ message: "Trạng thái không hợp lệ" })
+    message: "Trạng thái không hợp lệ"
   }),
   note: z.string().optional().nullable()
 });
