@@ -193,7 +193,7 @@ export function SystemConfigsTable() {
                         <AnimatePresence>
                             {isAdding && (
                                 <motion.tr 
-                                    initial={{ opacity: 0, bg: '#f8fafc' }}
+                                    initial={{ opacity: 0, backgroundColor: '#f8fafc' }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                     className="bg-slate-50"
