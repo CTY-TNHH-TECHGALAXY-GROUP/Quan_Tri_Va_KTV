@@ -2063,13 +2063,13 @@ if (!hasPermission('dispatch_board')) {
                   const { updateSubOrderCustomerName } = await import('./actions');
                   const res = await updateSubOrderCustomerName(itemIds, ktvIds, newName);
                   if (res.success) {
-                    showNotification('Thành công', 'Đã cập nhật tên khách hàng hiển thị', 'success');
-                    loadData();
+                    alert('Đã cập nhật tên khách hàng hiển thị thành công');
+                    fetchData();
                   } else {
-                    showNotification('Lỗi', res.error || 'Không thể cập nhật tên', 'error');
+                    alert('Lỗi: ' + (res.error || 'Không thể cập nhật tên'));
                   }
                 } catch (err: any) {
-                  showNotification('Lỗi', 'Có lỗi xảy ra', 'error');
+                  alert('Lỗi: Có lỗi xảy ra');
                 }
               }}
               onUpdateStatus={handleUpdateStatus} 
