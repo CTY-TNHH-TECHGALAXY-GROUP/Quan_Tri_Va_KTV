@@ -40,6 +40,7 @@ export interface ServiceBlock {
   timeEnd?: string | null;
   options?: any;
   status?: string; // Tình trạng của dịch vụ con (NEW, PREPARING, IN_PROGRESS, COMPLETED...)
+  pauseStart?: string | null; // Thời điểm bắt đầu tạm dừng
 }
 
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE';
