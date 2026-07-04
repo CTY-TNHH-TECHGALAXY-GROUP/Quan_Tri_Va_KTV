@@ -73,7 +73,7 @@ export async function GET(request: Request) {
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
                 `)
                 .gte('timeStart', realtimeStartStr)
-                .in('status', ['DONE', 'COMPLETED'])
+                .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])
                 .range(page * pageSize, (page + 1) * pageSize - 1);
                 
             if (error) {

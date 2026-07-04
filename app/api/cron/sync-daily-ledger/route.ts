@@ -10,7 +10,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Internal core logic for syncing ledger
-async function processLedgerSync(targetDateStr: string) {
+export async function processLedgerSync(targetDateStr: string) {
     console.log(`[Cron] Syncing Daily Ledger for date: ${targetDateStr}`);
 
     // Boundaries in VN time
@@ -77,7 +77,7 @@ async function processLedgerSync(targetDateStr: string) {
         `)
         .gte('timeStart', startTimeStr)
         .lte('timeStart', endTimeStr)
-        .in('status', ['DONE', 'COMPLETED']);
+        .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK']);
 
     const { data: services } = await supabase.from('Services').select('id, duration');
     const svcDurationMap: Record<string, number> = {};

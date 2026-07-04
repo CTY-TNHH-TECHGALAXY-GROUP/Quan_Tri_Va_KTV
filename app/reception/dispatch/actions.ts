@@ -1113,12 +1113,10 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
             updatedAt: new Date().toISOString() 
         };
 
-        // Nếu đã dọn xong (FEEDBACK) → cả 2 tag ✅ → DONE
-        // Nếu đang dọn (CLEANING) → chỉ lưu rating, giữ nguyên status
-        if (current?.status === 'FEEDBACK') {
+        // Nếu đã dọn xong (FEEDBACK) hoặc đang dọn (CLEANING) mà khách rate → Cả 2 tag ✅ → DONE
+        if (current?.status === 'FEEDBACK' || current?.status === 'CLEANING') {
             updatePayload.status = 'DONE';
         }
-        // CLEANING → không đổi status, chờ dọn xong mới DONE
 
         const { error } = await supabase
             .from('Bookings')
