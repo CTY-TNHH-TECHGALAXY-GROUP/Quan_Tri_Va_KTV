@@ -192,26 +192,67 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         const nowVN = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
         const turnUpdatePayload: any = { status: 'working', start_time: nowVN };
 
-        if (turnForSync.start_time) {
-            try {
-                // Calculate original duration from dispatch times
-                const { data: freshTurn } = await supabase
-                    .from('TurnQueue')
-                    .select('estimated_end_time')
-                    .eq('id', turnForSync.id)
-                    .single();
-                
-                const estEnd = freshTurn?.estimated_end_time;
-                if (estEnd) {
-                    const newEnd = recalculateEstimatedEndTime(String(turnForSync.start_time), String(estEnd), nowVN);
-                    if (newEnd !== estEnd) {
-                        turnUpdatePayload.estimated_end_time = newEnd;
-                        console.log(`🔄 [KTV API] ${technicianCode}: Recalculated end ${estEnd} → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN})`);
-                    }
+        try {
+            // Lấy estimated_end_time hiện tại để tính toán (nếu có)
+            const { data: freshTurn } = await supabase
+                .from('TurnQueue')
+                .select('estimated_end_time')
+                .eq('id', turnForSync.id)
+                .single();
+            
+            const estEnd = freshTurn?.estimated_end_time;
+            
+            if (turnForSync.start_time && estEnd) {
+                // Nếu đã có sẵn giờ bắt đầu/kết thúc dự kiến (từ dispatch thông thường)
+                const newEnd = recalculateEstimatedEndTime(String(turnForSync.start_time), String(estEnd), nowVN);
+                if (newEnd !== estEnd) {
+                    turnUpdatePayload.estimated_end_time = newEnd;
+                    console.log(`🔄 [KTV API] ${technicianCode}: Recalculated end ${estEnd} → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN})`);
                 }
-            } catch (calcErr) {
-                console.error('❌ [KTV API] Failed to recalculate TurnQueue estimated end time:', calcErr);
+            } else if (allGlobalSegs && allGlobalSegs.length > 0) {
+                // FALLBACK: Đối với "Gán nhanh" (chưa có start_time / estEnd trong TurnQueue)
+                // Tính toán tổng thời lượng từ các segments của KTV này
+                let earliestStartMins = Number.MAX_SAFE_INTEGER;
+                let latestEndMins = 0;
+
+                allGlobalSegs.forEach((s: any) => {
+                    const st = s.seg?.startTime;
+                    const en = s.seg?.endTime;
+                    if (st && en) {
+                        const [h1, m1] = String(st).split(':').map(Number);
+                        const [h2, m2] = String(en).split(':').map(Number);
+                        if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+                            const smins = h1 * 60 + m1;
+                            let emins = h2 * 60 + m2;
+                            if (emins < smins) emins += 24 * 60; // Qua đêm
+                            earliestStartMins = Math.min(earliestStartMins, smins);
+                            latestEndMins = Math.max(latestEndMins, emins);
+                        }
+                    }
+                });
+
+                let totalMins = 0;
+                if (earliestStartMins < Number.MAX_SAFE_INTEGER && latestEndMins > 0) {
+                    totalMins = latestEndMins - earliestStartMins;
+                } else {
+                    // Nếu các segment chưa có startTime/endTime, cộng dồn duration (số phút)
+                    allGlobalSegs.forEach((s: any) => {
+                        const d = Number(s.seg?.duration);
+                        if (!isNaN(d)) totalMins += d;
+                    });
+                }
+                
+                if (totalMins > 0) {
+                    const [nh, nm] = nowVN.split(':').map(Number);
+                    const currentM = nh * 60 + nm + totalMins;
+                    const newH = Math.floor(currentM / 60) % 24;
+                    const newM = currentM % 60;
+                    turnUpdatePayload.estimated_end_time = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}:00`;
+                    console.log(`🔄 [KTV API] ${technicianCode}: Calculated end from segments → ${turnUpdatePayload.estimated_end_time} (duration: ${totalMins}m, actual start: ${nowVN})`);
+                }
             }
+        } catch (calcErr) {
+            console.error('❌ [KTV API] Failed to recalculate TurnQueue estimated end time:', calcErr);
         }
 
         await supabase.from('TurnQueue').update(turnUpdatePayload).eq('id', turnForSync.id);
