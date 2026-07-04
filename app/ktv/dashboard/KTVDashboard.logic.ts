@@ -97,6 +97,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [isPrepping, setIsPrepping] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState(60 * 60); 
     const [isTimerRunning, setIsTimerRunning] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
     const [commission, setCommission] = useState(0);
     const [bonusMessage, setBonusMessage] = useState<string | null>(null);
     const [hasSubmittedReview, setHasSubmittedReview] = useState(false);
@@ -1273,8 +1274,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const newRemaining = Math.max(0, currentSecs - elapsed);
                 console.log(`📱 [Timer Sync] Recalculated timer: ${newRemaining}s remaining (duration: ${currentSegDuration}m, merged: ${isMergeSync})`);
                 
-                // Chỉ cập nhật display khi timer đang thực sự chạy
-                if (isTimerRunningRef.current) {
+                // Chỉ cập nhật display khi timer đang thực sự chạy HOẶC đang tạm dừng
+                if (isTimerRunningRef.current || assignedItem?.pauseStart) {
                     // 🔒 HARD GUARD: KHÔNG cho override về 0 nếu timer mới chạy < 10 giây
                     const timerRunningForMs = now - timerStartMsRef.current;
                     setTimeRemaining(prev => {
@@ -1961,6 +1962,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         handleConfirmSetup,
         timeRemaining,
         isTimerRunning,
+        isPaused,
         prepTimeRemaining,
         isPrepping,
         handleStartTimer,

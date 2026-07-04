@@ -21,6 +21,11 @@ export const useKTVWallet = () => {
     const [bonusBalance, setBonusBalance] = useState<any>(null);
     const [bonusTimeline, setBonusTimeline] = useState<any[]>([]);
 
+    // Ví Tích Lũy
+    const [piggyBankBalance, setPiggyBankBalance] = useState<any>(null);
+    const [piggyBankTimeline, setPiggyBankTimeline] = useState<any[]>([]);
+    const [piggyBankTotalWeeks, setPiggyBankTotalWeeks] = useState<number>(50);
+
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchWallet = useCallback(async () => {
@@ -47,6 +52,13 @@ export const useKTVWallet = () => {
                 ]);
                 if (bonusBalRes.success) setBonusBalance(bonusBalRes.data);
                 if (bonusTimeRes.success) setBonusTimeline(bonusTimeRes.data);
+            } else if (activeTab === 'TICH_LUY' && hasPiggyFlag) {
+                const piggyRes = await fetch(`/api/ktv/wallet/piggy-bank?techCode=${ktvId}`).then(r => r.json());
+                if (piggyRes.success) {
+                    setPiggyBankBalance(piggyRes.data.bank);
+                    setPiggyBankTimeline(piggyRes.data.ledger);
+                    setPiggyBankTotalWeeks(piggyRes.data.totalWeeks);
+                }
             }
         } catch (err) {
             console.error('Lỗi khi tải dữ liệu ví:', err);
@@ -147,6 +159,9 @@ export const useKTVWallet = () => {
         walletTimeline,
         bonusBalance,
         bonusTimeline,
+        piggyBankBalance,
+        piggyBankTimeline,
+        piggyBankTotalWeeks,
         isLoading,
         submitWithdraw,
         submitRedeemBonus,

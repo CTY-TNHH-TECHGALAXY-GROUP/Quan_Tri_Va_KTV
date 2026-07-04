@@ -707,6 +707,7 @@ function ScreenTimer({ logic }: { logic: any }) {
     prepTimeRemaining, 
     isPrepping, 
     isTimerRunning, 
+    isPaused,
     handleStartTimer, 
     handleFinishTimer, 
     handleEarlyExit,
@@ -973,13 +974,13 @@ function ScreenTimer({ logic }: { logic: any }) {
           </svg>
           
           <div className="text-center z-10">
-            <div className={`text-6xl font-black ${isPrepping ? 'text-blue-600' : 'text-slate-800'} tracking-tighter tabular-nums`}>
+            <div className={`text-6xl font-black ${isPaused ? 'text-amber-500' : isPrepping ? 'text-blue-600' : 'text-slate-800'} tracking-tighter tabular-nums`}>
               {formatTime(currentSecs)}
             </div>
             <div className={`mt-3 px-4 py-1.5 rounded-full border font-black text-[10px] tracking-widest uppercase flex items-center justify-center gap-1.5
-              ${isPrepping ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-              {isPrepping && <Clock size={12} className="animate-pulse" />}
-              {isPrepping ? 'THỜI GIAN CHUẨN BỊ' : (isTimerRunning ? 'ĐANG THỰC HIỆN' : 'ĐỢI BẮT ĐẦU')}
+              ${isPaused ? 'bg-amber-50 text-amber-600 border-amber-200' : isPrepping ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+              {isPrepping && !isPaused && <Clock size={12} className="animate-pulse" />}
+              {isPaused ? <><AlertCircle size={12} /> ĐANG TẠM DỪNG</> : isPrepping ? 'THỜI GIAN CHUẨN BỊ' : (isTimerRunning ? 'ĐANG THỰC HIỆN' : 'ĐỢI BẮT ĐẦU')}
             </div>
           </div>
         </div>

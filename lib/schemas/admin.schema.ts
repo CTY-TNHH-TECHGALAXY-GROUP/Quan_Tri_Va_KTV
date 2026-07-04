@@ -41,5 +41,5 @@ export const WifiIpPostSchema = z.object({
 
 // PATCH /api/admin/notification-rules
 export const NotificationRulesPatchSchema = z.object({
-  rules: z.record(z.string(), z.any(), { required_error: "Missing or invalid rules object" })
+  rules: z.record(z.string(), z.any(), { message: "Missing or invalid rules object" })
 });

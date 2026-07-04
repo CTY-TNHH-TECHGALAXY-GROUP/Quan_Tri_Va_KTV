@@ -324,6 +324,36 @@
 
 ---
 
+### 6.4. KTVPiggyBank ✅ CHỦ LỰC (VÍ TÍCH LŨY / VÍ HEO ĐẤT)
+**Nhiệm vụ**: Thông tin quỹ tích lũy đều đặn hàng tuần của KTV tham gia (`enable_piggy_wallet = true`).
+**Realtime**: ✅ (KTV Hub cập nhật live)
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `staff_id` | text FK → Staff | Mã KTV (tham gia tích lũy) |
+| `weekly_amount` | numeric | Số tiền khấu trừ tự động mỗi tuần (ví dụ: 500,000) |
+| `contributed_weeks` | integer | Số tuần đã đóng tiền |
+| `status` | text | `ACTIVE`, `COMPLETED`, `CANCELLED` |
+| `created_at` | timestamptz | Thời điểm tham gia |
+| `updated_at` | timestamptz | Lần sửa đổi cuối |
+
+---
+
+### 6.5. KTVPiggyBankLedger ✅ CHỦ LỰC (VÍ TÍCH LŨY)
+**Nhiệm vụ**: Lịch sử đóng tiền hoặc rút tiền của ví tích lũy để minh bạch số dư. Khấu trừ tự động từ Ví Tua.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `staff_id` | text FK → Staff | Mã KTV |
+| `amount` | numeric | Số tiền (+ / -) |
+| `type` | text | `DEPOSIT` (nạp từ ví tua), `WITHDRAW` (rút tiền khi hoàn thành) |
+| `note` | text | Ghi chú (VD: "Đóng tích lũy tuần 1") |
+| `created_at` | timestamptz | Thời điểm giao dịch |
+
+---
+
 ## NHÓM 3: THÔNG BÁO & CẤU HÌNH (Notification & Config)
 
 

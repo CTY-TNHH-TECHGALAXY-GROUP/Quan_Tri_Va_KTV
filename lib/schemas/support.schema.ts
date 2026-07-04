@@ -13,7 +13,7 @@ export const SupportTaskPostSchema = z.union([
 
 // PATCH /api/support/tasks
 export const SupportTaskPatchSchema = z.object({
-  id: z.union([z.string(), z.number()], { required_error: "Missing id" }),
+  id: z.union([z.string(), z.number()], { message: "Missing id" }),
   status: z.string().min(1, "Missing status"),
   photo_url: z.string().optional().nullable()
 });
