@@ -765,7 +765,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
                                     turn.status === 'working' ? <Timer size={10} className="animate-spin" /> :
                                     turn.status === 'assigned' ? <Clock size={10} /> :
                                         <Moon size={10} />}
-                                <span className="hidden sm:inline">
+                                <span>
                                     {turn.status === 'waiting' ? 'Sẵn sàng' : turn.status === 'working' ? (turn.estimated_end_time ? `Đang làm (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : 'Đang làm') : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
                                 </span>
                             </div>
