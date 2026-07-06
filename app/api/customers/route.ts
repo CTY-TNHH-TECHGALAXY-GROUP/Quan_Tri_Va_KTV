@@ -1,3 +1,4 @@
+import { parseDbDate } from "@/lib/utils";
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
@@ -89,8 +90,8 @@ export async function GET() {
             
             // Find most recent visit
             const lastBooking = combinedBookings.sort((a, b) => {
-                const dateA = new Date(a.bookingDate || a.createdAt).getTime();
-                const dateB = new Date(b.bookingDate || b.createdAt).getTime();
+                const dateA = parseDbDate().getTime();
+                const dateB = parseDbDate().getTime();
                 return dateB - dateA;
             })[0];
 

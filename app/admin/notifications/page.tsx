@@ -1,4 +1,5 @@
 'use client';
+import { parseDbDate } from "@/lib/utils";
 
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -219,7 +220,7 @@ const NotificationRow = ({
                         {notif.type}
                     </span>
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {parseDbDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                 </div>
                 <h4 className={`text-base font-bold text-gray-900 tracking-tight ${notif.isRead ? 'line-through decoration-gray-400' : ''}`}>

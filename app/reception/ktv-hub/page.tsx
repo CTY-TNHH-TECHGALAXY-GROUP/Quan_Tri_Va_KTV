@@ -1,4 +1,5 @@
 'use client';
+import { parseDbDate } from "@/lib/utils";
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
@@ -1419,7 +1420,7 @@ const LeaveOffTab = () => {
                                                                         <p className="font-bold text-[13px] text-red-700">{leave.employeeId}</p>
                                                                         {leave.createdAt && (
                                                                             <p className="text-[9px] text-red-500/80 mt-0.5 font-medium">
-                                                                                Lúc: {new Date(leave.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                                                                                Lúc: {parseDbDate().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                                                                             </p>
                                                                         )}
                                                                     </div>
@@ -1449,7 +1450,7 @@ const LeaveOffTab = () => {
                                                                         </div>
                                                                         {leave.createdAt && (
                                                                             <p className="text-[9px] text-rose-500/80 mt-0.5 font-medium">
-                                                                                Gửi lúc: {new Date(leave.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                                                                                Gửi lúc: {parseDbDate().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                                                                             </p>
                                                                         )}
                                                                     </div>

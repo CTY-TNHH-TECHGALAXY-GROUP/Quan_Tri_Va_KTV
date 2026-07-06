@@ -33,6 +33,43 @@ export async function GET(request: Request) {
         return mins2 - mins1;
     };
 
+    const getVnDateInfo = (dateString: string) => {
+        if (!dateString) return null;
+        let ds = dateString;
+        if (!ds.endsWith('Z') && !ds.match(/[+-]\d{2}:?\d{2}$/)) {
+            ds += 'Z';
+        }
+        const d = new Date(ds);
+        if (isNaN(d.getTime())) return null;
+        
+        const options: Intl.DateTimeFormatOptions = { 
+            timeZone: 'Asia/Ho_Chi_Minh',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        };
+        
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(d);
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+        
+        const year = getPart('year');
+        const month = getPart('month');
+        const day = getPart('day');
+        let hour = parseInt(getPart('hour'), 10);
+        if (hour === 24) hour = 0;
+        
+        return {
+            dateStr: `${year}-${month}-${day}`, // YYYY-MM-DD
+            monthStr: `${year}-${month}`,       // YYYY-MM
+            hour: hour
+        };
+    };
+
     if (!dateFrom || !dateTo) {
         return NextResponse.json({ success: false, error: 'dateFrom and dateTo are required' }, { status: 400 });
     }
@@ -300,8 +337,9 @@ export async function GET(request: Request) {
         // ─── 8. Daily Revenue ────────────────────────────────────────────
         const dailyMap: Record<string, { date: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const day = (b.bookingDate || b.createdAt || '').split(' ')[0].split('T')[0];
-            if (!day) return;
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            if (!timeInfo) return;
+            const day = timeInfo.dateStr;
             if (!dailyMap[day]) dailyMap[day] = { date: day, revenue: 0, orders: 0 };
             dailyMap[day].revenue += Number(b.totalAmount) || 0;
             dailyMap[day].orders += 1;
@@ -311,10 +349,9 @@ export async function GET(request: Request) {
         // ─── 8b. Hourly Revenue (with optional hour filter) ──────────────
         const hourlyRevenueMap: Record<number, { hour: number; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const time = b.bookingDate || b.createdAt || '';
-            const match = time.match(/(\d{2}):\d{2}/);
-            if (match) {
-                const hour = parseInt(match[1], 10);
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            if (timeInfo) {
+                const hour = timeInfo.hour;
                 // Apply hour filter if provided
                 if (hourFrom !== null && hour < hourFrom) return;
                 if (hourTo !== null && hour > hourTo) return;
@@ -336,8 +373,9 @@ export async function GET(request: Request) {
         // ─── 8c. Weekly Revenue ──────────────────────────────────────────
         const weeklyMap: Record<string, { week: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const day = (b.bookingDate || b.createdAt || '').split(' ')[0].split('T')[0];
-            if (!day) return;
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            if (!timeInfo) return;
+            const day = timeInfo.dateStr;
             const d = new Date(day);
             // ISO week: get Monday of the week
             const dayOfWeek = d.getDay() || 7; // Sunday = 7
@@ -353,9 +391,9 @@ export async function GET(request: Request) {
         // ─── 8d. Monthly Revenue ─────────────────────────────────────────
         const monthlyMap: Record<string, { month: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const day = (b.bookingDate || b.createdAt || '').split(' ')[0].split('T')[0];
-            if (!day) return;
-            const monthKey = day.substring(0, 7); // YYYY-MM
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            if (!timeInfo) return;
+            const monthKey = timeInfo.monthStr; // YYYY-MM
             if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { month: monthKey, revenue: 0, orders: 0 };
             monthlyMap[monthKey].revenue += Number(b.totalAmount) || 0;
             monthlyMap[monthKey].orders += 1;
@@ -452,19 +490,10 @@ export async function GET(request: Request) {
         // ─── 11. Peak Hours ──────────────────────────────────────────────
         const hourMap: Record<number, number> = {};
         completedBookings.forEach(b => {
-            const time = b.createdAt || b.bookingDate || '';
-            if (time) {
-                const d = new Date(time);
-                if (!isNaN(d.getTime())) {
-                    const vnHourStr = new Intl.DateTimeFormat('en-US', {
-                        hour: '2-digit',
-                        hour12: false,
-                        timeZone: 'Asia/Ho_Chi_Minh'
-                    }).format(d);
-                    let hour = parseInt(vnHourStr, 10);
-                    if (hour === 24) hour = 0;
-                    hourMap[hour] = (hourMap[hour] || 0) + 1;
-                }
+            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            if (timeInfo) {
+                const hour = timeInfo.hour;
+                hourMap[hour] = (hourMap[hour] || 0) + 1;
             }
         });
         const peakHours = Array.from({ length: 24 }, (_, h) => ({
@@ -574,7 +603,7 @@ export async function GET(request: Request) {
                 name: c.fullName || 'Khách',
                 phone: c.phone || '',
                 email: c.email || '',
-                createdAt: c.createdAt,
+                createdAt: c.createdAt ? (c.createdAt.endsWith('Z') || c.createdAt.match(/[+-]\d{2}:?\d{2}$/) ? c.createdAt : c.createdAt + 'Z') : null,
             })),
             // Filter data for client-side filtering
             serviceList: Object.values(svcBreakdown).map(s => s.name),

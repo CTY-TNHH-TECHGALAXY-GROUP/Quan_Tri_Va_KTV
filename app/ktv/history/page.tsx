@@ -1,4 +1,5 @@
 'use client';
+import { parseDbDate } from "@/lib/utils";
 
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -81,7 +82,7 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
           <div className="min-w-0">
             <span className="text-sm font-black text-indigo-600">#{order.billCode}</span>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {format(new Date(order.createdAt), 'HH:mm — dd/MM/yyyy')}
+              {format(parseDbDate(), 'HH:mm — dd/MM/yyyy')}
             </p>
           </div>
         </div>

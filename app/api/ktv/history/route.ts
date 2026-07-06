@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvHistoryTipSchema } from '@/lib/schemas/ktv.schema';
+import { parseDbDate } from '@/lib/utils';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -191,7 +192,9 @@ export async function GET(request: Request) {
             }, 0) || null;
 
             // ─── Bonus points ─────────────
-            const bDateStr = new Date(new Date(b.bookingDate || b.createdAt).getTime() + VN_OFFSET_MS).toISOString().split('T')[0];
+            const dbDate = parseDbDate(b.bookingDate || b.createdAt);
+            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+            const bDateStr = formatter.format(dbDate);
             const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
             
             // Build pseudo shiftsData for calculateBookingBonus

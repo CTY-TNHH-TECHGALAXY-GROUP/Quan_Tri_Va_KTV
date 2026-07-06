@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { BookingItemPauseService } from '@/lib/services/BookingItemPauseService';
+import { syncTurnsForDate } from '@/lib/turn-sync';
 import { z } from 'zod';
 
 const pauseSwapSchema = z.object({
@@ -59,6 +60,9 @@ export async function POST(req: Request) {
                 );
                 // Sau khi swap thành công, tự động resume luôn theo luồng
                 await BookingItemPauseService.resumeItem(supabase, bookingItemId);
+                
+                // ĐỒNG BỘ LẠI LƯỢT TUA
+                await syncTurnsForDate(businessDate!);
                 break;
         }
 
