@@ -15,6 +15,7 @@ const SHIFT_START_TIMES: Record<string, string> = {
     SHIFT_1: '09:00',
     SHIFT_2: '11:00',
     SHIFT_3: '17:00',
+    DEV_SHIFT: '09:00',
     FREE: '00:00',
     REQUEST: '00:00',
     SUPPORT: '00:00',
@@ -23,6 +24,7 @@ const SHIFT_END_TIMES: Record<string, string> = {
     SHIFT_1: '17:00',
     SHIFT_2: '19:00',
     SHIFT_3: '00:00', // treated as 24:00 of the same day
+    DEV_SHIFT: '21:00',
     FREE: '00:00',
     REQUEST: '00:00',
     SUPPORT: '00:00',
@@ -129,6 +131,14 @@ export const useKTVAttendance = () => {
             setIsOffToday(false);
             setShiftFetchError(false);
             setActiveShiftType('SUPPORT');
+            return;
+        }
+
+        if (user.roleId === 'dev') {
+            setIsLoadingShift(false);
+            setIsOffToday(false);
+            setShiftFetchError(false);
+            setActiveShiftType('DEV_SHIFT');
             return;
         }
 
