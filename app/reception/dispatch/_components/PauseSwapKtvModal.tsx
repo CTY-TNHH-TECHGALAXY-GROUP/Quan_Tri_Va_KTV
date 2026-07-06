@@ -9,21 +9,24 @@ interface PauseSwapKtvModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: PendingOrder | null;
+  subOrder?: any;
   availableKtvs: StaffData[];
   onConfirm: (
     bookingItemId: string,
     action: 'PAUSE' | 'RESUME' | 'SWAP',
     oldKtvId?: string,
     newKtvId?: string,
-    extraTimeMins?: number
+    extraTimeMins?: number,
+    keepTurnForOldKtv?: boolean
   ) => Promise<void>;
 }
 
-export default function PauseSwapKtvModal({ isOpen, onClose, order, availableKtvs, onConfirm }: PauseSwapKtvModalProps) {
+export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, availableKtvs, onConfirm }: PauseSwapKtvModalProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [selectedOldKtv, setSelectedOldKtv] = useState<string>('');
   const [selectedNewKtv, setSelectedNewKtv] = useState<string>('');
   const [extraTimeMins, setExtraTimeMins] = useState<number>(0);
+  const [keepTurnForOldKtv, setKeepTurnForOldKtv] = useState<boolean>(false);
   const [actionType, setActionType] = useState<'PAUSE' | 'RESUME' | 'SWAP'>('PAUSE');
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +34,18 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, availableKtv
   const activeServices = order?.services.filter(s => 
     s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
   ) || [];
+
+  // Auto-select based on subOrder
+  React.useEffect(() => {
+    if (isOpen && subOrder && activeServices.length > 0) {
+      if (subOrder.services && subOrder.services.length > 0) {
+        setSelectedServiceId(subOrder.services[0].id);
+      }
+      if (subOrder.ktvIds && subOrder.ktvIds.length > 0) {
+        setSelectedOldKtv(subOrder.ktvIds[0]);
+      }
+    }
+  }, [isOpen, subOrder, activeServices.length]);
 
   const selectedService = activeServices.find(s => s.id === selectedServiceId);
   const isPaused = selectedService?.status === 'PAUSED';
@@ -54,9 +69,9 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, availableKtv
           alert(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${selectedService.duration} phút)`);
           return;
         }
-        await onConfirm(selectedServiceId, 'SWAP', selectedOldKtv, selectedNewKtv, extraTimeMins);
+        await onConfirm(selectedServiceId, 'SWAP', selectedOldKtv, selectedNewKtv, extraTimeMins, keepTurnForOldKtv);
       } else {
-        await onConfirm(selectedServiceId, actionType);
+        await onConfirm(selectedServiceId, actionType, undefined, undefined, undefined, actionType === 'PAUSE' ? keepTurnForOldKtv : undefined);
       }
       onClose();
     } catch (err: any) {
@@ -215,6 +230,39 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, availableKtv
                           }}
                         />
                         <p className="text-[11px] text-gray-500 mt-1">*KTV mới luôn được hưởng tối thiểu bằng số tiền tua gốc. Bạn có thể nhập thêm giờ để KTV mới gánh bù.</p>
+                      </div>
+
+                      {/* Tùy chọn Tua */}
+                      <div className="pt-2 border-t border-gray-100">
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Tùy chọn Tua cho KTV Bị phạt</label>
+                        <div className="flex flex-col gap-2">
+                          <label className="flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all hover:bg-slate-50 border-gray-200">
+                            <input 
+                              type="radio" 
+                              name="keepTurn" 
+                              checked={!keepTurnForOldKtv}
+                              onChange={() => setKeepTurnForOldKtv(false)}
+                              className="w-4 h-4 text-rose-500 border-gray-300 focus:ring-rose-500"
+                            />
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">Hủy tua (Mặc định)</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Xóa lịch sử tua này của KTV cũ, KTV không nhận được % tiền tua, không bị phạt tua.</p>
+                            </div>
+                          </label>
+                          <label className="flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all hover:bg-slate-50 border-gray-200">
+                            <input 
+                              type="radio" 
+                              name="keepTurn" 
+                              checked={keepTurnForOldKtv}
+                              onChange={() => setKeepTurnForOldKtv(true)}
+                              className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-600"
+                            />
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">Vẫn tính tua</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Vẫn ghi nhận KTV cũ đã nhận tua này nhưng cập nhật thành trạng thái phạt lỗi.</p>
+                            </div>
+                          </label>
+                        </div>
                       </div>
                     </motion.div>
                   )}

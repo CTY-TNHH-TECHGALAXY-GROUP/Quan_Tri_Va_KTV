@@ -159,6 +159,7 @@ export default function DispatchBoardPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string } | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
+  const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
@@ -1426,7 +1427,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number) {
+  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean) {
     try {
       const res = await fetch('/api/ktv/pause-swap-resume', {
         method: 'POST',
@@ -1437,6 +1438,7 @@ if (!hasPermission('dispatch_board')) {
           oldKtvId,
           newKtvId,
           extraTimeMins,
+          keepTurnForOldKtv,
           businessDate: selectedDate
         })
       });
@@ -2093,10 +2095,11 @@ if (!hasPermission('dispatch_board')) {
                 }
                 setContextMenu({ x, y, orderId });
               }}
-              onPauseClick={(orderId) => {
+              onPauseClick={(orderId, subOrder) => {
                 const o = orders.find(x => x.id === orderId);
                 if (o) {
                   setPauseModalOrder(o);
+                  if (subOrder) setPauseModalSubOrder(subOrder);
                   setPauseModalOpen(true);
                   setContextMenu(null);
                 }
@@ -2606,8 +2609,9 @@ if (!hasPermission('dispatch_board')) {
       {/* Modal Tạm Dừng / Đổi KTV */}
       <PauseSwapKtvModal
         isOpen={pauseModalOpen}
-        onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); }}
+        onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); setPauseModalSubOrder(null); }}
         order={pauseModalOrder}
+        subOrder={pauseModalSubOrder}
         availableKtvs={staffs.filter(s => s.status === 'ready')}
         onConfirm={handleConfirmPauseSwap}
       />

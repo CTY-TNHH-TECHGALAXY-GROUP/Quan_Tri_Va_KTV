@@ -57,7 +57,7 @@ interface KanbanBoardProps {
     onConfirmAddonPayment?: (orderId: string) => void;
     selectedOrderId: string | null;
     onContextMenu?: (e: React.MouseEvent, orderId: string) => void;
-    onPauseClick?: (orderId: string) => void;
+    onPauseClick?: (orderId: string, subOrder?: any) => void;
     roomTransitionTime?: number;
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
 }
@@ -772,7 +772,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                     
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); onPauseClick(order.id); }}
+                                                            onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
                                                             className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1"
                                                             title="Tạm dừng / Đổi KTV"
                                                         >

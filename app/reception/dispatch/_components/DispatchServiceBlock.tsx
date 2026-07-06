@@ -233,7 +233,7 @@ export const DispatchServiceBlock = ({
                                         usedKtvIds={usedKtvIds}
                                         onUpdate={onUpdateStaff}
                                         onRemove={onRemoveStaff}
-                                        canRemove={svc.staffList.length > 1}
+                                        canRemove={svc.staffList.length > 1 && !row.segments.some((seg: any) => seg.actualStartTime)}
                                         serviceDescription={svc.serviceDescription}
                                         strength={svc.strength}
                                         adminNote={svc.adminNote}

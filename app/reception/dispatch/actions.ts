@@ -457,6 +457,31 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
                     
+                    // 3. NGĂN CẤM XÓA KTV ĐÃ BẮT ĐẦU LÀM
+                    if (updateItem.technicianCodes !== undefined) {
+                        const incomingTechs = Array.isArray(updateItem.technicianCodes) 
+                            ? updateItem.technicianCodes 
+                            : (typeof updateItem.technicianCodes === 'string' 
+                                ? updateItem.technicianCodes.split(',').map(c => c.trim()).filter(Boolean) 
+                                : []);
+                        
+                        const dbTechs = Array.isArray(dbItem.technicianCodes) 
+                            ? dbItem.technicianCodes 
+                            : (typeof dbItem.technicianCodes === 'string' 
+                                ? dbItem.technicianCodes.split(',').map((c: string) => c.trim()).filter(Boolean) 
+                                : []);
+
+                        for (const techId of dbTechs) {
+                            if (!incomingTechs.includes(techId)) {
+                                // Kiểm tra xem KTV này đã start chưa
+                                const dbSeg = dbSegs.find((s: any) => s.ktvId === techId);
+                                if (dbSeg && dbSeg.actualStartTime) {
+                                    throw new Error(`[CẢNH BÁO] KTV ${techId} đã bắt đầu làm việc. Vui lòng ra bảng Kanban dùng nút "Dừng / Đổi Người" thay vì gỡ trực tiếp!`);
+                                }
+                            }
+                        }
+                    }
+                    
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
                         updateItem.segments = updateItem.segments.map(incomingSeg => {
                             const dbSeg = dbSegs.find((s: any) => s.ktvId === incomingSeg.ktvId);

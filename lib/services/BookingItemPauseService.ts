@@ -94,7 +94,8 @@ export class BookingItemPauseService {
         oldKtvId: string, 
         newKtvId: string, 
         extraTimeMins: number = 0,
-        businessDate: string
+        businessDate: string,
+        keepTurnForOldKtv: boolean = false
     ) {
         // 1. Fetch Item & Booking & Service
         const { data: item, error: errItem } = await supabase
@@ -143,15 +144,26 @@ export class BookingItemPauseService {
         // KTV B luôn luôn được hưởng đúng bằng thời gian tua gốc (originalDuration)
         let customCommissionDuration = originalDuration;
 
-        // 3. Phạt KTV A (is_punished = true)
-        const { error: errPunish } = await supabase
-            .from('TurnLedger')
-            .update({ is_punished: true })
-            .eq('booking_id', item.bookingId)
-            .eq('employee_id', oldKtvId)
-            .eq('date', businessDate);
-
-        if (errPunish) console.error('Lỗi phạt KTV A:', errPunish);
+        // 3. Xử lý KTV A (Bị thay ra)
+        if (keepTurnForOldKtv) {
+            // Vẫn tính tua cho KTV cũ, nhưng ghi nhận phạt lỗi
+            const { error: errPunish } = await supabase
+                .from('TurnLedger')
+                .update({ is_punished: true })
+                .eq('booking_id', item.bookingId)
+                .eq('employee_id', oldKtvId)
+                .eq('date', businessDate);
+            if (errPunish) console.error('Lỗi phạt KTV A:', errPunish);
+        } else {
+            // Mặc định: Hủy tua hoàn toàn, xóa bản ghi
+            const { error: errDelete } = await supabase
+                .from('TurnLedger')
+                .delete()
+                .eq('booking_id', item.bookingId)
+                .eq('employee_id', oldKtvId)
+                .eq('date', businessDate);
+            if (errDelete) console.error('Lỗi xóa tua KTV A:', errDelete);
+        }
 
         // Đá KTV A về waiting trong TurnQueue
         await supabase

@@ -10,6 +10,7 @@ const pauseSwapSchema = z.object({
     newKtvId: z.string().optional(),
     extraTimeMins: z.number().nonnegative().optional().default(0),
     businessDate: z.string().optional(),
+    keepTurnForOldKtv: z.boolean().optional(),
 }).refine(data => {
     if (data.action === 'SWAP') {
         return !!data.oldKtvId && !!data.newKtvId && !!data.businessDate;
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
             }, { status: 400 });
         }
 
-        const { action, bookingItemId, oldKtvId, newKtvId, extraTimeMins, businessDate } = parsedData.data;
+        const { action, bookingItemId, oldKtvId, newKtvId, extraTimeMins, businessDate, keepTurnForOldKtv } = parsedData.data;
 
         let result;
         switch (action) {
@@ -53,7 +54,8 @@ export async function POST(req: Request) {
                     oldKtvId!,
                     newKtvId!,
                     extraTimeMins,
-                    businessDate!
+                    businessDate!,
+                    keepTurnForOldKtv
                 );
                 // Sau khi swap thành công, tự động resume luôn theo luồng
                 await BookingItemPauseService.resumeItem(supabase, bookingItemId);
