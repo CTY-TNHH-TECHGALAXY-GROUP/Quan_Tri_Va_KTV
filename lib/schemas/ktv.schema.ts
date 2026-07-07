@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const AttendanceSchema = z.object({
   employeeId: z.string().min(1, "Thiếu mã hoặc ID nhân viên"),
   employeeName: z.string().optional(),
-  checkType: z.enum(['CHECK_IN', 'LATE_CHECKIN', 'CHECK_OUT', 'SUDDEN_OFF', 'OFF_REQUEST']).default('CHECK_IN'),
+  checkType: z.enum(['CHECK_IN', 'LATE_CHECKIN', 'CHECK_OUT', 'SUDDEN_OFF', 'OFF_REQUEST', 'OVERTIME']).default('CHECK_IN'),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
   locationText: z.string().optional().nullable(),

@@ -299,6 +299,14 @@ export async function POST(request: Request) {
                     });
                     if (leaveErr) console.error('❌ [KTVLeaveRequests] Insert Error:', leaveErr);
                 }
+            } else if (checkType === 'OVERTIME') {
+                if (estimatedEndTime) {
+                    await supabase
+                        .from('KTVShifts')
+                        .update({ estimatedEndTime })
+                        .eq('employeeId', employeeId)
+                        .eq('status', 'ACTIVE');
+                }
             }
         }
 
@@ -392,6 +400,7 @@ export async function POST(request: Request) {
         else if (checkType === 'LATE_CHECKIN') actionText = 'điểm danh bổ sung';
         else if (checkType === 'OFF_REQUEST') actionText = 'gửi yêu cầu OFF';
         else if (checkType === 'SUDDEN_OFF') actionText = 'xin NGHỈ ĐỘT XUẤT nguyên ngày hôm nay';
+        else if (checkType === 'OVERTIME') actionText = `đăng ký làm thêm giờ đến ${estimatedEndTime}`;
 
         const autoSuffix = isAutoApprove ? ' [AUTO]' : '';
         

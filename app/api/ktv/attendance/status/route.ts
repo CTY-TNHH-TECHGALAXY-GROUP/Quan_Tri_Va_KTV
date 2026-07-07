@@ -100,14 +100,14 @@ export async function GET(request: Request) {
 
         // 3. Kiểm tra Vào ca
         const confirmedCheckIn = records.find(
-            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN') && r.status === 'CONFIRMED'
+            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'CONFIRMED'
         );
         if (confirmedCheckIn) {
             return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn });
         }
 
         const pendingCheckIn = records.find(
-            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN') && r.status === 'PENDING'
+            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'PENDING'
         );
         if (pendingCheckIn) {
             return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn });

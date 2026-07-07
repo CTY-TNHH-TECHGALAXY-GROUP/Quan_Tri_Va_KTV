@@ -1513,9 +1513,9 @@ const LeaveOffTab = () => {
                                                                                 </span>
                                                                             )}
                                                                         </div>
-                                                                        {shiftType === 'FREE' && shift.estimatedEndTime && (
-                                                                            <span className="text-[9px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded shadow-sm w-full text-center">
-                                                                                Về: {shift.estimatedEndTime}
+                                                                        {shift.estimatedEndTime && (
+                                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full text-center ${shiftType === 'FREE' ? 'text-teal-600 bg-teal-50 border border-teal-100' : 'text-purple-600 bg-purple-50 border border-purple-100'}`}>
+                                                                                {shiftType === 'FREE' ? 'Về:' : 'Làm thêm:'} {shift.estimatedEndTime}
                                                                             </span>
                                                                         )}
                                                                     </div>
