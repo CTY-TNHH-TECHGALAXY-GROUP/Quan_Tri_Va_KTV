@@ -408,10 +408,12 @@ const DailyStaffOverview = () => {
                             <p className={`text-sm font-bold ${display.color}`}>
                               {staff.employeeId}
                             </p>
-                            {shiftKey === 'FREE' && staff.estimatedEndTime && (
-                              <span className="text-[9px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded shadow-sm mt-1 whitespace-nowrap">
-                                Về: {staff.estimatedEndTime}
-                              </span>
+                            {staff.estimatedEndTime && (
+                              <p className={`text-[9px] font-bold leading-tight mt-0.5 ${
+                                shiftKey === 'FREE' ? 'text-teal-500' : 'text-purple-500'
+                              }`}>
+                                →{staff.estimatedEndTime}
+                              </p>
                             )}
                           </div>
                         ))}
