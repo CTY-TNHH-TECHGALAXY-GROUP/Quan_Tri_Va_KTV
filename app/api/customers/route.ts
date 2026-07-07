@@ -90,8 +90,8 @@ export async function GET() {
             
             // Find most recent visit
             const lastBooking = combinedBookings.sort((a, b) => {
-                const dateA = parseDbDate().getTime();
-                const dateB = parseDbDate().getTime();
+                const dateA = parseDbDate(a.date).getTime();
+                const dateB = parseDbDate(b.date).getTime();
                 return dateB - dateA;
             })[0];
 

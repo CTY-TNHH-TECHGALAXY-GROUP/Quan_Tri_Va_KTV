@@ -508,7 +508,7 @@ export default function DispatchBoardPage() {
               customerLang: b.customerLang || 'vi',
               phone: b.customerPhone || '',
               email: b.customerEmail || '',
-              time: b.timeBooking || (b.createdAt ? parseDbDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'),
+              time: b.timeBooking || (b.createdAt ? parseDbDate(b.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'),
               dispatchStatus: dStatus,
               createdAt: b.createdAt || new Date().toISOString(),
               updatedAt: b.updatedAt,

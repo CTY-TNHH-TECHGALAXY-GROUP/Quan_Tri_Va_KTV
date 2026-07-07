@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { parseDbDate } from "@/lib/utils";
 
 // 🔧 SYSTEM CONFIGURATION
@@ -336,7 +336,7 @@ const DailyStaffOverview = () => {
                       {leave.employeeId}
                     </p>
                     <p className="text-[9px] font-bold text-gray-400 mt-1 uppercase tracking-wider">
-                      {parseDbDate().toLocaleString('vi-VN', {
+                      {parseDbDate(leave.createdAt).toLocaleString('vi-VN', {
                         hour: '2-digit', minute: '2-digit'
                       })}
                     </p>

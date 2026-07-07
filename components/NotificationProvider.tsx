@@ -498,7 +498,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     // Sorting logic: Unread first, then read. Within each group, newest first.
     const sortedToasts = [...toastQueue].sort((a, b) => {
         if (a.isRead === b.isRead) {
-            return parseDbDate().getTime() - parseDbDate().getTime();
+            return parseDbDate(b.createdAt).getTime() - parseDbDate(a.createdAt).getTime();
         }
         return a.isRead ? 1 : -1;
     });
@@ -854,7 +854,7 @@ const Toast = ({
                 </p>
                 <div className="flex items-center gap-2 mt-1.5">
                     <p className={`text-[9px] font-bold opacity-60 ${isCritical ? 'text-rose-100' : 'text-slate-400'}`}>
-                        {parseDbDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {parseDbDate(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     {isCritical && !notification.isRead && (
                         <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
