@@ -1420,7 +1420,7 @@ const LeaveOffTab = () => {
                                                                         <p className="font-bold text-[13px] text-red-700">{leave.employeeId}</p>
                                                                         {leave.createdAt && (
                                                                             <p className="text-[9px] text-red-500/80 mt-0.5 font-medium">
-                                                                                Lúc: {parseDbDate().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                                                                                Lúc: {parseDbDate(leave.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                                                                             </p>
                                                                         )}
                                                                     </div>
