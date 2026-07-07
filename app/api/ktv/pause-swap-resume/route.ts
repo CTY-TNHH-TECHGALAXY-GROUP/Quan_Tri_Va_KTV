@@ -14,11 +14,11 @@ const pauseSwapSchema = z.object({
     keepTurnForOldKtv: z.boolean().optional(),
 }).refine(data => {
     if (data.action === 'SWAP') {
-        return !!data.oldKtvId && !!data.newKtvId && !!data.businessDate;
+        return !!data.oldKtvId && !!data.businessDate;
     }
     return true;
 }, {
-    message: 'Thiếu tham số SWAP (oldKtvId, newKtvId, businessDate)',
+    message: 'Thiếu tham số SWAP (oldKtvId, businessDate)',
 });
 
 export async function POST(req: Request) {
@@ -59,7 +59,9 @@ export async function POST(req: Request) {
                     keepTurnForOldKtv
                 );
                 // Sau khi swap thành công, tự động resume luôn theo luồng
-                await BookingItemPauseService.resumeItem(supabase, bookingItemId);
+                if (newKtvId) {
+                    await BookingItemPauseService.resumeItem(supabase, bookingItemId);
+                }
                 
                 // ĐỒNG BỘ LẠI LƯỢT TUA
                 await syncTurnsForDate(businessDate!);

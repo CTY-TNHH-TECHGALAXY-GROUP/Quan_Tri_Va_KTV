@@ -61,15 +61,15 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
     setLoading(true);
     try {
       if (actionType === 'SWAP') {
-        if (!selectedOldKtv || !selectedNewKtv) {
-          alert('Vui lòng chọn KTV cần đổi và KTV mới!');
+        if (!selectedOldKtv) {
+          alert('Vui lòng chọn KTV cần rút/đổi!');
           return;
         }
         if (selectedService && extraTimeMins > selectedService.duration) {
           alert(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${selectedService.duration} phút)`);
           return;
         }
-        await onConfirm(selectedServiceId, 'SWAP', selectedOldKtv, selectedNewKtv, extraTimeMins, keepTurnForOldKtv);
+        await onConfirm(selectedServiceId, 'SWAP', selectedOldKtv, selectedNewKtv || undefined, extraTimeMins, keepTurnForOldKtv);
       } else {
         await onConfirm(selectedServiceId, actionType, undefined, undefined, undefined, actionType === 'PAUSE' ? keepTurnForOldKtv : undefined);
       }
