@@ -377,7 +377,7 @@ const KTVAttendancePage = () => {
 
         setIsFormOpen(false);
         handleAttendance(
-            formType, 
+            formType as 'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN' | 'SUDDEN_OFF' | 'OVERTIME', 
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,

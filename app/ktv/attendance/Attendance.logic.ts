@@ -254,7 +254,7 @@ export const useKTVAttendance = () => {
     }, []);
 
     const handleAttendance = useCallback(async (
-        checkType: 'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN' | 'SUDDEN_OFF',
+        checkType: 'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN' | 'SUDDEN_OFF' | 'OVERTIME',
         photosBase64?: string[] | null,
         reason?: string | null,
         selectedShiftType?: string | null,
