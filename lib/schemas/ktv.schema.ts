@@ -119,3 +119,9 @@ export const KtvInteractionSchema = z.object({
   message: z.string().optional()
 });
 
+// Schema cho API Xác nhận Interaction (PATCH /api/ktv/interaction)
+export const KtvInteractionAckSchema = z.object({
+  notificationId: z.string().min(1, "notificationId is required"),
+  note: z.string().optional().default('Đã xác nhận'),
+});
+

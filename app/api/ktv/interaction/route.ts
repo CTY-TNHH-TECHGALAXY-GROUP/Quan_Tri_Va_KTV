@@ -71,7 +71,8 @@ export async function POST(request: Request) {
         await createNotification({
             type,
             message: finalMessage,
-            bookingId
+            bookingId,
+            employeeId: techCode || null
         });
         
         console.log(`✅ [API KTV Interaction] Notification stored & push handled successfully.`);
@@ -80,6 +81,60 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: finalMessage });
     } catch (error: any) {
         console.error('API Error (POST /api/ktv/interaction):', error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
+
+/**
+ * API Xác nhận từ Quầy
+ * PATCH /api/ktv/interaction
+ * Body: { notificationId: string, note?: string }
+ */
+export async function PATCH(request: Request) {
+    try {
+        const body = await request.json();
+        const { KtvInteractionAckSchema } = await import('@/lib/schemas/ktv.schema');
+        const parseResult = KtvInteractionAckSchema.safeParse(body);
+        
+        if (!parseResult.success) {
+            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
+        }
+        
+        const { notificationId, note } = parseResult.data;
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // 1. Cập nhật StaffNotifications
+        const now = new Date().toISOString();
+        const finalNote = note || 'Đã xác nhận';
+        const { data: updated, error: updateError } = await supabase
+            .from('StaffNotifications')
+            .update({
+                acknowledgedAt: now,
+                acknowledgedNote: finalNote,
+                isRead: true
+            })
+            .eq('id', notificationId)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+        if (!updated) throw new Error('Notification not found');
+
+        // 2. Gửi phản hồi cho KTV
+        if (updated.employeeId) {
+            await createNotification({
+                type: 'REQUEST_CONFIRMED',
+                message: `✅ Quầy đã xử lý: ${finalNote}`,
+                bookingId: updated.bookingId,
+                employeeId: updated.employeeId
+            });
+            console.log(`✅ [API KTV Interaction] Gửi phản hồi REQUEST_CONFIRMED tới KTV ${updated.employeeId}`);
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error('API Error (PATCH /api/ktv/interaction):', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

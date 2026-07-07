@@ -369,6 +369,9 @@
 | `type` | text | Loại: `REWARD` / `COMPLAINT` / `NEW_ORDER` / `CHECK_IN` / `EMERGENCY` / `FEEDBACK` / `WATER` / `SOS` |
 | `message` | text | Nội dung thông báo |
 | `isRead` | boolean | Đã đọc chưa |
+| `acknowledgedAt` | timestamptz | Thời điểm Quầy xác nhận đã xử lý |
+| `acknowledgedNote` | text | Ghi chú từ Quầy khi xác nhận (VD: Đang mang nước lên) |
+| `source` | text | Nguồn: STAFF (KTV gửi) hoặc CUSTOMER (khách gửi) |
 | `createdAt` | timestamptz | Thời điểm gửi |
 
 ---

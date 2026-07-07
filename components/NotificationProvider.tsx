@@ -17,6 +17,8 @@ interface Notification {
     isRead: boolean;
     employeeId?: string;
     bookingId?: string;
+    acknowledgedAt?: string;
+    acknowledgedNote?: string;
 }
 
 interface NotificationContextType {
@@ -55,6 +57,7 @@ const SOUND_MAP: Record<string, string> = {
     'SHIFT_RESPONSE': '/sounds/reception-notification.wav',
     'WALLET': '/sounds/reception-notification.wav',
     'KTV_REVIEW': '/sounds/reception-notification.wav',
+    'REQUEST_CONFIRMED': '/sounds/ktv-nhan-thuong.wav',
     'default': '/sounds/reception-notification.wav'
 };
 
@@ -622,6 +625,7 @@ const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: {
     const isShift = type === 'SHIFT_RESPONSE';
     const isLeave = type === 'LEAVE_RESPONSE';
     const isWallet = type === 'WALLET';
+    const isRequestConfirmed = type === 'REQUEST_CONFIRMED';
     
     // Determine title and icon based on notification type
     let title = 'Phần thưởng mới';
@@ -666,6 +670,12 @@ const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: {
         iconBg = 'bg-teal-500';
         borderClass = 'border-teal-100';
         titleColor = 'text-teal-600';
+    } else if (isRequestConfirmed) {
+        title = 'Phản hồi từ Quầy';
+        iconElement = <CheckCircle size={20} className="text-white" />;
+        iconBg = 'bg-emerald-500';
+        borderClass = 'border-emerald-100';
+        titleColor = 'text-emerald-600';
     }
 
     return (
@@ -720,8 +730,13 @@ const Toast = ({
 }) => {
     const { role } = useAuth();
     const [confirmLoading, setConfirmLoading] = React.useState<'confirm' | 'reject' | null>(null);
+    const [ackLoading, setAckLoading] = React.useState(false);
+    const [showAckInput, setShowAckInput] = React.useState(false);
+    const [ackNote, setAckNote] = React.useState('');
+    const [hasAcked, setHasAcked] = React.useState(!!notification.acknowledgedAt);
 
     const type = notification.type?.toUpperCase();
+    const isInteraction = type === 'WATER' || type === 'SUPPORT' || type === 'BUY_MORE' || type === 'EMERGENCY' || type === 'EARLY_EXIT';
     const isCritical = type === 'EMERGENCY' || type === 'SOS' || type === 'COMPLAINT' || type === 'SUDDEN_OFF';
     const isEarlyExit = type === 'EARLY_EXIT';
     const isWater = type === 'WATER';
@@ -852,6 +867,56 @@ const Toast = ({
                 <p className={`text-sm font-bold leading-tight ${isCritical ? 'text-white' : 'text-slate-800'} ${notification.isRead ? 'line-through opacity-70' : ''} break-words`}>
                     {displayMessage}
                 </p>
+                {showAckInput && !hasAcked && (
+                    <div className="mt-2 flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
+                        <input
+                            type="text"
+                            placeholder="Ghi chú (VD: Đang mang lên)"
+                            value={ackNote}
+                            onChange={(e) => setAckNote(e.target.value)}
+                            className="text-[11px] px-2 py-1 rounded border flex-1 text-slate-800"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    document.getElementById(`btn-ack-${notification.id}`)?.click();
+                                }
+                            }}
+                        />
+                        <button
+                            id={`btn-ack-${notification.id}`}
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                setAckLoading(true);
+                                try {
+                                    const res = await fetch('/api/ktv/interaction', {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ notificationId: notification.id, note: ackNote }),
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                        setHasAcked(true);
+                                        setAckNote(ackNote); // Keep note to show
+                                    }
+                                } catch (error) {
+                                    console.error('Ack error:', error);
+                                } finally {
+                                    setAckLoading(false);
+                                }
+                            }}
+                            disabled={ackLoading}
+                            className="bg-emerald-500 text-white text-[11px] px-2 py-1 rounded font-bold hover:bg-emerald-600 disabled:opacity-50 whitespace-nowrap"
+                        >
+                            {ackLoading ? 'Đang gửi' : 'Gửi'}
+                        </button>
+                    </div>
+                )}
+                {hasAcked && (
+                    <div className="mt-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded inline-block shadow-sm">
+                        ✅ Đã xác nhận {ackNote ? `- ${ackNote}` : ''}
+                    </div>
+                )}
                 <div className="flex items-center gap-2 mt-1.5">
                     <p className={`text-[9px] font-bold opacity-60 ${isCritical ? 'text-rose-100' : 'text-slate-400'}`}>
                         {parseDbDate(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -886,17 +951,31 @@ const Toast = ({
                 )}
                 {/* Normal notifications: tích xanh */}
                 {!isAdminCheckIn && !notification.isRead && (
-                    <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onMarkDone();
-                            onClose();
-                        }}
-                        className={`p-2 rounded-xl transition-all hover:scale-110 shadow-sm ${isCritical ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
-                        title="Đánh dấu hoàn thành"
-                    >
-                        <Check size={16} strokeWidth={3} />
-                    </button>
+                    <>
+                        {isInteraction && !hasAcked && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowAckInput(!showAckInput);
+                                }}
+                                className={`p-2 rounded-xl transition-all hover:scale-110 shadow-sm mb-2 ${isCritical ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+                                title="Xác nhận xử lý"
+                            >
+                                <CheckCircle size={16} strokeWidth={3} />
+                            </button>
+                        )}
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onMarkDone();
+                                onClose();
+                            }}
+                            className={`p-2 rounded-xl transition-all hover:scale-110 shadow-sm ${isCritical ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                            title="Đánh dấu hoàn thành"
+                        >
+                            <Check size={16} strokeWidth={3} />
+                        </button>
+                    </>
                 )}
                 <button 
                     onClick={(e) => {

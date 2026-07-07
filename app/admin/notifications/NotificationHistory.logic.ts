@@ -14,9 +14,11 @@ export interface NotificationItem {
     isRead: boolean;
     createdAt: string;
     employeeId?: string;
+    acknowledgedAt?: string;
+    acknowledgedNote?: string;
 }
 
-export type FilterStatus = 'all' | 'pending' | 'completed';
+export type FilterStatus = 'all' | 'pending' | 'completed' | 'acknowledged';
 
 // 🔧 CONFIGURATION
 const PAGE_SIZE = 15;
@@ -63,6 +65,8 @@ export const useNotificationHistory = () => {
                 query = query.eq('isRead', false);
             } else if (filterStatus === 'completed') {
                 query = query.eq('isRead', true);
+            } else if (filterStatus === 'acknowledged') {
+                query = query.not('acknowledgedAt', 'is', null);
             }
 
             const { data, count, error } = await query;
@@ -95,6 +99,24 @@ export const useNotificationHistory = () => {
             setNotifications(prev =>
                 prev.map(n => (n.id === id ? { ...n, isRead: !currentStatus } : n))
             );
+        }
+    };
+
+    const handleAck = async (id: string, note: string) => {
+        try {
+            const res = await fetch('/api/ktv/interaction', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notificationId: id, note }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setNotifications(prev =>
+                    prev.map(n => (n.id === id ? { ...n, acknowledgedAt: new Date().toISOString(), acknowledgedNote: note || 'Đã xác nhận', isRead: true } : n))
+                );
+            }
+        } catch (error) {
+            console.error('Ack error:', error);
         }
     };
 
@@ -151,6 +173,7 @@ export const useNotificationHistory = () => {
         // Handlers
         fetchNotifications,
         handleMarkDone,
+        handleAck,
         handleFilterChange,
         handleRedirectToDispatch,
     };

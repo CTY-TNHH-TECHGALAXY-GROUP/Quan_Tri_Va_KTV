@@ -553,19 +553,21 @@ const KTVAttendancePage = () => {
                                                 }
                                             }
 
-                                            const isFixedShift = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '');
-                                            if (isFixedShift) {
-                                                setCheckoutIsEarlyStore(isEarly);
-                                                openForm('OVERTIME_PROMPT');
-                                            } else {
-                                                openForm('CHECK_OUT', isEarly);
-                                            }
+                                            openForm('CHECK_OUT', isEarly);
                                         }}
                                         disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
                                         className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                                     >
                                         <LogOut size={22} /> Ngân Hà Xin Cảm ơn
                                     </button>
+                                    {['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
+                                        <button
+                                            onClick={() => openForm('OVERTIME')}
+                                            className="w-full mt-3 py-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2"
+                                        >
+                                            <Clock size={22} /> Đăng ký làm thêm giờ
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </>
@@ -612,32 +614,9 @@ const KTVAttendancePage = () => {
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
                                 {formType === 'CHECK_IN' ? 'Ngân Hà Xin Chào' :
-                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME_PROMPT' || formType === 'OVERTIME') ? 'Ngân Hà Xin Cảm ơn' :
+                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? 'Ngân Hà Xin Cảm ơn' :
                                  'Điểm danh bổ sung'}
                             </h3>
-
-                            {formType === 'OVERTIME_PROMPT' && (
-                                <div className="space-y-4">
-                                    <p className="text-center font-medium text-gray-700">Bạn có muốn đăng ký làm thêm giờ không?</p>
-                                    <div className="flex flex-col gap-3">
-                                        <button 
-                                            onClick={() => openForm('OVERTIME')}
-                                            className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-colors shadow-md"
-                                        >
-                                            Có, tôi muốn làm thêm
-                                        </button>
-                                        <button 
-                                            onClick={() => openForm('CHECK_OUT', checkoutIsEarlyStore)}
-                                            className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors"
-                                        >
-                                            Không, tan ca bình thường
-                                        </button>
-                                    </div>
-                                    <div className="flex justify-center pt-2">
-                                        <button onClick={() => setIsFormOpen(false)} className="text-sm text-gray-500 underline hover:text-gray-700">Đóng</button>
-                                    </div>
-                                </div>
-                            )}
 
                             {formType === 'OVERTIME' && (
                                 <div className="space-y-4">

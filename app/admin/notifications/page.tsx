@@ -23,6 +23,7 @@ const FILTER_TABS: { id: FilterStatus; label: string }[] = [
     { id: 'all', label: t.filterAll },
     { id: 'pending', label: t.filterPending },
     { id: 'completed', label: t.filterCompleted },
+    { id: 'acknowledged', label: 'Đã xác nhận' },
 ];
 
 export default function NotificationHistoryPage() {
@@ -41,6 +42,7 @@ export default function NotificationHistoryPage() {
         setPage,
         fetchNotifications,
         handleMarkDone,
+        handleAck,
         handleFilterChange,
         handleRedirectToDispatch,
     } = useNotificationHistory();
@@ -167,6 +169,7 @@ export default function NotificationHistoryPage() {
                                         key={notif.id}
                                         notif={notif}
                                         onToggleDone={() => handleMarkDone(notif.id, notif.isRead)}
+                                        onAck={(note) => handleAck(notif.id, note)}
                                         onRedirect={handleRedirectToDispatch}
                                     />
                                 ))
@@ -184,13 +187,16 @@ export default function NotificationHistoryPage() {
 const NotificationRow = ({
     notif,
     onToggleDone,
+    onAck,
     onRedirect
 }: {
     notif: NotificationItem,
     onToggleDone: () => void,
+    onAck: (note: string) => void,
     onRedirect: () => void
 }) => {
     const isCritical = notif.type === 'EMERGENCY' || notif.type === 'COMPLAINT';
+    const isInteraction = notif.type === 'WATER' || notif.type === 'SUPPORT' || notif.type === 'BUY_MORE' || notif.type === 'EMERGENCY' || notif.type === 'EARLY_EXIT';
 
     return (
         <motion.div
@@ -222,14 +228,41 @@ const NotificationRow = ({
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                         {parseDbDate(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
+                    {notif.acknowledgedAt ? (
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest bg-emerald-100 text-emerald-600 flex items-center gap-1">
+                            <Check size={12} strokeWidth={3} /> Đã xác nhận
+                        </span>
+                    ) : (
+                        isInteraction && !notif.isRead && (
+                            <span className="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest bg-amber-100 text-amber-600 flex items-center gap-1">
+                                <Clock size={12} strokeWidth={3} /> Chờ xử lý
+                            </span>
+                        )
+                    )}
                 </div>
                 <h4 className={`text-base font-bold text-gray-900 tracking-tight ${notif.isRead ? 'line-through decoration-gray-400' : ''}`}>
                     {notif.message}
                 </h4>
+                {notif.acknowledgedAt && notif.acknowledgedNote && (
+                    <p className="text-sm font-medium text-emerald-600 mt-1">
+                        Ghi chú: {notif.acknowledgedNote}
+                    </p>
+                )}
             </div>
 
             {/* Actions */}
             <div className="flex items-center gap-2">
+                {isInteraction && !notif.acknowledgedAt && (
+                    <button
+                        onClick={() => {
+                            const note = window.prompt('Nhập ghi chú xác nhận:', 'Đã xác nhận');
+                            if (note !== null) onAck(note);
+                        }}
+                        className="px-4 py-2 bg-emerald-50 text-emerald-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-emerald-100 transition-colors"
+                    >
+                        Xác nhận
+                    </button>
+                )}
                 <button
                     onClick={onRedirect}
                     className="p-3 bg-white border border-gray-100 rounded-2xl text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100 transition-all active:scale-95 group"
