@@ -58,6 +58,10 @@ const SOUND_MAP: Record<string, string> = {
     'WALLET': '/sounds/reception-notification.wav',
     'KTV_REVIEW': '/sounds/reception-notification.wav',
     'REQUEST_CONFIRMED': '/sounds/ktv-nhan-thuong.wav',
+    'CUSTOMER_WATER': '/sounds/reception-notification.wav',
+    'CUSTOMER_SUPPORT': '/sounds/reception-notification.wav',
+    'CUSTOMER_EMERGENCY': '/sounds/quay-bao-khan-cap.wav',
+    'CUSTOMER_CHECKOUT': '/sounds/reception-notification.wav',
     'default': '/sounds/reception-notification.wav'
 };
 
@@ -735,14 +739,19 @@ const Toast = ({
     const [ackNote, setAckNote] = React.useState('');
     const [hasAcked, setHasAcked] = React.useState(!!notification.acknowledgedAt);
 
-    const type = notification.type?.toUpperCase();
-    const isInteraction = type === 'WATER' || type === 'SUPPORT' || type === 'BUY_MORE' || type === 'EMERGENCY' || type === 'EARLY_EXIT';
-    const isCritical = type === 'EMERGENCY' || type === 'SOS' || type === 'COMPLAINT' || type === 'SUDDEN_OFF';
-    const isEarlyExit = type === 'EARLY_EXIT';
-    const isWater = type === 'WATER';
-    const isBuyMore = type === 'BUY_MORE' || type === 'ADD_SERVICE' || type === 'NORMAL';
-    const isReward = type === 'REWARD';
-    const isNewOrder = type === 'NEW_ORDER';
+    const type = notification.type?.toUpperCase() || '';
+    const isCustomer = type.startsWith('CUSTOMER_') || (notification as any).source === 'CUSTOMER';
+    const normalizedType = type.replace('CUSTOMER_', '');
+
+    const isInteraction = normalizedType === 'WATER' || normalizedType === 'SUPPORT' || normalizedType === 'BUY_MORE' || normalizedType === 'EMERGENCY' || normalizedType === 'EARLY_EXIT' || normalizedType === 'CHECKOUT';
+    const isCritical = normalizedType === 'EMERGENCY' || type === 'SOS' || type === 'COMPLAINT' || type === 'SUDDEN_OFF';
+    const isEarlyExit = normalizedType === 'EARLY_EXIT';
+    const isWater = normalizedType === 'WATER';
+    const isSupport = normalizedType === 'SUPPORT';
+    const isCheckout = normalizedType === 'CHECKOUT';
+    const isBuyMore = normalizedType === 'BUY_MORE' || type === 'ADD_SERVICE' || type === 'NORMAL';
+    const isReward = normalizedType === 'REWARD';
+    const isNewOrder = normalizedType === 'NEW_ORDER';
     const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE' || type === 'ATTENDANCE_REQUEST' || type === 'ATTENDANCE_RESPONSE';
     const isLeaveReq = type === 'LEAVE_REQUEST';
     const isShiftChange = type === 'SHIFT_CHANGE';
@@ -795,7 +804,17 @@ const Toast = ({
         bgColor = notification.isRead ? 'bg-sky-100/40' : 'bg-sky-50';
         borderColor = 'border-sky-200';
         icon = <Info className="text-sky-600" size={20} />;
-        title = '💧 Khách gọi nước';
+        title = '💧 Gọi nước';
+    } else if (isSupport) {
+        bgColor = notification.isRead ? 'bg-blue-100/40' : 'bg-blue-50';
+        borderColor = 'border-blue-200';
+        icon = <Info className="text-blue-600" size={20} />;
+        title = '🛎️ Cần hỗ trợ';
+    } else if (isCheckout) {
+        bgColor = notification.isRead ? 'bg-green-100/40' : 'bg-green-50';
+        borderColor = 'border-green-200';
+        icon = <CheckCircle className="text-green-600" size={20} />;
+        title = '💳 Thanh toán';
     } else if (isBuyMore) {
         bgColor = notification.isRead ? 'bg-violet-100/40' : 'bg-violet-50';
         borderColor = 'border-violet-200';
@@ -855,8 +874,13 @@ const Toast = ({
                 onClick={onRedirect}
             >
                 <div className="flex items-center gap-2 mb-1">
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${isCritical ? 'text-rose-100' : 'text-slate-500'}`}>
-                        {title}
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${isCritical ? 'text-rose-100' : 'text-slate-500'} flex items-center gap-1.5`}>
+                        {isCustomer && (
+                            <span className="bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full text-[8px] whitespace-nowrap">
+                                👤 KHÁCH
+                            </span>
+                        )}
+                        <span className="truncate">{title}</span>
                     </p>
                     {notification.isRead && (
                         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${isCritical ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>

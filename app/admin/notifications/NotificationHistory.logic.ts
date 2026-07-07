@@ -16,9 +16,11 @@ export interface NotificationItem {
     employeeId?: string;
     acknowledgedAt?: string;
     acknowledgedNote?: string;
+    source?: string;
 }
 
 export type FilterStatus = 'all' | 'pending' | 'completed' | 'acknowledged';
+export type SourceFilter = 'all' | 'KTV' | 'CUSTOMER';
 
 // 🔧 CONFIGURATION
 const PAGE_SIZE = 15;
@@ -33,6 +35,7 @@ export const useNotificationHistory = () => {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+    const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDate, setSelectedDate] = useState<string | null>(
         new Date().toISOString().split('T')[0]
@@ -69,6 +72,13 @@ export const useNotificationHistory = () => {
                 query = query.not('acknowledgedAt', 'is', null);
             }
 
+            // Filter by source
+            if (sourceFilter === 'KTV') {
+                query = query.or('source.neq.CUSTOMER,source.is.null');
+            } else if (sourceFilter === 'CUSTOMER') {
+                query = query.eq('source', 'CUSTOMER');
+            }
+
             const { data, count, error } = await query;
 
             if (error) {
@@ -82,7 +92,7 @@ export const useNotificationHistory = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [filterStatus, selectedDate, page]);
+    }, [filterStatus, sourceFilter, selectedDate, page]);
 
     useEffect(() => {
         fetchNotifications();
@@ -154,6 +164,7 @@ export const useNotificationHistory = () => {
         notifications,
         isLoading,
         filterStatus,
+        sourceFilter,
         searchTerm,
         selectedDate,
         page,
@@ -169,6 +180,7 @@ export const useNotificationHistory = () => {
         setSearchTerm,
         setSelectedDate,
         setPage,
+        setSourceFilter,
 
         // Handlers
         fetchNotifications,

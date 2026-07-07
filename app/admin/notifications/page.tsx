@@ -15,7 +15,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useNotificationHistory, NotificationItem, FilterStatus } from './NotificationHistory.logic';
+import { useNotificationHistory, NotificationItem, FilterStatus, SourceFilter } from './NotificationHistory.logic';
 import { t } from './NotificationHistory.i18n';
 
 // 🔧 UI CONFIGURATION
@@ -30,6 +30,7 @@ export default function NotificationHistoryPage() {
     const {
         isLoading,
         filterStatus,
+        sourceFilter,
         searchTerm,
         selectedDate,
         page,
@@ -40,6 +41,7 @@ export default function NotificationHistoryPage() {
         setSearchTerm,
         setSelectedDate,
         setPage,
+        setSourceFilter,
         fetchNotifications,
         handleMarkDone,
         handleAck,
@@ -96,6 +98,25 @@ export default function NotificationHistoryPage() {
                                         className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
                                             filterStatus === tab.id
                                                 ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-gray-400 hover:text-gray-600'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                                {[
+                                    { id: 'all', label: 'Tất cả nguồn' },
+                                    { id: 'CUSTOMER', label: '👤 Khách' },
+                                    { id: 'KTV', label: 'KTV / Hệ thống' },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setSourceFilter(tab.id as SourceFilter)}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                            sourceFilter === tab.id
+                                                ? 'bg-white text-purple-600 shadow-sm'
                                                 : 'text-gray-400 hover:text-gray-600'
                                         }`}
                                     >
@@ -195,8 +216,9 @@ const NotificationRow = ({
     onAck: (note: string) => void,
     onRedirect: () => void
 }) => {
-    const isCritical = notif.type === 'EMERGENCY' || notif.type === 'COMPLAINT';
-    const isInteraction = notif.type === 'WATER' || notif.type === 'SUPPORT' || notif.type === 'BUY_MORE' || notif.type === 'EMERGENCY' || notif.type === 'EARLY_EXIT';
+    const isCritical = notif.type === 'EMERGENCY' || notif.type === 'COMPLAINT' || notif.type === 'CUSTOMER_EMERGENCY';
+    const isInteraction = notif.type === 'WATER' || notif.type === 'SUPPORT' || notif.type === 'BUY_MORE' || notif.type === 'EMERGENCY' || notif.type === 'EARLY_EXIT' || notif.type.startsWith('CUSTOMER_');
+    const isCustomer = notif.source === 'CUSTOMER' || notif.type.startsWith('CUSTOMER_');
 
     return (
         <motion.div
@@ -219,7 +241,12 @@ const NotificationRow = ({
 
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
+                <div className="flex items-center gap-3 mb-1 flex-wrap">
+                    {isCustomer && (
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest bg-purple-100 text-purple-600 flex items-center gap-1">
+                            👤 Khách
+                        </span>
+                    )}
                     <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest ${
                         isCritical ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'
                     }`}>
