@@ -66,6 +66,7 @@ export const useKTVAttendance = () => {
     const [shiftFetchError, setShiftFetchError] = useState(false);
     const [shiftRetryCount, setShiftRetryCount] = useState(0);
     const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
+    const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -78,9 +79,10 @@ export const useKTVAttendance = () => {
 
         const fetchStatus = async () => {
             try {
-                const [res, resSettings] = await Promise.all([
+                const [res, resSettings, resConfig] = await Promise.all([
                     fetch(`/api/ktv/attendance/status?employeeId=${user.id}`),
-                    fetch('/api/ktv/settings')
+                    fetch('/api/ktv/settings'),
+                    fetch('/api/system/config'),
                 ]);
                 
                 if (resSettings.ok) {
@@ -95,6 +97,14 @@ export const useKTVAttendance = () => {
                         if (settingsData.data?.min_photo_brightness !== undefined) {
                             setMinPhotoBrightness(Number(settingsData.data.min_photo_brightness));
                         }
+                    }
+                }
+
+                if (resConfig.ok) {
+                    const configData = await resConfig.json();
+                    if (configData.success) {
+                        const raw = configData.data?.show_overtime_on_dashboard;
+                        setShowOvertimeFeature(raw === true || raw === 'true');
                     }
                 }
 
@@ -404,6 +414,7 @@ export const useKTVAttendance = () => {
         isOffToday,
         allowEarlyCheckout,
         minPhotoBrightness,
+        showOvertimeFeature,
         user
     };
 };

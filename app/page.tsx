@@ -180,6 +180,7 @@ const DailyStaffOverview = () => {
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [shifts, setShifts] = useState<ShiftItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showOvertime, setShowOvertime] = useState(false);
   const [expandedShifts, setExpandedShifts] = useState<string[]>(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST']);
 
   // Get today in VN timezone
@@ -201,18 +202,24 @@ const DailyStaffOverview = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [leaveRes, shiftRes] = await Promise.all([
+        const [leaveRes, shiftRes, configRes] = await Promise.all([
           fetch(`/api/ktv/leave?from=${selectedDate}&to=${selectedDate}`),
           fetch(`/api/ktv/shift?all=true&date=${selectedDate}`),
+          fetch('/api/system/config'),
         ]);
         const leaveJson = await leaveRes.json();
         const shiftJson = await shiftRes.json();
+        const configJson = await configRes.json();
 
         if (leaveJson.success) {
           setLeaves((leaveJson.data || []).filter((l: LeaveItem) => l.status !== 'REJECTED'));
         }
         if (shiftJson.success) {
           setShifts(shiftJson.data || []);
+        }
+        if (configJson.success) {
+          const raw = configJson.data?.show_overtime_on_dashboard;
+          setShowOvertime(raw === true || raw === 'true');
         }
       } catch (err) {
         console.error('Failed to fetch daily overview:', err);
@@ -408,7 +415,7 @@ const DailyStaffOverview = () => {
                             <p className={`text-sm font-bold ${display.color}`}>
                               {staff.employeeId}
                             </p>
-                            {staff.estimatedEndTime && (
+                            {showOvertime && staff.estimatedEndTime && (
                               <p className={`text-[9px] font-bold leading-tight mt-0.5 ${
                                 shiftKey === 'FREE' ? 'text-teal-500' : 'text-purple-500'
                               }`}>

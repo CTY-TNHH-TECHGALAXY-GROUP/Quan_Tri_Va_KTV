@@ -32,6 +32,7 @@ const KTVAttendancePage = () => {
         isOffToday,
         allowEarlyCheckout,
         minPhotoBrightness,
+        showOvertimeFeature,
         user,
     } = useKTVAttendance();
 
@@ -509,7 +510,7 @@ const KTVAttendancePage = () => {
                                                 {t.shiftStart(format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy'))}
                                             </p>
                                         )}
-                                        {currentRecord?.estimatedEndTime && (
+                                        {currentRecord?.estimatedEndTime && (activeShiftType === 'FREE' || showOvertimeFeature) && (
                                             <p className="text-[13px] font-bold text-teal-600 mt-1.5">
                                                 Giờ về dự kiến: {currentRecord.estimatedEndTime} {activeShiftType !== 'FREE' ? '(Làm thêm)' : ''}
                                             </p>
@@ -560,7 +561,7 @@ const KTVAttendancePage = () => {
                                     >
                                         <LogOut size={22} /> Ngân Hà Xin Cảm ơn
                                     </button>
-                                    {['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
+                                    {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
                                         <button
                                             onClick={() => openForm('OVERTIME')}
                                             className="w-full mt-3 py-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2"

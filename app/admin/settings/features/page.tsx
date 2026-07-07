@@ -1,9 +1,67 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useStaffFeatures, FEATURE_FLAG_DEFS } from './Features.logic';
-import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff, Info } from 'lucide-react';
+import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff, Info, Settings2 } from 'lucide-react';
+
+// 🔧 SYSTEM-WIDE FEATURE TOGGLES
+const SYSTEM_TOGGLES = [
+    {
+        key: 'show_overtime_on_dashboard',
+        label: '⏰ Hiển thị tăng ca trên Dashboard',
+        description: 'Hiển thị thời gian tăng ca của KTV trên bảng nhân sự Dashboard vận hành',
+    },
+] as const;
+
+const useSystemToggles = () => {
+    const [values, setValues] = useState<Record<string, boolean>>({});
+    const [loading, setLoading] = useState(true);
+    const [updating, setUpdating] = useState<string | null>(null);
+
+    const fetchConfigs = useCallback(async () => {
+        try {
+            setLoading(true);
+            const res = await fetch('/api/admin/settings/system');
+            const json = await res.json();
+            const data = json.data || {};
+            const parsed: Record<string, boolean> = {};
+            for (const toggle of SYSTEM_TOGGLES) {
+                const raw = data[toggle.key];
+                parsed[toggle.key] = raw === true || raw === 'true';
+            }
+            setValues(parsed);
+        } catch (err) {
+            console.error('Failed to fetch system toggles:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
+
+    const toggle = useCallback(async (key: string, newValue: boolean) => {
+        setUpdating(key);
+        setValues(prev => ({ ...prev, [key]: newValue }));
+        try {
+            const res = await fetch('/api/admin/settings/system', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [key]: newValue }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                setValues(prev => ({ ...prev, [key]: !newValue }));
+            }
+        } catch {
+            setValues(prev => ({ ...prev, [key]: !newValue }));
+        } finally {
+            setUpdating(null);
+        }
+    }, []);
+
+    return { values, loading, updating, toggle };
+};
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = '200ms';
@@ -60,6 +118,9 @@ const FeatureFlagsPage = () => {
                     Làm mới
                 </button>
             </div>
+
+            {/* ═══ SYSTEM-WIDE TOGGLES ═══ */}
+            <SystemToggleSection />
 
             {/* Global Config Info */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -203,6 +264,59 @@ const FeatureFlagsPage = () => {
             </div>
         </div>
         </AppLayout>
+    );
+};
+
+// ═══ System Toggle Section Component ═══
+const SystemToggleSection = () => {
+    const { values, loading, updating, toggle } = useSystemToggles();
+
+    if (loading) {
+        return (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-gradient-to-br from-gray-50 to-slate-50 border border-gray-200 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+                <Settings2 size={16} className="text-gray-600" />
+                <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Tính năng hệ thống</h2>
+            </div>
+            {SYSTEM_TOGGLES.map(def => {
+                const isEnabled = values[def.key] === true;
+                const isUpdating = updating === def.key;
+                return (
+                    <div
+                        key={def.key}
+                        className="flex items-center justify-between bg-white rounded-xl border border-gray-100 px-4 py-3"
+                    >
+                        <div>
+                            <p className="text-sm font-semibold text-gray-800">{def.label}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{def.description}</p>
+                        </div>
+                        <button
+                            onClick={() => toggle(def.key, !isEnabled)}
+                            disabled={!!updating}
+                            className="flex items-center gap-1.5 cursor-pointer disabled:cursor-wait"
+                        >
+                            {isUpdating ? (
+                                <Loader2 size={22} className="animate-spin text-gray-400" />
+                            ) : isEnabled ? (
+                                <ToggleRight size={32} className="text-emerald-500" />
+                            ) : (
+                                <ToggleLeft size={32} className="text-gray-300" />
+                            )}
+                            <span className={`text-xs font-bold ${isEnabled ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                {isEnabled ? 'ON' : 'OFF'}
+                            </span>
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
     );
 };
 
