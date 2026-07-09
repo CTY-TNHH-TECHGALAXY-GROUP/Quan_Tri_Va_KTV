@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, Suspense } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -19,7 +19,7 @@ import { useKTVDashboard } from './KTVDashboard.logic';
 import { ROOM_ISSUE_OPTIONS } from './KTVDashboard.logic';
 import { useNotifications } from '@/components/NotificationProvider';
 
-// ðŸ”§ UI CONFIGURATION
+// 🔧 UI CONFIGURATION
 const THEME = {
   primary: 'bg-emerald-600',
   primaryHover: 'hover:bg-emerald-700',
@@ -48,13 +48,13 @@ const DEFAULT_BOOKING_URL = 'https://nganha.vercel.app/';
 // Helper format multi-service names
 const formatMultiServiceNames = (segments: any[]) => {
     if (!segments || segments.length === 0) return '';
-    if (segments.length === 1) return segments[0]?._serviceName || 'Dá»‹ch vá»¥';
+    if (segments.length === 1) return segments[0]?._serviceName || 'Dịch vụ';
     
     const groups = new Map<string, Set<string>>();
     
     segments.forEach(seg => {
         const roomName = seg.roomId || '';
-        const serviceName = seg._serviceName || 'Dá»‹ch vá»¥';
+        const serviceName = seg._serviceName || 'Dịch vụ';
         
         if (!groups.has(roomName)) {
             groups.set(roomName, new Set());
@@ -71,7 +71,7 @@ const formatMultiServiceNames = (segments: any[]) => {
     return parts.join(' + ');
 };
 
-// â”€â”€â”€ WebBookingQR Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── WebBookingQR Component ─────────────────────────────────────────────────
 const WebBookingQR = ({ url }: { url: string }) => {
   return (
     <Image
@@ -114,12 +114,12 @@ function KTVDashboardContent() {
     handleEarlyExit
   } = logic;
 
-  // ðŸ“¡ Äá»“ng bá»™ screen cho NotificationProvider Ä‘á»ƒ khÃ³a báº¥m thÃ´ng bÃ¡o khi Ä‘ang dá»n phÃ²ng
+  // 📡 Đồng bộ screen cho NotificationProvider để khóa bấm thông báo khi đang dọn phòng
   React.useEffect(() => {
     setKtvScreen(screen);
   }, [screen, setKtvScreen]);
 
-  // Láº¥y táº¥t cáº£ dá»‹ch vá»¥ mÃ  KTV nÃ y Ä‘Æ°á»£c gÃ¡n (há»— trá»£ multi-item)
+  // Lấy tất cả dịch vụ mà KTV này được gán (hỗ trợ multi-item)
   const assignedItemIds: string[] = booking?.assignedItemIds?.length > 0
     ? booking.assignedItemIds
     : (booking?.assignedItemId ? [booking.assignedItemId] : []);
@@ -132,7 +132,7 @@ function KTVDashboardContent() {
     return (
       <div className={`min-h-[80vh] flex flex-col items-center justify-center ${THEME.bgBase}`}>
         <div className="w-8 h-8 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin"></div>
-        <p className="mt-4 text-emerald-700 font-medium">Äang táº£i dá»¯ liá»‡u ca lÃ m viá»‡c...</p>
+        <p className="mt-4 text-emerald-700 font-medium">Đang tải dữ liệu ca làm việc...</p>
       </div>
     );
   }
@@ -141,7 +141,7 @@ function KTVDashboardContent() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center">
         <ShieldAlert size={48} className="text-red-500 mb-4" />
-        <h2 className="text-xl font-bold text-gray-900">KhÃ´ng cÃ³ quyá»n truy cáº­p</h2>
+        <h2 className="text-xl font-bold text-gray-900">Không có quyền truy cập</h2>
       </div>
     );
   }
@@ -189,7 +189,7 @@ export default function KTVDashboardPage() {
       <Suspense fallback={
         <div className={`min-h-[80vh] flex flex-col items-center justify-center bg-[#FDFBF7]`}>
           <div className="w-8 h-8 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin"></div>
-          <p className="mt-4 text-emerald-700 font-medium">Äang chuáº©n bá»‹ dá»¯ liá»‡u...</p>
+          <p className="mt-4 text-emerald-700 font-medium">Đang chuẩn bị dữ liệu...</p>
         </div>
       }>
         <KTVDashboardContent />
@@ -198,7 +198,7 @@ export default function KTVDashboardPage() {
   );
 }
 
-// â”€â”€â”€ WORKING TIMELINE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── WORKING TIMELINE ────────────────────────────────────────────────────────
 
 function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean }) {
   if (!segments || segments.length === 0) return null;
@@ -213,11 +213,11 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
     }];
   }
 
-  // Helper Ä‘á»ƒ tÃ­nh giá» tá»‹nh tiáº¿n
+  // Helper để tính giờ tịnh tiến
   const getShiftedTime = (offsetMins: number) => {
     if (!actualStartTime) return null;
     let tStart = actualStartTime;
-    // Xá»­ lÃ½ chuá»—i HH:mm hoáº·c HH:mm:ss
+    // Xử lý chuỗi HH:mm hoặc HH:mm:ss
     if (typeof tStart === 'string' && /^\d{1,2}:\d{2}/.test(tStart)) {
         const [h, m] = tStart.split(':').map(Number);
         const d = new Date();
@@ -238,8 +238,8 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
   return (
     <div className="space-y-3">
       <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 flex justify-between">
-        <span>Lá»™ trÃ¬nh thá»±c hiá»‡n</span>
-        {activeIndex !== undefined && <span className="text-emerald-600">Cháº·ng {activeIndex + 1}</span>}
+        <span>Lộ trình thực hiện</span>
+        {activeIndex !== undefined && <span className="text-emerald-600">Chặng {activeIndex + 1}</span>}
       </h3>
       <div className="space-y-2">
         {displaySegments.map((seg, idx) => {
@@ -270,11 +270,11 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
               </div>
               <div className="flex-1">
                 <p className={`text-xs font-black ${isActive ? 'text-emerald-900' : 'text-slate-800'}`}>
-                  PhÃ²ng {seg.roomId}
-                  {isActive && <span className="ml-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md animate-pulse">ÄANG LÃ€M</span>}
+                  Phòng {seg.roomId}
+                  {isActive && <span className="ml-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md animate-pulse">ĐANG LÀM</span>}
                 </p>
                 <p className={`text-[10px] font-bold uppercase tracking-tighter ${isActive ? 'text-emerald-600/70' : 'text-slate-400'}`}>
-                  GiÆ°á»ng {seg.bedId?.split('-').pop()} â€¢ {seg.duration} phÃºt {shouldMerge && '(Gá»™p)'}
+                  Giường {seg.bedId?.split('-').pop()} • {seg.duration} phút {shouldMerge && '(Gộp)'}
                 </p>
               </div>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors ${
@@ -317,7 +317,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
       .catch(() => { /* use fallback */ });
   }, []);
 
-  // Láº¥y táº¥t cáº£ dá»‹ch vá»¥ mÃ  KTV nÃ y Ä‘Æ°á»£c gÃ¡n (há»— trá»£ multi-item)
+  // Lấy tất cả dịch vụ mà KTV này được gán (hỗ trợ multi-item)
   const allItemIds: string[] = booking?.assignedItemIds?.length > 0
     ? booking.assignedItemIds
     : (booking?.assignedItemId ? [booking.assignedItemId] : []);
@@ -326,9 +326,9 @@ function ScreenDashboard({ logic }: { logic: any }) {
     : [booking?.BookingItems?.[0]].filter(Boolean);
   const item = allItems[0] || {};
   
-  // TÃªn táº¥t cáº£ DV
+  // Tên tất cả DV
   const allServiceNames = allItems.map((i: any) => i.service_name).filter(Boolean);
-  // Tá»•ng thá»i gian cÃ¡c segments admin gÃ¡n cho KTV
+  // Tổng thời gian các segments admin gán cho KTV
   const allKtvSegments = allItems.flatMap((i: any) => {
     let segs = [];
     if (typeof i?.segments === 'string') {
@@ -348,10 +348,10 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
   const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length;
   
-  // XÃ¡c Ä‘á»‹nh vá»‹ trÃ­ cháº·ng hiá»‡n táº¡i
+  // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
 
-  // Láº¥y danh sÃ¡ch Ä‘á»“ng Ä‘á»™i cÃ¹ng lÃ m CÃ™NG 1 Dá»ŠCH Vá»¤ (chá»‰ tá»« item Ä‘Æ°á»£c gÃ¡n cho KTV nÃ y)
+  // Lấy danh sách đồng đội cùng làm CÙNG 1 DỊCH VỤ (chỉ từ item được gán cho KTV này)
   const assignedItem = booking?.assignedItemId
     ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
     : null;
@@ -364,7 +364,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
         <div className="hidden lg:flex items-center justify-between">
           <div>
             <h1 className={`text-xl font-bold ${THEME.textBase}`}>
-              Xin chÃ o, <span className="text-emerald-600 ml-1">{logic.ktvId || 'Ká»¹ thuáº­t viÃªn'}</span>
+              Xin chào, <span className="text-emerald-600 ml-1">{logic.ktvId || 'Kỹ thuật viên'}</span>
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -384,7 +384,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                  }`}
                >
                  <div className={`w-2.5 h-2.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
-                 {onCallState.is_on_call ? 'Äang Sáºµn SÃ ng (NgoÃ i giá»)' : 'Báº­t Nháº­n ÄÆ¡n NgoÃ i Giá»'}
+                 {onCallState.is_on_call ? 'Đang Sẵn Sàng (Ngoài giờ)' : 'Bật Nhận Đơn Ngoài Giờ'}
                </button>
              )}
             <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
@@ -405,15 +405,15 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-4">
                 <Target size={24} />
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">XÃ¡c nháº­n sáºµn sÃ ng</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận sẵn sàng</h3>
               <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                Khi cÃ³ khÃ¡ch Ä‘áº·t lá»‹ch, báº¡n cáº§n bao nhiÃªu phÃºt Ä‘á»ƒ di chuyá»ƒn tá»« nhÃ  Ä‘áº¿n Spa?
+                Khi có khách đặt lịch, bạn cần bao nhiêu phút để di chuyển từ nhà đến Spa?
               </p>
 
               <div className="space-y-4">
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
-                    Thá»i gian di chuyá»ƒn (PhÃºt)
+                    Thời gian di chuyển (Phút)
                   </label>
                   <div className="flex items-center gap-3">
                     <button
@@ -439,7 +439,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     onClick={() => setShowOnCallPopup(false)}
                     className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-transform"
                   >
-                    Há»§y
+                    Hủy
                   </button>
                   <button
                     onClick={() => {
@@ -448,7 +448,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     }}
                     className="flex-1 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold active:scale-95 transition-transform shadow-lg shadow-emerald-200"
                   >
-                    Báº­t Nháº­n ÄÆ¡n
+                    Bật Nhận Đơn
                   </button>
                 </div>
               </div>
@@ -464,12 +464,12 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <div>
                 <h3 className="font-bold text-emerald-100 flex items-center gap-2 uppercase tracking-widest text-xs mb-1">
                   <Zap size={16} className="text-amber-300 fill-amber-300" />
-                  VÃ­ Thu Nháº­p KTV
+                  Ví Thu Nhập KTV
                 </h3>
-                <p className="text-xs text-emerald-100/80">Xem sá»‘ dÆ°, lá»‹ch sá»­ giao dá»‹ch vÃ  rÃºt tiá»n</p>
+                <p className="text-xs text-emerald-100/80">Xem số dư, lịch sử giao dịch và rút tiền</p>
               </div>
               <Link href="/ktv/wallet" className="bg-white text-emerald-700 font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-transform shadow-md flex items-center gap-2">
-                Má»Ÿ VÃ­ <ArrowRight size={16} />
+                Mở Ví <ArrowRight size={16} />
               </Link>
             </div>
           )}
@@ -482,8 +482,8 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   <div className={`w-3.5 h-3.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">NgoÃ i giá»</h3>
-                  <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? `Sáºµn sÃ ng (${onCallState.travel_time_mins}p)` : 'Äang táº¯t'}</p>
+                  <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">Ngoài giờ</h3>
+                  <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? `Sẵn sàng (${onCallState.travel_time_mins}p)` : 'Đang tắt'}</p>
                 </div>
               </div>
               <button
@@ -500,7 +500,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     : 'bg-emerald-600 text-white active:scale-95 shadow-md shadow-emerald-600/20'
                 }`}
               >
-                {onCallState.is_on_call ? 'Táº¯t' : 'Báº­t'}
+                {onCallState.is_on_call ? 'Tắt' : 'Bật'}
               </button>
             </div>
           )}
@@ -517,16 +517,16 @@ function ScreenDashboard({ logic }: { logic: any }) {
                <div className="space-y-1 text-center flex flex-col items-center">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
                     <QrCode size={12} className="text-emerald-500" />
-                    QR MENU KHÃCH HÃ€NG
+                    QR MENU KHÁCH HÀNG
                   </p>
-                  <p className="text-[9px] text-slate-300 font-medium">KhÃ¡ch quÃ©t Ä‘á»ƒ xem menu & Ä‘áº·t lá»‹ch</p>
+                  <p className="text-[9px] text-slate-300 font-medium">Khách quét để xem menu & đặt lịch</p>
                   <a
                     href={bookingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:scale-95 rounded-xl text-xs font-black transition-all border border-emerald-100 shadow-sm"
                   >
-                    Má»Ÿ liÃªn káº¿t
+                    Mở liên kết
                     <ArrowRight size={12} />
                   </a>
                </div>
@@ -536,12 +536,12 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <Clock size={20} className="text-emerald-600" />
             </div>
             <h3 className={`text-lg font-bold ${THEME.textBase} mb-2`}>
-              {logic.booking?.nextBookingId ? 'CÃ³ Ä‘Æ¡n hÃ ng chá» xÃ¡c nháº­n' : 'ChÆ°a cÃ³ Ä‘Æ¡n hÃ ng'}
+              {logic.booking?.nextBookingId ? 'Có đơn hàng chờ xác nhận' : 'Chưa có đơn hàng'}
             </h3>
             <p className={`text-sm ${THEME.textMuted}`}>
               {logic.booking?.nextBookingId 
-                ? 'Vui lÃ²ng nháº¥n nÃºt bÃªn dÆ°á»›i Ä‘á»ƒ nháº­n Ä‘Æ¡n vÃ  xem thÃ´ng tin chi tiáº¿t.'
-                : 'Há»‡ thá»‘ng sáº½ thÃ´ng bÃ¡o ngay khi cÃ³ khÃ¡ch hÃ ng Ä‘Æ°á»£c xáº¿p phÃ²ng.'}
+                ? 'Vui lòng nhấn nút bên dưới để nhận đơn và xem thông tin chi tiết.'
+                : 'Hệ thống sẽ thông báo ngay khi có khách hàng được xếp phòng.'}
             </p>
           </div>
 
@@ -557,8 +557,8 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     <BellRing size={20} className="animate-bounce" />
                   </div>
                   <div>
-                    <p className="font-black text-sm uppercase tracking-tight">ÄÆ¡n má»›i Ä‘Ã£ sáºµn sÃ ng!</p>
-                    <p className="text-[11px] font-bold opacity-80">{logic.booking.nextServiceName || 'Dá»‹ch vá»¥'}{logic.booking.nextStartTime ? ` â€¢ ${logic.booking.nextStartTime}` : ''}</p>
+                    <p className="font-black text-sm uppercase tracking-tight">Đơn mới đã sẵn sàng!</p>
+                    <p className="text-[11px] font-bold opacity-80">{logic.booking.nextServiceName || 'Dịch vụ'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}</p>
                   </div>
                 </div>
                 <button
@@ -566,7 +566,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   className="w-full py-4 bg-emerald-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
                   <Play size={14} fill="white" />
-                  Nháº­n ngay Ä‘Æ¡n tiáº¿p theo
+                  Nhận ngay đơn tiếp theo
                 </button>
               </div>
             </motion.div>
@@ -582,12 +582,12 @@ function ScreenDashboard({ logic }: { logic: any }) {
                         {allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phÃºt</span>
+                        <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
                         {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
                         <span className="text-sm font-black text-slate-800">#{booking.billCode}</span>
                       </div>
                       {coWorkers.length > 0 && (
-                        <p className="mt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">CÃ¹ng lÃ m vá»›i {coWorkers.join(', ')}</p>
+                        <p className="mt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {coWorkers.join(', ')}</p>
                       )}
                    </div>
               </div>
@@ -595,15 +595,15 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <div className="flex justify-between items-end mb-6">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">
-                    {ktvSegments.length > 1 ? `Vá»‹ trÃ­ cháº·ng ${activeSegmentIndex + 1}` : 'Vá»‹ trÃ­'}
+                    {ktvSegments.length > 1 ? `Vị trí chặng ${activeSegmentIndex + 1}` : 'Vị trí'}
                   </span>
                   <div className="flex items-center gap-2">
                     <div className="bg-emerald-600 text-white px-4 py-2 rounded-2xl font-black text-lg shadow-lg shadow-emerald-100">
-                      PhÃ²ng {currentSeg?.roomId || booking.assignedRoomId || booking.roomName}
+                      Phòng {currentSeg?.roomId || booking.assignedRoomId || booking.roomName}
                     </div>
                     {(currentSeg?.bedId || booking.assignedBedId || booking.bedId) && (
                       <div className="bg-white border-2 border-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl font-black text-lg">
-                        GiÆ°á»ng {(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()}
+                        Giường {(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()}
                       </div>
                     )}
                   </div>
@@ -612,7 +612,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   onClick={() => setShowProcedure(true)}
                   className="text-emerald-600 text-xs font-bold flex items-center gap-1 underline mb-2"
                 >
-                   <ClipboardList size={14} /> Quy trÃ¬nh
+                   <ClipboardList size={14} /> Quy trình
                 </button>
               </div>
 
@@ -637,13 +637,13 @@ function ScreenDashboard({ logic }: { logic: any }) {
             <div className="flex justify-between items-center mb-3">
               <h3 className={`font-bold ${THEME.textBase} flex items-center gap-2 uppercase text-[11px] tracking-widest`}>
                 <CheckCircle size={18} className={THEME.gold} />
-                Quy trÃ¬nh chuáº©n bá»‹
+                Quy trình chuẩn bị
               </h3>
               <button 
                  onClick={checkAllChecklist}
                  className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg active:scale-95 transition-all uppercase tracking-widest border border-emerald-100 shadow-sm"
               >
-                 Chá»n táº¥t cáº£
+                 Chọn tất cả
               </button>
             </div>
 
@@ -660,7 +660,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             className="w-full py-3 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/50 text-rose-600 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-rose-100/50"
           >
             <AlertTriangle size={16} />
-            BÃ¡o sá»± cá»‘ phÃ²ng
+            Báo sự cố phòng
           </button>
 
           <button
@@ -669,7 +669,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             className={`w-full py-4 ${THEME.radius} font-bold text-white transition-all 
               ${isChecklistComplete ? THEME.primary + ' shadow-lg shadow-emerald-200' : 'bg-slate-300'}`}
           >
-            {logic.isLoading ? 'Äang xá»­ lÃ½...' : 'XÃ¡c nháº­n chuáº©n bá»‹ xong'}
+            {logic.isLoading ? 'Đang xử lý...' : 'Xác nhận chuẩn bị xong'}
           </button>
 
           {/* Next Order Notification when prepping current one */}
@@ -684,12 +684,12 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     <BellRing size={20} className="animate-bounce" />
                   </div>
                   <div>
-                    <p className="font-black text-sm uppercase tracking-tight">ÄÆ¡n tiáº¿p theo Ä‘Ã£ cÃ³!</p>
-                    <p className="text-[11px] font-bold opacity-80">{logic.booking.nextServiceName || 'Dá»‹ch vá»¥'}{logic.booking.nextStartTime ? ` â€¢ ${logic.booking.nextStartTime}` : ''}</p>
+                    <p className="font-black text-sm uppercase tracking-tight">Đơn tiếp theo đã có!</p>
+                    <p className="text-[11px] font-bold opacity-80">{logic.booking.nextServiceName || 'Dịch vụ'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}</p>
                   </div>
                 </div>
                 <p className="text-[11px] text-amber-800/80 font-bold leading-relaxed">
-                  Vui lÃ²ng hoÃ n thÃ nh Ä‘Æ¡n hiá»‡n táº¡i Ä‘á»ƒ nháº­n khÃ¡ch tiáº¿p theo. Há»‡ thá»‘ng Ä‘Ã£ giá»¯ suáº¥t cho báº¡n.
+                  Vui lòng hoàn thành đơn hiện tại để nhận khách tiếp theo. Hệ thống đã giữ suất cho bạn.
                 </p>
               </div>
             </motion.div>
@@ -715,7 +715,7 @@ function ScreenTimer({ logic }: { logic: any }) {
     activeSegmentIndex
   } = logic;
 
-  // ðŸ“¸ CAMERA WEBRTC STATE & LOGIC FOR START TIMER
+  // 📸 CAMERA WEBRTC STATE & LOGIC FOR START TIMER
   const MIN_BRIGHTNESS_FALLBACK = 40;
   const [minBrightness, setMinBrightness] = React.useState(MIN_BRIGHTNESS_FALLBACK);
 
@@ -762,7 +762,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               if (!ctx) { reject(new Error('Canvas not supported')); return; }
               ctx.drawImage(img, 0, 0, width, height);
 
-              // ðŸ”† Kiá»ƒm tra Ä‘á»™ sÃ¡ng
+              // 🔆 Kiểm tra độ sáng
               const brightness = getAverageBrightness(canvas);
               if (brightness < minBrightness) {
                   reject(new Error('TOO_DARK'));
@@ -801,7 +801,7 @@ function ScreenTimer({ logic }: { logic: any }) {
           logic.setStartPhotoBase64(compressed);
       } catch (err: any) {
           if (err?.message === 'TOO_DARK') {
-              alert('âš ï¸ áº¢nh quÃ¡ tá»‘i! Vui lÃ²ng chá»¥p láº¡i á»Ÿ nÆ¡i cÃ³ Ä‘á»§ Ã¡nh sÃ¡ng.');
+              alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
           } else {
               const reader = new FileReader();
               reader.onload = (ev) => {
@@ -822,7 +822,7 @@ function ScreenTimer({ logic }: { logic: any }) {
 
   const currentSecs = isPrepping ? prepTimeRemaining : timeRemaining;
   
-  // Láº¥y táº¥t cáº£ DV mÃ  KTV nÃ y Ä‘Æ°á»£c gÃ¡n (há»— trá»£ multi-item)
+  // Lấy tất cả DV mà KTV này được gán (hỗ trợ multi-item)
   const allTimerItemIds: string[] = booking?.assignedItemIds?.length > 0
     ? booking.assignedItemIds
     : (booking?.assignedItemId ? [booking.assignedItemId] : []);
@@ -832,7 +832,7 @@ function ScreenTimer({ logic }: { logic: any }) {
   const item = allTimerItems[0] || {};
   const allTimerServiceNames = allTimerItems.map((i: any) => i.service_name).filter(Boolean);
   
-  // Gá»™p táº¥t cáº£ segments cá»§a KTV nÃ y
+  // Gộp tất cả segments của KTV này
   const ktvSegments = allTimerItems.flatMap((i: any) => {
     let segs = [];
     if (typeof i?.segments === 'string') {
@@ -856,7 +856,7 @@ function ScreenTimer({ logic }: { logic: any }) {
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
   const nextSeg = ktvSegments.length > (activeSegmentIndex + 1) && !shouldMerge ? ktvSegments[activeSegmentIndex + 1] : null;
 
-  // ðŸ•’ CHá»ˆ HIá»‚N THá»Š THá»œI GIAN Cá»¦A CHáº¶NG HIá»†N Táº I (trá»« phi Ä‘Æ°á»£c gá»™p)
+  // 🕒 CHỈ HIỂN THỊ THỜI GIAN CỦA CHẶNG HIỆN TẠI (trừ phi được gộp)
   const displayDuration = shouldMerge ? totalAssignedMins : (currentSeg ? (Number(currentSeg.duration) || 60) : (item.duration || 60));
 
   const parsedSetup = Number(logic.settings?.ktv_setup_duration_minutes);
@@ -866,10 +866,10 @@ function ScreenTimer({ logic }: { logic: any }) {
     ? setupMins * 60 
     : displayDuration * 60;
   
-  // ðŸ”„ Reverse progress: Start full (100) and move to 0 as time runs out
+  // 🔄 Reverse progress: Start full (100) and move to 0 as time runs out
   const progress = totalDuration > 0 ? (currentSecs / totalDuration) * 100 : 0;
 
-  // Xá»­ lÃ½ hiá»ƒn thá»‹ giá» báº¯t Ä‘áº§u / káº¿t thÃºc
+  // Xử lý hiển thị giờ bắt đầu / kết thúc
   const startTimeRaw = currentSeg?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null;
   const getFormattedTime = (dateString: string | null) => {
     if (!dateString) return '--:--';
@@ -909,7 +909,7 @@ function ScreenTimer({ logic }: { logic: any }) {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-slate-800 font-black">
               <span className="text-[10px] text-slate-400 uppercase tracking-widest">
-                {ktvSegments.length > 1 && !shouldMerge ? `Cháº·ng ${activeSegmentIndex + 1}` : 'PhÃ²ng'}
+                {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}` : 'Phòng'}
               </span>
               <span className="text-lg">
                 {currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName}
@@ -919,17 +919,17 @@ function ScreenTimer({ logic }: { logic: any }) {
             <div className="w-px h-3 bg-slate-200" />
             <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs">
               <Clock size={14} />
-              <span>{displayDuration} phÃºt</span>
+              <span>{displayDuration} phút</span>
             </div>
           </div>
-          {/* CoWorkers display in Timer - chá»‰ khi cÃ¹ng 1 dá»‹ch vá»¥ */}
+          {/* CoWorkers display in Timer - chỉ khi cùng 1 dịch vụ */}
           {(() => {
             const timerAssignedItem = booking?.assignedItemId
               ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
               : null;
             const timerCoWorkers = (timerAssignedItem?.technicianCodes || []).filter((code: string) => code !== logic.ktvId);
             return timerCoWorkers.length > 0 ? (
-              <p className="mt-1 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">CÃ¹ng lÃ m vá»›i {timerCoWorkers.join(', ')}</p>
+              <p className="mt-1 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {timerCoWorkers.join(', ')}</p>
             ) : null;
           })()}
         </div>
@@ -942,7 +942,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
                 <RefreshCw size={22} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter">Táº£i láº¡i</span>
+              <span className="text-[10px] font-black uppercase tracking-tighter">Tải lại</span>
             </button>
           )}
           <button 
@@ -952,7 +952,7 @@ function ScreenTimer({ logic }: { logic: any }) {
             <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 shadow-sm">
               <BookOpen size={22} />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-tighter">Quy trÃ¬nh</span>
+            <span className="text-[10px] font-black uppercase tracking-tighter">Quy trình</span>
           </button>
         </div>
       </div>
@@ -980,7 +980,7 @@ function ScreenTimer({ logic }: { logic: any }) {
             <div className={`mt-3 px-4 py-1.5 rounded-full border font-black text-[10px] tracking-widest uppercase flex items-center justify-center gap-1.5
               ${isPaused ? 'bg-amber-50 text-amber-600 border-amber-200' : isPrepping ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
               {isPrepping && !isPaused && <Clock size={12} className="animate-pulse" />}
-              {isPaused ? <><AlertCircle size={12} /> ÄANG Táº M Dá»ªNG</> : isPrepping ? 'THá»œI GIAN CHUáº¨N Bá»Š' : (isTimerRunning ? 'ÄANG THá»°C HIá»†N' : 'Äá»¢I Báº®T Äáº¦U')}
+              {isPaused ? <><AlertCircle size={12} /> ĐANG TẠM DỪNG</> : isPrepping ? 'THỜI GIAN CHUẨN BỊ' : (isTimerRunning ? 'ĐANG THỰC HIỆN' : 'ĐỢI BẮT ĐẦU')}
             </div>
           </div>
         </div>
@@ -1012,15 +1012,15 @@ function ScreenTimer({ logic }: { logic: any }) {
                     <img src={logic.startPhotoBase64} className="w-full h-full object-cover" alt="Selfie preview" />
                   </div>
                   <div>
-                    <p className="text-xs font-black text-slate-800">ÄÃ£ lÆ°u áº£nh chá»¥p!</p>
-                    <p className="text-[10px] text-slate-400 font-bold">Báº¥m Báº¯t Ä‘áº§u Ä‘á»ƒ kÃ­ch hoáº¡t ca</p>
+                    <p className="text-xs font-black text-slate-800">Đã lưu ảnh chụp!</p>
+                    <p className="text-[10px] text-slate-400 font-bold">Bấm Bắt đầu để kích hoạt ca</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => logic.setStartPhotoBase64(null)}
                   className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
                 >
-                  Chá»¥p láº¡i ðŸ”„
+                  Chụp lại 🔄
                 </button>
               </div>
             )}
@@ -1033,17 +1033,17 @@ function ScreenTimer({ logic }: { logic: any }) {
                 className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40"
               >
                 <Play fill="white" size={24} />
-                {logic.isLoading ? 'ÄANG Báº®T Äáº¦U...' : 'Báº®T Äáº¦U PHá»¤C Vá»¤'}
+                {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
               </button>
             ) : (
               <div className="flex gap-3">
                 <label className="flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:active:scale-100">
                   <Camera size={18} />
-                  {logic.canStart ? 'CHá»¤P áº¢NH Äá»‚ Báº®T Äáº¦U' : 'CHÆ¯A Äáº¾N GIá»œ'}
+                  {logic.canStart ? 'CHỤP ẢNH ĐỂ BẮT ĐẦU' : 'CHƯA ĐẾN GIỜ'}
                   <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
                 </label>
                 <label className="flex-[0.8] h-16 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Táº£i áº£nh</span>
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh</span>
                   <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
                 </label>
               </div>
@@ -1056,7 +1056,7 @@ function ScreenTimer({ logic }: { logic: any }) {
                 className="text-center text-rose-600 font-black text-[11px] bg-rose-50 py-2 rounded-xl border border-rose-100 flex items-center justify-center gap-1.5"
               >
                 <Clock size={12} strokeWidth={3} />
-                Báº¡n cÃ³ thá»ƒ báº¯t Ä‘áº§u lÃºc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                Bạn có thể bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
               </motion.p>
             )}
           </div>
@@ -1064,14 +1064,14 @@ function ScreenTimer({ logic }: { logic: any }) {
           <div className="flex flex-col items-center justify-center gap-2">
             <div className="flex items-center justify-center gap-2 py-4 bg-emerald-50 border border-emerald-200 rounded-2xl w-full">
               <Clock size={16} className="text-emerald-600 animate-pulse" />
-              <span className="text-sm font-bold text-emerald-700">Há»‡ thá»‘ng tá»± Ä‘á»™ng hoÃ n táº¥t khi háº¿t giá»</span>
+              <span className="text-sm font-bold text-emerald-700">Hệ thống tự động hoàn tất khi hết giờ</span>
             </div>
             
             {logic.booking?.nextBookingId && (
               <div className="flex items-center justify-center gap-2 py-2 w-full mt-2 bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
                 <BellRing size={14} className="text-amber-600 animate-bounce" />
                 <span className="text-[11px] font-bold text-amber-700">
-                  Tiáº¿p: {logic.booking.nextServiceName || 'ÄÆ¡n má»›i'}{logic.booking.nextStartTime ? ` â€¢ ${logic.booking.nextStartTime}` : ''}
+                  Tiếp: {logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
                 </span>
               </div>
             )}
@@ -1093,25 +1093,25 @@ function ScreenTimer({ logic }: { logic: any }) {
                 <ActionGridButton 
                   onClick={handleEarlyExit} 
                   icon={<LogOut size={20} />} 
-                  label="KHÃCH Vá»€ Sá»šM" 
+                  label="KHÁCH VỀ SỚM" 
                   color="text-rose-600 border-rose-50" 
                 />
                 <ActionGridButton 
                   onClick={() => handleInteraction('WATER')} 
                   icon={<Coffee size={20} />} 
-                  label="Gá»ŒI NÆ¯á»šC" 
+                  label="GỌI NƯỚC" 
                   color="text-amber-600 border-amber-50" 
                 />
                 <ActionGridButton 
                   onClick={() => handleInteraction('BUY_MORE')} 
                   icon={<PlusSquare size={20} />} 
-                  label="MUA THÃŠM DV" 
+                  label="MUA THÊM DV" 
                   color="text-emerald-600 border-emerald-50" 
                 />
                 <ActionGridButton 
                   onClick={() => handleInteraction('SUPPORT')} 
                   icon={<HelpCircle size={20} />} 
-                  label="Há»– TRá»¢" 
+                  label="HỖ TRỢ" 
                   color="text-blue-600 border-blue-50" 
                 />
             </div>
@@ -1121,7 +1121,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-200 active:scale-95 transition-all"
             >
               <ShieldAlert size={18} />
-              BÃO Äá»˜NG KHáº¨N Cáº¤P
+              BÁO ĐỘNG KHẨN CẤP
             </button>
         </motion.div>
       )}
@@ -1164,44 +1164,44 @@ function ScreenReview({ logic }: { logic: any }) {
   const { booking, handleSubmitReview } = logic;
   const [selectedTraits, setSelectedTraits] = useState<string[]>([]);
 
-  // ðŸ”§ UI CONFIGURATION â€” Personality categories matching mockup
+  // 🔧 UI CONFIGURATION — Personality categories matching mockup
   const PERSONALITY_CATEGORIES = [
     {
       id: 'de_xom',
-      label: 'KhÃ¡ch DÃª Xá»“m',
-      subtitle: 'Thiáº¿u tÃ´n trá»ng KTV',
+      label: 'Khách Dê Xồm',
+      subtitle: 'Thiếu tôn trọng KTV',
       icon: <AlertTriangle size={20} />,
       selectedStyle: 'bg-rose-50 border-rose-400 text-rose-700',
       iconBg: 'bg-rose-100 text-rose-600',
     },
     {
       id: 'ky_tinh',
-      label: 'KhÃ¡ch Ká»¹ TÃ­nh + KhÃ³ Chá»‹u',
-      subtitle: 'YÃªu cáº§u sá»± tinh táº¿',
+      label: 'Khách Kỹ Tính + Khó Chịu',
+      subtitle: 'Yêu cầu sự tinh tế',
       icon: <AlertCircle size={20} />,
       selectedStyle: 'bg-emerald-50 border-emerald-400 text-emerald-700',
       iconBg: 'bg-slate-100 text-slate-500',
     },
     {
       id: 'de_thuong',
-      label: 'KhÃ¡ch Dá»… ThÆ°Æ¡ng',
-      subtitle: 'ThÃ¢n thiá»‡n, cá»Ÿi má»Ÿ',
+      label: 'Khách Dễ Thương',
+      subtitle: 'Thân thiện, cởi mở',
       icon: <Heart size={20} />,
       selectedStyle: 'bg-emerald-50 border-emerald-400 text-emerald-700',
       iconBg: 'bg-slate-100 text-slate-500',
     },
     {
       id: 'huong_noi',
-      label: 'KhÃ¡ch HÆ°á»›ng Ná»™i',
-      subtitle: 'ThÃ­ch yÃªn tÄ©nh, Ã­t nÃ³i',
+      label: 'Khách Hướng Nội',
+      subtitle: 'Thích yên tĩnh, ít nói',
       icon: <MicOff size={20} />,
       selectedStyle: 'bg-emerald-50 border-emerald-400 text-emerald-700',
       iconBg: 'bg-slate-100 text-slate-500',
     },
     {
       id: 'huong_ngoai',
-      label: 'KhÃ¡ch HÆ°á»›ng Ngoáº¡i',
-      subtitle: 'ThÃ­ch giao lÆ°u, káº¿t ná»‘i',
+      label: 'Khách Hướng Ngoại',
+      subtitle: 'Thích giao lưu, kết nối',
       icon: <Users size={20} />,
       selectedStyle: 'bg-emerald-50 border-emerald-400 text-emerald-700',
       iconBg: 'bg-slate-100 text-slate-500',
@@ -1221,8 +1221,8 @@ function ScreenReview({ logic }: { logic: any }) {
         <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
           <CheckCircle2 className="text-emerald-500" size={36} />
         </div>
-        <h2 className="text-2xl font-black text-slate-800">Dá»‹ch vá»¥ hoÃ n táº¥t!</h2>
-        <p className="text-sm text-slate-400 font-medium">ÄÃ¡nh giÃ¡ há»“ sÆ¡ khÃ¡ch hÃ ng</p>
+        <h2 className="text-2xl font-black text-slate-800">Dịch vụ hoàn tất!</h2>
+        <p className="text-sm text-slate-400 font-medium">Đánh giá hồ sơ khách hàng</p>
       </div>
 
       {/* Warning Banner */}
@@ -1231,7 +1231,7 @@ function ScreenReview({ logic }: { logic: any }) {
           <AlertTriangle className="text-rose-500" size={16} />
         </div>
         <p className="text-xs font-black text-rose-700 leading-relaxed uppercase tracking-tight">
-          Nháº¯c khÃ¡ch kiá»ƒm tra láº¡i Ä‘iá»‡n thoáº¡i, vÃ­ tiá»n vÃ  ná»¯ trang trÆ°á»›c khi rá»i phÃ²ng
+          Nhắc khách kiểm tra lại điện thoại, ví tiền và nữ trang trước khi rời phòng
         </p>
       </div>
 
@@ -1241,8 +1241,8 @@ function ScreenReview({ logic }: { logic: any }) {
             <BellRing className="text-amber-700 animate-bounce" size={20} />
           </div>
           <div className="flex-1">
-             <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Sáº¯p tá»›i</p>
-             <p className="text-xs font-bold text-amber-800">{logic.booking.nextServiceName || 'ÄÆ¡n má»›i'}{logic.booking.nextStartTime ? <span className="ml-1 text-amber-600">â€¢ {logic.booking.nextStartTime}</span> : ''}</p>
+             <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Sắp tới</p>
+             <p className="text-xs font-bold text-amber-800">{logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? <span className="ml-1 text-amber-600">• {logic.booking.nextStartTime}</span> : ''}</p>
           </div>
         </div>
       )}
@@ -1286,7 +1286,7 @@ function ScreenReview({ logic }: { logic: any }) {
           disabled={logic.isLoading}
           className="w-full py-4 rounded-2xl font-black text-base shadow-lg transition-all active:scale-[0.97] bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50"
         >
-          {logic.isLoading ? 'Äang lÆ°u...' : `LÆ°u há»“ sÆ¡${selectedTraits.length > 0 ? ` (${selectedTraits.length})` : ''}`}
+          {logic.isLoading ? 'Đang lưu...' : `Lưu hồ sơ${selectedTraits.length > 0 ? ` (${selectedTraits.length})` : ''}`}
         </button>
       </div>
     </div>
@@ -1302,8 +1302,8 @@ function ScreenHandover({ logic }: { logic: any }) {
         <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Sparkles className="text-blue-600" size={40} />
         </div>
-        <h2 className="text-2xl font-black text-slate-800">Dá»n dáº¹p phÃ²ng</h2>
-        <p className="text-slate-500 font-medium">HoÃ n táº¥t cÃ¡c bÆ°á»›c vá»‡ sinh Ä‘á»ƒ sáºµn sÃ ng Ä‘Ã³n khÃ¡ch tiáº¿p theo.</p>
+        <h2 className="text-2xl font-black text-slate-800">Dọn dẹp phòng</h2>
+        <p className="text-slate-500 font-medium">Hoàn tất các bước vệ sinh để sẵn sàng đón khách tiếp theo.</p>
       </div>
 
       <div className="space-y-3">
@@ -1312,7 +1312,7 @@ function ScreenHandover({ logic }: { logic: any }) {
               onClick={checkAllHandoverChecklist}
               className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg active:scale-95 transition-all uppercase tracking-widest border border-blue-100 shadow-sm"
            >
-              Chá»n táº¥t cáº£
+              Chọn tất cả
            </button>
         </div>
         {cleanProcedure.map((label: string, idx: number) => (
@@ -1326,7 +1326,7 @@ function ScreenHandover({ logic }: { logic: any }) {
         className="w-full py-3 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/50 text-rose-600 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-rose-100/50"
       >
         <AlertTriangle size={16} />
-        BÃ¡o sá»± cá»‘ phÃ²ng
+        Báo sự cố phòng
       </button>
 
       <button
@@ -1335,7 +1335,7 @@ function ScreenHandover({ logic }: { logic: any }) {
         className={`w-full py-5 rounded-[24px] font-black text-sm uppercase tracking-widest shadow-xl transition-all
         ${isHandoverComplete ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-slate-200 text-slate-400'}`}
       >
-        {logic.isLoading ? 'Äang xá»­ lÃ½...' : 'Xong & Sáºµn sÃ ng Ä‘Ã³n khÃ¡ch'}
+        {logic.isLoading ? 'Đang xử lý...' : 'Xong & Sẵn sàng đón khách'}
       </button>
 
     </div>
@@ -1356,13 +1356,13 @@ function ScreenReward({ logic }: { logic: any }) {
       </motion.div>
 
       <div className="space-y-1.5">
-        <h2 className="text-xl font-black text-slate-800 tracking-tight">ChÃºc má»«ng!</h2>
-        <p className="text-sm text-slate-500 font-bold px-4">Báº¡n vá»«a nháº­n Ä‘Æ°á»£c tiá»n tua phá»¥c vá»¥</p>
+        <h2 className="text-xl font-black text-slate-800 tracking-tight">Chúc mừng!</h2>
+        <p className="text-sm text-slate-500 font-bold px-4">Bạn vừa nhận được tiền tua phục vụ</p>
       </div>
 
       <div className="bg-white border-2 border-amber-100 rounded-[32px] p-6 w-full shadow-lg max-w-[280px]">
-        <span className="text-[9px] font-black text-amber-600 uppercase tracking-[0.2em] block mb-1">Tua báº¡n nháº­n Ä‘Æ°á»£c</span>
-        <div className="text-4xl font-black text-slate-800 tabular-nums">+{commission.toLocaleString('vi-VN')}Ä‘</div>
+        <span className="text-[9px] font-black text-amber-600 uppercase tracking-[0.2em] block mb-1">Tua bạn nhận được</span>
+        <div className="text-4xl font-black text-slate-800 tabular-nums">+{commission.toLocaleString('vi-VN')}đ</div>
       </div>
 
       <button
@@ -1375,10 +1375,10 @@ function ScreenReward({ logic }: { logic: any }) {
         {logic.booking?.nextBookingId ? (
           <>
             <BellRing size={16} className="animate-bounce" />
-            Nháº­n Ä‘Æ¡n tiáº¿p theo
+            Nhận đơn tiếp theo
           </>
         ) : (
-          'Tiáº¿p tá»¥c lÃ m viá»‡c'
+          'Tiếp tục làm việc'
         )}
       </button>
     </div>
@@ -1388,7 +1388,7 @@ function ScreenReward({ logic }: { logic: any }) {
 function CollapsibleRequirements({ booking }: { booking: any }) {
   const [isOpen, setIsOpen] = useState(true);
   
-  // Láº¥y Ä‘Ãºng item Ä‘Æ°á»£c gÃ¡n
+  // Lấy đúng item được gán
   const item = booking?.assignedItemId 
     ? booking.BookingItems?.find((i: any) => i.id === booking.assignedItemId)
     : (booking?.BookingItems?.[0] || {});
@@ -1408,7 +1408,7 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
           currentStr = ''; // Hide raw AI metadata
           break;
         } else if (parsed.type === 'WEB_ADVANCE_BOOKING') {
-          currentStr = 'KhÃ¡ch Ä‘áº·t trÆ°á»›c qua Web/App Ná»™i Bá»™.';
+          currentStr = 'Khách đặt trước qua Web/App Nội Bộ.';
           break;
         } else {
           currentStr = ''; // Hide other raw JSON objects
@@ -1428,7 +1428,7 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
         className="w-full flex items-center justify-between py-4 group"
       >
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-600 transition-colors">
-          YÃªu cáº§u chi tiáº¿t
+          Yêu cầu chi tiết
         </span>
         <div className="text-slate-300">
           {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1444,14 +1444,14 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
             className="overflow-hidden"
           >
             <div className="pb-6 space-y-5">
-              {/* 1. YÃªu cáº§u cá»§a khÃ¡ch */}
+              {/* 1. Yêu cầu của khách */}
               <div className="flex flex-col gap-3">
-                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-1">Tá»« phÃ­a khÃ¡ch hÃ ng</span>
+                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-1">Từ phía khách hàng</span>
                 <div className="flex flex-wrap gap-2">
-                  {/* Giá»›i tÃ­nh KTV: áº©n vÃ¬ KTV khÃ´ng cáº§n xem thÃ´ng tin nÃ y */}
+                  {/* Giới tính KTV: ẩn vì KTV không cần xem thông tin này */}
                   {item.strength && (
                     <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-xl text-[13px] font-black border border-orange-100 flex items-center gap-2">
-                      <Dumbbell size={16} /> Lá»±c: {item.strength}
+                      <Dumbbell size={16} /> Lực: {item.strength}
                     </div>
                   )}
                   {item.focus && (() => {
@@ -1459,13 +1459,13 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
                     const isFull = item.focus === 'full_body' || parts.length >= 8;
                     return (
                       <div className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[13px] font-black border border-emerald-100 flex items-center gap-2">
-                        <Target size={16} /> Táº­p trung: {isFull ? 'ToÃ n thÃ¢n' : item.focus}
+                        <Target size={16} /> Tập trung: {isFull ? 'Toàn thân' : item.focus}
                       </div>
                     );
                   })()}
                   {item.avoid && (
                     <div className="px-4 py-2 bg-rose-50 text-rose-700 rounded-xl text-[13px] font-black border border-rose-100 flex items-center gap-2">
-                      <Ban size={16} /> TrÃ¡nh: {item.avoid}
+                      <Ban size={16} /> Tránh: {item.avoid}
                     </div>
                   )}
                 </div>
@@ -1476,20 +1476,20 @@ function CollapsibleRequirements({ booking }: { booking: any }) {
                 )}
               </div>
 
-              {/* 2. Ghi chÃº cá»§a quáº§y */}
+              {/* 2. Ghi chú của quầy */}
               {displayDispatcherNote && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Ghi chÃº cá»§a quáº§y</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Ghi chú của quầy</span>
                   <div className="bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 font-medium whitespace-pre-wrap border border-slate-100 shadow-sm leading-relaxed break-words overflow-hidden">
                     {displayDispatcherNote}
                   </div>
                 </div>
               )}
 
-              {/* 3. Ghi chÃº cho KTV */}
+              {/* 3. Ghi chú cho KTV */}
               {item.noteForKtv && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest px-1">Ghi chÃº cho ká»¹ thuáº­t viÃªn</span>
+                  <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest px-1">Ghi chú cho kỹ thuật viên</span>
                   <div className="bg-rose-50/50 p-3.5 rounded-2xl text-xs text-rose-700 font-bold border border-rose-100 whitespace-pre-wrap shadow-sm leading-relaxed">
                     {item.noteForKtv}
                   </div>
@@ -1534,7 +1534,7 @@ function ProcedureModal({ isOpen, onClose, procedure, serviceName }: { isOpen: b
           <div className="bg-emerald-600 p-8 text-white flex items-center justify-between">
              <div>
                 <h3 className="text-xl font-black uppercase tracking-tight">{serviceName}</h3>
-                <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest mt-1">Quy trÃ¬nh thá»±c hiá»‡n chuáº©n</p>
+                <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest mt-1">Quy trình thực hiện chuẩn</p>
              </div>
              <button onClick={onClose} className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors">
                 <X size={24} />
@@ -1555,11 +1555,11 @@ function ProcedureModal({ isOpen, onClose, procedure, serviceName }: { isOpen: b
                    )}
                 </div>
              ) : (
-                <p className="italic text-slate-400 text-center py-10">Quy trÃ¬nh Ä‘ang Ä‘Æ°á»£c cáº­p nháº­t...</p>
+                <p className="italic text-slate-400 text-center py-10">Quy trình đang được cập nhật...</p>
              )}
           </div>
           <div className="p-8 border-t border-slate-100">
-             <button onClick={onClose} className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest">ÄÃ£ hiá»ƒu quy trÃ¬nh</button>
+             <button onClick={onClose} className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest">Đã hiểu quy trình</button>
           </div>
        </motion.div>
     </div>
@@ -1578,7 +1578,7 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
 
   const handleSubmit = () => {
     if (selectedIssues.length === 0 && !note.trim()) {
-      alert('Vui lÃ²ng chá»n hoáº·c nháº­p mÃ´ táº£ sá»± cá»‘!');
+      alert('Vui lòng chọn hoặc nhập mô tả sự cố!');
       return;
     }
     onSubmit(selectedIssues, note.trim());
@@ -1598,9 +1598,9 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
           <div>
             <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
               <AlertTriangle size={20} />
-              BÃ¡o Sá»± Cá»‘ PhÃ²ng
+              Báo Sự Cố Phòng
             </h3>
-            {roomId && <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mt-1">PhÃ²ng {roomId}</p>}
+            {roomId && <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mt-1">Phòng {roomId}</p>}
           </div>
           <button onClick={onClose} className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors">
             <X size={20} />
@@ -1609,7 +1609,7 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
 
         {/* Quick Options */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chá»n loáº¡i sá»± cá»‘</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chọn loại sự cố</p>
           <div className="grid grid-cols-2 gap-2">
             {ROOM_ISSUE_OPTIONS.map((issue) => (
               <button
@@ -1627,11 +1627,11 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
           </div>
 
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chÃº thÃªm</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú thêm</p>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="MÃ´ táº£ chi tiáº¿t sá»± cá»‘..."
+              placeholder="Mô tả chi tiết sự cố..."
               className="w-full p-4 rounded-2xl border-2 border-slate-100 focus:border-rose-300 focus:ring-0 outline-none text-sm font-bold text-slate-700 resize-none h-24 placeholder:text-slate-300"
             />
           </div>
@@ -1644,13 +1644,13 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
             className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             <ShieldAlert size={16} />
-            Gá»­i bÃ¡o cÃ¡o vá» Lá»… tÃ¢n
+            Gửi báo cáo về Lễ tân
           </button>
           <button
             onClick={onClose}
             className="w-full py-3 text-slate-400 font-bold text-xs uppercase tracking-widest"
           >
-            Huá»·
+            Huỷ
           </button>
         </div>
       </motion.div>
