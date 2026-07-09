@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
     try {
         const supabase = getSupabaseAdmin();
@@ -10,32 +12,66 @@ export async function GET() {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
 
-        // 1. Fetch all customers
-        const { data: customers, error: cError } = await supabase
-            .from('Customers')
-            .select('*')
-            .order('fullName', { ascending: true });
+        // Helper to bypass 1000 limit
+        async function fetchAll(tableName: string, selectStr: string, buildQuery: (q: any) => any = (q) => q) {
+            let allData: any[] = [];
+            let from = 0;
+            const limit = 1000;
+            
+            while (true) {
+                let query = supabase.from(tableName).select(selectStr).range(from, from + limit - 1);
+                query = buildQuery(query);
+                
+                const { data, error } = await query;
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                
+                allData = allData.concat(data);
+                if (data.length < limit) break;
+                from += limit;
+            }
+            return allData;
+        }
 
-        if (cError) throw cError;
+        // 1. Fetch all customers
+        let customers: any[];
+        try {
+            customers = await fetchAll('Customers', '*', q => q.order('fullName', { ascending: true }));
+        } catch (cError) {
+            console.error('Error fetching customers:', cError);
+            return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 });
+        }
+
         if (!customers || customers.length === 0) {
             return NextResponse.json({ success: true, data: [] });
         }
 
         // 2. Fetch all completed bookings (to calculate stats)
-        // Link via customerId instead of phone
-        const { data: allBookings, error: bError } = await supabase
-            .from('Bookings')
-            .select('id, customerId, customerEmail, status, bookingDate, totalAmount, createdAt, notes')
-            .in('status', ['COMPLETED', 'DONE', 'FEEDBACK']);
-
-        if (bError) {
+        let allBookings: any[];
+        try {
+            allBookings = await fetchAll('Bookings', `
+                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source,
+                BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
+            `, q => q.in('status', ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING']));
+        } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
-            return NextResponse.json({ success: true, data: customers });
+            return NextResponse.json({ success: true, data: customers }); // Return without stats gracefully
         }
+
+        // Fetch Services and Staff for mapping
+        const [{ data: services }, { data: staff }] = await Promise.all([
+            supabase.from('Services').select('id, name, nameVN, duration'),
+            supabase.from('Staff').select('code, name')
+        ]);
+        
+        const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || s.name || 'Unknown']));
+        const serviceDurationMap = new Map((services || []).map(s => [s.id, s.duration || 0]));
+        const staffMap = new Map((staff || []).map(s => [s.code, s.name || 'Unknown']));
 
         // 3. Create Maps for grouping bookings by customerId AND email
         const bookingsByCustomerId = new Map<string, any[]>();
-        const bookingsByEmail = new Map<string, any[]>();
+        // Key = "normalizedName|normalizedEmail" — same person = same name + same email
+        const bookingsByNameEmail = new Map<string, any[]>();
 
         (allBookings || []).forEach(b => {
             if (b.customerId) {
@@ -44,26 +80,47 @@ export async function GET() {
                 }
                 bookingsByCustomerId.get(b.customerId)?.push(b);
             }
-            if (b.customerEmail) {
-                const emailKey = b.customerEmail.toLowerCase().trim();
-                if (!bookingsByEmail.has(emailKey)) {
-                    bookingsByEmail.set(emailKey, []);
+            if (b.customerEmail && b.customerEmail.includes('@') && b.customerName) {
+                const compositeKey = `${(b.customerName || '').toLowerCase().trim()}|${b.customerEmail.toLowerCase().trim()}`;
+                if (!bookingsByNameEmail.has(compositeKey)) {
+                    bookingsByNameEmail.set(compositeKey, []);
                 }
-                bookingsByEmail.get(emailKey)?.push(b);
+                bookingsByNameEmail.get(compositeKey)?.push(b);
             }
         });
 
-        // 4. Aggregate data per customer
+        // 4. Pre-process formats
+        const vnDateFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const vnHourFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Ho_Chi_Minh', hour: 'numeric', hour12: false });
+        
+        const now = new Date();
+        const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+        const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+
+        // 5. Aggregate data per customer
         const enrichedCustomers = customers.map(customer => {
-            // Get bookings by ID or Email
+            // Get bookings by ID or by Name+Email composite key
             const byId = customer.id ? bookingsByCustomerId.get(customer.id) || [] : [];
-            const byEmail = customer.email ? bookingsByEmail.get(customer.email.toLowerCase().trim()) || [] : [];
+            const compositeKey = customer.fullName && customer.email
+                ? `${customer.fullName.toLowerCase().trim()}|${customer.email.toLowerCase().trim()}`
+                : '';
+            const byNameEmail = compositeKey ? bookingsByNameEmail.get(compositeKey) || [] : [];
+            
+            // Filter byId: only keep bookings where customerName matches this customer
+            // Manager often reuses one customer account for many different people
+            const custNameNorm = (customer.fullName || '').toLowerCase().trim();
+            const filteredById = byId.filter(b => {
+                const bName = (b.customerName || '').toLowerCase().trim();
+                // Match if: no name on booking, names are equal, or one contains the other
+                return !bName || !custNameNorm || bName === custNameNorm 
+                    || bName.includes(custNameNorm) || custNameNorm.includes(bName);
+            });
             
             // Combine and deduplicate bookings by ID
-            const combinedBookings = [...byId];
+            const combinedBookings = [...filteredById];
             const existingIds = new Set(combinedBookings.map(b => b.id));
             
-            byEmail.forEach(b => {
+            byNameEmail.forEach(b => {
                 if (!existingIds.has(b.id)) {
                     combinedBookings.push(b);
                 }
@@ -72,9 +129,25 @@ export async function GET() {
             const visitCount = combinedBookings.length;
             const totalSpent = combinedBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
             
-            // Extract KTV reviews
+            // --- BẮT ĐẦU TÍNH TOÁN CÁC CHỈ SỐ V9 ---
+            let vipMenuCount = 0;
+            const usedSources = new Set<string>();
+            const timeFrames: Record<string, number> = {};
+            const serviceCounts: Record<string, number> = {};
+            const ktvCounts: Record<string, number> = {};
+            const strengthCounts: Record<string, number> = {};
+            const langCounts: Record<string, number> = {};
+            const genderReqCounts: Record<string, number> = {};
+            let visitsLast30Days = 0;
+            let visitsLast7Days = 0;
+            
+            const unique7Days = new Set<string>();
+            const unique30Days = new Set<string>();
+
             const ktvReviews: string[] = [];
+
             combinedBookings.forEach(b => {
+                // Đánh giá KTV (từ notes)
                 if (b.notes && b.notes.includes('[Đánh giá KTV:')) {
                     const matches = b.notes.match(/\[Đánh giá KTV: (.*?)\]/g);
                     if (matches) {
@@ -84,23 +157,164 @@ export async function GET() {
                         });
                     }
                 }
+
+                // Nguồn đơn hàng & VIP Menu
+                if (b.source) {
+                    usedSources.add(b.source);
+                    if (b.source.toUpperCase().includes('VIP')) {
+                        vipMenuCount++;
+                    }
+                }
+
+                // Ngôn ngữ khách hàng
+                if (b.customerLang) {
+                    const lang = b.customerLang.toLowerCase().trim();
+                    if (lang) langCounts[lang] = (langCounts[lang] || 0) + 1;
+                }
+
+                // Khung giờ (Múi giờ Việt Nam) — dùng createdAt khi bookingDate không có giờ thực
+                // bookingDate dạng '2026-07-08T00:00:00' (midnight) là đơn walk-in, không có giờ thực
+                const rawDate = b.bookingDate || '';
+                const isMidnight = rawDate.includes('T00:00:00') || rawDate.match(/^\d{4}-\d{2}-\d{2}$/);
+                const timeSource = isMidnight && b.createdAt ? b.createdAt : rawDate;
+                const safeDateStr = timeSource ? (timeSource.endsWith('Z') ? timeSource : timeSource + 'Z') : '';
+                if (safeDateStr) {
+                    const bDate = new Date(safeDateStr);
+                    if (!isNaN(bDate.getTime())) {
+                        const hour = parseInt(vnHourFormatter.format(bDate), 10);
+                        const frame = `${hour}h-${hour + 1}h`;
+                        timeFrames[frame] = (timeFrames[frame] || 0) + 1;
+                        
+                        // Tính số ngày đến gần nhất
+                        const bTime = bDate.getTime();
+                        const dateStr = vnDateFormatter.format(bDate);
+                        if (bTime >= thirtyDaysAgo) unique30Days.add(dateStr);
+                        if (bTime >= sevenDaysAgo) unique7Days.add(dateStr);
+                    }
+                }
+
+                // Dịch vụ và KTV thường làm (từ BookingItems)
+                if (b.BookingItems && Array.isArray(b.BookingItems)) {
+                    b.BookingItems.forEach((item: any) => {
+                        if (item.serviceId) {
+                            serviceCounts[item.serviceId] = (serviceCounts[item.serviceId] || 0) + 1;
+                        }
+                        if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                            item.technicianCodes.forEach((code: string) => {
+                                ktvCounts[code] = (ktvCounts[code] || 0) + 1;
+                            });
+                        }
+                        // Lực massage ưa thích
+                        if (item.options && item.options.strength) {
+                            const str = item.options.strength.trim();
+                            if (str) strengthCounts[str] = (strengthCounts[str] || 0) + 1;
+                        }
+                        // Giới tính KTV yêu cầu (therapist field)
+                        if (item.options && item.options.therapist) {
+                            const g = item.options.therapist.trim();
+                            if (g && g !== 'Ngẫu nhiên') genderReqCounts[g] = (genderReqCounts[g] || 0) + 1;
+                        }
+                    });
+                }
             });
-            // Get unique tags
+
             const uniqueKtvReviews = Array.from(new Set(ktvReviews)).filter(Boolean);
             
+            // Tìm Khung giờ, Dịch vụ, KTV nhiều nhất
+            let mostFrequentTimeFrame = 'N/A';
+            let maxFrame = 0;
+            for (const [frame, count] of Object.entries(timeFrames)) {
+                if (count > maxFrame) { maxFrame = count; mostFrequentTimeFrame = frame; }
+            }
+
+            let topServiceId = null;
+            let maxService = 0;
+            for (const [sId, count] of Object.entries(serviceCounts)) {
+                if (count > maxService) { maxService = count; topServiceId = sId; }
+            }
+            const topService = topServiceId ? serviceMap.get(topServiceId) : 'N/A';
+
+            // Dịch vụ thường dùng (≥2 lần, kèm duration)
+            const frequentServices = Object.entries(serviceCounts)
+                .filter(([, count]) => count >= 2)
+                .sort(([, a], [, b]) => b - a)
+                .map(([sId, count]) => {
+                    const name = serviceMap.get(sId) || sId;
+                    const dur = serviceDurationMap.get(sId);
+                    return `${name}${dur ? ` ${dur}p` : ''} (${count} lần)`;
+                }).join(', ') || 'N/A';
+
+            let topKtvCode = null;
+            let maxKtv = 0;
+            const allKtvs = [];
+            for (const [code, count] of Object.entries(ktvCounts)) {
+                allKtvs.push(staffMap.get(code) || code);
+                if (count > maxKtv) { maxKtv = count; topKtvCode = code; }
+            }
+            const topKtv = topKtvCode ? staffMap.get(topKtvCode) : 'N/A';
+            const allKtvsStr = allKtvs.length > 0 ? allKtvs.join(', ') : 'N/A';
+
+            // KTV thường làm (≥2 lần)
+            const frequentKtvs = Object.entries(ktvCounts)
+                .filter(([, count]) => count >= 2)
+                .sort(([, a], [, b]) => b - a)
+                .map(([code, count]) => `${staffMap.get(code) || code} (${count} lần)`)
+                .join(', ') || 'N/A';
+
+            // Lực massage ưa thích (mode)
+            let preferredStrength = 'N/A';
+            let maxStr = 0;
+            for (const [str, count] of Object.entries(strengthCounts)) {
+                if (count > maxStr) { maxStr = count; preferredStrength = str; }
+            }
+
+            // Ngôn ngữ ưa thích
+            const LANG_MAP: Record<string, string> = { en: '🇬🇧 English', vi: '🇻🇳 Tiếng Việt', jp: '🇯🇵 日本語', cn: '🇨🇳 中文', kr: '🇰🇷 한국어' };
+            let preferredLang = 'N/A';
+            let maxLang = 0;
+            for (const [lang, count] of Object.entries(langCounts)) {
+                if (count > maxLang) { maxLang = count; preferredLang = LANG_MAP[lang] || lang; }
+            }
+            
+            // Giới tính khách hàng: ưu tiên DB > therapist preference > default Nam
+            const GENDER_DISPLAY: Record<string, string> = { 'male': 'Nam', 'female': 'Nữ' };
+            let preferredGender = customer.gender 
+                ? (GENDER_DISPLAY[customer.gender] || customer.gender)
+                : 'Nam'; // Default = Nam, user sẽ chỉnh tay
+
+            visitsLast30Days = unique30Days.size;
+            visitsLast7Days = unique7Days.size;
+            // --- KẾT THÚC TÍNH TOÁN ---
+
             // Find most recent visit
-            const lastBooking = combinedBookings.sort((a, b) => {
-                const dateA = parseDbDate(a.date).getTime();
-                const dateB = parseDbDate(b.date).getTime();
-                return dateB - dateA;
-            })[0];
+            let lastBooking = null;
+            if (combinedBookings.length > 0) {
+                lastBooking = combinedBookings.reduce((latest, current) => {
+                    const latestTime = latest.bookingDate ? new Date(latest.bookingDate.endsWith('Z') ? latest.bookingDate : latest.bookingDate + 'Z').getTime() : 0;
+                    const currentTime = current.bookingDate ? new Date(current.bookingDate.endsWith('Z') ? current.bookingDate : current.bookingDate + 'Z').getTime() : 0;
+                    return currentTime > latestTime ? current : latest;
+                });
+            }
 
             return {
                 ...customer,
                 visitCount,
                 totalSpent,
                 ktvReviews: uniqueKtvReviews,
-                lastVisited: lastBooking ? (lastBooking.bookingDate || lastBooking.createdAt) : customer.lastVisited
+                lastVisited: lastBooking ? (lastBooking.bookingDate || lastBooking.createdAt) : customer.lastVisited,
+                frequentTimeFrame: mostFrequentTimeFrame,
+                usedSources: Array.from(usedSources).join(', ') || 'N/A',
+                vipMenuCount,
+                topService,
+                frequentServices,
+                topKtv,
+                frequentKtvs,
+                allKtvs: allKtvsStr,
+                preferredStrength,
+                preferredLang,
+                preferredGender,
+                visitsLast30Days,
+                visitsLast7Days
             };
         });
 
@@ -119,14 +333,19 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         
-        const { id, notes } = parseResult.data;
+        const { id, notes, gender } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase not initialized');
 
+        // Build update payload — only include fields that are provided
+        const updatePayload: Record<string, any> = { updatedAt: new Date().toISOString() };
+        if (notes !== undefined) updatePayload.notes = notes;
+        if (gender !== undefined) updatePayload.gender = gender;
+
         const { data, error } = await supabase
             .from('Customers')
-            .update({ notes, updatedAt: new Date().toISOString() })
+            .update(updatePayload)
             .eq('id', id)
             .select()
             .single();

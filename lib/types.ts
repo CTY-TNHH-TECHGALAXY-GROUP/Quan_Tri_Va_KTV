@@ -126,6 +126,16 @@ export interface Customer {
   totalSpent?: number;
   visitCount?: number;
   ktvReviews?: string[];
+  // V9 Export Fields
+  frequentTimeFrame?: string;
+  usedSources?: string;
+  usedVipMenu?: boolean;
+  topService?: string;
+  topKtv?: string;
+  allKtvs?: string;
+  visitsLast30Days?: number;
+  visitsLast7Days?: number;
+  avgRating?: string;
 }
 
 export interface Room {

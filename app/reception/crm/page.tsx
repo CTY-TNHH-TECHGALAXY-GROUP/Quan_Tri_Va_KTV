@@ -216,6 +216,35 @@ const CustomerRow = ({ customer, formatVND, onViewDetail }: {
             </div>
           )}
           
+          {/* V9 Quick Stats */}
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
+            {customer.frequentTimeFrame && customer.frequentTimeFrame !== 'N/A' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                ⏰ {customer.frequentTimeFrame}
+              </span>
+            )}
+            {customer.topService && customer.topService !== 'N/A' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100 line-clamp-1 max-w-[120px]" title={customer.topService}>
+                💆‍♀️ {customer.topService}
+              </span>
+            )}
+            {customer.vipMenuCount > 0 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                👑 VIP Menu
+              </span>
+            )}
+            {customer.preferredStrength && customer.preferredStrength !== 'N/A' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-600 border border-green-100">
+                💪 {customer.preferredStrength}
+              </span>
+            )}
+            {customer.preferredLang && customer.preferredLang !== 'N/A' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-50 text-sky-600 border border-sky-100">
+                {customer.preferredLang}
+              </span>
+            )}
+          </div>
+          
           {/* Ghi chú lễ tân */}
           {isEditing ? (
             <div className="flex flex-col gap-1 mt-1">
@@ -297,7 +326,7 @@ const CustomerDetailModal = ({ customer, formatVND, onClose }: {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
         style={{ animation: `fadeInScale ${MODAL_ANIMATION_MS}ms ease-out` }}
       >
         {/* Header */}
@@ -332,6 +361,16 @@ const CustomerDetailModal = ({ customer, formatVND, onClose }: {
                   <Star size={10} />
                   {(customer.visitCount || 0) > 10 ? 'VIP' : 'Member'}
                 </span>
+                {customer.gender && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-600 border border-purple-100">
+                    {customer.gender === 'male' ? '👨 Nam' : customer.gender === 'female' ? '👩 Nữ' : customer.gender}
+                  </span>
+                )}
+                {customer.preferredLang && customer.preferredLang !== 'N/A' && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-600 border border-sky-100">
+                    {customer.preferredLang}
+                  </span>
+                )}
               </div>
               <div className="text-sm text-gray-500 mt-0.5 flex items-center gap-1">
                 <Phone size={12} /> {customer.phone}
@@ -343,7 +382,7 @@ const CustomerDetailModal = ({ customer, formatVND, onClose }: {
           </div>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div className="bg-gray-50 rounded-xl p-3 text-center">
               <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Tổng chi tiêu</div>
               <div className="text-base font-bold text-gray-900 mt-1">{formatVND(customer.totalSpent)}</div>
@@ -358,6 +397,57 @@ const CustomerDetailModal = ({ customer, formatVND, onClose }: {
                 {customer.lastVisited ? new Date(customer.lastVisited).toLocaleDateString('vi-VN') : '---'}
               </div>
             </div>
+            
+            <div className="bg-blue-50/50 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-blue-600 uppercase tracking-wider font-semibold">Trong 30 ngày</div>
+              <div className="text-base font-bold text-blue-900 mt-1">{customer.visitsLast30Days || 0} lần</div>
+            </div>
+            <div className="bg-blue-50/50 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-blue-600 uppercase tracking-wider font-semibold">Khung giờ tới</div>
+              <div className="text-sm font-bold text-blue-900 mt-1">{customer.frequentTimeFrame || 'N/A'}</div>
+            </div>
+            <div className="bg-blue-50/50 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-blue-600 uppercase tracking-wider font-semibold">VIP Menu</div>
+              <div className="text-sm font-bold text-blue-900 mt-1">{customer.vipMenuCount > 0 ? `${customer.vipMenuCount} lần` : 'Chưa'}</div>
+            </div>
+            <div className="bg-green-50/50 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-green-600 uppercase tracking-wider font-semibold">💪 Lực ưa thích</div>
+              <div className="text-sm font-bold text-green-900 mt-1">{customer.preferredStrength || 'N/A'}</div>
+            </div>
+          </div>
+
+          {/* V9 Preferences Row */}
+          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-3">
+             <div className="text-[10px] text-indigo-600 uppercase tracking-wider font-bold mb-1.5 flex items-center gap-1.5">
+               <Star size={12} /> Thói quen & Sở thích (Hệ thống phân tích)
+             </div>
+             
+             <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                <div>
+                  <div className="text-[10px] text-gray-500 font-medium">Dịch vụ thường dùng (≥2 lần)</div>
+                  <div className="text-sm font-semibold text-gray-900 line-clamp-3" title={customer.frequentServices || 'N/A'}>
+                    {customer.frequentServices || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 font-medium">KTV quen (≥2 lần)</div>
+                  <div className="text-sm font-semibold text-gray-900 line-clamp-3" title={customer.frequentKtvs || 'N/A'}>
+                    {customer.frequentKtvs || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 font-medium">Loại đơn sử dụng</div>
+                  <div className="text-xs font-medium text-gray-700 line-clamp-2" title={customer.usedSources || 'N/A'}>
+                    {customer.usedSources || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 font-medium">Tất cả KTV đã làm</div>
+                  <div className="text-xs font-medium text-gray-700 line-clamp-2" title={customer.allKtvs || 'N/A'}>
+                    {customer.allKtvs || 'N/A'}
+                  </div>
+                </div>
+             </div>
           </div>
 
           {/* Notes */}
