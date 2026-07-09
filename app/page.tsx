@@ -415,11 +415,15 @@ const DailyStaffOverview = () => {
                             <p className={`text-sm font-bold ${display.color}`}>
                               {staff.employeeId}
                             </p>
-                            {showOvertime && staff.estimatedEndTime && (
-                              <p className={`text-[9px] font-bold leading-tight mt-0.5 ${
-                                shiftKey === 'FREE' ? 'text-teal-500' : 'text-purple-500'
-                              }`}>
-                                →{staff.estimatedEndTime}
+                            {/* FREE shift: always show "Về: HH:MM" | Overtime: gated by toggle */}
+                            {shiftKey === 'FREE' && staff.estimatedEndTime && (
+                              <p className="text-[9px] font-bold leading-tight mt-0.5 text-teal-500">
+                                Về: {staff.estimatedEndTime}
+                              </p>
+                            )}
+                            {shiftKey !== 'FREE' && showOvertime && staff.estimatedEndTime && (
+                              <p className="text-[9px] font-bold leading-tight mt-0.5 text-purple-500">
+                                Tăng ca: {staff.estimatedEndTime}
                               </p>
                             )}
                           </div>
