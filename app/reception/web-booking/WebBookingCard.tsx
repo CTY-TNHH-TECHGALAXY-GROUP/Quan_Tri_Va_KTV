@@ -137,7 +137,14 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
             {booking.customerName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <p className="font-black text-sm text-gray-900 truncate">{booking.customerName}</p>
+            <p className="font-black text-sm text-gray-900 truncate flex items-center gap-1.5">
+              <span>{booking.customerName}</span>
+              {booking.isReturningCustomer && (
+                <span className="inline-flex items-center rounded bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                  Khách cũ
+                </span>
+              )}
+            </p>
             {booking.customerPhone && (
               <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
                 <Phone size={9} /> {booking.customerPhone}

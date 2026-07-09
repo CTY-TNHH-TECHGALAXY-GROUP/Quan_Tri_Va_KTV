@@ -131,7 +131,29 @@ export default function WebBookingPage() {
           if (newBooking?.status === 'NEW' && targetSources.includes(newBooking?.source)) {
             console.log('📩 [WebBooking] New booking received:', newBooking.billCode);
             playSound?.('new_booking');
-            showToast(`📩 Đơn mới: ${newBooking.billCode} — ${newBooking.customerName}!`, 'success');
+            
+            // Check if old customer
+            let orStrings = [];
+            if (newBooking.customerPhone) orStrings.push(`customerPhone.eq.${newBooking.customerPhone}`);
+            if (newBooking.customerEmail) orStrings.push(`customerEmail.eq.${newBooking.customerEmail}`);
+            if (newBooking.customerName) orStrings.push(`customerName.eq.${newBooking.customerName}`);
+
+            if (orStrings.length > 0) {
+              supabase
+                .from('Bookings')
+                .select('id')
+                .in('status', ['COMPLETED', 'DONE', 'FEEDBACK'])
+                .neq('id', newBooking.id)
+                .or(orStrings.join(','))
+                .limit(1)
+                .then(({ data }) => {
+                  const isOld = data && data.length > 0;
+                  showToast(`📩 Đơn mới${isOld ? ' [Khách cũ]' : ''}: ${newBooking.billCode} — ${newBooking.customerName}!`, 'success');
+                });
+            } else {
+              showToast(`📩 Đơn mới: ${newBooking.billCode} — ${newBooking.customerName}!`, 'success');
+            }
+            
             fetchBookings(); // Re-fetch to get full data with BookingItems
           }
         }

@@ -43,6 +43,7 @@ export interface WebBooking {
   accessToken: string | null;
   source: string;
   items: WebBookingItem[];
+  isReturningCustomer?: boolean;
 }
 
 // ─── SERVER ACTIONS ───────────────────────────────────────────────────────────
@@ -120,6 +121,29 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .select('*')
       .in('bookingId', bookingIds);
 
+    // Identify returning customers by checking Phone, Email, or Name for each booking
+    const returningChecks = bookings.map(async (b: any) => {
+        let orStrings = [];
+        if (b.customerPhone) orStrings.push(`customerPhone.eq.${b.customerPhone}`);
+        if (b.customerEmail) orStrings.push(`customerEmail.eq.${b.customerEmail}`);
+        if (b.customerName) orStrings.push(`customerName.eq.${b.customerName}`);
+        
+        if (orStrings.length > 0) {
+            const { data } = await supabase
+                .from('Bookings')
+                .select('id')
+                .in('status', ['COMPLETED', 'DONE', 'FEEDBACK'])
+                .neq('id', b.id)
+                .or(orStrings.join(','))
+                .limit(1);
+            return { id: b.id, isReturning: data && data.length > 0 };
+        }
+        return { id: b.id, isReturning: false };
+    });
+    
+    const returningResults = await Promise.all(returningChecks);
+    const returningMap = new Map(returningResults.map(r => [r.id, r.isReturning]));
+
     // Map to WebBooking type
     const result: WebBooking[] = bookings.map((b: any) => {
       let requestedKtvCodes: string[] = [];
@@ -183,6 +207,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
         accessToken: b.accessToken || null,
         source: b.source || 'WEB_BOOKING',
         items: bookingItems,
+        isReturningCustomer: returningMap.get(b.id) || false,
       };
     });
 
