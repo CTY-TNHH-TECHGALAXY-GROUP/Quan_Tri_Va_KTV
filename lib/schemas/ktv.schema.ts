@@ -12,7 +12,8 @@ export const AttendanceSchema = z.object({
   reason: z.string().optional().nullable(),
   selectedShiftType: z.string().optional().nullable(),
   estimatedEndTime: z.string().optional().nullable(),
-  wantsToWithdraw: z.boolean().optional().default(false)
+  wantsToWithdraw: z.boolean().optional().default(false),
+  isLiveCapture: z.boolean().optional().default(false)
 });
 
 // Schema cho API Yêu cầu/Gán ca làm việc (POST /api/ktv/shift)

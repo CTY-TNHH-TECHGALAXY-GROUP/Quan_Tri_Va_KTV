@@ -64,6 +64,7 @@ const KTVAttendancePage = () => {
     const [estimatedEndTime, setEstimatedEndTime] = React.useState<string>('');
     const [deviceIP, setDeviceIP] = React.useState<string>('');
     const [wantsToWithdraw, setWantsToWithdraw] = React.useState(false);
+    const [isLiveCaptureMode, setIsLiveCaptureMode] = React.useState(true);
 
     // WebRTC Camera States
     const [useFallbackCamera, setUseFallbackCamera] = React.useState(false);
@@ -237,6 +238,7 @@ const KTVAttendancePage = () => {
         setFormType(type);
         setPhotos([]);
         setReason('');
+        setIsLiveCaptureMode(true);
         
         if (type !== 'OVERTIME') {
             setEstimatedEndTime('');
@@ -327,6 +329,7 @@ const KTVAttendancePage = () => {
     };
 
     const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        setIsLiveCaptureMode(false);
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
 
@@ -383,7 +386,8 @@ const KTVAttendancePage = () => {
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
             (formType === 'CHECK_IN' && selectedShiftType === 'FREE') ? estimatedEndTime : null,
-            wantsToWithdraw
+            wantsToWithdraw,
+            isLiveCaptureMode
         );
     };
 

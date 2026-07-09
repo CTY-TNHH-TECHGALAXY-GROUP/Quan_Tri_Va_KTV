@@ -182,6 +182,7 @@ export async function POST(request: Request) {
                 photoUrl: photoUrl,
                 reason: reason ?? null,
                 estimatedEndTime: estimatedEndTime ?? null,
+                is_live_capture: parseResult.data.isLiveCapture,
                 status: finalStatus,
                 confirmedBy: isAutoApprove ? 'SYSTEM' : null,
                 confirmedAt: isAutoApprove ? nowUtc.toISOString() : null,

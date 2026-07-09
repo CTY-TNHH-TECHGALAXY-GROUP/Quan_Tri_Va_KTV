@@ -8,8 +8,11 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
  * GET /api/ktv/attendance/history
  * Returns today's CONFIRMED + REJECTED attendance records for admin review.
  */
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        const { searchParams } = new URL(request.url);
+        const paramDate = searchParams.get('date');
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
@@ -37,13 +40,20 @@ export async function GET() {
         // Business Day ends 24 hours later (minus 1 ms)
         const endOfBusinessDayUtc = new Date(new Date(`${businessDateStr}T${String(cutoffHours).padStart(2, '0')}:00:00+07:00`).getTime() + 24 * 60 * 60 * 1000 - 1).toISOString();
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('KTVAttendance')
-            .select('id, employeeId, employeeName, checkType, status, checkedAt, confirmedAt, confirmedBy, latitude, longitude, photoUrl')
+            .select('id, employeeId, employeeName, checkType, status, checkedAt, confirmedAt, confirmedBy, latitude, longitude, photoUrl, is_live_capture')
             .in('status', ['CONFIRMED', 'REJECTED'])
-            .gte('checkedAt', startOfBusinessDayUtc)
-            .lte('checkedAt', endOfBusinessDayUtc)
             .order('confirmedAt', { ascending: false });
+
+        if (paramDate) {
+            query = query.eq('date', paramDate);
+        } else {
+            query = query.gte('checkedAt', startOfBusinessDayUtc)
+                         .lte('checkedAt', endOfBusinessDayUtc);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error('❌ [Attendance History] Query error:', error);
