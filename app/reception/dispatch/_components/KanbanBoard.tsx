@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
@@ -770,15 +770,38 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                         </button>
                                                     )}
                                                     
-                                                    {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
-                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1"
-                                                            title="Tạm dừng / Đổi KTV"
-                                                        >
-                                                            <AlertCircle size={12} /> Dừng
-                                                        </button>
-                                                    )}
+                                                    {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
+                                                        const isPaused = services.some((s: any) => s.status === 'PAUSED');
+                                                        if (isPaused) {
+                                                            return (
+                                                                <>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-green-600 bg-green-50 hover:bg-green-100 transition-all border border-green-100 flex items-center gap-1"
+                                                                        title="Tiếp tục"
+                                                                    >
+                                                                        <PlayCircle size={12} /> Tiếp
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
+                                                                        title="Rút/Đổi KTV"
+                                                                    >
+                                                                        <UserMinus size={12} /> Đổi
+                                                                    </button>
+                                                                </>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
+                                                                className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1"
+                                                                title="Tạm dừng / Đổi KTV"
+                                                            >
+                                                                <AlertCircle size={12} /> Dừng
+                                                            </button>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </motion.div>

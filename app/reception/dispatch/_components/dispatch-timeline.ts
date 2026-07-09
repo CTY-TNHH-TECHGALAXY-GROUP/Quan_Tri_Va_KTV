@@ -195,7 +195,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     });
                     
                     let derivedStatus = svc.status || 'NEW';
-                    if (derivedStatus !== 'CANCELLED' && derivedStatus !== 'DONE') {
+                    if (derivedStatus !== 'CANCELLED' && derivedStatus !== 'DONE' && derivedStatus !== 'PAUSED') {
                         if (isAllFeedback && isAllCompleted) derivedStatus = 'FEEDBACK';
                         else if (isAllCompleted) derivedStatus = 'CLEANING';
                         else if (isAnyStarted) derivedStatus = 'IN_PROGRESS';
@@ -224,7 +224,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         ktvGroups.forEach((services, ktvSignature) => {
             const statuses = services.map(s => s.status || 'NEW');
             let dispatchStatus = 'PREPARING';
-            if (statuses.includes('IN_PROGRESS')) dispatchStatus = 'IN_PROGRESS';
+            if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dispatchStatus = 'IN_PROGRESS';
             else if (statuses.includes('PREPARING') || statuses.includes('NEW') || statuses.includes('WAITING')) dispatchStatus = 'PREPARING';
             else if (statuses.includes('CLEANING')) dispatchStatus = 'CLEANING';
             else if (statuses.includes('FEEDBACK')) dispatchStatus = 'FEEDBACK';
@@ -298,7 +298,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // Trường hợp hiếm: Đơn hàng chỉ có Phòng Riêng
                 const statuses = utilityServices.map(s => s.status || 'NEW');
                 let dStatus = 'PREPARING';
-                if (statuses.includes('IN_PROGRESS')) dStatus = 'IN_PROGRESS';
+                if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dStatus = 'IN_PROGRESS';
                 else if (statuses.includes('CLEANING')) dStatus = 'CLEANING';
                 else if (statuses.includes('FEEDBACK')) dStatus = 'FEEDBACK';
                 else if (statuses.includes('DONE') || statuses.includes('CANCELLED')) dStatus = 'DONE';
