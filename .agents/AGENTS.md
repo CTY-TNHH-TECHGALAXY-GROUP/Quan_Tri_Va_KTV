@@ -18,6 +18,7 @@
 - **Plan First & Wait**: You MUST output an implementation plan in **Vietnamese** and wait for the user's explicit approval BEFORE editing files.
 - **No Global Search**: Do not automatically search (grep) the entire codebase.
 - **Git Safety**: Remind the user to commit changes when a task is completed. Do not automatically push.
+- **Git Commit Scope (CRITICAL)**: Khi commit, KHÔNG ĐƯỢC dùng `git add .`. Phải `git add` **CHỈ các file liên quan trực tiếp** đến task đang làm. Các file không liên quan (CSV, script tạm, file từ conversation khác) KHÔNG được gộp chung vào commit.
 
 ## 4. Communication Standard
 - **Language**: Use Vietnamese for all plans, analysis, and conversation with the user. Use English for code, comments, and commits.
@@ -36,3 +37,20 @@
 - **SOLID Principles**: You MUST apply SOLID principles when creating or modifying backend code.
 - **Service Layer Pattern**: API Routes (`route.ts`) must act only as controllers (handling requests/responses). ALL business logic and Supabase queries MUST be extracted into a separate Service class/file (e.g., `featureName.service.ts`).
 - **Single Responsibility**: Do not mix UI logic, routing logic, and database operations in the same file.
+
+
+## 8. Reporting Standard (Quy chuẩn Báo Cáo Tiến Độ)
+Khi User yêu cầu "Cập nhật tiến độ" hoặc "Báo cáo tiến độ", AI BẮT BUỘC phải nhóm các tính năng/công việc đã làm theo form định dạng sau:
+
+🟢 NHÓM [SỐ]: [TÊN NHÓM LOGIC / TÍNH NĂNG]
+Tiến độ: Hoàn thiện [X]%
+
+- **[Tên Tính Năng/Hạng mục 1]:**
+  [Mô tả ngắn gọn, súc tích về cách hệ thống hoạt động hoặc cách AI đã tối ưu hóa, gạch đầu dòng rõ ràng, không viết quá dài].
+- **[Tên Tính Năng/Hạng mục 2]:**
+  [Mô tả tương tự...].
+
+Quy tắc:
+- Không liệt kê lộn xộn, phải phân nhóm rõ ràng (VD: Nhóm Trải nghiệm Lễ Tân, Nhóm KTV, Nhóm Database & API...).
+- Bắt buộc dùng icon 🟢 (hoặc 🟡 nếu đang làm) và thống kê % tiến độ.
+- Văn phong chuyên nghiệp, tập trung vào "Giải pháp kỹ thuật" và "Lợi ích mang lại" để User copy nộp cho Quản lý.
