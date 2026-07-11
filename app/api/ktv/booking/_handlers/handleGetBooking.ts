@@ -30,7 +30,7 @@ import { getBusinessDate, ktvMatchesSeg } from '../_shared/utils';
 
 export async function handleGetBooking(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
-    const technicianCode = searchParams.get('techCode');
+    const technicianCode = searchParams.get('techCode')?.toUpperCase();
     const bookingIdParam = searchParams.get('bookingId');
 
     try {

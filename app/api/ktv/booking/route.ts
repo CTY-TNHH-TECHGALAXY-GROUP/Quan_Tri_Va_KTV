@@ -64,7 +64,7 @@ export async function PATCH(request: Request) {
         const { bookingId, status: rawStatus, action, techCode: techCodeFromBody } = parseResult.data;
         
         let status = rawStatus;
-        const technicianCode = techCodeFromQuery || techCodeFromBody || '';
+        const technicianCode = (techCodeFromQuery || techCodeFromBody || '').toUpperCase();
 
         if (status === 'COMPLETED') status = 'CLEANING';
 
