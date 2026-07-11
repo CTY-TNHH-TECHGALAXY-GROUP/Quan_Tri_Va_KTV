@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
-import { ShieldAlert, Search, Filter, Plus, User, Phone, Calendar, Star, MoreHorizontal, Edit2, Check, X, Tag, Building2, MapPin, Mail, FileText, Receipt } from 'lucide-react';
+import { ShieldAlert, Search, Filter, Plus, User, Phone, Calendar, Star, MoreHorizontal, Edit2, Check, X, Tag, Building2, MapPin, Mail, FileText, Receipt, Download } from 'lucide-react';
 
 import { Customer } from '@/lib/types';
 
@@ -22,6 +22,38 @@ export default function CRMPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // Export state
+  const [showExport, setShowExport] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('format', 'csv');
+      if (exportFrom) params.set('from', exportFrom);
+      if (exportTo) params.set('to', exportTo);
+      const res = await fetch(`/api/customers/export?${params.toString()}`);
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFrom && exportTo ? `CRM_${exportFrom}_to_${exportTo}.csv` : `CRM_full_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setShowExport(false);
+    } catch (err) {
+      alert('Lỗi xuất file: ' + (err as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   React.useEffect(() => {
     setMounted(true);
@@ -69,10 +101,45 @@ export default function CRMPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-sm text-gray-500">Lưu trữ thông tin, lịch sử dịch vụ và phân hạng thành viên.</p>
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
-            <Plus size={16} />
-            Thêm Khách Hàng
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <button 
+                onClick={() => setShowExport(!showExport)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm transition-colors"
+              >
+                <Download size={16} />
+                Xuất Báo Cáo
+              </button>
+              {showExport && (
+                <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl p-4 z-50 w-72 space-y-3">
+                  <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Khoảng thời gian</div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[10px] text-gray-500 font-medium">Từ ngày</label>
+                      <input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 font-medium">Đến ngày</label>
+                      <input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400">Bỏ trống = xuất toàn bộ lịch sử</p>
+                  <button 
+                    onClick={handleExport} 
+                    disabled={isExporting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm transition-colors disabled:opacity-50"
+                  >
+                    <Download size={14} />
+                    {isExporting ? 'Đang xuất...' : 'Tải CSV'}
+                  </button>
+                </div>
+              )}
+            </div>
+            <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
+              <Plus size={16} />
+              Thêm Khách Hàng
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -98,6 +165,8 @@ export default function CRMPage() {
               <thead>
                 <tr>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">Khách Hàng</th>
+                  <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm text-center">Giới Tính</th>
+                  <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm text-center">Ngôn Ngữ</th>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">Đánh Giá & Nhận Diện</th>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">Hạng Thành Viên</th>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm text-right">Tổng Chi Tiêu</th>
@@ -109,7 +178,7 @@ export default function CRMPage() {
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                    <td colSpan={9} className="p-8 text-center text-gray-500">
                       Đang tải danh sách khách hàng...
                     </td>
                   </tr>
@@ -118,7 +187,7 @@ export default function CRMPage() {
                 ))}
                 {!isLoading && filteredCustomers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                    <td colSpan={9} className="p-8 text-center text-gray-500">
                       Không tìm thấy khách hàng nào phù hợp.
                     </td>
                   </tr>
@@ -203,6 +272,22 @@ const CustomerRow = ({ customer, formatVND, onViewDetail }: {
           </div>
         </div>
       </td>
+      <td className="p-4 align-top text-center">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+          customer.preferredGender === 'Nữ' ? 'bg-pink-50 text-pink-600 border border-pink-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+        }`}>
+          {customer.preferredGender === 'Nữ' ? '👩 Nữ' : '👨 Nam'}
+        </span>
+      </td>
+      <td className="p-4 align-top text-center">
+        {customer.preferredLang && customer.preferredLang !== 'N/A' ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-600 border border-sky-100">
+            {customer.preferredLang}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-xs">---</span>
+        )}
+      </td>
       <td className="p-4 align-top w-72">
         <div className="flex flex-col gap-2">
           {/* Tags đánh giá của KTV */}
@@ -228,7 +313,7 @@ const CustomerRow = ({ customer, formatVND, onViewDetail }: {
                 💆‍♀️ {customer.topService}
               </span>
             )}
-            {customer.vipMenuCount > 0 && (
+            {(customer.vipMenuCount || 0) > 0 && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
                 👑 VIP Menu
               </span>
@@ -238,11 +323,7 @@ const CustomerRow = ({ customer, formatVND, onViewDetail }: {
                 💪 {customer.preferredStrength}
               </span>
             )}
-            {customer.preferredLang && customer.preferredLang !== 'N/A' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-50 text-sky-600 border border-sky-100">
-                {customer.preferredLang}
-              </span>
-            )}
+            {/* Moved preferredLang to the new column */}
           </div>
           
           {/* Ghi chú lễ tân */}
@@ -408,7 +489,7 @@ const CustomerDetailModal = ({ customer, formatVND, onClose }: {
             </div>
             <div className="bg-blue-50/50 rounded-xl p-3 text-center">
               <div className="text-[10px] text-blue-600 uppercase tracking-wider font-semibold">VIP Menu</div>
-              <div className="text-sm font-bold text-blue-900 mt-1">{customer.vipMenuCount > 0 ? `${customer.vipMenuCount} lần` : 'Chưa'}</div>
+              <div className="text-sm font-bold text-blue-900 mt-1">{(customer.vipMenuCount || 0) > 0 ? `${customer.vipMenuCount || 0} lần` : 'Chưa'}</div>
             </div>
             <div className="bg-green-50/50 rounded-xl p-3 text-center">
               <div className="text-[10px] text-green-600 uppercase tracking-wider font-semibold">💪 Lực ưa thích</div>

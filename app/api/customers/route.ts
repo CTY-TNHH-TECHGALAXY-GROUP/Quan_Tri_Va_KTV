@@ -19,7 +19,7 @@ export async function GET() {
             const limit = 1000;
             
             while (true) {
-                let query = supabase.from(tableName).select(selectStr).range(from, from + limit - 1);
+                let query = supabase!.from(tableName).select(selectStr).range(from, from + limit - 1);
                 query = buildQuery(query);
                 
                 const { data, error } = await query;
@@ -60,8 +60,8 @@ export async function GET() {
 
         // Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
-            supabase.from('Services').select('id, name, nameVN, duration'),
-            supabase.from('Staff').select('code, name')
+            supabase!.from('Services').select('id, name, nameVN, duration'),
+            supabase!.from('Staff').select('code, name')
         ]);
         
         const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || s.name || 'Unknown']));

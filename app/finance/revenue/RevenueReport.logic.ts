@@ -79,6 +79,8 @@ export interface ServiceBreakdown {
     name: string;
     revenue: number;
     count: number;
+    duration?: number;
+    category?: string;
 }
 
 export interface TopKTV {
@@ -90,6 +92,7 @@ export interface TopKTV {
     totalTip: number;
     avgRating: number;
     ratingCount: number;
+    workingMinutes: number;
 }
 
 export interface PeakHour {
@@ -117,6 +120,47 @@ export interface NewCustomer {
     createdAt: string;
 }
 
+export interface TopCustomer {
+    id: string;
+    name: string;
+    phone: string;
+    email: string;
+    orders: number;
+    revenue: number;
+}
+
+export interface MenuEvaluation {
+    id: string;
+    code: string;
+    name: string;
+    duration: number;
+    category: string;
+    orders: number;
+    revenue: number;
+}
+
+export interface WeekdayStat {
+    day: string;
+    revenue: number;
+    orders: number;
+}
+
+export interface RawDataRow {
+    id: string;
+    lang: string;
+    statusInfo: string;
+    source: string;
+    duration: number;
+    serviceName: string;
+    ktv: string;
+    startTime: string;
+    endTime: string;
+    revenue: number;
+    tip: number;
+    commission: number;
+    statusText: string;
+}
+
 export interface ReportData {
     summary: ReportSummary;
     dailyRevenue: DailyRevenue[];
@@ -130,6 +174,11 @@ export interface ReportData {
     serviceList: string[];
     ktvList: KTVOption[];
     newCustomerList: NewCustomer[];
+    topCustomersData: TopCustomer[];
+    menuEvaluation: MenuEvaluation[];
+    weekdayStats: WeekdayStat[];
+    serviceHourlyTrends: Record<string, number[]>;
+    rawDataSheet: RawDataRow[];
 }
 
 const EMPTY_SUMMARY: ReportSummary = {
@@ -166,6 +215,11 @@ export const useRevenueReport = () => {
         serviceList: [],
         ktvList: [],
         newCustomerList: [],
+        topCustomersData: [],
+        menuEvaluation: [],
+        weekdayStats: [],
+        serviceHourlyTrends: {},
+        rawDataSheet: [],
     });
 
     const fetchReport = useCallback(async (from: string, to: string, gb?: GroupBy, hFrom?: number, hTo?: number, langFilter?: string) => {
@@ -197,6 +251,11 @@ export const useRevenueReport = () => {
                     serviceList: json.serviceList || [],
                     ktvList: json.ktvList || [],
                     newCustomerList: json.newCustomerList || [],
+                    topCustomersData: json.topCustomersData || [],
+                    menuEvaluation: json.menuEvaluation || [],
+                    weekdayStats: json.weekdayStats || [],
+                    serviceHourlyTrends: json.serviceHourlyTrends || {},
+                    rawDataSheet: json.rawDataSheet || [],
                 });
             }
         } catch (err) {

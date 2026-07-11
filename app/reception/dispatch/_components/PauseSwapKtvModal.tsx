@@ -30,7 +30,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   const [actionType, setActionType] = useState<'PAUSE' | 'RESUME' | 'SWAP'>('PAUSE');
   const [loading, setLoading] = useState(false);
 
-  const activeServices = (subOrder?.services || order?.services || []).filter(s => 
+  const activeServices = (subOrder?.services || order?.services || []).filter((s: any) => 
     s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
   );
 
@@ -52,8 +52,8 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   // Auto-select old KTV if there is only 1 working on this service
   React.useEffect(() => {
     if (isOpen && selectedServiceId) {
-      const ktvs = activeServices.find(s => s.id === selectedServiceId)?.staffList.filter(staff => 
-        !staff.segments.some(seg => seg.endTime)
+      const ktvs = activeServices.find((s: any) => s.id === selectedServiceId)?.staffList.filter((staff: any) => 
+        !staff.segments.some((seg: any) => seg.endTime)
       ) || [];
       if (ktvs.length === 1) {
         setSelectedOldKtv(ktvs[0].ktvId);
@@ -61,12 +61,12 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
     }
   }, [isOpen, selectedServiceId, activeServices]);
 
-  const selectedService = activeServices.find(s => s.id === selectedServiceId);
+  const selectedService = activeServices.find((s: any) => s.id === selectedServiceId);
   const isPaused = selectedService?.status === 'PAUSED';
 
   // Find KTVs currently working on the selected service
-  const currentKtvs = selectedService?.staffList.filter(staff => 
-    !staff.segments.some(seg => seg.endTime) // Find active segments without endTime
+  const currentKtvs = selectedService?.staffList.filter((staff: any) => 
+    !staff.segments.some((seg: any) => seg.endTime) // Find active segments without endTime
   ) || [];
 
   const handleConfirm = async () => {
@@ -137,7 +137,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                   disabled={activeServices.length === 1}
                 >
                   <option value="">-- Chọn dịch vụ --</option>
-                  {activeServices.map(svc => (
+                  {activeServices.map((svc: any) => (
                     <option key={svc.id} value={svc.id}>
                       {svc.serviceName} ({svc.status === 'PAUSED' ? 'Đang tạm ngưng' : 'Đang làm'})
                     </option>
@@ -206,7 +206,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                             disabled={currentKtvs.length === 1}
                           >
                             <option value="">-- Chọn --</option>
-                            {currentKtvs.map(staff => (
+                            {currentKtvs.map((staff: any) => (
                               <option key={staff.ktvId} value={staff.ktvId}>{staff.ktvName}</option>
                             ))}
                           </select>

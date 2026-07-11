@@ -132,41 +132,14 @@ export class BookingModificationService {
                     || String(item.name || '').toLowerCase().includes('phòng riêng')
                     || String(item.name || '').toLowerCase().includes('phong rieng');
 
-                let itemStatus = 'WAITING';
+                let itemStatus = 'NEW'; // Mặc định là NEW chờ điều phối
                 let itemTechCodes: string[] = [];
                 let newSegments: any[] = [];
                 
-                if (!isUtility && sourceItem) {
-                    itemTechCodes = Array.isArray(sourceItem.technicianCodes) 
-                        ? sourceItem.technicianCodes 
-                        : (typeof sourceItem.technicianCodes === 'string' ? sourceItem.technicianCodes.split(',').filter(Boolean) : []);
-                        
-                    if (sourceItem.status === 'IN_PROGRESS' || sourceItem.status === 'PREPARING') itemStatus = sourceItem.status;
-                    
-                    try {
-                        const sourceSegs = typeof sourceItem.segments === 'string' ? JSON.parse(sourceItem.segments) : (sourceItem.segments || []);
-                        if (sourceSegs.length > 0) {
-                            newSegments = sourceSegs.map((seg: any) => ({
-                                ...seg,
-                                id: `seg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                                duration: item.duration,
-                                actualStartTime: itemStatus === 'IN_PROGRESS' ? new Date().toISOString() : undefined,
-                                actualEndTime: undefined,
-                                feedbackTime: undefined,
-                                reviewTime: undefined
-                            }));
-                        } else if (itemTechCodes.length > 0) {
-                             newSegments = itemTechCodes.map((ktvId: string) => ({
-                                 id: `seg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                                 ktvId: ktvId,
-                                 roomId: sourceItem.roomName || null,
-                                 bedId: sourceItem.bedId || null,
-                                 startTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-                                 duration: item.duration
-                             }));
-                        }
-                    } catch (e) {}
-                }
+                // 🛑 FIX: KHÔNG tự động gán KTV (technicianCodes) từ dịch vụ cũ sang dịch vụ mới nữa
+                // Lý do: Lễ tân phàn nàn việc thêm dịch vụ bị tự động gán KTV quá nhanh, không kịp đổi người.
+                // Các dịch vụ mới thêm vào (Addon) sẽ hoàn toàn trống KTV và Phòng để lễ tân tự chọn ở màn Điều Phối.
+                // Giữ nguyên newSegments = [] và itemTechCodes = []
 
                 return {
                     id: `${bookingId}-addon-${timestamp}-${index}`,

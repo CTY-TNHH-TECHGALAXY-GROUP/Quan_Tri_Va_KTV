@@ -111,6 +111,9 @@ export interface Customer {
   phone: string;
   email?: string;
   gender?: string;
+  preferredGender?: string;
+  preferredLang?: string;
+  preferredStrength?: string;
   birthday?: string;
   notes?: string;
   lastVisited?: string;
@@ -125,6 +128,7 @@ export interface Customer {
   // Aggregated fields
   totalSpent?: number;
   visitCount?: number;
+  vipMenuCount?: number;
   ktvReviews?: string[];
   // V9 Export Fields
   frequentTimeFrame?: string;
@@ -136,6 +140,7 @@ export interface Customer {
   visitsLast30Days?: number;
   visitsLast7Days?: number;
   avgRating?: string;
+  [key: string]: any;
 }
 
 export interface Room {
