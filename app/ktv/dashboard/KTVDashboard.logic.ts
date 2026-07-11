@@ -52,7 +52,7 @@ export interface DashboardConfig {
 export function useKTVDashboard(config?: DashboardConfig) {
     const { user, hasPermission } = useAuth();
     const { setKtvScreen } = useNotifications();
-    const ktvIdRaw = config?.testTechCode || user?.id;
+    const ktvIdRaw = config?.testTechCode || user?.code || user?.id;
     const ktvId = ktvIdRaw ? ktvIdRaw.toUpperCase() : undefined;
     const canViewWallet = hasPermission('ktv_wallet');
     const [screen, setScreenState] = useState<ScreenState>('DASHBOARD');

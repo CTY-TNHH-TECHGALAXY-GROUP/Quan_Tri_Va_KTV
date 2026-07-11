@@ -71,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser.fullName || dbUser.username)}`;
         const finalUser = {
           id: dbUser.id,
+          code: dbUser.code,
           password: dbUser.password,
           name: dbUser.fullName || dbUser.username,
           roleId: roleId,

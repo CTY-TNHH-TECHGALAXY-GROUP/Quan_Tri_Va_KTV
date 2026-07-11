@@ -103,6 +103,7 @@ export interface User {
   roleId: string;
   avatarUrl?: string;
   password?: string;
+  code?: string;
 }
 
 export interface Customer {
