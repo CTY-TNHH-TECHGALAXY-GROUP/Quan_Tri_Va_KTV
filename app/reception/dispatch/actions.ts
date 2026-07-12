@@ -248,6 +248,32 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
+        // 🔥 NORMALIZE KTV CODES TO UPPERCASE TO PREVENT CASE-SENSITIVITY BUGS
+        if (dispatchData.technicianCode) {
+            dispatchData.technicianCode = dispatchData.technicianCode.toUpperCase();
+        }
+        if (dispatchData.staffAssignments && Array.isArray(dispatchData.staffAssignments)) {
+            dispatchData.staffAssignments.forEach(a => {
+                if (a.ktvId) a.ktvId = String(a.ktvId).toUpperCase();
+            });
+        }
+        if (dispatchData.itemUpdates && Array.isArray(dispatchData.itemUpdates)) {
+            dispatchData.itemUpdates.forEach(u => {
+                if (u.technicianCodes) {
+                    if (Array.isArray(u.technicianCodes)) {
+                        u.technicianCodes = u.technicianCodes.map(c => typeof c === 'string' ? c.toUpperCase() : c);
+                    } else if (typeof u.technicianCodes === 'string') {
+                        u.technicianCodes = u.technicianCodes.toUpperCase();
+                    }
+                }
+                if (u.segments && Array.isArray(u.segments)) {
+                    u.segments.forEach(s => {
+                        if (s.ktvId) s.ktvId = String(s.ktvId).toUpperCase();
+                    });
+                }
+            });
+        }
+
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
             const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes').eq('bookingId', bookingId);
@@ -425,6 +451,27 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // 🔥 NORMALIZE KTV CODES TO UPPERCASE TO PREVENT CASE-SENSITIVITY BUGS
+        if (dispatchData.technicianCode) {
+            dispatchData.technicianCode = dispatchData.technicianCode.toUpperCase();
+        }
+        if (dispatchData.itemUpdates && Array.isArray(dispatchData.itemUpdates)) {
+            dispatchData.itemUpdates.forEach(u => {
+                if (u.technicianCodes) {
+                    if (Array.isArray(u.technicianCodes)) {
+                        u.technicianCodes = u.technicianCodes.map(c => typeof c === 'string' ? c.toUpperCase() : c);
+                    } else if (typeof u.technicianCodes === 'string') {
+                        u.technicianCodes = u.technicianCodes.toUpperCase();
+                    }
+                }
+                if (u.segments && Array.isArray(u.segments)) {
+                    u.segments.forEach(s => {
+                        if (s.ktvId) s.ktvId = String(s.ktvId).toUpperCase();
+                    });
+                }
+            });
+        }
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {

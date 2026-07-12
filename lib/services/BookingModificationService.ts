@@ -45,7 +45,7 @@ export class BookingModificationService {
                     status: 'NEW',
                     customerLang: data.customerLang || 'vi',
                     source: 'STANDARD_WALK_IN',
-                    bookingDate: `${data.bookingDate} ${new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+                    bookingDate: `${data.bookingDate}T${new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh' })}+07:00`,
                     totalAmount: totalAmount,
                     paymentMethod: 'Tiền mặt',
                     createdAt: new Date().toISOString(),
