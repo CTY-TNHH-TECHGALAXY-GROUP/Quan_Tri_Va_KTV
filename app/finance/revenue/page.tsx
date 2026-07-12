@@ -241,6 +241,7 @@ export default function RevenueReportsPage() {
                     revenue: d.revenue,
                     revenueK: Math.round(d.revenue / 1000),
                     orders: d.orders,
+                    rawDate: d.date,
                 }));
         }
     };
@@ -254,6 +255,54 @@ export default function RevenueReportsPage() {
         : null;
 
     const displayedKTV = showAllKTV ? report.data.topKTV : report.data.topKTV.slice(0, KTV_DISPLAY_LIMIT);
+
+    // Helpers cho Dropdown Tháng / Năm
+    const handleMonthSelect = (val: string) => {
+        if (val === 'month') report.setDatePreset('month');
+        else if (val) {
+            const year = new Date().getFullYear();
+            const month = parseInt(val) - 1;
+            const end = new Date(year, month + 1, 0);
+            const fromStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            const toStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+            report.applyCustomDate(fromStr, toStr);
+        }
+    };
+
+    const handleYearSelect = (val: string) => {
+        if (val === 'year') report.setDatePreset('year');
+        else if (val) {
+            const year = parseInt(val);
+            report.applyCustomDate(`${year}-01-01`, `${year}-12-31`);
+        }
+    };
+
+    const getSelectedMonth = () => {
+        if (report.datePreset === 'month') return 'month';
+        if (report.datePreset === 'custom' && report.dateFrom && report.dateTo) {
+            const from = new Date(report.dateFrom);
+            const to = new Date(report.dateTo);
+            const isFullMonth = from.getDate() === 1 && 
+                                to.getDate() === new Date(to.getFullYear(), to.getMonth() + 1, 0).getDate() &&
+                                from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+            if (isFullMonth) return (from.getMonth() + 1).toString();
+        }
+        return '';
+    };
+
+    const getSelectedYear = () => {
+        if (report.datePreset === 'year') return 'year';
+        if (report.datePreset === 'custom' && report.dateFrom && report.dateTo) {
+            if (report.dateFrom.endsWith('-01-01') && report.dateTo.endsWith('-12-31')) {
+                const yearFrom = report.dateFrom.substring(0, 4);
+                if (yearFrom === report.dateTo.substring(0, 4)) return yearFrom;
+            }
+        }
+        return '';
+    };
+
+    const activeMonth = getSelectedMonth();
+    const activeYear = getSelectedYear();
 
     return (
         <AppLayout title="Báo Cáo">
@@ -270,19 +319,58 @@ export default function RevenueReportsPage() {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 space-y-2.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <Calendar size={14} className="text-gray-400 shrink-0" />
-                        {DATE_PRESETS.map(b => (
+                        {[
+                            { key: 'today', label: 'Hôm nay' },
+                            { key: 'yesterday', label: 'Hôm qua' },
+                            { key: 'week', label: 'Tuần này' },
+                            { key: 'custom', label: 'Tùy chọn' },
+                        ].map(b => (
                             <button
                                 key={b.key}
-                                onClick={() => report.setDatePreset(b.key)}
+                                onClick={() => report.setDatePreset(b.key as any)}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                                     report.datePreset === b.key
                                         ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
                                 }`}
                             >
                                 {b.label}
                             </button>
                         ))}
+                        
+                        <select
+                            value={activeMonth}
+                            onChange={(e) => handleMonthSelect(e.target.value)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
+                                activeMonth
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
+                        >
+                            <option value="" disabled hidden>Chọn tháng...</option>
+                            <option value="month">Tháng này</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                <option key={m} value={m}>Tháng {m}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={activeYear}
+                            onChange={(e) => handleYearSelect(e.target.value)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
+                                activeYear
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
+                        >
+                            <option value="" disabled hidden>Chọn năm...</option>
+                            <option value="year">Năm nay</option>
+                            {[2024, 2025, 2026, 2027].map(y => (
+                                <option key={y} value={y}>Năm {y}</option>
+                            ))}
+                        </select>
                         {/* Excel + ? buttons */}
                         {!report.isLoading && report.data.summary.orders > 0 && (
                             <>
@@ -318,7 +406,7 @@ export default function RevenueReportsPage() {
                                 className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
                             />
                             <button
-                                onClick={report.applyCustomDate}
+                                onClick={() => report.applyCustomDate()}
                                 className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
                             >
                                 Xem
@@ -521,7 +609,17 @@ export default function RevenueReportsPage() {
                                                     <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(v) => `${v}K`} />
                                                     <Tooltip content={<ChartTooltip />} />
-                                                    <Bar dataKey="revenueK" name="Doanh thu (K)" radius={[6, 6, 0, 0]}>
+                                                    <Bar 
+                                                        dataKey="revenueK" 
+                                                        name="Doanh thu (K)" 
+                                                        radius={[6, 6, 0, 0]}
+                                                        cursor={report.groupBy === 'day' ? 'pointer' : 'default'}
+                                                        onClick={(data: any) => {
+                                                            if (report.groupBy === 'day' && data?.payload?.rawDate) {
+                                                                report.applyCustomDate(data.payload.rawDate, data.payload.rawDate);
+                                                            }
+                                                        }}
+                                                    >
                                                         {revenueChartData.map((entry, index) => {
                                                             const isPassed = report.revenueThreshold && (entry.revenue || 0) >= report.revenueThreshold;
                                                             return (

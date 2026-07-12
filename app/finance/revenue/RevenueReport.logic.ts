@@ -301,7 +301,16 @@ export const useRevenueReport = () => {
         fetchReport(from, to);
     }, [datePreset, fetchReport]);
 
-    const applyCustomDate = () => fetchReport(dateFrom, dateTo);
+    const applyCustomDate = (from?: string, to?: string) => {
+        const queryFrom = from || dateFrom;
+        const queryTo = to || dateTo;
+        if (from && to) {
+            setDateFrom(from);
+            setDateTo(to);
+            setDatePreset('custom');
+        }
+        fetchReport(queryFrom, queryTo);
+    };
 
     // Re-fetch when groupBy or hour range changes (only if we already have dates)
     const applyGroupBy = (newGroupBy: GroupBy) => {
