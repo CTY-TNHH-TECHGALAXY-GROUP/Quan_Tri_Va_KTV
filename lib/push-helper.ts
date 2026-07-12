@@ -51,7 +51,7 @@ async function getOnShiftEmployeeIds(): Promise<Set<string>> {
     const { data, error } = await supabase
         .from('TurnQueue')
         .select('employee_id')
-        .eq('work_date', today)
+        .eq('date', today)
         .neq('status', 'off');
 
     if (error) {

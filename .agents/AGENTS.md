@@ -54,3 +54,8 @@ Quy tắc:
 - Không liệt kê lộn xộn, phải phân nhóm rõ ràng (VD: Nhóm Trải nghiệm Lễ Tân, Nhóm KTV, Nhóm Database & API...).
 - Bắt buộc dùng icon 🟢 (hoặc 🟡 nếu đang làm) và thống kê % tiến độ.
 - Văn phong chuyên nghiệp, tập trung vào "Giải pháp kỹ thuật" và "Lợi ích mang lại" để User copy nộp cho Quản lý.
+
+## 9. PROACTIVE SCHEMA VERIFICATION & ERROR HANDLING (MỚI BỔ SUNG)
+- **STRICT SCHEMA VERIFICATION**: TRƯỚC KHI viết bất kỳ query SQL hoặc logic backend nào, BẮT BUỘC phải mở và đọc lại `TableInSupabase.md` để xác nhận chính xác TÊN CỘT. Tuyệt đối không tự suy đoán tên cột (VD: không đoán `work_date` nếu schema là `date`).
+- **PROACTIVE ERROR LOGGING**: Khi bắt lỗi (`catch (error)` hoặc `if (error)` trong Supabase), KHÔNG ĐƯỢC return im lặng (swallow errors). Phải có console.error rõ ràng chứa `error.message` và `error.code` để dễ dàng debug nếu xảy ra lỗi.
+- **SKEPTICAL DEBUGGING (Tư duy phản biện)**: Khi User báo lỗi ảo hoặc thật, không chỉ kiểm tra bề mặt UI. Phải dùng script (Node.js) truy vấn trực tiếp vào Database thực tế để kiểm chứng luồng dữ liệu (Data flow) và trạng thái (State) trước khi đưa ra kết luận. Không tin tưởng tuyệt đối vào code mình đã viết trước đó.
