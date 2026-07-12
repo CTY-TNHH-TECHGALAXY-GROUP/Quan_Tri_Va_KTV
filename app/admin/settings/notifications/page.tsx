@@ -103,8 +103,9 @@ const NotificationSettingsPage = () => {
                         style={{ borderRadius: CARD_BORDER_RADIUS }}
                     >
                         {/* Table Header */}
-                        <div className="grid grid-cols-[1fr_60px_60px_60px_50px_50px_50px] gap-0 bg-slate-50 border-b border-slate-200 px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        <div className="grid grid-cols-[1fr_60px_60px_60px_60px_50px_50px_50px] gap-0 bg-slate-50 border-b border-slate-200 px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                             <span>Loại thông báo</span>
+                            <span className="text-center">Dev</span>
                             <span className="text-center">Admin</span>
                             <span className="text-center">Quầy</span>
                             <span className="text-center">KTV</span>
@@ -117,7 +118,7 @@ const NotificationSettingsPage = () => {
                         {ruleEntries.map(([type, rule], idx) => (
                             <div
                                 key={type}
-                                className={`grid grid-cols-[1fr_60px_60px_60px_50px_50px_50px] gap-0 items-center px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${
+                                className={`grid grid-cols-[1fr_60px_60px_60px_60px_50px_50px_50px] gap-0 items-center px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${
                                     !rule.enabled ? 'opacity-40 bg-slate-50' : 'hover:bg-slate-50/50'
                                 }`}
                             >

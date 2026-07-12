@@ -367,7 +367,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
         const roleId = role?.id;
         const isReception = roleId === 'reception' || roleId === 'admin';
-        const isKtv = roleId === 'ktv';
+        const isKtv = roleId === 'ktv' || roleId === 'technician';
 
         console.log(`📡 [NotificationProvider] Listening for ${roleId}...`);
 
@@ -447,7 +447,11 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
             // 🔊 Sound: use rule-configured sound or fallback to SOUND_MAP
             if (isKtv && notifType === 'NEW_ORDER') {
-                addToast({ ...newNotif, type: 'KTV_NEW_ORDER' });
+                addToast({ 
+                    ...newNotif, 
+                    type: 'KTV_NEW_ORDER', // to use the right sound
+                    message: 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.'
+                });
             } else {
                 addToast(newNotif);
             }

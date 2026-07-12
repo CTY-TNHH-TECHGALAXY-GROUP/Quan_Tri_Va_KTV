@@ -96,13 +96,36 @@ export async function POST(request: Request) {
         } else if (rule.allowed_roles && rule.allowed_roles.length > 0) {
             // Push only to allowed roles
             const targetRoles = rule.allowed_roles.map((r: string) => r.toUpperCase());
-            await sendPushNotification({
-                title: '🔔 Thông báo',
-                message: cleanMessage,
-                targetRoles,
-                url: '/',
-                requireOnShift: shouldFilterOnShift,
-            });
+            
+            // 🛡️ TÁCH PUSH ĐỂ ẨN THÔNG TIN NHẠY CẢM VỚI KTV
+            const nonKtvRoles = targetRoles.filter(r => r !== 'KTV');
+            const ktvRoles = targetRoles.filter(r => r === 'KTV');
+
+            if (nonKtvRoles.length > 0) {
+                await sendPushNotification({
+                    title: '🔔 Thông báo',
+                    message: cleanMessage,
+                    targetRoles: nonKtvRoles,
+                    url: '/',
+                    requireOnShift: shouldFilterOnShift,
+                });
+            }
+
+            if (ktvRoles.length > 0) {
+                let ktvMessage = cleanMessage;
+                // KTV không được xem chi tiết giá tiền/sđt của khách khi có đơn mới chung
+                if (record.type === 'NEW_ORDER') {
+                    ktvMessage = 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.';
+                }
+                await sendPushNotification({
+                    title: '🔔 Khách Mới',
+                    message: ktvMessage,
+                    targetRoles: ktvRoles,
+                    url: '/',
+                    requireOnShift: shouldFilterOnShift,
+                });
+            }
+            
             pushSent = true;
         }
 

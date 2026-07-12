@@ -81,7 +81,8 @@ export async function sendPushNotification(payload: PushPayload) {
             const roleMapping: Record<string, string> = {
                 'KTV': 'TECHNICIAN',
                 'RECEPTION': 'RECEPTIONIST',
-                'ADMIN': 'ADMIN'
+                'ADMIN': 'ADMIN',
+                'DEV': 'DEV'
             };
             const mappedRoles = targetRoles.map((r: string) => roleMapping[r.toUpperCase()] || r.toUpperCase());
             

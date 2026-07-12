@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-// 🔧 UI CONFIGURATION
 const ROLE_OPTIONS = [
+    { id: 'dev', label: 'Dev' },
     { id: 'admin', label: 'Admin' },
     { id: 'reception', label: 'Quầy' },
     { id: 'ktv', label: 'KTV' },
