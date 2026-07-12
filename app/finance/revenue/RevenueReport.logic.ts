@@ -201,6 +201,7 @@ export const useRevenueReport = () => {
     const [hourFrom, setHourFrom] = useState<number>(0);
     const [hourTo, setHourTo] = useState<number>(23);
     const [filterLang, setFilterLang] = useState('all');
+    const [revenueThreshold, setRevenueThreshold] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [data, setData] = useState<ReportData>({
         summary: EMPTY_SUMMARY,
@@ -439,6 +440,7 @@ export const useRevenueReport = () => {
         groupBy, applyGroupBy,
         hourFrom, hourTo, applyHourFilter,
         filterLang, applyLangFilter,
+        revenueThreshold, setRevenueThreshold,
         applyCustomDate,
         isLoading,
         data,

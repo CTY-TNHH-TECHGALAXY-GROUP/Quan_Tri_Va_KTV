@@ -7,11 +7,11 @@ import {
     ShieldAlert, TrendingUp, TrendingDown, DollarSign, Users, Calendar,
     Star, Activity, ChevronRight, Loader2, BarChart3, Award, Coins, Globe, X, Phone, Mail,
     Package, Receipt, Calculator, PieChart as PieChartIcon, Clock, Crown, Download, BedDouble, Gauge, HelpCircle,
-    XCircle, Ban, UserCheck, FileSpreadsheet, Check, Table2, DoorOpen
+    XCircle, Ban, UserCheck, FileSpreadsheet, Check, Table2, DoorOpen, Target
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, LineChart, Line, Legend
+    PieChart, Pie, Cell, LineChart, Line, Legend, ReferenceLine
 } from 'recharts';
 import { useRevenueReport, GroupBy } from './RevenueReport.logic';
 import RevenueRawData from './components/RevenueRawData';
@@ -19,6 +19,7 @@ import RevenueServices from './components/RevenueServices';
 import RevenueCustomers from './components/RevenueCustomers';
 import RevenueTimeAnalysis from './components/RevenueTimeAnalysis';
 import RevenueRoomsAnalysis from './components/RevenueRoomsAnalysis';
+import { RevenueKTVRanking } from './components/RevenueKTVRanking';
 
 // 🔧 UI CONFIGURATION
 const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
@@ -39,6 +40,16 @@ const GROUP_BY_OPTIONS: { key: GroupBy; label: string }[] = [
 ];
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i}:00` }));
+
+const THRESHOLDS = [
+    { label: 'Không dùng', value: null },
+    { label: '5 Triệu', value: 5000000 },
+    { label: '10 Triệu', value: 10000000 },
+    { label: '15 Triệu', value: 15000000 },
+    { label: '20 Triệu', value: 20000000 },
+    { label: '30 Triệu', value: 30000000 },
+    { label: '50 Triệu', value: 50000000 },
+];
 
 const KTV_DISPLAY_LIMIT = 3;
 const SERVICE_DISPLAY_LIMIT = 3;
@@ -167,7 +178,7 @@ export default function RevenueReportsPage() {
     const { hasPermission } = useAuth();
     const [mounted, setMounted] = React.useState(false);
     const report = useRevenueReport();
-    const [activeTab, setActiveTab] = React.useState<'overview' | 'services' | 'customers' | 'time' | 'raw_data' | 'rooms'>('overview');
+    const [activeTab, setActiveTab] = React.useState<'overview' | 'services' | 'customers' | 'time' | 'raw_data' | 'rooms' | 'ktv_ranking'>('overview');
     
     const [showNewCustomers, setShowNewCustomers] = React.useState(false);
     const [showAllKTV, setShowAllKTV] = React.useState(false);
@@ -246,7 +257,7 @@ export default function RevenueReportsPage() {
 
     return (
         <AppLayout title="Báo Cáo">
-            <div className="space-y-6 max-w-5xl mx-auto">
+            <div className="space-y-6 max-w-[1600px] mx-auto">
                 {/* ─── Header ─────────────────────────────────────────── */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -325,6 +336,7 @@ export default function RevenueReportsPage() {
                         { id: 'customers', label: 'Khách Hàng', icon: <Users size={16} /> },
                         { id: 'raw_data', label: 'Sổ Giao Dịch', icon: <Table2 size={16} /> },
                         { id: 'rooms', label: 'Phòng', icon: <DoorOpen size={16} /> },
+                        { id: 'ktv_ranking', label: 'Nhân Viên', icon: <Award size={16} /> },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -344,6 +356,15 @@ export default function RevenueReportsPage() {
                 {/* ─── TAB: PHÒNG (HẬU CẦN) ─────────────────────────────────────── */}
                 {activeTab === 'rooms' && (
                     <RevenueRoomsAnalysis 
+                        dateFrom={report.dateFrom} 
+                        dateTo={report.dateTo} 
+                        langFilter={report.filterLang} 
+                    />
+                )}
+
+                {/* ─── TAB: KTV RANKING ─────────────────────────────────────────── */}
+                {activeTab === 'ktv_ranking' && (
+                    <RevenueKTVRanking 
                         dateFrom={report.dateFrom} 
                         dateTo={report.dateTo} 
                         langFilter={report.filterLang} 
@@ -422,22 +443,50 @@ export default function RevenueReportsPage() {
                                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
                                     <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                                         <h3 className="text-base font-bold text-gray-900">{chartTitle}</h3>
-                                        <div className="flex items-center gap-1">
-                                            {GROUP_BY_OPTIONS.map(o => (
-                                                <button
-                                                    key={o.key}
-                                                    onClick={() => report.applyGroupBy(o.key)}
-                                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                                                        report.groupBy === o.key
-                                                            ? 'bg-indigo-600 text-white'
-                                                            : 'bg-gray-100 text-gray-500 active:bg-gray-200'
-                                                    }`}
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 bg-pink-50 border border-pink-100 px-2 py-1 rounded-lg">
+                                                <Target size={14} className="text-pink-500" />
+                                                <select
+                                                    value={report.revenueThreshold || ''}
+                                                    onChange={e => report.setRevenueThreshold(e.target.value ? Number(e.target.value) : null)}
+                                                    className="bg-transparent text-xs font-bold text-pink-700 focus:outline-none cursor-pointer"
                                                 >
-                                                    {o.label}
-                                                </button>
-                                            ))}
+                                                    {THRESHOLDS.map(t => (
+                                                        <option key={t.label} value={t.value || ''}>{t.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                {GROUP_BY_OPTIONS.map(o => (
+                                                    <button
+                                                        key={o.key}
+                                                        onClick={() => report.applyGroupBy(o.key)}
+                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                                            report.groupBy === o.key
+                                                                ? 'bg-indigo-600 text-white'
+                                                                : 'bg-gray-100 text-gray-500 active:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        {o.label}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    {(() => {
+                                        const passedCount = report.revenueThreshold ? revenueChartData.filter(d => (d.revenue || 0) >= report.revenueThreshold!).length : 0;
+                                        if (!report.revenueThreshold) return null;
+                                        const timeUnit = report.groupBy === 'hour' ? 'giờ' : report.groupBy === 'day' ? 'ngày' : report.groupBy === 'week' ? 'tuần' : 'tháng';
+                                        return (
+                                            <div className="mb-4 bg-gradient-to-r from-pink-50 to-orange-50 text-pink-700 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 font-medium border border-pink-100 shadow-sm">
+                                                <Award size={18} className="text-pink-500 flex-shrink-0" />
+                                                <span>
+                                                    Có <b className="text-lg mx-1">{passedCount} {timeUnit}</b> đạt mốc doanh thu trên <b>{report.revenueThreshold / 1000000} Triệu</b> trong chu kỳ này.
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
                                     {/* Hour range picker — only visible when groupBy = 'hour' */}
                                     {report.groupBy === 'hour' && (
                                         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -472,7 +521,25 @@ export default function RevenueReportsPage() {
                                                     <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(v) => `${v}K`} />
                                                     <Tooltip content={<ChartTooltip />} />
-                                                    <Bar dataKey="revenueK" name="Doanh thu (K)" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                                                    <Bar dataKey="revenueK" name="Doanh thu (K)" radius={[6, 6, 0, 0]}>
+                                                        {revenueChartData.map((entry, index) => {
+                                                            const isPassed = report.revenueThreshold && (entry.revenue || 0) >= report.revenueThreshold;
+                                                            return (
+                                                                <Cell 
+                                                                    key={`cell-${index}`} 
+                                                                    fill={report.revenueThreshold ? (isPassed ? '#4f46e5' : '#e5e7eb') : '#4f46e5'} 
+                                                                />
+                                                            );
+                                                        })}
+                                                    </Bar>
+                                                    {report.revenueThreshold && (
+                                                        <ReferenceLine 
+                                                            y={report.revenueThreshold / 1000} 
+                                                            stroke="#f43f5e" 
+                                                            strokeDasharray="3 3" 
+                                                            label={{ position: 'top', value: 'Mục tiêu', fill: '#f43f5e', fontSize: 11, fontWeight: 'bold' }} 
+                                                        />
+                                                    )}
                                                 </BarChart>
                                             </ResponsiveContainer>
                                         </div>

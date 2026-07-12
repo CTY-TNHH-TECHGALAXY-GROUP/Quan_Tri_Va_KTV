@@ -402,15 +402,25 @@ export async function GET(request: Request) {
         // ─── 9. Service Breakdown ────────────────────────────────────────
         const svcBreakdown: Record<string, { name: string; revenue: number; count: number; duration?: number; category?: string }> = {};
         items.forEach(i => {
-            const key = String(i.serviceId || 'unknown');
+            let key = String(i.serviceId || 'unknown');
             const svcInfo = svcMap[key];
-            const name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : key.toUpperCase();
+            let name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : key.toUpperCase();
+            let cat = svcInfo?.category || 'Khác';
+            let dur = svcInfo?.duration || 0;
+
+            // Gom nhóm tất cả dịch vụ VIP (Mới + Cũ) vào 1 dòng để báo cáo gọn gàng
+            if (key === 'NHS0800' || key.startsWith('VIP_') || cat === 'VIP_MENU' || cat === 'PREMIUM') {
+                key = 'VIP_GROUP_SUMMARY';
+                name = 'Tổng Hợp Gói Menu VIP';
+                cat = 'VIP_MENU';
+            }
+
             if (!svcBreakdown[key]) svcBreakdown[key] = { 
                 name, 
                 revenue: 0, 
                 count: 0,
-                duration: svcInfo?.duration || 0,
-                category: svcInfo?.category || 'Khác'
+                duration: dur,
+                category: cat
             };
             svcBreakdown[key].revenue += Number(i.price) || 0;
             svcBreakdown[key].count += 1;
@@ -420,13 +430,22 @@ export async function GET(request: Request) {
         completedBookings.forEach(b => {
             const hasItems = items.some(i => i.bookingId === b.id);
             if (!hasItems && b.totalAmount && Number(b.totalAmount) > 0) {
-                const key = b.source === 'VIP_MENU' ? 'VIP_MENU_FALLBACK' : 
-                            b.source === 'STANDARD_MENU' ? 'STANDARD_MENU_FALLBACK' :
+                if (b.source === 'VIP_MENU' || b.source === 'VIP_WALK_IN' || b.source === 'VIP_BOOKING') {
+                    const finalKey = 'VIP_GROUP_SUMMARY';
+                    if (!svcBreakdown[finalKey]) svcBreakdown[finalKey] = {
+                         name: 'Tổng Hợp Gói Menu VIP',
+                         revenue: 0, count: 0, duration: 0, category: 'VIP_MENU'
+                    };
+                    svcBreakdown[finalKey].revenue += Number(b.totalAmount);
+                    svcBreakdown[finalKey].count += 1;
+                    return;
+                }
+
+                const key = b.source === 'STANDARD_MENU' ? 'STANDARD_MENU_FALLBACK' :
+                            b.source === 'STANDARD_WALK_IN' ? 'STANDARD_WALK_IN_FALLBACK' :
                             (b.source || 'UNKNOWN_SOURCE');
                 
-                let name = b.source === 'VIP_MENU' ? 'Gói Menu VIP' :
-                           b.source === 'STANDARD_MENU' ? 'Gói Menu Thường' :
-                           b.source === 'VIP_WALK_IN' ? 'Gói VIP (Tại quầy)' :
+                let name = b.source === 'STANDARD_MENU' ? 'Gói Menu Thường' :
                            b.source === 'STANDARD_WALK_IN' ? 'Gói Thường (Tại quầy)' :
                            'Dịch vụ Khác';
                            

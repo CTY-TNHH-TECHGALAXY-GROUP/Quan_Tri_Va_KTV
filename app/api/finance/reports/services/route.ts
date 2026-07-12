@@ -25,10 +25,16 @@ export async function GET(request: Request) {
         items.forEach(item => {
             const sid = String(item.serviceId);
             const svcInfo = svcMap[sid];
+            
+            let name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : sid;
+            if (sid === 'NHS0800' || sid.startsWith('VIP_') || (svcInfo && (svcInfo.category === 'VIP_MENU' || svcInfo.category === 'PREMIUM'))) {
+                name = 'Tổng Hợp Gói Menu VIP';
+            }
+
             if (!svcBreakdown[sid]) {
                 svcBreakdown[sid] = {
                     id: sid,
-                    name: svcInfo ? svcInfo.name : sid,
+                    name: name,
                     revenue: 0,
                     count: 0,
                     duration: svcInfo ? svcInfo.duration : 60,
@@ -60,10 +66,15 @@ export async function GET(request: Request) {
         const { data: allActiveServices } = await supabase.from('Services').select('id, code, nameVN, duration, category').eq('isActive', true);
         const menuEvaluation = (allActiveServices || []).map((s: any) => {
             const soldService = serviceBreakdown.find(sb => sb.id === String(s.id));
+            let menuName = `${s.nameVN || s.code} (${s.duration}p)`;
+            if (s.code === 'NHS0800' || s.code.startsWith('VIP_') || s.category === 'VIP_MENU' || s.category === 'PREMIUM') {
+                menuName = 'Tổng Hợp Gói Menu VIP';
+            }
+
             return {
                 id: s.id,
                 code: s.code,
-                name: s.nameVN || s.code,
+                name: menuName,
                 duration: s.duration,
                 category: s.category,
                 orders: soldService ? soldService.count : 0,
