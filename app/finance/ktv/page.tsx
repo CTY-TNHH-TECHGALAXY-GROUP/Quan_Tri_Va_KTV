@@ -355,11 +355,12 @@ export default function FinanceKTVPage() {
                                 <thead className="bg-indigo-50 text-indigo-800 text-xs uppercase font-black whitespace-nowrap">
                                     <tr>
                                         <th className="px-6 py-4">Nhân viên</th>
+                                        <th className="px-6 py-4 text-right text-slate-500">Số dư kỳ trước</th>
                                         <th className="px-6 py-4 text-right">Tiền Tua</th>
                                         <th className="px-6 py-4 text-right">Tiền Tip</th>
                                         <th className="px-6 py-4 text-right">Thưởng/Phạt</th>
-                                        <th className="px-6 py-4 text-right">Tổng thu nhập</th>
-                                        <th className="px-6 py-4 text-right text-rose-600">Đã rút / Chờ</th>
+                                        <th className="px-6 py-4 text-right">Tổng phát sinh</th>
+                                        <th className="px-6 py-4 text-right text-rose-600">Đã rút (Trong kỳ)</th>
                                         <th className="px-6 py-4 text-right text-emerald-600">Tiền khả dụng</th>
                                         <th className="px-6 py-4 text-center">Thao tác</th>
                                     </tr>
@@ -367,7 +368,7 @@ export default function FinanceKTVPage() {
                                 <tbody className="divide-y divide-slate-50 font-medium">
                                     {filteredSummaries.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="px-6 py-8 text-center text-slate-400">Chưa có dữ liệu thống kê KTV</td>
+                                            <td colSpan={9} className="px-6 py-8 text-center text-slate-400">Chưa có dữ liệu thống kê KTV</td>
                                         </tr>
                                     ) : (
                                         filteredSummaries.map((ktv) => (
@@ -376,6 +377,7 @@ export default function FinanceKTVPage() {
                                                     <span className="font-bold text-slate-800 block">{ktv.name}</span>
                                                     <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md inline-block mt-1">{ktv.id}</span>
                                                 </td>
+                                                <td className="px-6 py-4 text-right text-slate-500 font-bold">{Number(ktv.previous_balance || 0).toLocaleString()}đ</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_commission || 0).toLocaleString()}đ</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_tip || 0).toLocaleString()}đ</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">
