@@ -50,7 +50,7 @@ export async function GET() {
         let allBookings: any[];
         try {
             allBookings = await fetchAll('Bookings', `
-                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source,
+                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
             `, q => q.in('status', ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING']));
         } catch (bError) {
@@ -60,11 +60,11 @@ export async function GET() {
 
         // Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
-            supabase!.from('Services').select('id, name, nameVN, duration'),
+            supabase!.from('Services').select('id, nameVN, duration'),
             supabase!.from('Staff').select('code, name')
         ]);
         
-        const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || s.name || 'Unknown']));
+        const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || 'Unknown']));
         const serviceDurationMap = new Map((services || []).map(s => [s.id, s.duration || 0]));
         const staffMap = new Map((staff || []).map(s => [s.code, s.name || 'Unknown']));
 
@@ -196,7 +196,8 @@ export async function GET() {
                 // Dịch vụ và KTV thường làm (từ BookingItems)
                 if (b.BookingItems && Array.isArray(b.BookingItems)) {
                     b.BookingItems.forEach((item: any) => {
-                        if (item.serviceId) {
+                        // Exclude "Phòng riêng" (NHS0900) which is an amenity, not a service
+                        if (item.serviceId && item.serviceId !== 'NHS0900') {
                             serviceCounts[item.serviceId] = (serviceCounts[item.serviceId] || 0) + 1;
                         }
                         if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
@@ -206,8 +207,15 @@ export async function GET() {
                         }
                         // Lực massage ưa thích
                         if (item.options && item.options.strength) {
-                            const str = item.options.strength.trim();
-                            if (str) strengthCounts[str] = (strengthCounts[str] || 0) + 1;
+                            const rawStr = item.options.strength.trim();
+                            if (rawStr) {
+                                const val = rawStr.toLowerCase();
+                                const mapped = val === 'medium' || val === 'vừa' ? 'Vừa'
+                                             : val === 'strong' || val === 'mạnh' ? 'Mạnh'
+                                             : val === 'light' || val === 'soft' || val === 'nhẹ' ? 'Nhẹ'
+                                             : rawStr;
+                                strengthCounts[mapped] = (strengthCounts[mapped] || 0) + 1;
+                            }
                         }
                         // Giới tính KTV yêu cầu (therapist field)
                         if (item.options && item.options.therapist) {
@@ -234,15 +242,15 @@ export async function GET() {
             }
             const topService = topServiceId ? serviceMap.get(topServiceId) : 'N/A';
 
-            // Dịch vụ thường dùng (≥2 lần, kèm duration)
+            // Dịch vụ thường dùng - (Không giới hạn >= 2 lần, nếu > 1 lần thì thêm số lần)
             const frequentServices = Object.entries(serviceCounts)
-                .filter(([, count]) => count >= 2)
                 .sort(([, a], [, b]) => b - a)
                 .map(([sId, count]) => {
                     const name = serviceMap.get(sId) || sId;
                     const dur = serviceDurationMap.get(sId);
-                    return `${name}${dur ? ` ${dur}p` : ''} (${count} lần)`;
-                }).join(', ') || 'N/A';
+                    const durStr = dur ? ` ${dur}p` : '';
+                    return count > 1 ? `${name}${durStr} (${count} lần)` : `${name}${durStr}`;
+                }); // Returns array
 
             let topKtvCode = null;
             let maxKtv = 0;
@@ -252,14 +260,15 @@ export async function GET() {
                 if (count > maxKtv) { maxKtv = count; topKtvCode = code; }
             }
             const topKtv = topKtvCode ? staffMap.get(topKtvCode) : 'N/A';
-            const allKtvsStr = allKtvs.length > 0 ? allKtvs.join(', ') : 'N/A';
+            const allKtvsStr = [...new Set(allKtvs)].join(', ');
 
-            // KTV thường làm (≥2 lần)
+            // KTV thường làm - (Không giới hạn >= 2 lần, nếu > 1 lần thì thêm số lần)
             const frequentKtvs = Object.entries(ktvCounts)
-                .filter(([, count]) => count >= 2)
                 .sort(([, a], [, b]) => b - a)
-                .map(([code, count]) => `${staffMap.get(code) || code} (${count} lần)`)
-                .join(', ') || 'N/A';
+                .map(([code, count]) => {
+                    const name = staffMap.get(code) || code;
+                    return count > 1 ? `${name} (${count} lần)` : name;
+                }); // Returns array
 
             // Lực massage ưa thích (mode)
             let preferredStrength = 'N/A';
@@ -269,11 +278,16 @@ export async function GET() {
             }
 
             // Ngôn ngữ ưa thích
-            const LANG_MAP: Record<string, string> = { en: '🇬🇧 English', vi: '🇻🇳 Tiếng Việt', jp: '🇯🇵 日本語', cn: '🇨🇳 中文', kr: '🇰🇷 한국어' };
+            const LANG_MAP: Record<string, string> = { en: 'EN English', vi: 'VN Tiếng Việt', jp: 'JP 日本語', cn: 'CN 中文', kr: 'KR 한국어' };
             let preferredLang = 'N/A';
+            let preferredLangCode = 'vi';
             let maxLang = 0;
             for (const [lang, count] of Object.entries(langCounts)) {
-                if (count > maxLang) { maxLang = count; preferredLang = LANG_MAP[lang] || lang; }
+                if (count > maxLang) { 
+                    maxLang = count; 
+                    preferredLangCode = lang;
+                    preferredLang = LANG_MAP[lang] || lang; 
+                }
             }
             
             // Giới tính khách hàng: ưu tiên DB > therapist preference > default Nam
@@ -296,8 +310,20 @@ export async function GET() {
                 });
             }
 
+            // Determine guest type and nationality
+            const isGroup = combinedBookings.some(b => b.guestCount > 1);
+            const guestType = isGroup ? 'Khách nhóm' : 'Khách lẻ';
+            
+            // Try to get nationality from latest booking if missing on customer profile
+            let resolvedNationality = customer.nationality;
+            if (!resolvedNationality && lastBooking && lastBooking.nationality) {
+                 resolvedNationality = lastBooking.nationality;
+            }
+
             return {
                 ...customer,
+                nationality: resolvedNationality || '',
+                guestType,
                 visitCount,
                 totalSpent,
                 ktvReviews: uniqueKtvReviews,
@@ -312,6 +338,7 @@ export async function GET() {
                 allKtvs: allKtvsStr,
                 preferredStrength,
                 preferredLang,
+                preferredLangCode,
                 preferredGender,
                 visitsLast30Days,
                 visitsLast7Days
@@ -333,7 +360,7 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         
-        const { id, notes, gender } = parseResult.data;
+        const { id, notes, gender, nationality, preferredLang } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase not initialized');
@@ -342,6 +369,7 @@ export async function PATCH(request: Request) {
         const updatePayload: Record<string, any> = { updatedAt: new Date().toISOString() };
         if (notes !== undefined) updatePayload.notes = notes;
         if (gender !== undefined) updatePayload.gender = gender;
+        if (nationality !== undefined) updatePayload.nationality = nationality;
 
         const { data, error } = await supabase
             .from('Customers')
@@ -351,6 +379,17 @@ export async function PATCH(request: Request) {
             .single();
 
         if (error) throw error;
+
+        // If preferredLang is updated, sync it to Bookings customerLang
+        if (preferredLang !== undefined && preferredLang !== null) {
+            const { error: bError } = await supabase
+                .from('Bookings')
+                .update({ customerLang: preferredLang })
+                .eq('customerId', id);
+            if (bError) {
+                console.error('Error updating customerLang in Bookings:', bError);
+            }
+        }
 
         return NextResponse.json({ success: true, data });
     } catch (error: any) {

@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import * as xlsx from 'xlsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
 
         // 2. Fetch bookings (with optional date filter)
         const allBookings = await fetchAll(supabase, 'Bookings',
-            'id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, BookingItems!fk_bookingitems_booking(id, serviceId, technicianCodes, options)',
+            'id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, BookingItems!fk_bookingitems_booking(id, serviceId, technicianCodes, options)',
             q => {
                 let query = q.in('status', ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING']);
                 if (hasDateFilter) {
@@ -63,10 +64,10 @@ export async function GET(request: NextRequest) {
 
         // 3. Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
-            supabase.from('Services').select('id, name, nameVN, duration'),
+            supabase.from('Services').select('id, nameVN, duration'),
             supabase.from('Staff').select('code, name')
         ]);
-        const svcMap = new Map((services || []).map((s: any) => [s.id, { name: s.nameVN || s.name || '?', dur: s.duration || 0 }]));
+        const svcMap = new Map((services || []).map((s: any) => [s.id, { name: s.nameVN || '?', dur: s.duration || 0 }]));
         const stfMap = new Map((staff || []).map((s: any) => [s.code, s.name || '?']));
 
         // 4. Group bookings by customerId
@@ -125,13 +126,20 @@ export async function GET(request: NextRequest) {
                 }
                 if (b.BookingItems && Array.isArray(b.BookingItems)) {
                     b.BookingItems.forEach((item: any) => {
-                        if (item.serviceId) svcC[item.serviceId] = (svcC[item.serviceId] || 0) + 1;
+                        if (item.serviceId && item.serviceId !== 'NHS0900') svcC[item.serviceId] = (svcC[item.serviceId] || 0) + 1;
                         if (item.technicianCodes) {
                             item.technicianCodes.forEach((c: string) => { ktvC[c] = (ktvC[c] || 0) + 1; });
                         }
                         if (item.options && item.options.strength) {
-                            const s = item.options.strength.trim();
-                            if (s) strC[s] = (strC[s] || 0) + 1;
+                            const rawStr = item.options.strength.trim();
+                            if (rawStr) {
+                                const val = rawStr.toLowerCase();
+                                const mapped = val === 'medium' || val === 'vừa' ? 'Vừa'
+                                             : val === 'strong' || val === 'mạnh' ? 'Mạnh'
+                                             : val === 'light' || val === 'soft' || val === 'nhẹ' ? 'Nhẹ'
+                                             : rawStr;
+                                strC[mapped] = (strC[mapped] || 0) + 1;
+                            }
                         }
                     });
                 }
@@ -145,12 +153,12 @@ export async function GET(request: NextRequest) {
             let topLn = 'N/A', mxL = 0;
             for (const [l, c] of Object.entries(lnC)) if (c > mxL) { mxL = c; topLn = LANG_MAP[l] || l; }
 
-            const fSvc = Object.entries(svcC).sort(([, a], [, b]) => b - a).map(([id, c]) => {
+            const fSvc = Object.entries(svcC).sort(([, a], [, b]) => b - a).slice(0, 3).map(([id, c]) => {
                 const s = svcMap.get(id) || { name: id, dur: 0 };
                 return s.name + (s.dur ? ` ${s.dur}p` : '') + (c > 1 ? ` (${c} lan)` : '');
             }).join(', ') || 'N/A';
 
-            const fKtv = Object.entries(ktvC).sort(([, a], [, b]) => b - a).map(([code, c]) =>
+            const fKtv = Object.entries(ktvC).sort(([, a], [, b]) => b - a).slice(0, 3).map(([code, c]) =>
                 (stfMap.get(code) || code) + (c > 1 ? ` (${c} lan)` : '')
             ).join(', ') || 'N/A';
 
@@ -163,30 +171,55 @@ export async function GET(request: NextRequest) {
             const uniqueDates = [...new Set(tDates)].join(', ');
             const totalSpent = filtered.reduce((s: number, b: any) => s + (Number(b.totalAmount) || 0), 0);
             const sources = [...new Set(filtered.map((b: any) => b.source).filter(Boolean))].join(', ') || 'N/A';
+            
+            const isGroup = filtered.some((b: any) => b.guestCount > 1);
+            const guestType = isGroup ? 'Khach nhom' : 'Khach le';
+            const guestClass = filtered.length > 1 ? 'Khach cu' : 'Khach moi';
 
             rows.push([
                 cust.fullName || 'N/A', cust.phone || 'N/A', cust.email || 'N/A',
-                genderDisplay, topLn, String(filtered.length), String(totalSpent),
+                genderDisplay, topLn, cust.nationality || 'N/A', guestType, guestClass, String(filtered.length), String(totalSpent),
                 uniqueDates, topTF, topStr, String(vip), fSvc, fKtv, sources, cust.notes || ''
             ]);
         }
 
         // Sort by total spent descending
-        rows.sort((a, b) => Number(b[6]) - Number(a[6]));
+        rows.sort((a, b) => Number(b[9]) - Number(a[9]));
 
         // Build CSV
         const header = [
-            'Ten Khach Hang', 'SDT', 'Email', 'Gioi Tinh', 'Ngon Ngu',
+            'Ten Khach Hang', 'SDT', 'Email', 'Gioi Tinh', 'Ngon Ngu', 'Quoc Tich', 'Loai Khach', 'Phan Loai (Moi/Cu)',
             `So Lan Den (${dateLabel})`, `Tong Chi Tieu (${dateLabel})`, 'Ngay Den',
             'Khung Gio', 'Luc Ua Thich', 'VIP Menu', 'Dich Vu Su Dung',
             'KTV Phuc Vu', 'Loai Don', 'Ghi Chu'
         ];
 
-        const csvContent = '\uFEFF' + [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
+        const format = searchParams.get('format') || 'csv';
+        if (format === 'json') {
+            return NextResponse.json({ success: true, data: { header, rows } });
+        }
+        const fileExt = format === 'xlsx' ? 'xlsx' : 'csv';
         const fileName = hasDateFilter
-            ? `CRM_${fromDate}_to_${toDate}.csv`
-            : `CRM_full_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            ? `CRM_${fromDate}_to_${toDate}.${fileExt}`
+            : `CRM_full_export_${new Date().toISOString().slice(0, 10)}.${fileExt}`;
 
+        if (format === 'xlsx') {
+            const worksheet = xlsx.utils.aoa_to_sheet([header, ...rows]);
+            const workbook = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(workbook, worksheet, 'CRM Data');
+            const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+            
+            return new NextResponse(buffer, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Content-Disposition': `attachment; filename="${fileName}"`,
+                },
+            });
+        }
+
+        // Default: CSV
+        const csvContent = '\uFEFF' + [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
         return new NextResponse(csvContent, {
             status: 200,
             headers: {
