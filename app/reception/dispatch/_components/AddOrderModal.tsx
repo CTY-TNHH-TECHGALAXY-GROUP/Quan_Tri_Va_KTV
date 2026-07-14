@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Phone, Sparkles, Loader2, Plus, Search, Clock, Tag, Image as ImageIcon, Globe } from 'lucide-react';
+import { X, User, Phone, Sparkles, Loader2, Plus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
 import { searchCustomers } from '../actions';
 
 interface ServiceOption {
@@ -22,17 +22,21 @@ interface AddOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   services: ServiceOption[];
-  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string }) => Promise<void>;
+  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; }) => Promise<void>;
   selectedDate: string;
 }
 
 // 🌐 LANGUAGE OPTIONS
 const LANG_OPTIONS = [
-  { code: 'vi', flag: '🇻🇳', label: 'VN' },
-  { code: 'en', flag: '🇺🇸', label: 'EN' },
-  { code: 'kr', flag: '🇰🇷', label: 'KR' },
-  { code: 'jp', flag: '🇯🇵', label: 'JP' },
-  { code: 'cn', flag: '🇨🇳', label: 'CN' },
+  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'kr', label: '한국어', flag: '🇰🇷' },
+  { code: 'jp', label: '日本語', flag: '🇯🇵' },
+  { code: 'cn', label: '中文', flag: '🇨🇳' },
+];
+
+const NATIONALITY_OPTIONS = [
+  'Việt Nam', 'Hàn Quốc', 'Nhật Bản', 'Trung Quốc', 'Đài Loan', 'Mỹ', 'Khác'
 ];
 
 // 🔧 UI CONFIGURATION
@@ -44,6 +48,8 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
   const [contactValue, setContactValue] = useState('');
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [customerLang, setCustomerLang] = useState('vi');
+  const [guestCount, setGuestCount] = useState<number>(1);
+  const [nationality, setNationality] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
@@ -134,7 +140,9 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
         customerPhone: contactType === 'phone' ? contactValue : '',
         customerEmail: contactType === 'email' ? contactValue : '',
         serviceIds,
-        customerLang
+        customerLang,
+        guestCount,
+        nationality
       });
       // Reset form
       setCustomerName('');
@@ -142,10 +150,12 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
       setContactValue('');
       setServiceIds([]);
       setCustomerLang('vi');
+      setGuestCount(1);
+      setNationality('');
       setSearchTerm('');
       onClose();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error('Lỗi khi lưu đơn:', err);
     } finally {
       setLoading(false);
     }
@@ -314,6 +324,63 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                       placeholder={contactType === 'phone' ? '+84 123 456 789' : 'abc@gmail.com'}
                       className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none font-bold text-gray-700 placeholder:text-gray-300 text-sm"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Nationality & Guest Count side by side */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
+                <div className="space-y-1.5 relative">
+                  <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                    <Flag size={11} /> Quốc tịch
+                  </label>
+                  <input
+                    type="text"
+                    list="nationality_list"
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                    placeholder="VD: Việt Nam, Hàn Quốc..."
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none font-bold text-gray-700 placeholder:text-gray-300 text-sm"
+                  />
+                  <datalist id="nationality_list">
+                    {NATIONALITY_OPTIONS.map((nat) => (
+                      <option key={nat} value={nat} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                    <Users size={11} /> Số lượng khách
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={guestCount > 5 ? 'other' : guestCount.toString()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'other') {
+                          setGuestCount(6);
+                        } else {
+                          setGuestCount(parseInt(val, 10));
+                        }
+                      }}
+                      className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none font-bold text-gray-700 text-sm"
+                    >
+                      <option value="1">1 (Khách lẻ)</option>
+                      <option value="2">2 người</option>
+                      <option value="3">3 người</option>
+                      <option value="4">4 người</option>
+                      <option value="5">5 người</option>
+                      <option value="other">Nhập số khác...</option>
+                    </select>
+                    {guestCount > 5 && (
+                      <input
+                        type="number"
+                        min={1}
+                        value={guestCount}
+                        onChange={(e) => setGuestCount(parseInt(e.target.value || '1', 10))}
+                        className="w-20 px-2 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none font-bold text-gray-700 text-sm text-center"
+                      />
+                    )}
                   </div>
                 </div>
               </div>

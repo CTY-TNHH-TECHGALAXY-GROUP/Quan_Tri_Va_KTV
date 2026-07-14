@@ -42,7 +42,7 @@ export async function getDispatchData(date: string) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -65,6 +65,37 @@ export async function getDispatchData(date: string) {
             ...b,
             hasVat: !!taxCodeMap[b.customerId]
         }));
+
+        // Fetch historical visits for returning customer tag
+        const phones = Array.from(new Set(bookings.map(b => b.customerPhone).filter(Boolean)));
+        const emails = Array.from(new Set(bookings.map(b => !b.customerPhone && b.customerEmail).filter(Boolean)));
+        
+        let visitMap: Record<string, number> = {};
+        if (phones.length > 0) {
+            const { data } = await supabase.from('Bookings').select('customerPhone').in('status', ['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']).in('customerPhone', phones);
+            if (data) {
+                data.forEach(d => {
+                    visitMap[d.customerPhone] = (visitMap[d.customerPhone] || 0) + 1;
+                });
+            }
+        }
+        if (emails.length > 0) {
+            const { data } = await supabase.from('Bookings').select('customerEmail').in('status', ['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']).in('customerEmail', emails);
+            if (data) {
+                data.forEach(d => {
+                    visitMap[d.customerEmail] = (visitMap[d.customerEmail] || 0) + 1;
+                });
+            }
+        }
+
+        bookings = bookings.map(b => {
+            const count = b.customerPhone ? (visitMap[b.customerPhone] || 0) : (b.customerEmail ? (visitMap[b.customerEmail] || 0) : 0);
+            return {
+                ...b,
+                visitCount: count,
+                isReturning: count > 1
+            };
+        });
 
         // 4. Fetch Services FIRST to build map (safer than complex filtering)
         const { data: allServices, error: svcError } = await supabase
@@ -1147,8 +1178,36 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
     }
 }
 
-export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; }) {
+export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; }) {
     return await BookingModificationService.createQuickBooking(data);
+}
+
+export async function updateBookingMeta(bookingId: string, data: { guestCount?: number; nationality?: string; }) {
+    try {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // Update Bookings table
+        const { error: bError } = await supabase
+            .from('Bookings')
+            .update(data)
+            .eq('id', bookingId);
+        
+        if (bError) throw bError;
+
+        if (data.nationality) {
+            // Fetch customer ID
+            const { data: booking } = await supabase.from('Bookings').select('customerId').eq('id', bookingId).single();
+            if (booking?.customerId) {
+                await supabase.from('Customers').update({ nationality: data.nationality }).eq('id', booking.customerId);
+            }
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('Lỗi cập nhật meta booking:', error);
+        return { success: false, error: error.message };
+    }
 }
 
 export async function addAddonServices(bookingId: string, items: { serviceId: string; qty: number }[], adminId: string = 'ADMIN') {

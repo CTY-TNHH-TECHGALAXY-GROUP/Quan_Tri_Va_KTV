@@ -66,6 +66,10 @@ export interface PendingOrder {
   hasVat?: boolean;
   rawStatus?: string;
   hasAssignedKtv?: boolean;
+  guestCount?: number;
+  isReturning?: boolean;
+  visitCount?: number;
+  nationality?: string;
   timeStart?: string | null;
   timeEnd?: string | null;
   customerLang?: string;

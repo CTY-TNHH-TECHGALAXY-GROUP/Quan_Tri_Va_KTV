@@ -139,6 +139,11 @@ export default function DispatchBoardPage() {
   const [svcSearchQuery, setSvcSearchQuery] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [beds, setBeds] = useState<any[]>([]);
+  const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number } | null>(null);
+
+  useEffect(() => {
+    setEditingGuestInfo(null);
+  }, [selectedSubOrderId]);
   const [reminders, setReminders] = useState<any[]>([]);
   const [roomTransitionTime, setRoomTransitionTime] = useState(5);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -526,6 +531,10 @@ export default function DispatchBoardPage() {
               rawNotes: b.notes,
               isWebBooking: b.source === 'WEB_BOOKING' || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
               timeBooking: b.timeBooking,
+              isReturning: b.isReturning,
+              visitCount: b.visitCount,
+              guestCount: b.guestCount,
+              nationality: b.nationality,
             services: (b.BookingItems || []).map((bi: any) => {
               const itemTurns = assignedTurns.filter((t: any) => {
                   if (!t.booking_item_id) return false;
@@ -1771,6 +1780,16 @@ if (!hasPermission('dispatch_board')) {
                             WALK IN {order.timeBooking ? order.timeBooking : ''}
                           </span>
                         )}
+                        {order.isReturning && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-600 border border-purple-100 uppercase" title={`Đã đến ${order.visitCount} lần`}>
+                            Khách cũ
+                          </span>
+                        )}
+                        {!order.isReturning && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase">
+                            Khách mới
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1.5"><Clock size={12} className="text-gray-300" /> {getEstimatedEndTime(order, subOrder.services) || order.time}</span>
                     </div>
@@ -1850,10 +1869,71 @@ if (!hasPermission('dispatch_board')) {
                             onClick={() => setDispatchMode('detail')}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 ${dispatchMode === 'detail' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                           >
-                            <LayoutList size={10} /> Chi tiết
+                                                        <LayoutList size={10} /> Chi tiết
                           </button>
                         </div>
                       );
+                    })()}
+
+                    {/* NEW INPUTS ON THE SAME ROW */}
+                    {(() => {
+                        const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
+                        const currentGuestCount = editingGuestInfo ? editingGuestInfo.guestCount : (selectedSubOrder.originalOrder.guestCount || 1);
+                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGuestCount !== (selectedSubOrder.originalOrder.guestCount || 1));
+                        
+                        return (
+                            <div className="flex items-center gap-2 ml-4 border-l border-gray-200 pl-4">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch</span>
+                                <select
+                                  value={currentNationality}
+                                  onChange={(e) => setEditingGuestInfo({ nationality: e.target.value, guestCount: currentGuestCount })}
+                                  className="w-32 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                  <option value="">Chọn...</option>
+                                  <option value="Việt Nam">Việt Nam</option>
+                                  <option value="Hàn Quốc">Hàn Quốc</option>
+                                  <option value="Nhật Bản">Nhật Bản</option>
+                                  <option value="Trung Quốc">Trung Quốc</option>
+                                  <option value="Đài Loan">Đài Loan</option>
+                                  <option value="Anh/Úc/Mỹ">Anh/Úc/Mỹ</option>
+                                  <option value="Khác">Khác</option>
+                                </select>
+                                <div className="w-px h-4 bg-gray-200 mx-2" />
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số lượng</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={currentGuestCount}
+                                  onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: parseInt(e.target.value || '1', 10) })}
+                                  className="w-16 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-center"
+                                />
+                                {isDirty && (
+                                    <button
+                                      onClick={async () => {
+                                          try {
+                                              const res = await supabase.from('Bookings').update({
+                                                  nationality: currentNationality,
+                                                  guestCount: currentGuestCount
+                                              }).eq('id', selectedSubOrder.bookingId);
+                                              if (res.error) throw res.error;
+                                              
+                                              // Cập nhật lại UI local state
+                                              updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount }));
+                                              setEditingGuestInfo(null);
+                                              
+                                              alert('Đã lưu thông tin khách hàng thành công!');
+                                          } catch(e) {
+                                              alert('Lỗi khi lưu!');
+                                              console.error(e);
+                                          }
+                                      }}
+                                      className="ml-2 px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1"
+                                    >
+                                      <Save size={12} /> Lưu
+                                    </button>
+                                )}
+                            </div>
+                        );
                     })()}
                   </div>
                   
