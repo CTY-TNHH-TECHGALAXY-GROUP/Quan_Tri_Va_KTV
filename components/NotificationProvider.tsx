@@ -73,6 +73,12 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     const [notifRules, setNotifRules] = useState<Record<string, any>>({});
     const [isOnShift, setIsOnShift] = useState<boolean>(false);
 
+    // 🛡️ STALE CLOSURE FIX: useRef to always access latest values in Realtime handler.
+    // The Realtime useEffect([user, role]) captures closure values at creation time.
+    // notifRules and isOnShift change AFTER that useEffect runs → stale without refs.
+    const notifRulesRef = useRef<Record<string, any>>({});
+    const isOnShiftRef = useRef<boolean>(false);
+
     // 🔄 Sync KTV on-shift status in real-time
     useEffect(() => {
         if (!user || role?.id !== 'ktv') {
@@ -89,6 +95,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                     .single();
                 if (!error && data) {
                     setIsOnShift(data.isOnShift || false);
+                    isOnShiftRef.current = data.isOnShift || false;
                     console.log(`📡 [NotificationProvider] Initial isOnShift: ${data.isOnShift}`);
                 }
             } catch (err) {
@@ -110,6 +117,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 const updatedUser = payload.new;
                 if (updatedUser && updatedUser.isOnShift !== undefined) {
                     setIsOnShift(updatedUser.isOnShift);
+                    isOnShiftRef.current = updatedUser.isOnShift;
                     console.log(`📡 [NotificationProvider] Realtime isOnShift updated to: ${updatedUser.isOnShift}`);
                 }
             })
@@ -130,7 +138,10 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
         fetch('/api/admin/notification-rules')
             .then(r => r.json())
             .then(d => {
-                if (d.success && d.data) setNotifRules(d.data);
+                if (d.success && d.data) {
+                    setNotifRules(d.data);
+                    notifRulesRef.current = d.data; // Sync ref immediately
+                }
             })
             .catch(err => console.warn('⚠️ [NotifRules] Fetch failed:', err));
     }, []);
@@ -377,7 +388,8 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             console.log('🔔 [NotificationProvider] New notification received:', newNotif);
 
             const notifType = (newNotif.type || '').toUpperCase();
-            const rule = notifRules[notifType];
+            // 🛡️ Use ref to avoid stale closure — notifRules may load AFTER this useEffect runs
+            const rule = notifRulesRef.current[notifType];
 
             // If rules loaded and this type exists → check enabled
             if (rule && rule.enabled === false) {
@@ -413,7 +425,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             if (isKtv && rule?.require_on_shift) {
                 // KTV off-shift → skip (unless they are target employee for personal notifs)
                 // For now, KTV who is target employee always receives regardless
-                if (!isTargetEmployee && !isOnShift) {
+                if (!isTargetEmployee && !isOnShiftRef.current) {
                     console.log('⏭️ [NotificationProvider] KTV off-shift, skipping:', notifType);
                     return;
                 }
