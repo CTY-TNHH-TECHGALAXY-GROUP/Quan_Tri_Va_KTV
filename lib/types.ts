@@ -112,6 +112,8 @@ export interface Customer {
   phone: string;
   email?: string;
   gender?: string;
+  nationality?: string;
+  guestType?: string;
   preferredGender?: string;
   preferredLang?: string;
   preferredStrength?: string;

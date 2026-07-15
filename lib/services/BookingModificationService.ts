@@ -10,6 +10,8 @@ export class BookingModificationService {
         serviceIds: string[];
         bookingDate: string; // "YYYY-MM-DD"
         customerLang?: string; // Language code: vi, en, kr, jp, cn
+        guestCount?: number;
+        nationality?: string;
     }) {
         try {
             await requirePermission('dispatch_board');
@@ -48,6 +50,8 @@ export class BookingModificationService {
                     bookingDate: `${data.bookingDate}T${new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh' })}+07:00`,
                     totalAmount: totalAmount,
                     paymentMethod: 'Tiền mặt',
+                    guestCount: data.guestCount || 1,
+                    nationality: data.nationality || null,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 })
