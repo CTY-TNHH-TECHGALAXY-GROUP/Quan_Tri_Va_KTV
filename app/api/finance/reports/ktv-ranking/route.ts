@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const KTV_RANKING_STATUSES = ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'DONE', 'COMPLETED', 'FEEDBACK'];
     const { data: allRankedBookings, error: bookErr } = await supabaseAdmin
       .from('Bookings')
-      .select('id, totalAmount, technicianCode, source, status')
+      .select('id, totalAmount, technicianCode, source, status, bookingDate')
       .in('status', KTV_RANKING_STATUSES)
       .gte('bookingDate', `${dateFrom} 00:00:00`)
       .lte('bookingDate', `${dateTo} 23:59:59`);
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     const PAID_SOURCES = ['VIP_WALK_IN', 'STANDARD_WALK_IN', 'MIXED_WALK_IN', 'VIP_MENU', 'STANDARD_MENU'];
     const { data: allBookings, error: bErr2 } = await supabaseAdmin
       .from('Bookings')
-      .select('id, status, source')
+      .select('id, status, source, bookingDate')
       .gte('bookingDate', `${dateFrom} 00:00:00`)
       .lte('bookingDate', `${dateTo} 23:59:59`)
       .neq('status', 'CANCELLED');
@@ -56,15 +56,29 @@ export async function GET(request: Request) {
     const completedBookingIds = completedBookings.map(b => b.id);
     const uniqueIdsToFetch = [...new Set([...allRankedBookingIds, ...completedBookingIds])];
 
-    // 4. Fetch BookingItems (for Realtime Tua & VIP)
+    // 4. Fetch BookingItems (for Realtime Tua & VIP) - Chia chunk để tránh lỗi URL too long (fetch failed)
+    const bookingDateMap: Record<string, string> = {};
+    (allRankedBookings || []).forEach(b => {
+      if (b.bookingDate) bookingDateMap[b.id] = b.bookingDate.split(' ')[0];
+      if (b.bookingDate && b.bookingDate.includes('T')) bookingDateMap[b.id] = b.bookingDate.split('T')[0];
+    });
+    (allBookings || []).forEach(b => {
+      if (b.bookingDate) bookingDateMap[b.id] = b.bookingDate.split(' ')[0];
+      if (b.bookingDate && b.bookingDate.includes('T')) bookingDateMap[b.id] = b.bookingDate.split('T')[0];
+    });
+
     let bookingItems: any[] = [];
     if (uniqueIdsToFetch.length > 0) {
-      const { data: bItems, error: itemErr } = await supabaseAdmin
-        .from('BookingItems')
-        .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, Bookings!fk_bookingitems_booking(source)')
-        .in('bookingId', uniqueIdsToFetch);
-      if (itemErr) throw itemErr;
-      bookingItems = bItems || [];
+      const CHUNK_SIZE = 300;
+      for (let i = 0; i < uniqueIdsToFetch.length; i += CHUNK_SIZE) {
+        const chunk = uniqueIdsToFetch.slice(i, i + CHUNK_SIZE);
+        const { data: bItems, error: itemErr } = await supabaseAdmin
+          .from('BookingItems')
+          .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, Bookings!fk_bookingitems_booking(source)')
+          .in('bookingId', chunk);
+        if (itemErr) throw itemErr;
+        if (bItems) bookingItems.push(...bItems);
+      }
     }
 
     // 4.5. Fetch Services để lấy số phút (duration) chuẩn xác và category (VIP)
@@ -72,10 +86,16 @@ export async function GET(request: Request) {
     const svcDurationMap: Record<string, number> = {};
     const svcCategoryMap: Record<string, string> = {};
     if (serviceIds.length > 0) {
-        const { data: svcs } = await supabaseAdmin
-            .from('Services')
-            .select('id, code, duration, category')
-            .in('id', serviceIds);
+        const CHUNK_SIZE = 300;
+        let svcs: any[] = [];
+        for (let i = 0; i < serviceIds.length; i += CHUNK_SIZE) {
+            const chunk = serviceIds.slice(i, i + CHUNK_SIZE);
+            const { data: sData } = await supabaseAdmin
+                .from('Services')
+                .select('id, code, duration, category')
+                .in('id', chunk);
+            if (sData) svcs.push(...sData);
+        }
         (svcs || []).forEach((s: any) => {
             const dur = Number(s.duration) || 60;
             const cat = String(s.category || '').toUpperCase();
@@ -92,10 +112,15 @@ export async function GET(request: Request) {
         // Fallback by code (Trong BookingItems serviceId có thể là code)
         const unresolvedIds = serviceIds.filter(sid => !svcDurationMap[String(sid)]);
         if (unresolvedIds.length > 0) {
-            const { data: svcsByCode } = await supabaseAdmin
-                .from('Services')
-                .select('id, code, duration, category')
-                .in('code', unresolvedIds);
+            let svcsByCode: any[] = [];
+            for (let i = 0; i < unresolvedIds.length; i += CHUNK_SIZE) {
+                const chunk = unresolvedIds.slice(i, i + CHUNK_SIZE);
+                const { data: sData } = await supabaseAdmin
+                    .from('Services')
+                    .select('id, code, duration, category')
+                    .in('code', chunk);
+                if (sData) svcsByCode.push(...sData);
+            }
             (svcsByCode || []).forEach((s: any) => {
                 const dur = Number(s.duration) || 60;
                 const cat = String(s.category || '').toUpperCase();
@@ -138,26 +163,80 @@ export async function GET(request: Request) {
       .lte('date', dateTo);
     if (turnErr) throw turnErr;
 
-    // 8. Fetch KTVDailyLedger for Bonus Points
-    const { data: bonusData, error: bonusErr } = await supabaseAdmin
+    // 7.5 Fetch Laundry Adjustments from WalletAdjustments (Để biết tiền giặt đồ thực tế đã trừ)
+    let adjQuery = supabaseAdmin.from('WalletAdjustments').select('staff_id, amount, reason');
+    if (dateFrom) adjQuery = adjQuery.gte('created_at', `${dateFrom}T00:00:00+07:00`);
+    if (dateTo) adjQuery = adjQuery.lte('created_at', `${dateTo}T23:59:59+07:00`);
+    const { data: laundryAdjustments } = await adjQuery;
+
+    const laundryDeductionMap: Record<string, number> = {};
+    (laundryAdjustments || []).forEach(a => {
+        if ((a.reason || '').toLowerCase().includes('giặt đồ')) {
+            if (!laundryDeductionMap[a.staff_id]) laundryDeductionMap[a.staff_id] = 0;
+            laundryDeductionMap[a.staff_id] += Math.abs(Number(a.amount));
+        }
+    });
+
+    // 8. Fetch KTVDailyLedger for Tiền Tua, Tiền Tip, Bonus
+    const { data: ledgerData, error: ledgerErr } = await supabaseAdmin
       .from('KTVDailyLedger')
-      .select('staff_id, total_bonus')
+      .select('date, staff_id, total_commission, total_tip, total_bonus')
       .gte('date', dateFrom)
       .lte('date', dateTo);
-    if (bonusErr) throw bonusErr;
+    if (ledgerErr) throw ledgerErr;
 
-    // Aggregate Data initialization
+    const ledgerDaysByKtv: Record<string, Set<string>> = {};
+    const ledgerMaxDateByKtv: Record<string, string> = {};
+    const ledgerBonusMap: Record<string, number> = {};
+    const ledgerCommMap: Record<string, number> = {};
+    const ledgerTipMap: Record<string, number> = {};
+
+    ledgerData?.forEach(l => {
+        const code = l.staff_id;
+        if (!ledgerDaysByKtv[code]) ledgerDaysByKtv[code] = new Set();
+        ledgerDaysByKtv[code].add(l.date);
+        
+        if (!ledgerMaxDateByKtv[code] || l.date > ledgerMaxDateByKtv[code]) {
+            ledgerMaxDateByKtv[code] = l.date;
+        }
+
+        if (!ledgerBonusMap[code]) ledgerBonusMap[code] = 0;
+        if (!ledgerCommMap[code]) ledgerCommMap[code] = 0;
+        if (!ledgerTipMap[code]) ledgerTipMap[code] = 0;
+
+        ledgerBonusMap[code] += Number(l.total_bonus) || 0;
+        ledgerCommMap[code] += Number(l.total_commission) || 0;
+        ledgerTipMap[code] += Number(l.total_tip) || 0;
+    });
+
+    // Cập nhật bookingDate, bookingSource, bookingStatus cho items
+    bookingItems.forEach((item: any) => {
+        item.bookingDate = bookingDateMap[item.bookingId] || (item.timeStart ? item.timeStart.split('T')[0] : '');
+        item.bookingSource = item.Bookings?.source;
+        item.bookingStatus = item.Bookings?.status;
+    });
+
+    // A. Khởi tạo & Cộng Tiền từ Ledger
+    const ktvInfoMap: Record<string, any> = {};
+    staffList.forEach(s => { ktvInfoMap[s.id] = { name: s.full_name }; });
+    const ktvs = Object.keys(ktvInfoMap);
     const rankingMap: Record<string, any> = {};
-    staffList.forEach(s => {
-      rankingMap[s.id] = {
-        id: s.id, name: s.full_name || s.id,
-        revenue: 0, tuaMoney: 0, bonus: 0,
-        workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, avgWorkingHours: 0
+    
+    ktvs.forEach(id => {
+      rankingMap[id] = {
+        id: id,
+        name: ktvInfoMap[id] ? ktvInfoMap[id].name : id,
+        revenue: 0, 
+        tuaMoney: ledgerCommMap[id] || 0,
+        bonus: ledgerBonusMap[id] || 0,
+        totalTip: ledgerTipMap[id] || 0,
+        workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0,
+        uniqueBookings: new Set()
       };
     });
 
-    // A. Aggregate Revenue
-    allRankedBookings.forEach(b => {
+    // B. Aggregate Revenue & Realtime Tip
+    (allRankedBookings || []).forEach(b => {
       if (!b.technicianCode) return;
       const codes = b.technicianCode.split(',').map((c: string) => c.trim()).filter(Boolean);
       const share = codes.length > 0 ? (Number(b.totalAmount) || 0) / codes.length : 0;
@@ -165,50 +244,68 @@ export async function GET(request: Request) {
       codes.forEach((code: string) => {
         if (rankingMap[code]) {
           rankingMap[code].revenue += share;
+
+          // Đếm số đơn (chỉ đếm 1 lần cho mỗi booking)
+          if (!rankingMap[code].uniqueBookings.has(b.id)) {
+             rankingMap[code].orders += 1;
+             rankingMap[code].uniqueBookings.add(b.id);
+          }
         }
       });
     });
 
-    // B. Aggregate Realtime Commission (Tua) & VIP Turns
+    // C. Aggregate Realtime Commission (Tua) & VIP Turns & Tip
     const vipBookingIdsByKtv: Record<string, Set<string>> = {};
     
     bookingItems.forEach(item => {
       let ktvs = Array.isArray(item.technicianCodes) ? item.technicianCodes : [];
-      // @ts-ignore
-      const rawSource = (item.Bookings?.source || '').toUpperCase();
+      const rawSource = (item.bookingSource || '').toUpperCase();
       const itemCategory = svcCategoryMap[String(item.serviceId)] || '';
       const isVip = rawSource === 'VIP_MENU' || rawSource === 'VIP_WALK_IN' || rawSource === 'VIP_BOOKING' || itemCategory.includes('VIP') || itemCategory.includes('PREMIUM');
 
       if (ktvs.length > 0) {
         const qty = Number(item.quantity) || 1;
+        const tipAmount = Number(item.tip) || 0;
+        const tipPerKtv = tipAmount / ktvs.length;
+        const bDate = item.bookingDate || '';
+        
         ktvs.forEach((kId: any) => {
            const code = String(kId).trim();
            if (!code) return;
            
            if (rankingMap[code]) {
-               // Đếm VIP Turns: Gom nhóm theo BookingId để 1 Bill chỉ tính 1 lượt VIP
+               // Đếm VIP Turns
                if (isVip) {
                    if (!vipBookingIdsByKtv[code]) vipBookingIdsByKtv[code] = new Set();
                    vipBookingIdsByKtv[code].add(item.bookingId || item.id);
                }
                
-               // Tính tiền tua theo số phút đúng chuẩn
-               let fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
-               let myTotalMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
-               if (myTotalMins === 0) myTotalMins = fallbackDuration / ktvs.length;
+               // Đồng bộ chuẩn xác với cơ chế của VÍ KTV:
+               // 1. Chỉ cộng Realtime cho những ngày NẰM SAU maxDateStr của Ledger (bỏ qua những ngày cũ bị rỗng Ledger)
+               // 2. Chỉ tính tiền khi status của đơn đã xong
+               let shouldCountRealtime = false;
+               if (ledgerMaxDateByKtv[code]) {
+                   if (bDate > ledgerMaxDateByKtv[code]) shouldCountRealtime = true;
+               } else {
+                   shouldCountRealtime = true; // Không có Ledger, tất cả là Realtime
+               }
+
+               const validStatuses = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
+               const isValidStatus = validStatuses.includes(item.status) || validStatuses.includes(item.bookingStatus);
                
-               const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
-               rankingMap[code].tuaMoney += perKtvCommission;
+               // Tính tiền tua & Tip Realtime
+               if (shouldCountRealtime && isValidStatus) {
+                   rankingMap[code].totalTip += tipPerKtv;
+
+                   let fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                   let myTotalMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
+                   if (myTotalMins === 0) myTotalMins = fallbackDuration / ktvs.length;
+                   
+                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
+                   rankingMap[code].tuaMoney += perKtvCommission;
+               }
            }
         });
-      }
-    });
-
-    // Cập nhật Điểm Bonus
-    bonusData?.forEach(b => {
-      const code = b.staff_id;
-      if (rankingMap[code]) {
-         rankingMap[code].bonus += Number(b.total_bonus) || 0;
       }
     });
 
@@ -220,7 +317,7 @@ export async function GET(request: Request) {
     });
 
     // C. Aggregate Turns (Requested vs Free)
-    turnData.forEach(t => {
+    (turnData || []).forEach(t => {
       if (rankingMap[t.employee_id]) {
         if (t.source && t.source.includes('REQUEST')) {
           rankingMap[t.employee_id].requestedTurns += 1;
@@ -232,7 +329,7 @@ export async function GET(request: Request) {
 
     // D. Aggregate Working Days (Unique dates)
     const workingSet: Record<string, Set<string>> = {};
-    attendanceData.forEach(a => {
+    (attendanceData || []).forEach(a => {
       if (!workingSet[a.employeeId]) workingSet[a.employeeId] = new Set();
       workingSet[a.employeeId].add(a.date);
     });
@@ -244,7 +341,7 @@ export async function GET(request: Request) {
 
     // Aggregate Leave Days
     const leaveSet: Record<string, Set<string>> = {};
-    leaveData.forEach(l => {
+    (leaveData || []).forEach(l => {
       if (!leaveSet[l.employeeId]) leaveSet[l.employeeId] = new Set();
       leaveSet[l.employeeId].add(l.date);
     });
@@ -257,6 +354,12 @@ export async function GET(request: Request) {
     // Final calculations
     const finalData = Object.values(rankingMap).map(ktv => {
       const wDays = ktv.workingDays > 0 ? ktv.workingDays : 1; // Prevent div by 0
+      
+      // Trừ tiền giặt đồ thực tế đã lưu trong ví (thay vì tự tính)
+      const totalLaundryDeduction = laundryDeductionMap[ktv.id] || 0;
+      ktv.tuaMoney = ktv.tuaMoney - totalLaundryDeduction;
+      if (ktv.tuaMoney < 0) ktv.tuaMoney = 0; // Tránh tiền tua bị âm
+      
       // 100k = 1 hour
       const totalTuaHours = ktv.tuaMoney / 100000;
       ktv.avgWorkingHours = ktv.workingDays > 0 ? parseFloat((totalTuaHours / wDays).toFixed(2)) : 0;
@@ -266,6 +369,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, data: finalData });
   } catch (error: any) {
     console.error('KTV Ranking API Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    require('fs').writeFileSync('ktv_error_log.txt', error.stack || error.message);
+    return NextResponse.json({ success: false, error: error.stack || error.message }, { status: 500 });
   }
 }
