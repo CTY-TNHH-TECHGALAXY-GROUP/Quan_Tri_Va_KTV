@@ -107,7 +107,7 @@ export async function POST(request: Request) {
                     message: cleanMessage,
                     targetRoles: nonKtvRoles,
                     url: '/',
-                    requireOnShift: shouldFilterOnShift,
+                    requireOnShift: false, // Admin/Reception luôn nhận — không có trong TurnQueue
                 });
             }
 

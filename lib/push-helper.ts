@@ -75,6 +75,9 @@ export async function sendPushNotification(payload: PushPayload) {
         const { title, message, url, targetStaffIds, targetRoles, requireOnShift } = payload;
         
         let finalStaffIds = new Set<string>(targetStaffIds || []);
+        // 🛡️ SAFETY NET: Track non-KTV IDs to exempt from on-shift filter.
+        // TurnQueue only contains KTV data — Admin/Reception must never be filtered.
+        const nonKtvStaffIds = new Set<string>();
 
         if (targetRoles && targetRoles.length > 0) {
             // 🔧 Role Mapping: Translate settings UI IDs to DB enum values
@@ -89,13 +92,18 @@ export async function sendPushNotification(payload: PushPayload) {
             // Lấy danh sách nhân viên có role tương ứng
             const { data: usersData, error: usersErr } = await supabase
                 .from('Users')
-                .select('id, code')
+                .select('id, code, role')
                 .in('role', mappedRoles);
                 
             if (!usersErr && usersData) {
                 usersData.forEach(u => {
                     if (u.id) finalStaffIds.add(u.id);
                     if (u.code && u.code !== u.id) finalStaffIds.add(u.code);
+                    // Track non-KTV for on-shift filter bypass
+                    if (u.role !== 'TECHNICIAN') {
+                        if (u.id) nonKtvStaffIds.add(u.id);
+                        if (u.code) nonKtvStaffIds.add(u.code);
+                    }
                 });
             } else {
                 console.warn('⚠️ [Push Helper] Error fetching users by roles:', usersErr);
@@ -116,22 +124,23 @@ export async function sendPushNotification(payload: PushPayload) {
             }
         }
 
-        // 🛡️ NEW: Filter by on-shift status if required
+        // 🛡️ Filter by on-shift status if required
+        // IMPORTANT: Only KTV (TECHNICIAN) is tracked in TurnQueue.
+        // Admin/Reception/Dev must ALWAYS bypass this filter.
         if (requireOnShift && finalStaffIds.size > 0) {
             const onShiftIds = await getOnShiftEmployeeIds();
             if (onShiftIds.size > 0) {
                 const beforeCount = finalStaffIds.size;
-                // Keep: targetStaffIds (explicit targets) + anyone on-shift
-                // This ensures the specific KTV assigned to a booking still gets notified
                 const explicitTargets = new Set<string>(targetStaffIds || []);
                 const filteredIds = new Set<string>();
                 finalStaffIds.forEach(id => {
-                    if (explicitTargets.has(id) || onShiftIds.has(id)) {
+                    // Keep: explicit targets, on-shift KTV, AND all non-KTV staff
+                    if (explicitTargets.has(id) || onShiftIds.has(id) || nonKtvStaffIds.has(id)) {
                         filteredIds.add(id);
                     }
                 });
                 finalStaffIds = filteredIds;
-                console.log(`📡 [Push Helper] On-shift filter: ${beforeCount} → ${finalStaffIds.size} staff (${onShiftIds.size} on shift today)`);
+                console.log(`📡 [Push Helper] On-shift filter: ${beforeCount} → ${finalStaffIds.size} staff (${onShiftIds.size} on shift, ${nonKtvStaffIds.size} non-KTV bypassed)`);
             }
         }
 
