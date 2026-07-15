@@ -127,7 +127,8 @@ export const Payroll = () => {
     staffList, 
     processedData,
     displayData,
-    summary, 
+    summary,
+    staffSummaries,
     loading, 
     refresh,
     activeCardFilter,
@@ -280,13 +281,58 @@ export const Payroll = () => {
         </div>
 
         {selectedStaffId === 'ALL' && !activeCardFilter ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-              <Users className="text-slate-400" size={24} />
-            </div>
-            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">
-              Vui lòng chọn 1 KTV hoặc nhấp vào 1 Thẻ Thống Kê ở trên để xem chi tiết
-            </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">KTV</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Tổng công</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center">Đi trễ</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center">Nghỉ phép</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-rose-600 uppercase tracking-widest text-center">Đột xuất</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-sky-600 uppercase tracking-widest text-center">Ca tự do</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-fuchsia-600 uppercase tracking-widest text-center">Ca yêu cầu</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-orange-600 uppercase tracking-widest text-center">Quên Check-out</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={8} className="px-6 py-4"><div className="h-10 bg-slate-50 rounded-xl" /></td>
+                    </tr>
+                  ))
+                ) : staffSummaries.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-20 text-center text-sm font-bold text-slate-400 uppercase italic tracking-widest">
+                      Chưa có dữ liệu cho tháng này
+                    </td>
+                  </tr>
+                ) : (
+                  staffSummaries.map((staff: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => setSelectedStaffId(staff.id)}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-[10px] font-black border border-indigo-100">
+                            {staff.id}
+                          </span>
+                          <p className="text-sm font-black text-slate-800">{staff.name}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="text-lg font-black text-emerald-600">{staff.totalDays}</span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.totalLate > 0 ? staff.totalLate : '-'}</td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.totalLeave > 0 ? staff.totalLeave : '-'}</td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.totalSuddenOff > 0 ? staff.totalSuddenOff : '-'}</td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.freeShifts > 0 ? staff.freeShifts : '-'}</td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.requestShifts > 0 ? staff.requestShifts : '-'}</td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-slate-600">{staff.forgotCheckOut > 0 ? staff.forgotCheckOut : '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="overflow-x-auto">

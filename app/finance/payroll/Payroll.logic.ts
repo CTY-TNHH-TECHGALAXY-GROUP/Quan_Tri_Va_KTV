@@ -156,10 +156,19 @@ export const usePayrollLogic = () => {
         
         // Find the active shift for THIS day
         let shiftType = 'SHIFT_1'; // Default
+        let lastPermanentShift = 'SHIFT_1';
         for (const s of staffShifts) {
             const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
             if (effDate && effDate <= dateStr) {
-                shiftType = s.shiftType;
+                if (s.shiftType !== 'FREE' && s.shiftType !== 'REQUEST') {
+                    lastPermanentShift = s.shiftType;
+                }
+                
+                if (effDate === dateStr) {
+                    shiftType = s.shiftType;
+                } else {
+                    shiftType = lastPermanentShift;
+                }
             }
         }
         
@@ -190,53 +199,51 @@ export const usePayrollLogic = () => {
             }
         }
 
-        if (dayLeave) {
-          if (dayLeave.reason === 'OVERRIDE:FREE') {
-            status = 'free';
-            shiftType = 'FREE';
-          } else if (dayLeave.reason === 'OVERRIDE:REQUEST') {
-            status = 'request';
-            shiftType = 'REQUEST';
-          } else {
-            // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
-            status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
-          }
-        } else if (dayAtt && (dayAtt.check_in_time || dayAtt.check_out_time)) {
-          // They came to work!
-          if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
-            const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
-            
-            if (isFlexibleShift) {
-                status = shiftType === 'FREE' ? 'free' : 'request' as any; // Show explicitly as Tự do / Yêu cầu
-            } else {
-                status = 'present';
-                // Calculate late mins based on check_in_time
-                const shiftStartTime = SHIFT_START_TIMES[shiftType];
-                if (shiftStartTime && dayAtt.check_in_time) {
-                  const [sh, sm] = shiftStartTime.split(':').map(Number);
-                  const [ah, am] = dayAtt.check_in_time.split(':').map(Number);
-                  
-                  const scheduledTotal = sh * 60 + sm;
-                  const actualTotal = ah * 60 + am;
-
-                  if (actualTotal > scheduledTotal) {
-                    lateMins = actualTotal - scheduledTotal;
-                    if (lateMins > 0) status = 'late';
-                  }
-                }
-            }
-          } else if (dayAtt.status === 'off_leave') {
-            status = 'off';
-          } else if (dayAtt.status === 'absent') {
-            status = 'absent';
-          }
+        if (dayLeave && dayLeave.reason !== 'OVERRIDE:FREE' && dayLeave.reason !== 'OVERRIDE:REQUEST') {
+          // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
+          status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
         } else {
-          // No attendance and no leave request
-          const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
-          if (isPastGracePeriod && !isFlexibleShift) {
-              status = 'suddenOff';
-          } else {
+          if (dayLeave?.reason === 'OVERRIDE:FREE') {
+            shiftType = 'FREE';
+          } else if (dayLeave?.reason === 'OVERRIDE:REQUEST') {
+            shiftType = 'REQUEST';
+          }
+          
+          if (dayAtt && (dayAtt.check_in_time || dayAtt.check_out_time)) {
+            // They came to work!
+            if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
+              status = 'present';
+              
+              const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
+              if (!isFlexibleShift) {
+                  // Calculate late mins based on check_in_time
+                  const shiftStartTime = SHIFT_START_TIMES[shiftType];
+                  if (shiftStartTime && dayAtt.check_in_time) {
+                    const [sh, sm] = shiftStartTime.split(':').map(Number);
+                    const [ah, am] = dayAtt.check_in_time.split(':').map(Number);
+                    
+                    const scheduledTotal = sh * 60 + sm;
+                    const actualTotal = ah * 60 + am;
+
+                    if (actualTotal > scheduledTotal) {
+                      lateMins = actualTotal - scheduledTotal;
+                      if (lateMins > 0) status = 'late';
+                    }
+                  }
+              }
+            } else if (dayAtt.status === 'off_leave') {
+              status = 'off';
+            } else if (dayAtt.status === 'absent') {
               status = 'absent';
+            }
+          } else {
+            // No attendance and no leave request
+            const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
+            if (isPastGracePeriod && !isFlexibleShift) {
+                status = 'suddenOff';
+            } else {
+                status = 'absent';
+            }
           }
         }
 
@@ -245,8 +252,8 @@ export const usePayrollLogic = () => {
           employeeId: staff.id,
           employeeName: staff.full_name,
           shiftType: shiftType,
-          checkIn: (status === 'free' || status === 'request') ? (dayAtt?.check_in_time || '--:--') : (dayAtt?.check_in_time || null),
-          checkOut: (status === 'free' || status === 'request') ? (dayAtt?.check_out_time || '--:--') : (dayAtt?.check_out_time || null),
+          checkIn: (shiftType === 'FREE' || shiftType === 'REQUEST') ? (dayAtt?.check_in_time || '--:--') : (dayAtt?.check_in_time || null),
+          checkOut: (shiftType === 'FREE' || shiftType === 'REQUEST') ? (dayAtt?.check_out_time || '--:--') : (dayAtt?.check_out_time || null),
           lateMins,
           status
         });
@@ -290,6 +297,42 @@ export const usePayrollLogic = () => {
       forgotCheckOut: processedData.filter(r => r.checkIn && !r.checkOut && r.date < todayStr).length
     };
   }, [processedData, startDate]);
+
+  const staffSummaries = useMemo(() => {
+    if (!startDate || staffList.length === 0 || processedData.length === 0) return [];
+    
+    let baseDays = 30;
+    const month = startDate.getMonth();
+    if (month === 1) {
+        const year = startDate.getFullYear();
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        baseDays = isLeap ? 29 : 28;
+    }
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+    return staffList.map(staff => {
+      const staffData = processedData.filter(r => r.employeeId === staff.id);
+      
+      const totalSuddenOff = staffData.filter(r => r.status === 'suddenOff').length;
+      const totalLeave = staffData.filter(r => r.status === 'off').length;
+      const totalLate = staffData.filter(r => r.status === 'late').length;
+      const freeShifts = staffData.filter(r => r.shiftType === 'FREE' && r.checkIn).length;
+      const requestShifts = staffData.filter(r => r.shiftType === 'REQUEST' && r.checkIn).length;
+      const forgotCheckOut = staffData.filter(r => r.checkIn && !r.checkOut && r.date < todayStr).length;
+
+      return {
+        id: staff.id,
+        name: staff.full_name,
+        totalDays: baseDays - totalLeave - totalSuddenOff,
+        totalLate,
+        totalSuddenOff,
+        totalLeave,
+        freeShifts,
+        requestShifts,
+        forgotCheckOut,
+      };
+    }).sort((a, b) => b.totalDays - a.totalDays);
+  }, [processedData, staffList, startDate]);
 
   const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
 
@@ -353,6 +396,7 @@ export const usePayrollLogic = () => {
     processedData,
     displayData,
     summary,
+    staffSummaries,
     loading,
     refresh: fetchData,
     activeCardFilter,
