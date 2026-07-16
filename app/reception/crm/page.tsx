@@ -201,8 +201,8 @@ export default function CRMPage() {
 
     // 4. Visit count Filter
     const visits = c.visitCount || 0;
-    if (filterVisit === 'new' && visits > 1) return false;
-    if (filterVisit === 'old' && visits <= 1) return false;
+    if (filterVisit === 'new' && visits > 0) return false;
+    if (filterVisit === 'old' && visits <= 0) return false;
 
     // 5. Guest Type Filter
     if (filterGuestType === 'group' && c.guestType !== 'Khách nhóm') return false;
@@ -657,9 +657,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: {
             {(customer.visitCount || 0) > 10 ? 'VIP' : 'Member'}
           </span>
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-            (customer.visitCount || 0) > 1 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
+            (customer.visitCount || 0) > 0 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
           }`}>
-            {(customer.visitCount || 0) > 1 ? 'Khách cũ' : 'Khách mới'}
+            {(customer.visitCount || 0) > 0 ? 'Khách cũ' : 'Khách mới'}
           </span>
         </div>
       </td>
@@ -958,9 +958,9 @@ const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: {
                   </span>
                 )}
                 <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                  (customer.visitCount || 0) > 1 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
+                  (customer.visitCount || 0) > 0 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
                 }`}>
-                  {(customer.visitCount || 0) > 1 ? 'Khách cũ' : 'Khách mới'}
+                  {(customer.visitCount || 0) > 0 ? 'Khách cũ' : 'Khách mới'}
                 </span>
               </div>
               <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
