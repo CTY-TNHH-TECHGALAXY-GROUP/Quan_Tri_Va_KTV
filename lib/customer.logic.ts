@@ -8,8 +8,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 /** Statuses that count as "completed" visits for visit counting */
 export const COMPLETED_STATUSES = ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING'];
 
-/** Threshold: visits must be GREATER than this to be "Khách Cũ" (>= 2 đơn hoàn tất) */
-export const RETURNING_THRESHOLD = 1;
+/** Threshold: visits must be GREATER than this to be "Khách Cũ" (>= 1 đơn hoàn tất trong quá khứ -> tổng >= 2 lần) */
+export const RETURNING_THRESHOLD = 0;
 
 // =============================================
 // 🛠 SHARED UTILITIES — Import & dùng lại ở mọi nơi

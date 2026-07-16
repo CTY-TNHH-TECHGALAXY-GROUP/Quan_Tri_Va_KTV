@@ -128,10 +128,8 @@ export async function getDispatchData(date: string) {
         bookings = bookings.map(b => {
             let count = 0;
             if (b.customerId && historicalByCustomerId.has(b.customerId)) {
-                // Name-matching filter — shared from customer.logic.ts
-                count = historicalByCustomerId.get(b.customerId)!.filter(h =>
-                    isNameMatch(b.customerName, h.customerName)
-                ).length;
+                // Real accounts sharing customerId should be counted as the same customer regardless of name
+                count = historicalByCustomerId.get(b.customerId)!.length;
             } else if (!isDummyPhone(b.customerPhone)) {
                 count = visitMap[b.customerPhone] || 0;
             } else if (!isDummyEmail(b.customerEmail)) {

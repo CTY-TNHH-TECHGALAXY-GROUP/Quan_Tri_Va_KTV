@@ -107,17 +107,8 @@ export async function GET() {
             const byNameEmail = compositeKey ? bookingsByNameEmail.get(compositeKey) || [] : [];
             
             // Filter byId: only keep bookings where customerName matches this customer
-            // Manager often reuses one customer account for many different people
-            const custNameNorm = (customer.fullName || '').toLowerCase().trim();
-            const filteredById = byId.filter(b => {
-                const bName = (b.customerName || '').toLowerCase().trim();
-                // Match if: no name on booking, names are equal, or one contains the other
-                return !bName || !custNameNorm || bName === custNameNorm 
-                    || bName.includes(custNameNorm) || custNameNorm.includes(bName);
-            });
-            
-            // Combine and deduplicate bookings by ID
-            const combinedBookings = [...filteredById];
+            // All bookings linked to this customerId belong to this profile
+            const combinedBookings = [...byId];
             const existingIds = new Set(combinedBookings.map(b => b.id));
             
             byNameEmail.forEach(b => {
