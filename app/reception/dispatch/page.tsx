@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { DispatchServiceBlock } from './_components/DispatchServiceBlock';
 import { KanbanBoard } from './_components/KanbanBoard';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
-import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices } from './actions';
+import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
@@ -139,7 +139,7 @@ export default function DispatchBoardPage() {
   const [svcSearchQuery, setSvcSearchQuery] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [beds, setBeds] = useState<any[]>([]);
-  const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number } | null>(null);
+  const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number, customerGender: string } | null>(null);
 
   useEffect(() => {
     setEditingGuestInfo(null);
@@ -535,6 +535,7 @@ export default function DispatchBoardPage() {
               visitCount: b.visitCount,
               guestCount: b.guestCount,
               nationality: b.nationality,
+              customerGender: b.customerGender || 'male',
             services: (b.BookingItems || []).map((bi: any) => {
               const itemTurns = assignedTurns.filter((t: any) => {
                   if (!t.booking_item_id) return false;
@@ -1879,14 +1880,25 @@ if (!hasPermission('dispatch_board')) {
                     {(() => {
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = editingGuestInfo ? editingGuestInfo.guestCount : (selectedSubOrder.originalOrder.guestCount || 1);
-                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGuestCount !== (selectedSubOrder.originalOrder.guestCount || 1));
+                        const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
+                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGuestCount !== (selectedSubOrder.originalOrder.guestCount || 1) || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male'));
                         
                         return (
                             <div className="flex items-center gap-2 ml-4 border-l border-gray-200 pl-4">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính</span>
+                                <select
+                                  value={currentGender}
+                                  onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: e.target.value })}
+                                  className="w-20 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                  <option value="male">Nam</option>
+                                  <option value="female">Nữ</option>
+                                </select>
+                                <div className="w-px h-4 bg-gray-200 mx-2" />
                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch</span>
                                 <select
                                   value={currentNationality}
-                                  onChange={(e) => setEditingGuestInfo({ nationality: e.target.value, guestCount: currentGuestCount })}
+                                  onChange={(e) => setEditingGuestInfo({ nationality: e.target.value, guestCount: currentGuestCount, customerGender: currentGender })}
                                   className="w-32 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                   <option value="">Chọn...</option>
@@ -1904,21 +1916,22 @@ if (!hasPermission('dispatch_board')) {
                                   type="number"
                                   min={1}
                                   value={currentGuestCount}
-                                  onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: parseInt(e.target.value || '1', 10) })}
+                                  onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: parseInt(e.target.value || '1', 10), customerGender: currentGender })}
                                   className="w-16 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-center"
                                 />
                                 {isDirty && (
                                     <button
                                       onClick={async () => {
                                           try {
-                                              const res = await supabase.from('Bookings').update({
+                                              const res = await updateBookingMeta(selectedSubOrder.bookingId, {
                                                   nationality: currentNationality,
-                                                  guestCount: currentGuestCount
-                                              }).eq('id', selectedSubOrder.bookingId);
-                                              if (res.error) throw res.error;
+                                                  guestCount: currentGuestCount,
+                                                  customerGender: currentGender
+                                              });
+                                              if (!res.success) throw new Error(res.error || 'Lỗi không xác định');
                                               
                                               // Cập nhật lại UI local state
-                                              updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount }));
+                                              updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender }));
                                               setEditingGuestInfo(null);
                                               
                                               alert('Đã lưu thông tin khách hàng thành công!');

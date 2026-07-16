@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
+import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 
 export class BookingModificationService {
     static async createQuickBooking(data: {
@@ -34,12 +35,51 @@ export class BookingModificationService {
 
             const totalAmount = svcs.reduce((acc, svc) => acc + (svc.priceVND || 0), 0);
 
+            // 2.5 Auto-create Customer record for walk-in guests
+            // If phone/email are dummy values, create a unique Customer so they show up in CRM
+            let customerId: string | null = null;
+            const phone = data.customerPhone || '';
+            const email = data.customerEmail || '';
+
+            // Try to find existing Customer by real phone or email
+            if (!isDummyPhone(phone)) {
+                const { data: existing } = await supabase.from('Customers').select('id').eq('phone', phone).maybeSingle();
+                if (existing) customerId = existing.id;
+            } else if (!isDummyEmail(email)) {
+                const { data: existing } = await supabase.from('Customers').select('id').eq('email', email).maybeSingle();
+                if (existing) customerId = existing.id;
+            }
+
+            // If no existing Customer found, create a new one
+            if (!customerId) {
+                const now = new Date().toISOString();
+                customerId = `CUS-${Date.now()}-${Math.floor(Math.random() * 100)}`;
+                const guestCode = `GUEST-${Date.now()}`;
+                const guestPhone = isDummyPhone(phone) ? guestCode : phone;
+                const guestEmail = isDummyEmail(email) ? guestCode : email;
+
+                const { error: cusError } = await supabase.from('Customers').insert({
+                    id: customerId,
+                    fullName: data.customerName,
+                    phone: guestPhone,
+                    email: guestEmail,
+                    nationality: data.nationality || null,
+                    createdAt: now,
+                    updatedAt: now,
+                });
+                if (cusError) {
+                    console.error('⚠️ [Server] Auto-create Customer failed (non-blocking):', cusError.message);
+                    customerId = null; // Don't block booking creation
+                }
+            }
+
             // 3. Tạo Booking
             const bookingId = crypto.randomUUID();
             const { data: booking, error: bError } = await supabase
                 .from('Bookings')
                 .insert({
                     id: bookingId,
+                    customerId: customerId,
                     customerName: data.customerName,
                     customerPhone: data.customerPhone || '',
                     customerEmail: data.customerEmail || '',

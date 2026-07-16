@@ -24,8 +24,11 @@
 | `customerPhone` | text | SĐT khách |
 | `customerEmail` | text | Email khách |
 | `customerLang` | text | Ngôn ngữ khách (VN/EN) — hiển thị journey page |
+| `nationality` | text | Quốc tịch khách hàng |
 | `focusAreaNote` | text | Ghi chú vùng cần tập trung (VD: "Đau vai") |
 | `notes` | text | Ghi chú đơn hàng chung |
+| `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
+| `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
 | `bedId` | text FK → Beds | Giường phục vụ |
 | `roomName` | text | Tên phòng phục vụ |
@@ -478,6 +481,7 @@
 | `fullName` | text | Họ tên khách |
 | `phone` | text UNIQUE | Số điện thoại (dùng để tra cứu) |
 | `email` | text | Email |
+| `nationality` | text | Quốc tịch khách hàng |
 | `gender` | text | Giới tính |
 | `birthday` | timestamp | Ngày sinh |
 | `notes` | text | Ghi chú (sở thích, dị ứng...) |

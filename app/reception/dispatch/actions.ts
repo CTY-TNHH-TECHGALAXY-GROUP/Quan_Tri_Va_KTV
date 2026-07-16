@@ -6,6 +6,7 @@ import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
+import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 
 
 
@@ -66,34 +67,83 @@ export async function getDispatchData(date: string) {
             hasVat: !!taxCodeMap[b.customerId]
         }));
 
-        // Fetch historical visits for returning customer tag
-        const phones = Array.from(new Set(bookings.map(b => b.customerPhone).filter(Boolean)));
-        const emails = Array.from(new Set(bookings.map(b => !b.customerPhone && b.customerEmail).filter(Boolean)));
+        // Fetch historical visits for returning customer tag (using shared library)
+
+        const uniqueCustomerIds = Array.from(new Set(bookings.map(b => b.customerId).filter(Boolean)));
+        const validPhones = Array.from(new Set(bookings.map(b => !b.customerId && !isDummyPhone(b.customerPhone) ? b.customerPhone : null).filter(Boolean)));
+        const validEmails = Array.from(new Set(bookings.map(b => !b.customerId && isDummyPhone(b.customerPhone) && !isDummyEmail(b.customerEmail) ? b.customerEmail : null).filter(Boolean)));
+        
+        // Find bookings that have NO customerId AND (dummy phone) AND (dummy email) AND HAVE a name
+        const dummyBookings = bookings.filter(b => !b.customerId && isDummyPhone(b.customerPhone) && isDummyEmail(b.customerEmail) && b.customerName);
         
         let visitMap: Record<string, number> = {};
-        if (phones.length > 0) {
-            const { data } = await supabase.from('Bookings').select('customerPhone').in('status', ['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']).in('customerPhone', phones);
+        
+        // For customerId: fetch customerName too for name-matching (same algorithm as CRM)
+        // Manager often reuses one guest account for many different people
+        const historicalByCustomerId = new Map<string, any[]>();
+        if (uniqueCustomerIds.length > 0) {
+            const { data } = await supabase.from('Bookings')
+                .select('customerId, customerName')
+                .in('status', COMPLETED_STATUSES)
+                .in('customerId', uniqueCustomerIds);
             if (data) {
                 data.forEach(d => {
-                    visitMap[d.customerPhone] = (visitMap[d.customerPhone] || 0) + 1;
-                });
-            }
-        }
-        if (emails.length > 0) {
-            const { data } = await supabase.from('Bookings').select('customerEmail').in('status', ['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']).in('customerEmail', emails);
-            if (data) {
-                data.forEach(d => {
-                    visitMap[d.customerEmail] = (visitMap[d.customerEmail] || 0) + 1;
+                    if (d.customerId) {
+                        if (!historicalByCustomerId.has(d.customerId)) historicalByCustomerId.set(d.customerId, []);
+                        historicalByCustomerId.get(d.customerId)!.push(d);
+                    }
                 });
             }
         }
 
+        if (validPhones.length > 0) {
+            const { data } = await supabase.from('Bookings').select('customerPhone').in('status', COMPLETED_STATUSES).in('customerPhone', validPhones);
+            if (data) data.forEach(d => { if (d.customerPhone) visitMap[d.customerPhone] = (visitMap[d.customerPhone] || 0) + 1; });
+        }
+
+        if (validEmails.length > 0) {
+            const { data } = await supabase.from('Bookings').select('customerEmail').in('status', COMPLETED_STATUSES).in('customerEmail', validEmails);
+            if (data) data.forEach(d => { if (d.customerEmail) visitMap[d.customerEmail] = (visitMap[d.customerEmail] || 0) + 1; });
+        }
+
+        // Handle dummy bookings by checking both dummy phone/email AND name
+        if (dummyBookings.length > 0) {
+            await Promise.all(dummyBookings.map(async (b) => {
+                const key = `DUMMY_${b.id}`;
+                let query = supabase.from('Bookings').select('id', { count: 'exact' })
+                    .in('status', COMPLETED_STATUSES)
+                    .ilike('customerName', b.customerName.trim());
+                
+                if (b.customerPhone) query = query.eq('customerPhone', b.customerPhone);
+                else query = query.filter('customerPhone', 'in', '("",null)');
+                
+                if (b.customerEmail) query = query.eq('customerEmail', b.customerEmail);
+                else query = query.filter('customerEmail', 'in', '("",null)');
+                
+                const { count } = await query;
+                visitMap[key] = count || 0;
+            }));
+        }
+
         bookings = bookings.map(b => {
-            const count = b.customerPhone ? (visitMap[b.customerPhone] || 0) : (b.customerEmail ? (visitMap[b.customerEmail] || 0) : 0);
+            let count = 0;
+            if (b.customerId && historicalByCustomerId.has(b.customerId)) {
+                // Name-matching filter — shared from customer.logic.ts
+                count = historicalByCustomerId.get(b.customerId)!.filter(h =>
+                    isNameMatch(b.customerName, h.customerName)
+                ).length;
+            } else if (!isDummyPhone(b.customerPhone)) {
+                count = visitMap[b.customerPhone] || 0;
+            } else if (!isDummyEmail(b.customerEmail)) {
+                count = visitMap[b.customerEmail] || 0;
+            } else if (b.customerName) {
+                count = visitMap[`DUMMY_${b.id}`] || 0;
+            }
+
             return {
                 ...b,
                 visitCount: count,
-                isReturning: count > 1
+                isReturning: isReturningCustomer(count)
             };
         });
 
@@ -1182,7 +1232,7 @@ export async function createQuickBooking(data: { customerName: string; customerP
     return await BookingModificationService.createQuickBooking(data);
 }
 
-export async function updateBookingMeta(bookingId: string, data: { guestCount?: number; nationality?: string; }) {
+export async function updateBookingMeta(bookingId: string, data: { guestCount?: number; nationality?: string; customerGender?: string; }) {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
@@ -1195,11 +1245,14 @@ export async function updateBookingMeta(bookingId: string, data: { guestCount?: 
         
         if (bError) throw bError;
 
-        if (data.nationality) {
-            // Fetch customer ID
+        // Sync nationality and gender to Customers table
+        if (data.nationality || data.customerGender) {
             const { data: booking } = await supabase.from('Bookings').select('customerId').eq('id', bookingId).single();
             if (booking?.customerId) {
-                await supabase.from('Customers').update({ nationality: data.nationality }).eq('id', booking.customerId);
+                const customerUpdate: Record<string, string> = {};
+                if (data.nationality) customerUpdate.nationality = data.nationality;
+                if (data.customerGender) customerUpdate.gender = data.customerGender;
+                await supabase.from('Customers').update(customerUpdate).eq('id', booking.customerId);
             }
         }
 

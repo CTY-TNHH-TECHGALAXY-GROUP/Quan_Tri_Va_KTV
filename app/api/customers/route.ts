@@ -50,7 +50,7 @@ export async function GET() {
         let allBookings: any[];
         try {
             allBookings = await fetchAll('Bookings', `
-                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount,
+                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
             `, q => q.in('status', ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING']));
         } catch (bError) {
@@ -196,8 +196,8 @@ export async function GET() {
                 // Dịch vụ và KTV thường làm (từ BookingItems)
                 if (b.BookingItems && Array.isArray(b.BookingItems)) {
                     b.BookingItems.forEach((item: any) => {
-                        // Exclude "Phòng riêng" (NHS0900) which is an amenity, not a service
-                        if (item.serviceId && item.serviceId !== 'NHS0900') {
+                        // Exclude "Phòng riêng" (NHS0900) and split items (tách đơn cho 2 KTV)
+                        if (item.serviceId && item.serviceId !== 'NHS0900' && !(item.options && item.options.isSplitItem)) {
                             serviceCounts[item.serviceId] = (serviceCounts[item.serviceId] || 0) + 1;
                         }
                         if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
@@ -290,11 +290,26 @@ export async function GET() {
                 }
             }
             
-            // Giới tính khách hàng: ưu tiên DB > therapist preference > default Nam
+            // Giới tính khách hàng: ưu tiên DB > Bookings.customerGender > therapist preference
             const GENDER_DISPLAY: Record<string, string> = { 'male': 'Nam', 'female': 'Nữ' };
             let preferredGender = customer.gender 
                 ? (GENDER_DISPLAY[customer.gender] || customer.gender)
-                : 'Nam'; // Default = Nam, user sẽ chỉnh tay
+                : null;
+            
+            // Fallback 1: từ Bookings.customerGender (mới nhất)
+            if (!preferredGender) {
+                const latestGender = combinedBookings
+                    .filter((b: any) => b.customerGender)
+                    .sort((a: any, b: any) => new Date(b.bookingDate || 0).getTime() - new Date(a.bookingDate || 0).getTime())[0]?.customerGender;
+                if (latestGender) preferredGender = GENDER_DISPLAY[latestGender] || latestGender;
+            }
+
+            // Fallback 2: suy từ yêu cầu KTV (options.therapist) trong BookingItems
+            if (!preferredGender && Object.keys(genderReqCounts).length > 0) {
+                const topGender = Object.entries(genderReqCounts)
+                    .sort((a, b) => b[1] - a[1])[0][0];
+                preferredGender = topGender; // "Nữ" hoặc "Nam"
+            }
 
             visitsLast30Days = unique30Days.size;
             visitsLast7Days = unique7Days.size;
@@ -310,8 +325,9 @@ export async function GET() {
                 });
             }
 
-            // Determine guest type and nationality
-            const isGroup = combinedBookings.some(b => b.guestCount > 1);
+            // Determine guest type, guest count and nationality
+            const maxGuestCount = Math.max(...combinedBookings.map(b => b.guestCount || 1), 1);
+            const isGroup = maxGuestCount > 1;
             const guestType = isGroup ? 'Khách nhóm' : 'Khách lẻ';
             
             // Try to get nationality from latest booking if missing on customer profile
@@ -324,6 +340,7 @@ export async function GET() {
                 ...customer,
                 nationality: resolvedNationality || '',
                 guestType,
+                maxGuestCount,
                 visitCount,
                 totalSpent,
                 ktvReviews: uniqueKtvReviews,
