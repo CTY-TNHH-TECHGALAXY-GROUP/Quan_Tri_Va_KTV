@@ -70,6 +70,7 @@ export interface PendingOrder {
   isReturning?: boolean;
   visitCount?: number;
   nationality?: string;
+  customerGender?: string;
   timeStart?: string | null;
   timeEnd?: string | null;
   customerLang?: string;
