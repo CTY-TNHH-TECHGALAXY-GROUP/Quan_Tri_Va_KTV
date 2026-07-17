@@ -236,7 +236,7 @@ export default function CRMPage() {
 
   return (
     <AppLayout title="Khách Hàng">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-sm text-gray-500">Lưu trữ thông tin, lịch sử dịch vụ và phân hạng thành viên.</p>
           <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export default function CRMPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col" style={{ maxHeight: 'calc(100vh - 150px)' }}>
           <div className="p-4 border-b border-gray-100 flex flex-col xl:flex-row gap-3 items-stretch xl:items-center bg-gray-50/50 rounded-t-2xl">
             {/* Search Input */}
             <div className="relative w-full xl:w-96 shrink-0">
@@ -373,9 +373,9 @@ export default function CRMPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-b-2xl">
+          <div className="flex-1 overflow-auto bg-white relative">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-20 shadow-sm">
                 <tr>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">Khách Hàng</th>
                   <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">Đánh Giá & Nhận Diện</th>
@@ -417,7 +417,7 @@ export default function CRMPage() {
           
           {/* Pagination Controls */}
           {totalPages > 0 && (
-            <div className="sticky bottom-0 z-10 flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-gray-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] rounded-b-xl gap-4">
+            <div className="shrink-0 flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50/50 rounded-b-xl gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Hiển thị</span>
                 <select
