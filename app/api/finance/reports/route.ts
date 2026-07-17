@@ -74,6 +74,20 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'dateFrom and dateTo are required' }, { status: 400 });
     }
 
+    // Convert VN date string to UTC timestamp string for Supabase query
+    const startOfVnDayToUtc = (dateStr: string) => {
+        const d = new Date(`${dateStr}T00:00:00+07:00`);
+        return d.toISOString();
+    };
+    
+    const endOfVnDayToUtc = (dateStr: string) => {
+        const d = new Date(`${dateStr}T23:59:59.999+07:00`);
+        return d.toISOString();
+    };
+
+    const utcFrom = startOfVnDayToUtc(dateFrom);
+    const utcTo = endOfVnDayToUtc(dateTo);
+
     const supabase = getSupabaseAdmin();
     if (!supabase) {
         return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
@@ -85,8 +99,8 @@ export async function GET(request: Request) {
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
             .select('id, billCode, bookingDate, createdAt, status, totalAmount, tip, technicianCode, customerId, customerLang, source')
-            .gte('bookingDate', `${dateFrom} 00:00:00`)
-            .lte('bookingDate', `${dateTo} 23:59:59`)
+            .gte('bookingDate', utcFrom)
+            .lte('bookingDate', utcTo)
             .neq('status', 'CANCELLED')
             .order('bookingDate', { ascending: true });
 
@@ -98,8 +112,8 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select('id', { count: 'exact', head: true })
             .eq('status', 'CANCELLED')
-            .gte('bookingDate', `${dateFrom} 00:00:00`)
-            .lte('bookingDate', `${dateTo} 23:59:59`);
+            .gte('bookingDate', utcFrom)
+            .lte('bookingDate', utcTo);
 
         // Apply language filter if specified
         const LANG_ALIASES: Record<string, string[]> = {
@@ -125,8 +139,8 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select('id, technicianCode, totalAmount, status')
             .in('status', KTV_RANKING_STATUSES)
-            .gte('bookingDate', `${dateFrom} 00:00:00`)
-            .lte('bookingDate', `${dateTo} 23:59:59`);
+            .gte('bookingDate', utcFrom)
+            .lte('bookingDate', utcTo);
 
         const allRankedBookingIds = (allRankedBookings || []).map(b => b.id);
         const completedBookingIds = completedBookings.map(b => b.id);
@@ -187,8 +201,8 @@ export async function GET(request: Request) {
         const { data: newCustomerList, count: newCustomerCount } = await supabase
             .from('Customers')
             .select('id, fullName, phone, email, createdAt', { count: 'exact' })
-            .gte('createdAt', `${dateFrom}T00:00:00`)
-            .lte('createdAt', `${dateTo}T23:59:59`)
+            .gte('createdAt', utcFrom)
+            .lte('createdAt', utcTo)
             .order('createdAt', { ascending: false })
             .limit(50);
 
@@ -209,19 +223,22 @@ export async function GET(request: Request) {
         
         const prevFromStr = prevFrom.toISOString().split('T')[0];
         const prevToStr = prevTo.toISOString().split('T')[0];
+        
+        const prevUtcFrom = startOfVnDayToUtc(prevFromStr);
+        const prevUtcTo = endOfVnDayToUtc(prevToStr);
 
         const { data: prevBookings } = await supabase
             .from('Bookings')
             .select('id, totalAmount, customerId')
             .in('status', COMPLETED_STATUSES)
-            .gte('bookingDate', `${prevFromStr} 00:00:00`)
-            .lte('bookingDate', `${prevToStr} 23:59:59`);
+            .gte('bookingDate', prevUtcFrom)
+            .lte('bookingDate', prevUtcTo);
 
         const { count: prevNewCustomers } = await supabase
             .from('Customers')
             .select('id', { count: 'exact', head: true })
-            .gte('createdAt', `${prevFromStr}T00:00:00`)
-            .lte('createdAt', `${prevToStr}T23:59:59`);
+            .gte('createdAt', prevUtcFrom)
+            .lte('createdAt', prevUtcTo);
 
         // ─── 7. Fetch SystemConfigs for commission calculation ────────────
         const { data: configs } = await supabase
@@ -336,7 +353,7 @@ export async function GET(request: Request) {
         // ─── 8. Daily Revenue ────────────────────────────────────────────
         const dailyMap: Record<string, { date: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (!timeInfo) return;
             const day = timeInfo.dateStr;
             if (!dailyMap[day]) dailyMap[day] = { date: day, revenue: 0, orders: 0 };
@@ -348,7 +365,7 @@ export async function GET(request: Request) {
         // ─── 8b. Hourly Revenue (with optional hour filter) ──────────────
         const hourlyRevenueMap: Record<number, { hour: number; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (timeInfo) {
                 const hour = timeInfo.hour;
                 // Apply hour filter if provided
@@ -372,7 +389,7 @@ export async function GET(request: Request) {
         // ─── 8c. Weekly Revenue ──────────────────────────────────────────
         const weeklyMap: Record<string, { week: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (!timeInfo) return;
             const day = timeInfo.dateStr;
             const d = new Date(day);
@@ -390,7 +407,7 @@ export async function GET(request: Request) {
         // ─── 8d. Monthly Revenue ─────────────────────────────────────────
         const monthlyMap: Record<string, { month: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (!timeInfo) return;
             const monthKey = timeInfo.monthStr; // YYYY-MM
             if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { month: monthKey, revenue: 0, orders: 0 };
@@ -522,7 +539,7 @@ export async function GET(request: Request) {
         // ─── 11. Peak Hours ──────────────────────────────────────────────
         const hourMap: Record<number, number> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (timeInfo) {
                 const hour = timeInfo.hour;
                 hourMap[hour] = (hourMap[hour] || 0) + 1;
@@ -640,7 +657,7 @@ export async function GET(request: Request) {
         const serviceHourlyTrends: Record<string, number[]> = {};
         
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             if (!timeInfo) return;
             
             const dateObj = new Date(timeInfo.dateStr);
@@ -668,7 +685,7 @@ export async function GET(request: Request) {
         const rawDataSheet: any[] = [];
         completedBookings.forEach(b => {
             const bItems = items.filter(i => i.bookingId === b.id);
-            const timeInfo = getVnDateInfo(b.createdAt || b.bookingDate || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
             
             if (bItems.length === 0) {
                 rawDataSheet.push({
@@ -694,8 +711,8 @@ export async function GET(request: Request) {
                     
                     let startTime = '';
                     let endTime = '';
-                    if (b.createdAt || b.bookingDate) {
-                        const startDate = new Date(b.createdAt || b.bookingDate);
+                    if (b.bookingDate || b.createdAt) {
+                        const startDate = new Date(b.bookingDate || b.createdAt);
                         startTime = `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
                         const endDate = new Date(startDate.getTime() + dur * 60000);
                         endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
