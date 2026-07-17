@@ -30,6 +30,7 @@ import {
   ListOrdered,
   BookOpen,
   ClipboardCheck,
+  CheckSquare,
   Home,
   ChevronLeft,
   ChevronRight,
@@ -77,6 +78,7 @@ const ICONS: Record<string, React.ReactNode> = {
   notification_settings: <Settings size={20} />,
   support_dashboard: <LayoutDashboard size={20} />,
   support_tasks_admin: <ClipboardCheck size={20} />,
+  support_reviews_admin: <CheckSquare size={20} />,
   system_settings: <Settings size={20} />,
   settings: <Settings size={20} />,
 };
@@ -112,8 +114,9 @@ const PATHS: Record<string, string> = {
   staff_notifications: '/admin/notifications',
   staff_features: '/admin/settings/features',
   notification_settings: '/admin/settings/notifications',
-  support_dashboard: '/support/dashboard',
-  support_tasks_admin: '/admin/support-tasks',
+  support_dashboard: '/admin/support/dashboard',
+  support_tasks_admin: '/admin/support/templates',
+  support_reviews_admin: '/admin/support/reviews',
   system_settings: '/admin/settings/system',
   settings: '/settings',
 };

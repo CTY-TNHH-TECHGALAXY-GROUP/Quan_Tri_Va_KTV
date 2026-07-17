@@ -31,6 +31,7 @@ export type ModuleId =
   | 'notification_settings'
   | 'support_dashboard'
   | 'support_tasks_admin'
+  | 'support_reviews_admin'
   | 'settings'
   | 'system_settings';
 
