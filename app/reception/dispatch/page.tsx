@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
-  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle
+  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { supabase } from '@/lib/supabase';
@@ -22,7 +22,8 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
 import { useNotifications } from '@/components/NotificationProvider';
-
+import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
+import { Customer } from '@/lib/types';
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 import { 
   StaffAssignment, 
@@ -140,6 +141,9 @@ export default function DispatchBoardPage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [beds, setBeds] = useState<any[]>([]);
   const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number, customerGender: string } | null>(null);
+  const [showCustomerInfo, setShowCustomerInfo] = useState(false);
+  const [fullCustomerData, setFullCustomerData] = useState<Customer | null>(null);
+  const [isFetchingCustomer, setIsFetchingCustomer] = useState(false);
 
   useEffect(() => {
     setEditingGuestInfo(null);
@@ -1604,8 +1608,7 @@ if (!hasPermission('dispatch_board')) {
           <div className="flex lg:flex items-center justify-between sm:block w-full sm:w-auto">
             <div className="w-full">
               <h1 className="text-xl lg:text-2xl font-black text-gray-900 tracking-tight hidden sm:flex items-center gap-3">
-                <span className="hidden lg:inline">Bảng Điều Phối Trung Tâm</span>
-                <div className="hidden sm:flex items-center gap-1 ml-4 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200">
+                <div className="hidden sm:flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200">
                   <button
                     onClick={() => setActiveMode('DISPATCH')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -1652,8 +1655,6 @@ if (!hasPermission('dispatch_board')) {
                   <Columns3 size={14} /> Giám Sát Đơn
                 </button>
               </div>
-
-              <p className="text-[10px] lg:text-xs text-gray-500 mt-1 font-medium hidden sm:block">{activeMode === 'DISPATCH' ? 'Điều phối KTV & Phòng chuyên nghiệp' : 'Theo dõi tiến trình phục vụ đơn hàng'}</p>
             </div>
           </div>
 
@@ -1919,6 +1920,36 @@ if (!hasPermission('dispatch_board')) {
                                   onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: parseInt(e.target.value || '1', 10), customerGender: currentGender })}
                                   className="w-16 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-center"
                                 />
+                                <button
+                                  onClick={async () => {
+                                    setIsFetchingCustomer(true);
+                                    try {
+                                      const res = await fetch('/api/customers');
+                                      const data = await res.json();
+                                      const found = data.data?.find((c: any) => c.phone === selectedOrder?.phone);
+                                      if (found) {
+                                        setFullCustomerData(found);
+                                        setShowCustomerInfo(true);
+                                      } else {
+                                        alert('Không tìm thấy dữ liệu chi tiết của khách hàng này trong hệ thống.');
+                                      }
+                                    } catch (e) {
+                                      console.error('Lỗi tải dữ liệu khách:', e);
+                                      alert('Lỗi tải dữ liệu khách hàng');
+                                    } finally {
+                                      setIsFetchingCustomer(false);
+                                    }
+                                  }}
+                                  disabled={isFetchingCustomer}
+                                  className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors disabled:opacity-50"
+                                  title="Xem thông tin khách hàng"
+                                >
+                                  {isFetchingCustomer ? (
+                                    <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <Info size={16} />
+                                  )}
+                                </button>
                                 {isDirty && (
                                     <button
                                       onClick={async () => {
@@ -2531,6 +2562,19 @@ if (!hasPermission('dispatch_board')) {
               </button>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCustomerInfo && fullCustomerData && (
+          <CustomerDetailModal
+            customer={fullCustomerData}
+            formatVND={(n = 0) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n)}
+            onClose={() => setShowCustomerInfo(false)}
+            onUpdate={(updated) => {
+              setFullCustomerData(updated);
+            }}
+          />
         )}
       </AnimatePresence>
 

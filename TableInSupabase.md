@@ -544,34 +544,75 @@
 | `created_at` | timestamptz | Thời điểm xảy ra |
 
 
-## NHÓM 8: HẬU CẦN (Support)
+## NHÓM 8: HẬU CẦN (Support) - MỚI
+**Lưu ý**: Các bảng cũ (`SupportAreas`, `SupportTasks`, `SupportTaskTemplates`) đã được deprecate. Module Hậu cần giờ sẽ link trực tiếp với bảng `Rooms`.
 
-### 20. SupportTaskTemplates
-**Nhiệm vụ**: Danh sách công việc mẫu cho Hậu Cần.
-| Cột | Kiểu | Ghi chú |
-|-----|------|---------|
-| id | uuid PK | Mã việc mẫu |
-| task_name | text | Tên việc (VD: Dọn rác) |
-| created_at | timestamptz | |
+### 20. TaskCategories
+**Nhiệm vụ**: Danh mục phân loại công việc hậu cần (Vệ sinh, Bảo trì, Vật tư...).
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `name` | text | Tên hạng mục (VD: Vệ sinh phòng, Châm thêm tinh dầu) |
+| `description` | text | Mô tả chi tiết |
+| `is_active` | boolean | Trạng thái hiển thị |
+| `created_at` | timestamptz | |
 
-### 21. SupportAreas
-**Nhiệm vụ**: Khu vực cần dọn.
-| Cột | Kiểu | Ghi chú |
-|-----|------|---------|
-| id | uuid PK | Mã khu vực |
-| area_name | text | Tên khu vực |
+### 21. TaskTemplates
+**Nhiệm vụ**: Cấu hình mẫu công việc định kỳ, lưu trữ cronjob config.
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `category_id` | uuid FK | Trỏ về `TaskCategories` |
+| `name` | text | Tên công việc |
+| `description` | text | Hướng dẫn chi tiết cho KTV/Hậu cần |
+| `requires_photo` | boolean | Bắt buộc chụp ảnh (Default: true) |
+| `min_photo_count` | integer | Số ảnh tối thiểu (Default: 1) |
+| `cron_schedule` | text | Lịch cron chạy ngầm (VD: `0 0 * * *`) |
+| `room_id` | text FK | Trỏ về bảng `Rooms` (Phòng áp dụng việc này) |
+| `is_active` | boolean | Bật/tắt việc chạy tự động |
+| `created_by` | text | Admin tạo |
+| `created_at` | timestamptz | |
 
-### 22. SupportTasks
-**Nhiệm vụ**: Lịch sử công việc đã giao cho Hậu cần.
-| Cột | Kiểu | Ghi chú |
-|-----|------|---------|
-| id | uuid PK | |
-| task_id | uuid FK | Liên kết SupportTaskTemplates |
-| task_name | text | Tên việc |
-| assignee_id | text FK | NV Hậu cần (Staff) |
-| area_id | uuid FK | Liên kết SupportAreas |
-| status | text | PENDING, DONE |
-| photo_url | text | Ảnh minh chứng |
-| created_by | text FK | Admin giao việc |
-| created_at | timestamptz | |
-| completed_at | timestamptz | |
+### 22. Tasks
+**Nhiệm vụ**: Phiếu giao việc thực tế (Cố định hoặc Đột xuất).
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `template_id` | uuid FK | (Nullable) Nếu sinh từ mẫu |
+| `category_id` | uuid FK | (Nullable) Nếu giao đột xuất cần danh mục |
+| `room_id` | text FK | Phòng phát sinh công việc (Trỏ bảng `Rooms`) |
+| `name` | text | Tên công việc (Lấy từ Template hoặc nhập tay) |
+| `task_type` | text | `FIXED` (Định kỳ) / `AD-HOC` (Đột xuất) |
+| `assignee_id` | text FK | NV được phân công (Trỏ bảng `Staff`) |
+| `status` | text | Trạng thái NV: `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` |
+| `inspection_status` | text | Trạng thái QL: `PENDING_REVIEW` / `PASSED` / `REWORK_REQUIRED` / `FAILED` |
+| `due_at` | timestamptz | Hạn chót hoàn thành |
+| `priority` | text | `LOW` / `NORMAL` / `HIGH` |
+| `current_review_round` | integer | Vòng nghiệm thu hiện tại (Khởi tạo 0) |
+| `created_by` | text | Admin/Cron tạo |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | |
+
+### 23. TaskPhotos
+**Nhiệm vụ**: Chứa ảnh NV upload (cả ảnh nháp chưa nộp).
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `task_id` | uuid FK | Trỏ về `Tasks` |
+| `uploaded_by` | text FK | Người chụp (`Staff.id`) |
+| `storage_path` | text | Đường dẫn trên Supabase Storage |
+| `is_submitted` | boolean | Cờ lưu nháp. `false` = NV mới chụp chưa bấm Nộp. `true` = Đã nộp. |
+| `review_round` | integer | Vòng nộp ảnh (dành cho Rework) |
+| `created_at` | timestamptz | |
+
+### 24. TaskReviews
+**Nhiệm vụ**: Lịch sử đánh giá của Quản lý cho từng vòng nghiệm thu.
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `task_id` | uuid FK | Trỏ về `Tasks` |
+| `round_number` | integer | Đánh giá cho vòng số mấy |
+| `reviewer_id` | text FK | Quản lý đánh giá |
+| `decision` | text | `PASSED` / `REWORK_REQUIRED` / `FAILED` |
+| `note` | text | Ghi chú/Lý do yêu cầu làm lại |
+| `created_at` | timestamptz | |

@@ -1,25 +1,27 @@
 'use client';
 
 import React from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useSupportReviews } from './SupportReviews.logic';
 
 export default function SupportReviewsPage() {
   const logic = useSupportReviews();
 
   return (
-    <div className="p-6 max-w-7xl mx-auto min-h-screen bg-slate-50">
+    <AppLayout title="Nghiệm Thu">
+    <div className="p-6 max-w-7xl mx-auto min-h-screen">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Nghiệm Thu Công Việc</h1>
         <p className="text-slate-500 mt-1">Duyệt các công việc Hậu Cần đã được nhân viên báo cáo Hoàn Thành</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {logic.pendingTasks.length === 0 ? (
+        {logic.tasks.length === 0 ? (
           <div className="col-span-full py-10 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-sm">
             Hiện tại không có công việc nào cần nghiệm thu.
           </div>
         ) : (
-          logic.pendingTasks.map(task => (
+          logic.tasks.map(task => (
             <div key={task.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex justify-between items-start mb-3">
                 <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">
@@ -91,20 +93,21 @@ export default function SupportReviewsPage() {
 
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
                <button 
-                  disabled={logic.isSubmitting}
+                  disabled={logic.submitting}
                   onClick={() => {
                      const note = (document.getElementById('reviewNote') as HTMLTextAreaElement).value;
-                     logic.submitReview('REWORK_REQUIRED', note);
+                     logic.reviewTask(logic.selectedTask!.id, 'REWORK_REQUIRED');
+
                   }}
                   className="px-6 py-2.5 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
                >
                  Yêu cầu Làm lại
                </button>
                <button 
-                  disabled={logic.isSubmitting}
+                  disabled={logic.submitting}
                   onClick={() => {
                      const note = (document.getElementById('reviewNote') as HTMLTextAreaElement).value;
-                     logic.submitReview('PASSED', note);
+                     logic.reviewTask(logic.selectedTask!.id, 'PASSED');
                   }}
                   className="px-8 py-2.5 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition-colors shadow-sm disabled:opacity-50"
                >
@@ -115,5 +118,6 @@ export default function SupportReviewsPage() {
         </div>
       )}
     </div>
+    </AppLayout>
   );
 }
