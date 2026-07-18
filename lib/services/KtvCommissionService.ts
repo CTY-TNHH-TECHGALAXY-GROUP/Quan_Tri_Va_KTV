@@ -141,9 +141,33 @@ export class KtvCommissionService {
         shiftsData: any[], 
         bonusConfig: BonusConfig
     ): number {
+        // Compute all unique technicians in this booking for dividing points
+        const allKtvCodes = new Set<string>();
+        for (const item of (booking.BookingItems || [])) {
+            if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+            }
+        }
+        if (allKtvCodes.size === 0 && booking.technicianCode) {
+            const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
+            codes.forEach((c: string) => {
+                if (c.trim()) allKtvCodes.add(c.trim().toLowerCase());
+            });
+        }
+
         // 1. Determine Max Rating for this KTV
         let maxKtvRating = 0;
         for (const item of (booking.BookingItems || [])) {
+            let isTechInvolved = false;
+            if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
+                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+            } else {
+                const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
+                isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
+            }
+                
+            if (!isTechInvolved) continue;
+
             let ktvRating = 0;
             // Priority 1: ktvRatings map
             let parsedKtvRatings = item.ktvRatings;
@@ -171,9 +195,18 @@ export class KtvCommissionService {
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
             const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
+            
+            let isTechInvolved = false;
+            if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
+                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+            } else {
+                const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
+                isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
+            }
+
             if (mySegs.length > 0) {
                 myTotalDuration += mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
-            } else if (item.technicianCodes && item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase())) {
+            } else if (isTechInvolved) {
                 myTotalDuration += 60; // Fallback
             }
         }
@@ -199,12 +232,6 @@ export class KtvCommissionService {
         }
 
         // 4. Divide by total unique KTVs working on this booking
-        const allKtvCodes = new Set<string>();
-        for (const item of (booking.BookingItems || [])) {
-            if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
-            }
-        }
         const totalUniqueKTVs = allKtvCodes.size || 1;
         
         return Math.floor(adjustedBasePoints / totalUniqueKTVs);

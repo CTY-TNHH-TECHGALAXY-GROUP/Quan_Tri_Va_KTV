@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -96,82 +97,47 @@ export async function GET(request: Request) {
             .gte('timeStart', `${todayStr}T00:00:00+07:00`)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
 
+        const bonusConfig = { s1Bonus, s2Bonus, s3Bonus };
+
         // 4. Merge and Format
         const timeline: any[] = [];
 
         (bookings || []).forEach(b => {
-            let isInvovled = false;
-            const allKtvCodes = new Set<string>();
-            for (const item of (b.BookingItems || [])) {
-                if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                    item.technicianCodes.forEach((tc: string) => {
-                        allKtvCodes.add(tc.toLowerCase());
-                        if (tc.toLowerCase() === techCode.toLowerCase()) isInvovled = true;
-                    });
-                }
-            }
-            
-            if (isInvovled) {
-                // Tính rating lớn nhất của KTV này từ các dịch vụ họ trực tiếp làm trong đơn
+            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData, bonusConfig);
+            if (bonusPts > 0) {
+                // Determine maxKtvRating to show in desc
                 let maxKtvRating = 0;
                 for (const item of (b.BookingItems || [])) {
-                    const isTechInvolved = item.technicianCodes && Array.isArray(item.technicianCodes) &&
-                        item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
-                    
-                    if (isTechInvolved) {
-                        let ktvRating = 0;
-                        let parsedKtvRatings = (item as any).ktvRatings;
-                        if (typeof parsedKtvRatings === 'string') {
-                            try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
-                        }
-                        if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
-                            const key = Object.keys(parsedKtvRatings).find(k => k.toLowerCase() === techCode.toLowerCase());
-                            if (key) {
-                                ktvRating = Number(parsedKtvRatings[key]) || 0;
-                            }
-                        }
-                        if (ktvRating === 0) {
-                            ktvRating = Number(item.itemRating) || 0;
-                        }
-                        if (ktvRating === 0) {
-                            ktvRating = Number(b.rating) || 0;
-                        }
-                        if (ktvRating > maxKtvRating) {
-                            maxKtvRating = ktvRating;
-                        }
+                    let isTechInvolved = false;
+                    if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
+                        isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                    } else {
+                        const codes = typeof b.technicianCode === 'string' ? b.technicianCode.split(',') : [];
+                        isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
                     }
+                    if (!isTechInvolved) continue;
+
+                    let ktvRating = 0;
+                    let parsedKtvRatings = item.ktvRatings;
+                    if (typeof parsedKtvRatings === 'string') {
+                        try { parsedKtvRatings = JSON.parse(parsedKtvRatings); } catch { parsedKtvRatings = {}; }
+                    }
+                    if (parsedKtvRatings && typeof parsedKtvRatings === 'object') {
+                        const key = Object.keys(parsedKtvRatings).find((k: string) => k.toLowerCase() === techCode.toLowerCase());
+                        if (key) ktvRating = Number(parsedKtvRatings[key]) || 0;
+                    }
+                    if (ktvRating === 0) ktvRating = Number(item.itemRating) || 0;
+                    if (ktvRating === 0) ktvRating = Number(b.rating) || 0;
+                    if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
                 }
 
-                if (maxKtvRating >= 4) {
-                    let totalDuration = 0;
-                    for (const item of (b.BookingItems || [])) {
-                        let segs: any[] = [];
-                        try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
-                        
-                        const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
-                        if (mySegs.length > 0) {
-                            totalDuration += mySegs.reduce((sum: number, seg: any) => {
-                                return sum + (Number(seg.duration) || 0);
-                            }, 0);
-                        } else if (item.technicianCodes && item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase())) {
-                            totalDuration += 60;
-                        }
-                    }
-
-                    let adjustedBasePoints = basePointsForShift;
-                    if (totalDuration < 60) adjustedBasePoints = adjustedBasePoints / 2;
-                    const bonusPts = Math.floor(adjustedBasePoints / (allKtvCodes.size || 1));
-                    
-                    if (bonusPts > 0) {
-                        timeline.push({
-                            id: `rt-earn-${b.id}`,
-                            date: b.timeStart || todayStr,
-                            points: bonusPts,
-                            type: 'EARN',
-                            desc: `Thưởng đánh giá (${maxKtvRating}★) - Đơn ${b.billCode || b.id.substring(0, 6)}`
-                        });
-                    }
-                }
+                timeline.push({
+                    id: `rt-earn-${b.id}`,
+                    date: b.timeStart || todayStr,
+                    points: bonusPts,
+                    type: 'EARN',
+                    desc: `Thưởng đánh giá (${maxKtvRating}★) - Đơn ${b.billCode || b.id.substring(0, 6)}`
+                });
             }
         });
 
