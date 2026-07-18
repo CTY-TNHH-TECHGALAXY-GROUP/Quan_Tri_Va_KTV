@@ -33,14 +33,16 @@ export async function GET(request: Request) {
         return mins2 - mins1;
     };
 
-    const getVnDateInfo = (dateString: string) => {
+    const getVnDateInfo = (dateString: string, cutoff: number = 0) => {
         if (!dateString) return null;
         let ds = dateString;
         if (!ds.endsWith('Z') && !ds.match(/[+-]\d{2}:?\d{2}$/)) {
             ds += 'Z';
         }
-        const d = new Date(ds);
-        if (isNaN(d.getTime())) return null;
+        const originalDate = new Date(ds);
+        if (isNaN(originalDate.getTime())) return null;
+        
+        const shiftedDate = new Date(originalDate.getTime() - cutoff * 60 * 60 * 1000);
         
         const options: Intl.DateTimeFormatOptions = { 
             timeZone: 'Asia/Ho_Chi_Minh',
@@ -48,19 +50,18 @@ export async function GET(request: Request) {
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
             hour12: false
         };
         
         const formatter = new Intl.DateTimeFormat('en-US', options);
-        const parts = formatter.formatToParts(d);
-        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+        const partsShifted = formatter.formatToParts(shiftedDate);
+        const partsOriginal = formatter.formatToParts(originalDate);
+        const getPart = (parts: Intl.DateTimeFormatPart[], type: string) => parts.find(p => p.type === type)?.value || '00';
         
-        const year = getPart('year');
-        const month = getPart('month');
-        const day = getPart('day');
-        let hour = parseInt(getPart('hour'), 10);
+        const year = getPart(partsShifted, 'year');
+        const month = getPart(partsShifted, 'month');
+        const day = getPart(partsShifted, 'day');
+        let hour = parseInt(getPart(partsOriginal, 'hour'), 10);
         if (hour === 24) hour = 0;
         
         return {
@@ -75,18 +76,17 @@ export async function GET(request: Request) {
     }
 
     // Convert VN date string to UTC timestamp string for Supabase query
-    const startOfVnDayToUtc = (dateStr: string) => {
-        const d = new Date(`${dateStr}T00:00:00+07:00`);
+    const startOfVnDayToUtc = (dateStr: string, cutoff: number = 0) => {
+        const [year, month, day] = dateStr.split('-');
+        const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), cutoff - 7, 0, 0, 0));
         return d.toISOString();
     };
     
-    const endOfVnDayToUtc = (dateStr: string) => {
-        const d = new Date(`${dateStr}T23:59:59.999+07:00`);
+    const endOfVnDayToUtc = (dateStr: string, cutoff: number = 0) => {
+        const [year, month, day] = dateStr.split('-');
+        const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1, cutoff - 7, 0, 0, -1));
         return d.toISOString();
     };
-
-    const utcFrom = startOfVnDayToUtc(dateFrom);
-    const utcTo = endOfVnDayToUtc(dateTo);
 
     const supabase = getSupabaseAdmin();
     if (!supabase) {
@@ -94,6 +94,17 @@ export async function GET(request: Request) {
     }
 
     try {
+        const { data: cutoffConfig } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'spa_day_cutoff_hours')
+            .single();
+            
+        const cutoffHours = cutoffConfig?.value ? Number(cutoffConfig.value) : 0;
+
+        const utcFrom = startOfVnDayToUtc(dateFrom, cutoffHours);
+        const utcTo = endOfVnDayToUtc(dateTo, cutoffHours);
+
         const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any);
         // ─── 1. Fetch completed bookings in date range ───────────────────
         const { data: bookings, error: bErr } = await supabase
@@ -353,7 +364,7 @@ export async function GET(request: Request) {
         // ─── 8. Daily Revenue ────────────────────────────────────────────
         const dailyMap: Record<string, { date: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (!timeInfo) return;
             const day = timeInfo.dateStr;
             if (!dailyMap[day]) dailyMap[day] = { date: day, revenue: 0, orders: 0 };
@@ -365,7 +376,7 @@ export async function GET(request: Request) {
         // ─── 8b. Hourly Revenue (with optional hour filter) ──────────────
         const hourlyRevenueMap: Record<number, { hour: number; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (timeInfo) {
                 const hour = timeInfo.hour;
                 // Apply hour filter if provided
@@ -389,7 +400,7 @@ export async function GET(request: Request) {
         // ─── 8c. Weekly Revenue ──────────────────────────────────────────
         const weeklyMap: Record<string, { week: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (!timeInfo) return;
             const day = timeInfo.dateStr;
             const d = new Date(day);
@@ -407,7 +418,7 @@ export async function GET(request: Request) {
         // ─── 8d. Monthly Revenue ─────────────────────────────────────────
         const monthlyMap: Record<string, { month: string; revenue: number; orders: number }> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (!timeInfo) return;
             const monthKey = timeInfo.monthStr; // YYYY-MM
             if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { month: monthKey, revenue: 0, orders: 0 };
@@ -426,7 +437,7 @@ export async function GET(request: Request) {
             let dur = svcInfo?.duration || 0;
 
             // Gom nhóm tất cả dịch vụ VIP (Mới + Cũ) vào 1 dòng để báo cáo gọn gàng
-            if (key === 'NHS0800' || key.startsWith('VIP_') || cat === 'VIP_MENU' || cat === 'PREMIUM') {
+            if (key.startsWith('NHP') || key.startsWith('VIP_') || cat === 'VIP_MENU' || cat === 'PREMIUM') {
                 key = 'VIP_GROUP_SUMMARY';
                 name = 'Tổng Hợp Gói Menu VIP';
                 cat = 'VIP_MENU';
@@ -539,7 +550,7 @@ export async function GET(request: Request) {
         // ─── 11. Peak Hours ──────────────────────────────────────────────
         const hourMap: Record<number, number> = {};
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (timeInfo) {
                 const hour = timeInfo.hour;
                 hourMap[hour] = (hourMap[hour] || 0) + 1;
@@ -657,7 +668,7 @@ export async function GET(request: Request) {
         const serviceHourlyTrends: Record<string, number[]> = {};
         
         completedBookings.forEach(b => {
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             if (!timeInfo) return;
             
             const dateObj = new Date(timeInfo.dateStr);
@@ -685,7 +696,7 @@ export async function GET(request: Request) {
         const rawDataSheet: any[] = [];
         completedBookings.forEach(b => {
             const bItems = items.filter(i => i.bookingId === b.id);
-            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '');
+            const timeInfo = getVnDateInfo(b.bookingDate || b.createdAt || '', cutoffHours);
             
             if (bItems.length === 0) {
                 rawDataSheet.push({

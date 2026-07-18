@@ -5,14 +5,15 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, 
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const CUTOFF_OFFSET_MS = 6 * 60 * 60 * 1000; // Mặc định 6h sáng cắt ngày
 
 const getTodayVn = () => {
-    const d = new Date(Date.now() + VN_OFFSET_MS);
+    const d = new Date(Date.now() + VN_OFFSET_MS - CUTOFF_OFFSET_MS);
     return d.toISOString().split('T')[0];
 };
 
 const getYesterdayVn = () => {
-    const d = new Date(Date.now() - 86400000 + VN_OFFSET_MS);
+    const d = new Date(Date.now() - 86400000 + VN_OFFSET_MS - CUTOFF_OFFSET_MS);
     return d.toISOString().split('T')[0];
 };
 
