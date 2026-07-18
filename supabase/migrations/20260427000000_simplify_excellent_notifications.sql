@@ -225,7 +225,7 @@ BEGIN
                     INSERT INTO public."StaffNotifications" (
                         "bookingId", "employeeId", "type", "message", "isRead", "createdAt"
                     ) VALUES (
-                        NEW.id, tech_code, 'NEW_ORDER',
+                        NEW.id, tech_code, 'KTV_NEW_ORDER',
                         'Bạn có đơn mới #' || NEW."billCode" || ' tại ' || location_info,
                         false, now()
                     );
