@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { COMPLETED_STATUSES, isReturningCustomer } from '@/lib/customer.logic';
+import { COMPLETED_STATUSES, isReturningCustomer, isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const phone = searchParams.get('phone');
-        const email = searchParams.get('email');
+        const phone = searchParams.get('phone') || '';
+        const email = searchParams.get('email') || '';
 
-        if (!phone && !email) {
-            return NextResponse.json({ success: false, error: 'Vui lòng cung cấp số điện thoại hoặc email' }, { status: 400 });
+        const validPhone = !isDummyPhone(phone) ? phone : null;
+        const validEmail = !isDummyEmail(email) ? email : null;
+
+        if (!validPhone && !validEmail) {
+            // Nếu cả phone và email đều là dummy, trả về luôn Khách Mới
+            return NextResponse.json({
+                success: true,
+                data: {
+                    isReturning: false,
+                    visitCount: 0,
+                    guestType: 'Khách Mới',
+                    customerName: 'Khách Vãng Lai',
+                    notes: ''
+                }
+            });
         }
 
         const supabase = getSupabaseAdmin();
@@ -21,10 +34,10 @@ export async function GET(request: Request) {
 
         // 1. Tra cứu Customer
         let customerQuery = supabase.from('Customers').select('id, fullName, phone, email, notes');
-        if (phone) {
-            customerQuery = customerQuery.eq('phone', phone);
-        } else if (email) {
-            customerQuery = customerQuery.eq('email', email);
+        if (validPhone) {
+            customerQuery = customerQuery.eq('phone', validPhone);
+        } else if (validEmail) {
+            customerQuery = customerQuery.eq('email', validEmail);
         }
 
         const { data: customers, error: custError } = await customerQuery.limit(1);
@@ -45,10 +58,10 @@ export async function GET(request: Request) {
 
         if (customer) {
             bookingsQuery = bookingsQuery.eq('customerId', customer.id);
-        } else if (phone) {
-            bookingsQuery = bookingsQuery.eq('customerPhone', phone);
-        } else if (email) {
-            bookingsQuery = bookingsQuery.eq('customerEmail', email);
+        } else if (validPhone) {
+            bookingsQuery = bookingsQuery.eq('customerPhone', validPhone);
+        } else if (validEmail) {
+            bookingsQuery = bookingsQuery.eq('customerEmail', validEmail);
         }
 
         const { data: bookings, error: bookingsError } = await bookingsQuery;

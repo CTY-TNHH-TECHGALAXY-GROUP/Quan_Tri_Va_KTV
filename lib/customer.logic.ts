@@ -64,8 +64,8 @@ export async function identifyCustomer(phoneOrEmail: string): Promise<CustomerId
   }
   
   const normalizedInput = phoneOrEmail?.trim();
-  if (!normalizedInput || normalizedInput === '' || isDummyPhone(normalizedInput)) {
-    return null; // Bỏ qua input rỗng hoặc chứa toàn số 0 (Dummy phone)
+  if (!normalizedInput || normalizedInput === '' || isDummyPhone(normalizedInput) || isDummyEmail(normalizedInput)) {
+    return null; // Bỏ qua input rỗng, chứa toàn số 0 (Dummy phone) hoặc email ảo (không có @)
   }
 
   try {

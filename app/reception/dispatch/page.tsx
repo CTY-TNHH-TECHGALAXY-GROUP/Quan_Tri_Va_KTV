@@ -10,8 +10,12 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
-  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info
+  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
+  Users, BedDouble, CalendarClock
 } from 'lucide-react';
+import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
+import { RoomBoard } from '@/components/shared/RoomBoard';
+import { ScheduleBoard } from '@/components/shared/ScheduleBoard';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { DispatchServiceBlock } from './_components/DispatchServiceBlock';
@@ -132,7 +136,7 @@ export default function DispatchBoardPage() {
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const { notifications, soundEnabled, setSoundEnabled, unlockAudio, playSound } = useNotifications();
   const [leftPanelTab, setLeftPanelTab] = useState<DispatchStatus>('pending');
-  const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR'>('DISPATCH');
+  const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE'>('DISPATCH');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddSvcModal, setShowAddSvcModal] = useState(false);
   const [editingSvc, setEditingSvc] = useState<{ orderId: string, svcId: string, oldSvcName: string } | null>(null);
@@ -514,6 +518,7 @@ export default function DispatchBoardPage() {
               id: b.id,
               billCode: b.billCode || 'N/A',
               customerName: b.customerName || 'Khách vãng lai',
+              customerId: b.customerId || null,
               customerLang: b.customerLang || 'vi',
               phone: b.customerPhone || '',
               email: b.customerEmail || '',
@@ -1629,6 +1634,36 @@ if (!hasPermission('dispatch_board')) {
                   >
                     <Columns3 size={14} /> Giám Sát Đơn
                   </button>
+                  <button
+                    onClick={() => setActiveMode('TURN_QUEUE')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeMode === 'TURN_QUEUE'
+                        ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Users size={14} /> Sổ Tua
+                  </button>
+                  <button
+                    onClick={() => setActiveMode('ROOMS')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeMode === 'ROOMS'
+                        ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <BedDouble size={14} /> Sổ Phòng
+                  </button>
+                  <button
+                    onClick={() => setActiveMode('SCHEDULE')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeMode === 'SCHEDULE'
+                        ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <CalendarClock size={14} /> Lịch Biểu Diễn
+                  </button>
                 </div>
               </h1>
               
@@ -1636,23 +1671,53 @@ if (!hasPermission('dispatch_board')) {
               <div className="flex sm:hidden items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200 w-full mb-1">
                 <button
                   onClick={() => setActiveMode('DISPATCH')}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'DISPATCH'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <LayoutList size={14} /> Điều Phối
+                  <LayoutList size={12} /> <span className="hidden xs:inline">Điều Phối</span>
                 </button>
                 <button
                   onClick={() => setActiveMode('MONITOR')}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'MONITOR'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <Columns3 size={14} /> Giám Sát Đơn
+                  <Columns3 size={12} /> <span className="hidden xs:inline">Giám Sát</span>
+                </button>
+                <button
+                  onClick={() => setActiveMode('TURN_QUEUE')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                    activeMode === 'TURN_QUEUE'
+                      ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Users size={12} /> <span className="hidden xs:inline">Sổ Tua</span>
+                </button>
+                <button
+                  onClick={() => setActiveMode('ROOMS')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                    activeMode === 'ROOMS'
+                      ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <BedDouble size={12} /> <span className="hidden xs:inline">Phòng</span>
+                </button>
+                <button
+                  onClick={() => setActiveMode('SCHEDULE')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                    activeMode === 'SCHEDULE'
+                      ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <CalendarClock size={12} /> <span className="hidden xs:inline">Lịch</span>
                 </button>
               </div>
             </div>
@@ -1926,12 +1991,21 @@ if (!hasPermission('dispatch_board')) {
                                     try {
                                       const res = await fetch('/api/customers');
                                       const data = await res.json();
-                                      const found = data.data?.find((c: any) => c.phone === selectedOrder?.phone);
+                                      const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
+                                      
+                                      let found = null;
+                                      if (orderToUse?.customerId) {
+                                          found = data.data?.find((c: any) => c.id === orderToUse.customerId);
+                                      }
+                                      if (!found && orderToUse?.phone) {
+                                          found = data.data?.find((c: any) => c.phone === orderToUse.phone);
+                                      }
+                                      
                                       if (found) {
                                         setFullCustomerData(found);
                                         setShowCustomerInfo(true);
                                       } else {
-                                        alert('Không tìm thấy dữ liệu chi tiết của khách hàng này trong hệ thống.');
+                                        alert('Khách vãng lai chưa cung cấp thông tin liên lạc thật (SĐT/Email) nên không có hồ sơ chi tiết.');
                                       }
                                     } catch (e) {
                                       console.error('Lỗi tải dữ liệu khách:', e);
@@ -2182,7 +2256,7 @@ if (!hasPermission('dispatch_board')) {
             )}
           </div>
             </>
-          ) : (
+          ) : activeMode === 'MONITOR' ? (
             <KanbanBoard 
               orders={orders} 
               onUpdateCustomerName={async (orderId, itemIds, ktvIds, newName) => {
@@ -2230,7 +2304,34 @@ if (!hasPermission('dispatch_board')) {
                 }
               }}
             />
-          )}
+          ) : activeMode === 'TURN_QUEUE' ? (
+            <div className="flex-1 overflow-auto bg-white rounded-3xl border border-gray-200 shadow-sm p-4 w-full h-full">
+              <TurnQueueBoard staffs={staffs} />
+            </div>
+          ) : activeMode === 'ROOMS' ? (
+            <div className="flex-1 overflow-hidden bg-white rounded-3xl border border-gray-200 shadow-sm w-full h-full">
+              <RoomBoard 
+                rooms={rooms}
+                beds={beds}
+                occupancies={orders.flatMap(order => 
+                  order.services
+                    .filter(svc => svc.bedId && svc.status !== 'COMPLETED' && svc.status !== 'CANCELLED')
+                    .map(svc => ({
+                      bedId: svc.bedId as string,
+                      roomId: svc.selectedRoomId as string,
+                      ktvName: svc.staffList?.[0]?.ktvName || 'Chưa phân công',
+                      endTime: svc.timeEnd ? svc.timeEnd.substring(0, 5) : undefined,
+                      status: svc.status || 'NEW',
+                      serviceName: svc.serviceName
+                    }))
+                )}
+              />
+            </div>
+          ) : activeMode === 'SCHEDULE' ? (
+            <div className="flex-1 overflow-hidden bg-white rounded-3xl border border-gray-200 shadow-sm w-full h-full">
+              <ScheduleBoard orders={orders} />
+            </div>
+          ) : null}
 
         </div>
       </div>
