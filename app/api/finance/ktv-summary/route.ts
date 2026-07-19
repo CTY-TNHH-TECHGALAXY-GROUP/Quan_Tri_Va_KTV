@@ -8,6 +8,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+async function fetchAll(queryBuilder: any) {
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+        const { data, error } = await queryBuilder.range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+    return allData;
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -46,10 +61,11 @@ export async function GET(request: Request) {
         const todayStr = nowVnDate.toISOString().split('T')[0];
 
         // 3. Fetch Ledger (Chỉ lấy các ngày trước ngày hôm nay, ALL TIME)
-        const { data: ledgers } = await supabase
-            .from('KTVDailyLedger')
+        const ledgers = await fetchAll(
+            supabase.from('KTVDailyLedger')
             .select('date, staff_id, total_commission, total_tip, total_bonus, total_penalty, total_adjustment, total_withdrawn')
-            .gte('date', GLOBAL_START_DATE_STR);
+            .gte('date', GLOBAL_START_DATE_STR)
+        );
 
         let realtimeStartStr = `${GLOBAL_START_DATE_STR}T00:00:00+07:00`;
         const allTimeMap: Record<string, any> = {};
@@ -106,14 +122,12 @@ export async function GET(request: Request) {
         }
 
         // 4. Fetch Realtime Bookings from realtimeStartStr (ALL TIME)
-        const { data: bookings } = await supabase
-            .from('Bookings')
-            .select(`
-                id, timeStart, timeEnd, status, technicianCode, rating,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
-            `)
+        const bookings = await fetchAll(
+            supabase.from('Bookings')
+            .select(`id, timeStart, timeEnd, status, technicianCode, rating, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings ) `)
             .gte('timeStart', realtimeStartStr)
-            .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING']);
+            .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING'])
+        );
 
         const { data: services } = await supabase.from('Services').select('id, duration');
         const svcDurationMap: Record<string, number> = {};
@@ -122,23 +136,26 @@ export async function GET(request: Request) {
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
 
         // 5. Fetch Realtime Adjustments and Withdrawals (ALL TIME)
-        const { data: realtimeAdjustments } = await supabase
-            .from('WalletAdjustments')
+        const realtimeAdjustments = await fetchAll(
+            supabase.from('WalletAdjustments')
             .select('staff_id, amount, created_at')
-            .gte('created_at', GLOBAL_START_DATE_ISO);
+            .gte('created_at', GLOBAL_START_DATE_ISO)
+        );
 
-        const { data: realtimeWithdrawals } = await supabase
-            .from('KTVWithdrawals')
+        const realtimeWithdrawals = await fetchAll(
+            supabase.from('KTVWithdrawals')
             .select('staff_id, amount, status, request_date, note')
             .or('wallet_type.eq.TUA,wallet_type.is.null')
-            .gte('request_date', GLOBAL_START_DATE_ISO);
+            .gte('request_date', GLOBAL_START_DATE_ISO)
+        );
 
-        const { data: pendingWithdrawals } = await supabase
-            .from('KTVWithdrawals')
+        const pendingWithdrawals = await fetchAll(
+            supabase.from('KTVWithdrawals')
             .select('staff_id, amount, note, request_date')
             .eq('status', 'PENDING')
             .or('wallet_type.eq.TUA,wallet_type.is.null')
-            .gte('request_date', GLOBAL_START_DATE_ISO);
+            .gte('request_date', GLOBAL_START_DATE_ISO)
+        );
 
         // 6. Calculate per KTV
         const summaries = ktvs.map(ktv => {
@@ -245,18 +262,18 @@ export async function GET(request: Request) {
             const total_commission = period_ledger.comm + period_rt_commission;
             const total_tip = period_ledger.tip + period_rt_tip;
             const total_bonus = period_ledger.bonus + period_rt_bonus;
-            const total_penalty = commConfig.isPenaltyEnabled ? period_ledger.penalty : 0;
+            const total_penalty = 0; // Penalty now included in WalletAdjustments
             
             const gross_income = total_commission + period_adjustment - total_penalty;
 
             // Calculate Previous Balance
             const prev_ledger = prevMap[techCode];
-            const prev_gross = (prev_ledger.comm + prev_rt_commission) + prev_adjustment - (commConfig.isPenaltyEnabled ? prev_ledger.penalty : 0);
+            const prev_gross = (prev_ledger.comm + prev_rt_commission) + prev_adjustment;
             const previous_balance = prev_gross - prev_withdrawn;
 
             // Calculate All Time Metrics (For True Current Balance)
             const at_ledger = allTimeMap[techCode];
-            const at_gross = (at_ledger.comm + at_rt_commission) + at_adjustment - (commConfig.isPenaltyEnabled ? at_ledger.penalty : 0);
+            const at_gross = (at_ledger.comm + at_rt_commission) + at_adjustment;
             const net_balance = at_gross - at_withdrawn - total_pending;
             const min_deposit = commConfig.minDeposit;
             const available_balance = Math.max(0, net_balance - min_deposit);
