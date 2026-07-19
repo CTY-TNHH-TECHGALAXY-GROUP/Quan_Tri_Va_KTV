@@ -37,6 +37,7 @@ interface QuickDispatchTableProps {
   reminders?: ReminderData[];
   billCode?: string;
   customerName?: string;
+  isVipSource?: boolean;
   onDispatchGroup?: (group: ServiceGroup, specificSvcId?: string) => void;
 }
 
@@ -65,9 +66,13 @@ const getCurrentTime = () => {
 const genId = () => Math.random().toString(36).substring(2, 9);
 
 export const QuickDispatchTable = ({
-  services, orderId, rooms, beds, availableTurns, busyBedIds,
+  services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
   onUpdateServices, onPrintGroup, customerReqs, reminders = [], onDispatchGroup
 }: QuickDispatchTableProps) => {
+
+  const isVipOrder = useMemo(() => {
+    return services.some(s => s.serviceId && (s.serviceId.toUpperCase().startsWith('NHP') || s.serviceId.toUpperCase().startsWith('VIP_')));
+  }, [services]);
 
   const isInitializedRef = useRef(false);
   // Fingerprint to detect services changes (e.g. after switching from detail mode)
@@ -286,11 +291,11 @@ export const QuickDispatchTable = ({
   return (
     <div className="space-y-5">
       {/* Customer Requirements Banner */}
-      {customerReqs && (customerReqs.genderReq || customerReqs.strength || customerReqs.focus || customerReqs.avoid || customerReqs.customerNote) && (
+      {customerReqs && (((!isVipOrder && !isVipSource && customerReqs.genderReq)) || customerReqs.strength || customerReqs.focus || customerReqs.avoid || customerReqs.customerNote) && (
         <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-3 space-y-2">
           <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ Yêu Cầu Từ Khách</p>
           <div className="flex flex-wrap gap-1.5">
-            {customerReqs.genderReq && (
+            {!isVipOrder && !isVipSource && customerReqs.genderReq && (
               <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-100">🧑 {customerReqs.genderReq}</span>
             )}
             {customerReqs.strength && (
@@ -349,6 +354,7 @@ export const QuickDispatchTable = ({
             customerReqs={customerReqs}
             reminders={reminders}
             getLatestEndTime={getLatestEndTime}
+            isVipOrder={isVipOrder}
           />
         );
       })}
@@ -377,13 +383,14 @@ interface ServiceGroupCardProps {
   customerReqs?: { genderReq?: string; strength?: string; focus?: string; avoid?: string; customerNote?: string; };
   reminders?: { id: string; content: string }[];
   getLatestEndTime: (ktvId: string) => string;
+  isVipOrder?: boolean;
 }
 
 const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state, targetSkill,
-  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime
+  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const [ktvSearch, setKtvSearch] = useState('');
@@ -845,7 +852,7 @@ const ServiceGroupCard = ({
               </div>
 
               {/* Customer Requirements */}
-              {customerReqs && (customerReqs.genderReq || customerReqs.strength || customerReqs.focus || customerReqs.avoid || customerReqs.customerNote) && (
+              {customerReqs && (((!isVipOrder && customerReqs.genderReq)) || customerReqs.strength || customerReqs.focus || customerReqs.avoid || customerReqs.customerNote) && (
                 <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-3 shadow-inner">
                   <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-2">
                       <AlertCircle size={14} className="text-amber-500" /> Yêu Cầu Khách Hàng

@@ -73,3 +73,7 @@ Quy tắc:
 - **KHÔNG HARDCODE**: Khi đã có constant trong shared library, TUYỆT ĐỐI không hardcode lại giá trị đó ở nơi khác. Phải import từ library.
 - **CÁC THƯ VIỆN HIỆN CÓ** (cập nhật khi tạo thêm):
   - `lib/customer.logic.ts`: `COMPLETED_STATUSES`, `isDummyPhone`, `isDummyEmail`, `isReturningCustomer`, `isNameMatch`, `identifyCustomer` → Dùng ở: Dispatch, Identify API, CRM API, BookingModificationService
+
+## 11. Database Trigger & Migration Regression Prevention
+- **KIỂM TRA LỊCH SỬ TRƯỚC KHI GHI ĐÈ**: Trước khi tạo một file Migration SQL mới để ghi đè (CREATE OR REPLACE) một Hàm (Function) hoặc Trigger đã có sẵn, AI **BẮT BUỘC** phải dùng lệnh `git log -S "tên_hàm" -p` để đọc lại ít nhất 3 file migration gần nhất liên quan đến hàm đó.
+- Mục đích: Đảm bảo giữ lại và kế thừa toàn bộ các bản vá lỗi (hot-fixes), logic cũ đã được tinh chỉnh, tuyệt đối không được viết đè làm mất logic cũ (Regression Bug).

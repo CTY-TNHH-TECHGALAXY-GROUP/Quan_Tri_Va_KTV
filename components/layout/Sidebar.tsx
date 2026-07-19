@@ -122,7 +122,7 @@ const PATHS: Record<string, string> = {
 };
 
 // 🔧 UI CONFIGURATION
-const GROUP_ORDER = ['Vận Hành', 'Tài Chính & Kế Toán', 'Thiết Lập Nội Dung', 'Kỹ Thuật Viên', 'Hậu Cần', 'Hệ Thống'];
+const GROUP_ORDER = ['Vận Hành', 'Tài Chính & Kế Toán', 'Thiết Lập Nội Dung', 'Kỹ Thuật Viên', 'Giao Việc', 'Hệ Thống'];
 
 interface SidebarProps {
   isOpen: boolean;

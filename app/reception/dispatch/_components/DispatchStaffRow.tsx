@@ -95,6 +95,8 @@ export const DispatchStaffRow = ({
         ? SERVICE_TO_SKILL[Object.keys(SERVICE_TO_SKILL).find(k => serviceName.toLowerCase().includes(k.toLowerCase()))!]
         : null;
 
+    const isVip = realSvcId && (realSvcId.toUpperCase().startsWith('NHP') || realSvcId.toUpperCase().startsWith('VIP_'));
+
     const [now, setNow] = React.useState(new Date());
     const [showTicketPreview, setShowTicketPreview] = React.useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
@@ -600,13 +602,13 @@ export const DispatchStaffRow = ({
                                 })}
 
                                 {/* Customer Requirements */}
-                                {(genderReq || strength || focus || avoid || customerNote) && (
+                                {((!isVip && genderReq) || strength || focus || avoid || customerNote) && (
                                     <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-3 shadow-inner">
                                         <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-2">
                                             <AlertCircle size={14} className="text-amber-500" /> Yêu Cầu Khách Hàng
                                         </p>
                                         <div className="flex flex-wrap gap-2">
-                                            {genderReq && (
+                                            {!isVip && genderReq && (
                                                 <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-purple-50 text-purple-700 border-purple-100 shadow-sm">
                                                     👩 {genderReq}
                                                 </span>

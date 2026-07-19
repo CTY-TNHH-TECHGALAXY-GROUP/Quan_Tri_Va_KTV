@@ -38,15 +38,17 @@ interface DispatchServiceBlockProps {
     onDispatchSvc?: (orderId: string, svcId: string) => void;
     reminders?: ReminderData[];
     onViewPhoto?: (photo: { url: string; ktvId: string; time: string | null }) => void;
+    orderSource?: string;
 }
 
 export const DispatchServiceBlock = ({
     svc, svcIndex, orderId, rooms, beds, busyBedIds = [], usedKtvIds = [], availableTurns,
     onUpdateSvc, onUpdateStaff, onAddStaff, onRemoveStaff, onRemoveSvc, onEditSvc, selectedDate,
-    isExpanded = true, onToggleExpand, onDispatchSvc, reminders = [], onViewPhoto
+    isExpanded = true, onToggleExpand, onDispatchSvc, reminders = [], onViewPhoto, orderSource
 }: DispatchServiceBlockProps) => {
 
     const isUtility = !!(svc as any).isUtility;
+    const isVip = (svc.serviceId && (svc.serviceId.toUpperCase().startsWith('NHP') || svc.serviceId.toUpperCase().startsWith('VIP_'))) || orderSource === 'VIP_WALK_IN' || orderSource === 'VIP_MENU';
 
     return (
         <div className={`border rounded-3xl overflow-hidden shadow-sm transition-all ${isUtility ? 'border-amber-200 bg-amber-50/30' : 'border-gray-100 bg-white hover:shadow-md hover:border-indigo-100'}`}>
@@ -154,13 +156,13 @@ export const DispatchServiceBlock = ({
             {isExpanded && !isUtility && (
                 <div className="p-4 lg:p-6 space-y-6 animate-in slide-in-from-top-2 duration-200">
                     {/* Customer Requirements */}
-                    {(svc.genderReq || svc.strength || svc.focus || svc.avoid || svc.customerNote) && (
+                    {((!isVip && svc.genderReq) || svc.strength || svc.focus || svc.avoid || svc.customerNote) && (
                         <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-3 shadow-inner">
                             <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-2">
                                 <AlertTriangle size={14} className="text-amber-500" /> Yêu Cầu Từ Khách
                             </p>
                             <div className="flex flex-wrap gap-2">
-                                {svc.genderReq && (
+                                {!isVip && svc.genderReq && (
                                     <span className="px-3 py-1.5 rounded-xl text-[10px] font-black border bg-purple-50 text-purple-700 border-purple-100 flex items-center gap-1.5 shadow-sm">
                                         <UserCheck size={12} /> {svc.genderReq}
                                     </span>

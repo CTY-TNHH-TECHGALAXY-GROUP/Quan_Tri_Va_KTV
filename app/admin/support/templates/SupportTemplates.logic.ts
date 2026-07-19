@@ -37,9 +37,10 @@ interface TemplateItem {
   requires_photo: boolean;
   min_photo_count: number;
   is_active: boolean;
+  assignedEmployees: string[]; // fullName list
 }
 
-export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'CATEGORIES';
+export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'CATEGORIES' | 'DASHBOARD' | 'REVIEWS';
 
 export const useSupportTemplates = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('EMPLOYEES');
@@ -130,7 +131,7 @@ export const useSupportTemplates = () => {
   }, []);
 
   // ============================================================
-  // Fetch templates (real data from Supabase)
+  // Fetch templates + who is assigned (EmployeeRoutines)
   // ============================================================
   const fetchTemplates = useCallback(async () => {
     const { data, error } = await supabase
@@ -143,6 +144,25 @@ export const useSupportTemplates = () => {
       return;
     }
 
+    // Fetch all routines with employee names
+    const { data: routines, error: routineErr } = await supabase
+      .from('EmployeeRoutines')
+      .select('template_id, Users!EmployeeRoutines_employee_id_fkey(fullName)')
+      .eq('is_active', true);
+
+    if (routineErr) {
+      console.error('Error fetching routines for templates:', routineErr.message);
+    }
+
+    // Build lookup: template_id -> [employeeNames]
+    const assignmentMap = new Map<string, string[]>();
+    (routines || []).forEach((r: any) => {
+      const name = r.Users?.fullName || 'Chưa rõ';
+      const list = assignmentMap.get(r.template_id) || [];
+      list.push(name);
+      assignmentMap.set(r.template_id, list);
+    });
+
     const mapped: TemplateItem[] = (data || []).map(tpl => ({
       id: tpl.id,
       name: tpl.name,
@@ -152,6 +172,7 @@ export const useSupportTemplates = () => {
       requires_photo: tpl.requires_photo,
       min_photo_count: tpl.min_photo_count,
       is_active: tpl.is_active,
+      assignedEmployees: assignmentMap.get(tpl.id) || [],
     }));
 
     setTemplates(mapped);
@@ -181,6 +202,22 @@ export const useSupportTemplates = () => {
     return map[role] || role;
   };
 
+  // ============================================================
+  // Add new template to a category
+  // ============================================================
+  const addTemplate = async (name: string, categoryId: string) => {
+    const { error } = await supabase
+      .from('TaskTemplates')
+      .insert({ name, category_id: categoryId, is_active: true, requires_photo: false, min_photo_count: 0 });
+
+    if (error) {
+      console.error('Error adding template:', error.message, error.code);
+      return false;
+    }
+    await fetchTemplates();
+    return true;
+  };
+
   return {
     activeTab,
     setActiveTab,
@@ -189,6 +226,8 @@ export const useSupportTemplates = () => {
     templates,
     loading,
     getRoleLabel,
+    addTemplate,
     refetchEmployees: fetchEmployees,
+    refetchTemplates: fetchTemplates,
   };
 };

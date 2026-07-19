@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useEmployeeDetail } from './EmployeeDetail.logic';
 
 // 🔧 UI CONFIGURATION
@@ -47,7 +48,8 @@ export default function EmployeeDetailPage() {
   const pct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto min-h-screen bg-slate-50">
+    <AppLayout title="Chi Tiết Nhân Viên">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto min-h-screen">
       {/* Back + Employee Header */}
       <div className="mb-6">
         <Link href="/admin/support/templates" className="text-cyan-600 hover:text-cyan-700 text-sm font-medium mb-3 inline-flex items-center gap-1">
@@ -265,6 +267,7 @@ export default function EmployeeDetailPage() {
         </div>
       )}
     </div>
+    </AppLayout>
   );
 }
 

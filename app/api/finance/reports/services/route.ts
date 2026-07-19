@@ -27,7 +27,7 @@ export async function GET(request: Request) {
             const svcInfo = svcMap[sid];
             
             let name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : sid;
-            if (sid === 'NHS0800' || sid.startsWith('VIP_') || (svcInfo && (svcInfo.category === 'VIP_MENU' || svcInfo.category === 'PREMIUM'))) {
+            if (sid.startsWith('NHP') || sid.startsWith('VIP_') || (svcInfo && (svcInfo.category === 'VIP_MENU' || svcInfo.category === 'PREMIUM'))) {
                 name = 'Tổng Hợp Gói Menu VIP';
             }
 
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
         const menuEvaluation = (allActiveServices || []).map((s: any) => {
             const soldService = serviceBreakdown.find(sb => sb.id === String(s.id));
             let menuName = `${s.nameVN || s.code} (${s.duration}p)`;
-            if (s.code === 'NHS0800' || s.code.startsWith('VIP_') || s.category === 'VIP_MENU' || s.category === 'PREMIUM') {
+            if (s.code.startsWith('NHP') || s.code.startsWith('VIP_') || s.category === 'VIP_MENU' || s.category === 'PREMIUM') {
                 menuName = 'Tổng Hợp Gói Menu VIP';
             }
 

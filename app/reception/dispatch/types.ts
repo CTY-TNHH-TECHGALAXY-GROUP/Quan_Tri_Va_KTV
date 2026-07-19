@@ -49,6 +49,7 @@ export interface PendingOrder {
   id: string; // Booking ID
   billCode: string;
   customerName: string;
+  customerId?: string | null;
   phone: string;
   email?: string;
   source?: string;

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useSupportDashboard } from './SupportDashboard.logic';
 
 // 🔧 UI CONFIGURATION
@@ -14,7 +15,8 @@ export default function SupportDashboardPage() {
   const totalRooms = Object.keys(logic.stats).length;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
+    <AppLayout title="Thống Kê Phòng">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto min-h-screen">
       {/* Header - Collapsible Toggle */}
       <div 
         className={`flex items-start justify-between p-4 bg-white rounded-xl border ${BORDER_COLOR} cursor-pointer hover:bg-slate-50 transition-colors`}
@@ -210,5 +212,6 @@ export default function SupportDashboardPage() {
         }
       `}} />
     </div>
+    </AppLayout>
   );
 }

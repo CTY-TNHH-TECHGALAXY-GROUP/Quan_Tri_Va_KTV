@@ -170,6 +170,7 @@ function KTVDashboardContent() {
         onClose={() => setShowProcedure(false)}
         procedure={assignedItem?.service_description}
         serviceName={assignedItem?.service_name}
+        isVip={assignedItem?.serviceId && (String(assignedItem.serviceId).toUpperCase().startsWith('NHP') || String(assignedItem.serviceId).toUpperCase().startsWith('VIP_'))}
       />
 
       {/* Room Issue Report Modal */}
@@ -1521,7 +1522,7 @@ function RatingCard({ icon, title, desc, isSelected, onClick }: { icon: React.Re
   );
 }
 
-function ProcedureModal({ isOpen, onClose, procedure, serviceName }: { isOpen: boolean, onClose: () => void, procedure: any, serviceName: string }) {
+function ProcedureModal({ isOpen, onClose, procedure, serviceName, isVip }: { isOpen: boolean, onClose: () => void, procedure: any, serviceName: string, isVip?: boolean }) {
   if (!isOpen) return null;
   
   return (
@@ -1541,7 +1542,14 @@ function ProcedureModal({ isOpen, onClose, procedure, serviceName }: { isOpen: b
              </button>
           </div>
           <div className="flex-1 overflow-y-auto p-8 font-bold text-slate-600 leading-relaxed text-sm">
-             {procedure ? (
+             {isVip ? (
+                 <div className="space-y-4">
+                     <div className="flex gap-4">
+                        <span className="text-emerald-500 font-black">01.</span>
+                        <p>Làm theo: {serviceName}</p>
+                     </div>
+                 </div>
+             ) : procedure ? (
                 <div className="space-y-4">
                    {Array.isArray(procedure) ? (
                       procedure.map((step: string, idx: number) => (
