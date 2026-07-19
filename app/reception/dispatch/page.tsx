@@ -27,6 +27,7 @@ import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, c
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
+import { MergePromptModal } from './_components/MergePromptModal';
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
 import { Customer } from '@/lib/types';
@@ -167,6 +168,16 @@ export default function DispatchBoardPage() {
     ktv1Dur: number;
     ktv2Dur: number;
     isSaving: boolean;
+  } | null>(null);
+
+  const [mergePromptConfig, setMergePromptConfig] = useState<{
+    orderId: string;
+    sourceSvcId: string;
+    targetSvcId: string;
+    rowId: string;
+    ktvId: string;
+    onConfirm?: () => void;
+    onCancel?: () => void;
   } | null>(null);
 
   const { user } = useAuth();
@@ -807,14 +818,29 @@ if (!hasPermission('dispatch_board')) {
     return cloned;
   };
 
-  const updateStaffRow = (orderId: string, svcId: string, rowId: string, patch: Partial<StaffAssignment>) => {
+  const executeStaffRowUpdate = (orderId: string, svcId: string, rowId: string, patch: Partial<StaffAssignment>) => {
     updateOrder(orderId, o => {
+      const targetSvc = o.services.find(s => s.id === svcId);
+      const mergedIds = targetSvc?.mergedServiceIds || [];
+
       let updatedOrder = {
         ...o,
-        services: o.services.map(s => s.id === svcId
-          ? { ...s, staffList: s.staffList.map(r => r.id === rowId ? { ...r, ...patch } : r) }
-          : s
-        ),
+        services: o.services.map(s => {
+          if (s.id === svcId) {
+            return { ...s, staffList: s.staffList.map(r => r.id === rowId ? { ...r, ...patch } : r) };
+          }
+          if (mergedIds.includes(s.id)) {
+            let childPatch = { ...patch };
+            if (patch.segments) {
+              childPatch.segments = s.staffList[0].segments.map((cSeg, cIdx) => {
+                 const pSeg = patch.segments![cIdx] || patch.segments![0];
+                 return { ...cSeg, roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
+              });
+            }
+            return { ...s, staffList: s.staffList.map((r, idx) => idx === 0 ? { ...r, ...childPatch } : r) };
+          }
+          return s;
+        }),
       };
 
       // Tự động nối giờ nếu KTV được chọn và đã có phục vụ chặng trước đó
@@ -824,6 +850,90 @@ if (!hasPermission('dispatch_board')) {
 
       return updatedOrder;
     });
+  };
+
+  const updateStaffRow = (orderId: string, svcId: string, rowId: string, patch: Partial<StaffAssignment>) => {
+    if (patch.ktvId) {
+       const order = orders.find(o => o.id === orderId);
+       if (order) {
+           const ktvId = patch.ktvId;
+           // Check if this ktvId is assigned to another unmerged service in this order
+           const otherService = order.services.find(s => 
+               s.id !== svcId && 
+               !s.mergedIntoId &&
+               s.staffList.some(r => r.ktvId === ktvId)
+           );
+           
+           if (otherService) {
+               setMergePromptConfig({
+                   orderId,
+                   sourceSvcId: otherService.id,
+                   targetSvcId: svcId,
+                   rowId,
+                   ktvId
+               });
+               return; // Pause the update, wait for user confirmation
+           }
+       }
+    }
+    
+    executeStaffRowUpdate(orderId, svcId, rowId, patch);
+  };
+
+  const confirmMergeServices = () => {
+    if (!mergePromptConfig) return;
+    const { orderId, sourceSvcId, targetSvcId, rowId, ktvId, onConfirm } = mergePromptConfig;
+    
+    updateOrder(orderId, o => {
+      const sourceSvc = o.services.find(s => s.id === sourceSvcId);
+      const sourceSegments = sourceSvc?.staffList[0]?.segments;
+
+      let updatedOrder = {
+        ...o,
+        services: o.services.map(s => {
+          if (s.id === targetSvcId) {
+            return {
+              ...s,
+              mergedIntoId: sourceSvcId,
+              staffList: s.staffList.map((r, i) => (r.id === rowId || (rowId === '' && i === 0)) ? {
+                ...r,
+                ktvId,
+                segments: r.segments.map((cSeg, cIdx) => {
+                  const pSeg = sourceSegments?.[cIdx] || sourceSegments?.[0];
+                  return { ...cSeg, roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
+                })
+              } : r)
+            };
+          }
+          return s;
+        }),
+      };
+      
+      updatedOrder = {
+        ...updatedOrder,
+        services: updatedOrder.services.map(s => s.id === sourceSvcId
+          ? { ...s, mergedServiceIds: [...(s.mergedServiceIds || []), targetSvcId] }
+          : s
+        )
+      };
+
+      updatedOrder = recalculateAllTimes(updatedOrder, roomTransitionTime);
+      return updatedOrder;
+    });
+
+    if (onConfirm) onConfirm();
+    setMergePromptConfig(null);
+  };
+  
+  const cancelMergeServices = () => {
+    if (!mergePromptConfig) return;
+    const { orderId, targetSvcId, rowId, ktvId, onCancel } = mergePromptConfig;
+    if (onCancel) {
+      onCancel();
+    } else {
+      executeStaffRowUpdate(orderId, targetSvcId, rowId, { ktvId });
+    }
+    setMergePromptConfig(null);
   };
 
   const confirmSplitService = async () => {
@@ -1835,15 +1945,18 @@ if (!hasPermission('dispatch_board')) {
                           #{order.billCode} {subOrder.services.length < order.services.length && '(Tách)'}
                         </span>
                         {order.hasVat && <span className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>}
-                        {order.isWebBooking ? (
-                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-50 text-amber-600 border border-amber-100 uppercase" title="Đơn từ Web Booking">
-                            BOOKING {order.timeBooking ? order.timeBooking : ''}
-                          </span>
-                        ) : (
-                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase" title="Đơn khách vãng lai">
-                            WALK IN {order.timeBooking ? order.timeBooking : ''}
-                          </span>
-                        )}
+                        {(() => {
+                          const isVipMenu = subOrder.services.some((svc: any) => svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_')));
+                          return isVipMenu ? (
+                            <span className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-black bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm uppercase tracking-wide" title="Menu VIP">
+                              VIP
+                            </span>
+                          ) : (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase" title="Menu Thường">
+                              THƯỜNG
+                            </span>
+                          );
+                        })()}
                         {order.isReturning && (
                           <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-600 border border-purple-100 uppercase" title={`Đã đến ${order.visitCount} lần`}>
                             Khách cũ
@@ -2086,6 +2199,17 @@ if (!hasPermission('dispatch_board')) {
                       .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
                       .filter(Boolean) as string[]
                     }
+                    onTriggerMergePrompt={(sourceSvcId, targetSvcId, ktvId, onConfirm, onCancel) => {
+                       setMergePromptConfig({
+                          orderId: selectedSubOrder.bookingId,
+                          sourceSvcId,
+                          targetSvcId,
+                          rowId: '', // Quick mode doesn't rely on rowId for the merge
+                          ktvId,
+                          onConfirm,
+                          onCancel
+                       });
+                    }}
                     onUpdateServices={(updatedServices) => {
                       updateOrder(selectedSubOrder.bookingId, o => {
                           const mergedServices = o.services.map(origSvc => {
@@ -2118,7 +2242,7 @@ if (!hasPermission('dispatch_board')) {
                   /* Detail Dispatch Mode */
                   <Reorder.Group
                     axis="y"
-                    values={selectedSubOrder.services}
+                    values={selectedSubOrder.services.filter(svc => !svc.mergedIntoId)}
                     onReorder={(newServices) => {
                       const recalculated = recalculateAllTimes({ ...selectedSubOrder.originalOrder, services: newServices }, roomTransitionTime);
                       updateOrder(selectedSubOrder.bookingId, o => {
@@ -2128,7 +2252,15 @@ if (!hasPermission('dispatch_board')) {
                     }}
                     className="space-y-6"
                   >
-                    {selectedSubOrder.services.map((svc, idx) => {
+                    {selectedSubOrder.services.filter(svc => !svc.mergedIntoId).map((svc, idx) => {
+                      let displaySvc = { ...svc };
+                      if (svc.mergedServiceIds && svc.mergedServiceIds.length > 0) {
+                          const mergedSvcs = selectedSubOrder.originalOrder.services.filter(s => svc.mergedServiceIds?.includes(s.id));
+                          if (mergedSvcs.length > 0) {
+                              displaySvc.serviceName = `${svc.serviceName} + ${mergedSvcs.map(s => s.serviceName).join(' + ')}`;
+                              displaySvc.duration = svc.duration + mergedSvcs.reduce((acc, s) => acc + (s.duration || 0), 0);
+                          }
+                      }
                       const busyInOtherOrders = orders
                         .filter(o => o.id !== selectedSubOrder.bookingId && (o.dispatchStatus === 'IN_PROGRESS' || o.dispatchStatus === 'PREPARING'))
                         .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
@@ -2144,7 +2276,7 @@ if (!hasPermission('dispatch_board')) {
                       return (
                         <Reorder.Item key={svc.id} value={svc} dragListener={!expandedSvcIds.includes(svc.id)}>
                           <DispatchServiceBlock
-                            svc={svc}
+                            svc={displaySvc}
                             svcIndex={idx}
                             orderId={selectedSubOrder.bookingId}
                             rooms={rooms}
@@ -2192,7 +2324,7 @@ if (!hasPermission('dispatch_board')) {
                                 ));
                               }
                             }}
-                            onDispatchSvc={(oId, svcId) => handleDispatch(false, [svcId])}
+                            onDispatchSvc={(oId, svcId) => handleDispatch(false, [svcId, ...(displaySvc.mergedServiceIds || [])])}
                           />
                         </Reorder.Item>
                       );
@@ -2685,6 +2817,42 @@ if (!hasPermission('dispatch_board')) {
 
       {/* Split Service Modal */}
       <AnimatePresence>
+        {mergePromptConfig && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6"
+            >
+              <div className="flex justify-center mb-4 text-amber-500">
+                <AlertTriangle size={48} strokeWidth={1.5} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 text-center mb-2">Gộp Dịch Vụ?</h3>
+              <p className="text-sm text-gray-500 text-center mb-6">
+                Bạn đang gán KTV <span className="font-bold text-gray-900">{mergePromptConfig.ktvId}</span> cho nhiều dịch vụ. Bạn có muốn gộp chúng lại để KTV làm liên tục và chỉ cần chọn Phòng/Giường 1 lần không?
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelMergeServices}
+                  className="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Không, tách riêng
+                </button>
+                <button
+                  onClick={confirmMergeServices}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                >
+                  Gộp dịch vụ
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {splitConfig && (
           <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div
@@ -2849,6 +3017,12 @@ if (!hasPermission('dispatch_board')) {
         subOrder={pauseModalSubOrder}
         availableKtvs={staffs.filter(s => s.status === 'ready')}
         onConfirm={handleConfirmPauseSwap}
+      />
+
+      <MergePromptModal
+        config={mergePromptConfig}
+        onConfirm={confirmMergeServices}
+        onCancel={cancelMergeServices}
       />
     </AppLayout>
   );

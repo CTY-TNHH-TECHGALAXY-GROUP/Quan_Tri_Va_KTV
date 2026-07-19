@@ -6,6 +6,7 @@ export const API = {
     INTERACTION: '/api/ktv/interaction',
     REVIEW: '/api/ktv/review',
     NOTIFICATIONS: (techCode: string) => `/api/ktv/notifications?techCode=${techCode}`,
+    NOTIFICATION_MARK_READ: (id: string) => `/api/ktv/notifications?id=${id}`,
     WALLET: {
       BALANCE: (techCode: string) => `/api/ktv/wallet/balance?techCode=${techCode}`,
       TIMELINE: (techCode: string) => `/api/ktv/wallet/timeline?techCode=${techCode}`,

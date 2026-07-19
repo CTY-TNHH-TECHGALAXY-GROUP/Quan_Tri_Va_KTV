@@ -39,6 +39,7 @@ interface QuickDispatchTableProps {
   customerName?: string;
   isVipSource?: boolean;
   onDispatchGroup?: (group: ServiceGroup, specificSvcId?: string) => void;
+  onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -67,7 +68,7 @@ const genId = () => Math.random().toString(36).substring(2, 9);
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, customerReqs, reminders = [], onDispatchGroup
+  onUpdateServices, onPrintGroup, customerReqs, reminders = [], onDispatchGroup, onTriggerMergePrompt
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -81,7 +82,7 @@ export const QuickDispatchTable = ({
   // Group services by serviceName + duration
   const initialGroups = useMemo(() => {
     const map = new Map<string, ServiceBlock[]>();
-    services.forEach(svc => {
+    services.filter(s => !s.mergedIntoId).forEach(svc => {
       // Utilities (like Phòng Riêng) are still grouped but have isUtility flag
       const isUtil = !!(svc as any).isUtility;
       const key = `${svc.serviceName}_${svc.duration}${isUtil ? '_utility' : ''}`;
@@ -104,7 +105,7 @@ export const QuickDispatchTable = ({
 
   // Build fingerprint from current services data
   const buildFingerprint = (svcs: ServiceBlock[]) =>
-    svcs.map(s => `${s.id}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
+    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
 
   // Initialize / re-initialize group states when services change
   useEffect(() => {
@@ -355,6 +356,9 @@ export const QuickDispatchTable = ({
             reminders={reminders}
             getLatestEndTime={getLatestEndTime}
             isVipOrder={isVipOrder}
+            allServices={services}
+            groupItems={items}
+            onTriggerMergePrompt={onTriggerMergePrompt}
           />
         );
       })}
@@ -384,13 +388,17 @@ interface ServiceGroupCardProps {
   reminders?: { id: string; content: string }[];
   getLatestEndTime: (ktvId: string) => string;
   isVipOrder?: boolean;
+  allServices: ServiceBlock[];
+  groupItems: ServiceBlock[];
+  onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
 }
 
 const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state, targetSkill,
-  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false
+  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
+  allServices, groupItems, onTriggerMergePrompt
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const [ktvSearch, setKtvSearch] = useState('');
@@ -443,14 +451,41 @@ const ServiceGroupCard = ({
   const addKtv = (ktvId: string) => {
     if (state.selectedKtvIds.length >= MAX_KTV_PER_GROUP) return;
 
-    // Tính thời gian kết thúc trễ nhất của KTV này ở các dịch vụ khác trong cùng đơn
-    const latestEndTime = getLatestEndTime(ktvId);
+    const proceedAdd = () => {
+      // Tính thời gian kết thúc trễ nhất của KTV này ở các dịch vụ khác trong cùng đơn
+      const latestEndTime = getLatestEndTime(ktvId);
 
-    const defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
-    const defaultEnd = calcEndTime(defaultStart, duration);
-    
-    onUpdate({ selectedKtvIds: [...state.selectedKtvIds, ktvId], ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], ktvDurations: [...(state.ktvDurations || []), duration], ktvNotes: [...(state.ktvNotes || []), ''], ktvBedIds: [...(state.ktvBedIds || []), ''] });
-    setKtvSearch('');
+      const defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
+      const defaultEnd = calcEndTime(defaultStart, duration);
+      
+      onUpdate({ selectedKtvIds: [...state.selectedKtvIds, ktvId], ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], ktvDurations: [...(state.ktvDurations || []), duration], ktvNotes: [...(state.ktvNotes || []), ''], ktvBedIds: [...(state.ktvBedIds || []), ''] });
+      setKtvSearch('');
+    };
+
+    const conflictSvc = allServices.find(s => 
+      !groupItems.some(i => i.id === s.id) && 
+      !s.mergedIntoId && 
+      s.staffList.some(r => r.ktvId === ktvId)
+    );
+
+    if (conflictSvc && onTriggerMergePrompt && groupItems.length > 0) {
+       onTriggerMergePrompt(
+          conflictSvc.id,
+          groupItems[0].id,
+          ktvId,
+          () => {
+             // onConfirm
+             setKtvSearch('');
+          },
+          () => {
+             // onCancel
+             proceedAdd();
+          }
+       );
+       return;
+    }
+
+    proceedAdd();
   };
 
   const updateRoomForIdx = (idx: number, roomId: string) => {

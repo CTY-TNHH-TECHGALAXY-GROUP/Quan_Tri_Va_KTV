@@ -41,6 +41,8 @@ export interface ServiceBlock {
   options?: any;
   status?: string; // Tình trạng của dịch vụ con (NEW, PREPARING, IN_PROGRESS, COMPLETED...)
   pauseStart?: string | null; // Thời điểm bắt đầu tạm dừng
+  mergedIntoId?: string; // Dịch vụ này đã bị gộp vào dịch vụ khác
+  mergedServiceIds?: string[]; // Danh sách các dịch vụ con đã gộp vào dịch vụ này
 }
 
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE';

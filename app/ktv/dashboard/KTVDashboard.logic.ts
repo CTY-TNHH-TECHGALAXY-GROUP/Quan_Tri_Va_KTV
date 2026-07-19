@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
-// Đã chuyển sang dùng REST API /api/ktv/... thay vì server actions trực tiếp
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
@@ -193,12 +194,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
         if (screen === 'DASHBOARD' && (!booking || !booking.id) && ktvId) {
             const fetchWallet = async () => {
                 try {
-                    const res = await fetch(`/api/ktv/wallet/balance?techCode=${ktvId}`);
-                    const json = await res.json();
+                    const json = await apiClient.get<any>(API.KTV.WALLET.BALANCE(ktvId));
                     if (json.success) setWalletBalance(json.data);
 
-                    const res2 = await fetch(`/api/ktv/wallet/timeline?techCode=${ktvId}`);
-                    const json2 = await res2.json();
+                    const json2 = await apiClient.get<any>(API.KTV.WALLET.TIMELINE(ktvId));
                     if (json2.success) setWalletTimeline(json2.data);
                 } catch (e) {
                     console.error('Error fetching wallet balance/timeline:', e);
@@ -208,8 +207,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             const fetchOnCall = async () => {
                 try {
-                    const res = await fetch(`/api/ktv/on-call?techCode=${ktvId}`);
-                    const json = await res.json();
+                    const json = await apiClient.get<any>(`${API.KTV.ON_CALL}?techCode=${ktvId}`);
                     if (json.success && json.data) {
                         setOnCallState(json.data);
                     }
@@ -225,11 +223,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         if (!ktvId) return;
         try {
             setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
-            await fetch('/api/ktv/on-call', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins })
-            });
+            await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins });
         } catch (e) {
             console.error('Error toggling on call:', e);
         }
@@ -628,15 +622,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (screenRef.current === 'TIMER') return;
 
             try {
-                const response = await fetch(`/api/ktv/notifications?techCode=${ktvId}`);
-                const res = await response.json();
+                const res = await apiClient.get<any>(API.KTV.NOTIFICATIONS(ktvId));
                 
                 if (res.success && res.data && res.data.length > 0) {
                     const notify = res.data[0];
                     setBonusMessage(notify.message);
                     
                     // Marks as read, sound is played by global NotificationProvider via Realtime
-                    await fetch(`/api/ktv/notifications?id=${notify.id}`, { method: 'PATCH' });
+                    await apiClient.patch(API.KTV.NOTIFICATION_MARK_READ(notify.id));
                     
                     setTimeout(() => setBonusMessage(null), 15000);
                 }
@@ -673,8 +666,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const response = await fetch('/api/ktv/settings');
-                const res = await response.json();
+                const res = await apiClient.get<any>(API.KTV.SETTINGS);
                 if (res.success) setSettings(res.data);
             } catch (err) { console.error('Error fetching settings:', err); }
         };
@@ -713,8 +705,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
                 // (Đã gộp vào logic ở trên)
 
-                const response = await fetch(url);
-                const res = await response.json();
+                const res = await apiClient.get<any>(url);
                 
                 if (res.success && res.data && res.data.id) {
                     if (isTransitioningRef.current) {
@@ -1078,7 +1069,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // Fetch using techCode + current bookingId to exclude it from "next order" search
                 const currentId = bookingRef.current?.id || '';
                 const url = `/api/ktv/booking?techCode=${ktvId}${currentId ? `&bookingId=${currentId}` : ''}`;
-                const res = await fetch(url).then(r => r.json());
+                const res = await apiClient.get<any>(url);
                 if (res.success && res.data?.nextBookingId) {
                     setBooking((prev: any) => {
                         // If current booking is the same as nextBookingId, don't show it as "next"
@@ -1402,15 +1393,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const issueText = issues.length > 0 ? issues.join(', ') : '';
             const fullMessage = `🚩 BÁO SỰ CỐ PHÒNG ${roomId} — KTV ${ktvId}: ${issueText}${note ? ` | ${note}` : ''}`;
 
-            await fetch('/api/ktv/interaction', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bookingId: booking.id,
-                    type: 'EMERGENCY',
-                    techCode: ktvId,
-                    message: fullMessage
-                })
+            await apiClient.post(API.KTV.INTERACTION, {
+                bookingId: booking.id,
+                type: 'EMERGENCY',
+                techCode: ktvId,
+                message: fullMessage
             });
             setShowRoomIssueModal(false);
             alert('Đã gửi báo cáo sự cố về Lễ tân!');
@@ -1427,17 +1414,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
         
         setIsLoading(true);
         // Cập nhật trạng thái Item lên Server để đồng bộ cho các KTV khác cùng làm dịch vụ này
-        const response = await fetch('/api/ktv/booking', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                bookingId: booking.id, 
-                status: 'READY',
-                techCode: ktvId 
-            })
+        const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
+            bookingId: booking.id, 
+            status: 'READY',
+            techCode: ktvId 
         });
         
-        const res = await response.json();
         if (res.success) {
             const assignedItem = booking.BookingItems?.find((i: any) => i.id === booking.assignedItemId) || booking.BookingItems?.[0];
 
@@ -1519,19 +1501,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
         setIsLoading(true);
-        const response = await fetch('/api/ktv/booking', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                bookingId: booking.id, 
-                status: 'IN_PROGRESS',
-                techCode: ktvId,
-                action: 'START_TIMER',
-                shouldMerge: shouldMerge,
-                photoBase64: startPhotoBase64
-            })
+        const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
+            bookingId: booking.id, 
+            status: 'IN_PROGRESS',
+            techCode: ktvId,
+            action: 'START_TIMER',
+            shouldMerge: shouldMerge,
+            photoBase64: startPhotoBase64
         });
-        const res = await response.json();
         if (res.success) {
             // 📸 Clean up check-in photo from preview and localStorage
             setStartPhotoBase64(null);
@@ -1603,18 +1580,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsLoading(true);
 
             const nextIdx = currentIdx + 1;
-            const response = await fetch('/api/ktv/booking', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bookingId: booking.id,
-                    status: 'IN_PROGRESS',
-                    techCode: ktvId,
-                    action: 'NEXT_SEGMENT',
-                    activeSegmentIndex: nextIdx
-                })
+            const res = await apiClient.patch<any>(API.KTV.BOOKING, {
+                bookingId: booking.id,
+                status: 'IN_PROGRESS',
+                techCode: ktvId,
+                action: 'NEXT_SEGMENT',
+                activeSegmentIndex: nextIdx
             });
-            const res = await response.json();
             if (res.success) {
                 setActiveSegmentIndex(nextIdx);
                 activeSegmentIndexRef.current = nextIdx;
@@ -1637,16 +1609,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // 🏁 Chặng cuối cùng done → chuyển sang CLEANING
             console.log(`🏁 [FinishAll] All ${allMySegs.length} segments done, transitioning to CLEANING`);
             setIsLoading(true);
-            const response = await fetch('/api/ktv/booking', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    bookingId: booking.id, 
-                    status: 'CLEANING',
-                    techCode: ktvId
-                })
+            const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
+                bookingId: booking.id, 
+                status: 'CLEANING',
+                techCode: ktvId
             });
-            const res = await response.json();
             if (res.success) {
                 // 🚀 Gửi tín hiệu Broadcast sang Lễ tân
                 supabase.channel('dispatch_board_realtime').send({
@@ -1699,17 +1666,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const reviewBookingId = postServiceBookingIdRef.current || booking.id;
             
             // Gọi API chuyên trách (chỉ cập nhật review, không can thiệp trạng thái tổng)
-            const response = await fetch('/api/ktv/review', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    bookingId: reviewBookingId, 
-                    notes: noteContent,
-                    techCode: ktvId
-                })
+            const res = await apiClient.post<any>(API.KTV.REVIEW, { 
+                bookingId: reviewBookingId, 
+                notes: noteContent,
+                techCode: ktvId
             });
             
-            const res = await response.json();
             if (!res.success) {
                 console.error('❌ [KTV Logic] Lỗi khi gửi đánh giá:', res.error);
                 alert('Không thể lưu đánh giá: ' + (res.error || 'Vui lòng thử lại'));
@@ -1849,17 +1811,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             console.log("💰 [Commission] Items:", itemIds.length, "Total Duration:", totalMins, "Total Commission:", totalCommission);
 
             // 1. Giải phóng KTV khỏi TurnQueue
-            const response = await fetch('/api/ktv/booking', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    bookingId: postServiceBookingIdRef.current || booking.id, 
-                    status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
-                    action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
-                    techCode: ktvId 
-                })
+            const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
+                bookingId: postServiceBookingIdRef.current || booking.id, 
+                status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
+                action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
+                techCode: ktvId 
             });
-            const res = await response.json();
             
             if (!res.success) {
                 console.error('Lỗi khi giải phóng KTV:', res.error);
@@ -1891,12 +1848,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         if (!booking) return;
         setIsLoading(true);
         try {
-            const response = await fetch('/api/ktv/interaction', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId: booking.id, type, techCode: ktvId })
-            });
-            const res = await response.json();
+            const res = await apiClient.post<any>(API.KTV.INTERACTION, { bookingId: booking.id, type, techCode: ktvId });
             if (res.success) {
                 console.log(`Sent interaction: ${type}`);
             } else {
@@ -2007,8 +1959,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         fetchWalletBalance: async () => {
             if (!ktvId) return;
             try {
-                const res = await fetch(`/api/ktv/wallet/balance?techCode=${ktvId}`);
-                const json = await res.json();
+                const json = await apiClient.get<any>(API.KTV.WALLET.BALANCE(ktvId));
                 if (json.success) setWalletBalance(json.data);
             } catch (e) {
                 console.error('Error fetching wallet balance:', e);
@@ -2017,11 +1968,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
         fetchWalletTimeline: async (month?: number, year?: number) => {
             if (!ktvId) return;
             try {
-                let url = `/api/ktv/wallet/timeline?techCode=${ktvId}`;
+                let url = API.KTV.WALLET.TIMELINE(ktvId);
                 if (month) url += `&month=${month}`;
                 if (year) url += `&year=${year}`;
-                const res = await fetch(url);
-                const json = await res.json();
+                const json = await apiClient.get<any>(url);
                 if (json.success) setWalletTimeline(json.data);
             } catch (e) {
                 console.error('Error fetching wallet timeline:', e);
