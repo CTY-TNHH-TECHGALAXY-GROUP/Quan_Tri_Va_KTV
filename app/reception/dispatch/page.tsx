@@ -1461,7 +1461,10 @@ if (!hasPermission('dispatch_board')) {
                         </span>
                         {order.hasVat && <span className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>}
                         {(() => {
-                          const isVipMenu = subOrder.services.some((svc: any) => svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_')));
+                          const isVipMenu = subOrder.services.some((svc: any) => 
+                            (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
+                            (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
+                          );
                           return isVipMenu ? (
                             <span className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-black bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm uppercase tracking-wide" title="Menu VIP">
                               VIP
