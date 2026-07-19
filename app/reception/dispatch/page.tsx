@@ -28,7 +28,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
 import { useDispatchBoard } from './useDispatchBoard.logic';
-import { MergePromptModal } from './_components/MergePromptModal';
+import { MergePromptModal } from '@/app/reception/dispatch/_components/MergePromptModal';
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
 import { Customer } from '@/lib/types';
@@ -117,6 +117,9 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 export default function DispatchBoardPage() {
   const { hasPermission } = useAuth();
   const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
