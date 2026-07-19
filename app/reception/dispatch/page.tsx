@@ -45,6 +45,7 @@ import {
 } from './types';
 
 import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
+import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
 
 
 
@@ -107,13 +108,7 @@ const formatTime = (timeStr: string | null | undefined) => {
   return timeStr;
 };
 
-const calcEndTime = (start: string, duration: number): string => {
-  if (!start || duration == null) return '';
-  const [h, m] = start.split(':').map(Number);
-  const end = new Date();
-  end.setHours(h, m + Math.floor(duration), Math.floor((duration % 1) * 60), 0);
-  return `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
-};
+
 
 const genId = () => Math.random().toString(36).slice(2, 8);
 
@@ -333,42 +328,7 @@ if (!hasPermission('dispatch_board')) {
     }));
   };
 
-  const recalculateAllTimes = (order: PendingOrder, roomTransitionTime: number): PendingOrder => {
-    const cloned = JSON.parse(JSON.stringify(order)) as PendingOrder;
-    let ktvEndTimes: Record<string, { time: string, roomId: string }> = {};
-    
-    cloned.services.forEach(svc => {
-      svc.staffList.forEach(r => {
-        if (!r.ktvId || r.segments.length === 0) return;
-        
-        if (ktvEndTimes[r.ktvId]) {
-          const last = ktvEndTimes[r.ktvId];
-          const firstSeg = r.segments[0];
-          const isSameRoom = last.roomId === firstSeg.roomId;
-          const gap = 0; // Manager approved dropping room transition time between services
-          
-          const start = calcEndTime(last.time, gap);
-          firstSeg.startTime = start;
-          firstSeg.endTime = calcEndTime(start, firstSeg.duration);
-          
-          for(let i = 1; i < r.segments.length; i++) {
-             const p = r.segments[i-1];
-             const c = r.segments[i];
-             const g = 0; // Manager approved dropping room transition time between segments
-             c.startTime = calcEndTime(p.endTime, g);
-             c.endTime = calcEndTime(c.startTime, c.duration);
-          }
-        }
-        
-        const lastSeg = r.segments[r.segments.length - 1];
-        if (lastSeg && lastSeg.endTime) {
-          ktvEndTimes[r.ktvId] = { time: lastSeg.endTime, roomId: lastSeg.roomId || '' };
-        }
-      });
-    });
-    
-    return cloned;
-  };
+
 
   const executeStaffRowUpdate = (orderId: string, svcId: string, rowId: string, patch: Partial<StaffAssignment>) => {
     updateOrder(orderId, o => {
