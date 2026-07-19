@@ -95,7 +95,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode, rating,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating )
+                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings )
             `)
             .gte('timeStart', fromDate)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
@@ -104,7 +104,7 @@ export async function GET(request: Request) {
 
         let rt_bonus = 0;
         (bookings || []).forEach(b => {
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData, bonusConfig);
+            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
             rt_bonus += bonusPts;
         });
 

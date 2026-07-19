@@ -92,7 +92,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode, rating, billCode,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating )
+                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings )
             `)
             .gte('timeStart', `${todayStr}T00:00:00+07:00`)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
         const timeline: any[] = [];
 
         (bookings || []).forEach(b => {
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData, bonusConfig);
+            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
             if (bonusPts > 0) {
                 // Determine maxKtvRating to show in desc
                 let maxKtvRating = 0;
