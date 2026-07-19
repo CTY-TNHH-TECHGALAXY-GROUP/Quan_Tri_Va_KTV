@@ -51,9 +51,14 @@ export async function PATCH(
             amountText = `${data.amount.toLocaleString()}đ`;
         }
 
-        const notificationMessage = status === 'APPROVED' 
-            ? `Thủ quỹ đã xử lý xong yêu cầu rút tiền ${amountText} của bạn.`
-            : `Yêu cầu rút tiền ${amountText} của bạn đã bị từ chối. Lý do: ${note || 'Không có'}`;
+        let notificationMessage = '';
+        if (status === 'APPROVED') {
+            notificationMessage = `Thủ quỹ đã xử lý xong yêu cầu rút tiền ${amountText} của bạn.`;
+        } else if (amountText === 'đầu ngày') {
+            notificationMessage = `Yêu cầu rút tiền đầu ngày của bạn đã được xử lý. Ghi chú: ${note || 'Không có'}`;
+        } else {
+            notificationMessage = `Yêu cầu rút tiền ${amountText} của bạn đã bị từ chối. Lý do: ${note || 'Không có'}`;
+        }
 
         await createNotification({
             employeeId: data.staff_id,
