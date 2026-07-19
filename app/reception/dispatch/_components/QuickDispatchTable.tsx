@@ -85,9 +85,25 @@ export const QuickDispatchTable = ({
     services.filter(s => !s.mergedIntoId).forEach(svc => {
       // Utilities (like Phòng Riêng) are still grouped but have isUtility flag
       const isUtil = !!(svc as any).isUtility;
-      const key = `${svc.serviceName}_${svc.duration}${isUtil ? '_utility' : ''}`;
+      
+      // Calculate display name and duration by including any merged services
+      const mergedSvcs = services.filter(s => svc.mergedServiceIds?.includes(s.id));
+      const combinedDuration = svc.duration + mergedSvcs.reduce((acc, curr) => acc + curr.duration, 0);
+      const combinedName = [svc.serviceName, ...mergedSvcs.map(s => s.serviceName)].join(' + ');
+
+      // Hack to inject combined data for UI rendering without altering the real object
+      const svcForUI = {
+         ...svc,
+         options: {
+            ...svc.options,
+            displayName: combinedName,
+         },
+         duration: combinedDuration
+      };
+
+      const key = `${svcForUI.options.displayName}_${svcForUI.duration}${isUtil ? '_utility' : ''}`;
       if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(svc);
+      map.get(key)!.push(svcForUI);
     });
     return map;
   }, [services]);
@@ -204,7 +220,7 @@ export const QuickDispatchTable = ({
           let bedId: string | null = null;
           if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
           const st = state.ktvStartTimes?.[idx] || getCurrentTime();
-          const ktvDur = state.ktvDurations?.[idx] || item.duration;
+          const ktvDur = state.ktvDurations?.[idx] || updatedServices[svcIdx].duration;
           const segment: WorkSegment = {
             id: updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
@@ -233,7 +249,7 @@ export const QuickDispatchTable = ({
             let bedId: string | null = null;
             if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
             const st = state.ktvStartTimes?.[ki] || getCurrentTime();
-            const kd = state.ktvDurations?.[ki] || item.duration;
+            const kd = state.ktvDurations?.[ki] || updatedServices[svcIdx].duration;
             staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: state.ktvEndTimes?.[ki] || calcEndTime(st, kd), duration: kd });
           }
           updatedServices[svcIdx] = {

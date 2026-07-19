@@ -27,6 +27,7 @@ import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, c
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
+import { useDispatchBoard } from './useDispatchBoard.logic';
 import { MergePromptModal } from './_components/MergePromptModal';
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
@@ -121,11 +122,7 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 export default function DispatchBoardPage() {
   const { hasPermission } = useAuth();
   const [mounted, setMounted] = React.useState(false);
-  const [staffs, setStaffs] = useState<StaffData[]>([]);
-  const [turns, setTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -135,7 +132,20 @@ export default function DispatchBoardPage() {
     }
     return vnTime.toISOString().split('T')[0];
   });
-  const [allServices, setAllServices] = useState<any[]>([]);
+
+  const {
+    orders, setOrders,
+    staffs, setStaffs,
+    turns, setTurns,
+    rooms, setRooms,
+    beds, setBeds,
+    reminders, setReminders,
+    allServices, setAllServices,
+    roomTransitionTime, setRoomTransitionTime,
+    loading, setLoading,
+    fetchData
+  } = useDispatchBoard(selectedDate, selectedOrderId);
+
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const { notifications, soundEnabled, setSoundEnabled, unlockAudio, playSound } = useNotifications();
   const [leftPanelTab, setLeftPanelTab] = useState<DispatchStatus>('pending');
@@ -145,8 +155,6 @@ export default function DispatchBoardPage() {
   const [editingSvc, setEditingSvc] = useState<{ orderId: string, svcId: string, oldSvcName: string } | null>(null);
   const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
   const [svcSearchQuery, setSvcSearchQuery] = useState('');
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [beds, setBeds] = useState<any[]>([]);
   const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number, customerGender: string } | null>(null);
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   const [fullCustomerData, setFullCustomerData] = useState<Customer | null>(null);
@@ -155,8 +163,6 @@ export default function DispatchBoardPage() {
   useEffect(() => {
     setEditingGuestInfo(null);
   }, [selectedSubOrderId]);
-  const [reminders, setReminders] = useState<any[]>([]);
-  const [roomTransitionTime, setRoomTransitionTime] = useState(5);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<any>(null);
 
@@ -199,199 +205,6 @@ export default function DispatchBoardPage() {
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
-
-  // 🛡️ Ref to track if admin is actively editing dispatch form
-  const selectedOrderIdRef = useRef(selectedOrderId);
-  const needsRefreshRef = useRef(false);
-  useEffect(() => {
-    const wasEditing = !!selectedOrderIdRef.current;
-    selectedOrderIdRef.current = selectedOrderId;
-    // 🔄 Auto-refresh when admin closes the editing form and there are pending updates
-    if (wasEditing && !selectedOrderId && needsRefreshRef.current) {
-      needsRefreshRef.current = false;
-      console.log('🔄 [Dispatch] Form closed — syncing pending realtime updates');
-      fetchData();
-    }
-  }, [selectedOrderId]);
-
-  // 📡 Realtime Subscriptions
-  useEffect(() => {
-    setMounted(true);
-    fetchData();
-
-    
-      let fetchTimeout: NodeJS.Timeout;
-      const debouncedFetchData = () => {
-        clearTimeout(fetchTimeout);
-        fetchTimeout = setTimeout(() => {
-          console.log('⚡ [Dispatch] Debounced fetch triggering...');
-          fetchData();
-        }, 1000);
-      };
-      
-      const channel = supabase
-      .channel('dispatch_board_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Bookings' }, (payload) => {
-        const newBooking = payload.new;
-        if (!['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'].includes(newBooking?.source)) return;
-        
-        console.log("🔔 [Dispatch] New Booking detected!", newBooking.id);
-        
-        // NotificationProvider will handle the sound via StaffNotifications trigger
-        // Always refetch on INSERT to get related BookingItems & mapping
-        debouncedFetchData();
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Bookings' }, (payload: any) => {
-        console.log("🔄 [Dispatch] Booking updated:", payload.new.id, payload.new.status);
-        
-        // 🚀 STATE PATCHING: Update status locally before refetching
-        setOrders(prev => prev.map(o => {
-          if (o.id === payload.new.id) {
-             const newStatus = payload.new.status;
-             const isOpenStatus = ['NEW', 'WAITING', 'READY', 'PREPARING'].includes(newStatus);
-             // Chỉ fallback về pending cho đơn chưa thực sự bước vào flow phục vụ.
-             const mappedStatus = !o.hasAssignedKtv && isOpenStatus
-                ? 'pending'
-                : (isOpenStatus ? 'PREPARING' : (newStatus === 'CANCELLED' ? 'DONE' : newStatus));
-             return { ...o, rawStatus: newStatus, dispatchStatus: mappedStatus };
-          }
-          return o;
-        }));
-
-        // 🛡️ Skip full refetch if admin is editing — status already patched above
-        if (selectedOrderIdRef.current) {
-          needsRefreshRef.current = true;
-          console.log('🛡️ [Dispatch] Status patched locally — deferring full fetchData until form closes');
-          return;
-        }
-        // 🚀 [Tối ưu API]: Bỏ qua fetchData đối với sự kiện UPDATE của Bookings 
-        // để tiết kiệm quota DB. (Do UI đã patch cục bộ rồi).
-        // debouncedFetchData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, (payload: any) => {
-        console.log("🔄 [Dispatch] TurnQueue change:", payload.eventType);
-        
-        // 🚀 STATE PATCHING: Update turns list locally
-        if (payload.eventType === 'UPDATE') {
-          setTurns(prev => prev.map(t => t.employee_id === payload.new.employee_id ? { ...t, ...payload.new } : t));
-        } else if (payload.eventType === 'DELETE') {
-          setTurns(prev => prev.filter(t => t.id !== payload.old.id));
-        } else {
-          // INSERT: full sync — defer if editing
-          if (selectedOrderIdRef.current) {
-            needsRefreshRef.current = true;
-          } else {
-            debouncedFetchData();
-          }
-        }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'StaffNotifications' }, (payload) => {
-        console.log("📡 [Dispatch] New StaffNotification", payload.new.type);
-        if (selectedOrderIdRef.current) {
-          needsRefreshRef.current = true;
-          return;
-        }
-        debouncedFetchData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
-        const newItem = payload.new as any;
-        console.log("🔄 [Dispatch] BookingItem changed:", newItem?.id, newItem?.status);
-        // 🚀 Granular patch: Always update service status in local state (even when editing)
-        if (newItem?.bookingId && newItem?.status) {
-          setOrders(prev => prev.map(o => {
-            if (o.id === newItem.bookingId) {
-              const updatedServices = o.services.map((svc: any) =>
-                svc.id === newItem.id ? { ...svc, status: newItem.status } : svc
-              );
-              return { ...o, services: updatedServices };
-            }
-            return o;
-          }));
-        }
-        if (selectedOrderIdRef.current) {
-          needsRefreshRef.current = true;
-          return;
-        }
-        
-        // 🚀 [Tối ưu API]: Chỉ gọi fetch nếu là sự kiện Thêm/Xóa
-        if (payload.eventType !== 'UPDATE') {
-            debouncedFetchData();
-        } else {
-            // 🛡️ HYBRID FALLBACK: Nếu UI đã cập nhật qua Broadcast rồi thì thôi. 
-            // Nếu UI chưa cập nhật (lỗi Broadcast rớt mạng) -> ép fetch làm phao cứu sinh
-            setOrders(prev => {
-                const order = prev.find(o => o.id === newItem.bookingId);
-                const svc = order?.services.find((s: any) => s.id === newItem.id);
-                // Nếu status server là IN_PROGRESS mà RAM vẫn là PREPARING -> rớt Broadcast -> fetch!
-                if (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') {
-                    console.log('⚠️ [Hybrid Fallback] Rớt Broadcast! Kích hoạt phao cứu sinh.');
-                    debouncedFetchData();
-                }
-                return prev;
-            });
-        }
-      })
-      .on('broadcast', { event: 'KTV_STARTED' }, (payload: any) => {
-        console.log("🚀 [Dispatch] Broadcast KTV_STARTED nhận được (< 50ms):", payload.payload);
-        const { bookingId, ktvId, startTime } = payload.payload;
-        // Optimistic UI Update: Đổi status = IN_PROGRESS và cập nhật actualStartTime
-        setOrders(prev => prev.map(o => {
-            if (o.id === bookingId) {
-                const updatedServices = o.services.map((svc: any) => ({
-                    ...svc,
-                    status: 'IN_PROGRESS',
-                    staffList: svc.staffList.map((staff: any) => {
-                        if (staff.ktvId === ktvId) {
-                            return {
-                                ...staff,
-                                segments: staff.segments.map((seg: any, idx: number) => {
-                                    // Chèn startTime vào chặng đầu tiên chưa có startTime
-                                    if (idx === 0 || !seg.actualStartTime) {
-                                        return { ...seg, actualStartTime: startTime };
-                                    }
-                                    return seg;
-                                })
-                            };
-                        }
-                        return staff;
-                    })
-                }));
-                return { ...o, dispatchStatus: 'IN_PROGRESS', rawStatus: 'IN_PROGRESS', services: updatedServices };
-            }
-            return o;
-        }));
-      })
-      .on('broadcast', { event: 'KTV_FINISHED' }, (payload: any) => {
-        console.log("🚀 [Dispatch] Broadcast KTV_FINISHED nhận được:", payload.payload);
-        const { bookingId, ktvId, finishTime } = payload.payload;
-        setOrders(prev => prev.map(o => {
-            if (o.id === bookingId) {
-                const updatedServices = o.services.map((svc: any) => ({
-                    ...svc,
-                    staffList: svc.staffList.map((staff: any) => {
-                        if (staff.ktvId === ktvId) {
-                            return {
-                                ...staff,
-                                segments: staff.segments.map((seg: any, idx: number, arr: any[]) => {
-                                    if (idx === arr.length - 1 || !seg.actualEndTime) {
-                                        return { ...seg, actualEndTime: finishTime };
-                                    }
-                                    return seg;
-                                })
-                            };
-                        }
-                        return staff;
-                    })
-                }));
-                return { ...o, services: updatedServices };
-            }
-            return o;
-        }));
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [selectedDate]); // REMOVED soundEnabled from deps
 
   const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services) => {
     let maxTime = 0;
@@ -464,267 +277,6 @@ export default function DispatchBoardPage() {
 
   // 🔄 AUTO-FINISH WORKER: Đã được chuyển về xử lý ở cấp độ KanbanBoard (sub-order level)
   // để đảm bảo tính đồng nhất và tránh xung đột trạng thái.
-
-  async function fetchData() {
-    setLoading(true);
-    console.log("📡 [Dispatch] Fetching data for date:", selectedDate);
-    try {
-      const res = await getDispatchData(selectedDate);
-      console.log("🔍 [Dispatch] getDispatchData response:", {
-        success: res.success,
-        bookingsCount: res.data?.bookings?.length,
-        firstBooking: res.data?.bookings?.[0]?.billCode,
-        firstItem: res.data?.bookings?.[0]?.BookingItems?.[0]
-      });
-      
-      if (!res.success || !res.data) {
-        console.error("❌ [Dispatch] Server Action error:", JSON.stringify(res, null, 2));
-        setLoading(false);
-        return;
-      }
-
-      const { staffs: sData, turns: tData, bookings: bData } = res.data;
-
-      // 1. Set Staffs
-      if (sData) {
-        setStaffs(sData as unknown as StaffData[]);
-      }
-
-      // 2. Set Turns
-      if (tData && sData) {
-        const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
-          ...t,
-          staff: (sData as unknown as StaffData[]).find(s => s.id === t.employee_id)
-        }));
-        setTurns(merged);
-      }
-
-      // 3. Set Rooms & Beds & Reminders
-      const rData = res.data.rooms || [];
-      const bdData = res.data.beds || [];
-      const rmData = res.data.reminders || [];
-      setRooms(rData);
-      setBeds(bdData);
-      setReminders(rmData);
-      if (res.data.allServices) setAllServices(res.data.allServices);
-      if (res.data.roomTransitionTime !== undefined) setRoomTransitionTime(res.data.roomTransitionTime);
-      console.log(`✅ [Dispatch] Loaded ${rData.length} rooms, ${bdData.length} beds, ${rmData.length} reminders. Transition: ${res.data.roomTransitionTime}m`);
-
-        // 4. Set Bookings
-      if (bData) {
-        const mappedOrders: PendingOrder[] = (bData as any[]).filter(b => b.status !== 'CANCELLED').map(b => {
-          // Tìm tất cả KTV đang được gán cho đơn này trong TurnQueue
-          const assignedTurns = tData?.filter((t: any) => t.current_order_id === b.id) || [];
-          const hasAssignedKtv = assignedTurns.length > 0;
-
-          let dStatus: DispatchStatus = 'pending';
-          if (b.status === 'PREPARING') dStatus = 'PREPARING';
-          else if (b.status === 'IN_PROGRESS') dStatus = 'IN_PROGRESS';
-          else if (b.status === 'CLEANING') dStatus = 'CLEANING';
-          else if (b.status === 'FEEDBACK') dStatus = 'FEEDBACK';
-          else if (b.status === 'DONE' || b.status === 'CANCELLED') dStatus = 'DONE';
-          else if (hasAssignedKtv) dStatus = 'PREPARING'; // Fallback for transition state
-          
-            const calculatedRating = b.rating || (b.BookingItems || []).find((i: any) => i.itemRating != null)?.itemRating || null;
-            
-            return {
-              id: b.id,
-              billCode: b.billCode || 'N/A',
-              customerName: b.customerName || 'Khách vãng lai',
-              customerId: b.customerId || null,
-              customerLang: b.customerLang || 'vi',
-              phone: b.customerPhone || '',
-              email: b.customerEmail || '',
-              time: b.timeBooking || (b.createdAt ? parseDbDate(b.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'),
-              dispatchStatus: dStatus,
-              createdAt: b.createdAt || new Date().toISOString(),
-              updatedAt: b.updatedAt,
-              totalAmount: b.totalAmount || 0,
-              paymentMethod: b.paymentMethod || 'Chưa rõ',
-              hasVat: b.hasVat,
-              rawStatus: b.status,
-              hasAssignedKtv,
-              accessToken: b.accessToken || null,
-              rating: calculatedRating,
-              feedbackNote: b.feedbackNote || null,
-              vipWarnings: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.warnings : []; } catch { return []; } })() : [],
-              vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
-              timeStart: b.timeStart || null,
-              rawNotes: b.notes,
-              isWebBooking: b.source === 'WEB_BOOKING' || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
-              timeBooking: b.timeBooking,
-              isReturning: b.isReturning,
-              visitCount: b.visitCount,
-              guestCount: b.guestCount,
-              nationality: b.nationality,
-              customerGender: b.customerGender || 'male',
-            services: (b.BookingItems || []).map((bi: any) => {
-              const itemTurns = assignedTurns.filter((t: any) => {
-                  if (!t.booking_item_id) return false;
-                  if (typeof t.booking_item_id === 'string') return t.booking_item_id.includes(bi.id);
-                  return t.booking_item_id === bi.id;
-              });
-              const finalItemTurns = (itemTurns.length === 0 && (b.BookingItems || []).length === 1) ? assignedTurns : itemTurns;
-
-              let parsedSegments: any[] = [];
-              try {
-                  parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []);
-              } catch(e) { parsedSegments = []; }
-
-              const parsedOptions = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {});
-
-              let parsedNotes: any = null;
-              let finalAdminNote = '';
-              let extractedCustomerNote = '';
-              if (b.notes) {
-                  if (typeof b.notes === 'string' && b.notes.trim().startsWith('{')) {
-                      try { parsedNotes = JSON.parse(b.notes); } catch(e) {}
-                  } else if (typeof b.notes === 'object') {
-                      parsedNotes = b.notes;
-                  } else {
-                      finalAdminNote = String(b.notes);
-                      extractedCustomerNote = String(b.notes);
-                  }
-                  
-                  if (parsedNotes) {
-                      if (parsedNotes.type === 'VIP_APPOINTMENT' || parsedNotes.type === 'WEB_ADVANCE_BOOKING') {
-                          finalAdminNote = parsedNotes.receptionNote || '';
-                          extractedCustomerNote = parsedNotes.customerNote || parsedNotes.note || '';
-                      } else {
-                          finalAdminNote = typeof b.notes === 'string' ? b.notes : JSON.stringify(b.notes);
-                          extractedCustomerNote = parsedNotes.customerNote || parsedNotes.note || '';
-                      }
-                  }
-              }
-
-              const forcedStartTime = parsedOptions?.timeSlot || parsedNotes?.timeSlot;
-
-              const techCodes: string[] = Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : []);
-              let staffList: any[] = [];
-
-              if (techCodes.length > 0) {
-                  staffList = techCodes.map((tCode: string) => {
-                      const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
-                      const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
-                      
-                      let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
-                      
-                      if (segments.length === 0) {
-                          const st = formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
-                          // Chia đều duration cho từng KTV khi có nhiều KTV cùng 1 dịch vụ
-                          const totalDur = parsedOptions?.vipDuration || bi.duration || 0;
-                          const dur = techCodes.length > 1 ? Math.ceil(totalDur / techCodes.length) : totalDur;
-                          segments = [{
-                              id: `seg-${genId()}`,
-                              roomId: turn?.room_id || bi.roomName || b.roomName,
-                              bedId: turn?.bed_id || bi.bedId || b.bedId,
-                              startTime: st,
-                              duration: dur,
-                              endTime: formatTime(turn?.estimated_end_time) || calcEndTime(st, dur)
-                          }];
-                      }
-
-                      return {
-                        id: `st-${bi.id}-${tCode}`,
-                        ktvId: tCode,
-                        ktvName: staff?.full_name || tCode,
-                        segments: segments,
-                        noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || ''
-                      };
-                  });
-              } else if (finalItemTurns.length > 0) {
-                  staffList = finalItemTurns.map((t: any) => {
-                      const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
-                      let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
-                      
-                      if (segments.length === 0) {
-                          const st = formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
-                          const dur = parsedOptions?.vipDuration || bi.duration || 0;
-                          segments = [{
-                              id: `seg-${genId()}`,
-                              roomId: t.room_id || bi.roomName || b.roomName,
-                              bedId: t.bed_id || bi.bedId || b.bedId,
-                              startTime: st,
-                              duration: dur,
-                              endTime: formatTime(t.estimated_end_time) || calcEndTime(st, dur)
-                          }];
-                      }
-
-                      return {
-                        id: `st-${bi.id}-${t.employee_id}`,
-                        ktvId: t.employee_id,
-                        ktvName: staff?.full_name || 'KTV',
-                        segments: segments,
-                        noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || ''
-                      };
-                  });
-              } else {
-                  // Chưa có KTV gán — ưu tiên dùng segments từ DB (VD: từ splitBookingItem)
-                  const dbSeg = parsedSegments.length > 0 ? parsedSegments[0] : null;
-                  const fallbackStart = dbSeg?.startTime || forcedStartTime || getCurrentTime();
-                  const fallbackDur = dbSeg?.duration || parsedOptions?.vipDuration || Number(bi.duration) || 0;
-                  staffList = [{
-                      id: `st-${bi.id}`,
-                      ktvId: '',
-                      ktvName: '',
-                      segments: [{
-                          id: dbSeg?.id || `seg-${genId()}`,
-                          roomId: dbSeg?.roomId || null,
-                          bedId: dbSeg?.bedId || null,
-                          startTime: fallbackStart,
-                          duration: fallbackDur,
-                          endTime: dbSeg?.endTime || calcEndTime(fallbackStart, fallbackDur)
-                      }],
-                      noteForKtv: ''
-                  }];
-              }
-
-
-
-              return {
-                id: bi.id,
-                serviceId: bi.serviceId,
-                serviceName: bi.serviceName || bi.service_name || 'Dịch vụ',
-                serviceDescription: bi.serviceDescription || bi.service_description || '',
-                duration: parsedOptions?.vipDuration || Number(bi.duration) || 0,
-                selectedRoomId: bi.roomName || b.roomName || null,
-                bedId: bi.bedId || b.bedId || null,
-                staffList: staffList,
-                adminNote: finalAdminNote,
-                genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
-                strength: parsedOptions?.strength || '',
-                focus: Array.isArray(parsedOptions?.focus) ? parsedOptions.focus.join(', ') : (parsedOptions?.focus || b.focusAreaNote || ''),
-                avoid: Array.isArray(parsedOptions?.avoid) ? parsedOptions.avoid.join(', ') : (parsedOptions?.avoid || ''),
-                customerNote: [
-                  extractedCustomerNote,
-                  parsedOptions?.note || parsedOptions?.customerNotes,
-                  Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
-                  b.focusAreaNote
-                ].filter(Boolean).join(' | '),
-                price: Number(bi.price) || 0,
-                quantity: Number(bi.quantity) || 1,
-                options: parsedOptions,
-                status: bi.status || 'NEW',
-                timeStart: bi.timeStart || null,
-                timeEnd: bi.timeEnd || null,
-                itemRating: bi.itemRating || null,
-                ktvRatings: bi.ktvRatings || {}
-              };
-            })
-          };
-        });
-
-        setOrders(mappedOrders);
-        console.log(`✅ [Dispatch] Fetched ${mappedOrders.length} bookings successfully:`, mappedOrders);
-      }
-
-    
-    } catch (e) {
-      console.error("❌ [Dispatch] Unexpected error in fetchData:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2212,11 +1764,38 @@ if (!hasPermission('dispatch_board')) {
                     }}
                     onUpdateServices={(updatedServices) => {
                       updateOrder(selectedSubOrder.bookingId, o => {
-                          const mergedServices = o.services.map(origSvc => {
+                          let mergedServices = o.services.map(origSvc => {
                               const found = updatedServices.find(u => u.id === origSvc.id);
                               return found ? found : origSvc;
                           });
-                          return { ...o, services: mergedServices };
+                          
+                          // Now, sync any target services to match their source service
+                          mergedServices = mergedServices.map(svc => {
+                             if (svc.mergedIntoId) {
+                                const sourceSvc = mergedServices.find(s => s.id === svc.mergedIntoId);
+                                if (sourceSvc) {
+                                   return {
+                                      ...svc,
+                                      staffList: svc.staffList.map((r, i) => {
+                                         const sourceRow = sourceSvc.staffList[i] || sourceSvc.staffList[0];
+                                         if (!sourceRow) return r;
+                                         return {
+                                            ...r,
+                                            ktvId: sourceRow.ktvId,
+                                            ktvName: sourceRow.ktvName,
+                                            segments: r.segments.map((cSeg, cIdx) => {
+                                               const pSeg = sourceRow.segments[cIdx] || sourceRow.segments[0];
+                                               return { ...cSeg, roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
+                                            })
+                                         };
+                                      })
+                                   };
+                                }
+                             }
+                             return svc;
+                          });
+
+                          return recalculateAllTimes({ ...o, services: mergedServices }, roomTransitionTime);
                       });
                     }}
                     onDispatchGroup={(group, specificSvcId) => {
@@ -3021,6 +2600,8 @@ if (!hasPermission('dispatch_board')) {
 
       <MergePromptModal
         config={mergePromptConfig}
+        staffs={staffs}
+        orders={orders}
         onConfirm={confirmMergeServices}
         onCancel={cancelMergeServices}
       />
