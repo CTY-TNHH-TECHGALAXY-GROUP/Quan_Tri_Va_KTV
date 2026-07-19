@@ -348,7 +348,9 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const ktvSegments = allKtvSegments;
   
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length;
+  const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || 'unknown'));
+  const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
   
   // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
@@ -851,7 +853,9 @@ function ScreenTimer({ logic }: { logic: any }) {
   });
   
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length;
+  const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || 'unknown'));
+  const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
   const totalAssignedMins = ktvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
