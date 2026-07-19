@@ -119,14 +119,16 @@ export async function GET(request: Request) {
             if (relevantItems.length === 0) continue;
 
             let totalDuration = 0;
+            let commission = 0;
             for (const item of relevantItems) {
                 const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 totalDuration += itemDuration;
+                commission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
             }
+            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
 
-            const commission = KtvCommissionService.calcCommission(totalDuration || 60, commConfig.milestones, commConfig.ratePer60);
             if (commission > 0) {
                 timeline.push({
                     id: b.id + '_comm',

@@ -180,15 +180,14 @@ export async function GET(request: Request) {
 
                 if (relevantItems.length === 0) continue;
 
-                let totalDuration = 0;
+                let bookingCommission = 0;
                 for (const item of relevantItems) {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    totalDuration += itemDuration;
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
                 }
-
-                const bookingCommission = KtvCommissionService.calcCommission(totalDuration || 60, commConfig.milestones, commConfig.ratePer60);
+                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
                 const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
 
