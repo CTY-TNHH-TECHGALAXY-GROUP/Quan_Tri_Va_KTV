@@ -116,12 +116,13 @@ export const QuickDispatchTable = ({
     ktvDurations: number[]; ktvNotes: string[]; ktvBedIds: string[];
     note: string; duration: number;
     isUtility?: boolean;
+    isMergedGroup?: boolean;
   };
   const [groupStates, setGroupStates] = useState<Map<string, GroupState>>(new Map());
 
   // Build fingerprint from current services data
   const buildFingerprint = (svcs: ServiceBlock[]) =>
-    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
+    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
 
   // Initialize / re-initialize group states when services change
   useEffect(() => {
@@ -133,6 +134,8 @@ export const QuickDispatchTable = ({
     const newStates = new Map<string, GroupState>();
     initialGroups.forEach((items, groupKey) => {
       const duration = items[0]?.duration || 0;
+      const isMergedGroup = !!(items[0]?.mergedServiceIds?.length);
+      
       // Collect all KTVs across all items (including multi-staff per item)
       const ktvIds: string[] = [];
       const roomIds: string[] = [];
@@ -148,8 +151,28 @@ export const QuickDispatchTable = ({
               ktvIds.push(staff.ktvId);
               roomIds.push(staff.segments?.[0]?.roomId || '');
               startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
-              endTimes.push(staff.segments?.[0]?.endTime || calcEndTime(staff.segments?.[0]?.startTime || defaultTime, duration));
-              ktvDurationsList.push(staff.segments?.[0]?.duration || duration);
+              
+              let totalStaffDur = staff.segments?.[0]?.duration || duration;
+              let finalEndTime = staff.segments?.[0]?.endTime;
+              
+              if (item.mergedServiceIds?.length) {
+                 const mergedSvcs = services.filter(s => item.mergedServiceIds?.includes(s.id));
+                 mergedSvcs.forEach(ms => {
+                    const mStaff = ms.staffList.find(r => r.ktvId === staff.ktvId);
+                    if (mStaff) {
+                       totalStaffDur += mStaff.segments?.[0]?.duration || ms.duration;
+                       if (mStaff.segments?.[0]?.endTime) {
+                          finalEndTime = mStaff.segments[0].endTime;
+                       }
+                    }
+                 });
+              }
+              if (!finalEndTime) {
+                 finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
+              }
+              
+              endTimes.push(finalEndTime);
+              ktvDurationsList.push(totalStaffDur);
               ktvNotesList.push(staff.noteForKtv || '');
               bedIdsList.push(staff.segments?.[0]?.bedId || '');
             }
@@ -172,6 +195,7 @@ export const QuickDispatchTable = ({
         note: items[0]?.staffList?.[0]?.noteForKtv || '',
         duration,
         isUtility: !!(items[0] as any).isUtility,
+        isMergedGroup
       });
     });
     if (newStates.size > 0) {
@@ -220,11 +244,15 @@ export const QuickDispatchTable = ({
           let bedId: string | null = null;
           if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
           const st = state.ktvStartTimes?.[idx] || getCurrentTime();
-          const ktvDur = state.ktvDurations?.[idx] || updatedServices[svcIdx].duration;
+          
+          const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
+          const originalDur = updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
+          const ktvDur = isMerged ? originalDur : (state.ktvDurations?.[idx] || originalDur);
+          
           const segment: WorkSegment = {
             id: updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
-            endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
+            endTime: isMerged ? (updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.endTime || calcEndTime(st, ktvDur)) : (state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur)),
           };
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
@@ -249,8 +277,14 @@ export const QuickDispatchTable = ({
             let bedId: string | null = null;
             if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
             const st = state.ktvStartTimes?.[ki] || getCurrentTime();
-            const kd = state.ktvDurations?.[ki] || updatedServices[svcIdx].duration;
-            staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: state.ktvEndTimes?.[ki] || calcEndTime(st, kd), duration: kd });
+            const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
+            const originalDur = updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
+            const kd = isMerged ? originalDur : (state.ktvDurations?.[ki] || originalDur);
+            
+            const originalEndTime = updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.endTime;
+            const finalEndTime = isMerged ? (originalEndTime || calcEndTime(st, kd)) : (state.ktvEndTimes?.[ki] || calcEndTime(st, kd));
+            
+            staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: finalEndTime, duration: kd });
           }
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
@@ -390,7 +424,7 @@ interface ServiceGroupCardProps {
   serviceDescription?: string;
   count: number;
   duration: number;
-  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; note: string; duration: number; isUtility?: boolean; };
+  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; note: string; duration: number; isUtility?: boolean; isMergedGroup?: boolean; };
   targetSkill: string | null;
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
   allSelectedKtvIds: string[];
@@ -701,15 +735,17 @@ const ServiceGroupCard = ({
                             type="number"
                             min={0.1} max={300} step={0.1}
                             value={ktvDur || ''}
-                            onChange={e => updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
-                            onFocus={() => setOpenDurationIdx(idx)}
-                            className="w-[75px] px-2 py-1.5 border-2 border-amber-100 rounded-xl text-[11px] font-black text-center text-amber-700 bg-amber-50 focus:border-amber-400 outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            onChange={e => !state.isMergedGroup && updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
+                            onFocus={() => !state.isMergedGroup && setOpenDurationIdx(idx)}
+                            disabled={state.isMergedGroup}
+                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${state.isMergedGroup ? 'border-gray-200 text-gray-500 bg-gray-100 cursor-not-allowed' : 'border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400'}`}
                             placeholder="Phút"
                         />
                         <button 
                             type="button"
-                            onClick={() => setOpenDurationIdx(openDurationIdx === idx ? null : idx)}
-                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-amber-500 hover:text-amber-700 transition-colors"
+                            onClick={() => !state.isMergedGroup && setOpenDurationIdx(openDurationIdx === idx ? null : idx)}
+                            disabled={state.isMergedGroup}
+                            className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors ${state.isMergedGroup ? 'text-gray-400 cursor-not-allowed' : 'text-amber-500 hover:text-amber-700'}`}
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${openDurationIdx === idx ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
                         </button>
