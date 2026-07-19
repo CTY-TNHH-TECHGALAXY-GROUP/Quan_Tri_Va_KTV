@@ -5,6 +5,8 @@ import { User, Role, ModuleId } from './types';
 import { MODULES } from './constants';
 import { createClient } from './supabase';
 import { authenticateUser } from '@/app/login/actions';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 interface AuthContextType {
   user: User | null;
@@ -135,11 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await sub.unsubscribe();
             // Gửi API để xóa khỏi Database
             if (user?.id) {
-              await fetch('/api/ktv/push-unsubscribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ staffId: user.id, endpoint: sub.endpoint })
-              }).catch(e => console.warn('Unsubscribe API network error:', e));
+              await apiClient.post<any>(API.KTV.PUSH_UNSUB, { staffId: user.id, endpoint: sub.endpoint }).catch(e => console.warn('Unsubscribe API network error:', e));
             }
           }
         }

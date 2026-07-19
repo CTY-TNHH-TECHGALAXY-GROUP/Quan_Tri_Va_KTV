@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO, differenceInMinutes } from 'date-fns';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 const supabase = createClient();
 
@@ -65,7 +67,7 @@ export const usePayrollLogic = () => {
           .gte('date', startDateISO)
           .lte('date', endDateISO)
           .eq('status', 'CONFIRMED'),
-        fetch(`/api/finance/payroll/shifts?dateFrom=${startDateISO}&dateTo=${endDateISO}`).then(r => r.json()).catch(() => ({ data: { shifts: [], leaves: [] } })),
+        apiClient.get<any>(`${API.FINANCE.PAYROLL_SHIFTS}?dateFrom=${startDateISO}&dateTo=${endDateISO}`).catch(() => ({ data: { shifts: [], leaves: [] } })),
         supabase.from('Users').select('id, code'),
       ]);
 
@@ -360,27 +362,17 @@ export const usePayrollLogic = () => {
 
   const handleOverrideAttendance = async (employeeId: string, employeeName: string, date: string, newStatus: string) => {
     try {
-      const res = await fetch('/api/finance/payroll/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId,
-          employeeName,
-          date,
-          newStatus
-        })
+      await apiClient.post<any>(API.FINANCE.PAYROLL_OVERRIDE, {
+        employeeId,
+        employeeName,
+        date,
+        newStatus
       });
-      const data = await res.json();
-      if (data.success) {
-        fetchData(); // reload
-        return true;
-      } else {
-        alert(data.error || 'Có lỗi xảy ra');
-        return false;
-      }
-    } catch (err) {
+      fetchData(); // reload
+      return true;
+    } catch (err: any) {
       console.error(err);
-      alert('Lỗi kết nối máy chủ');
+      alert(err.message || 'Lỗi kết nối máy chủ');
       return false;
     }
   };

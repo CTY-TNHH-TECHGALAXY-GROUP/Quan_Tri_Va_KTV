@@ -7,6 +7,8 @@ const DEFAULT_DURATION = 60; // Phút mặc định cho mỗi KTV
 import React, { useState, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
@@ -1449,10 +1451,7 @@ if (!hasPermission('dispatch_board')) {
 
   async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean) {
     try {
-      const res = await fetch('/api/ktv/pause-swap-resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiClient.post<any>(API.KTV.PAUSE_SWAP, {
           action,
           bookingItemId,
           oldKtvId,
@@ -1460,9 +1459,7 @@ if (!hasPermission('dispatch_board')) {
           extraTimeMins,
           keepTurnForOldKtv,
           businessDate: selectedDate
-        })
       });
-      const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Có lỗi xảy ra');
       
       // Thành công => Cập nhật lại UI
@@ -1989,8 +1986,7 @@ if (!hasPermission('dispatch_board')) {
                                   onClick={async () => {
                                     setIsFetchingCustomer(true);
                                     try {
-                                      const res = await fetch('/api/customers');
-                                      const data = await res.json();
+                                      const data = await apiClient.get<any>(API.CUSTOMERS);
                                       const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
                                       
                                       let found = null;

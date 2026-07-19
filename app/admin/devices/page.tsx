@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 import {
   ShieldAlert, Tablet, Trash2, Power, PowerOff,
   RefreshCw, AlertCircle, CheckCircle2, Plus, Wifi, X
@@ -94,8 +96,7 @@ const DeviceManagementPage = () => {
     setIsWifiModalOpen(true);
     setIsFetchingWifi(true);
     try {
-      const res = await fetch('/api/admin/update-wifi-ip');
-      const data = await res.json();
+      const data = await apiClient.get<any>(API.ADMIN.UPDATE_WIFI_IP);
       if (data.success) {
         setWifiData({ clientIp: data.clientIp, currentIps: data.currentIps, lastRejected: data.lastRejected });
       }
@@ -109,12 +110,7 @@ const DeviceManagementPage = () => {
   const updateWifiAction = async (action: 'overwrite' | 'append' | 'remove' | 'append_rejected', ipToRemove?: string, rejectedIp?: string) => {
     setIsUpdatingWifi(true);
     try {
-      const res = await fetch('/api/admin/update-wifi-ip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ipToRemove, rejectedIp })
-      });
-      const data = await res.json();
+      const data = await apiClient.post<any>(API.ADMIN.UPDATE_WIFI_IP, { action, ipToRemove, rejectedIp });
       if (data.success) {
         setWifiData(prev => ({ ...prev, currentIps: data.currentIps, lastRejected: action === 'append_rejected' ? null : prev.lastRejected }));
         if (action !== 'remove') {

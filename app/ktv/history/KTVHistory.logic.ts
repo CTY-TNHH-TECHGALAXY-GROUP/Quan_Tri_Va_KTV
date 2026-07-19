@@ -3,14 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { format, subDays } from 'date-fns';
-
-// 🔧 CONFIG
-const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-const getTodayVn = () => {
-  const d = new Date(Date.now() + VN_OFFSET_MS);
-  return d.toISOString().split('T')[0];
-};
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
+import { getVnDateStr } from '@/lib/time.logic';
 
 export interface HistoryRecord {
   id: string;
@@ -30,7 +25,7 @@ export type DatePreset = 'today' | 'yesterday' | '7days' | 'custom';
 export const useKTVHistory = () => {
   const { hasPermission, user } = useAuth();
 
-  const today = getTodayVn();
+  const today = getVnDateStr();
   const [datePreset, setDatePreset] = useState<DatePreset>('today');
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo]   = useState(today);
@@ -43,17 +38,14 @@ export const useKTVHistory = () => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/ktv/history?techCode=${user.id}&dateFrom=${from}&dateTo=${to}`);
-      const json = await res.json();
-      if (json.success) {
-        setHistory(json.data);
-        const totalCommission = (json.data as HistoryRecord[]).reduce((s, r) => s + (r.commission || 0), 0);
-        const totalTip        = (json.data as HistoryRecord[]).reduce((s, r) => s + (r.tip || 0), 0);
-        const totalBonus      = (json.data as HistoryRecord[]).reduce((s, r) => s + (r.bonusPoints || 0), 0);
-        setSummary({ totalCommission, totalTip, totalOrders: json.data.length, totalBonus });
-      }
-    } catch (err) {
-      console.error('[KTVHistory]', err);
+      const result = await apiClient.get<any>(API.KTV.HISTORY(user.id, from, to));
+      setHistory(result.data || []);
+      const totalCommission = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.commission || 0), 0);
+      const totalTip        = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.tip || 0), 0);
+      const totalBonus      = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.bonusPoints || 0), 0);
+      setSummary({ totalCommission, totalTip, totalOrders: (result.data || []).length, totalBonus });
+    } catch (err: any) {
+      console.error('[KTVHistory]', err.message || err);
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +54,7 @@ export const useKTVHistory = () => {
   // Apply preset — re-run when user.id becomes available (after F5)
   useEffect(() => {
     if (!user?.id) return; // wait until auth is ready
-    const t = getTodayVn();
+    const t = getVnDateStr();
     if (datePreset === 'today') {
       setDateFrom(t); setDateTo(t);
       fetchHistory(t, t);

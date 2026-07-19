@@ -18,6 +18,8 @@ import Image from 'next/image';
 import { useKTVDashboard } from './KTVDashboard.logic';
 import { ROOM_ISSUE_OPTIONS } from './KTVDashboard.logic';
 import { useNotifications } from '@/components/NotificationProvider';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
 const THEME = {
@@ -308,10 +310,9 @@ function ScreenDashboard({ logic }: { logic: any }) {
   }, [onCallState]);
 
   React.useEffect(() => {
-    fetch('/api/system/config')
-      .then(r => r.json())
+    apiClient.get<any>(API.SYSTEM.CONFIG)
       .then(json => {
-        if (json.success && json.data?.web_booking_url) {
+        if (json.data?.web_booking_url) {
           setBookingUrl(json.data.web_booking_url);
         }
       })
@@ -721,10 +722,9 @@ function ScreenTimer({ logic }: { logic: any }) {
   const [minBrightness, setMinBrightness] = React.useState(MIN_BRIGHTNESS_FALLBACK);
 
   React.useEffect(() => {
-      fetch('/api/ktv/settings')
-          .then(r => r.json())
+      apiClient.get<any>(API.KTV.SETTINGS)
           .then(json => {
-              if (json.success && json.data?.min_photo_brightness !== undefined) {
+              if (json.data?.min_photo_brightness !== undefined) {
                   setMinBrightness(Number(json.data.min_photo_brightness));
               }
           })

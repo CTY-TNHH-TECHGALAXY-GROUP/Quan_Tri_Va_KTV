@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
 const FETCH_RANGE_DAYS = 30; // Show leave schedule for the next 30 days
@@ -46,16 +48,10 @@ export const useKTVLeave = () => {
             const toDate = new Date(today.getTime() + FETCH_RANGE_DAYS * 24 * 60 * 60 * 1000);
             const to = toDate.toISOString().split('T')[0];
 
-            const res = await fetch(`/api/ktv/leave?from=${from}&to=${to}`);
-            const result = await res.json();
-
-            if (result.success) {
-                setLeaveList(result.data || []);
-            } else {
-                console.error('❌ [Leave] Fetch error:', result.error);
-            }
-        } catch (err) {
-            console.error('❌ [Leave] Fetch failed:', err);
+            const result = await apiClient.get<any>(`${API.KTV.LEAVE}?from=${from}&to=${to}`);
+            setLeaveList(result.data || []);
+        } catch (err: any) {
+            console.error('❌ [Leave] Fetch failed:', err.message || err);
         } finally {
             setIsLoadingList(false);
         }
@@ -77,23 +73,12 @@ export const useKTVLeave = () => {
         setSubmitSuccess(false);
 
         try {
-            const res = await fetch('/api/ktv/leave', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    employeeId: user.id,
-                    employeeName: user.name || user.id,
-                    date,
-                    reason: "Xin nghỉ",
-                }),
+            await apiClient.post<any>(API.KTV.LEAVE, {
+                employeeId: user.id,
+                employeeName: user.name || user.id,
+                date,
+                reason: "Xin nghỉ",
             });
-
-            const result = await res.json();
-
-            if (!result.success) {
-                setSubmitError(result.error || 'Lỗi gửi yêu cầu');
-                return;
-            }
 
             setSubmitSuccess(true);
             setDate('');

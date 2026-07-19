@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useNotifications } from '@/components/NotificationProvider';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 export const useSupportDashboard = () => {
     const { user } = useAuth();
@@ -31,15 +33,10 @@ export const useSupportDashboard = () => {
         if (!user) return;
         setLoadingTasks(true);
         try {
-            const res = await fetch(`/api/support/tasks?assignee_id=${user.id}&status=PENDING`);
-            const json = await res.json();
-            if (json.success) {
-                setMyTasks(json.data);
-            } else {
-                throw new Error(json.error);
-            }
+            const result = await apiClient.get<any>(`${API.SUPPORT.TASKS}?assignee_id=${user.id}&status=PENDING`);
+            setMyTasks(result.data || []);
         } catch (error: any) {
-            console.error('Error fetching tasks:', error);
+            console.error('Error fetching tasks:', error.message || error);
             alert('Lỗi khi lấy danh sách công việc');
         } finally {
             setLoadingTasks(false);
@@ -66,18 +63,12 @@ export const useSupportDashboard = () => {
 
     const markTaskDone = async (taskId: string, photoUrl: string) => {
         try {
-            const res = await fetch('/api/support/tasks', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: taskId, status: 'DONE', photo_url: photoUrl })
-            });
-            const json = await res.json();
-            if (!json.success) throw new Error(json.error);
+            await apiClient.patch<any>(API.SUPPORT.TASKS, { id: taskId, status: 'DONE', photo_url: photoUrl });
             alert('Đã hoàn tất công việc');
             fetchMyTasks();
             return { success: true };
         } catch (error: any) {
-            console.error('Error marking task done:', error);
+            console.error('Error marking task done:', error.message || error);
             alert('Lỗi khi hoàn tất công việc');
             return { success: false, error: error.message };
         }

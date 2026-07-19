@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 MASTER PROCEDURE STEPS (Admin picks from these)
 export const MASTER_PREP_STEPS = [
@@ -68,19 +70,16 @@ export const useRoomConfig = () => {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/rooms');
-            const json = await res.json();
-            if (json.success) {
-                setRooms(json.data.rooms || []);
-                setServices(json.data.services || []);
-                setReminders(json.data.reminders || []);
-                // Auto-select first room
-                if (!selectedRoomId && json.data.rooms?.length > 0) {
-                    setSelectedRoomId(json.data.rooms[0].id);
-                }
+            const data = await apiClient.get<any>(API.ROOMS);
+            setRooms(data.data?.rooms || []);
+            setServices(data.data?.services || []);
+            setReminders(data.data?.reminders || []);
+            // Auto-select first room
+            if (!selectedRoomId && (data.data?.rooms?.length || 0) > 0) {
+                setSelectedRoomId(data.data.rooms[0].id);
             }
-        } catch (err) {
-            console.error('Error fetching rooms:', err);
+        } catch (err: any) {
+            console.error('Error fetching rooms:', err.message || err);
         } finally {
             setIsLoading(false);
         }
@@ -93,23 +92,13 @@ export const useRoomConfig = () => {
     const updateRoom = async (roomId: string, updates: Partial<Pick<RoomData, 'prep_procedure' | 'clean_procedure' | 'allowed_services' | 'default_reminders'>>) => {
         setIsSaving(true);
         try {
-            const res = await fetch('/api/rooms', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, ...updates })
-            });
-            const json = await res.json();
-            if (json.success) {
-                // Update local state
-                setRooms(prev => prev.map(r => r.id === roomId ? { ...r, ...updates } : r));
-                return true;
-            } else {
-                alert('Lỗi lưu: ' + (json.error || 'Unknown'));
-                return false;
-            }
-        } catch (err) {
-            console.error('Error updating room:', err);
-            alert('Lỗi kết nối!');
+            await apiClient.patch<any>(API.ROOMS, { roomId, ...updates });
+            // Update local state
+            setRooms(prev => prev.map(r => r.id === roomId ? { ...r, ...updates } : r));
+            return true;
+        } catch (err: any) {
+            console.error('Error updating room:', err.message || err);
+            alert('Lỗi lưu/kết nối!');
             return false;
         } finally {
             setIsSaving(false);

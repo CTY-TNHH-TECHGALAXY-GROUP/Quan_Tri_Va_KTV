@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 CONFIGURATION
 const GPS_TIMEOUT_MS = 10000;
@@ -79,47 +81,36 @@ export const useKTVAttendance = () => {
 
         const fetchStatus = async () => {
             try {
-                const [res, resSettings, resConfig] = await Promise.all([
-                    fetch(`/api/ktv/attendance/status?employeeId=${user.id}`),
-                    fetch('/api/ktv/settings'),
-                    fetch('/api/system/config'),
+                const [statusRes, settingsRes, configRes] = await Promise.all([
+                    apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
+                        console.error(`❌ [Attendance] Status API returned error:`, err);
+                        return { success: false, checkStatus: 'IDLE', record: null };
+                    }),
+                    apiClient.get<any>(API.KTV.SETTINGS).catch(() => ({ success: false, data: {} })),
+                    apiClient.get<any>(API.SYSTEM.CONFIG).catch(() => ({ success: false, data: {} })),
                 ]);
                 
-                if (resSettings.ok) {
-                    const settingsData = await resSettings.json();
-                    if (settingsData.success) {
-                        if (settingsData.data?.allow_early_checkout !== undefined) {
-                            setAllowEarlyCheckout(settingsData.data.allow_early_checkout);
-                        }
-                        if (settingsData.data?.spa_day_cutoff_hours !== undefined) {
-                            setDayCutoffHours(Number(settingsData.data.spa_day_cutoff_hours));
-                        }
-                        if (settingsData.data?.min_photo_brightness !== undefined) {
-                            setMinPhotoBrightness(Number(settingsData.data.min_photo_brightness));
-                        }
+                if (settingsRes.success && settingsRes.data) {
+                    if (settingsRes.data.allow_early_checkout !== undefined) {
+                        setAllowEarlyCheckout(settingsRes.data.allow_early_checkout);
+                    }
+                    if (settingsRes.data.spa_day_cutoff_hours !== undefined) {
+                        setDayCutoffHours(Number(settingsRes.data.spa_day_cutoff_hours));
+                    }
+                    if (settingsRes.data.min_photo_brightness !== undefined) {
+                        setMinPhotoBrightness(Number(settingsRes.data.min_photo_brightness));
                     }
                 }
 
-                if (resConfig.ok) {
-                    const configData = await resConfig.json();
-                    if (configData.success) {
-                        const raw = configData.data?.show_overtime_on_dashboard;
-                        setShowOvertimeFeature(raw === true || raw === 'true');
-                    }
+                if (configRes.success && configRes.data) {
+                    const raw = configRes.data.show_overtime_on_dashboard;
+                    setShowOvertimeFeature(raw === true || raw === 'true');
                 }
 
-                if (!res.ok) {
-                    const text = await res.text();
-                    console.error(`❌ [Attendance] Status API returned ${res.status}:`, text);
-                    return;
-                }
-
-                const result = await res.json();
-
-                if (result.success && result.checkStatus) {
-                    setCheckStatus(result.checkStatus as CheckStatus);
-                    if (result.record) {
-                        setCurrentRecord(result.record);
+                if (statusRes.success && statusRes.checkStatus) {
+                    setCheckStatus(statusRes.checkStatus as CheckStatus);
+                    if (statusRes.record) {
+                        setCurrentRecord(statusRes.record);
                     }
                 }
             } catch (err) {
@@ -155,8 +146,7 @@ export const useKTVAttendance = () => {
         const fetchShift = async () => {
             setIsLoadingShift(true);
             try {
-                const res = await fetch(`/api/ktv/shift?employeeId=${user.id}`);
-                const result = await res.json();
+                const result = await apiClient.get<any>(`${API.KTV.SHIFT}?employeeId=${user.id}`);
                 // Check if they are OFF today (from the server API to bypass RLS)
                 const isOff = result.success && result.data?.isOffToday ? true : false;
                 setIsOffToday(isOff);
@@ -276,47 +266,21 @@ export const useKTVAttendance = () => {
         setCheckStatus('LOADING_GPS'); // Will rename this state eventually, keeping string for now to avoid breaking UI
 
         try {
-            const res = await fetch('/api/ktv/attendance', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    employeeId: user?.id,
-                    employeeName: user?.name || 'KTV',
-                    checkType,
-                    photoBase64: photosBase64 || null,
-                    reason: reason || null,
-                    latitude: null,
-                    longitude: null,
-                    locationText: null,
-                    selectedShiftType: selectedShiftType || null,
-                    estimatedEndTime: estimatedEndTime || null,
-                    wantsToWithdraw: wantsToWithdraw || false,
-                    isLiveCapture: isLiveCapture || false,
-                }),
+            const result = await apiClient.post<any>(API.KTV.ATTENDANCE, {
+                employeeId: user?.id,
+                employeeName: user?.name || 'KTV',
+                checkType,
+                photoBase64: photosBase64 || null,
+                reason: reason || null,
+                latitude: null,
+                longitude: null,
+                locationText: null,
+                selectedShiftType: selectedShiftType || null,
+                estimatedEndTime: estimatedEndTime || null,
+                wantsToWithdraw: wantsToWithdraw || false,
+                isLiveCapture: isLiveCapture || false,
             });
 
-            if (!res.ok) {
-                let errorMsgFromServer = `Lỗi server (${res.status}). Vui lòng thử lại.`;
-                const contentType = res.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    try {
-                        const errorData = await res.json();
-                        if (errorData.error) errorMsgFromServer = errorData.error;
-                    } catch {
-                        // ignore parse error
-                    }
-                } else {
-                    const text = await res.text();
-                    console.error(`❌ [Attendance POST] Server returned ${res.status}:`, text);
-                }
-
-                if (res.status === 413) {
-                    errorMsgFromServer = 'Ảnh quá lớn. Vui lòng chụp lại với chất lượng thấp hơn.';
-                }
-                throw new Error(errorMsgFromServer);
-            }
-
-            const result = await res.json();
             if (!result.success) throw new Error(result.error || 'Lỗi gửi yêu cầu');
 
             setCurrentRecord(result.data);

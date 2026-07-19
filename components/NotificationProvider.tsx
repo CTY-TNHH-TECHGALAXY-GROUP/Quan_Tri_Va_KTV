@@ -7,6 +7,8 @@ import { useAuth } from '@/lib/auth-context';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, ShieldAlert, X, CheckCircle, Info, AlertTriangle, Check, Star, ArrowRight, MapPin, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // --- TYPES ---
 interface Notification {
@@ -135,8 +137,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
     // 🔧 Fetch notification rules from SystemConfigs on mount
     useEffect(() => {
-        fetch('/api/admin/notification-rules')
-            .then(r => r.json())
+        apiClient.get<any>(API.ADMIN.NOTIFICATION_RULES)
             .then(d => {
                 if (d.success && d.data) {
                     setNotifRules(d.data);
@@ -179,14 +180,10 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             if (existingSub) {
                 console.log('✅ [Push] Already subscribed, syncing to DB...');
                 // Sync existing subscription to DB (in case it was lost)
-                await fetch('/api/ktv/push-sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        staffId: user.id,
-                        subscription: existingSub.toJSON(),
-                        userAgent: navigator.userAgent
-                    })
+                await apiClient.post<any>(API.KTV.PUSH_SYNC, {
+                    staffId: user.id,
+                    subscription: existingSub.toJSON(),
+                    userAgent: navigator.userAgent
                 }).catch(err => {
                     console.warn('⚠️ [Push] Sync failed (Network/AdBlocker):', err.message);
                 });
@@ -210,22 +207,16 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             console.log('✅ [Push] Subscribed successfully');
 
             // Save subscription via API route (bypasses RLS)
-            const res = await fetch('/api/ktv/push-sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    staffId: user.id,
-                    subscription: sub.toJSON(),
-                    userAgent: navigator.userAgent
-                })
+            const result = await apiClient.post<any>(API.KTV.PUSH_SYNC, {
+                staffId: user.id,
+                subscription: sub.toJSON(),
+                userAgent: navigator.userAgent
             }).catch(err => {
                 console.warn('⚠️ [Push] Sync failed (Network/AdBlocker):', err.message);
                 return null;
             });
             
-            if (!res) return;
-            
-            const result = await res.json();
+            if (!result) return;
 
             if (result.success) {
                 console.log('✅ [Push] Subscription saved for', user.id);
@@ -787,13 +778,9 @@ const Toast = ({
     const handleAttendanceAction = async (action: 'CONFIRM' | 'REJECT') => {
         setConfirmLoading(action === 'CONFIRM' ? 'confirm' : 'reject');
         try {
-            await fetch('/api/ktv/attendance/confirm', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ attendanceId, action }),
-            });
-        } catch (e) {
-            console.error('[Toast] Confirm error:', e);
+            await apiClient.patch<any>(API.KTV.ATTENDANCE_CONFIRM, { attendanceId, action });
+        } catch (e: any) {
+            console.error('[Toast] Confirm error:', e.message || e);
         } finally {
             setConfirmLoading(null);
             onMarkDone();
@@ -929,12 +916,7 @@ const Toast = ({
                                 e.stopPropagation();
                                 setAckLoading(true);
                                 try {
-                                    const res = await fetch('/api/ktv/interaction', {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ notificationId: notification.id, note: ackNote }),
-                                    });
-                                    const data = await res.json();
+                                    const data = await apiClient.patch<any>(API.KTV.INTERACTION, { notificationId: notification.id, note: ackNote });
                                     if (data.success) {
                                         setHasAcked(true);
                                         setAckNote(ackNote); // Keep note to show

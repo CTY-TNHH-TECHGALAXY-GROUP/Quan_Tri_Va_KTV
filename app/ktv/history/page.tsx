@@ -13,6 +13,8 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useKTVHistory, HistoryRecord } from './KTVHistory.logic';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
 const PRESET_BUTTONS = [
@@ -51,11 +53,7 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
     const tip = parseInt(tipValue.replace(/\D/g, ''), 10) || 0;
     setSavingTip(true);
     try {
-      await fetch('/api/ktv/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: order.id, techCode, tip }),
-      });
+      await apiClient.post<any>(API.KTV.HISTORY_UPDATE, { bookingId: order.id, techCode, tip });
       setTipSaved(true);
       refetch();
       setTimeout(() => setTipSaved(false), 2000);

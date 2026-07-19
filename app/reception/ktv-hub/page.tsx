@@ -24,6 +24,8 @@ import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
 import { getStaffList, updateStaffMember } from '@/app/admin/employees/actions';
 import { Employee } from '@/lib/types';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -138,9 +140,8 @@ const AttendancePendingSection = () => {
 
     const fetchPending = React.useCallback(async () => {
         try {
-            const res = await fetch('/api/ktv/attendance/pending');
-            const json = await res.json();
-            if (json.success) setRecords(json.data);
+            const json = await apiClient.get<any>(API.KTV.ATTENDANCE_PENDING);
+            if (json.data) setRecords(json.data);
         } catch { /* silent */ }
     }, []);
 
@@ -153,11 +154,7 @@ const AttendancePendingSection = () => {
     const handleAction = async (id: string, action: 'CONFIRM' | 'REJECT') => {
         setLoading(prev => ({ ...prev, [id]: action === 'CONFIRM' ? 'confirm' : 'reject' }));
         try {
-            await fetch('/api/ktv/attendance/confirm', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ attendanceId: id, action }),
-            });
+            await apiClient.patch<any>(API.KTV.ATTENDANCE_CONFIRM, { attendanceId: id, action });
             setRecords(prev => prev.filter(r => r.id !== id));
         } catch { /* silent */ }
         setLoading(prev => { const next = { ...prev }; delete next[id]; return next; });
@@ -297,9 +294,8 @@ const AttendanceHistorySection = () => {
 
     const fetchHistory = React.useCallback(async () => {
         try {
-            const res = await fetch('/api/ktv/attendance/history');
-            const json = await res.json();
-            if (json.success) setRecords(json.data);
+            const json = await apiClient.get<any>(API.KTV.ATTENDANCE_HISTORY);
+            if (json.data) setRecords(json.data);
         } catch { /* silent */ }
     }, []);
 

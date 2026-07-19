@@ -5,6 +5,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Settings, Save, CheckCircle2, AlertCircle, Loader2, Coins, CalendarDays, Percent } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SystemConfigsTable } from './SystemConfigsTable';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 export default function SystemSettingsPage() {
     const [configs, setConfigs] = useState({
@@ -27,8 +29,7 @@ export default function SystemSettingsPage() {
 
     const fetchConfigs = async () => {
         try {
-            const res = await fetch('/api/admin/settings/system');
-            const data = await res.json();
+            const data = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
             if (data.data) {
                 setConfigs(prev => ({ ...prev, ...data.data }));
             }
@@ -43,12 +44,7 @@ export default function SystemSettingsPage() {
         setIsSaving(true);
         setSaveStatus('idle');
         try {
-            const res = await fetch('/api/admin/settings/system', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(configs)
-            });
-            const result = await res.json();
+            const result = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, configs);
             if (result.success) {
                 setSaveStatus('success');
                 setTimeout(() => setSaveStatus('idle'), 3000);

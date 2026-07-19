@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 export const useKTVWallet = () => {
     const { user, hasPermission } = useAuth();
@@ -40,21 +42,21 @@ export const useKTVWallet = () => {
 
             if (activeTab === 'TUA') {
                 const [balanceRes, timelineRes] = await Promise.all([
-                    fetch(`/api/ktv/wallet/balance?techCode=${ktvId}`).then(r => r.json()),
-                    fetch(`/api/ktv/wallet/timeline?techCode=${ktvId}`).then(r => r.json())
+                    apiClient.get<any>(API.KTV.WALLET.BALANCE(ktvId)).catch(() => ({ data: null })),
+                    apiClient.get<any>(API.KTV.WALLET.TIMELINE(ktvId)).catch(() => ({ data: [] }))
                 ]);
-                if (balanceRes.success) setWalletBalance(balanceRes.data);
-                if (timelineRes.success) setWalletTimeline(timelineRes.data);
+                if (balanceRes.data) setWalletBalance(balanceRes.data);
+                if (timelineRes.data) setWalletTimeline(timelineRes.data);
             } else if (activeTab === 'BONUS' && hasBonusFlag) {
                 const [bonusBalRes, bonusTimeRes] = await Promise.all([
-                    fetch(`/api/ktv/wallet/bonus/balance?techCode=${ktvId}`).then(r => r.json()),
-                    fetch(`/api/ktv/wallet/bonus/timeline?techCode=${ktvId}`).then(r => r.json())
+                    apiClient.get<any>(API.KTV.WALLET.BONUS_BALANCE(ktvId)).catch(() => ({ data: null })),
+                    apiClient.get<any>(API.KTV.WALLET.BONUS_TIMELINE(ktvId)).catch(() => ({ data: [] }))
                 ]);
-                if (bonusBalRes.success) setBonusBalance(bonusBalRes.data);
-                if (bonusTimeRes.success) setBonusTimeline(bonusTimeRes.data);
+                if (bonusBalRes.data) setBonusBalance(bonusBalRes.data);
+                if (bonusTimeRes.data) setBonusTimeline(bonusTimeRes.data);
             } else if (activeTab === 'TICH_LUY' && hasPiggyFlag) {
-                const piggyRes = await fetch(`/api/ktv/wallet/piggy-bank?techCode=${ktvId}`).then(r => r.json());
-                if (piggyRes.success) {
+                const piggyRes = await apiClient.get<any>(API.KTV.WALLET.PIGGY_BANK(ktvId)).catch(() => ({ data: null }));
+                if (piggyRes.data) {
                     setPiggyBankBalance(piggyRes.data.bank);
                     setPiggyBankTimeline(piggyRes.data.ledger);
                     setPiggyBankTotalWeeks(piggyRes.data.totalWeeks);
@@ -75,29 +77,13 @@ export const useKTVWallet = () => {
 
     const submitWithdraw = async (amount: number) => {
         if (!walletBalance) return false;
-        // Tắt check hạn mức, cho phép gửi lệnh rút làm thông báo
-        // const maxWithdraw = Number(walletBalance.effective_balance) - Number(walletBalance.min_deposit);
-        // if (amount > maxWithdraw) {
-        //     alert('Số tiền vượt quá mức khả dụng!');
-        //     return false;
-        // }
         try {
-            const res = await fetch('/api/ktv/wallet/withdraw', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ techCode: ktvId, amount, walletType: 'TUA' })
-            });
-            const json = await res.json();
-            if (json.success) {
-                alert('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!');
-                fetchWallet();
-                return true;
-            } else {
-                alert('Lỗi: ' + json.error);
-                return false;
-            }
-        } catch (e) {
-            alert('Lỗi hệ thống khi tạo lệnh rút tiền.');
+            await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, { techCode: ktvId, amount, walletType: 'TUA' });
+            alert('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!');
+            fetchWallet();
+            return true;
+        } catch (e: any) {
+            alert('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh rút tiền.'));
             return false;
         }
     };
@@ -115,35 +101,26 @@ export const useKTVWallet = () => {
         if (!window.confirm(confirmMsg)) return false;
 
         try {
-            const res = await fetch('/api/ktv/wallet/withdraw', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    techCode: ktvId, 
-                    amount: vndAmount,
-                    walletType: 'BONUS',
-                    note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
-                })
+            await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, { 
+                techCode: ktvId, 
+                amount: vndAmount,
+                walletType: 'BONUS',
+                note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
             });
-            const json = await res.json();
-            if (json.success) {
-                await supabase.from('KTVBonusLedger').insert({
-                    staff_id: ktvId,
-                    points: -pointsToRedeem,
-                    type: 'REDEEM',
-                    description: `Quy đổi ${pointsToRedeem} điểm sang ${vndAmount.toLocaleString()}đ`,
-                    date: new Date().toISOString().split('T')[0]
-                });
-                
-                alert(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`);
-                fetchWallet();
-                return true;
-            } else {
-                alert('Lỗi: ' + json.error);
-                return false;
-            }
-        } catch (e) {
-            alert('Lỗi hệ thống khi tạo lệnh quy đổi.');
+            
+            await supabase.from('KTVBonusLedger').insert({
+                staff_id: ktvId,
+                points: -pointsToRedeem,
+                type: 'REDEEM',
+                description: `Quy đổi ${pointsToRedeem} điểm sang ${vndAmount.toLocaleString()}đ`,
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            alert(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`);
+            fetchWallet();
+            return true;
+        } catch (e: any) {
+            alert('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh quy đổi.'));
             return false;
         }
     };

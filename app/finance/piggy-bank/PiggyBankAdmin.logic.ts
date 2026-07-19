@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 export type PiggyBankRecord = {
     staff_id: string;
@@ -19,25 +21,22 @@ export const usePiggyBankAdminLogic = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/admin/piggy-bank');
-            const data = await res.json();
-            if (data.success) {
-                setRecords(data.data || []);
-                setTotalWeeks(data.totalWeeks || 50);
-                
-                // Init editing state
-                const initEditing: { [key: string]: { amount: number, weeks: number, status: string } } = {};
-                (data.data || []).forEach((r: PiggyBankRecord) => {
-                    initEditing[r.staff_id] = { 
-                        amount: r.weekly_amount, 
-                        weeks: r.contributed_weeks, 
-                        status: r.status 
-                    };
-                });
-                setEditingData(initEditing);
-            }
-        } catch (error) {
-            console.error('Lỗi lấy dữ liệu ví heo đất:', error);
+            const data = await apiClient.get<any>(API.ADMIN.PIGGY_BANK);
+            setRecords(data.data || []);
+            setTotalWeeks(data.totalWeeks || 50);
+            
+            // Init editing state
+            const initEditing: { [key: string]: { amount: number, weeks: number, status: string } } = {};
+            (data.data || []).forEach((r: PiggyBankRecord) => {
+                initEditing[r.staff_id] = { 
+                    amount: r.weekly_amount, 
+                    weeks: r.contributed_weeks, 
+                    status: r.status 
+                };
+            });
+            setEditingData(initEditing);
+        } catch (error: any) {
+            console.error('Lỗi lấy dữ liệu ví heo đất:', error.message || error);
         } finally {
             setLoading(false);
         }
@@ -76,20 +75,18 @@ export const usePiggyBankAdminLogic = () => {
             const amount = editingData[staffId]?.amount || 0;
             const weeks = editingData[staffId]?.weeks || 0;
             const status = editingData[staffId]?.status || 'ACTIVE';
-            const res = await fetch('/api/admin/piggy-bank', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ staff_id: staffId, weekly_amount: amount, contributed_weeks: weeks, status })
+            
+            await apiClient.post<any>(API.ADMIN.PIGGY_BANK, { 
+                staff_id: staffId, 
+                weekly_amount: amount, 
+                contributed_weeks: weeks, 
+                status 
             });
-            const result = await res.json();
-            if (result.success) {
-                // Update local state to reflect the change visually as saved
-                setRecords(prev => prev.map(r => r.staff_id === staffId ? { ...r, weekly_amount: amount, contributed_weeks: weeks, status } : r));
-            } else {
-                alert('Có lỗi xảy ra khi lưu: ' + result.error);
-            }
-        } catch (error) {
-            alert('Có lỗi kết nối khi lưu.');
+            
+            // Update local state to reflect the change visually as saved
+            setRecords(prev => prev.map(r => r.staff_id === staffId ? { ...r, weekly_amount: amount, contributed_weeks: weeks, status } : r));
+        } catch (error: any) {
+            alert('Có lỗi kết nối khi lưu: ' + (error.message || ''));
         } finally {
             setSavingId(null);
         }

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // --- TYPES ---
 export interface StaffOption {
@@ -85,16 +87,15 @@ export const useLeaveManagement = () => {
             const lastDay = new Date(year, month + 1, 0).getDate();
             const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-            const res = await fetch(`/api/ktv/leave?from=${from}&to=${to}`);
-            const result = await res.json();
+            const result = await apiClient.get<any>(`${API.KTV.LEAVE}?from=${from}&to=${to}`);
 
-            if (result.success) {
+            if (result.data) {
                 setLeaveList(result.data || []);
             } else {
                 console.error('❌ [LeaveManagement] Fetch error:', result.error);
             }
-        } catch (err) {
-            console.error('❌ [LeaveManagement] Fetch failed:', err);
+        } catch (err: any) {
+            console.error('❌ [LeaveManagement] Fetch failed:', err.message || err);
         } finally {
             setIsLoading(false);
         }
@@ -132,15 +133,11 @@ export const useLeaveManagement = () => {
 
         setActionLoading(prev => ({ ...prev, [leaveId]: 'delete' }));
         try {
-            const res = await fetch(`/api/ktv/leave?id=${leaveId}`, { method: 'DELETE' });
-            const result = await res.json();
-            if (result.success) {
-                fetchLeaveList();
-            } else {
-                alert(result.error || 'Lỗi xoá');
-            }
-        } catch (err) {
-            console.error('❌ [LeaveManagement] Delete error:', err);
+            await apiClient.delete<any>(`${API.KTV.LEAVE}?id=${leaveId}`);
+            fetchLeaveList();
+        } catch (err: any) {
+            console.error('❌ [LeaveManagement] Delete error:', err.message || err);
+            alert(err.message || 'Lỗi xoá');
         } finally {
             setActionLoading(prev => { const next = { ...prev }; delete next[leaveId]; return next; });
         }
@@ -152,11 +149,10 @@ export const useLeaveManagement = () => {
 
     const fetchAdminStaffList = useCallback(async () => {
         try {
-            const res = await fetch('/api/staff/list');
-            const result = await res.json();
-            if (result.success) setAdminStaffList(result.data || []);
-        } catch (err) {
-            console.error('❌ [LeaveManagement] Fetch staff error:', err);
+            const result = await apiClient.get<any>(API.STAFF_LIST);
+            if (result.data) setAdminStaffList(result.data || []);
+        } catch (err: any) {
+            console.error('❌ [LeaveManagement] Fetch staff error:', err.message || err);
         }
     }, []);
 
@@ -166,25 +162,17 @@ export const useLeaveManagement = () => {
         setAdminRegisterLoading(true);
         try {
             const staff = adminStaffList.find(s => s.id === employeeId);
-            const res = await fetch('/api/ktv/leave', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    employeeId,
-                    employeeName: staff?.full_name || employeeId,
-                    dates: [date],
-                    reason: 'Admin đăng ký giúp',
-                    registeredByAdmin: true,
-                }),
+            await apiClient.post<any>(API.KTV.LEAVE, {
+                employeeId,
+                employeeName: staff?.full_name || employeeId,
+                dates: [date],
+                reason: 'Admin đăng ký giúp',
+                registeredByAdmin: true,
             });
-            const result = await res.json();
-            if (result.success) {
-                fetchLeaveList();
-            } else {
-                alert(result.error || 'Lỗi đăng ký OFF');
-            }
-        } catch (err) {
-            console.error('❌ [LeaveManagement] Admin register OFF error:', err);
+            fetchLeaveList();
+        } catch (err: any) {
+            console.error('❌ [LeaveManagement] Admin register OFF error:', err.message || err);
+            alert(err.message || 'Lỗi đăng ký OFF');
         } finally {
             setAdminRegisterLoading(false);
         }
@@ -238,17 +226,15 @@ export const useShiftManagement = () => {
         setIsLoadingShifts(true);
         try {
             const dateParam = date ? `&date=${date}` : '';
-            const [allRes, pendingRes] = await Promise.all([
-                fetch(`/api/ktv/shift?all=true${dateParam}`),
-                fetch('/api/ktv/shift?pending=true'),
+            const [allResult, pendingResult] = await Promise.all([
+                apiClient.get<any>(`${API.KTV.SHIFT}?all=true${dateParam}`).catch(() => ({ data: [] })),
+                apiClient.get<any>(`${API.KTV.SHIFT}?pending=true`).catch(() => ({ data: [] })),
             ]);
-            const allResult = await allRes.json();
-            const pendingResult = await pendingRes.json();
 
-            if (allResult.success) setAllShifts(allResult.data || []);
-            if (pendingResult.success) setPendingShifts(pendingResult.data || []);
-        } catch (err) {
-            console.error('❌ [ShiftManagement] Fetch error:', err);
+            if (allResult.data) setAllShifts(allResult.data || []);
+            if (pendingResult.data) setPendingShifts(pendingResult.data || []);
+        } catch (err: any) {
+            console.error('❌ [ShiftManagement] Fetch error:', err.message || err);
         } finally {
             setIsLoadingShifts(false);
         }
@@ -258,13 +244,12 @@ export const useShiftManagement = () => {
     const fetchStaffList = useCallback(async () => {
         setIsLoadingStaff(true);
         try {
-            const res = await fetch('/api/staff/list');
-            const result = await res.json();
-            if (result.success) {
+            const result = await apiClient.get<any>(API.STAFF_LIST);
+            if (result.data) {
                 setStaffList(result.data || []);
             }
-        } catch (err) {
-            console.error('❌ [ShiftManagement] Fetch staff error:', err);
+        } catch (err: any) {
+            console.error('❌ [ShiftManagement] Fetch staff error:', err.message || err);
         } finally {
             setIsLoadingStaff(false);
         }
@@ -277,19 +262,11 @@ export const useShiftManagement = () => {
     const handleShiftAction = async (shiftId: string, action: 'APPROVE' | 'REJECT') => {
         setShiftActionLoading(prev => ({ ...prev, [shiftId]: action.toLowerCase() }));
         try {
-            const res = await fetch('/api/ktv/shift', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ shiftId, action, adminId: user?.id }),
-            });
-            const result = await res.json();
-            if (result.success) {
-                fetchShifts();
-            } else {
-                alert(result.error || 'Lỗi xử lý');
-            }
-        } catch (err) {
-            console.error('❌ [ShiftManagement] Action error:', err);
+            await apiClient.patch<any>(API.KTV.SHIFT, { shiftId, action, adminId: user?.id });
+            fetchShifts();
+        } catch (err: any) {
+            console.error('❌ [ShiftManagement] Action error:', err.message || err);
+            alert(err.message || 'Lỗi xử lý');
         } finally {
             setShiftActionLoading(prev => { const next = { ...prev }; delete next[shiftId]; return next; });
         }
@@ -303,29 +280,21 @@ export const useShiftManagement = () => {
         const selectedStaff = staffList.find(s => s.id === assignEmployeeId);
         const resolvedName = selectedStaff?.full_name || assignEmployeeId;
         try {
-            const res = await fetch('/api/ktv/shift', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    employeeId: assignEmployeeId,
-                    employeeName: resolvedName,
-                    shiftType: assignShiftType,
-                    assignedByAdmin: true,
-                    adminId: user?.id,
-                }),
+            await apiClient.post<any>(API.KTV.SHIFT, {
+                employeeId: assignEmployeeId,
+                employeeName: resolvedName,
+                shiftType: assignShiftType,
+                assignedByAdmin: true,
+                adminId: user?.id,
             });
-            const result = await res.json();
-            if (result.success) {
-                setAssignModalOpen(false);
-                setAssignEmployeeId('');
-                setAssignEmployeeName('');
-                setAssignShiftType('');
-                fetchShifts();
-            } else {
-                alert(result.error || 'Lỗi gán ca');
-            }
-        } catch (err) {
-            console.error('❌ [ShiftManagement] Assign error:', err);
+            setAssignModalOpen(false);
+            setAssignEmployeeId('');
+            setAssignEmployeeName('');
+            setAssignShiftType('');
+            fetchShifts();
+        } catch (err: any) {
+            console.error('❌ [ShiftManagement] Assign error:', err.message || err);
+            alert(err.message || 'Lỗi gán ca');
         } finally {
             setIsAssigning(false);
         }

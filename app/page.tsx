@@ -12,6 +12,8 @@ const SYSTEM_CONFIG = {
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 import { motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { QrCode, ExternalLink, Info, ShieldCheck, Zap, Clock, Calendar, AlertTriangle, Camera, Users, CalendarOff, Briefcase } from 'lucide-react';
@@ -29,10 +31,9 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     // Fetch web booking URL from SystemConfigs
-    fetch('/api/system/config')
-      .then(r => r.json())
+    apiClient.get<any>(API.SYSTEM.CONFIG)
       .then(json => {
-        if (json.success && json.data?.web_booking_url) {
+        if (json.data?.web_booking_url) {
           setWebBookingUrl(json.data.web_booking_url);
         }
       })
@@ -202,22 +203,19 @@ const DailyStaffOverview = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [leaveRes, shiftRes, configRes] = await Promise.all([
-          fetch(`/api/ktv/leave?from=${selectedDate}&to=${selectedDate}`),
-          fetch(`/api/ktv/shift?all=true&date=${selectedDate}`),
-          fetch('/api/system/config'),
+        const [leaveJson, shiftJson, configJson] = await Promise.all([
+          apiClient.get<any>(`${API.KTV.LEAVE}?from=${selectedDate}&to=${selectedDate}`),
+          apiClient.get<any>(`${API.KTV.SHIFT}?all=true&date=${selectedDate}`),
+          apiClient.get<any>(API.SYSTEM.CONFIG),
         ]);
-        const leaveJson = await leaveRes.json();
-        const shiftJson = await shiftRes.json();
-        const configJson = await configRes.json();
 
-        if (leaveJson.success) {
+        if (leaveJson.data) {
           setLeaves((leaveJson.data || []).filter((l: LeaveItem) => l.status !== 'REJECTED'));
         }
-        if (shiftJson.success) {
+        if (shiftJson.data) {
           setShifts(shiftJson.data || []);
         }
-        if (configJson.success) {
+        if (configJson.data) {
           const raw = configJson.data?.show_overtime_on_dashboard;
           setShowOvertime(raw === true || raw === 'true');
         }

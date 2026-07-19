@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 export function useFinanceKTV() {
     const { user, hasPermission } = useAuth();
@@ -41,21 +43,18 @@ export function useFinanceKTV() {
             }
 
             // Lấy Withdrawals (Luôn lấy mới nhất không phụ thuộc ngày)
-            const res = await fetch('/api/finance/withdrawals?limit=50');
-            const json = await res.json();
-            if (json.success) setWithdrawals(json.data);
+            const wData = await apiClient.get<any>(`${API.FINANCE.WITHDRAWALS}?limit=50`);
+            setWithdrawals(wData.data || []);
 
             // Lấy Summaries (Phase 3)
-            const resSum = await fetch(`/api/finance/ktv-summary${queryParams}`);
-            const jsonSum = await resSum.json();
-            if (jsonSum.success) setSummaries(jsonSum.data);
+            const sData = await apiClient.get<any>(`${API.FINANCE.KTV_SUMMARY}${queryParams}`);
+            setSummaries(sData.data || []);
 
             // Lấy Bonus Summaries
-            const resBonus = await fetch(`/api/finance/ktv-bonus-summary${queryParams}`);
-            const jsonBonus = await resBonus.json();
-            if (jsonBonus.success) setBonusSummaries(jsonBonus.data);
-        } catch (error) {
-            console.error('Error fetching data:', error);
+            const bData = await apiClient.get<any>(`${API.FINANCE.KTV_BONUS_SUMMARY}${queryParams}`);
+            setBonusSummaries(bData.data || []);
+        } catch (error: any) {
+            console.error('Error fetching data:', error.message || error);
         } finally {
             setIsLoading(false);
         }
@@ -75,24 +74,15 @@ export function useFinanceKTV() {
 
         setIsProcessing(true);
         try {
-            const res = await fetch(`/api/finance/withdrawals/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    status: 'APPROVED', 
-                    adminId: user.id,
-                    adminName: user.name || user.id
-                })
+            await apiClient.patch<any>(`${API.FINANCE.WITHDRAWALS}/${id}`, { 
+                status: 'APPROVED', 
+                adminId: user.id,
+                adminName: user.name || user.id
             });
-            const json = await res.json();
-            if (json.success) {
-                alert('Đã xác nhận giao tiền thành công!');
-                fetchData(); // Refresh
-            } else {
-                alert('Lỗi: ' + json.error);
-            }
-        } catch (e) {
-            alert('Lỗi hệ thống khi cập nhật');
+            alert('Đã xác nhận giao tiền thành công!');
+            fetchData(); // Refresh
+        } catch (e: any) {
+            alert('Lỗi hệ thống khi cập nhật: ' + (e.message || e));
         } finally {
             setIsProcessing(false);
         }
@@ -105,25 +95,16 @@ export function useFinanceKTV() {
 
         setIsProcessing(true);
         try {
-            const res = await fetch(`/api/finance/withdrawals/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    status: 'REJECTED', 
-                    note,
-                    adminId: user.id,
-                    adminName: user.name || user.id
-                })
+            await apiClient.patch<any>(`${API.FINANCE.WITHDRAWALS}/${id}`, { 
+                status: 'REJECTED', 
+                note,
+                adminId: user.id,
+                adminName: user.name || user.id
             });
-            const json = await res.json();
-            if (json.success) {
-                alert('Đã từ chối yêu cầu rút tiền.');
-                fetchData(); // Refresh
-            } else {
-                alert('Lỗi: ' + json.error);
-            }
-        } catch (e) {
-            alert('Lỗi hệ thống khi cập nhật');
+            alert('Đã từ chối yêu cầu rút tiền.');
+            fetchData(); // Refresh
+        } catch (e: any) {
+            alert('Lỗi hệ thống khi cập nhật: ' + (e.message || e));
         } finally {
             setIsProcessing(false);
         }
@@ -132,18 +113,13 @@ export function useFinanceKTV() {
     const handleAcknowledgeIntent = async (id: string) => {
         setIsProcessing(true);
         try {
-            const res = await fetch(`/api/finance/withdrawals/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    status: 'REJECTED', 
-                    note: 'Đã chuẩn bị xong',
-                    adminId: user?.id || 'SYSTEM',
-                    adminName: user?.name || 'Hệ thống'
-                })
+            await apiClient.patch<any>(`${API.FINANCE.WITHDRAWALS}/${id}`, { 
+                status: 'REJECTED', 
+                note: 'Đã chuẩn bị xong',
+                adminId: user?.id || 'SYSTEM',
+                adminName: user?.name || 'Hệ thống'
             });
-            const json = await res.json();
-            if (json.success) fetchData();
+            fetchData();
         } catch (e) {
             console.error(e);
         } finally {
@@ -176,29 +152,20 @@ export function useFinanceKTV() {
         if (confirm(`Bạn có chắc chắn muốn ${adjType === 'GIFT' ? 'Thưởng' : 'Phạt'} KTV ${selectedKtv.name} số tiền ${numericAmount.toLocaleString()}đ?`)) {
             setIsProcessing(true);
             try {
-                const res = await fetch('/api/finance/adjustment', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        staff_id: selectedKtv.id,
-                        amount: numericAmount,
-                        type: adjType,
-                        wallet_type: adjWalletType,
-                        reason: adjReason
-                    })
+                await apiClient.post<any>(API.FINANCE.ADJUSTMENT, {
+                    staff_id: selectedKtv.id,
+                    amount: numericAmount,
+                    type: adjType,
+                    wallet_type: adjWalletType,
+                    reason: adjReason
                 });
 
-                if (res.ok) {
-                    alert('Đã thêm giao dịch điều chỉnh thành công!');
-                    setIsAdjustmentModalOpen(false);
-                    fetchData();
-                } else {
-                    const data = await res.json();
-                    alert(`Lỗi: ${data.error}`);
-                }
-            } catch (error) {
-                console.error('Error creating adjustment:', error);
-                alert('Có lỗi xảy ra khi tạo giao dịch điều chỉnh.');
+                alert('Đã thêm giao dịch điều chỉnh thành công!');
+                setIsAdjustmentModalOpen(false);
+                fetchData();
+            } catch (error: any) {
+                console.error('Error creating adjustment:', error.message || error);
+                alert('Có lỗi xảy ra khi tạo giao dịch điều chỉnh: ' + (error.message || 'Unknown Error'));
             } finally {
                 setIsProcessing(false);
             }

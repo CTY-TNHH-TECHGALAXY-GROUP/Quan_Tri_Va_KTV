@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useStaffFeatures, FEATURE_FLAG_DEFS } from './Features.logic';
 import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff, Info, Settings2 } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 SYSTEM-WIDE FEATURE TOGGLES
 const SYSTEM_TOGGLES = [
@@ -22,8 +24,7 @@ const useSystemToggles = () => {
     const fetchConfigs = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/admin/settings/system');
-            const json = await res.json();
+            const json = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
             const data = json.data || {};
             const parsed: Record<string, boolean> = {};
             for (const toggle of SYSTEM_TOGGLES) {
@@ -44,12 +45,7 @@ const useSystemToggles = () => {
         setUpdating(key);
         setValues(prev => ({ ...prev, [key]: newValue }));
         try {
-            const res = await fetch('/api/admin/settings/system', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [key]: newValue }),
-            });
-            const json = await res.json();
+            const json = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, { [key]: newValue });
             if (!json.success) {
                 setValues(prev => ({ ...prev, [key]: !newValue }));
             }

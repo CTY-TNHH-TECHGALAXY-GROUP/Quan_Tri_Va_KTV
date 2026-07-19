@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
 const WEEKDAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -86,16 +88,10 @@ export const useKTVSchedule = () => {
             const lastDay = new Date(year, month + 1, 0).getDate();
             const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-            const res = await fetch(`/api/ktv/leave?from=${from}&to=${to}`);
-            const result = await res.json();
-
-            if (result.success) {
-                setLeaveList(result.data || []);
-            } else {
-                console.error('❌ [Schedule] Fetch leave error:', result.error);
-            }
-        } catch (err) {
-            console.error('❌ [Schedule] Fetch leave failed:', err);
+            const result = await apiClient.get<any>(`${API.KTV.LEAVE}?from=${from}&to=${to}`);
+            setLeaveList(result.data || []);
+        } catch (err: any) {
+            console.error('❌ [Schedule] Fetch leave failed:', err.message || err);
         } finally {
             setIsLoadingLeaves(false);
         }
@@ -126,20 +122,14 @@ export const useKTVSchedule = () => {
         if (!user?.id) return;
         setIsLoadingShift(true);
         try {
-            const res = await fetch(`/api/ktv/shift?employeeId=${user.id}`);
-            const result = await res.json();
-
-            if (result.success) {
-                setCurrentShift(result.data.currentShift);
-                setTomorrowShift(result.data.tomorrowShift);
-                setPendingRequest(result.data.pendingRequest);
-                setShiftHistory(result.data.history || []);
-                setShiftTypes(result.shiftTypes || {});
-            } else {
-                console.error('❌ [Schedule] Fetch shift error:', result.error);
-            }
-        } catch (err) {
-            console.error('❌ [Schedule] Fetch shift failed:', err);
+            const result = await apiClient.get<any>(`${API.KTV.SHIFT}?employeeId=${user.id}`);
+            setCurrentShift(result.data?.currentShift || null);
+            setTomorrowShift(result.data?.tomorrowShift || null);
+            setPendingRequest(result.data?.pendingRequest || null);
+            setShiftHistory(result.data?.history || []);
+            setShiftTypes(result.shiftTypes || {});
+        } catch (err: any) {
+            console.error('❌ [Schedule] Fetch shift failed:', err.message || err);
         } finally {
             setIsLoadingShift(false);
         }
@@ -180,13 +170,7 @@ export const useKTVSchedule = () => {
             if (isConfirming === 'extension') payload.confirmExtension = true;
             if (isConfirming === 'sudden_off') payload.confirmSuddenOff = true;
 
-            const res = await fetch('/api/ktv/leave', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-
-            const result = await res.json();
+            const result = await apiClient.post<any>(API.KTV.LEAVE, payload);
 
             if (result.requireConfirmation) {
                 setConfirmDialog({
@@ -195,11 +179,6 @@ export const useKTVSchedule = () => {
                     message: result.message,
                     remaining: result.remaining
                 });
-                return;
-            }
-
-            if (!result.success) {
-                setOffError(result.error || result.message || 'Lỗi gửi yêu cầu');
                 return;
             }
 
@@ -232,22 +211,11 @@ export const useKTVSchedule = () => {
         setShiftSuccess(false);
 
         try {
-            const res = await fetch('/api/ktv/shift', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    employeeId: user.id,
-                    employeeName: user.name || user.id,
-                    shiftType: newShiftType,
-                }),
+            await apiClient.post<any>(API.KTV.SHIFT, {
+                employeeId: user.id,
+                employeeName: user.name || user.id,
+                shiftType: newShiftType,
             });
-
-            const result = await res.json();
-
-            if (!result.success) {
-                setShiftError(result.error || 'Lỗi gửi yêu cầu');
-                return;
-            }
 
             setShiftSuccess(true);
             setNewShiftType('');

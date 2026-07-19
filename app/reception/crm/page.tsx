@@ -8,6 +8,8 @@ import { ShieldAlert, Search, Filter, Plus, User, Phone, Calendar, Star, MoreHor
 import { Customer } from '@/lib/types';
 import { DropdownMenu } from '@/components/ui/DropdownMenu';
 import { CustomerDetailModal } from './_components/CustomerDetailModal';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
 const MODAL_ANIMATION_MS = 200;
@@ -96,10 +98,7 @@ export default function CRMPage() {
       if (exportFrom) params.set('from', exportFrom);
       if (exportTo) params.set('to', exportTo);
       
-      const res = await fetch(`/api/customers/export?${params.toString()}`);
-      const data = await res.json();
-      if (!data.success) throw new Error('Failed to fetch data');
-
+      const data = await apiClient.get<any>(`${API.CUSTOMERS_EXPORT}?${params.toString()}`);
       const { header, rows } = data.data;
 
       // Build HTML for print window
@@ -147,8 +146,8 @@ export default function CRMPage() {
         alert('Vui lòng cho phép popup trên trình duyệt để mở cửa sổ in báo cáo.');
       }
       setShowExport(false);
-    } catch (err) {
-      alert('Lỗi khi chuẩn bị báo cáo in: ' + (err as Error).message);
+    } catch (err: any) {
+      alert('Lỗi khi chuẩn bị báo cáo in: ' + (err.message || err));
     } finally {
       setIsExporting(false);
     }
@@ -158,13 +157,10 @@ export default function CRMPage() {
     setMounted(true);
     const fetchCustomers = async () => {
       try {
-        const res = await fetch('/api/customers');
-        const data = await res.json();
-        if (data.success) {
-          setCustomers(data.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch customers:', err);
+        const data = await apiClient.get<any>(API.CUSTOMERS);
+        setCustomers(data.data || []);
+      } catch (err: any) {
+        console.error('Failed to fetch customers:', err.message || err);
       } finally {
         setIsLoading(false);
       }
@@ -510,34 +506,26 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch('/api/customers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: customer.id, 
-          notes, 
-          gender, 
-          nationality, 
-          preferredLang 
-        })
+      await apiClient.patch<any>(API.CUSTOMERS, { 
+        id: customer.id, 
+        notes, 
+        gender, 
+        nationality, 
+        preferredLang 
       });
-      const data = await res.json();
-      if (data.success) {
-        setIsEditing(false);
-        onUpdate({
-          ...customer,
-          notes,
-          gender,
-          nationality,
-          preferredLangCode: preferredLang,
-          preferredLang: preferredLang === 'en' ? '🇬🇧 English' : preferredLang === 'vi' ? '🇻🇳 Tiếng Việt' : preferredLang === 'jp' ? '🇯🇵 日本語' : preferredLang === 'cn' ? '🇨🇳 中文' : preferredLang === 'kr' ? '🇰🇷 한국어' : preferredLang,
-          preferredGender: gender === 'male' ? 'Nam' : gender === 'female' ? 'Nữ' : gender
-        });
-      } else {
-        alert('Lỗi lưu thông tin: ' + data.error);
-      }
-    } catch (e) {
-      alert('Lỗi mạng');
+      
+      setIsEditing(false);
+      onUpdate({
+        ...customer,
+        notes,
+        gender,
+        nationality,
+        preferredLangCode: preferredLang,
+        preferredLang: preferredLang === 'en' ? '🇬🇧 English' : preferredLang === 'vi' ? '🇻🇳 Tiếng Việt' : preferredLang === 'jp' ? '🇯🇵 日本語' : preferredLang === 'cn' ? '🇨🇳 中文' : preferredLang === 'kr' ? '🇰🇷 한국어' : preferredLang,
+        preferredGender: gender === 'male' ? 'Nam' : gender === 'female' ? 'Nữ' : gender
+      });
+    } catch (e: any) {
+      alert('Lỗi lưu thông tin: ' + (e.message || e));
     } finally {
       setIsSaving(false);
     }
