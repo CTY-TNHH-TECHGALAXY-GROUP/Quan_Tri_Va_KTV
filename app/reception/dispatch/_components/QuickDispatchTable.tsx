@@ -705,7 +705,7 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const name = ktvId;
+                const name = t?.staff?.full_name || ktvId;
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';
