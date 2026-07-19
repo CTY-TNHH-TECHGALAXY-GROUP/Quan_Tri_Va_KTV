@@ -237,7 +237,7 @@ export const useRevenueReport = () => {
             if (activeLang && activeLang !== 'all') {
                 params.set('lang', activeLang);
             }
-            const res = await fetch(`/api/finance/reports?${params.toString()}`);
+            const res = await fetch(`/api/finance/reports?${params.toString()}`, { cache: 'no-store' });
             const json = await res.json();
             if (json.success) {
                 setData({

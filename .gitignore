@@ -5,3 +5,56 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# ===== Debug & Test Scripts (temp) =====
+check_*.js
+test-*.js
+test_*.js
+fix_*.js
+fix_*.sql
+patch*.js
+scratch.js
+scratch[0-9]*.js
+script.js
+query.js
+migrate.js
+db-check.js
+list-cols.js
+inspect-*.js
+final-linkage-check.js
+debug-data-*.js
+debug_*.js
+get_configs.js
+seed_holiday_config.js
+simulate_*.js
+simulate_*.mjs
+check_*.mjs
+find_bill.mjs
+analyze_business.mjs
+export_crm.mjs
+timer_test.js
+tmp_*.js
+run_migration_support.js
+
+# ===== Scratch directory =====
+scratch/
+
+# ===== Data files (CRM, Excel, CSV) =====
+*.csv
+*.xlsx
+*.xls
+
+# ===== Other temp files =====
+*.txt
+!README.txt
+ktv_error_log.txt
+eol-*.txt
+compile.*
+errors.txt
+lint_out.txt
+fix_diff.txt
+
+# ===== Misc =====
+.agents/image.png
+appDataDir/
+tsconfig.tsbuildinfo
