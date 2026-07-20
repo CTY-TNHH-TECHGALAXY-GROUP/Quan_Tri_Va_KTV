@@ -353,6 +353,33 @@ export async function processDispatch(bookingId: string, dispatchData: {
             });
         }
 
+        // 🔥 AUTO-CREATE DUMMY KTV CHO NHÂN VIÊN NHẬP NGOÀI (FREELANCE)
+        const allKtvIds = new Set<string>();
+        if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
+        if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
+        if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
+            if (u.technicianCodes) {
+                if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) allKtvIds.add(c) });
+                else if (typeof u.technicianCodes === 'string') allKtvIds.add(u.technicianCodes);
+            }
+        });
+        const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
+        if (uniqueKtvIds.length > 0) {
+            const { data: existingStaff } = await supabase.from('Staff').select('id').in('id', uniqueKtvIds);
+            const existingIds = (existingStaff || []).map(s => s.id);
+            const missingIds = uniqueKtvIds.filter(id => !existingIds.includes(id));
+            if (missingIds.length > 0) {
+                const newStaffs = missingIds.map(id => ({
+                    id: id,
+                    full_name: id,
+                    status: 'FREELANCE',
+                    position: 'KTV TỰ DO'
+                }));
+                const { error: insertStaffErr } = await supabase.from('Staff').insert(newStaffs);
+                if (insertStaffErr) console.error('Lỗi khi tạo staff ngoài:', insertStaffErr);
+            }
+        }
+
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
             const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes').eq('bookingId', bookingId);
