@@ -32,6 +32,7 @@ export type ModuleId =
   | 'support_dashboard'
   | 'support_tasks_admin'
   | 'support_reviews_admin'
+  | 'employee_tasks'
   | 'settings'
   | 'system_settings';
 

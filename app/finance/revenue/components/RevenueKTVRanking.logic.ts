@@ -12,6 +12,7 @@ export interface KTVRankingData {
   requestedTurns: number;
   vipTurns: number;
   avgWorkingHours: number;
+  avgRating?: number;
 }
 
 export function useRevenueKTVRanking(dateFromProp: string, dateToProp: string, langFilter?: string) {
