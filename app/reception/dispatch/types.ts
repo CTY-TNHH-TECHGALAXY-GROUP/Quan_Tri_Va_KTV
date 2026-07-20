@@ -9,6 +9,8 @@ export interface WorkSegment {
   actualEndTime?: string | null;
   feedbackTime?: string | null;
   startPhotoUrl?: string | null;
+  handoverPhotoUrl?: string | null; // For legacy compatibility
+  handoverPhotoUrls?: string[]; // Multiple handover photos
 }
 
 export interface StaffAssignment {

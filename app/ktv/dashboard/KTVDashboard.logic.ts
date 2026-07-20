@@ -76,12 +76,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const cleanProcedure: string[] = booking?.roomCleanProcedure || DEFAULT_CLEAN_PROCEDURE;
 
     // === STATE SCREEN: HANDOVER (Dọn phòng) ===
-    const [handoverPhotoBase64, setHandoverPhotoBase64] = useState<string | null>(null);
+    const [handoverPhotosBase64, setHandoverPhotosBase64] = useState<string[]>([]);
     const [isHandoverComplete, setIsHandoverComplete] = useState(false);
 
     useEffect(() => {
-        setIsHandoverComplete(!!handoverPhotoBase64);
-    }, [handoverPhotoBase64]);
+        setIsHandoverComplete(handoverPhotosBase64.length > 0);
+    }, [handoverPhotosBase64]);
 
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
@@ -1828,7 +1828,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
                 action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
                 techCode: ktvId,
-                photoBase64: handoverPhotoBase64
+                photosBase64: handoverPhotosBase64
             });
             
             if (!res.success) {
@@ -1938,8 +1938,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         toggleHandoverChecklist,
         checkAllChecklist,
         checkAllHandoverChecklist,
-        handoverPhotoBase64,
-        setHandoverPhotoBase64,
+        handoverPhotosBase64,
+        setHandoverPhotosBase64,
         isHandoverComplete,
         handleFinishHandover,
         commission,

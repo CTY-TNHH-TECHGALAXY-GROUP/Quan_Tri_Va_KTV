@@ -1245,34 +1245,39 @@ function ScreenReview({ logic }: { logic: any }) {
 }
 
 function ScreenHandover({ logic }: { logic: any }) {
-  const { handoverPhotoBase64, setHandoverPhotoBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
+  const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
       logic.setIsLoading?.(true);
-      try {
-          const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''} - Handover`;
-          const compressed = await compressImageWithWatermark(file, {
-              minBrightness,
-              watermarkText
-          });
-          setHandoverPhotoBase64(compressed);
-      } catch (err: any) {
-          if (err?.message === 'TOO_DARK') {
-              alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
-          } else {
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                  const result = ev.target?.result as string;
-                  if (result) setHandoverPhotoBase64(result);
-              };
-              reader.readAsDataURL(file);
+      
+      const newPhotos: string[] = [];
+      const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''} - Handover`;
+
+      for (const file of files) {
+          try {
+              const compressed = await compressImageWithWatermark(file, { minBrightness, watermarkText });
+              newPhotos.push(compressed);
+          } catch (err: any) {
+              if (err?.message === 'TOO_DARK') {
+                  alert(`⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi đủ ánh sáng.`);
+              } else {
+                  const base64 = await new Promise<string>((resolve) => {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => resolve(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                  });
+                  if (base64) newPhotos.push(base64);
+              }
           }
-      } finally {
-          logic.setIsLoading?.(false);
-          if (e.target) e.target.value = '';
       }
+      
+      if (newPhotos.length > 0) {
+          setHandoverPhotosBase64((prev: string[]) => [...prev, ...newPhotos]);
+      }
+      logic.setIsLoading?.(false);
+      if (e.target) e.target.value = '';
   };
 
   return (
@@ -1286,28 +1291,38 @@ function ScreenHandover({ logic }: { logic: any }) {
       </div>
 
       <div className="space-y-4">
-        {handoverPhotoBase64 ? (
+        {handoverPhotosBase64 && handoverPhotosBase64.length > 0 ? (
           <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center gap-4 animate-in zoom-in-95 duration-200">
-            <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md">
-              <img src={handoverPhotoBase64} className="w-full h-full object-cover" alt="Handover preview" />
+            <div className="grid grid-cols-2 gap-3 w-full">
+              {handoverPhotosBase64.map((photo: string, idx: number) => (
+                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm group bg-white">
+                  <img src={photo} className="w-full h-full object-cover" alt={`Handover preview ${idx + 1}`} />
+                  <button 
+                    onClick={() => setHandoverPhotosBase64((prev: string[]) => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
             </div>
-            <button 
-              onClick={() => setHandoverPhotoBase64(null)}
-              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
-            >
-              Chụp lại 🔄
-            </button>
+            <div className="flex gap-2 w-full">
+                <label className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer">
+                  <Camera size={16} /> Bổ sung thêm ảnh
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
+                </label>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             <label className="w-full h-24 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-200/50 rounded-[24px] flex flex-col items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45">
               <Camera size={28} />
               CHỤP ẢNH BÀN GIAO PHÒNG
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
+              <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
             </label>
             <label className="w-full h-12 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[24px] flex items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
               <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh từ thư viện</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
             </label>
           </div>
         )}

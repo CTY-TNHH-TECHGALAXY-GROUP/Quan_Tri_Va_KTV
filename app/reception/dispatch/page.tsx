@@ -194,7 +194,8 @@ export default function DispatchBoardPage() {
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' } | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
   // 🔧 QR CONFIGURATION
   const JOURNEY_BASE_URL = 'https://nganha.vercel.app';
   const QR_SIZE = 250;
@@ -2500,14 +2501,14 @@ if (!hasPermission('dispatch_board')) {
         )}
       </AnimatePresence>
 
-      {/* Modal Xem Ảnh Xác Nhận Khách */}
+      {/* Modal Xem Ảnh Xác Nhận / Ảnh Bàn Giao */}
       <AnimatePresence>
         {selectedPhoto && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setSelectedPhoto(null)}
+            onClick={() => { setSelectedPhoto(null); setPhotoIndex(0); }}
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           >
             <motion.div
@@ -2520,11 +2521,13 @@ if (!hasPermission('dispatch_board')) {
               {/* Header */}
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <h3 className="font-black text-gray-900 text-sm">Ảnh xác nhận khách bắt đầu ca</h3>
+                  <h3 className={`font-black text-sm ${selectedPhoto.type === 'HANDOVER' ? 'text-emerald-600' : 'text-gray-900'}`}>
+                      {selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao phòng' : 'Ảnh xác nhận khách bắt đầu ca'}
+                  </h3>
                   <p className="text-xs text-gray-500 font-bold">Kỹ thuật viên: {selectedPhoto.ktvId}</p>
                 </div>
                 <button
-                  onClick={() => setSelectedPhoto(null)}
+                  onClick={() => { setSelectedPhoto(null); setPhotoIndex(0); }}
                   className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X size={18} />
@@ -2533,18 +2536,67 @@ if (!hasPermission('dispatch_board')) {
 
               {/* Image Body */}
               <div className="relative aspect-[3/4] bg-gray-50 flex items-center justify-center">
-                <img
-                  src={selectedPhoto.url}
-                  alt="Ảnh xác nhận khách"
-                  className="w-full h-full object-contain"
-                />
+                {selectedPhoto.urls && selectedPhoto.urls.length > 1 ? (
+                  <>
+                    <img
+                      src={selectedPhoto.urls[photoIndex]}
+                      alt={`${selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao' : 'Ảnh xác nhận khách'} - ${photoIndex + 1}`}
+                      className="w-full h-full object-contain"
+                    />
+                    
+                    {/* Navigation Buttons */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPhotoIndex((prev) => (prev > 0 ? prev - 1 : selectedPhoto.urls!.length - 1));
+                      }}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPhotoIndex((prev) => (prev < selectedPhoto.urls!.length - 1 ? prev + 1 : 0));
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                    
+                    {/* Pagination Indicators */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 bg-black/40 rounded-full backdrop-blur-md">
+                      {selectedPhoto.urls.map((_, idx) => (
+                        <div
+                          key={idx}
+                          className={`w-2 h-2 rounded-full transition-all ${
+                            idx === photoIndex ? 'bg-white scale-110' : 'bg-white/50'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <img
+                    src={selectedPhoto.urls ? selectedPhoto.urls[0] : selectedPhoto.url}
+                    alt={selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao' : 'Ảnh xác nhận khách'}
+                    className="w-full h-full object-contain"
+                  />
+                )}
               </div>
 
               {/* Footer */}
               {selectedPhoto.time && (
                 <div className="p-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                  <span className="text-xs text-gray-500 font-bold">Thời gian bắt đầu:</span>
-                  <span className="text-xs font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                  <span className="text-xs text-gray-500 font-bold">
+                    {selectedPhoto.type === 'HANDOVER' ? 'Thời gian kết thúc:' : 'Thời gian bắt đầu:'}
+                  </span>
+                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${
+                      selectedPhoto.type === 'HANDOVER' 
+                      ? 'text-emerald-600 bg-emerald-50 border-emerald-100' 
+                      : 'text-indigo-600 bg-indigo-50 border-indigo-100'
+                  }`}>
                     {formatToHourMinute(selectedPhoto.time)}
                   </span>
                 </div>

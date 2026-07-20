@@ -55,7 +55,7 @@ interface DispatchStaffRowProps {
     billCode?: string;
     genderReq?: string;
     customerName?: string;
-    onViewPhoto?: (photo: { url: string; ktvId: string; time: string | null }) => void;
+    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -346,8 +346,32 @@ export const DispatchStaffRow = ({
                     {row.ktvId && (() => {
                         const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl);
                         const startPhotoUrl = photoSegment?.startPhotoUrl;
+                        const handoverPhotoSegment = row.segments?.find((seg: any) => (seg.handoverPhotoUrls && seg.handoverPhotoUrls.length > 0) || seg.handoverPhotoUrl);
+                        const handoverPhotoUrls = handoverPhotoSegment?.handoverPhotoUrls || (handoverPhotoSegment?.handoverPhotoUrl ? [handoverPhotoSegment.handoverPhotoUrl] : null);
                         return (
                             <>
+                                {handoverPhotoUrls && handoverPhotoUrls.length > 0 && onViewPhoto && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onViewPhoto({
+                                                urls: handoverPhotoUrls,
+                                                ktvId: row.ktvId,
+                                                time: handoverPhotoSegment?.actualEndTime || handoverPhotoSegment?.endTime || null,
+                                                type: 'HANDOVER'
+                                            });
+                                        }}
+                                        className="relative w-10 h-10 rounded-xl overflow-hidden border border-emerald-300 hover:scale-105 active:scale-95 transition-all shrink-0 flex items-center justify-center bg-emerald-50 shadow-sm"
+                                        title="Xem ảnh dọn phòng"
+                                    >
+                                        <img src={handoverPhotoUrls[0]} alt="Handover" className="w-full h-full object-cover" />
+                                        {handoverPhotoUrls.length > 1 && (
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-xs text-white font-bold">
+                                                +{handoverPhotoUrls.length - 1}
+                                            </div>
+                                        )}
+                                    </button>
+                                )}
                                 {startPhotoUrl && onViewPhoto && (
                                     <button
                                         onClick={(e) => {
@@ -355,7 +379,8 @@ export const DispatchStaffRow = ({
                                             onViewPhoto({
                                                 url: startPhotoUrl,
                                                 ktvId: row.ktvId,
-                                                time: photoSegment.actualStartTime || photoSegment.startTime
+                                                time: photoSegment.actualStartTime || photoSegment.startTime,
+                                                type: 'START'
                                             });
                                         }}
                                         className="w-10 h-10 rounded-xl overflow-hidden border border-indigo-300 hover:scale-105 active:scale-95 transition-all shrink-0 flex items-center justify-center bg-indigo-50 shadow-sm"

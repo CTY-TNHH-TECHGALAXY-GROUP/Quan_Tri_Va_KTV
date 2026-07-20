@@ -25,11 +25,63 @@
  * ============================================================
  */
 
-import { HandlerContext } from '../_shared/utils';
+import { HandlerContext, ktvMatchesSeg } from '../_shared/utils';
 
 export async function handleReleaseKTV(ctx: HandlerContext): Promise<void> {
-    const { supabase, technicianCode, today, bookingId } = ctx;
+    const { supabase, technicianCode, today, bookingId, body } = ctx;
 
+    // ─── 0. UPLOAD HANDOVER PHOTOS (IF ANY) ───
+    let handoverPhotoUrls: string[] = [];
+    if (body.photosBase64 && Array.isArray(body.photosBase64) && technicianCode) {
+        // Run uploads in parallel
+        const uploadPromises = body.photosBase64.map(async (base64Str: string, index: number) => {
+            try {
+                const buffer = Buffer.from(base64Str.split(',')[1] || base64Str, 'base64');
+                const filename = `handover_photo_${technicianCode}_${bookingId}_${Date.now()}_${index}.webp`;
+                
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('attendance')
+                    .upload(`handover-photos/${filename}`, buffer, {
+                        contentType: 'image/webp',
+                        upsert: true
+                    });
+                
+                if (!uploadError && uploadData) {
+                    const { data: publicUrlData } = supabase.storage.from('attendance').getPublicUrl(uploadData.path);
+                    return publicUrlData.publicUrl;
+                }
+            } catch (err) { 
+                console.error('Upload handover photo failed:', err); 
+            }
+            return null;
+        });
+
+        const results = await Promise.all(uploadPromises);
+        handoverPhotoUrls = results.filter(Boolean) as string[];
+    }
+
+    // ─── 1. CẬP NHẬT ẢNH VÀO BookingItems.segments ───
+    if (handoverPhotoUrls.length > 0) {
+        // Lấy tất cả items của booking
+        const { data: currentItems } = await supabase.from('BookingItems').select('id, segments').eq('bookingId', bookingId);
+        if (currentItems && currentItems.length > 0) {
+            for (const item of currentItems) {
+                let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+                let isModified = false;
+                segs.forEach((seg: any) => {
+                    if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
+                        seg.handoverPhotoUrls = handoverPhotoUrls;
+                        isModified = true;
+                    }
+                });
+                if (isModified) {
+                    await supabase.from('BookingItems').update({ segments: segs }).eq('id', item.id);
+                }
+            }
+        }
+    }
+
+    // ─── 2. CẬP NHẬT KtvAssignments ───
     await supabase
         .from('KtvAssignments')
         .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
@@ -38,6 +90,7 @@ export async function handleReleaseKTV(ctx: HandlerContext): Promise<void> {
         .eq('booking_id', bookingId)
         .in('status', ['ACTIVE', 'QUEUED', 'READY']);
 
+    // ─── 3. PROMPT NEXT ASSIGNMENT ───
     await supabase.rpc('promote_next_assignment', {
         p_employee_id: technicianCode,
         p_business_date: today

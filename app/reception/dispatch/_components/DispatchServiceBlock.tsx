@@ -37,7 +37,7 @@ interface DispatchServiceBlockProps {
     onToggleExpand?: () => void;
     onDispatchSvc?: (orderId: string, svcId: string) => void;
     reminders?: ReminderData[];
-    onViewPhoto?: (photo: { url: string; ktvId: string; time: string | null }) => void;
+    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
     orderSource?: string;
 }
 
@@ -78,11 +78,35 @@ export const DispatchServiceBlock = ({
                                     
                                     const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl);
                                     const startPhotoUrl = photoSegment?.startPhotoUrl;
+                                    const handoverPhotoSegment = row.segments?.find((seg: any) => (seg.handoverPhotoUrls && seg.handoverPhotoUrls.length > 0) || seg.handoverPhotoUrl);
+                                    const handoverPhotoUrls = handoverPhotoSegment?.handoverPhotoUrls || (handoverPhotoSegment?.handoverPhotoUrl ? [handoverPhotoSegment.handoverPhotoUrl] : null);
 
                                     return (
                                         <span key={`${row.id || 'row'}-${ktvCode || 'none'}-${i}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-black rounded-lg whitespace-nowrap shadow-sm">
                                             <UserCheck size={14} className="text-indigo-500" />
                                             {ktvCode || 'Chưa gán'}
+                                            {handoverPhotoUrls && handoverPhotoUrls.length > 0 && onViewPhoto && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onViewPhoto({
+                                                            urls: handoverPhotoUrls,
+                                                            ktvId: ktvCode,
+                                                            time: handoverPhotoSegment?.actualEndTime || handoverPhotoSegment?.endTime || null,
+                                                            type: 'HANDOVER'
+                                                        });
+                                                    }}
+                                                    className="relative w-4 h-4 rounded-full overflow-hidden border border-emerald-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                    title="Xem ảnh dọn phòng"
+                                                >
+                                                    <img src={handoverPhotoUrls[0]} alt="Handover" className="w-full h-full object-cover" />
+                                                    {handoverPhotoUrls.length > 1 && (
+                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[8px] text-white font-bold leading-none">
+                                                            +{handoverPhotoUrls.length - 1}
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            )}
                                             {startPhotoUrl && onViewPhoto && (
                                                 <button
                                                     onClick={(e) => {
@@ -90,7 +114,8 @@ export const DispatchServiceBlock = ({
                                                         onViewPhoto({
                                                             url: startPhotoUrl,
                                                             ktvId: ktvCode,
-                                                            time: photoSegment.actualStartTime || photoSegment.startTime
+                                                            time: photoSegment.actualStartTime || photoSegment.startTime,
+                                                            type: 'START'
                                                         });
                                                     }}
                                                     className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
