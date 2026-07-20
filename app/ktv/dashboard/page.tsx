@@ -1,5 +1,6 @@
 'use client';
 
+import { compressImageWithWatermark } from '@/lib/camera.logic';
 import React, { useState, Suspense } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -350,7 +351,9 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
   const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || 'unknown'));
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+  const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
+  const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || ktvSegments.some((s: any) => s.isMergedRun));
   
   // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
@@ -733,74 +736,15 @@ function ScreenTimer({ logic }: { logic: any }) {
           .catch(() => { /* use fallback */ });
   }, []);
 
-  const getAverageBrightness = (canvas: HTMLCanvasElement): number => {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return 255;
-      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let total = 0;
-      let count = 0;
-      for (let i = 0; i < data.length; i += 40) {
-          total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          count++;
-      }
-      return count > 0 ? total / count : 255;
-  };
-
-
-  const compressImage = (file: File, maxWidth = 600, quality = 0.5): Promise<string> => {
-      return new Promise((resolve, reject) => {
-          const img = new window.Image();
-          const url = URL.createObjectURL(file);
-          img.onload = () => {
-              URL.revokeObjectURL(url);
-              const canvas = document.createElement('canvas');
-              let { width, height } = img;
-              if (width > maxWidth) {
-                  height = Math.round((height * maxWidth) / width);
-                  width = maxWidth;
-              }
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) { reject(new Error('Canvas not supported')); return; }
-              ctx.drawImage(img, 0, 0, width, height);
-
-              // 🔆 Kiểm tra độ sáng
-              const brightness = getAverageBrightness(canvas);
-              if (brightness < minBrightness) {
-                  reject(new Error('TOO_DARK'));
-                  return;
-              }
-
-              const now = new Date();
-              const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-              const pad = (n: number) => String(n).padStart(2, '0');
-              const timeStr = `${pad(vnTime.getHours())}:${pad(vnTime.getMinutes())}:${pad(vnTime.getSeconds())}`;
-              const dateStr = `${pad(vnTime.getDate())}/${pad(vnTime.getMonth() + 1)}/${vnTime.getFullYear()}`;
-              const watermarkText = `${timeStr}  ${dateStr}  Room ${booking?.assignedRoomId || booking?.roomName || ''}`;
-
-              const fontSize = 14;
-              ctx.font = `bold ${fontSize}px Arial`;
-              ctx.textBaseline = 'top';
-              const textWidth = ctx.measureText(watermarkText).width;
-              
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-              ctx.fillRect(8, 8, textWidth + 16, fontSize + 12);
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillText(watermarkText, 16, 14);
-
-              resolve(canvas.toDataURL('image/jpeg', quality));
-          };
-          img.onerror = () => reject(new Error('Failed to load image'));
-          img.src = url;
-      });
-  };
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       try {
-          const compressed = await compressImage(file);
+          const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''}`;
+          const compressed = await compressImageWithWatermark(file, {
+              minBrightness,
+              watermarkText
+          });
           logic.setStartPhotoBase64(compressed);
       } catch (err: any) {
           if (err?.message === 'TOO_DARK') {
@@ -855,7 +799,9 @@ function ScreenTimer({ logic }: { logic: any }) {
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
   const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || 'unknown'));
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+  const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
+  const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || ktvSegments.some((s: any) => s.isMergedRun));
 
   const totalAssignedMins = ktvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
@@ -1299,7 +1245,35 @@ function ScreenReview({ logic }: { logic: any }) {
 }
 
 function ScreenHandover({ logic }: { logic: any }) {
-  const { handoverChecklist, toggleHandoverChecklist, isHandoverComplete, handleFinishHandover, cleanProcedure, checkAllHandoverChecklist } = logic;
+  const { handoverPhotoBase64, setHandoverPhotoBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      logic.setIsLoading?.(true);
+      try {
+          const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''} - Handover`;
+          const compressed = await compressImageWithWatermark(file, {
+              minBrightness,
+              watermarkText
+          });
+          setHandoverPhotoBase64(compressed);
+      } catch (err: any) {
+          if (err?.message === 'TOO_DARK') {
+              alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
+          } else {
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                  const result = ev.target?.result as string;
+                  if (result) setHandoverPhotoBase64(result);
+              };
+              reader.readAsDataURL(file);
+          }
+      } finally {
+          logic.setIsLoading?.(false);
+          if (e.target) e.target.value = '';
+      }
+  };
 
   return (
     <div className="p-6 pt-12 space-y-8">
@@ -1308,21 +1282,35 @@ function ScreenHandover({ logic }: { logic: any }) {
           <Sparkles className="text-blue-600" size={40} />
         </div>
         <h2 className="text-2xl font-black text-slate-800">Dọn dẹp phòng</h2>
-        <p className="text-slate-500 font-medium">Hoàn tất các bước vệ sinh để sẵn sàng đón khách tiếp theo.</p>
+        <p className="text-slate-500 font-medium">Chụp ảnh phòng đã dọn sạch sẽ để bàn giao.</p>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex justify-end mb-1">
-           <button 
-              onClick={checkAllHandoverChecklist}
-              className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg active:scale-95 transition-all uppercase tracking-widest border border-blue-100 shadow-sm"
-           >
-              Chọn tất cả
-           </button>
-        </div>
-        {cleanProcedure.map((label: string, idx: number) => (
-          <ChecklistItem key={idx} label={label} checked={handoverChecklist[idx] || false} onChange={() => toggleHandoverChecklist(idx)} />
-        ))}
+      <div className="space-y-4">
+        {handoverPhotoBase64 ? (
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center gap-4 animate-in zoom-in-95 duration-200">
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md">
+              <img src={handoverPhotoBase64} className="w-full h-full object-cover" alt="Handover preview" />
+            </div>
+            <button 
+              onClick={() => setHandoverPhotoBase64(null)}
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
+            >
+              Chụp lại 🔄
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <label className="w-full h-24 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-200/50 rounded-[24px] flex flex-col items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45">
+              <Camera size={28} />
+              CHỤP ẢNH BÀN GIAO PHÒNG
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
+            </label>
+            <label className="w-full h-12 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[24px] flex items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh từ thư viện</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Room Issue Report Button */}

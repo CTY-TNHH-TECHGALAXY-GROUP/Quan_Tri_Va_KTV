@@ -62,6 +62,45 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
+
+    // 📸 UPLOAD HANDOVER PHOTO (if provided)
+    let handoverPhotoUrl: string | null = null;
+    if (ctx.body?.photoBase64 && technicianCode) {
+        try {
+            const base64Str = ctx.body.photoBase64;
+            const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
+            const buffer = Buffer.from(base64Data, 'base64');
+            const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
+            const fileName = `handover_${bookingId}_${technicianCode}_${Date.now()}.${fileExt}`;
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('attendance')
+                .upload(fileName, buffer, {
+                    contentType: `image/${fileExt}`,
+                    upsert: false
+                });
+            
+            if (uploadError) {
+                console.error('❌ [KTV API] Handover photo upload error:', uploadError);
+            } else if (uploadData?.path) {
+                const { data: publicUrlData } = supabase.storage.from('attendance').getPublicUrl(uploadData.path);
+                handoverPhotoUrl = publicUrlData.publicUrl;
+                console.log(`📸 [KTV API] Uploaded handover photo for ${technicianCode}:`, handoverPhotoUrl);
+            }
+        } catch (err) {
+            console.error('❌ [KTV API] Failed to upload handover photo:', err);
+        }
+    }
+    
+    // Đồng bộ handoverPhotoUrl vào tất cả segment của KTV này trong đơn hàng này
+    if (handoverPhotoUrl) {
+        allGlobalSegs.forEach((itemSeg: any) => {
+            if (itemSeg.seg.ktvId === technicianCode) {
+                itemSeg.seg.handoverPhotoUrl = handoverPhotoUrl;
+                originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
+            }
+        });
+    }
     
     // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
     const hasFinishedSegment = allGlobalSegs.some((s: any) => 
@@ -84,28 +123,34 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         if (actualTimeSpentMs < 0) actualTimeSpentMs = 0; // Guard against negative time
 
         let currentStartTimeMs = new Date(firstStartTime).getTime();
+        
+        // ⚖️ PROPORTIONAL ALLOCATION (Chia thời gian theo tỉ lệ duration)
+        const totalDurationMs = allGlobalSegs.reduce((sum: number, s: any) => sum + ((Number(s.seg.duration) || 60) * 60000), 0);
 
         for (let i = 0; i < allGlobalSegs.length; i++) {
             const target = allGlobalSegs[i];
-            const maxDurationMs = (Number(target.seg.duration) || 60) * 60000;
+            const segDurationMs = (Number(target.seg.duration) || 60) * 60000;
             
             target.seg.actualStartTime = new Date(currentStartTimeMs).toISOString();
             
-            // Allocate time to this segment
-            const allocatedMs = Math.min(actualTimeSpentMs, maxDurationMs);
-            actualTimeSpentMs -= allocatedMs;
+            // Chia tỉ lệ: (Thời gian tiêu chuẩn của DV / Tổng thời gian tiêu chuẩn) * Tổng thời gian thực tế
+            let allocatedMs = Math.floor((segDurationMs / (totalDurationMs || 1)) * actualTimeSpentMs);
+            
+            // Chặng cuối ôm trọn số phút còn lại (tránh sai số làm tròn hoặc finish trễ)
+            if (i === allGlobalSegs.length - 1) {
+                allocatedMs = new Date(nowISO).getTime() - currentStartTimeMs;
+            }
+            
             currentStartTimeMs += allocatedMs;
             
             target.seg.actualEndTime = new Date(currentStartTimeMs).toISOString();
             if (isFeedback) target.seg.feedbackTime = nowISO;
             
+            // Đánh dấu lại cờ isMergedRun để UI luôn biết đây là phiên gộp
+            target.seg.isMergedRun = true;
+            
             originalItemsData[target.item.id][target.idx] = target.seg;
         }
-        
-        // Đảm bảo chặng cuối cùng gánh hết thời gian dư (nếu finish trễ)
-        const lastTarget = allGlobalSegs[allGlobalSegs.length - 1];
-        lastTarget.seg.actualEndTime = nowISO;
-        originalItemsData[lastTarget.item.id][lastTarget.idx] = lastTarget.seg;
         
     } else {
         // Logic cũ (non-merged) — CHỈ hoàn tất segments đã có actualStartTime

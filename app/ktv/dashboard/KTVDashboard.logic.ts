@@ -75,6 +75,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const prepProcedure: string[] = booking?.roomPrepProcedure || DEFAULT_PREP_PROCEDURE;
     const cleanProcedure: string[] = booking?.roomCleanProcedure || DEFAULT_CLEAN_PROCEDURE;
 
+    // === STATE SCREEN: HANDOVER (Dọn phòng) ===
+    const [handoverPhotoBase64, setHandoverPhotoBase64] = useState<string | null>(null);
+    const [isHandoverComplete, setIsHandoverComplete] = useState(false);
+
+    useEffect(() => {
+        setIsHandoverComplete(!!handoverPhotoBase64);
+    }, [handoverPhotoBase64]);
+
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
         setPrepChecklist(new Array(prepProcedure.length).fill(false));
@@ -84,11 +92,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
     }, [booking?.id, cleanProcedure.length]);
 
     const isChecklistComplete = prepChecklist.length > 0 && prepChecklist.every(Boolean);
-    const isHandoverComplete = cleanChecklist.length > 0 && cleanChecklist.every(Boolean);
 
     // Legacy-compatible aliases for page.tsx
     const checklist = prepChecklist;
-    const handoverChecklist = cleanChecklist;
 
     const [settings, setSettings] = useState<any>({
         ktv_setup_duration_minutes: null,
@@ -787,7 +793,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
                         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
                         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
-                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+                        const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
+                        const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
+                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
 
                         let currentStatus = assignedItem?.status || res.data.status;
                         
@@ -1498,7 +1506,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+        const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
+        const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
 
         setIsLoading(true);
         const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
@@ -1568,7 +1578,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+        const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
+        const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
+        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
 
         const currentIdx = activeSegmentIndex;
         // Nếu shouldMerge = true, bỏ qua advance và coi như đã làm xong chặng cuối
@@ -1815,7 +1827,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 bookingId: postServiceBookingIdRef.current || booking.id, 
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
                 action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
-                techCode: ktvId 
+                techCode: ktvId,
+                photoBase64: handoverPhotoBase64
             });
             
             if (!res.success) {
@@ -1921,10 +1934,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
         handleStartTimer,
         handleFinishTimer,
         handleSubmitReview,
-        handoverChecklist,
+        handoverChecklist: cleanChecklist,
         toggleHandoverChecklist,
         checkAllChecklist,
         checkAllHandoverChecklist,
+        handoverPhotoBase64,
+        setHandoverPhotoBase64,
         isHandoverComplete,
         handleFinishHandover,
         commission,

@@ -518,15 +518,22 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             const explicitStart = firstSeg?.actualStartTime || s.timeStart || firstSeg?.startTime;
                                                             const duration = Number(firstSeg?.duration) || Number(s.duration) || 60;
                                                             
-                                                            // Kiểm tra xem actualStartTime này có bị trùng với actualStartTime của dịch vụ nào trước đó trong cùng đơn hàng và chung KTV hay không (Merge Lock stamp)
+                                                            // Kiểm tra xem đây có phải là dịch vụ gộp (Merge Lock / Chung thời gian hoàn thành)
                                                             let isMergeGoiDau = false;
-                                                            if (firstSeg?.actualStartTime && idx > 0) {
+                                                            if (firstSeg?.isMergedRun) {
+                                                                isMergeGoiDau = true;
+                                                            } else if (idx > 0) {
                                                                 for (let prevIdx = 0; prevIdx < idx; prevIdx++) {
                                                                     const prevSvc = services[prevIdx];
                                                                     const prevSeg = prevSvc.staffList?.[0]?.segments?.[0];
-                                                                    if (prevSeg && prevSeg.ktvId === firstSeg.ktvId && prevSeg.actualStartTime === firstSeg.actualStartTime) {
-                                                                        isMergeGoiDau = true;
-                                                                        break;
+                                                                    if (prevSeg && firstSeg && prevSeg.ktvId === firstSeg.ktvId) {
+                                                                        // Gộp nếu có isMergedRun, hoặc cùng actualStartTime (đang chạy), hoặc cùng actualEndTime (đã xong)
+                                                                        if (prevSeg.isMergedRun || 
+                                                                           (prevSeg.actualStartTime && prevSeg.actualStartTime === firstSeg.actualStartTime) ||
+                                                                           (prevSeg.actualEndTime && prevSeg.actualEndTime === firstSeg.actualEndTime)) {
+                                                                            isMergeGoiDau = true;
+                                                                            break;
+                                                                        }
                                                                     }
                                                                 }
                                                             }

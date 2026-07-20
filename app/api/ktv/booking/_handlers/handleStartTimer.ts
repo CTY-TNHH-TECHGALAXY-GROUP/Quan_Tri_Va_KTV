@@ -152,6 +152,8 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                     if (isMergeAtStart) {
                         console.log(`🔒 [Merge Lock] Stamping actualStartTime on ${allGlobalSegs.length} segments for ${technicianCode}`);
                         allGlobalSegs.forEach((itemSeg: any, i: number) => {
+                            // Gắn cờ Gộp để Frontend không bị tách chặng kể cả khi hoàn thành
+                            itemSeg.seg.isMergedRun = true;
                             if (i !== startIdx && !itemSeg.seg.actualStartTime) {
                                 itemSeg.seg.actualStartTime = sharedTimeStart;
                             }
