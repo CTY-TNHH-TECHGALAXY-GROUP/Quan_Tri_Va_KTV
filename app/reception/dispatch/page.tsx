@@ -842,7 +842,6 @@ if (!hasPermission('dispatch_board')) {
 
       const { saveDraftDispatch } = await import('./actions');
       const res = await saveDraftDispatch(clonedOrder.id, {
-        technicianCode: combinedTechCodes,
         bedId: primarySeg?.bedId || null,
         roomName: primarySeg?.roomId || null,
         notes: finalNotesToSave,
@@ -1018,7 +1017,6 @@ if (!hasPermission('dispatch_board')) {
       
       const res = await processDispatch(clonedOrder.id, {
         status: bookingStatus as any,
-        technicianCode: isPartial ? undefined : combinedTechCodes,
         bedId: isPartial ? undefined : (primarySeg?.bedId || null),
         roomName: isPartial ? undefined : (primarySeg?.roomId || null),
         staffAssignments: mergedAssignments,
