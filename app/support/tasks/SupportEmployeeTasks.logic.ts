@@ -33,127 +33,44 @@ interface TaskNotification {
   created_at: string;
 }
 
+import { useAuth } from '@/lib/auth-context';
+
 export const useSupportTasks = () => {
+  const { user } = useAuth();
+  
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [notifications, setNotifications] = useState<TaskNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  
+  const employeeId = user?.code || user?.id || null;
 
   // Track if we already generated today's tasks
   const hasGeneratedRef = useRef(false);
 
   // ============================================================
-  // Get current logged-in employee ID
+  // Fetch today's tasks & Auto-generate via API
   // ============================================================
-  useEffect(() => {
-    const storedUser = localStorage.getItem('userData');
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        setEmployeeId(parsed.id || parsed.code || null);
-      } catch {
-        console.error('Error parsing userData from localStorage');
+  const fetchTasks = useCallback(async (empId: string) => {
+    try {
+      const res = await fetch(`/api/support/tasks?employeeId=${empId}`);
+      const json = await res.json();
+      if (json.success) {
+        setTasks(json.data || []);
+      } else {
+        console.error('API error fetching tasks:', json.error);
       }
+    } catch (error) {
+      console.error('Failed to fetch tasks via API:', error);
     }
   }, []);
 
-  // ============================================================
-  // Auto-generate today's tasks from EmployeeRoutines
-  // ============================================================
+  // We can just alias generateTodayTasks to fetchTasks since the GET API does both
   const generateTodayTasks = useCallback(async (empId: string) => {
     if (hasGeneratedRef.current) return;
     hasGeneratedRef.current = true;
-
-    // Check if tasks already exist for today
-    const { data: existing } = await supabase
-      .from('Tasks')
-      .select('id, template_id')
-      .eq('assignee_id', empId)
-      .gte('created_at', TODAY_START.toISOString())
-      .lte('created_at', TODAY_END.toISOString());
-
-    const existingTemplateIds = new Set((existing || []).map(t => t.template_id));
-
-    // Fetch routines
-    const { data: routines } = await supabase
-      .from('EmployeeRoutines')
-      .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count)')
-      .eq('employee_id', empId)
-      .eq('is_active', true);
-
-    if (!routines || routines.length === 0) return;
-
-    // Create missing tasks
-    const newTasks = routines
-      .filter((r: any) => !existingTemplateIds.has(r.template_id))
-      .map((r: any) => ({
-        template_id: r.template_id,
-        category_id: r.TaskTemplates?.category_id || null,
-        name: r.TaskTemplates?.name || 'Công việc',
-        task_type: 'FIXED',
-        assignee_id: empId,
-        status: 'NOT_STARTED',
-        inspection_status: 'NOT_REVIEWED',
-        priority: 'NORMAL',
-      }));
-
-    if (newTasks.length > 0) {
-      const { error } = await supabase.from('Tasks').insert(newTasks);
-      if (error) {
-        console.error('Error generating tasks:', error.message, error.code);
-      }
-    }
-  }, []);
-
-  // ============================================================
-  // Fetch today's tasks
-  // ============================================================
-  const fetchTasks = useCallback(async (empId: string) => {
-    const { data, error } = await supabase
-      .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, updated_at, TaskTemplates(requires_photo, min_photo_count)')
-      .eq('assignee_id', empId)
-      .gte('created_at', TODAY_START.toISOString())
-      .lte('created_at', TODAY_END.toISOString())
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching tasks:', error.message, error.code);
-      return;
-    }
-
-    // Fetch photo counts
-    const taskIds = (data || []).map(t => t.id);
-    let photoCounts: Record<string, number> = {};
-
-    if (taskIds.length > 0) {
-      const { data: photos } = await supabase
-        .from('TaskPhotos')
-        .select('task_id')
-        .in('task_id', taskIds)
-        .eq('is_submitted', true);
-
-      (photos || []).forEach(p => {
-        photoCounts[p.task_id] = (photoCounts[p.task_id] || 0) + 1;
-      });
-    }
-
-    const mapped: TaskItem[] = (data || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      inspection_status: t.inspection_status,
-      task_type: t.task_type,
-      priority: t.priority,
-      completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
-      photoCount: photoCounts[t.id] || 0,
-      requires_photo: t.TaskTemplates?.requires_photo || false,
-      min_photo_count: t.TaskTemplates?.min_photo_count || 1,
-    }));
-
-    setTasks(mapped);
+    // The fetchTasks will hit the GET endpoint which auto-generates tasks
   }, []);
 
   // ============================================================
@@ -187,17 +104,21 @@ export const useSupportTasks = () => {
   // Start task
   // ============================================================
   const startTask = async (taskId: string) => {
-    const { error } = await supabase
-      .from('Tasks')
-      .update({ status: 'IN_PROGRESS' })
-      .eq('id', taskId);
-
-    if (error) {
-      console.error('Error starting task:', error.message, error.code);
-      return;
+    try {
+      const res = await fetch('/api/support/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'START', taskId })
+      });
+      const json = await res.json();
+      if (json.success && employeeId) {
+        await fetchTasks(employeeId);
+      } else {
+        console.error('API error starting task:', json.error);
+      }
+    } catch (error) {
+      console.error('Failed to start task via API:', error);
     }
-
-    if (employeeId) await fetchTasks(employeeId);
   };
 
   // ============================================================
@@ -210,18 +131,22 @@ export const useSupportTasks = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('Tasks')
-      .update({ status: 'COMPLETED', inspection_status: 'PENDING_REVIEW' })
-      .eq('id', taskId);
-
-    if (error) {
-      console.error('Error completing task:', error.message, error.code);
-      return;
+    try {
+      const res = await fetch('/api/support/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'COMPLETE', taskId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSelectedTask(null);
+        if (employeeId) await fetchTasks(employeeId);
+      } else {
+        console.error('API error completing task:', json.error);
+      }
+    } catch (error) {
+      console.error('Failed to complete task via API:', error);
     }
-
-    setSelectedTask(null);
-    if (employeeId) await fetchTasks(employeeId);
   };
 
   // ============================================================

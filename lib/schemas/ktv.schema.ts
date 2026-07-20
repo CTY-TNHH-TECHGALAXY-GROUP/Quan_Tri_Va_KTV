@@ -107,7 +107,8 @@ export const KtvBookingPatchSchema = z.object({
   bookingId: z.string().min(1, "bookingId is required"),
   status: z.string().min(1, "status is required"),
   action: z.string().optional(),
-  techCode: z.string().optional()
+  techCode: z.string().optional(),
+  photoBase64: z.string().optional()
 });
 
 // Schema cho API Interaction (POST /api/ktv/interaction)

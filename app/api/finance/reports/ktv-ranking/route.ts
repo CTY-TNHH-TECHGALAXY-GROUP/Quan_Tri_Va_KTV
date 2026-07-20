@@ -74,7 +74,7 @@ export async function GET(request: Request) {
         const chunk = uniqueIdsToFetch.slice(i, i + CHUNK_SIZE);
         const { data: bItems, error: itemErr } = await supabaseAdmin
           .from('BookingItems')
-          .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, Bookings!fk_bookingitems_booking(source)')
+          .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, itemRating, ktvRatings, Bookings!fk_bookingitems_booking(source)')
           .in('bookingId', chunk);
         if (itemErr) throw itemErr;
         if (bItems) bookingItems.push(...bItems);
@@ -231,6 +231,7 @@ export async function GET(request: Request) {
         bonus: ledgerBonusMap[id] || 0,
         totalTip: ledgerTipMap[id] || 0,
         workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0,
+        sumRating: 0, ratingCount: 0, avgRating: 0,
         uniqueBookings: new Set()
       };
     });
@@ -273,11 +274,26 @@ export async function GET(request: Request) {
            const code = String(kId).trim();
            if (!code) return;
            
-           if (rankingMap[code]) {
+               if (rankingMap[code]) {
                // Đếm VIP Turns
                if (isVip) {
                    if (!vipBookingIdsByKtv[code]) vipBookingIdsByKtv[code] = new Set();
                    vipBookingIdsByKtv[code].add(item.bookingId || item.id);
+               }
+               
+               const validStatuses = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
+               const isValidStatus = validStatuses.includes(item.status) || validStatuses.includes(item.bookingStatus);
+               
+               // Tính Rating (Chỉ tính khi đơn đã hoàn tất hoặc có rating)
+               if (isValidStatus) {
+                   let myRating = Number(item.itemRating) || 0;
+                   if (item.ktvRatings && typeof item.ktvRatings === 'object' && item.ktvRatings[code]) {
+                       myRating = Number(item.ktvRatings[code]);
+                   }
+                   if (myRating > 0) {
+                       rankingMap[code].sumRating += myRating;
+                       rankingMap[code].ratingCount += 1;
+                   }
                }
                
                // Đồng bộ chuẩn xác với cơ chế của VÍ KTV:
@@ -289,9 +305,6 @@ export async function GET(request: Request) {
                } else {
                    shouldCountRealtime = true; // Không có Ledger, tất cả là Realtime
                }
-
-               const validStatuses = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
-               const isValidStatus = validStatuses.includes(item.status) || validStatuses.includes(item.bookingStatus);
                
                // Tính tiền tua & Tip Realtime
                if (shouldCountRealtime && isValidStatus) {
@@ -355,10 +368,12 @@ export async function GET(request: Request) {
     const finalData = Object.values(rankingMap).map(ktv => {
       const wDays = ktv.workingDays > 0 ? ktv.workingDays : 1; // Prevent div by 0
       
-      // Trừ tiền giặt đồ thực tế đã lưu trong ví (thay vì tự tính)
       const totalLaundryDeduction = laundryDeductionMap[ktv.id] || 0;
       ktv.tuaMoney = ktv.tuaMoney - totalLaundryDeduction;
       if (ktv.tuaMoney < 0) ktv.tuaMoney = 0; // Tránh tiền tua bị âm
+      
+      // Tính điểm trung bình
+      ktv.avgRating = ktv.ratingCount > 0 ? parseFloat((ktv.sumRating / ktv.ratingCount).toFixed(1)) : 0;
       
       // 100k = 1 hour
       const totalTuaHours = ktv.tuaMoney / 100000;

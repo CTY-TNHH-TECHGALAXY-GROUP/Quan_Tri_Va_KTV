@@ -1,101 +1,52 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { SupportTaskPostSchema, SupportTaskPatchSchema } from '@/lib/schemas/support.schema';
+import { EmployeeTasksService } from '@/lib/services/employeeTasks.service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-    try {
-        const supabase = getSupabaseAdmin();
-        if (!supabase) {
-            return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
-        }
+  try {
+    const { searchParams } = new URL(request.url);
+    const employeeId = searchParams.get('employeeId');
 
-        const { searchParams } = new URL(request.url);
-        const assignee_id = searchParams.get('assignee_id');
-        const status = searchParams.get('status');
-
-        let query = supabase
-            .from('SupportTasks')
-            .select('*, SupportAreas(area_name)')
-            .order('created_at', { ascending: false });
-
-        if (assignee_id) query = query.eq('assignee_id', assignee_id);
-        if (status) query = query.eq('status', status);
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        return NextResponse.json({ success: true, data });
-    } catch (error: any) {
-        console.error('Error fetching support tasks:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (!employeeId) {
+      return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
     }
+
+    // 1. Generate new tasks for today if not already generated
+    await EmployeeTasksService.generateTodayTasks(employeeId);
+
+    // 2. Fetch the tasks
+    const { data } = await EmployeeTasksService.fetchTasks(employeeId);
+
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error('API Error /api/support/tasks GET:', error.message);
+    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
-    try {
-        const supabase = getSupabaseAdmin();
-        if (!supabase) {
-            return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
-        }
+  try {
+    const body = await request.json();
+    const { action, taskId } = body;
 
-        const body = await request.json();
-        const parseResult = SupportTaskPostSchema.safeParse(body);
-        if (!parseResult.success) {
-            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
-        }
-        const tasks = Array.isArray(parseResult.data) ? parseResult.data : [parseResult.data];
-
-        const { data, error } = await supabase
-            .from('SupportTasks')
-            .insert(tasks)
-            .select();
-
-        if (error) throw error;
-
-        return NextResponse.json({ success: true, data });
-    } catch (error: any) {
-        console.error('Error creating support task:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (!action || !taskId) {
+      return NextResponse.json({ success: false, error: 'Missing action or taskId' }, { status: 400 });
     }
-}
 
-export async function PATCH(request: Request) {
-    try {
-        const supabase = getSupabaseAdmin();
-        if (!supabase) {
-            return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
-        }
-
-        const body = await request.json();
-        const parseResult = SupportTaskPatchSchema.safeParse(body);
-        if (!parseResult.success) {
-            return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
-        }
-        const { id, status, photo_url } = parseResult.data;
-
-        const updateData: any = { status };
-        if (status === 'DONE') {
-            updateData.completed_at = new Date().toISOString();
-        }
-        if (photo_url) {
-            updateData.photo_url = photo_url;
-        }
-
-        const { data, error } = await supabase
-            .from('SupportTasks')
-            .update(updateData)
-            .eq('id', id)
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        return NextResponse.json({ success: true, data });
-    } catch (error: any) {
-        console.error('Error updating support task:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (action === 'START') {
+      await EmployeeTasksService.updateTaskStatus(taskId, 'IN_PROGRESS');
+      return NextResponse.json({ success: true });
+    } 
+    
+    if (action === 'COMPLETE') {
+      await EmployeeTasksService.updateTaskStatus(taskId, 'COMPLETED', 'PENDING_REVIEW');
+      return NextResponse.json({ success: true });
     }
+
+    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+  } catch (error: any) {
+    console.error('API Error /api/support/tasks POST:', error.message);
+    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
 }

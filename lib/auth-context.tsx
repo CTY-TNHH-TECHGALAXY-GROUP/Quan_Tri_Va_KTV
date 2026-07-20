@@ -180,6 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((moduleId: ModuleId) => {
     if (!role) return false;
+    // BẤT KỲ NHÂN VIÊN NÀO CŨNG ĐƯỢC PHÉP NHẬN VIỆC NỘI BỘ
+    if (moduleId === 'employee_tasks') return true;
     return role.permissions.includes(moduleId);
   }, [role]);
 

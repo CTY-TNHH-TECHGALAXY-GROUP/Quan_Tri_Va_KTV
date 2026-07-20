@@ -163,8 +163,16 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                       <td className="p-4">
                         <div className="flex flex-col gap-1.5 text-xs font-medium">
                           <div className="flex justify-between items-center text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
-                            <span>Khách yêu cầu:</span>
-                            <span className="font-black">{ktv.requestedTurns}</span>
+                            <span>Đánh giá TB:</span>
+                            <span className="font-black flex items-center gap-1">
+                              {ktv.avgRating > 0 ? (
+                                <>
+                                  {ktv.avgRating.toFixed(1)} <Star size={12} className="fill-amber-500 text-amber-500" />
+                                </>
+                              ) : (
+                                'Chưa có'
+                              )}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
                             <span>Tour tự do:</span>

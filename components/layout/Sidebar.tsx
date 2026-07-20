@@ -117,6 +117,7 @@ const PATHS: Record<string, string> = {
   support_dashboard: '/admin/support/dashboard',
   support_tasks_admin: '/admin/support/templates',
   support_reviews_admin: '/admin/support/reviews',
+  employee_tasks: '/support/tasks',
   system_settings: '/admin/settings/system',
   settings: '/settings',
 };
