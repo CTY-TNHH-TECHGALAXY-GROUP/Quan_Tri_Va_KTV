@@ -272,7 +272,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || ''
                                     };
                                 });
-                            } else {
+                            } else if (staffList.length === 0) {
                                 const dbSeg = parsedSegments.length > 0 ? parsedSegments[0] : null;
                                 const fallbackStart = dbSeg?.startTime || forcedStartTime || getCurrentTime();
                                 const fallbackDur = dbSeg?.duration || parsedOptions?.vipDuration || Number(bi.duration) || 0;
