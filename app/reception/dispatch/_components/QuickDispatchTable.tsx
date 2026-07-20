@@ -507,8 +507,17 @@ const ServiceGroupCard = ({
 
       const defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
       const defaultEnd = calcEndTime(defaultStart, duration);
+      const defaultRoom = (state.selectedRoomIds || [])[0] || '';
       
-      onUpdate({ selectedKtvIds: [...state.selectedKtvIds, ktvId], ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], ktvDurations: [...(state.ktvDurations || []), duration], ktvNotes: [...(state.ktvNotes || []), ''], ktvBedIds: [...(state.ktvBedIds || []), ''] });
+      onUpdate({ 
+        selectedKtvIds: [...state.selectedKtvIds, ktvId], 
+        ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], 
+        ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], 
+        ktvDurations: [...(state.ktvDurations || []), duration], 
+        ktvNotes: [...(state.ktvNotes || []), ''], 
+        ktvBedIds: [...(state.ktvBedIds || []), ''],
+        selectedRoomIds: [...(state.selectedRoomIds || []), defaultRoom]
+      });
       setKtvSearch('');
     };
 
