@@ -539,7 +539,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
 }
 
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
-    technicianCode: string | null;
+    technicianCode?: string | null;
     bedId: string | null;
     roomName: string | null;
     notes?: string;
