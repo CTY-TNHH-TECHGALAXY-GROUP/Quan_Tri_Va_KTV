@@ -129,6 +129,12 @@ const KTVAttendancePage = () => {
         }
     }, [isCameraOpen, stream]);
 
+    React.useEffect(() => {
+        if (selectedShiftType === 'FREE') {
+            setWantsToWithdraw(false);
+        }
+    }, [selectedShiftType]);
+
     const captureFromVideo = () => {
         if (!videoRef.current || photos.length >= MAX_PHOTOS) return;
         const video = videoRef.current;
@@ -711,7 +717,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && user?.roleId !== 'support' && user?.roleId !== 'dev' && formType !== 'OVERTIME_PROMPT' && formType !== 'OVERTIME' && (
+                            {selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && selectedShiftType !== 'FREE' && user?.roleId !== 'support' && user?.roleId !== 'dev' && formType !== 'OVERTIME_PROMPT' && formType !== 'OVERTIME' && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
                                     <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
                                         <div className="flex items-center h-5 mt-0.5">
