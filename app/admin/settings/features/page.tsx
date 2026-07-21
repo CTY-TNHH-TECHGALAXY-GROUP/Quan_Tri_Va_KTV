@@ -78,6 +78,8 @@ const FeatureFlagsPage = () => {
         refetch,
     } = useStaffFeatures();
 
+    const [selectedBulkFeature, setSelectedBulkFeature] = useState<string>(FEATURE_FLAG_DEFS[0].key);
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
     };
@@ -154,30 +156,36 @@ const FeatureFlagsPage = () => {
                         className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-all"
                     />
                 </div>
-                {/* Bulk Toggle Buttons */}
-                <div className="flex gap-2 flex-wrap">
-                    {FEATURE_FLAG_DEFS.map(def => (
-                        <div key={def.key} className="flex gap-1">
-                            <button
-                                onClick={() => bulkToggle(def.key, true)}
-                                disabled={updating === `bulk-${def.key}`}
-                                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                                title={`Bật ${def.label} cho tất cả`}
-                            >
-                                <Zap size={14} />
-                                Bật hết {def.label}
-                            </button>
-                            <button
-                                onClick={() => bulkToggle(def.key, false)}
-                                disabled={updating === `bulk-${def.key}`}
-                                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
-                                title={`Tắt ${def.label} cho tất cả`}
-                            >
-                                <ZapOff size={14} />
-                                Tắt hết
-                            </button>
-                        </div>
-                    ))}
+                {/* Bulk Toggle Dropdown & Buttons */}
+                <div className="flex items-center gap-2">
+                    <select
+                        value={selectedBulkFeature}
+                        onChange={(e) => setSelectedBulkFeature(e.target.value)}
+                        className="py-2 px-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 bg-white min-w-[200px]"
+                    >
+                        {FEATURE_FLAG_DEFS.map(def => (
+                            <option key={def.key} value={def.key}>{def.label}</option>
+                        ))}
+                    </select>
+                    
+                    <button
+                        onClick={() => bulkToggle(selectedBulkFeature, true)}
+                        disabled={updating === `bulk-${selectedBulkFeature}`}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 whitespace-nowrap"
+                        title="Bật tính năng này cho tất cả"
+                    >
+                        <Zap size={14} />
+                        Bật hết
+                    </button>
+                    <button
+                        onClick={() => bulkToggle(selectedBulkFeature, false)}
+                        disabled={updating === `bulk-${selectedBulkFeature}`}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 whitespace-nowrap"
+                        title="Tắt tính năng này cho tất cả"
+                    >
+                        <ZapOff size={14} />
+                        Tắt hết
+                    </button>
                 </div>
             </div>
 

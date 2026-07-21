@@ -77,7 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password: dbUser.password,
           name: dbUser.fullName || dbUser.username,
           roleId: roleId,
-          avatarUrl: dbUser.staffAvatarUrl || fallbackAvatar
+          avatarUrl: dbUser.staffAvatarUrl || fallbackAvatar,
+          featureFlags: dbUser.featureFlags || {}
         };
 
         setUser(finalUser);
@@ -180,10 +181,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((moduleId: ModuleId) => {
     if (!role) return false;
-    // BẤT KỲ NHÂN VIÊN NÀO CŨNG ĐƯỢC PHÉP NHẬN VIỆC NỘI BỘ
-    if (moduleId === 'employee_tasks') return true;
+    // HIỂN THỊ "BÀN GIAO CÔNG VIỆC" NẾU ĐƯỢC BẬT TRONG TÍNH NĂNG NHÂN VIÊN
+    if (moduleId === 'employee_tasks') {
+      if (role.id === 'admin' || role.id === 'dev') return true;
+      return user?.featureFlags?.enable_employee_tasks === true;
+    }
     return role.permissions.includes(moduleId);
-  }, [role]);
+  }, [role, user?.featureFlags]);
 
   return (
     <AuthContext.Provider value={{ user, role, login, logout, changePassword, updateProfile, hasPermission }}>

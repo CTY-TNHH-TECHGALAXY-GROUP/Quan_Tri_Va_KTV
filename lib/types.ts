@@ -106,6 +106,7 @@ export interface User {
   avatarUrl?: string;
   password?: string;
   code?: string;
+  featureFlags?: Record<string, boolean>;
 }
 
 export interface Customer {

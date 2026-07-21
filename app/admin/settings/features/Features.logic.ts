@@ -35,6 +35,12 @@ export const FEATURE_FLAG_DEFS = [
         description: 'Cho phép KTV tự bật trạng thái sẵn sàng nhận đơn khi ở nhà',
         configKey: null,
     },
+    {
+        key: 'enable_employee_tasks',
+        label: '📋 Bàn giao công việc',
+        description: 'Hiển thị tab Công Việc / Bàn Giao trên ứng dụng của nhân viên',
+        configKey: null,
+    },
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_DEFS[number]['key'];

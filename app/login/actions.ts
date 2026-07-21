@@ -99,22 +99,24 @@ export async function authenticateUser(username: string, password?: string) {
             }
         }
 
-        // 4. Fetch avatar from Staff table (for profile display)
+        // 4. Fetch avatar and feature_flags from Staff table (for profile display and permissions)
         let staffAvatarUrl = null;
+        let featureFlags = undefined;
         try {
             const { data: staffData } = await supabaseAdmin
                 .from('Staff')
-                .select('avatar_url')
-                .eq('id', user.id)
+                .select('avatar_url, feature_flags')
+                .eq('id', user.code || user.id)
                 .maybeSingle();
-            if (staffData?.avatar_url) {
+            if (staffData) {
                 staffAvatarUrl = staffData.avatar_url;
+                featureFlags = staffData.feature_flags;
             }
         } catch (e) {
             // Non-critical: staff avatar lookup failed
         }
 
-        return { success: true, user: { ...user, staffAvatarUrl } };
+        return { success: true, user: { ...user, staffAvatarUrl, featureFlags } };
     } catch (error: any) {
         console.error('Login action error:', error);
         return { success: false, error: error.message };
