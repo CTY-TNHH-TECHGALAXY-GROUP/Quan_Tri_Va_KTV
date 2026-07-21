@@ -575,7 +575,7 @@ export const DispatchStaffRow = ({
                             <div className="bg-slate-900 text-white px-6 py-5 flex justify-between items-center rounded-t-3xl relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
                                 <div className="relative z-10">
-                                    <div className="text-4xl font-black italic tracking-tight">{row.ktvId}</div>
+                                    <div className="text-4xl font-black italic tracking-tight">{row.ktvName || row.ktvId}</div>
 
                                 </div>
                                 <div className="relative z-10 text-right">

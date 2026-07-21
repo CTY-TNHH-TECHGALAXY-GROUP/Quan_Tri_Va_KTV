@@ -886,6 +886,8 @@ const ServiceGroupCard = ({
       const sT = (state.ktvStartTimes || [])[idx] || '--:--'; const eT = (state.ktvEndTimes || [])[idx] || '--:--';
       const ticketDur = (state.ktvDurations || [])[idx] || duration;
       const ticketNote = (state.ktvNotes || [])[idx] || '';
+      const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
+      const ktvNameDisplay = ktvTurn?.staff?.full_name || ktvId;
       return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setShowTicketForIdx(null)}>
           <motion.div
@@ -909,7 +911,7 @@ const ServiceGroupCard = ({
             
             {/* Ticket Header */}
             <div className="bg-slate-900 text-white px-6 py-5 flex justify-between items-center rounded-t-3xl">
-              <div className="text-4xl font-black italic tracking-tight">{ktvId}</div>
+              <div className="text-4xl font-black italic tracking-tight">{ktvNameDisplay}</div>
               <div className="text-right">
                   <div className="text-[11px] font-bold tracking-wider opacity-70">Phiếu Tua KTV</div>
                   <div className="text-base font-black mt-0.5">{dateFormatted}</div>

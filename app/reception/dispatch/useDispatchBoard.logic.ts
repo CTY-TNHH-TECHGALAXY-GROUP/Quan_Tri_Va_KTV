@@ -238,7 +238,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         return {
                                             id: `st-${bi.id}-${tCode}`,
                                             ktvId: tCode,
-                                            ktvName: staff?.full_name || tCode,
+                                            ktvName: parsedOptions?.external_technician_name?.[tCode] || staff?.full_name || tCode,
                                             segments: segments,
                                             noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || ''
                                         };
@@ -267,7 +267,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                     return {
                                         id: `st-${bi.id}-${t.employee_id}`,
                                         ktvId: t.employee_id,
-                                        ktvName: staff?.full_name || 'KTV',
+                                        ktvName: parsedOptions?.external_technician_name?.[t.employee_id] || staff?.full_name || 'KTV',
                                         segments: segments,
                                         noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || ''
                                     };

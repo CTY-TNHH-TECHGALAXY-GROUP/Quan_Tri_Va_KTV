@@ -556,6 +556,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         // 🚫 CANCELLED: luôn xử lý (booking-level)
         if (booking.status === 'CANCELLED') {
+            if (['REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
+                console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (ScreenEngine CANCELLED).");
+                return;
+            }
             setBooking(null);
             setScreen('DASHBOARD');
             return;
@@ -947,6 +951,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     const isTimerWithActiveBooking = screenRef.current === 'TIMER' && bookingRef.current?.id;
                     
                     if (!isPostService && !isTimerWithActiveBooking) {
+                        if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
+                            console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ.");
+                            return;
+                        }
                         setBooking(res.data?.nextBookingId ? res.data : null);
                         setScreen('DASHBOARD');
                         setIsTimerRunning(false);
@@ -987,6 +995,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 
                 // Nếu đơn hàng bị hủy → set ngay
                 if (payload.new.status === 'CANCELLED') {
+                    if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
+                        console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (Realtime CANCELLED).");
+                        return;
+                    }
                     setBooking(null);
                     setScreen('DASHBOARD');
                     try {

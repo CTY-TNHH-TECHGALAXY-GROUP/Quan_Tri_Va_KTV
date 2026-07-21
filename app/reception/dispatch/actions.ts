@@ -353,7 +353,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
             });
         }
 
-        // 🔥 AUTO-CREATE DUMMY KTV CHO NHÂN VIÊN NHẬP NGOÀI (FREELANCE)
+        // 🔥 XỬ LÝ KTV NHẬP NGOÀI (FREELANCE)
         const allKtvIds = new Set<string>();
         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
@@ -364,19 +364,60 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         });
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
+        const externalNameMap: Record<string, string> = {};
+
         if (uniqueKtvIds.length > 0) {
-            const { data: existingStaff } = await supabase.from('Staff').select('id').in('id', uniqueKtvIds);
+            const { data: existingStaff } = await supabase.from('Staff').select('id, is_freelance').in('id', uniqueKtvIds);
             const existingIds = (existingStaff || []).map(s => s.id);
             const missingIds = uniqueKtvIds.filter(id => !existingIds.includes(id));
+            
             if (missingIds.length > 0) {
-                const newStaffs = missingIds.map(id => ({
-                    id: id,
-                    full_name: id,
-                    status: 'FREELANCE',
-                    position: 'KTV TỰ DO'
-                }));
-                const { error: insertStaffErr } = await supabase.from('Staff').insert(newStaffs);
-                if (insertStaffErr) console.error('Lỗi khi tạo staff ngoài:', insertStaffErr);
+                // Lấy các mã EXT còn trống
+                const { data: extStaff } = await supabase.from('Staff').select('id').eq('is_freelance', true);
+                const { data: busyQueue } = await supabase.from('TurnQueue').select('employee_id');
+                const busyIds = busyQueue?.map(q => q.employee_id) || [];
+                const availableExt = (extStaff || []).map(s => s.id).filter(id => !busyIds.includes(id));
+                
+                let extIndex = 0;
+                const idReplacements: Record<string, string> = {};
+                
+                for (const missingName of missingIds) {
+                    const extCode = availableExt[extIndex];
+                    if (extCode) {
+                        idReplacements[missingName] = extCode;
+                        externalNameMap[extCode] = missingName;
+                        extIndex++;
+                    } else {
+                        throw new Error(`Không đủ mã KTV Ngoài (Freelance) trống để gán cho: ${missingName}`);
+                    }
+                }
+                
+                // Rewrite IDs in dispatchData
+                const replaceId = (id: string) => idReplacements[id] || id;
+                if (dispatchData.technicianCode) dispatchData.technicianCode = replaceId(dispatchData.technicianCode);
+                if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) a.ktvId = replaceId(a.ktvId) });
+                if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
+                    if (u.technicianCodes) {
+                        if (Array.isArray(u.technicianCodes)) u.technicianCodes = u.technicianCodes.map(c => replaceId(c));
+                        else if (typeof u.technicianCodes === 'string') u.technicianCodes = replaceId(u.technicianCodes as string);
+                    }
+                    if (u.segments && Array.isArray(u.segments)) {
+                        u.segments.forEach(seg => { if (seg.ktvId) seg.ktvId = replaceId(seg.ktvId) });
+                    }
+                });
+
+                // Cập nhật tên KTV ngoài vào options của BookingItems ngay lập tức
+                if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
+                    for (const item of dispatchData.itemUpdates) {
+                        const { data: currentItem } = await supabase.from('BookingItems').select('options').eq('id', item.id).single();
+                        let opts = {};
+                        if (currentItem && currentItem.options) {
+                            try { opts = typeof currentItem.options === 'string' ? JSON.parse(currentItem.options) : currentItem.options; } catch(e) {}
+                        }
+                        opts = { ...opts, external_technician_name: { ...(opts as any).external_technician_name, ...externalNameMap } };
+                        await supabase.from('BookingItems').update({ options: opts }).eq('id', item.id);
+                    }
+                }
             }
         }
 
