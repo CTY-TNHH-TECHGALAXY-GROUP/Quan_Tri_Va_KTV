@@ -85,17 +85,25 @@ export async function GET(request: Request) {
         }
 
         // ─── Fetch Bookings ──────────────────────────────────────────────
-        const { data: bookings, error: bErr } = await supabase
+        const { data: rawBookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, technicianCode')
-            .ilike('technicianCode', `%${techCode}%`)
+            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, technicianCode, BookingItems!fk_bookingitems_booking(technicianCodes)')
             .gte('bookingDate', fromFilter)
             .lte('bookingDate', toFilter)
             .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE'])
             .order('bookingDate', { ascending: false })
-            .limit(100);
+            .limit(300);
 
         if (bErr) throw bErr;
+        
+        const bookings = (rawBookings || []).filter((b: any) => {
+            const hasInString = b.technicianCode?.toLowerCase().includes(techCode.toLowerCase());
+            const hasInArray = b.BookingItems?.some((item: any) => 
+                item.technicianCodes?.some((c: string) => c.toLowerCase() === techCode.toLowerCase())
+            );
+            return hasInString || hasInArray;
+        });
+
         if (!bookings || bookings.length === 0) {
             return NextResponse.json({ success: true, data: [] });
         }

@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
-            .select('effectiveFrom, shiftType')
+            .select('employeeId, effectiveFrom, shiftType')
             .eq('employeeId', techCode)
             .lte('effectiveFrom', todayStr)
             .in('status', ['ACTIVE', 'REPLACED'])
