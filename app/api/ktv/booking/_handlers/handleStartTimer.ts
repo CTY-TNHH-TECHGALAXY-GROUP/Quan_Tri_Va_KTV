@@ -71,10 +71,14 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
 
     // ─── 2. SET BOOKING timeStart (chỉ lần đầu) ───
     const sharedTimeStart = new Date().toISOString();
-    const { data: currentBookingForTime } = await supabase.from('Bookings').select('timeStart').eq('id', bookingId).single();
+    const { data: currentBookingForTime } = await supabase.from('Bookings').select('timeStart, status').eq('id', bookingId).single();
     
     if (!currentBookingForTime?.timeStart && action !== 'RESUME_TIMER' && action !== 'NEXT_SEGMENT') {
         bookingUpdatePayload.timeStart = sharedTimeStart;
+    }
+    
+    if ((action === 'START_TIMER' || action === 'NEXT_SEGMENT') && currentBookingForTime?.status !== 'IN_PROGRESS') {
+        bookingUpdatePayload.status = 'IN_PROGRESS';
     }
 
     // ─── 3. SEGMENT actualStartTime LOGIC ───
@@ -184,7 +188,11 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
 
 
         for (const item of currentItems || []) {
-            await supabase.from('BookingItems').update({ segments: JSON.stringify(originalItemsData[item.id]) }).eq('id', item.id);
+            const updatePayload: any = { segments: JSON.stringify(originalItemsData[item.id]) };
+            if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
+                updatePayload.status = 'IN_PROGRESS';
+            }
+            await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
         }
     }
 
