@@ -35,12 +35,14 @@ export const useEmployeeManagement = () => {
         setIsLoading(true);
         const res = await getStaffList();
         if (res.success && res.data) {
-            const mapped: Employee[] = res.data.map((s: any) => ({
+            const filteredData = res.data.filter((s: any) => s.work_type !== 'TYPE_C');
+            const mapped: Employee[] = filteredData.map((s: any) => ({
                 id: s.id,
                 code: s.id,
                 name: s.full_name,
                 username: s.username,
                 password: s.password,
+                role: s.userRole || 'TECHNICIAN',
                 position: s.position || 'Kỹ Thuật Viên',
                 experience: s.experience || '0 năm',
                 status: s.status === 'ĐANG LÀM' ? 'active' : 'inactive',
@@ -60,6 +62,9 @@ export const useEmployeeManagement = () => {
                 rating: 5.0,
                 isActiveVipMenu: s.is_active_vip_menu || false,
                 isHomeSpa: s.is_home_spa || false,
+                work_type: s.work_type || 'TYPE_A',
+                baseSalaryPerHour: s.base_salary_per_hour || 180000,
+                targetHoursPerMonth: s.target_hours_per_month || 80,
                 skills: (() => {
                     const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : DEFAULT_SKILLS;
                     const parsedSkills: any = {};

@@ -233,7 +233,68 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                     </div>
                   </div>
                 </div>
+
+                {editedEmployee.role === 'TECHNICIAN' && (
+                  <div className="md:col-span-2 mt-2 pt-4 border-t border-gray-200">
+                    <div className="text-[10px] text-gray-400 font-medium uppercase mb-2">Hình thức làm việc (KTV)</div>
+                    {isEditing ? (
+                      <select 
+                        value={editedEmployee.work_type || 'TYPE_A'} 
+                        onChange={(e) => updateField('work_type', e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold text-emerald-700 text-sm"
+                      >
+                        <option value="TYPE_A">Loại A (Tính theo Ca/Điểm)</option>
+                        <option value="TYPE_B">Loại B (Hưởng tua 180k/h)</option>
+                        <option value="TYPE_C">Loại C (Cộng tác viên/Freelance)</option>
+                      </select>
+                    ) : (
+                      <div className="text-sm font-bold text-emerald-700">
+                        {editedEmployee.work_type === 'TYPE_B' ? 'Loại B (Hưởng tua 180k/h)' : 
+                         editedEmployee.work_type === 'TYPE_C' ? 'Loại C (Cộng tác viên/Freelance)' : 
+                         'Loại A (Tính theo Ca/Điểm)'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+              
+              {editedEmployee.role === 'TECHNICIAN' && editedEmployee.work_type === 'TYPE_B' && (
+                  <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <h3 className="text-xs font-bold text-amber-900 uppercase tracking-widest border-b border-amber-200 pb-2 mb-3">Cấu hình Chỉ tiêu (Loại B)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div className="text-[10px] text-amber-800 font-medium uppercase mb-1">Mức lương / giờ (VNĐ)</div>
+                            {isEditing ? (
+                              <input 
+                                type="number" 
+                                value={editedEmployee.baseSalaryPerHour || 180000} 
+                                onChange={(e) => updateField('baseSalaryPerHour', parseInt(e.target.value) || 0)}
+                                className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm font-bold text-gray-900">
+                                {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(editedEmployee.baseSalaryPerHour || 180000)}
+                              </div>
+                            )}
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-amber-800 font-medium uppercase mb-1">Chỉ tiêu tháng (Giờ)</div>
+                            {isEditing ? (
+                              <input 
+                                type="number" 
+                                value={editedEmployee.targetHoursPerMonth || 80} 
+                                onChange={(e) => updateField('targetHoursPerMonth', parseInt(e.target.value) || 0)}
+                                className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm font-bold text-gray-900">
+                                {editedEmployee.targetHoursPerMonth || 80} giờ
+                              </div>
+                            )}
+                        </div>
+                    </div>
+                  </div>
+              )}
             </div>
 
             <div className="mt-8">

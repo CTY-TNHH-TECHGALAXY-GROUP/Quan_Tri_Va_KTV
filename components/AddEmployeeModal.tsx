@@ -57,6 +57,9 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         isActiveVipMenu: false,
         isHomeSpa: false,
         role: 'TECHNICIAN',
+        work_type: 'TYPE_A',
+        baseSalaryPerHour: 180000,
+        targetHoursPerMonth: 80,
         skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
     });
 
@@ -104,8 +107,11 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         isActiveVipMenu: false,
         isHomeSpa: false,
         role: 'TECHNICIAN',
-                skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
-            });
+        work_type: 'TYPE_A',
+        baseSalaryPerHour: 180000,
+        targetHoursPerMonth: 80,
+        skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
+    });
         } else {
             setError(res.error || 'Đã xảy ra lỗi không xác định.');
         }
@@ -156,8 +162,38 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                             <option value="ADMIN">Admin (Toàn quyền)</option>
                                         </select>
                                     </div>
+                                    {formData.role === 'TECHNICIAN' && (
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Hình thức làm việc (KTV) *</label>
+                                            <select name="work_type" value={formData.work_type} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-emerald-50 font-bold text-emerald-700">
+                                                <option value="TYPE_A">Loại A (Tính theo Ca/Điểm)</option>
+                                                <option value="TYPE_B">Loại B (Hưởng tua 180k/h)</option>
+                                                <option value="TYPE_C">Loại C (Cộng tác viên/Freelance)</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+                            
+                            {/* Cấu hình KTV Loại B (Chỉ tiêu) */}
+                            {formData.role === 'TECHNICIAN' && formData.work_type === 'TYPE_B' && (
+                                <div className="space-y-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                    <h3 className="text-sm font-bold text-amber-900 uppercase tracking-widest border-b border-amber-200 pb-2">Cấu hình Chỉ tiêu (Loại B)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Mức lương / giờ (VNĐ) *</label>
+                                            <input required type="number" name="baseSalaryPerHour" value={formData.baseSalaryPerHour} onChange={handleChange} className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Chỉ tiêu tháng (Giờ) *</label>
+                                            <input required type="number" name="targetHoursPerMonth" value={formData.targetHoursPerMonth} onChange={handleChange} className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-amber-700 font-medium italic">
+                                        * Lưu ý: KTV Loại B sẽ được hưởng lương theo giờ (nhân với số phút làm việc thực tế). Nếu không đạt chỉ tiêu tháng, phần lương chưa đạt sẽ tính theo tỷ lệ thấp hơn.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Personal Info */}
                             <div className="space-y-4">
