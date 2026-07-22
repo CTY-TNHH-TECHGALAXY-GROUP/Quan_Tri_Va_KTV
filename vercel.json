@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-daily-ledger",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/piggy-bank-deduct",
+      "schedule": "0 19 * * 0"
+    }
+  ]
+}

@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Test IQ & EQ</title>
+  <style>
+    :root {
+      --bg-deep: #07111c;
+      --bg-mid: #0c1d30;
+      --panel: rgba(8, 22, 37, 0.78);
+      --panel-strong: rgba(12, 30, 49, 0.96);
+      --line: rgba(233, 239, 246, 0.12);
+      --line-strong: rgba(233, 239, 246, 0.22);
+      --text: #f5f7fb;
+      --muted: #9fb5cb;
+      --gold: #efc67b;
+      --gold-soft: rgba(239, 198, 123, 0.18);
+      --mint: #6fe5c3;
+      --mint-soft: rgba(111, 229, 195, 0.18);
+      --rose: #f59ab0;
+      --shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --ease: 220ms ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(111, 229, 195, 0.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(239, 198, 123, 0.16), transparent 26%),
+        linear-gradient(145deg, var(--bg-deep) 0%, var(--bg-mid) 52%, #06101a 100%);
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      width: 28rem;
+      height: 28rem;
+      border-radius: 999px;
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.45;
+    }
+
+    body::before {
+      top: -10rem;
+      right: -9rem;
+      background: rgba(111, 229, 195, 0.16);
+    }
+
+    body::after {
+      bottom: -10rem;
+      left: -9rem;
+      background: rgba(245, 154, 176, 0.14);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: min(1240px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 28px 0 44px;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(350px, 470px);
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .panel {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      box-shadow: var(--shadow);
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 22%),
+        linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.03) 60%, transparent);
+      pointer-events: none;
+    }
+
+    .hero-panel {
+      padding: 34px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .section-label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+    }
+
+    .hero-title {
+      margin: 0;
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: clamp(2.55rem, 5.6vw, 4.4rem);
+      line-height: 1.04;
+      letter-spacing: -0.025em;
+      max-width: 12ch;
+    }
+
+    .hero-copy {
+      margin: 0;
+      max-width: 58ch;
+      color: #dce6f1;
+      font-size: 1.02rem;
+      line-height: 1.7;
+    }
+
+    .hero-actions,
+    .card-actions,
+    .quiz-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      transition: transform var(--ease), border-color var(--ease), background var(--ease), color var(--ease), box-shadow var(--ease);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.46;
+      transform: none;
+    }
+
+    .primary-btn,
+    .secondary-btn,
+    .ghost-btn {
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      font-size: 0.97rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .primary-btn {
+      color: #13202d;
+      background: linear-gradient(135deg, var(--gold), #ffd998);
+      box-shadow: 0 12px 28px rgba(239, 198, 123, 0.22);
+    }
+
+    .secondary-btn {
+      color: var(--text);
+      background: linear-gradient(135deg, rgba(111, 229, 195, 0.16), rgba(111, 229, 195, 0.06));
+      border: 1px solid rgba(111, 229, 195, 0.28);
+    }
+
+    .ghost-btn {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+    }
+
+    .stats-grid,
+    .feature-grid,
+    .summary-grid,
+    .result-grid,
+    .trait-grid,
+    .intro-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .stats-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .feature-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .summary-grid,
+    .result-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .trait-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .info-card,
+    .feature-card,
+    .summary-card,
+    .result-card,
+    .intro-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 18px;
+    }
+
+    .info-card h3,
+    .feature-card h3,
+    .summary-card h3,
+    .result-card h3,
+    .intro-card h3 {
+      margin: 0 0 8px;
+      font-size: 0.96rem;
+      letter-spacing: 0.01em;
+    }
+
+    .info-value,
+    .summary-value {
+      display: block;
+      margin-top: 8px;
+      font-size: clamp(1.5rem, 4vw, 2.25rem);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .feature-card p,
+    .summary-card p,
+    .result-card p,
+    .intro-card p,
+    .info-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 0.94rem;
+    }
+
+    .feature-card {
+      min-height: 140px;
+    }
+
+    .summary-card.is-complete {
+      border-color: rgba(111, 229, 195, 0.28);
+      background: linear-gradient(180deg, rgba(111, 229, 195, 0.11), rgba(255, 255, 255, 0.04));
+    }
+
+    .summary-card.is-pending {
+      border-color: rgba(239, 198, 123, 0.22);
+      background: linear-gradient(180deg, rgba(239, 198, 123, 0.08), rgba(255, 255, 255, 0.04));
+    }
+
+    .quiz-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 780px;
+      padding: 24px;
+    }
+
+    .quiz-switcher {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line);
+      margin-bottom: 20px;
+    }
+
+    .switcher-btn {
+      min-height: 46px;
+      padding: 0 14px;
+      color: var(--muted);
+      border-radius: 999px;
+      background: transparent;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .switcher-btn.active {
+      color: #11202d;
+      background: linear-gradient(135deg, #eff4fb, #b7d7f6);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
+
+    .quiz-shell {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 18px;
+      animation: cardIn 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .quiz-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .quiz-header h2 {
+      margin: 6px 0 8px;
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: clamp(1.75rem, 4vw, 2.4rem);
+      line-height: 1.12;
+    }
+
+    .quiz-header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .mini-note {
+      align-self: flex-start;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(111, 229, 195, 0.24);
+      background: rgba(111, 229, 195, 0.09);
+      color: #d9fff3;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .progress-wrap {
+      display: grid;
+      gap: 10px;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .progress-track {
+      overflow: hidden;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--mint), #91f2d6);
+      box-shadow: 0 0 18px rgba(111, 229, 195, 0.24);
+      transition: width 300ms ease;
+    }
+
+    .question-card {
+      display: grid;
+      gap: 18px;
+      flex: 1;
+      padding: 24px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+    }
+
+    .question-title {
+      margin: 0;
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: clamp(1.4rem, 3vw, 1.8rem);
+      line-height: 1.42;
+    }
+
+    .question-hint {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 0.95rem;
+    }
+
+    .choices {
+      display: grid;
+      gap: 12px;
+    }
+
+    .choice {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      transition: border-color var(--ease), background var(--ease), transform var(--ease);
+    }
+
+    .choice:hover {
+      border-color: rgba(239, 198, 123, 0.4);
+      background: rgba(239, 198, 123, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .choice.is-selected {
+      border-color: rgba(239, 198, 123, 0.44);
+      background: linear-gradient(180deg, rgba(239, 198, 123, 0.16), rgba(255, 255, 255, 0.04));
+      box-shadow: 0 16px 28px rgba(0, 0, 0, 0.18);
+    }
+
+    .choice-bullet {
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      color: #f2f6fb;
+      font-size: 0.9rem;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .choice-text {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .choice-text strong {
+      font-size: 0.97rem;
+    }
+
+    .choice-text span {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    .quiz-actions {
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+    }
+
+    .quiz-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .result-hero {
+      display: grid;
+      gap: 16px;
+      padding: 24px;
+      border-radius: 28px;
+      border: 1px solid rgba(239, 198, 123, 0.26);
+      background:
+        radial-gradient(circle at top right, rgba(239, 198, 123, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+    }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .score-orb {
+      display: grid;
+      place-items: center;
+      width: 122px;
+      height: 122px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), transparent 32%),
+        linear-gradient(135deg, rgba(239, 198, 123, 0.26), rgba(111, 229, 195, 0.18));
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    .score-orb strong {
+      display: block;
+      font-size: 2rem;
+      line-height: 1;
+    }
+
+    .score-orb span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .result-hero h3 {
+      margin: 0 0 8px;
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: clamp(1.6rem, 3vw, 2rem);
+      line-height: 1.15;
+    }
+
+    .result-hero p,
+    .result-card p {
+      margin: 0;
+      color: #dce6f1;
+      line-height: 1.7;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .soft-badge {
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
+    .trait-card {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      display: grid;
+      gap: 10px;
+    }
+
+    .trait-card strong {
+      font-size: 0.98rem;
+    }
+
+    .trait-track {
+      overflow: hidden;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .trait-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--gold), #ffd998);
+    }
+
+    .trait-card span,
+    .result-caption,
+    .intro-caption {
+      color: var(--muted);
+      font-size: 0.91rem;
+      line-height: 1.55;
+    }
+
+    .intro-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .intro-card h3 {
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: 1.4rem;
+      line-height: 1.18;
+    }
+
+    .disclaimer {
+      margin-top: auto;
+      padding: 15px 16px;
+      border-radius: 18px;
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.9rem;
+    }
+
+    .empty-state {
+      display: grid;
+      gap: 18px;
+      padding: 14px 0 4px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1080px) {
+      .app-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .quiz-panel {
+        min-height: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 1rem, 100%);
+        padding-top: 12px;
+      }
+
+      .hero-panel,
+      .quiz-panel {
+        padding: 18px;
+      }
+
+      .stats-grid,
+      .feature-grid,
+      .summary-grid,
+      .result-grid,
+      .trait-grid,
+      .intro-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .quiz-header,
+      .quiz-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .primary-btn,
+      .secondary-btn,
+      .ghost-btn {
+        width: 100%;
+      }
+
+      .hero-actions,
+      .card-actions {
+        flex-direction: column;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="app-grid">
+      <section class="panel hero-panel">
+        <div>
+          <p class="section-label">Mini Assessment</p>
+          <h1 class="hero-title">Mini test IQ &amp; EQ bằng tiếng Việt</h1>
+          <p class="hero-copy">
+            Một bài test gọn trong một file HTML để bạn tự đo nhanh tư duy logic và mức độ xử lý cảm xúc.
+            Giao diện chạy trực tiếp trên trình duyệt, chấm điểm ngay và lưu tiến độ tạm ngay trên máy.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <button class="primary-btn" id="startIqHero">Làm bài IQ</button>
+          <button class="secondary-btn" id="startEqHero">Làm bài EQ</button>
+          <button class="ghost-btn" id="resetAllHero">Làm mới toàn bộ</button>
+        </div>
+
+        <div class="stats-grid">
+          <article class="info-card">
+            <h3>Câu hỏi IQ</h3>
+            <span class="info-value">20</span>
+            <p>Dãy số, suy luận, quan hệ logic và phân tích quy luật.</p>
+          </article>
+          <article class="info-card">
+            <h3>Tình huống EQ</h3>
+            <span class="info-value">20</span>
+            <p>Nhận biết cảm xúc, tự kiểm soát, đồng cảm và giao tiếp.</p>
+          </article>
+          <article class="info-card">
+            <h3>Thời gian gợi ý</h3>
+            <span class="info-value">25'</span>
+            <p>Mỗi phần khoảng 10 đến 12 phút, phù hợp làm nghiêm túc hơn trên laptop hoặc điện thoại.</p>
+          </article>
+        </div>
+
+        <div id="summaryRoot" class="summary-grid"></div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3>Chuyển bài linh hoạt</h3>
+            <p>Bạn có thể làm IQ trước, EQ sau hoặc quay lại phần đang dở mà không mất dữ liệu tạm.</p>
+          </article>
+          <article class="feature-card">
+            <h3>Kết quả có nhận xét</h3>
+            <p>Mỗi phần đều có diễn giải ngắn để biết mình mạnh ở đâu và nên cải thiện phần nào.</p>
+          </article>
+          <article class="feature-card">
+            <h3>Lưu tiến độ cục bộ</h3>
+            <p>Trang tự nhớ câu đã chọn ngay trong trình duyệt hiện tại để bạn tiếp tục sau.</p>
+          </article>
+          <article class="feature-card">
+            <h3>Không cần backend</h3>
+            <p>Mọi thứ nằm trong một file HTML, có thể mở trực tiếp hoặc nhúng vào web hiện có.</p>
+          </article>
+        </div>
+
+        <div class="disclaimer" id="sideNote">
+          Đây là bài test mini mang tính tham khảo nhanh, không thay thế bài đo chuẩn hóa chuyên sâu về IQ hoặc đánh giá tâm lý.
+        </div>
+      </section>
+
+      <section class="panel quiz-panel">
+        <div class="quiz-switcher">
+          <button class="switcher-btn" data-switch="iq">IQ Logic</button>
+          <button class="switcher-btn" data-switch="eq">EQ Tình huống</button>
+        </div>
+        <div id="appRoot" class="quiz-shell"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const tests = {
+      iq: {
+        key: "iq",
+        label: "IQ Logic",
+        heroLabel: "Mini test suy luận",
+        title: "Đo tốc độ nhận ra quy luật và suy luận logic",
+        description: "Phần IQ gồm 20 câu về dãy số, ngôn ngữ, phép tương tự và suy luận điều kiện. Chọn đáp án đúng nhất cho mỗi câu.",
+        questionHint: "Không cần tính quá sâu. Hãy ưu tiên nhận diện quy luật trước rồi mới loại trừ đáp án.",
+        questions: [
+          {
+            prompt: "Dãy số nào điền đúng vào chỗ trống: 2, 4, 8, 16, ?",
+            options: [
+              { title: "24", detail: "Tăng đều thêm 8." },
+              { title: "28", detail: "Tăng rồi giảm nhịp." },
+              { title: "32", detail: "Mỗi bước nhân đôi." },
+              { title: "34", detail: "Kết hợp nhân và cộng." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Chuỗi chữ cái nào tiếp theo hợp lý nhất: A, C, F, J, O, ?",
+            options: [
+              { title: "T", detail: "Tăng lần lượt 2, 3, 4, 5 chữ cái." },
+              { title: "U", detail: "Bước nhảy tiếp theo là 6 chữ cái." },
+              { title: "V", detail: "Giữ quy luật +7." },
+              { title: "W", detail: "Kết hợp chữ chẵn và lẻ." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Nếu BOOK được mã hóa thành CPPL, thì MATH sẽ được mã hóa thành gì?",
+            options: [
+              { title: "NBUI", detail: "Mỗi ký tự tăng thêm 1 bậc." },
+              { title: "MBTH", detail: "Chỉ đổi hai ký tự giữa." },
+              { title: "NATI", detail: "Kết hợp tăng và giữ nguyên." },
+              { title: "OAUI", detail: "Tăng không đều." }
+            ],
+            answer: 0
+          },
+          {
+            prompt: "Lan lớn tuổi hơn Mai, Mai lớn tuổi hơn Vy. Kết luận nào chắc chắn đúng?",
+            options: [
+              { title: "Lan là người trẻ nhất", detail: "So sánh ngược trật tự." },
+              { title: "Vy lớn tuổi hơn Lan", detail: "Mâu thuẫn với giả thiết." },
+              { title: "Vy là người trẻ nhất", detail: "Từ Lan > Mai > Vy suy ra Vy nhỏ nhất." },
+              { title: "Mai là người lớn tuổi nhất", detail: "Chưa đúng với thứ tự." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Nếu tất cả hoa hồng đều là hoa, và một số loài hoa rất nhanh tàn, kết luận nào chắc chắn đúng?",
+            options: [
+              { title: "Tất cả hoa hồng đều nhanh tàn", detail: "Không có đủ dữ kiện để kết luận." },
+              { title: "Hoa hồng là một loại hoa", detail: "Đây là điều chắc chắn đúng theo giả thiết đầu tiên." },
+              { title: "Không có hoa nào nhanh tàn", detail: "Trái với dữ kiện." },
+              { title: "Một số thứ nhanh tàn không phải là hoa", detail: "Không được nêu." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Quan hệ nào tương tự nhất với 9 : 81 ?",
+            options: [
+              { title: "7 : 42", detail: "Nhân với 6." },
+              { title: "7 : 49", detail: "Bình phương số đầu." },
+              { title: "7 : 56", detail: "Nhân với 8." },
+              { title: "7 : 63", detail: "Nhân với 9." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Nếu một số nghệ sĩ cũng là giáo viên, và mọi giáo viên đều yêu sách, kết luận nào đúng nhất?",
+            options: [
+              { title: "Mọi nghệ sĩ đều yêu sách", detail: "Không thể mở rộng cho toàn bộ nghệ sĩ." },
+              { title: "Một số người yêu sách là nghệ sĩ", detail: "Những nghệ sĩ đồng thời là giáo viên sẽ yêu sách." },
+              { title: "Chỉ giáo viên mới yêu sách", detail: "Không được nêu trong đề." },
+              { title: "Không nghệ sĩ nào là giáo viên", detail: "Ngược với giả thiết." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Số tiếp theo của dãy 9, 12, 18, 27, ? là gì?",
+            options: [
+              { title: "33", detail: "Dễ nhầm nếu chỉ nhìn mức tăng nhỏ ban đầu." },
+              { title: "36", detail: "Dễ nhầm nếu chỉ để ý dãy luôn là bội số của 3." },
+              { title: "39", detail: "Hiệu tăng lần lượt là +3, +6, +9, rồi +12." },
+              { title: "42", detail: "Sẽ đúng nếu bước tiếp theo là +15 ngay." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Dãy số nào điền đúng vào chỗ trống: 1, 1, 2, 3, 5, 8, ?",
+            options: [
+              { title: "11", detail: "Nhầm nếu chỉ cộng tăng đều." },
+              { title: "12", detail: "Thiếu một nhịp cộng trước đó." },
+              { title: "13", detail: "Mỗi số bằng tổng của hai số trước." },
+              { title: "15", detail: "Dễ nhầm với cộng chéo." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Số tiếp theo của dãy 64, 32, 16, 8, ? là gì?",
+            options: [
+              { title: "2", detail: "Giảm nhanh hơn một nửa." },
+              { title: "4", detail: "Mỗi bước chia đôi." },
+              { title: "6", detail: "Giữ khoảng cách số chẵn." },
+              { title: "12", detail: "Đảo chiều quy luật." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Quan hệ nào giống nhất với 'bánh xe : ô tô'?",
+            options: [
+              { title: "Trang : sách", detail: "Một phần tạo nên một chỉnh thể lớn hơn." },
+              { title: "Chim : tổ", detail: "Quan hệ giữa vật và nơi ở." },
+              { title: "Mưa : mây", detail: "Quan hệ nguồn gốc tạo thành." },
+              { title: "Khóa : chìa", detail: "Quan hệ tác động qua lại." }
+            ],
+            answer: 0
+          },
+          {
+            prompt: "Nếu hôm nay là Thứ Ba, thì 10 ngày nữa sẽ là ngày nào?",
+            options: [
+              { title: "Thứ Năm", detail: "Mới cộng thêm 9 ngày." },
+              { title: "Thứ Sáu", detail: "10 ngày tương đương thêm 3 ngày trong tuần." },
+              { title: "Thứ Bảy", detail: "Dễ nhầm nếu cộng thêm 4 ngày." },
+              { title: "Chủ Nhật", detail: "Sai lệch một nhịp chu kỳ." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Từ nào khác nhóm với ba từ còn lại?",
+            options: [
+              { title: "Tam giác", detail: "Là một hình học phẳng." },
+              { title: "Hình vuông", detail: "Là một hình học phẳng." },
+              { title: "Hình tròn", detail: "Là một hình học phẳng." },
+              { title: "Thước kẻ", detail: "Là công cụ, không phải hình." }
+            ],
+            answer: 3
+          },
+          {
+            prompt: "Số còn thiếu trong dãy 4, 9, 16, 25, ?, 49 là gì?",
+            options: [
+              { title: "30", detail: "Không khớp với quy luật bình phương." },
+              { title: "36", detail: "Dãy bình phương của 2, 3, 4, 5, 6, 7." },
+              { title: "42", detail: "Là số chẵn gần đúng nhưng không đúng quy luật." },
+              { title: "45", detail: "Dễ nhầm nếu nhìn theo mức tăng." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Điền số còn thiếu trong mẫu: (2, 6, 18), (3, 9, 27), (4, 12, ?)",
+            options: [
+              { title: "24", detail: "Mới nhân 2 lần đầu." },
+              { title: "30", detail: "Không giữ được cùng tỷ lệ." },
+              { title: "36", detail: "Số thứ hai gấp 3 số đầu, số thứ ba gấp 3 số thứ hai." },
+              { title: "48", detail: "Nhân quá tay ở bước cuối." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Nếu mọi xe đạp đều không dùng xăng và vật X dùng xăng, kết luận nào chắc chắn đúng?",
+            options: [
+              { title: "X là xe đạp", detail: "Mâu thuẫn với giả thiết." },
+              { title: "X không phải là xe đạp", detail: "Đây là kết luận chắc chắn đúng." },
+              { title: "X không có bánh", detail: "Không được nêu trong đề." },
+              { title: "X là ô tô", detail: "Không đủ dữ kiện để kết luận." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Nếu mã hóa bằng tổng vị trí chữ cái trong bảng chữ cái tiếng Anh, DOG bằng bao nhiêu?",
+            options: [
+              { title: "24", detail: "Thiếu mất một bậc ở chữ giữa." },
+              { title: "25", detail: "Dễ nhầm khi tính G." },
+              { title: "26", detail: "D = 4, O = 15, G = 7, tổng bằng 26." },
+              { title: "27", detail: "Cộng dư thêm 1." }
+            ],
+            answer: 2
+          },
+          {
+            prompt: "Một chiếc áo giá 200.000 đồng giảm 10% rồi giảm tiếp 10%. Giá cuối cùng là bao nhiêu?",
+            options: [
+              { title: "160.000 đồng", detail: "Dễ nhầm thành giảm thẳng 20% trên giá gốc nhiều hơn thực tế." },
+              { title: "162.000 đồng", detail: "Giảm 10% còn 180.000, giảm tiếp 10% còn 162.000." },
+              { title: "180.000 đồng", detail: "Mới tính một lần giảm." },
+              { title: "181.000 đồng", detail: "Sai ở bước tính 10% thứ hai." }
+            ],
+            answer: 1
+          },
+          {
+            prompt: "Số tiếp theo của dãy 30, 27, 23, 18, ? là gì?",
+            options: [
+              { title: "12", detail: "Hiệu lần lượt là -3, -4, -5, nên tiếp theo là -6." },
+              { title: "13", detail: "Dễ nhầm nếu giảm đều." },
+              { title: "14", detail: "Thiếu một đơn vị giảm." },
+              { title: "15", detail: "Đúng nếu chỉ giảm 3 mỗi bước." }
+            ],
+            answer: 0
+          },
+          {
+            prompt: "Nếu tất cả A là B và mọi B là C, kết luận nào chắc chắn đúng?",
+            options: [
+              { title: "Một số C là A", detail: "Không chắc nếu chưa giả định A tồn tại." },
+              { title: "Tất cả A là C", detail: "Đây là phép suy luận bắc cầu chắc chắn đúng." },
+              { title: "Tất cả C là A", detail: "Không thể đảo chiều." },
+              { title: "Không A nào là C", detail: "Trái hẳn với giả thiết." }
+            ],
+            answer: 1
+          }
+        ]
+      },
+      eq: {
+        key: "eq",
+        label: "EQ Tình huống",
+        heroLabel: "Mini test cảm xúc",
+        title: "Đo khả năng nhận diện, điều tiết và phản hồi cảm xúc",
+        description: "Phần EQ gồm 20 tình huống thực tế. Hãy chọn cách phản ứng gần nhất với bản thân bạn.",
+        questionHint: "Không có đáp án tuyệt đối. Điểm cao hơn thường đến từ phản hồi bình tĩnh, rõ ràng và có đồng cảm.",
+        questions: [
+          {
+            trait: "selfAwareness",
+            prompt: "Khi bị góp ý khá gắt trước nhóm, bạn thường phản ứng thế nào?",
+            options: [
+              { title: "Phản bác ngay để bảo vệ mình", detail: "Ưu tiên phản ứng tức thời hơn hiểu vấn đề.", score: 1 },
+              { title: "Im lặng nhưng bực suốt cả ngày", detail: "Có kiểm soát bề ngoài nhưng chưa xử lý cảm xúc.", score: 2 },
+              { title: "Ghi nhận, xin trao đổi riêng để hiểu rõ và chỉnh sửa", detail: "Nhận diện cảm xúc và xử lý theo hướng xây dựng.", score: 4 },
+              { title: "Nghe cho qua rồi bỏ mặc góp ý", detail: "Tránh né thay vì đối diện.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfControl",
+            prompt: "Trong một cuộc họp căng thẳng, bạn nhận ra mình bắt đầu nổi nóng. Bạn sẽ:",
+            options: [
+              { title: "Cắt lời người khác để nói cho xong", detail: "Cảm xúc dẫn dắt hành vi.", score: 1 },
+              { title: "Xin một nhịp dừng ngắn rồi quay lại ý chính", detail: "Biết hạ nhiệt trước khi phản hồi.", score: 4 },
+              { title: "Giữ im lặng hoàn toàn đến hết buổi", detail: "Tránh bùng nổ nhưng chưa giải quyết được việc.", score: 2 },
+              { title: "Châm biếm nhẹ để xả bớt bực", detail: "Giảm căng thẳng theo cách có thể làm tình hình xấu hơn.", score: 1 }
+            ]
+          },
+          {
+            trait: "empathy",
+            prompt: "Một người bạn đột nhiên ít nói và né gặp mặt sau khi gặp chuyện buồn. Bạn sẽ:",
+            options: [
+              { title: "Đợi họ tự vượt qua, không hỏi gì", detail: "Tôn trọng không gian nhưng thiếu kết nối.", score: 2 },
+              { title: "Nhắn một lời ngắn, cho họ biết bạn sẵn sàng lắng nghe khi cần", detail: "Đồng cảm mà không gây áp lực.", score: 4 },
+              { title: "Ép họ kể chi tiết ngay để còn giúp", detail: "Thiện ý nhưng thiếu tinh tế.", score: 2 },
+              { title: "Cho rằng họ đang làm quá vấn đề", detail: "Giảm giá trị cảm xúc của người khác.", score: 1 }
+            ]
+          },
+          {
+            trait: "socialSkill",
+            prompt: "Hai đồng đội đang hiểu lầm nhau sát deadline. Cách bạn hay làm nhất là:",
+            options: [
+              { title: "Mặc kệ để họ tự giải quyết", detail: "Tránh va chạm nhưng rủi ro ảnh hưởng cả nhóm.", score: 2 },
+              { title: "Chọn phe người bạn thân hơn", detail: "Thiếu công bằng và dễ làm mâu thuẫn sâu hơn.", score: 1 },
+              { title: "Tóm tắt vấn đề, kéo cả hai về mục tiêu chung rồi chốt bước tiếp theo", detail: "Giữ nhịp giao tiếp và định hướng giải pháp.", score: 4 },
+              { title: "Chờ sếp xử lý thay", detail: "Không chủ động can thiệp khi có thể hỗ trợ.", score: 2 }
+            ]
+          },
+          {
+            trait: "selfAwareness",
+            prompt: "Khi bạn bị quá tải vì nhiều việc cùng lúc, dấu hiệu đầu tiên bạn thường làm là gì?",
+            options: [
+              { title: "Vẫn ôm hết việc nhưng cáu gắt hơn", detail: "Chưa nhận diện sớm trạng thái của mình.", score: 1 },
+              { title: "Nhận ra mình đang quá tải và ưu tiên lại việc cần làm", detail: "Có quan sát bản thân và điều chỉnh nhịp.", score: 4 },
+              { title: "Trì hoãn mọi thứ để đỡ áp lực", detail: "Giảm khó chịu tức thời nhưng dễ nợ việc.", score: 2 },
+              { title: "Làm ngẫu nhiên theo cảm hứng", detail: "Thiếu kiểm soát và nhận diện mức ưu tiên.", score: 1 }
+            ]
+          },
+          {
+            trait: "empathy",
+            prompt: "Một đồng nghiệp mắc lỗi khiến tiến độ bị chậm. Bạn thường:",
+            options: [
+              { title: "Phê bình thẳng trước mọi người để họ nhớ lâu", detail: "Có thể đúng việc nhưng thiếu tôn trọng cảm xúc.", score: 1 },
+              { title: "Hỏi bối cảnh, rồi cùng họ chốt cách sửa ngay", detail: "Vừa giải quyết việc vừa giữ được quan hệ.", score: 4 },
+              { title: "Im lặng làm thay để khỏi mất thời gian", detail: "Hỗ trợ ngắn hạn nhưng không giúp họ học.", score: 2 },
+              { title: "Khó chịu trong đầu nhưng không nói gì", detail: "Cảm xúc chưa được xử lý rõ ràng.", score: 2 }
+            ]
+          },
+          {
+            trait: "selfControl",
+            prompt: "Khi ai đó nói điều bạn thấy không công bằng về mình, bạn thường:",
+            options: [
+              { title: "Đợi bình tĩnh rồi hỏi lại bằng sự thật cụ thể", detail: "Kiểm soát cảm xúc trước khi đối thoại.", score: 4 },
+              { title: "Căng thẳng và đáp trả mạnh hơn", detail: "Phản ứng cảm xúc lấn át mục tiêu.", score: 1 },
+              { title: "Cười cho qua nhưng giữ bực lâu", detail: "Bề ngoài ổn nhưng bên trong chưa giải tỏa.", score: 2 },
+              { title: "Nói xấu lại với người khác", detail: "Dịch chuyển xung đột sang hướng tiêu cực.", score: 1 }
+            ]
+          },
+          {
+            trait: "socialSkill",
+            prompt: "Trong một nhóm mới, bạn thấy một thành viên bị bỏ quên trong thảo luận. Bạn sẽ:",
+            options: [
+              { title: "Không xen vào vì sợ ngượng", detail: "An toàn cho mình nhưng không hỗ trợ không khí nhóm.", score: 2 },
+              { title: "Khéo kéo họ vào bằng một câu hỏi mở", detail: "Tạo không gian để người khác tham gia.", score: 4 },
+              { title: "Nói thay luôn ý của họ cho nhanh", detail: "Có ý tốt nhưng dễ lấy mất tiếng nói của họ.", score: 2 },
+              { title: "Cho rằng họ im lặng là do không có gì để nói", detail: "Kết luận nhanh mà thiếu quan sát.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfAwareness",
+            prompt: "Khi bạn thấy mình bắt đầu ghen tị với thành công của người khác, phản ứng nào gần bạn nhất?",
+            options: [
+              { title: "Phủ nhận hoàn toàn cảm giác đó", detail: "Tránh nhìn thẳng vào cảm xúc thật.", score: 1 },
+              { title: "Thừa nhận cảm giác ấy rồi biến nó thành động lực học hỏi", detail: "Biết gọi tên cảm xúc và chuyển hướng nó.", score: 4 },
+              { title: "Tỏ ra lạnh nhạt với họ để bớt khó chịu", detail: "Có nhận cảm xúc nhưng xử lý chưa lành mạnh.", score: 2 },
+              { title: "Đi nói xấu để cân bằng tâm lý", detail: "Đẩy cảm xúc tiêu cực ra ngoài theo hướng hại quan hệ.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfControl",
+            prompt: "Cuối ngày bạn nhận một tin nhắn khiến mình rất khó chịu. Bạn thường sẽ:",
+            options: [
+              { title: "Trả lời ngay khi đang nóng", detail: "Dễ làm cảm xúc dẫn dắt nội dung.", score: 1 },
+              { title: "Để mình dịu lại rồi trả lời ngắn gọn, đúng trọng tâm", detail: "Biết trì hoãn phản ứng để giữ chất lượng đối thoại.", score: 4 },
+              { title: "Bỏ mặc luôn tin nhắn đó thật lâu", detail: "Tránh xung đột nhưng bỏ ngỏ vấn đề.", score: 2 },
+              { title: "Chụp màn hình kể với người khác trước", detail: "Xả cảm xúc theo hướng vòng vo và dễ làm việc tệ hơn.", score: 1 }
+            ]
+          },
+          {
+            trait: "empathy",
+            prompt: "Một khách hàng nói khá cáu vì phải chờ lâu. Cách bạn phản hồi tốt nhất thường là:",
+            options: [
+              { title: "Đổ lỗi cho quy trình hoặc người khác", detail: "Không giải tỏa được cảm xúc của họ.", score: 1 },
+              { title: "Lắng nghe, nhắc lại điều họ đang khó chịu rồi đưa hướng xử lý rõ ràng", detail: "Vừa công nhận cảm xúc vừa dẫn về giải pháp.", score: 4 },
+              { title: "Hứa cho xong để họ dịu xuống trước", detail: "Giảm áp lực tức thì nhưng có thể thiếu trung thực.", score: 2 },
+              { title: "Tỏ vẻ khó chịu vì họ nói quá lớn", detail: "Đẩy xung đột lên cao hơn.", score: 1 }
+            ]
+          },
+          {
+            trait: "socialSkill",
+            prompt: "Trong buổi brainstorm, hai người liên tục chen lời nhau. Bạn thường:",
+            options: [
+              { title: "Để mặc vì không muốn xen vào", detail: "Tránh va chạm nhưng nhóm mất nhịp.", score: 2 },
+              { title: "Đề xuất nói lần lượt và ghi lại ý chính để cả nhóm theo kịp", detail: "Giữ an toàn giao tiếp mà vẫn giữ tiến độ.", score: 4 },
+              { title: "Chuyển chủ đề sang phần khác cho đỡ căng", detail: "Giảm nhiệt tạm thời nhưng không xử lý gốc.", score: 2 },
+              { title: "Đùa cợt để phá không khí căng thẳng", detail: "Có thể làm nhẹ bề mặt nhưng không giúp rõ việc.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfAwareness",
+            prompt: "Sau một ngày làm việc rất tệ, bạn thường làm gì với trạng thái của mình?",
+            options: [
+              { title: "Kết luận rằng mình quá kém", detail: "Đồng nhất bản thân với một ngày tệ.", score: 1 },
+              { title: "Nhìn lại điều gì khiến năng lượng mình xuống và tên cảm xúc nổi bật nhất", detail: "Biết quan sát nội tâm thay vì chỉ phản ứng.", score: 4 },
+              { title: "Trốn vào giải trí và né mọi suy nghĩ", detail: "Tạm xả nhưng chưa hiểu gốc vấn đề.", score: 2 },
+              { title: "Đổ hết cho hoàn cảnh hoặc người khác", detail: "Thiếu phần tự soi cần thiết.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfControl",
+            prompt: "Khi nhận email phê bình có phần hiểu lầm về mình, bạn sẽ:",
+            options: [
+              { title: "Viết trả lời dài ngay để bảo vệ mình", detail: "Dễ làm phản hồi bị cảm xúc kéo đi.", score: 1 },
+              { title: "Soạn nháp, kiểm tra lại dữ kiện rồi gửi phản hồi ngắn gọn, rõ ý", detail: "Biết giữ nhịp và chọn chiến lược hiệu quả hơn.", score: 4 },
+              { title: "CC thêm nhiều người để tạo thế an toàn", detail: "Tăng áp lực thay vì làm rõ hiểu lầm.", score: 2 },
+              { title: "Bỏ qua luôn không phản hồi", detail: "Giảm đối đầu trước mắt nhưng để lại nút thắt.", score: 2 }
+            ]
+          },
+          {
+            trait: "empathy",
+            prompt: "Người thân nói 'không sao' nhưng nét mặt cho thấy họ đang buồn. Bạn thường:",
+            options: [
+              { title: "Tin đúng câu chữ và chuyển chủ đề", detail: "Tôn trọng bề mặt nhưng bỏ lỡ tín hiệu cảm xúc.", score: 2 },
+              { title: "Hỏi nhẹ xem họ có muốn chia sẻ không và để họ chọn thời điểm", detail: "Đồng cảm mà vẫn tôn trọng ranh giới.", score: 4 },
+              { title: "Ép họ kể ngay cho rõ", detail: "Thiện ý nhưng có thể gây áp lực.", score: 2 },
+              { title: "Bắt đầu kể chuyện mình để lấp khoảng trống", detail: "Làm lệch trọng tâm khỏi cảm xúc của họ.", score: 1 }
+            ]
+          },
+          {
+            trait: "socialSkill",
+            prompt: "Bạn phải từ chối một lời nhờ vả gấp khi bản thân cũng đang quá tải. Cách nào tốt nhất?",
+            options: [
+              { title: "Nói cộc 'không làm được' rồi thôi", detail: "Rõ ràng nhưng dễ làm quan hệ sượng lại.", score: 2 },
+              { title: "Nói rõ giới hạn hiện tại và đề xuất mốc thời gian hoặc nguồn hỗ trợ khác", detail: "Giữ được ranh giới mà vẫn tôn trọng người kia.", score: 4 },
+              { title: "Miễn cưỡng nhận hết để khỏi ngại", detail: "Hy sinh quá mức và dễ sinh bực bội sau đó.", score: 1 },
+              { title: "Né không trả lời vì khó nói", detail: "Tránh khó chịu nhưng làm mất tin cậy.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfAwareness",
+            prompt: "Trước một buổi thuyết trình quan trọng, bạn thấy tim đập nhanh và tay lạnh. Bạn thường:",
+            options: [
+              { title: "Cho rằng mình yếu nên mới như vậy", detail: "Đánh giá bản thân thay vì đọc trạng thái." , score: 1 },
+              { title: "Nhận ra mình đang lo và dùng nhịp thở hoặc rà lại ý chính để ổn định", detail: "Nhận diện tín hiệu cơ thể và gọi đúng trạng thái.", score: 4 },
+              { title: "Mặc kệ cảm giác vì rồi cũng qua", detail: "Có thể vượt qua nhưng thiếu tự hiểu mình.", score: 2 },
+              { title: "Cáu với người xung quanh cho bớt áp lực", detail: "Trút cảm xúc ra ngoài thay vì nhận biết nó.", score: 1 }
+            ]
+          },
+          {
+            trait: "empathy",
+            prompt: "Một bạn mới liên tục hỏi những điều rất cơ bản. Phản ứng gần bạn nhất là:",
+            options: [
+              { title: "Khó chịu vì nghĩ họ nên tự biết", detail: "Thiếu đặt mình vào vị trí người mới.", score: 1 },
+              { title: "Nhớ lại lúc mình mới bắt đầu rồi hướng dẫn ngắn, rõ và dễ theo", detail: "Đồng cảm đi kèm hỗ trợ thực tế.", score: 4 },
+              { title: "Mặc kệ để họ tự xoay", detail: "Giữ thời gian cho mình nhưng thiếu hỗ trợ tối thiểu.", score: 2 },
+              { title: "Chê họ trước nhóm để lần sau tự chuẩn bị", detail: "Làm tổn thương hơn là giúp tiến bộ.", score: 1 }
+            ]
+          },
+          {
+            trait: "selfControl",
+            prompt: "Khi kế hoạch đổ bể vào phút chót, bạn thường làm gì đầu tiên?",
+            options: [
+              { title: "Đổ lỗi ngay cho người gây ra sự cố", detail: "Xả cảm xúc nhanh nhưng không giúp xử lý khẩn cấp.", score: 1 },
+              { title: "Tách việc khẩn cấp cần cứu trước rồi trấn tĩnh nhóm", detail: "Đưa hệ thần kinh cả nhóm về trạng thái có thể hành động.", score: 4 },
+              { title: "Bỏ đi một lúc thật lâu để đỡ stress", detail: "Tự xả là cần nhưng thời điểm có thể khiến việc trượt thêm.", score: 2 },
+              { title: "Làm đại cho xong", detail: "Giảm áp lực nhất thời nhưng tăng rủi ro dài hơn.", score: 1 }
+            ]
+          },
+          {
+            trait: "socialSkill",
+            prompt: "Trong cuộc trao đổi 1-1, người đối diện hiểu sai ý bạn. Bạn sẽ:",
+            options: [
+              { title: "Lặp lại y nguyên câu cũ với giọng mạnh hơn", detail: "Nhấn lực nhưng chưa chắc tăng hiểu.", score: 1 },
+              { title: "Đổi cách diễn đạt và hỏi lại họ đang hiểu điều gì", detail: "Chủ động sửa kênh giao tiếp chứ không chỉ nhấn nội dung.", score: 4 },
+              { title: "Kết thúc sớm vì thấy giải thích mệt", detail: "Cắt đối thoại trước khi gỡ nút thắt.", score: 2 },
+              { title: "Cho rằng họ thiếu chú ý nên không cần nói thêm", detail: "Đẩy trách nhiệm hoàn toàn sang phía kia.", score: 1 }
+            ]
+          }
+        ]
+      }
+    };
+
+    const traitMeta = {
+      selfAwareness: {
+        label: "Tự nhận biết",
+        description: "Bạn có để ý sớm cảm xúc và trạng thái của mình hay không."
+      },
+      selfControl: {
+        label: "Tự kiểm soát",
+        description: "Khả năng giữ bình tĩnh và chọn phản hồi thay vì phản ứng."
+      },
+      empathy: {
+        label: "Đồng cảm",
+        description: "Mức độ nhìn được cảm xúc và nhu cầu của người khác."
+      },
+      socialSkill: {
+        label: "Kỹ năng xã hội",
+        description: "Khả năng giữ đối thoại, kết nối và đưa nhóm quay lại mục tiêu."
+      }
+    };
+
+    const storageKey = "mini-iq-eq-test-state-v2";
+    const appRoot = document.getElementById("appRoot");
+    const summaryRoot = document.getElementById("summaryRoot");
+    const sideNote = document.getElementById("sideNote");
+
+    function createInitialState() {
+      return {
+        activeTest: null,
+        view: "intro",
+        questionIndex: 0,
+        answers: {
+          iq: Array(tests.iq.questions.length).fill(null),
+          eq: Array(tests.eq.questions.length).fill(null)
+        },
+        completed: {
+          iq: null,
+          eq: null
+        }
+      };
+    }
+
+    function sanitizeState(raw) {
+      const base = createInitialState();
+      if (!raw || typeof raw !== "object") {
+        return base;
+      }
+
+      const state = {
+        ...base,
+        ...raw,
+        answers: {
+          iq: Array.isArray(raw.answers?.iq) ? raw.answers.iq.slice(0, tests.iq.questions.length) : base.answers.iq,
+          eq: Array.isArray(raw.answers?.eq) ? raw.answers.eq.slice(0, tests.eq.questions.length) : base.answers.eq
+        },
+        completed: {
+          iq: raw.completed?.iq || null,
+          eq: raw.completed?.eq || null
+        }
+      };
+
+      while (state.answers.iq.length < tests.iq.questions.length) state.answers.iq.push(null);
+      while (state.answers.eq.length < tests.eq.questions.length) state.answers.eq.push(null);
+
+      if (!tests[state.activeTest]) {
+        state.activeTest = null;
+      }
+
+      return state;
+    }
+
+    function loadState() {
+      try {
+        const saved = window.localStorage.getItem(storageKey);
+        return sanitizeState(saved ? JSON.parse(saved) : null);
+      } catch (error) {
+        return createInitialState();
+      }
+    }
+
+    let state = loadState();
+
+    function saveState() {
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch (error) {
+        // Ignore storage write issues for local file mode.
+      }
+    }
+
+    function getAnsweredCount(testKey) {
+      return state.answers[testKey].filter((value) => value !== null).length;
+    }
+
+    function getFirstIncompleteIndex(testKey) {
+      return state.answers[testKey].findIndex((value) => value === null);
+    }
+
+    function calculateIqResult(answers) {
+      const correct = answers.reduce((count, answer, index) => {
+        return count + (answer === tests.iq.questions[index].answer ? 1 : 0);
+      }, 0);
+      const percentage = Math.round((correct / tests.iq.questions.length) * 100);
+
+      let band = "Khởi động logic";
+      let summary = "Bạn nhận ra được một phần quy luật cơ bản, nhưng nên luyện thêm các dạng suy luận chuỗi và điều kiện.";
+
+      if (correct >= 8 && correct <= 13) {
+        band = "Nền tảng khá";
+        summary = "Bạn có nền tảng suy luận ổn, nhất là ở các câu nhận diện quy luật rõ ràng. Phần còn thiếu nằm ở tốc độ loại trừ đáp án.";
+      } else if (correct >= 14 && correct <= 17) {
+        band = "Suy luận tốt";
+        summary = "Bạn nhận mẫu nhanh và giữ được logic khá chắc. Chỉ cần luyện thêm vài bài nâng độ khó là sẽ lên rất nhanh.";
+      } else if (correct >= 18) {
+        band = "Rất sắc với quy luật";
+        summary = "Bạn xử lý tốt cả chuỗi số, suy luận điều kiện và mẫu ngôn ngữ. Đây là tín hiệu rất tốt về tư duy logic thực dụng.";
+      }
+
+      return {
+        type: "iq",
+        score: correct,
+        maxScore: tests.iq.questions.length,
+        percentage,
+        band,
+        summary,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    function calculateEqResult(answers) {
+      const totals = {
+        selfAwareness: 0,
+        selfControl: 0,
+        empathy: 0,
+        socialSkill: 0
+      };
+      const traitQuestionCounts = {
+        selfAwareness: 0,
+        selfControl: 0,
+        empathy: 0,
+        socialSkill: 0
+      };
+
+      let score = 0;
+
+      answers.forEach((answer, index) => {
+        const question = tests.eq.questions[index];
+        const selected = question.options[answer];
+        const value = selected ? selected.score : 0;
+        score += value;
+        totals[question.trait] += value;
+        traitQuestionCounts[question.trait] += 1;
+      });
+
+      const maxScore = tests.eq.questions.length * 4;
+      const percentage = Math.round((score / maxScore) * 100);
+
+      let band = "EQ đang hình thành";
+      let summary = "Bạn có thiện chí nhưng phản ứng cảm xúc đôi lúc vẫn đi trước chiến lược xử lý. Tập trung vào dừng lại, gọi tên cảm xúc và hỏi lại vấn đề sẽ giúp bạn tiến nhanh.";
+
+      if (percentage >= 56 && percentage < 74) {
+        band = "EQ khá ổn";
+        summary = "Bạn đã có nền tảng biết giữ nhịp và quan tâm đến cảm xúc người khác. Cần cải thiện thêm ở sự nhất quán khi chịu áp lực.";
+      } else if (percentage >= 74 && percentage < 90) {
+        band = "EQ tốt";
+        summary = "Bạn thường chọn phản hồi chín chắn và có cân nhắc bối cảnh. Điểm mạnh nổi bật là phối hợp giữa bình tĩnh và đồng cảm.";
+      } else if (percentage >= 90) {
+        band = "EQ rất tốt";
+        summary = "Bạn có xu hướng nhận diện cảm xúc rõ, giữ được nhịp trong xung đột và hỗ trợ người khác mà không làm mất cân bằng mục tiêu.";
+      }
+
+      const traitScores = Object.entries(totals).map(([key, value]) => {
+        const max = traitQuestionCounts[key] * 4;
+        return {
+          key,
+          label: traitMeta[key].label,
+          description: traitMeta[key].description,
+          score: value,
+          max,
+          percentage: Math.round((value / max) * 100)
+        };
+      });
+
+      return {
+        type: "eq",
+        score,
+        maxScore,
+        percentage,
+        band,
+        summary,
+        traitScores,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    function completeActiveTest() {
+      if (!state.activeTest) return;
+      const testKey = state.activeTest;
+      const answers = state.answers[testKey];
+
+      if (answers.some((answer) => answer === null)) return;
+
+      const result = testKey === "iq" ? calculateIqResult(answers) : calculateEqResult(answers);
+      state.completed[testKey] = result;
+      state.view = "result";
+      saveState();
+      render();
+    }
+
+    function activateTest(testKey, options = {}) {
+      state.activeTest = testKey;
+      const completed = state.completed[testKey];
+      const firstIncomplete = getFirstIncompleteIndex(testKey);
+      state.questionIndex = firstIncomplete === -1 ? 0 : firstIncomplete;
+      state.view = completed && !options.forceResume ? "result" : "quiz";
+      saveState();
+      render();
+    }
+
+    function resetProgress() {
+      state = createInitialState();
+      saveState();
+      render();
+    }
+
+    function getIqRecommendation(result) {
+      if (result.score <= 7) return "Gợi ý: luyện thêm dãy số, phép tương tự, suy luận điều kiện ngắn và làm chậm để nhìn ra quy luật thật chắc.";
+      if (result.score <= 14) return "Gợi ý: thử tăng độ khó bằng bài logic nhiều lớp, giới hạn thời gian vừa phải và tập lý do loại trừ từng đáp án.";
+      return "Gợi ý: bạn có nền logic tốt, hãy thử các bài pattern phức hợp hoặc mini GMAT/LSAT để nâng trần.";
+    }
+
+    function getEqRecommendation(result) {
+      const lowTraits = result.traitScores.filter((trait) => trait.percentage < 65);
+      if (!lowTraits.length) {
+        return "Gợi ý: tiếp tục giữ thói quen hỏi rõ, nói chậm lại khi căng thẳng và tạo không gian cho người khác tham gia.";
+      }
+      return "Gợi ý: ưu tiên cải thiện " + lowTraits.map((trait) => trait.label.toLowerCase()).join(", ") + " qua phản xạ dừng 3 giây, hỏi lại nhu cầu và tách cảm xúc khỏi dữ kiện.";
+    }
+
+    function renderSummaryCards() {
+      const cards = ["iq", "eq"].map((testKey) => {
+        const completed = state.completed[testKey];
+        const answered = getAnsweredCount(testKey);
+        const total = tests[testKey].questions.length;
+        const isComplete = Boolean(completed);
+        const statusText = isComplete
+          ? (testKey === "iq" ? completed.score + "/" + completed.maxScore + " đúng" : completed.score + "/" + completed.maxScore + " điểm")
+          : answered > 0
+            ? answered + "/" + total + " câu đã chọn"
+            : "Chưa bắt đầu";
+        const detail = isComplete
+          ? completed.band
+          : answered > 0
+            ? "Bạn có thể mở lại để làm tiếp."
+            : "Sẵn sàng làm ngay trên trình duyệt.";
+        return `
+          <article class="summary-card ${isComplete ? "is-complete" : "is-pending"}">
+            <h3>${tests[testKey].label}</h3>
+            <span class="summary-value">${statusText}</span>
+            <p>${detail}</p>
+          </article>
+        `;
+      }).join("");
+
+      summaryRoot.innerHTML = cards;
+
+      if (state.completed.iq && state.completed.eq) {
+        sideNote.textContent = "Bạn đã hoàn thành cả hai phần. Nếu muốn dùng lại cho người khác, hãy bấm 'Làm mới toàn bộ' để xóa dữ liệu cục bộ.";
+      } else if (state.activeTest && getAnsweredCount(state.activeTest) > 0) {
+        sideNote.textContent = "Tiến độ hiện tại đang được lưu cục bộ trên trình duyệt này. Bạn có thể đóng trang rồi quay lại làm tiếp.";
+      } else {
+        sideNote.textContent = "Đây là bài test mini mang tính tham khảo nhanh, không thay thế bài đo chuẩn hóa chuyên sâu về IQ hoặc đánh giá tâm lý.";
+      }
+    }
+
+    function renderIntro() {
+      const cards = ["iq", "eq"].map((testKey) => {
+        const answered = getAnsweredCount(testKey);
+        const total = tests[testKey].questions.length;
+        const completed = state.completed[testKey];
+        const buttonLabel = completed ? "Xem kết quả" : answered > 0 ? "Làm tiếp" : "Bắt đầu";
+        const caption = completed
+          ? (testKey === "iq" ? "Bạn đã hoàn thành phần IQ." : "Bạn đã hoàn thành phần EQ.")
+          : answered > 0
+            ? "Đang làm dở " + answered + "/" + total + " câu."
+            : "Chưa có dữ liệu trước đó.";
+        return `
+          <article class="intro-card">
+            <p class="section-label">${tests[testKey].heroLabel}</p>
+            <h3>${tests[testKey].label}</h3>
+            <p>${tests[testKey].description}</p>
+            <p class="intro-caption">${caption}</p>
+            <div class="card-actions">
+              <button class="primary-btn" data-open-test="${testKey}">${buttonLabel}</button>
+              <button class="ghost-btn" data-open-test="${testKey}" data-force-resume="true">Vào câu hỏi</button>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      return `
+        <div class="empty-state">
+          <div class="quiz-header">
+            <div>
+              <p class="section-label">Chọn phần làm bài</p>
+              <h2>Bắt đầu với IQ hoặc EQ</h2>
+              <p>Trang này tách hai phần rõ ràng để bạn có thể hoàn thành từng bài, xem kết quả ngay và quay lại khi cần.</p>
+            </div>
+            <div class="mini-note">HTML độc lập, không cần backend</div>
+          </div>
+          <div class="intro-grid">
+            ${cards}
+          </div>
+          <div class="disclaimer">
+            Mẹo nhỏ: IQ phù hợp khi bạn muốn đo tốc độ suy luận. EQ phù hợp khi bạn muốn nhìn lại cách mình phản ứng trong tình huống áp lực hoặc giao tiếp.
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQuestionView(testKey) {
+      const test = tests[testKey];
+      const question = test.questions[state.questionIndex];
+      const selectedAnswer = state.answers[testKey][state.questionIndex];
+      const progressPercent = ((state.questionIndex + 1) / test.questions.length) * 100;
+      const choiceLetters = ["A", "B", "C", "D"];
+
+      const choices = question.options.map((option, index) => {
+        return `
+          <button class="choice ${selectedAnswer === index ? "is-selected" : ""}" data-answer="${index}">
+            <span class="choice-bullet">${choiceLetters[index]}</span>
+            <span class="choice-text">
+              <strong>${option.title}</strong>
+              <span>${option.detail}</span>
+            </span>
+          </button>
+        `;
+      }).join("");
+
+      return `
+        <div class="quiz-header">
+          <div>
+            <p class="section-label">${test.heroLabel}</p>
+            <h2>${test.title}</h2>
+            <p>${test.description}</p>
+          </div>
+          <div class="mini-note">${test.questionHint}</div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-meta">
+            <span>Câu ${state.questionIndex + 1} / ${test.questions.length}</span>
+            <span>${getAnsweredCount(testKey)} câu đã chọn</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" style="width:${progressPercent}%;"></div>
+          </div>
+        </div>
+        <section class="question-card">
+          <div>
+            <p class="section-label">Câu hỏi hiện tại</p>
+            <h3 class="question-title">${question.prompt}</h3>
+            <p class="question-hint">${testKey === "iq" ? "Chọn đáp án hợp lý nhất theo quy luật hoặc suy luận chắc chắn." : "Chọn phương án gần với cách bạn thường phản ứng nhất trong thực tế."}</p>
+          </div>
+          <div class="choices">${choices}</div>
+          <div class="quiz-actions">
+            <div class="quiz-meta">
+              ${testKey === "iq" ? "Mỗi câu chỉ có một đáp án đúng." : "Điểm cao hơn thường phản ánh phản ứng điềm tĩnh, có nhận biết và có đồng cảm."}
+            </div>
+            <div class="hero-actions">
+              <button class="ghost-btn" id="prevQuestion" ${state.questionIndex === 0 ? "disabled" : ""}>Câu trước</button>
+              <button class="primary-btn" id="nextQuestion" ${selectedAnswer === null ? "disabled" : ""}>${state.questionIndex === test.questions.length - 1 ? "Nộp bài" : "Câu tiếp theo"}</button>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderIqResult(result) {
+      return `
+        <div class="quiz-header">
+          <div>
+            <p class="section-label">Kết quả IQ</p>
+            <h2>Hoàn thành phần IQ</h2>
+            <p>Bạn đã trả lời đủ toàn bộ câu hỏi. Dưới đây là mức suy luận tham khảo từ bài test mini này.</p>
+          </div>
+          <div class="mini-note">Kết quả mang tính tham khảo nhanh</div>
+        </div>
+        <section class="result-hero">
+          <div class="score-row">
+            <div class="score-orb">
+              <div>
+                <strong>${result.score}/${result.maxScore}</strong>
+                <span>Độ chính xác</span>
+              </div>
+            </div>
+            <div>
+              <h3>${result.band}</h3>
+              <p>${result.summary}</p>
+            </div>
+          </div>
+          <div class="badge-row">
+            <span class="soft-badge">Điểm logic: ${result.percentage}/100</span>
+            <span class="soft-badge">Dạng mạnh nhất: quy luật + loại trừ</span>
+            <span class="soft-badge">Phù hợp luyện thêm: suy luận điều kiện</span>
+          </div>
+        </section>
+        <div class="result-grid">
+          <article class="result-card">
+            <h3>Nhận xét nhanh</h3>
+            <p>${result.summary}</p>
+          </article>
+          <article class="result-card">
+            <h3>Bước tiếp theo</h3>
+            <p>${getIqRecommendation(result)}</p>
+          </article>
+        </div>
+        <div class="quiz-actions">
+          <div class="quiz-meta">Bạn có thể làm lại phần IQ hoặc chuyển sang phần EQ để xem bức tranh cân bằng giữa logic và cảm xúc.</div>
+          <div class="hero-actions">
+            <button class="ghost-btn" id="retakeActive">Làm lại IQ</button>
+            <button class="secondary-btn" data-open-test="eq">${state.completed.eq ? "Xem EQ" : "Làm EQ tiếp"}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEqResult(result) {
+      const traitCards = result.traitScores.map((trait) => {
+        return `
+          <article class="trait-card">
+            <strong>${trait.label}</strong>
+            <div class="trait-track">
+              <div class="trait-fill" style="width:${trait.percentage}%;"></div>
+            </div>
+            <span>${trait.score}/${trait.max} điểm. ${trait.description}</span>
+          </article>
+        `;
+      }).join("");
+
+      return `
+        <div class="quiz-header">
+          <div>
+            <p class="section-label">Kết quả EQ</p>
+            <h2>Hoàn thành phần EQ</h2>
+            <p>Bạn đã đi hết các tình huống giao tiếp và áp lực cảm xúc. Dưới đây là bức tranh EQ tham khảo.</p>
+          </div>
+          <div class="mini-note">Phù hợp để tự soi phản xạ cảm xúc</div>
+        </div>
+        <section class="result-hero">
+          <div class="score-row">
+            <div class="score-orb">
+              <div>
+                <strong>${result.score}/${result.maxScore}</strong>
+                <span>Tổng điểm</span>
+              </div>
+            </div>
+            <div>
+              <h3>${result.band}</h3>
+              <p>${result.summary}</p>
+            </div>
+          </div>
+          <div class="badge-row">
+            <span class="soft-badge">Chỉ số EQ mini: ${result.percentage}/100</span>
+            <span class="soft-badge">Tập trung vào phản ứng bình tĩnh</span>
+            <span class="soft-badge">Nên đọc cùng bối cảnh thực tế của bạn</span>
+          </div>
+        </section>
+        <div class="trait-grid">
+          ${traitCards}
+        </div>
+        <div class="result-grid">
+          <article class="result-card">
+            <h3>Nhận xét nhanh</h3>
+            <p>${result.summary}</p>
+          </article>
+          <article class="result-card">
+            <h3>Bước tiếp theo</h3>
+            <p>${getEqRecommendation(result)}</p>
+          </article>
+        </div>
+        <div class="quiz-actions">
+          <div class="quiz-meta">Nếu bạn cũng làm phần IQ, hãy so cả hai kết quả để xem mình thiên về logic, cảm xúc hay khá cân bằng.</div>
+          <div class="hero-actions">
+            <button class="ghost-btn" id="retakeActive">Làm lại EQ</button>
+            <button class="secondary-btn" data-open-test="iq">${state.completed.iq ? "Xem IQ" : "Làm IQ tiếp"}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderResultView(testKey) {
+      const result = state.completed[testKey];
+      if (!result) {
+        state.view = "quiz";
+        return renderQuestionView(testKey);
+      }
+      return testKey === "iq" ? renderIqResult(result) : renderEqResult(result);
+    }
+
+    function render() {
+      renderSummaryCards();
+
+      document.querySelectorAll("[data-switch]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.switch === state.activeTest);
+      });
+
+      if (!state.activeTest) {
+        appRoot.innerHTML = renderIntro();
+        bindEvents();
+        return;
+      }
+
+      appRoot.innerHTML = state.view === "result"
+        ? renderResultView(state.activeTest)
+        : renderQuestionView(state.activeTest);
+
+      bindEvents();
+    }
+
+    function bindEvents() {
+      document.getElementById("startIqHero").onclick = () => activateTest("iq", { forceResume: true });
+      document.getElementById("startEqHero").onclick = () => activateTest("eq", { forceResume: true });
+      document.getElementById("resetAllHero").onclick = () => {
+        if (window.confirm("Xóa toàn bộ tiến độ và kết quả của cả IQ lẫn EQ?")) {
+          resetProgress();
+        }
+      };
+
+      document.querySelectorAll("[data-switch]").forEach((button) => {
+        button.onclick = () => activateTest(button.dataset.switch);
+      });
+
+      document.querySelectorAll("[data-open-test]").forEach((button) => {
+        button.onclick = () => activateTest(button.dataset.openTest, { forceResume: button.dataset.forceResume === "true" });
+      });
+
+      document.querySelectorAll("[data-answer]").forEach((button) => {
+        button.onclick = () => {
+          const answerIndex = Number(button.dataset.answer);
+          const testKey = state.activeTest;
+          state.answers[testKey][state.questionIndex] = answerIndex;
+          saveState();
+          render();
+        };
+      });
+
+      const prevButton = document.getElementById("prevQuestion");
+      if (prevButton) {
+        prevButton.onclick = () => {
+          state.questionIndex = Math.max(0, state.questionIndex - 1);
+          saveState();
+          render();
+        };
+      }
+
+      const nextButton = document.getElementById("nextQuestion");
+      if (nextButton) {
+        nextButton.onclick = () => {
+          const test = tests[state.activeTest];
+          const currentAnswer = state.answers[state.activeTest][state.questionIndex];
+          if (currentAnswer === null) return;
+
+          if (state.questionIndex === test.questions.length - 1) {
+            completeActiveTest();
+            return;
+          }
+
+          state.questionIndex += 1;
+          saveState();
+          render();
+        };
+      }
+
+      const retakeButton = document.getElementById("retakeActive");
+      if (retakeButton) {
+        retakeButton.onclick = () => {
+          const testKey = state.activeTest;
+          state.answers[testKey] = Array(tests[testKey].questions.length).fill(null);
+          state.completed[testKey] = null;
+          state.questionIndex = 0;
+          state.view = "quiz";
+          saveState();
+          render();
+        };
+      }
+    }
+
+    function applyPreviewMode() {
+      const params = new URLSearchParams(window.location.search);
+      const preview = params.get("preview");
+      const autostart = params.get("autostart");
+
+      // Preview modes make static QA easier without needing a backend or browser automation.
+      if (preview === "iq-result") {
+        state = createInitialState();
+        state.activeTest = "iq";
+        state.answers.iq = [2, 1, 0, 2, 1, 1, 1, 2, 2, 1, 0, 1, 3, 1, 2, 1, 2, 1, 0, 1];
+        state.completed.iq = calculateIqResult(state.answers.iq);
+        state.view = "result";
+      } else if (preview === "eq-result") {
+        state = createInitialState();
+        state.activeTest = "eq";
+        state.answers.eq = [2, 1, 1, 2, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+        state.completed.eq = calculateEqResult(state.answers.eq);
+        state.view = "result";
+      } else if (preview === "dashboard") {
+        state = createInitialState();
+        state.activeTest = "iq";
+        state.answers.iq = [2, 1, 0, 2, 1, 1, 1, 2, 2, 1, 0, 1, 3, 1, 2, 1, 2, 1, 0, 1];
+        state.answers.eq = [2, 1, 1, 2, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+        state.completed.iq = calculateIqResult(state.answers.iq);
+        state.completed.eq = calculateEqResult(state.answers.eq);
+        state.view = "result";
+      } else if (autostart && tests[autostart]) {
+        state.activeTest = autostart;
+        state.view = "quiz";
+      }
+    }
+
+    applyPreviewMode();
+    render();
+  </script>
+</body>
+</html>

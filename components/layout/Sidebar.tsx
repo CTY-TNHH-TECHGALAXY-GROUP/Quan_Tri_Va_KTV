@@ -4,13 +4,15 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { MODULES } from '@/lib/mock-db';
+import { MODULES } from '@/lib/constants';
+import { ModuleId } from '@/lib/types';
 import {
   LayoutDashboard,
   KanbanSquare,
   Users,
   PieChart,
   Banknote,
+  PiggyBank,
   Wallet,
   Globe,
   MenuSquare,
@@ -21,16 +23,25 @@ import {
   Settings,
   X,
   Camera,
+  CalendarOff,
   CalendarDays,
   TrendingUp,
   History,
   ListOrdered,
   BookOpen,
+  ClipboardCheck,
+  CheckSquare,
   Home,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Bell,
-  LogOut
+  Tablet,
+  LogOut,
+  DoorOpen,
+  MessageSquare,
+  ToggleLeft,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -42,19 +53,33 @@ const ICONS: Record<string, React.ReactNode> = {
   revenue_reports: <PieChart size={20} />,
   payroll_commissions: <Banknote size={20} />,
   cashbook_supplies: <Wallet size={20} />,
+  finance_management: <Banknote size={20} />,
+  finance_piggy_bank: <PiggyBank size={20} />,
   web_booking: <Globe size={20} />,
   service_menu: <MenuSquare size={20} />,
+  customer_reminders: <MessageSquare size={20} />,
   role_management: <ShieldAlert size={20} />,
   employee_management: <UserRound size={20} />,
   ktv_dashboard: <UserCheck size={20} />,
   ktv_attendance: <Camera size={20} />,
-  ktv_leave: <CalendarDays size={20} />,
+  ktv_schedule: <CalendarDays size={20} />,
   ktv_performance: <TrendingUp size={20} />,
   ktv_history: <History size={20} />,
   turn_tracking: <ListOrdered size={20} />,
   ktv_hub: <UserCheck size={20} />,
+  ktv_wallet: <Wallet size={20} />,
+  leave_management: <CalendarOff size={20} />,
   service_handbook: <BookOpen size={20} />,
   ai_features: <Sparkles size={20} />,
+  device_management: <Tablet size={20} />,
+  room_management: <DoorOpen size={20} />,
+  staff_notifications: <Bell size={20} />,
+  staff_features: <Settings size={20} />,
+  notification_settings: <Settings size={20} />,
+  support_dashboard: <LayoutDashboard size={20} />,
+  support_tasks_admin: <ClipboardCheck size={20} />,
+  support_reviews_admin: <CheckSquare size={20} />,
+  system_settings: <Settings size={20} />,
   settings: <Settings size={20} />,
 };
 
@@ -66,21 +91,39 @@ const PATHS: Record<string, string> = {
   revenue_reports: '/finance/revenue',
   payroll_commissions: '/finance/payroll',
   cashbook_supplies: '/finance/cashbook',
-  web_booking: '/admin/web-booking',
+  finance_management: '/finance/ktv',
+  finance_piggy_bank: '/finance/piggy-bank',
+  web_booking: '/reception/web-booking',
   service_menu: '/admin/service-menu',
+  customer_reminders: '/admin/customer-reminders',
   role_management: '/admin/roles',
   employee_management: '/admin/employees',
   ktv_dashboard: '/ktv/dashboard',
   ktv_attendance: '/ktv/attendance',
-  ktv_leave: '/ktv/leave',
+  ktv_schedule: '/ktv/schedule',
   ktv_performance: '/ktv/performance',
   ktv_history: '/ktv/history',
   turn_tracking: '/reception/turns',
   ktv_hub: '/reception/ktv-hub',
+  ktv_wallet: '/ktv/wallet',
+  leave_management: '/reception/leave-management',
   service_handbook: '/services/handbook',
   ai_features: '/admin/ai',
+  device_management: '/admin/devices',
+  room_management: '/reception/rooms',
+  staff_notifications: '/admin/notifications',
+  staff_features: '/admin/settings/features',
+  notification_settings: '/admin/settings/notifications',
+  support_dashboard: '/admin/support/dashboard',
+  support_tasks_admin: '/admin/support/templates',
+  support_reviews_admin: '/admin/support/reviews',
+  employee_tasks: '/support/tasks',
+  system_settings: '/admin/settings/system',
   settings: '/settings',
 };
+
+// 🔧 UI CONFIGURATION
+const GROUP_ORDER = ['Vận Hành', 'Tài Chính & Kế Toán', 'Thiết Lập Nội Dung', 'Kỹ Thuật Viên', 'Giao Việc', 'Hệ Thống'];
 
 interface SidebarProps {
   isOpen: boolean;
@@ -92,46 +135,72 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: SidebarProps) {
   const { hasPermission, user, role, logout } = useAuth();
   const pathname = usePathname();
-  // const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({}); // Removed
+  const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
 
-  // Group modules by their group property // Removed
-  // const groupedModules = MODULES.reduce((acc, module) => { // Removed
-  //   if (!acc[module.group]) { // Removed
-  //     acc[module.group] = []; // Removed
-  //   } // Removed
-  //   acc[module.group].push(module); // Removed
-  //   return acc; // Removed
-  // }, {} as Record<string, typeof MODULES>); // Removed
+  // Group modules by their group property
+  const groupedModules = React.useMemo(() => {
+    return MODULES
+      .filter(m => m.id !== 'settings' && hasPermission(m.id as any))
+      .reduce((acc, module) => {
+        let groupName = module.group;
+        
+        // Đổi tên nhóm Kỹ Thuật Viên thành Hậu Cần nếu là nhân viên Hậu Cần
+        if (role?.id === 'support' && groupName === 'Kỹ Thuật Viên') {
+            groupName = 'Hậu Cần';
+        }
 
-  // Mở sẵn các group có chứa link đang active // Removed
-  // React.useEffect(() => { // Removed
-  //   const newExpanded = { ...expandedGroups }; // Removed
-  //   let hasChanges = false; // Removed
+        if (!acc[groupName]) {
+          acc[groupName] = [];
+        }
+        acc[groupName].push(module);
+        return acc;
+      }, {} as Record<string, typeof MODULES>);
+  }, [hasPermission, role?.id]);
 
-  //   Object.entries(groupedModules).forEach(([groupName, modules]) => { // Removed
-  //     const hasActiveLink = modules.some(m => { // Removed
-  //       const path = PATHS[m.id]; // Removed
-  //       return pathname === path || pathname.startsWith(path + '/'); // Removed
-  //     }); // Removed
+  // Auto-expand groups that contain the active link
+  React.useEffect(() => {
+    const newExpanded: Record<string, boolean> = {};
+    Object.entries(groupedModules).forEach(([groupName, modules]) => {
+      const hasActiveLink = modules.some(m => {
+        const path = PATHS[m.id];
+        return pathname === path || pathname.startsWith(path + '/');
+      });
+      if (hasActiveLink) {
+        newExpanded[groupName] = true;
+      }
+    });
+    setExpandedGroups(prev => ({ ...prev, ...newExpanded }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
-  //     if (hasActiveLink && !newExpanded[groupName]) { // Removed
-  //       newExpanded[groupName] = true; // Removed
-  //       hasChanges = true; // Removed
-  //     } // Removed
-  //   }); // Removed
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }));
+  };
 
-  //   if (hasChanges) { // Removed
-  //     setExpandedGroups(newExpanded); // Removed
-  //   } // Removed
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps // Removed
-  // }, [pathname]); // Removed
-
-  // const toggleGroup = (groupName: string) => { // Removed
-  //   setExpandedGroups(prev => ({ // Removed
-  //     ...prev, // Removed
-  //     [groupName]: !prev[groupName] // Removed
-  //   })); // Removed
-  // }; // Removed
+  const renderLink = (module: typeof MODULES[0], showLabel: boolean) => {
+    const path = PATHS[module.id];
+    const isActive = pathname === path || pathname.startsWith(path + '/');
+    return (
+      <Link
+        key={module.id}
+        href={path}
+        onClick={() => { if (window.innerWidth < 1024) onClose(); }}
+        title={!showLabel ? module.name : undefined}
+        className={`flex items-center ${showLabel ? 'gap-3 px-3' : 'justify-center px-0'} py-2 rounded-xl transition-all duration-200 ${isActive
+          ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
+          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+        }`}
+      >
+        <span className={isActive ? 'text-indigo-600' : 'text-gray-400'}>
+          {ICONS[module.id]}
+        </span>
+        {showLabel && <span className="text-sm truncate">{module.name}</span>}
+      </Link>
+    );
+  };
 
   return (
     <>
@@ -150,35 +219,26 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
 
       {/* Sidebar Content */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:static flex flex-col h-screen transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 flex flex-col h-screen transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
       >
-        {/* Header: User Info (replaces MENU text) */}
+        {/* Header: User Info */}
         <div className={`border-b border-gray-100 h-[69px] flex items-center ${isExpanded ? 'px-4 gap-3' : 'justify-center'}`}>
           {isExpanded ? (
             <>
-              {/* Avatar */}
               <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm shrink-0">
                 {user?.name?.charAt(0)}
               </div>
-              {/* Name + Role */}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm text-gray-900 truncate">{user?.name}</p>
                 <p className="text-[10px] text-gray-500 font-medium truncate">{role?.name}</p>
               </div>
-              {/* Actions */}
               <div className="flex items-center gap-0.5 shrink-0">
-                <button className="relative p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Thông báo">
-                  <Bell size={16} />
-                  <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                </button>
                 <button onClick={logout} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Đăng xuất">
                   <LogOut size={16} />
                 </button>
-                {/* Mobile close */}
                 <button onClick={onClose} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg lg:hidden">
                   <X size={16} />
                 </button>
-                {/* Desktop collapse toggle */}
                 {onToggleExpand && (
                   <button onClick={onToggleExpand} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg hidden lg:flex" title="Thu gọn">
                     <ChevronLeft size={16} />
@@ -188,11 +248,9 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
             </>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              {/* Avatar only when collapsed */}
               <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm cursor-pointer" title={user?.name}>
                 {user?.name?.charAt(0)}
               </div>
-              {/* Expand toggle */}
               {onToggleExpand && (
                 <button onClick={onToggleExpand} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg hidden lg:flex" title="Mở rộng">
                   <ChevronRight size={14} />
@@ -202,59 +260,114 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
           )}
         </div>
 
-        <div className={`py-6 space-y-2 flex-1 overflow-y-auto w-full overflow-x-hidden ${isExpanded ? 'px-4' : 'px-3'}`}>
-          {MODULES.filter(m => m.id !== 'settings' && hasPermission(m.id as any)).map(module => {
-            const path = PATHS[module.id];
-            const isActive = pathname === path || pathname.startsWith(path + '/');
+        {/* Navigation */}
+        <div className={`py-4 space-y-1 flex-1 overflow-y-auto w-full overflow-x-hidden ${isExpanded ? 'px-3' : 'px-3'}`}>
+          {isExpanded ? (
+            // Expanded: Grouped dropdown navigation
+            GROUP_ORDER.filter(g => groupedModules[g]?.length > 0).map(groupName => {
+              const modules = groupedModules[groupName];
+              const isGroupExpanded = expandedGroups[groupName];
+              const hasActiveInGroup = modules.some(m => {
+                const path = PATHS[m.id];
+                return pathname === path || pathname.startsWith(path + '/');
+              });
 
-            return (
-              <Link
-                key={module.id}
-                href={path}
-                onClick={() => {
-                  if (window.innerWidth < 1024) onClose();
-                }}
-                title={!isExpanded ? module.name : undefined}
-                className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-0'} py-2.5 rounded-xl transition-all duration-200 ${isActive
-                  ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
-              >
-                <span className={isActive ? 'text-indigo-600' : 'text-gray-400'}>
-                  {ICONS[module.id]}
-                </span>
-                {isExpanded && <span className="text-sm truncate">{module.name}</span>}
-              </Link>
-            );
-          })}
-        </div>
+              return (
+                <div key={groupName} className="mb-0.5">
+                  {/* Group Header */}
+                  <button
+                    onClick={() => toggleGroup(groupName)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                      hasActiveInGroup ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <span>{groupName}</span>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform duration-200 ${isGroupExpanded ? 'rotate-0' : '-rotate-90'}`}
+                    />
+                  </button>
 
-        {/* Bottom Section for Settings */}
-        <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-10">
-          {hasPermission('settings') && (
-            <div className={`p-4 w-full ${!isExpanded && 'px-3'}`}>
-              <Link
-                href={PATHS.settings}
-                onClick={() => {
-                  if (window.innerWidth < 1024) onClose();
-                }}
-                title={!isExpanded ? "Cài Đặt" : undefined}
-                className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-0'} py-2.5 rounded-xl transition-all duration-200 ${pathname === PATHS.settings
-                  ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
-              >
-                <span className={pathname === PATHS.settings ? 'text-indigo-600' : 'text-gray-400'}>
-                  {ICONS.settings}
-                </span>
-                {isExpanded && <span className="text-sm font-medium">Cài Đặt</span>}
-              </Link>
-            </div>
+                  {/* Group Items with animation */}
+                  <AnimatePresence initial={false}>
+                    {isGroupExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className="space-y-0.5 mt-0.5 ml-1">
+                          {modules.map(module => renderLink(module, true))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })
+          ) : (
+            // Collapsed: Icons only (flat)
+            MODULES.filter(m => m.id !== 'settings' && hasPermission(m.id as any)).map(module =>
+              renderLink(module, false)
+            )
           )}
-
-
         </div>
-      </aside>
-    </>
+
+      {/* Bottom Section for Settings */}
+      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 flex flex-col">
+        {/* Version & Reload Button */}
+        <div className={`px-4 pt-4 pb-2 w-full flex flex-col ${isExpanded ? 'items-start' : 'items-center'} gap-2`}>
+          <button
+              onClick={() => {
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) {
+                      registration.unregister();
+                    }
+                    window.location.reload();
+                  });
+                } else {
+                  window.location.reload();
+                }
+              }}
+              title={!isExpanded ? "Tải lại App" : undefined}
+              className={`flex items-center justify-center gap-2 py-2 rounded-xl transition-all duration-200 text-xs font-bold text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 w-full bg-gray-50 active:scale-95`}
+          >
+            <RefreshCw size={16} className="shrink-0" />
+            {isExpanded && <span>Làm mới Ứng dụng</span>}
+          </button>
+          
+          {isExpanded && (
+              <div className="text-[10px] text-gray-400 font-medium w-full text-center mt-1">
+                  Phiên bản: 1.0.2
+              </div>
+          )}
+        </div>
+
+        {hasPermission('settings') && (
+          <div className={`p-4 pt-2 pb-0 w-full ${!isExpanded && 'px-3'}`}>
+            <Link
+              href={PATHS.settings}
+              onClick={() => {
+                if (window.innerWidth < 1024) onClose();
+              }}
+              title={!isExpanded ? "Cài đặt" : undefined}
+              className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-0'} py-2.5 rounded-xl transition-all duration-200 ${pathname === PATHS.settings
+                ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              <span className={pathname === PATHS.settings ? 'text-indigo-600' : 'text-gray-400'}>
+                {ICONS.settings}
+              </span>
+              {isExpanded && <span className="text-sm font-medium">Cài đặt</span>}
+            </Link>
+          </div>
+        )}
+      </div>
+    </aside>
+  </>
   );
 }

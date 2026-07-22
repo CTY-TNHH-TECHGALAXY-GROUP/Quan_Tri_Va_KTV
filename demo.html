@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Spa Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Tạo hiệu ứng sọc chéo cho giờ nghỉ */
+        .stripes {
+            background-image: repeating-linear-gradient(-45deg,
+                    #f3f4f6,
+                    #f3f4f6 10px,
+                    #ffffff 10px,
+                    #ffffff 20px);
+        }
+    </style>
+</head>
+
+<body class="bg-[#f8f9fa] flex h-screen text-gray-800 font-sans p-4">
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden">
+
+        <div class="flex justify-between items-center p-4 border-b">
+            <div class="flex items-center gap-4">
+                <div class="flex bg-gray-50 border rounded-lg p-1">
+                    <button class="px-4 py-1 text-sm font-medium text-gray-500 hover:text-gray-800">List</button>
+                    <button
+                        class="px-4 py-1 text-sm font-medium bg-white shadow-sm rounded-md text-gray-800 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                        Calendar
+                    </button>
+                </div>
+                <div class="flex items-center gap-2 border rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-50">
+                    <span class="text-gray-400">&lt;</span>
+                    <span class="text-sm font-medium ml-2 mr-2">October 27, 2023</span>
+                    <span class="text-gray-400">&gt;</span>
+                </div>
+            </div>
+
+            <div class="font-medium text-gray-800">
+                <span class="text-xl font-bold">15</span> <span class="text-gray-500 text-sm font-normal">appointments
+                    today</span>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button
+                    class="flex items-center gap-2 text-sm text-gray-600 border px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z">
+                        </path>
+                    </svg>
+                    Filter
+                </button>
+                <button class="p-1.5 border rounded-lg hover:bg-gray-50 text-gray-500">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                        </path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <div class="flex border-b border-gray-200 text-center text-xs font-bold text-gray-400 uppercase tracking-wider shrink-0"
+                id="room-headers">
+                <div class="w-20 p-4 border-r border-gray-100 shrink-0 text-left pl-6">GMT +7</div>
+            </div>
+
+            <div class="flex flex-1 overflow-y-auto relative no-scrollbar" id="grid-body">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const mockBookings = [
+            { bookingId: "BK1001", customerName: "Trần Thị Lan", service: "Body Đá Nóng 90p", staffId: "NH005", room: "V1", startTime: "09:00", endTime: "10:30", status: "Completed" },
+            { bookingId: "BK1002", customerName: "Lê Văn Tuấn", service: "Cạo mặt & Ráy tai vip", staffId: "NH012", room: "YUMI", startTime: "09:15", endTime: "10:00", status: "Completed" },
+            { bookingId: "BK1003", customerName: "Nguyễn Mai Anh", service: "Foot & Ngâm chân", staffId: "NH002", room: "T", startTime: "09:30", endTime: "10:30", status: "Completed" },
+            { bookingId: "BK1004", customerName: "Phạm Quốc Bảo", service: "Gội đầu & Ráy tai", staffId: "NH027", room: "PG", startTime: "10:00", endTime: "11:00", status: "Scheduled" },
+            { bookingId: "BK1005", customerName: "Hoàng Tuyết Nhung", service: "Body Thụy Điển 60p", staffId: "NH008", room: "V2", startTime: "10:00", endTime: "11:00", status: "Cancelled" },
+            { bookingId: "BK1006", customerName: "Đặng Thái Sơn", service: "Foot Chuyên Sâu", staffId: "NH015", room: "YUMI", startTime: "10:30", endTime: "11:30", status: "Scheduled" },
+            { bookingId: "BK1007", customerName: "Vũ Bích Ngọc", service: "Cổ vai gáy (Body)", staffId: "NH001", room: "V3", startTime: "11:00", endTime: "12:00", status: "Waiting" },
+            { bookingId: "BK1008", customerName: "Bùi Tấn Phát", service: "Lấy ráy tai thư giãn", staffId: "NH020", room: "YUMI", startTime: "11:15", endTime: "11:45", status: "Scheduled" },
+            { bookingId: "BK1009", customerName: "Châu Khải Phong", service: "Body Thái", staffId: "NH005", room: "V1", startTime: "13:00", endTime: "14:30", status: "Scheduled" },
+            { bookingId: "BK1010", customerName: "Lý Thu Thảo", service: "Foot Massage 60p", staffId: "NH000", room: "T", startTime: "13:30", endTime: "14:30", status: "Waiting" },
+            { bookingId: "BK1011", customerName: "Trương Cẩm Ly", service: "Gội đầu & Ráy tai", staffId: "NH026", room: "V4", startTime: "14:00", endTime: "15:00", status: "Scheduled" },
+            { bookingId: "BK1012", customerName: "Ngô Kiến Huy", service: "Combo Foot + Body", staffId: "NH011", room: "V2", startTime: "14:30", endTime: "16:30", status: "Scheduled" },
+            { bookingId: "BK1013", customerName: "Tạ Quang Thắng", service: "Ráy tai truyền thống", staffId: "NH022", room: "YUMI", startTime: "15:00", endTime: "15:30", status: "Scheduled" },
+            { bookingId: "BK1014", customerName: "Đinh Ngọc Diệp", service: "Foot đá nóng", staffId: "NH007", room: "T", startTime: "15:30", endTime: "16:30", status: "Scheduled" },
+            { bookingId: "BK1015", customerName: "Đoàn Văn Hậu", service: "Body Thể Thao", staffId: "NH018", room: "V3", startTime: "16:00", endTime: "17:30", status: "Scheduled" }
+        ];
+
+        const rooms = ["PG", "T", "V1", "V2", "V3", "V4", "YUMI"];
+        const startHour = 9;
+        const endHour = 18;
+        const PIXELS_PER_MINUTE = 2.5; // Kéo giãn UI ra một chút cho giống mẫu
+
+        function timeToMinutes(timeStr) {
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function renderDashboard() {
+            const headerContainer = document.getElementById('room-headers');
+            const bodyContainer = document.getElementById('grid-body');
+            const totalMinutes = (endHour - startHour) * 60;
+            const totalHeight = totalMinutes * PIXELS_PER_MINUTE;
+
+            // 1. Render Headers
+            rooms.forEach(room => {
+                headerContainer.innerHTML += `<div class="flex-1 p-4 border-r border-gray-100 font-semibold text-gray-500">${room}</div>`;
+            });
+
+            // 2. Render Cột thời gian
+            let timeColHTML = `<div class="w-20 border-r border-gray-100 shrink-0 relative bg-white z-20" style="height: ${totalHeight}px;">`;
+            for (let h = startHour; h <= endHour; h++) {
+                const topPos = (h - startHour) * 60 * PIXELS_PER_MINUTE;
+                timeColHTML += `
+                    <div class="absolute w-full text-center text-sm text-gray-500 font-medium" style="top: ${topPos - 10}px;">
+                        ${h.toString().padStart(2, '0')}:00
+                    </div>`;
+            }
+            // Thêm mốc giờ nhỏ 11:15 để giống demo ảnh
+            const time1115 = (11 * 60 + 15 - startHour * 60) * PIXELS_PER_MINUTE;
+            timeColHTML += `<div class="absolute w-full text-right pr-2 text-xs text-blue-500 font-bold" style="top: ${time1115 - 8}px;">11:15</div>`;
+            timeColHTML += `</div>`;
+
+            // 3. Render Các cột phòng
+            let roomsHTML = `<div class="flex flex-1 relative bg-white" style="height: ${totalHeight}px;">`;
+
+            // Lưới ngang
+            for (let h = startHour; h <= endHour; h++) {
+                const topPos = (h - startHour) * 60 * PIXELS_PER_MINUTE;
+                roomsHTML += `<div class="absolute w-full border-t border-gray-100" style="top: ${topPos}px; z-index: 0;"></div>`;
+            }
+
+            // Current Time Line (Đường kẻ màu xanh ở 11:15)
+            roomsHTML += `
+                <div class="absolute w-full border-t border-blue-300 z-20" style="top: ${time1115}px;">
+                    <div class="absolute -left-1.5 -top-1.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"></div>
+                </div>`;
+
+            // Break Time block (12:00 - 13:00) giống hệt ảnh
+            const breakStart = (12 * 60 - startHour * 60) * PIXELS_PER_MINUTE;
+            const breakHeight = 60 * PIXELS_PER_MINUTE;
+            roomsHTML += `
+                <div class="absolute w-full z-10 stripes flex items-center justify-center opacity-70" style="top: ${breakStart}px; height: ${breakHeight}px;">
+                    <div class="bg-white/80 px-4 py-1 rounded-full text-sm font-medium text-gray-500 flex items-center gap-2">
+                        ☕ Break Time
+                    </div>
+                </div>`;
+
+            // Render Booking Cards
+            rooms.forEach(room => {
+                roomsHTML += `<div class="flex-1 border-r border-gray-100 relative z-10">`;
+
+                const roomBookings = mockBookings.filter(b => b.room === room);
+                roomBookings.forEach(booking => {
+                    const startMin = timeToMinutes(booking.startTime) - (startHour * 60);
+                    const endMin = timeToMinutes(booking.endTime) - (startHour * 60);
+                    const top = startMin * PIXELS_PER_MINUTE;
+                    const height = (endMin - startMin) * PIXELS_PER_MINUTE;
+
+                    // UI logic giống hệt ảnh
+                    let borderColor = "", badgeClass = "", icon = "", statusText = "";
+                    if (booking.status === "Completed") {
+                        borderColor = "border-green-600"; badgeClass = "bg-green-50 text-green-600"; icon = "✓"; statusText = "Completed";
+                    } else if (booking.status === "Scheduled") {
+                        borderColor = "border-blue-500"; badgeClass = "bg-blue-50 text-blue-500"; icon = "🕒"; statusText = "Scheduled";
+                    } else if (booking.status === "Waiting") {
+                        borderColor = "border-yellow-400"; badgeClass = "bg-yellow-50 text-yellow-600"; icon = "👤"; statusText = "Patient is waiting";
+                    } else if (booking.status === "Cancelled") {
+                        borderColor = "border-red-600"; badgeClass = "bg-red-50 text-red-600"; icon = "✕"; statusText = "Canceled";
+                    }
+
+                    roomsHTML += `
+                        <div class="absolute w-[90%] left-[5%] bg-white rounded-lg shadow-sm border border-gray-100 border-l-[4px] ${borderColor} flex flex-col justify-between overflow-hidden hover:shadow-md transition-shadow p-3" 
+                             style="top: ${top}px; height: ${height}px;">
+                            
+                            <div class="text-[11px] text-gray-500 font-medium mb-1">
+                                ${booking.startTime} - ${booking.endTime}
+                            </div>
+                            
+                            <div class="flex-1">
+                                <div class="text-sm font-bold text-gray-800 leading-tight">${booking.customerName}</div>
+                                <div class="text-xs text-gray-500 mt-0.5 line-clamp-2">${booking.service}</div>
+                            </div>
+                            
+                            <div class="mt-2 ${badgeClass} text-[10px] font-semibold px-2 py-1 rounded w-max flex items-center gap-1">
+                                <span>${icon}</span> ${statusText}
+                            </div>
+
+                        </div>`;
+                });
+
+                roomsHTML += `</div>`;
+            });
+            roomsHTML += `</div>`;
+
+            bodyContainer.innerHTML = timeColHTML + roomsHTML;
+        }
+
+        renderDashboard();
+    </script>
+</body>
+
+</html>

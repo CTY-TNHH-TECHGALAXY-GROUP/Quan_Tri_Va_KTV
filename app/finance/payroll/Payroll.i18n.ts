@@ -1,0 +1,93 @@
+export const t = {
+  vi: {
+    title: 'Bảng Chấm Công & Tính Lương',
+    subtitle: 'Theo dõi chuyên sâu ngày công, đi trễ và nghỉ đột xuất',
+    filters: {
+      month: 'Chọn Tháng',
+      year: 'Chọn Năm',
+      day: 'Lọc Theo Ngày',
+      staff: 'Nhân viên',
+      all: 'Tất cả nhân viên',
+    },
+    summary: {
+      totalDays: 'Tổng Ngày Công',
+      totalLate: 'Số Lần Đi Trễ',
+      totalSuddenOff: 'Nghỉ Đột Xuất',
+      totalLeave: 'Nghỉ Có Phép',
+      freeShifts: 'Ca Tự Do',
+      requestShifts: 'Ca Yêu Cầu',
+      forgotCheckOut: 'Quên Check-out',
+    },
+    table: {
+      date: 'Ngày',
+      staff: 'KTV',
+      shift: 'Ca Đăng Ký',
+      checkIn: 'Giờ Vào',
+      checkOut: 'Giờ Ra',
+      lateMins: 'Trễ (Phút)',
+      status: 'Trạng Thái',
+    },
+    status: {
+      present: 'Có mặt',
+      late: 'Đi trễ',
+      off: 'Nghỉ phép',
+      suddenOff: 'Nghỉ đột xuất',
+      absent: 'Vắng mặt',
+      free: 'Tự do',
+      request: 'Yêu cầu',
+    },
+    shifts: {
+      SHIFT_1: 'Ca 1',
+      SHIFT_2: 'Ca 2',
+      SHIFT_3: 'Ca 3',
+      FREE: 'Tự do',
+      REQUEST: 'Yêu cầu',
+      OFF: 'OFF',
+    }
+  },
+  en: {
+    title: 'Payroll & Attendance',
+    subtitle: 'Deep tracking of workdays, lateness, and sudden leave',
+    filters: {
+      month: 'Month',
+      year: 'Year',
+      staff: 'Staff',
+      all: 'All Staff',
+    },
+    summary: {
+      totalDays: 'Total Workdays',
+      totalLate: 'Late Count',
+      totalSuddenOff: 'Sudden Off',
+      totalLeave: 'Approved Leave',
+      freeShifts: 'Free Shifts',
+      requestShifts: 'Request Shifts',
+      forgotCheckOut: 'Forgot Check-out',
+    },
+    table: {
+      date: 'Date',
+      staff: 'KTV',
+      shift: 'Shift',
+      checkIn: 'Check-in',
+      checkOut: 'Check-out',
+      lateMins: 'Late (Mins)',
+      status: 'Status',
+    },
+    status: {
+      present: 'Present',
+      late: 'Late',
+      off: 'Leave',
+      suddenOff: 'Sudden Off',
+      absent: 'Absent',
+      free: 'Free',
+      request: 'Request',
+    },
+    shifts: {
+      SHIFT_1: 'Shift 1',
+      SHIFT_2: 'Shift 2',
+      SHIFT_3: 'Shift 3',
+      FREE: 'Free',
+      REQUEST: 'Request',
+      OFF: 'OFF',
+    }
+  }
+};

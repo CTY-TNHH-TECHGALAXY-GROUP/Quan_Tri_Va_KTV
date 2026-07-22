@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import { MOCK_USERS } from '@/lib/mock-db';
 import { motion } from 'motion/react';
 import { Lock, User, Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
 

@@ -4,29 +4,27 @@ import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Save, User, UserPlus, Award } from 'lucide-react';
 import { createStaffMember } from '@/app/admin/employees/actions';
-import { SkillLevel } from '@/lib/mock-db';
+import { SkillLevel } from '@/lib/types';
 
 const DEFAULT_SKILLS = {
-    hairCut: 'none', shampoo: 'none', hairExtensionShampoo: 'none', earCleaning: 'none',
-    machineShave: 'none', razorShave: 'none', facial: 'none', thaiBody: 'none',
-    shiatsuBody: 'none', oilBody: 'none', hotStoneBody: 'none', scrubBody: 'none',
-    oilFoot: 'none', hotStoneFoot: 'none', acupressureFoot: 'none', heelScrub: 'none', maniPedi: 'none'
+    hairCut: false, shampoo: false, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
+    machineShave: false, razorShave: false, facial: false, thaiBody: false,
+    shiatsuBody: false, oilBody: false, hotStoneBody: false, scrubBody: false,
+    foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
 };
 
 const skillLabels: Record<string, string> = {
     hairCut: 'Cắt Tóc', shampoo: 'Gội đầu', hairExtensionShampoo: 'Gội Tóc Nối',
-    earCleaning: 'Ráy Tai', machineShave: 'Cạo Máy', razorShave: 'Cạo Dao',
+    earCombo: 'Ráy Combo', earChuyen: 'Ráy Chuyên', machineShave: 'Cạo Máy', razorShave: 'Cạo Dao',
     facial: 'Facial', thaiBody: 'Body Thái', shiatsuBody: 'Shiatsu',
     oilBody: 'Body Dầu', hotStoneBody: 'Body Đá Nóng', scrubBody: 'Scrub Body',
-    oilFoot: 'Foot Dầu', hotStoneFoot: 'Foot Đá Nóng', acupressureFoot: 'Foot ấn huyệt',
-    heelScrub: 'Bào Gót', maniPedi: 'Manicure + Pedicure',
+    foot: 'Foot',
+    heelScrub: 'Bào Gót', nailCombo: 'Nail Combo', nailChuyen: 'Nail Chuyên',
 };
 
 const levelInfo: Record<string, { label: string, color: string }> = {
-    none: { label: 'Chưa có', color: 'text-gray-400 bg-gray-50 border-gray-100 opacity-50' },
-    basic: { label: 'Cơ bản', color: 'text-blue-700 bg-blue-50 border-blue-100' },
-    expert: { label: 'Chuyên', color: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
-    training: { label: 'Đào tạo', color: 'text-amber-700 bg-amber-50 border-amber-100' },
+    'false': { label: 'Chưa có', color: 'text-gray-400 bg-gray-50 border-gray-100 opacity-50' },
+    'true': { label: 'Có tay nghề', color: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
 };
 
 interface AddEmployeeModalProps {
@@ -56,24 +54,37 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         join_date: new Date().toISOString().split('T')[0],
         height: '',
         weight: '',
+        isActiveVipMenu: false,
+        isHomeSpa: false,
+        role: 'TECHNICIAN',
+        work_type: 'TYPE_A',
+        baseSalaryPerHour: 180000,
+        targetHoursPerMonth: 80,
         skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
     });
 
     const toggleSkill = (skillKey: string) => {
-        const levels: SkillLevel[] = ['none', 'basic', 'expert', 'training'];
         setFormData(prev => {
-            const currentLevel = prev.skills[skillKey];
-            const currentIndex = levels.indexOf(currentLevel);
-            const nextLevel = levels[(currentIndex + 1) % levels.length];
             return {
                 ...prev,
-                skills: { ...prev.skills, [skillKey]: nextLevel }
+                skills: { ...prev.skills, [skillKey]: !prev.skills[skillKey] }
             };
         });
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+        const { name, value } = e.target;
+        setFormData(prev => {
+            const nextData = { ...prev, [name]: value };
+            if (name === 'role') {
+                if (value === 'SUPPORT') nextData.position = 'Nhân viên Hậu Cần';
+                else if (value === 'TECHNICIAN') nextData.position = 'Kỹ Thuật Viên';
+                else if (value === 'RECEPTION') nextData.position = 'Lễ Tân';
+                else if (value === 'MANAGER') nextData.position = 'Quản Lý';
+                else if (value === 'ADMIN') nextData.position = 'Quản Trị Viên';
+            }
+            return nextData;
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -93,8 +104,14 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                 gender: 'Nữ', birthday: '', id_card: '', bank_account: '', bank_name: '',
                 avatar_url: '', position: 'Kỹ Thuật Viên', experience: '0 năm',
                 join_date: new Date().toISOString().split('T')[0], height: '', weight: '',
-                skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
-            });
+        isActiveVipMenu: false,
+        isHomeSpa: false,
+        role: 'TECHNICIAN',
+        work_type: 'TYPE_A',
+        baseSalaryPerHour: 180000,
+        targetHoursPerMonth: 80,
+        skills: { ...DEFAULT_SKILLS } as Record<string, SkillLevel>,
+    });
         } else {
             setError(res.error || 'Đã xảy ra lỗi không xác định.');
         }
@@ -135,8 +152,48 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Mật khẩu đăng nhập *</label>
                                         <input required type="text" name="password" value={formData.password} onChange={handleChange} placeholder="VD: 123456" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
                                     </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Vai trò hệ thống (Role) *</label>
+                                        <select name="role" value={formData.role} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-indigo-50 font-bold text-indigo-700">
+                                            <option value="TECHNICIAN">Kỹ Thuật Viên</option>
+                                            <option value="SUPPORT">Nhân viên Hậu Cần</option>
+                                            <option value="RECEPTION">Lễ Tân</option>
+                                            <option value="MANAGER">Quản Lý</option>
+                                            <option value="ADMIN">Admin (Toàn quyền)</option>
+                                        </select>
+                                    </div>
+                                    {formData.role === 'TECHNICIAN' && (
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Hình thức làm việc (KTV) *</label>
+                                            <select name="work_type" value={formData.work_type} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-emerald-50 font-bold text-emerald-700">
+                                                <option value="TYPE_A">Loại A (Tính theo Ca/Điểm)</option>
+                                                <option value="TYPE_B">Loại B (Hưởng tua 180k/h)</option>
+                                                <option value="TYPE_C">Loại C (Cộng tác viên/Freelance)</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+                            
+                            {/* Cấu hình KTV Loại B (Chỉ tiêu) */}
+                            {formData.role === 'TECHNICIAN' && formData.work_type === 'TYPE_B' && (
+                                <div className="space-y-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                    <h3 className="text-sm font-bold text-amber-900 uppercase tracking-widest border-b border-amber-200 pb-2">Cấu hình Chỉ tiêu (Loại B)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Mức lương / giờ (VNĐ) *</label>
+                                            <input required type="number" name="baseSalaryPerHour" value={formData.baseSalaryPerHour} onChange={handleChange} className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-amber-800 uppercase mb-1">Chỉ tiêu tháng (Giờ) *</label>
+                                            <input required type="number" name="targetHoursPerMonth" value={formData.targetHoursPerMonth} onChange={handleChange} className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-amber-700 font-medium italic">
+                                        * Lưu ý: KTV Loại B sẽ được hưởng lương theo giờ (nhân với số phút làm việc thực tế). Nếu không đạt chỉ tiêu tháng, phần lương chưa đạt sẽ tính theo tỷ lệ thấp hơn.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Personal Info */}
                             <div className="space-y-4">
@@ -195,9 +252,21 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                 </div>
                             </div>
 
-                            {/* Skills Info */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b pb-2">
+                            {/* Skills Info - Only show for TECHNICIAN */}
+                            {formData.role === 'TECHNICIAN' && (
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên VIP Menu</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Home Spa</span>
+                                        </label>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b pb-2">
                                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
                                         <Award size={16} className="text-indigo-600" /> Kỹ năng chuyên môn
                                     </h3>
@@ -207,21 +276,22 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     {Object.entries(formData.skills).map(([key, level]) => {
-                                        const info = levelInfo[level];
+                                        const info = levelInfo[String(level)];
                                         return (
                                             <button
                                                 key={key}
                                                 type="button"
                                                 onClick={() => toggleSkill(key)}
-                                                className={`flex flex-col gap-1 p-2 rounded-lg border text-left transition-all hover:border-indigo-400 hover:shadow-sm cursor-pointer ${info.color}`}
+                                                className={`flex items-center justify-center p-2.5 rounded-lg border text-center transition-all hover:border-indigo-400 hover:shadow-sm cursor-pointer ${info.color}`}
                                             >
                                                 <span className="text-xs font-bold truncate w-full">{skillLabels[key]}</span>
-                                                <span className="text-[10px] font-medium uppercase tracking-wider opacity-80">{info.label}</span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                            </div>
+                                    </div>
+                                </div>
+                            )}
                         </form>
                     </div>
 
