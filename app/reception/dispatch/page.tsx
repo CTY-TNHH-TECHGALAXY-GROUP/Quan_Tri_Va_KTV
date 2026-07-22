@@ -1980,17 +1980,7 @@ if (!hasPermission('dispatch_board')) {
           ) : activeMode === 'TURN_QUEUE' ? (
             <div className="flex-1 overflow-auto bg-white rounded-3xl border border-gray-200 shadow-sm p-4 w-full h-full">
               {(() => {
-                const ktvDisplayNames: Record<string, string> = {};
-                orders.forEach(order => {
-                  order.services.forEach(svc => {
-                    svc.staffList?.forEach(st => {
-                      if (st.ktvId?.startsWith('EXT') && st.ktvName && st.ktvName !== st.ktvId) {
-                        ktvDisplayNames[st.ktvId] = st.ktvName;
-                      }
-                    });
-                  });
-                });
-                return <TurnQueueBoard staffs={staffs} ktvDisplayNames={ktvDisplayNames} />;
+                return <TurnQueueBoard staffs={staffs} />;
               })()}
             </div>
           ) : activeMode === 'ROOMS' ? (

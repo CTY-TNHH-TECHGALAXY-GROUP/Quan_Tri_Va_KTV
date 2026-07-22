@@ -324,6 +324,40 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         })
                     };
                 });
+                
+                // 🔥 Xây dựng ktvDisplayNames và patch staffs/turns
+                const ktvDisplayNames: Record<string, string> = {};
+                mappedOrders.forEach(order => {
+                    order.services.forEach(svc => {
+                        svc.staffList?.forEach(st => {
+                            if (st.ktvId?.startsWith('EXT') && st.ktvName && st.ktvName !== st.ktvId) {
+                                ktvDisplayNames[st.ktvId] = st.ktvName;
+                            }
+                        });
+                    });
+                });
+
+                if (sData) {
+                    const patchedStaffs = [...(sData as unknown as StaffData[])];
+                    Object.entries(ktvDisplayNames).forEach(([id, name]) => {
+                        const existing = patchedStaffs.find(s => s.id === id);
+                        if (existing) {
+                            existing.full_name = name;
+                        } else {
+                            patchedStaffs.push({ id, full_name: name } as any);
+                        }
+                    });
+                    setStaffs(patchedStaffs);
+                    
+                    if (tData) {
+                        const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
+                            ...t,
+                            staff: patchedStaffs.find(s => s.id === t.employee_id)
+                        }));
+                        setTurns(merged);
+                    }
+                }
+                
                 setOrders(mappedOrders);
             }
         } catch (e) {
