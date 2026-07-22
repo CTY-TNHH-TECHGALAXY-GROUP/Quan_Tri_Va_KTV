@@ -13,6 +13,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
     
     const [selectedDate, setSelectedDate] = useState<string>(getVietnamDateString());
     const [turns, setTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
+    const [externalTurns, setExternalTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
     const [shifts, setShifts] = useState<Record<string, { type: string, end: string | null }>>({});
     const [suddenOffs, setSuddenOffs] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
@@ -51,7 +52,11 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                     ...t,
                     staff: staffs.find(s => s.id === t.employee_id)
                 }));
-                setTurns(merged);
+                // 🔥 Tách KTV nội bộ và KTV ngoài
+                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
+                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT'));
+                setTurns(internal);
+                setExternalTurns(external);
             }
         } catch (err) {
             console.error('Fetch turns error:', err);
@@ -75,7 +80,11 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 ...t,
                 staff: staffs.find(s => s.id === t.employee_id)
             }));
-            setTurns(merged);
+            // 🔥 Tách KTV nội bộ và KTV ngoài
+            const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
+            const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT'));
+            setTurns(internal);
+            setExternalTurns(external);
         }
     }, [selectedDate, staffs]);
 
@@ -233,6 +242,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         sortedTurns,
         readyCount,
         workingCount,
-        activeCount
+        activeCount,
+        externalTurns
     };
 };

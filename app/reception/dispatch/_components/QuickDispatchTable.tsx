@@ -114,6 +114,7 @@ export const QuickDispatchTable = ({
     selectedKtvIds: string[]; selectedRoomIds: string[];
     ktvStartTimes: string[]; ktvEndTimes: string[];
     ktvDurations: number[]; ktvNotes: string[]; ktvBedIds: string[];
+    ktvDisplayNames?: Record<string, string>; // Map ktvId -> display name (for external KTVs and name resolution)
     note: string; duration: number;
     isUtility?: boolean;
     isMergedGroup?: boolean;
@@ -144,11 +145,16 @@ export const QuickDispatchTable = ({
       const ktvDurationsList: number[] = [];
       const ktvNotesList: string[] = [];
       const bedIdsList: string[] = [];
+      const ktvDisplayNames: Record<string, string> = {};
       items.forEach(item => {
         if (item.staffList.length > 0) {
           item.staffList.forEach(staff => {
             if (staff.ktvId) {
               ktvIds.push(staff.ktvId);
+              // 🔥 Lưu tên hiển thị: ưu tiên ktvName (chứa external name hoặc full_name)
+              if (staff.ktvName && staff.ktvName !== staff.ktvId) {
+                ktvDisplayNames[staff.ktvId] = staff.ktvName;
+              }
               roomIds.push(staff.segments?.[0]?.roomId || '');
               startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
               
@@ -192,6 +198,7 @@ export const QuickDispatchTable = ({
         ktvDurations: ktvDurationsList.length > 0 ? ktvDurationsList : [duration],
         ktvNotes: ktvNotesList,
         ktvBedIds: bedIdsList,
+        ktvDisplayNames: Object.keys(ktvDisplayNames).length > 0 ? ktvDisplayNames : undefined,
         note: items[0]?.staffList?.[0]?.noteForKtv || '',
         duration,
         isUtility: !!(items[0] as any).isUtility,
@@ -424,7 +431,7 @@ interface ServiceGroupCardProps {
   serviceDescription?: string;
   count: number;
   duration: number;
-  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; note: string; duration: number; isUtility?: boolean; isMergedGroup?: boolean; };
+  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; ktvDisplayNames?: Record<string, string>; note: string; duration: number; isUtility?: boolean; isMergedGroup?: boolean; };
   targetSkill: string | null;
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
   allSelectedKtvIds: string[];
@@ -680,7 +687,7 @@ const ServiceGroupCard = ({
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nhân viên ({state.selectedKtvIds.length})</label>
           <div className="relative" ref={dropdownRef}>
             <div className="min-h-[44px] w-full px-3 py-2 border-2 border-gray-100 rounded-2xl bg-gray-50/30 flex flex-wrap gap-1.5 items-center cursor-text" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvId; return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-0.5 hover:opacity-60"><X size={12} /></button>
@@ -714,7 +721,8 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const name = t?.staff?.full_name || ktvId;
+                const isExternal = ktvId.startsWith('EXT') || !t;
+                const name = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId;
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';

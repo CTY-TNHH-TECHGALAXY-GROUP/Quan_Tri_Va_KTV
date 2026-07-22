@@ -892,12 +892,13 @@ if (!hasPermission('dispatch_board')) {
           techCodesSet.add(ktvId); 
 
           const currentTurn = turns.find(t => t.employee_id === ktvId);
-          if (!currentTurn) continue;
+          
+          // 🔥 FIX: KTV ngoài (tên nhập tự do) không có trong TurnQueue
+          // Thay vì skip, tạo assignment với default values để server xử lý mapping EXT
+          let turnsCompleted = currentTurn?.turns_completed || 0;
+          let queuePos = currentTurn?.queue_position || 0;
 
-          let turnsCompleted = currentTurn.turns_completed;
-          let queuePos = currentTurn.queue_position;
-
-          if (currentTurn.current_order_id !== clonedOrder.id) {
+          if (!currentTurn || currentTurn.current_order_id !== clonedOrder.id) {
             const currentMax = Math.max(...turns.map(t => t.queue_position), 0);
             
             // Fix: Check if this KTV is already added in a previous service of the same order
@@ -1978,7 +1979,19 @@ if (!hasPermission('dispatch_board')) {
             />
           ) : activeMode === 'TURN_QUEUE' ? (
             <div className="flex-1 overflow-auto bg-white rounded-3xl border border-gray-200 shadow-sm p-4 w-full h-full">
-              <TurnQueueBoard staffs={staffs} />
+              {(() => {
+                const ktvDisplayNames: Record<string, string> = {};
+                orders.forEach(order => {
+                  order.services.forEach(svc => {
+                    svc.staffList?.forEach(st => {
+                      if (st.ktvId?.startsWith('EXT') && st.ktvName && st.ktvName !== st.ktvId) {
+                        ktvDisplayNames[st.ktvId] = st.ktvName;
+                      }
+                    });
+                  });
+                });
+                return <TurnQueueBoard staffs={staffs} ktvDisplayNames={ktvDisplayNames} />;
+              })()}
             </div>
           ) : activeMode === 'ROOMS' ? (
             <div className="flex-1 overflow-hidden bg-white rounded-3xl border border-gray-200 shadow-sm w-full h-full">

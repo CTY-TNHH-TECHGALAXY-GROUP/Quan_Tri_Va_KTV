@@ -24,7 +24,7 @@ export async function getDispatchData(date: string) {
         const { data: allStaffs, error: sError } = await supabase.from('Staff').select('id, full_name, avatar_url, gender, status, skills, phone, position, experience');
         if (sError) throw sError;
         
-        const staffs = (allStaffs || []).filter(s => techCodes.has(s.id));
+        const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT'));
 
         // 🔧 EGRESS FIX: Only select needed columns for TurnQueue
         const { data: turns, error: tError } = await supabase
@@ -366,18 +366,24 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
         const externalNameMap: Record<string, string> = {};
 
+        console.log('🔍 [EXT-MAP] uniqueKtvIds:', uniqueKtvIds);
+
         if (uniqueKtvIds.length > 0) {
-            const { data: existingStaff } = await supabase.from('Staff').select('id, is_freelance').in('id', uniqueKtvIds);
+            const { data: existingStaff } = await supabase.from('Staff').select('id').in('id', uniqueKtvIds);
             const existingIds = (existingStaff || []).map(s => s.id);
             const missingIds = uniqueKtvIds.filter(id => !existingIds.includes(id));
             
+            console.log('🔍 [EXT-MAP] existingIds:', existingIds, 'missingIds:', missingIds);
+
             if (missingIds.length > 0) {
                 // Lấy các mã EXT còn trống
-                const { data: extStaff } = await supabase.from('Staff').select('id').eq('is_freelance', true);
+                const { data: extStaff } = await supabase.from('Staff').select('id').ilike('id', 'EXT%');
                 const { data: busyQueue } = await supabase.from('TurnQueue').select('employee_id');
                 const busyIds = busyQueue?.map(q => q.employee_id) || [];
                 const availableExt = (extStaff || []).map(s => s.id).filter(id => !busyIds.includes(id));
                 
+                console.log('🔍 [EXT-MAP] availableExt count:', availableExt.length);
+
                 let extIndex = 0;
                 const idReplacements: Record<string, string> = {};
                 
@@ -392,6 +398,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
                     }
                 }
                 
+                console.log('✅ [EXT-MAP] idReplacements:', idReplacements, 'externalNameMap:', externalNameMap);
+
                 // Rewrite IDs in dispatchData
                 const replaceId = (id: string) => idReplacements[id] || id;
                 if (dispatchData.technicianCode) dispatchData.technicianCode = replaceId(dispatchData.technicianCode);
@@ -406,18 +414,23 @@ export async function processDispatch(bookingId: string, dispatchData: {
                     }
                 });
 
-                // Cập nhật tên KTV ngoài vào options của BookingItems ngay lập tức
-                if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
+                // 🔥 FIX: Inject external_technician_name vào item.options TRONG dispatchData
+                // để RPC dispatch_confirm_booking lưu cùng lúc, tránh bị ghi đè bởi RPC
+                if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0 && Object.keys(externalNameMap).length > 0) {
                     for (const item of dispatchData.itemUpdates) {
-                        const { data: currentItem } = await supabase.from('BookingItems').select('options').eq('id', item.id).single();
-                        let opts = {};
-                        if (currentItem && currentItem.options) {
-                            try { opts = typeof currentItem.options === 'string' ? JSON.parse(currentItem.options) : currentItem.options; } catch(e) {}
-                        }
-                        opts = { ...opts, external_technician_name: { ...(opts as any).external_technician_name, ...externalNameMap } };
-                        await supabase.from('BookingItems').update({ options: opts }).eq('id', item.id);
+                        if (!item.options) item.options = {};
+                        item.options = {
+                            ...item.options,
+                            external_technician_name: {
+                                ...(item.options as any).external_technician_name,
+                                ...externalNameMap
+                            }
+                        };
                     }
                 }
+
+                console.log('✅ [EXT-MAP] Final technicianCodes:', dispatchData.itemUpdates?.map(u => u.technicianCodes));
+                console.log('✅ [EXT-MAP] Final staffAssignments ktvIds:', dispatchData.staffAssignments?.map(a => a.ktvId));
             }
         }
 
