@@ -54,7 +54,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
                 const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT'));
+                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting');
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -82,7 +82,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             }));
             // 🔥 Tách KTV nội bộ và KTV ngoài
             const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-            const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT'));
+            const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting');
             setTurns(internal);
             setExternalTurns(external);
         }
