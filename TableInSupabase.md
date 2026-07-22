@@ -30,6 +30,7 @@
 | `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
 | `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
+| `reception_feedback` | text | Đánh giá/phản hồi chung của quầy Lễ tân cho đơn hàng này |
 | `bedId` | text FK → Beds | Giường phục vụ |
 | `roomName` | text | Tên phòng phục vụ |
 | `totalAmount` | numeric | Tổng tiền đơn hàng |
@@ -70,6 +71,9 @@
 | `timeEnd` | timestamptz | Thời điểm hoàn thành item |
 | `bedId` | text | Giường phục vụ riêng item |
 | `segments` | jsonb | Quy trình step-by-step (VD: ["Rửa mặt", "Đắp mặt nạ"]) |
+| `handover_images` | jsonb | Mảng URL ảnh bàn giao phòng do KTV chụp |
+| `handover_status` | text | Trạng thái duyệt ảnh: `PENDING`, `APPROVED`, `REJECTED` (mặc định: `PENDING`) |
+| `handover_comment` | text | Lý do từ chối hoặc feedback của Lễ tân khi duyệt ảnh |
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
 | `itemFeedback` | text | Phản hồi text từ khách cho item |
 | `ktvRatings` | jsonb | ⭐ **Rating riêng từng KTV** — `{"NH016": 4, "NH001": 3}`. Dùng cho lịch sử KTV + trigger thưởng |
@@ -453,6 +457,7 @@
 | `type` | text | Loại phòng |
 | `prep_procedure` | jsonb | Quy trình mở phòng (JSON array of strings). Default: 5 bước chuẩn |
 | `clean_procedure` | jsonb | Quy trình dọn dẹp phòng (JSON array of strings). Default: 4 bước chuẩn |
+| `handover_checklist`| jsonb | Danh sách các mục KTV cần chụp ảnh khi dọn xong (JSON array of strings). Tùy chỉnh theo từng phòng (VD: "Máy lạnh", "Giường", "Thùng rác",...). |
 | `allowed_services` | jsonb | Danh sách ID dịch vụ phòng này có thể nhận (JSON array of service IDs) |
 | `default_reminders` | jsonb | Danh sách ID các câu nhắc nhở mặc định (JSON array of reminder IDs) |
 | `created_at` | timestamptz | Thời điểm tạo |
