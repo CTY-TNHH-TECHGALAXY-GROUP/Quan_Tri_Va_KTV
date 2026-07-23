@@ -58,6 +58,7 @@ export default function CRMPage() {
   const [filterVisit, setFilterVisit] = useState('all'); // 'all', 'new', 'old'
   const [filterGuestType, setFilterGuestType] = useState('all'); // 'all', 'group', 'single'
   const [filterNationality, setFilterNationality] = useState('all'); // 'all', dynamic values
+  const [sortByDate, setSortByDate] = useState('newest'); // 'newest', 'oldest', 'latest_visit'
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -215,15 +216,28 @@ export default function CRMPage() {
     return true;
   });
 
+  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
+    if (sortByDate === 'newest') {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    }
+    if (sortByDate === 'oldest') {
+      return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+    }
+    if (sortByDate === 'latest_visit') {
+      return new Date(b.lastVisited || 0).getTime() - new Date(a.lastVisited || 0).getTime();
+    }
+    return 0;
+  });
+
   // Pagination Logic
-  const totalItems = filteredCustomers.length;
+  const totalItems = sortedCustomers.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   
   // Tự động điều chỉnh trang nếu vượt quá giới hạn (không dùng useEffect để tránh lỗi Hook rules)
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
   const startIndex = (safeCurrentPage - 1) * itemsPerPage;
-  const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedCustomers = sortedCustomers.slice(startIndex, startIndex + itemsPerPage);
 
   const formatVND = (n?: number) => n ? new Intl.NumberFormat('vi-VN').format(n) + 'đ' : '0đ';
   
@@ -354,6 +368,16 @@ export default function CRMPage() {
                 items={[
                   { label: 'Quốc tịch: Tất cả', onClick: () => setFilterNationality('all') },
                   ...uniqueNationalities.map(nat => ({ label: nat, onClick: () => setFilterNationality(nat) }))
+                ]}
+              />
+
+              {/* Date Sort filter */}
+              <DropdownMenu 
+                button={{ label: sortByDate === 'newest' ? 'Sắp xếp: Mới nhất' : sortByDate === 'oldest' ? 'Sắp xếp: Cũ nhất' : 'Sắp xếp: Đến gần đây', size: 'sm' }}
+                items={[
+                  { label: 'Sắp xếp: Mới nhất', onClick: () => setSortByDate('newest') },
+                  { label: 'Sắp xếp: Cũ nhất', onClick: () => setSortByDate('oldest') },
+                  { label: 'Sắp xếp: Khách đến gần đây', onClick: () => setSortByDate('latest_visit') }
                 ]}
               />
 
