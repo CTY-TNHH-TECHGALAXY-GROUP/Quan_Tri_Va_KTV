@@ -46,7 +46,7 @@ interface StaffFeature {
     work_type: 'TYPE_A' | 'TYPE_B' | 'TYPE_C';
 }
 
-export const getDefaultFlagsForType = (workType: string) => {
+export const getDefaultFlagsForType = (workType: string): Record<string, boolean> => {
     switch (workType) {
         case 'TYPE_A':
             return {
