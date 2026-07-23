@@ -29,7 +29,7 @@ export default function SystemSettingsPage() {
         try {
             const data = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
             if (data.data) {
-                setConfigs(prev => ({ ...prev, ...data.data }));
+                setConfigs((prev: any) => ({ ...prev, ...data.data }));
             }
         } catch (error) {
             console.error('Lỗi tải cấu hình:', error);
