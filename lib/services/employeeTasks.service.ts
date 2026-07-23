@@ -22,9 +22,37 @@ export class EmployeeTasksService {
   static async generateTodayTasks(empId: string) {
     const todayStart = getTodayStart();
     const todayEnd = getTodayEnd();
+    
+    // Get YYYY-MM-DD for date-based queries
+    const todayStr = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
 
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase not initialized');
+
+    // Check if employee is on leave today
+    const { data: leaveData } = await supabase
+      .from('KTVLeaveRequests')
+      .select('id')
+      .eq('employeeId', empId)
+      .eq('date', todayStr)
+      .eq('status', 'APPROVED');
+      
+    if (leaveData && leaveData.length > 0) {
+      console.log(`Employee ${empId} is on leave today. Skipping task generation.`);
+      return { success: true, count: 0, reason: 'ON_LEAVE' };
+    }
+
+    const { data: dailyAtt } = await supabase
+      .from('DailyAttendance')
+      .select('status')
+      .eq('employee_id', empId)
+      .eq('date', todayStr)
+      .maybeSingle();
+      
+    if (dailyAtt && (dailyAtt.status === 'absent' || dailyAtt.status === 'off_leave' || dailyAtt.status === 'off_duty')) {
+      console.log(`Employee ${empId} attendance status is ${dailyAtt.status}. Skipping task generation.`);
+      return { success: true, count: 0, reason: 'OFF_DUTY' };
+    }
 
     // Check if tasks already exist for today
     const { data: existing, error: err1 } = await supabase
@@ -92,7 +120,7 @@ export class EmployeeTasksService {
 
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, updated_at, TaskTemplates(requires_photo, min_photo_count)')
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, updated_at, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name)')
       .eq('assignee_id', empId)
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
@@ -132,6 +160,9 @@ export class EmployeeTasksService {
       photoCount: photoCounts[t.id] || 0,
       requires_photo: t.TaskTemplates?.requires_photo || false,
       min_photo_count: t.TaskTemplates?.min_photo_count || 1,
+      category_id: t.category_id,
+      categoryName: t.TaskCategories?.name || 'Khác',
+      categoryOrder: 999,
     }));
 
     return { success: true, data: mapped };

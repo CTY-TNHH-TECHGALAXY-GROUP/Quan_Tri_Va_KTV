@@ -6,6 +6,7 @@ export interface CommissionConfig {
     minDeposit: number;
     isPenaltyEnabled: boolean;
     isBonusWalletEnabled: boolean;
+    fixedOrderBonus?: number;
 }
 
 export interface BonusConfig {
@@ -15,68 +16,147 @@ export interface BonusConfig {
 }
 
 export class KtvCommissionService {
-    /**
-     * Parse system configs for commission and wallet rules
-     */
-    static async getCommissionConfig(supabase: SupabaseClient): Promise<CommissionConfig> {
+    static async getCommissionConfig(
+        supabase: SupabaseClient, 
+        workType: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' = 'TYPE_A'
+    ): Promise<CommissionConfig> {
+        const typeSuffix = `_TYPE_${workType.replace('TYPE_', '')}`;
+        
+        // Cần fetch cả key theo Type và key chung (fallback)
+        const keysToFetch = [
+            `ktv_commission_milestones${typeSuffix}`,
+            `ktv_commission_milestones`,
+            `ktv_commission_milestones_type_b`, // Legacy
+            `ktv_deposit_amount${typeSuffix}`,
+            `ktv_deposit_amount`,
+            `ktv_min_deposit`, // Legacy
+            `ktv_sudden_off_penalty${typeSuffix}`,
+            `ktv_sudden_off_penalty`,
+            `enable_ktv_penalty`, // Legacy
+            `ktv_instant_reward_enabled${typeSuffix}`,
+            `ktv_instant_reward_enabled`,
+            `enable_bonus_wallet`, // Legacy
+            `ktv_type_b_fixed_order_bonus`
+        ];
+        
         const { data: configs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
-            .in('key', [
-                'ktv_commission_milestones',
-                'ktv_commission_per_60min',
-                'ktv_min_deposit',
-                'enable_ktv_penalty',
-                'enable_bonus_wallet'
-            ]);
+            .in('key', keysToFetch);
 
-        const configMap: Record<string, string> = {};
+        const configMap: Record<string, any> = {};
         (configs || []).forEach(c => { configMap[c.key] = c.value; });
 
+        // Resolve Milestones
+        let milestoneKey = `ktv_commission_milestones${typeSuffix}`;
+        if (!configMap[milestoneKey]) milestoneKey = workType === 'TYPE_B' ? 'ktv_commission_milestones_type_b' : 'ktv_commission_milestones';
+        
         let milestones = { "1": 2000, "30": 50000, "45": 75000, "60": 100000, "70": 115000, "90": 150000, "100": 165000, "120": 200000, "180": 300000, "300": 500000 };
-        let ratePer60 = 100000;
-        let minDeposit = 500000;
-
-        if (configMap['ktv_commission_milestones']) {
+        if (configMap[milestoneKey]) {
             try { 
-                milestones = typeof configMap['ktv_commission_milestones'] === 'string' 
-                    ? JSON.parse(configMap['ktv_commission_milestones']) 
-                    : configMap['ktv_commission_milestones']; 
+                milestones = typeof configMap[milestoneKey] === 'string' 
+                    ? JSON.parse(configMap[milestoneKey]) 
+                    : configMap[milestoneKey]; 
             } catch { }
         }
         
-        if (configMap['ktv_commission_per_60min']) {
-            const rawRate = String(configMap['ktv_commission_per_60min']).replace(/[^0-9]/g, '');
-            if (rawRate) ratePer60 = Number(rawRate);
-        }
+        // Rate (Không dùng theo Loại nữa vì mỗi mốc đã là VNĐ, nhưng giữ lại fallback)
+        let ratePer60 = 100000;
         
-        if (configMap['ktv_min_deposit']) {
-            const rawDeposit = String(configMap['ktv_min_deposit']).replace(/[^0-9]/g, '');
+        // Deposit
+        let minDeposit = 500000;
+        let depositKey = configMap[`ktv_deposit_amount${typeSuffix}`] !== undefined ? `ktv_deposit_amount${typeSuffix}` 
+                         : configMap['ktv_deposit_amount'] !== undefined ? 'ktv_deposit_amount' : 'ktv_min_deposit';
+        if (configMap[depositKey] !== undefined) {
+            const rawDeposit = String(configMap[depositKey]).replace(/[^0-9]/g, '');
             if (rawDeposit) minDeposit = Number(rawDeposit);
         }
 
-        const isPenaltyEnabled = configMap['enable_ktv_penalty'] === 'true';
-        const isBonusWalletEnabled = String(configMap['enable_bonus_wallet'] || '').replace(/"/g, '') === 'true';
+        // Penalty
+        let penaltyAmount = 50000;
+        let penaltyKey = configMap[`ktv_sudden_off_penalty${typeSuffix}`] !== undefined ? `ktv_sudden_off_penalty${typeSuffix}` 
+                         : configMap['ktv_sudden_off_penalty'] !== undefined ? 'ktv_sudden_off_penalty' : null;
+        if (penaltyKey && configMap[penaltyKey] !== undefined) {
+             penaltyAmount = Number(configMap[penaltyKey]) || 50000;
+        }
+        const isPenaltyEnabled = penaltyAmount > 0 || configMap['enable_ktv_penalty'] === 'true'; // Nếu phạt > 0 thì bật
 
-        return { milestones, ratePer60, minDeposit, isPenaltyEnabled, isBonusWalletEnabled };
+        // Instant Reward (Bonus Wallet)
+        let instantRewardKey = configMap[`ktv_instant_reward_enabled${typeSuffix}`] !== undefined ? `ktv_instant_reward_enabled${typeSuffix}` 
+                             : configMap['ktv_instant_reward_enabled'] !== undefined ? 'ktv_instant_reward_enabled' : 'enable_bonus_wallet';
+        const isBonusWalletEnabled = String(configMap[instantRewardKey] || '').replace(/"/g, '') === 'true';
+        
+        // Fixed Order Bonus (chủ yếu cho B)
+        let fixedOrderBonus = 20000;
+        if (configMap['ktv_type_b_fixed_order_bonus']) {
+            fixedOrderBonus = Number(configMap['ktv_type_b_fixed_order_bonus']) || 20000;
+        }
+
+        return { milestones, ratePer60, minDeposit, isPenaltyEnabled, isBonusWalletEnabled, fixedOrderBonus };
+    }
+
+    /**
+     * Fetch all configs for A, B, C at once to optimize batch reporting
+     */
+    static async getAllConfigs(supabase: SupabaseClient): Promise<Record<string, CommissionConfig>> {
+        const [configA, configB, configC] = await Promise.all([
+            this.getCommissionConfig(supabase, 'TYPE_A'),
+            this.getCommissionConfig(supabase, 'TYPE_B'),
+            this.getCommissionConfig(supabase, 'TYPE_C')
+        ]);
+        return {
+            'TYPE_A': configA,
+            'TYPE_B': configB,
+            'TYPE_C': configC
+        };
+    }
+
+    /**
+     * Fetch all bonus configs for A, B, C at once
+     */
+    static async getAllBonusConfigs(supabase: SupabaseClient): Promise<Record<string, BonusConfig>> {
+        const [bonusA, bonusB, bonusC] = await Promise.all([
+            this.getBonusConfig(supabase, 'TYPE_A'),
+            this.getBonusConfig(supabase, 'TYPE_B'),
+            this.getBonusConfig(supabase, 'TYPE_C')
+        ]);
+        return {
+            'TYPE_A': bonusA,
+            'TYPE_B': bonusB,
+            'TYPE_C': bonusC
+        };
     }
 
     /**
      * Parse system configs for bonus points
      */
-    static async getBonusConfig(supabase: SupabaseClient): Promise<BonusConfig> {
+    static async getBonusConfig(
+        supabase: SupabaseClient,
+        workType: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' = 'TYPE_A'
+    ): Promise<BonusConfig> {
+        const typeSuffix = `_TYPE_${workType.replace('TYPE_', '')}`;
+        
+        const keysToFetch = [
+            `ktv_shift_1_bonus${typeSuffix}`,
+            `ktv_shift_1_bonus`,
+            `ktv_shift_2_bonus${typeSuffix}`,
+            `ktv_shift_2_bonus`,
+            `ktv_shift_3_bonus${typeSuffix}`,
+            `ktv_shift_3_bonus`
+        ];
+        
         const { data: bonusConfigs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
-            .in('key', ['ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus']);
+            .in('key', keysToFetch);
         
         const bonusMap: Record<string, number> = {};
         (bonusConfigs || []).forEach((c: any) => { bonusMap[c.key] = Number(c.value) || 20; });
         
         return {
-            s1Bonus: bonusMap['ktv_shift_1_bonus'] || 20,
-            s2Bonus: bonusMap['ktv_shift_2_bonus'] || 20,
-            s3Bonus: bonusMap['ktv_shift_3_bonus'] || 40
+            s1Bonus: bonusMap[`ktv_shift_1_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_1_bonus'] ?? 20,
+            s2Bonus: bonusMap[`ktv_shift_2_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_2_bonus'] ?? 20,
+            s3Bonus: bonusMap[`ktv_shift_3_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_3_bonus'] ?? 40
         };
     }
 

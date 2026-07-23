@@ -5,19 +5,17 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Settings, Save, CheckCircle2, AlertCircle, Loader2, Coins, CalendarDays, Percent } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SystemConfigsTable } from './SystemConfigsTable';
+import { MilestonesEditor } from './MilestonesEditor';
+import { KtvFeaturesTable } from './KtvFeaturesTable';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
 export default function SystemSettingsPage() {
-    const [configs, setConfigs] = useState({
-        ktv_bonus_rate: 1000,
-        ktv_shift_1_bonus: 20,
-        ktv_shift_2_bonus: 20,
-        ktv_shift_3_bonus: 40,
-        ktv_deposit_amount: 3000000,
-        ktv_sudden_off_penalty: 50000,
+    const [configs, setConfigs] = useState<any>({
+        // Tạm thời để trống, sẽ được merge từ API về
         enable_web_advance_booking_email: false
     });
+    const [activeTab, setActiveTab] = useState<'TYPE_A' | 'TYPE_B' | 'TYPE_C'>('TYPE_A');
     
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -40,11 +38,37 @@ export default function SystemSettingsPage() {
         }
     };
 
-    const handleSave = async () => {
+    const [savingGroup, setSavingGroup] = useState<string | null>(null);
+
+    const handleSaveGroup = async (keys: string[], groupName: string) => {
+        setSavingGroup(groupName);
+        setSaveStatus('idle');
+        try {
+            const payload: any = {};
+            keys.forEach(k => {
+                const actualKey = k === 'enable_web_advance_booking_email' ? k : `${k}_${activeTab}`;
+                payload[actualKey] = configs[actualKey];
+            });
+            const result = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, payload);
+            if (result.success) {
+                setSaveStatus('success');
+                setTimeout(() => setSaveStatus('idle'), 3000);
+            } else {
+                setSaveStatus('error');
+            }
+        } catch (error) {
+            console.error('Lỗi lưu cấu hình:', error);
+            setSaveStatus('error');
+        } finally {
+            setSavingGroup(null);
+        }
+    };
+
+    const handleSaveField = async (actualKey: string, value: any) => {
         setIsSaving(true);
         setSaveStatus('idle');
         try {
-            const result = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, configs);
+            const result = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, { [actualKey]: value });
             if (result.success) {
                 setSaveStatus('success');
                 setTimeout(() => setSaveStatus('idle'), 3000);
@@ -60,66 +84,66 @@ export default function SystemSettingsPage() {
     };
 
     const handleChange = (key: string, value: any) => {
-        setConfigs(prev => ({ ...prev, [key]: value }));
+        if (key === 'enable_web_advance_booking_email') {
+            setConfigs((prev: any) => ({ ...prev, [key]: value }));
+        } else {
+            setConfigs((prev: any) => ({ ...prev, [`${key}_${activeTab}`]: value }));
+        }
+    };
+    
+    // Helper để lấy giá trị theo tab hiện tại (fallback về mặc định cũ nếu không có)
+    const getValue = (key: string) => {
+        const val = configs[`${key}_${activeTab}`];
+        return val !== undefined ? val : configs[key];
     };
 
     if (isLoading) {
         return (
-            <AppLayout title="Cấu Hình Hệ Thống">
-                <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                    <Loader2 size={32} className="text-indigo-500 animate-spin" />
-                    <p className="mt-4 text-gray-500 font-medium">Đang tải cấu hình...</p>
-                </div>
-            </AppLayout>
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                <Loader2 size={32} className="text-indigo-500 animate-spin" />
+                <p className="mt-4 text-gray-500 font-medium">Đang tải cấu hình...</p>
+            </div>
         );
     }
 
     return (
-        <AppLayout title="Cấu Hình Hệ Thống">
-            <div className="max-w-4xl mx-auto space-y-6">
-                
-                {/* Header */}
-                <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center">
-                            <Settings size={28} className="text-indigo-600" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-black text-gray-900">Cấu hình hệ thống</h1>
-                            <p className="text-sm text-gray-500 mt-1 font-medium">Quản lý các định mức điểm thưởng và tài chính chung</p>
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                        {saveStatus === 'success' && (
-                            <motion.span initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="text-emerald-600 font-bold text-sm flex items-center gap-1.5">
-                                <CheckCircle2 size={16} /> Đã lưu thành công
-                            </motion.span>
-                        )}
-                        {saveStatus === 'error' && (
-                            <motion.span initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="text-rose-600 font-bold text-sm flex items-center gap-1.5">
-                                <AlertCircle size={16} /> Lỗi khi lưu
-                            </motion.span>
-                        )}
+        <div className="space-y-6">
+
+                {/* Tabs KTV Types */}
+                <div className="flex gap-2 p-1.5 bg-gray-100/80 backdrop-blur rounded-2xl w-fit">
+                    {(['TYPE_A', 'TYPE_B', 'TYPE_C'] as const).map(type => (
                         <button
-                            onClick={handleSave}
-                            disabled={isSaving}
-                            className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                            key={type}
+                            onClick={() => setActiveTab(type)}
+                            className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                                activeTab === type
+                                    ? 'bg-white text-indigo-600 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                            }`}
                         >
-                            {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                            Lưu Cấu Hình
+                            KTV {type === 'TYPE_A' ? 'Loại A (Cố định)' : type === 'TYPE_B' ? 'Loại B (Hợp tác)' : 'Loại C (Tự do)'}
                         </button>
-                    </div>
+                    ))}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Card: Điểm Thưởng */}
                     <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
-                                <Coins size={20} className="text-amber-500" />
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+                                    <Coins size={20} className="text-amber-500" />
+                                </div>
+                                <h2 className="text-lg font-black text-gray-900">Mốc Điểm Thưởng (Bonus)</h2>
                             </div>
-                            <h2 className="text-lg font-black text-gray-900">Mốc Điểm Thưởng (Bonus)</h2>
+                            <button
+                                onClick={() => handleSaveGroup(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus'], 'bonus')}
+                                disabled={savingGroup === 'bonus'}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {savingGroup === 'bonus' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                Lưu
+                            </button>
                         </div>
                         
                         <div className="space-y-5">
@@ -131,7 +155,7 @@ export default function SystemSettingsPage() {
                                 <div className="relative">
                                     <input
                                         type="number"
-                                        value={configs.ktv_bonus_rate}
+                                        value={getValue('ktv_bonus_rate') ?? 0}
                                         onChange={(e) => handleChange('ktv_bonus_rate', Number(e.target.value))}
                                         className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-indigo-400 focus:ring-0 transition-colors"
                                     />
@@ -151,7 +175,7 @@ export default function SystemSettingsPage() {
                                     <div className="relative">
                                         <input
                                             type="number"
-                                            value={configs.ktv_shift_1_bonus}
+                                            value={getValue('ktv_shift_1_bonus') ?? 0}
                                             onChange={(e) => handleChange('ktv_shift_1_bonus', Number(e.target.value))}
                                             className="w-full bg-emerald-50/50 border-2 border-emerald-100 rounded-xl px-4 py-3 text-lg font-bold text-emerald-900 focus:border-emerald-400 focus:ring-0 transition-colors"
                                         />
@@ -167,7 +191,7 @@ export default function SystemSettingsPage() {
                                     <div className="relative">
                                         <input
                                             type="number"
-                                            value={configs.ktv_shift_2_bonus}
+                                            value={getValue('ktv_shift_2_bonus') ?? 0}
                                             onChange={(e) => handleChange('ktv_shift_2_bonus', Number(e.target.value))}
                                             className="w-full bg-blue-50/50 border-2 border-blue-100 rounded-xl px-4 py-3 text-lg font-bold text-blue-900 focus:border-blue-400 focus:ring-0 transition-colors"
                                         />
@@ -184,7 +208,7 @@ export default function SystemSettingsPage() {
                                 <div className="relative">
                                     <input
                                         type="number"
-                                        value={configs.ktv_shift_3_bonus}
+                                        value={getValue('ktv_shift_3_bonus') ?? 0}
                                         onChange={(e) => handleChange('ktv_shift_3_bonus', Number(e.target.value))}
                                         className="w-full bg-purple-50/50 border-2 border-purple-100 rounded-xl px-4 py-3 text-lg font-bold text-purple-900 focus:border-purple-400 focus:ring-0 transition-colors"
                                     />
@@ -196,11 +220,21 @@ export default function SystemSettingsPage() {
 
                     {/* Card: Tài Chính & Ký Quỹ */}
                     <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center">
-                                <Coins size={20} className="text-teal-500" />
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center">
+                                    <Coins size={20} className="text-teal-500" />
+                                </div>
+                                <h2 className="text-lg font-black text-gray-900">Tài Chính & Ký Quỹ KTV</h2>
                             </div>
-                            <h2 className="text-lg font-black text-gray-900">Tài Chính & Ký Quỹ KTV</h2>
+                            <button
+                                onClick={() => handleSaveGroup(['ktv_deposit_amount', 'ktv_sudden_off_penalty', 'ktv_instant_reward_enabled'], 'finance')}
+                                disabled={savingGroup === 'finance'}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {savingGroup === 'finance' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                Lưu
+                            </button>
                         </div>
                         
                         <div className="space-y-5">
@@ -211,7 +245,7 @@ export default function SystemSettingsPage() {
                                 <div className="relative">
                                     <input
                                         type="number"
-                                        value={configs.ktv_deposit_amount}
+                                        value={getValue('ktv_deposit_amount') ?? 0}
                                         onChange={(e) => handleChange('ktv_deposit_amount', Number(e.target.value))}
                                         className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-teal-400 focus:ring-0 transition-colors"
                                     />
@@ -230,7 +264,7 @@ export default function SystemSettingsPage() {
                                 <div className="relative">
                                     <input
                                         type="number"
-                                        value={configs.ktv_sudden_off_penalty}
+                                        value={getValue('ktv_sudden_off_penalty') ?? 0}
                                         onChange={(e) => handleChange('ktv_sudden_off_penalty', Number(e.target.value))}
                                         className="w-full bg-rose-50 border-2 border-rose-100 rounded-xl px-4 py-3 text-lg font-bold text-rose-900 focus:border-rose-400 focus:ring-0 transition-colors"
                                     />
@@ -239,7 +273,33 @@ export default function SystemSettingsPage() {
                                 <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Mức phạt áp dụng cho mỗi bản ghi "Nghỉ đột xuất" được tạo tự động khi KTV tan ca sớm hoặc nghỉ không phép.</p>
                             </div>
 
-                            <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
+                            <hr className="border-gray-100 my-4" />
+
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <div>
+                                    <label className="block text-sm font-black text-gray-900 mb-1">
+                                        Hiển thị & cộng tiền tua tức thì
+                                    </label>
+                                    <p className="text-[11px] text-gray-500 font-medium">BẬT = Hiện tiền tua ngay khi xong. TẮT = Chờ quầy & khách duyệt (tiền tính ngầm, KTV nhận Push sau).</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const newVal = !(getValue('ktv_instant_reward_enabled') ?? true);
+                                        handleChange('ktv_instant_reward_enabled', newVal);
+                                    }}
+                                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                                        (getValue('ktv_instant_reward_enabled') ?? true) ? 'bg-teal-500' : 'bg-gray-300'
+                                    }`}
+                                >
+                                    <span
+                                        className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                                            (getValue('ktv_instant_reward_enabled') ?? true) ? 'translate-x-6' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
+                            <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 mt-4">
                                 <h3 className="text-xs font-black uppercase tracking-wider text-orange-600 mb-2 flex items-center gap-2">
                                     <AlertCircle size={14} /> Ghi chú quan trọng
                                 </h3>
@@ -250,38 +310,16 @@ export default function SystemSettingsPage() {
                         </div>
                     </div>
 
-                    {/* Card: Tính năng Web Booking */}
-                    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
-                                <AlertCircle size={20} className="text-amber-500" />
-                            </div>
-                            <h2 className="text-lg font-black text-gray-900">Tính năng Web Booking</h2>
-                        </div>
-                        
-                        <div className="space-y-5">
-                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900">Gửi Email Yêu Cầu Đặt Cọc</h3>
-                                    <p className="text-xs text-gray-500 mt-1">Tự động gửi email yêu cầu đặt cọc cho khách khi Lễ tân bấm Xác nhận đơn từ Web.</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                    <input 
-                                        type="checkbox" 
-                                        className="sr-only peer"
-                                        checked={configs.enable_web_advance_booking_email}
-                                        onChange={(e) => handleChange('enable_web_advance_booking_email', e.target.checked)}
-                                    />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
 
-                {/* Bảng cấu hình nâng cao sẽ nằm ngoài Grid để full width */}
-                <SystemConfigsTable />
+                {/* Milestones Editor (Tua) */}
+                <MilestonesEditor activeTab={activeTab} />
+
+                {/* Staff Features Table */}
+                <div className="mt-8">
+                    <KtvFeaturesTable activeTab={activeTab} />
+                </div>
             </div>
-        </AppLayout>
     );
 }

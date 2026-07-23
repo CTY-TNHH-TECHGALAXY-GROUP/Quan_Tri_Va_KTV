@@ -349,23 +349,33 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         }
 
         // ─── 5. FETCH ROOM PROCEDURES ───
-        let roomProcedures: { prep_procedure: string[] | null, clean_procedure: string[] | null } = { prep_procedure: null, clean_procedure: null };
+        let roomProcedures: { prep_procedure: string[] | null, clean_procedure: string[] | null, handover_checklist: string[] | null } = { prep_procedure: null, clean_procedure: null, handover_checklist: null };
         const roomId = turnInfo?.room_id || booking.roomName;
         if (roomId) {
             const { data: roomData } = await supabase
                 .from('Rooms')
-                .select('prep_procedure, clean_procedure')
+                .select('prep_procedure, clean_procedure, handover_checklist')
                 .eq('id', roomId)
                 .maybeSingle();
             if (roomData) {
                 roomProcedures = {
                     prep_procedure: roomData.prep_procedure || null,
-                    clean_procedure: roomData.clean_procedure || null
+                    clean_procedure: roomData.clean_procedure || null,
+                    handover_checklist: roomData.handover_checklist || null
                 };
             }
         }
 
         // ─── 6. ON-THE-FLY TIMELINE SHIFT CALCULATION ───
+        
+        // ─── 6.1 FETCH SYSTEM CONFIG ───
+        const { data: rewardConfig } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'ktv_instant_reward_enabled')
+            .maybeSingle();
+        const ktv_instant_reward_enabled = rewardConfig?.value ?? true; // Mặc định là true (tính tiền ngay)
+
         // CHỈ tính nối tiếp cho segments CỦA CÙNG 1 KTV (gối đầu).
         // KTV khác nhau → giữ nguyên giờ gốc (song song).
         let finalDispatchStartTime = turnInfo?.start_time;
@@ -519,6 +529,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 assignedBedId: turnInfo?.bed_id,
                 roomPrepProcedure: roomProcedures.prep_procedure,
                 roomCleanProcedure: roomProcedures.clean_procedure,
+                handoverChecklist: roomProcedures.handover_checklist,
+                ktv_instant_reward_enabled: ktv_instant_reward_enabled,
                 nextBookingId: nextBookingId,
                 nextServiceName: nextServiceName,
                 nextStartTime: nextStartTime

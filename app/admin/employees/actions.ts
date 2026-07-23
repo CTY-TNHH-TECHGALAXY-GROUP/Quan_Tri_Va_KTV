@@ -2,6 +2,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
+import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B } from '@/lib/constants/staff.constants';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
 
@@ -33,7 +34,7 @@ export async function getStaffList() {
                 password: authInfo?.password || '---',
                 userRole: authInfo?.role || 'TECHNICIAN'
             };
-        }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !s.id.startsWith('EXT'));
+        }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !s.id.startsWith('EXT') && s.work_type !== 'TYPE_C');
 
         return { success: true, data: staffWithAuth };
     } catch (error: any) {
@@ -126,9 +127,8 @@ export async function createStaffMember(formData: any) {
             height: formData.height ? parseInt(formData.height) : null,
             weight: formData.weight ? parseInt(formData.weight) : null,
             work_type: formData.work_type || 'TYPE_A',
-            base_salary_per_hour: formData.work_type === 'TYPE_B' ? (formData.baseSalaryPerHour || 180000) : null,
-            target_hours_per_month: formData.work_type === 'TYPE_B' ? (formData.targetHoursPerMonth || 80) : null,
-            skills: formData.skills || {}
+            skills: formData.skills || {},
+            feature_flags: formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B : DEFAULT_FEATURE_FLAGS_TYPE_A
         };
 
         const { data: staffData, error: staffError } = await supabase
@@ -176,9 +176,8 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.height !== undefined) staffPayload.height = updates.height || null;
         if (updates.weight !== undefined) staffPayload.weight = updates.weight || null;
         if (updates.work_type !== undefined) staffPayload.work_type = updates.work_type;
-        if (updates.baseSalaryPerHour !== undefined) staffPayload.base_salary_per_hour = updates.baseSalaryPerHour;
-        if (updates.targetHoursPerMonth !== undefined) staffPayload.target_hours_per_month = updates.targetHoursPerMonth;
         if (updates.skills !== undefined) staffPayload.skills = updates.skills;
+        if (updates.feature_flags !== undefined) staffPayload.feature_flags = updates.feature_flags;
         if (updates.isActiveVipMenu !== undefined) staffPayload.is_active_vip_menu = updates.isActiveVipMenu;
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
 

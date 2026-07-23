@@ -76,12 +76,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const cleanProcedure: string[] = booking?.roomCleanProcedure || DEFAULT_CLEAN_PROCEDURE;
 
     // === STATE SCREEN: HANDOVER (Dọn phòng) ===
-    const [handoverPhotosBase64, setHandoverPhotosBase64] = useState<string[]>([]);
+    const [handoverPhotosBase64, setHandoverPhotosBase64] = useState<Record<string, string>>({});
     const [isHandoverComplete, setIsHandoverComplete] = useState(false);
 
     useEffect(() => {
-        setIsHandoverComplete(handoverPhotosBase64.length > 0);
-    }, [handoverPhotosBase64]);
+        // Kiểm tra xem đã chụp đủ ảnh theo checklist chưa
+        const requiredChecklist = booking?.handoverChecklist || [];
+        const hasAllPhotos = requiredChecklist.length > 0 
+            ? requiredChecklist.every((item: string) => handoverPhotosBase64[item])
+            : Object.keys(handoverPhotosBase64).length > 0;
+            
+        setIsHandoverComplete(hasAllPhotos);
+    }, [handoverPhotosBase64, booking?.handoverChecklist]);
 
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
@@ -116,6 +122,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [walletTimeline, setWalletTimeline] = useState<any[]>([]);
 
     const [onCallState, setOnCallState] = useState<{ allow_on_call: boolean; is_on_call: boolean; travel_time_mins: number } | null>(null);
+    const [kpiData, setKpiData] = useState<any>(null);
 
     const lastAcknowledgedIdRef = useRef<string | null>(null);
     const prevBookingIdRef = useRef<string | null>(null);
@@ -222,6 +229,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
             };
             fetchOnCall();
+
+            const fetchKpi = async () => {
+                try {
+                    const json = await apiClient.get<any>(`/api/ktv/kpi?techCode=${ktvId}`);
+                    if (json.success && json.data) {
+                        setKpiData(json.data);
+                    }
+                } catch (e) {
+                    console.error('Error fetching KPI state:', e);
+                }
+            };
+            fetchKpi();
         }
     }, [screen, booking?.id, ktvId]);
 
@@ -1840,7 +1859,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
                 action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
                 techCode: ktvId,
-                photosBase64: handoverPhotosBase64
+                photosBase64: Object.values(handoverPhotosBase64)
             });
             
             if (!res.success) {
@@ -1855,6 +1874,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsPrepping(false);
             setPrepTimeRemaining(0);
             
+            if (booking?.ktv_instant_reward_enabled === false) {
+                // Tính năng hiện tiền tua tắt -> quay về trang chờ
+                isTransitioningRef.current = true;
+                goToDashboard(booking?.nextBookingId);
+                return;
+            }
+
             // Luôn chuyển sang REWARD để KTV thấy thành quả công việc
             isTransitioningRef.current = true;
             setScreen('REWARD');
@@ -1978,6 +2004,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         walletTimeline,
         onCallState,
         handleToggleOnCall,
+        kpiData,
         canViewWallet,
         forceRefresh: async () => {
             if (fetchBookingRef.current) await fetchBookingRef.current();

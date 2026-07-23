@@ -33,18 +33,23 @@ export async function GET(request: Request) {
         const GLOBAL_START_DATE_ISO = '2026-05-04T00:00:00.000Z';
 
         // 1. Get configs from centralized service
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase);
-        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
+        const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        const bonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
         // 2. Fetch KTVs
         const { data: ktvs } = await supabase
             .from('Staff')
-            .select('id, full_name, position')
+            .select('id, full_name, position, work_type')
             .eq('status', 'ĐANG LÀM')
             .ilike('id', 'NH%')
             .order('id');
             
         if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, data: [] });
+
+        const ktvWorkTypeMap: Record<string, string> = {};
+        ktvs.forEach(k => {
+            ktvWorkTypeMap[k.id] = k.work_type || 'TYPE_A';
+        });
 
         // Fetch KTV shifts to determine bonus per KTV
         const { data: shiftsData } = await supabase
@@ -181,15 +186,20 @@ export async function GET(request: Request) {
                 if (relevantItems.length === 0) continue;
 
                 let bookingCommission = 0;
+                
+                const workType = ktvWorkTypeMap[techCode] || 'TYPE_A';
+                const config = commConfigs[workType] || commConfigs['TYPE_A'];
+                const bConfig = bonusConfigs[workType] || bonusConfigs['TYPE_A'];
+
                 for (const item of relevantItems) {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, config.milestones, config.ratePer60);
                 }
-                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, config.milestones, config.ratePer60);
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig);
 
                 at_rt_commission += bookingCommission;
                 at_rt_tip += bookingTip;

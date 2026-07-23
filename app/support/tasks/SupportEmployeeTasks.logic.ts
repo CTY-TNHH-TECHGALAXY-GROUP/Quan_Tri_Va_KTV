@@ -24,6 +24,9 @@ interface TaskItem {
   photoCount: number;
   requires_photo: boolean;
   min_photo_count: number;
+  category_id?: string;
+  categoryName?: string;
+  categoryOrder?: number;
 }
 
 interface TaskNotification {
@@ -150,6 +153,24 @@ export const useSupportTasks = () => {
   };
 
   // ============================================================
+  // Submit Task (Complete)
+  // ============================================================
+  const submitTask = async (taskId: string) => {
+    try {
+      const res = await fetch('/api/support/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'COMPLETE', taskId }),
+      });
+      if (res.ok) {
+        await fetchTasks(employeeId!);
+      }
+    } catch (error) {
+      console.error('Failed to submit task:', error);
+    }
+  };
+
+  // ============================================================
   // Upload photo (draft / auto-save)
   // ============================================================
   const uploadPhoto = async (taskId: string, file: File) => {
@@ -235,31 +256,42 @@ export const useSupportTasks = () => {
   }, [employeeId, fetchTasks]);
 
   // ============================================================
-  // Sort tasks: AD-HOC first → Not completed → Completed
+  // Group tasks by category
   // ============================================================
-  const urgentTasks = tasks.filter(t => t.task_type === 'AD-HOC' && t.status !== 'COMPLETED');
-  const incompleteTasks = tasks.filter(t => t.task_type !== 'AD-HOC' && t.status !== 'COMPLETED');
-  const completedTasks = tasks.filter(t => t.status === 'COMPLETED');
+  const urgentTasks = tasks.filter(t => t.task_type === 'AD-HOC');
+  const normalTasks = tasks.filter(t => t.task_type !== 'AD-HOC');
+
+  const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
+  
+  normalTasks.forEach(t => {
+    const catId = t.category_id || 'OTHER';
+    if (!groupedTasks[catId]) {
+      groupedTasks[catId] = {
+        categoryName: t.categoryName || 'Các công việc khác',
+        categoryOrder: t.categoryOrder || 999,
+        tasks: []
+      };
+    }
+    groupedTasks[catId].tasks.push(t);
+  });
+
+  const sortedCategories = Object.values(groupedTasks).sort((a, b) => a.categoryOrder - b.categoryOrder);
 
   const totalTasks = tasks.length;
-  const doneCount = completedTasks.length;
+  const doneCount = tasks.filter(t => t.status === 'COMPLETED').length;
   const pct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
 
   return {
     urgentTasks,
-    incompleteTasks,
-    completedTasks,
-    notifications,
-    totalTasks,
+    sortedCategories,
     doneCount,
+    totalTasks,
     pct,
     loading,
-    selectedTask,
-    setSelectedTask,
-    uploading,
-    startTask,
-    completeTask,
-    uploadPhoto,
+    notifications,
     dismissNotification,
+    uploadPhoto,
+    uploading,
+    submitTask,
   };
 };

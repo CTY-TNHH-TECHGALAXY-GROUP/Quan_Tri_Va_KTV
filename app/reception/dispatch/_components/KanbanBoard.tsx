@@ -60,6 +60,7 @@ interface KanbanBoardProps {
     onPauseClick?: (orderId: string, subOrder?: any) => void;
     roomTransitionTime?: number;
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
+    onReviewClick?: (service: ServiceBlock) => void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services) => {
@@ -134,7 +135,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName }: KanbanBoardProps) {
+export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick }: KanbanBoardProps) {
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
@@ -559,7 +560,24 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                     {s.options?.displayName || s.serviceName}
                                                                 </span>
                                                                 {!s.isUtility && (
-                                                                    <span className="text-[9px] font-black text-indigo-600 bg-white px-1.5 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
+                                                                    <div className="flex flex-col items-end gap-1">
+                                                                        <span className="text-[9px] font-black text-indigo-600 bg-white px-1.5 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
+                                                                        {s.handover_status === 'PENDING' && (
+                                                                            <button 
+                                                                                onClick={(e) => { e.stopPropagation(); onReviewClick?.(s); }}
+                                                                                className="text-[9px] font-bold text-white bg-rose-500 animate-pulse px-1.5 py-0.5 rounded shadow-sm border border-rose-600 shrink-0 flex items-center gap-1 hover:bg-rose-600 transition-colors"
+                                                                            >
+                                                                                <Camera size={10} />
+                                                                                Duyệt ảnh
+                                                                            </button>
+                                                                        )}
+                                                                        {s.handover_status === 'APPROVED' && (
+                                                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                                <Check size={10} />
+                                                                                Đã duyệt
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                             

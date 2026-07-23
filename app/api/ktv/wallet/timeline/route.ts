@@ -18,7 +18,14 @@ export async function GET(request: Request) {
         }
 
         // Fetch configs via Service
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase);
+        const { data: staffData } = await supabase
+            .from('Staff')
+            .select('work_type')
+            .eq('id', techCode)
+            .single();
+        const workType = staffData?.work_type || 'TYPE_A';
+
+        const commConfig = await KtvCommissionService.getCommissionConfig(supabase, workType);
 
         const GLOBAL_START_DATE_STR = '2026-05-04';
         const START_DATE = `${GLOBAL_START_DATE_STR}T00:00:00.000Z`;

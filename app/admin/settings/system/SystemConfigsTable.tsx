@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SystemConfig {
@@ -16,6 +16,7 @@ export function SystemConfigsTable() {
     const [configs, setConfigs] = useState<SystemConfig[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
     
     // States for Editing
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -29,8 +30,10 @@ export function SystemConfigsTable() {
     const [newDesc, setNewDesc] = useState('');
 
     useEffect(() => {
-        fetchConfigs();
-    }, []);
+        if (isExpanded && configs.length === 0) {
+            fetchConfigs();
+        }
+    }, [isExpanded]);
 
     const fetchConfigs = async () => {
         setIsLoading(true);
@@ -101,7 +104,7 @@ export function SystemConfigsTable() {
     };
 
     const saveNew = async () => {
-        if (!newKey) {
+        if (!newKey.trim()) {
             alert('Vui lòng nhập Key');
             return;
         }
@@ -158,37 +161,53 @@ export function SystemConfigsTable() {
 
     return (
         <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 mt-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+            <div 
+                className="flex items-center justify-between cursor-pointer select-none group"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center">
+                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center group-hover:bg-slate-100 transition-colors">
                         <AlertCircle size={20} className="text-slate-500" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-black text-gray-900">Bảng Cấu Hình Nâng Cao (SystemConfigs)</h2>
+                        <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                            Bảng Cấu Hình Nâng Cao (SystemConfigs)
+                            {isExpanded ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+                        </h2>
                         <p className="text-xs font-medium text-rose-500 mt-0.5">⚠️ Chú ý: Khu vực dành riêng cho Quản trị viên kỹ thuật.</p>
                     </div>
                 </div>
                 
-                <button
-                    onClick={() => setIsAdding(true)}
-                    disabled={isAdding}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
-                >
-                    <Plus size={16} /> Thêm Cấu Hình
-                </button>
+                {isExpanded && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setIsAdding(true); }}
+                        disabled={isAdding}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
+                    >
+                        <Plus size={16} /> Thêm Cấu Hình
+                    </button>
+                )}
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b-2 border-gray-100">
-                            <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/4">Key</th>
-                            <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/4">Value</th>
-                            <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/3">Mô tả</th>
-                            <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 text-right">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
+            <AnimatePresence>
+                {isExpanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                        animate={{ height: 'auto', opacity: 1, marginTop: 24 }}
+                        exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-100">
+                                        <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/4">Key</th>
+                                        <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/4">Value</th>
+                                        <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 w-1/3">Mô tả</th>
+                                        <th className="py-3 px-4 text-xs font-black uppercase text-gray-400 text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
                         {/* New Item Form */}
                         <AnimatePresence>
                             {isAdding && (
@@ -320,7 +339,10 @@ export function SystemConfigsTable() {
                         )}
                     </tbody>
                 </table>
-            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

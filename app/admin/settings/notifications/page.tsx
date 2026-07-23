@@ -28,8 +28,7 @@ const NotificationSettingsPage = () => {
     const ruleEntries = Object.entries(rules);
 
     return (
-        <AppLayout>
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-4 sm:p-6">
+        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-4 sm:p-6">
                 {/* Header */}
                 <motion.div
                     initial={{ opacity: 0, y: -10 }}
@@ -224,8 +223,7 @@ const NotificationSettingsPage = () => {
                         * Admin / Quầy luôn nhận thông báo bất kể on/off-shift. Chỉ KTV mới bị ảnh hưởng bởi cài đặt &quot;On-shift&quot;.
                     </p>
                 </div>
-            </div>
-        </AppLayout>
+        </div>
     );
 };
 

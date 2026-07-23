@@ -39,12 +39,13 @@ interface DispatchServiceBlockProps {
     reminders?: ReminderData[];
     onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
     orderSource?: string;
+    now?: Date;
 }
 
 export const DispatchServiceBlock = ({
     svc, svcIndex, orderId, rooms, beds, busyBedIds = [], usedKtvIds = [], availableTurns,
     onUpdateSvc, onUpdateStaff, onAddStaff, onRemoveStaff, onRemoveSvc, onEditSvc, selectedDate,
-    isExpanded = true, onToggleExpand, onDispatchSvc, reminders = [], onViewPhoto, orderSource
+    isExpanded = true, onToggleExpand, onDispatchSvc, reminders = [], onViewPhoto, orderSource, now
 }: DispatchServiceBlockProps) => {
 
     const isUtility = !!(svc as any).isUtility;
@@ -272,6 +273,7 @@ export const DispatchServiceBlock = ({
                                         reminders={reminders}
                                         genderReq={svc.genderReq}
                                         onViewPhoto={onViewPhoto}
+                                        now={now}
                                     />
                                 ))}
                             </div>

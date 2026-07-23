@@ -148,6 +148,40 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
                 </div>
               </div>
 
+              {order.ktv_comment && (
+                <div className="flex justify-between items-start gap-4">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider shrink-0">Bạn Đ.Giá</span>
+                  <div className="bg-indigo-50/50 rounded-lg p-2.5 text-xs text-indigo-700 italic flex-1 text-right border border-indigo-100">
+                    &ldquo;{order.ktv_comment}&rdquo;
+                  </div>
+                </div>
+              )}
+
+              {/* Bàn giao phòng */}
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Quầy duyệt</span>
+                <div className="flex items-center gap-2">
+                  {order.handover_status === 'APPROVED' ? (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50">
+                      Đã duyệt
+                    </span>
+                  ) : order.handover_status === 'REJECTED' ? (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-red-700 bg-red-50">
+                      Từ chối
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-blue-700 bg-blue-50">
+                      Chờ duyệt
+                    </span>
+                  )}
+                </div>
+              </div>
+              {order.handover_comment && (
+                <div className="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-600 italic -mt-1">
+                  &ldquo;{order.handover_comment}&rdquo;
+                </div>
+              )}
+
               {/* Bonus Points */}
               {order.bonusPoints > 0 && (
                 <div className="flex justify-between items-center bg-amber-50 rounded-xl px-3 py-2 -mx-1">

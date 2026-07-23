@@ -276,13 +276,25 @@ const DashboardTabContent = () => {
 // Embedded Tab: Kho Công Việc (Collapsible + Add new)
 // ============================================================
 const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTemplates> }) => {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [newName, setNewName] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  
+  // Modal state
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number }[]>([
+    { name: '', requires_photo: false, min_photo_count: 0 }
+  ]);
   const [submitting, setSubmitting] = useState(false);
 
   if (logic.templates.length === 0 && logic.categories.length === 0) {
-    return <div className="text-center py-16 text-slate-400">Chưa có mẫu công việc nào.</div>;
+    return (
+      <div className="text-center py-16 text-slate-400">
+        <p className="mb-4">Chưa có mẫu công việc nào.</p>
+        <button onClick={() => setShowModal(true)} className="bg-cyan-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-cyan-200">
+          + Thêm Tiêu Đề Mới
+        </button>
+      </div>
+    );
   }
 
   const grouped: Record<string, typeof logic.templates> = {};
@@ -295,92 +307,197 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
     if (!grouped[cat.name]) grouped[cat.name] = [];
   });
 
-  const toggle = (key: string) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-
-  const handleAdd = async (catName: string) => {
-    if (!newName.trim()) return;
-    const cat = logic.categories.find(c => c.name === catName);
-    if (!cat) return;
+  const handleSave = async () => {
+    if (!categoryName.trim()) {
+      alert('Vui lòng nhập tên tiêu đề.');
+      return;
+    }
     setSubmitting(true);
-    const ok = await logic.addTemplate(newName.trim(), cat.id);
-    if (ok) { setNewName(''); setAddingTo(null); }
+    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks);
+    if (ok) {
+      setShowModal(false);
+      setCategoryId(null);
+      setCategoryName('');
+      setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+    }
     setSubmitting(false);
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      <div className="flex justify-end mb-4">
+        <button onClick={() => {
+          setCategoryId(null);
+          setCategoryName('');
+          setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+          setShowModal(true);
+        }} className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-cyan-200 flex items-center gap-2 hover:bg-cyan-700 transition-colors">
+          <span className="text-xl leading-none">+</span> Thêm Tiêu Đề Mới
+        </button>
+      </div>
+
       {Object.entries(grouped).map(([catName, items]) => {
-        const isCollapsed = collapsed[catName] ?? false;
-        const allEmployees = new Set<string>();
-        items.forEach(t => t.assignedEmployees.forEach(n => allEmployees.add(n)));
+        const catObj = logic.categories.find(c => c.name === catName);
 
         return (
-          <div key={catName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <button
-              onClick={() => toggle(catName)}
-              className="w-full bg-slate-50 px-5 py-4 border-b border-slate-100 text-left hover:bg-slate-100/70 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className={`text-slate-400 text-xs transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}>▶</span>
-                <span className="text-lg">🏷️</span>
-                <h3 className="font-bold text-slate-700 text-base">{catName}</h3>
-                <span className="ml-auto bg-slate-200 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-full">{items.length} việc</span>
+          <div key={catName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+            {/* Tiêu đề cấp 1 */}
+            <div className="bg-slate-200 text-slate-700 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-sm uppercase tracking-wide">{catName}</h3>
+              <div className="flex items-center gap-3">
+                <span className="bg-slate-300 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-full">{items.length} việc</span>
+                <button
+                  onClick={() => {
+                    setCategoryId(catObj?.id || null);
+                    setCategoryName(catName);
+                    setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count })) : [{ name: '', requires_photo: false, min_photo_count: 0 }]);
+                    setShowModal(true);
+                  }}
+                  className="text-cyan-600 text-xs font-bold hover:underline"
+                >Sửa</button>
               </div>
-              {allEmployees.size > 0 ? (
-                <div className="flex items-center gap-1.5 mt-2 flex-wrap ml-8">
-                  <span className="text-xs text-slate-400">👤 Giao cho:</span>
-                  {Array.from(allEmployees).map(name => (
-                    <span key={name} className="bg-cyan-50 text-cyan-700 text-xs font-medium px-2 py-0.5 rounded-full border border-cyan-200">{name}</span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 mt-1 italic ml-8">Chưa giao cho ai</p>
-              )}
-            </button>
-
-            {!isCollapsed && (
-              <>
-                <div className="divide-y divide-slate-50">
-                  {items.length === 0 ? (
-                    <div className="px-5 py-6 text-center text-slate-400 text-sm italic">Chưa có công việc nào trong nhóm này.</div>
-                  ) : items.map((tpl) => (
-                    <div key={tpl.id} className="px-5 py-3 hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-slate-800 truncate">{tpl.name}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400 flex-wrap">
-                            <span className="bg-orange-50 text-orange-600 font-semibold px-1.5 py-0.5 rounded border border-orange-100">{tpl.roomName}</span>
-                            {tpl.cron_schedule !== '—' && <span className="font-mono text-cyan-600">🔄 {tpl.cron_schedule}</span>}
-                            {tpl.requires_photo && <span className="text-green-600">📷 ≥{tpl.min_photo_count}</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 ml-3 flex-shrink-0">
-                          {tpl.assignedEmployees.length > 0 ? tpl.assignedEmployees.map(name => (
-                            <span key={name} className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white text-[10px] font-bold" title={name}>{name.charAt(0).toUpperCase()}</span>
-                          )) : <span className="text-xs text-slate-300 italic">—</span>}
-                        </div>
-                      </div>
+            </div>
+            
+            {/* Tiêu đề cấp 2 (Danh sách công việc) */}
+            <div className="divide-y divide-slate-50">
+              {items.length === 0 ? (
+                <div className="px-5 py-6 text-center text-slate-400 text-sm italic">Chưa có công việc nào trong nhóm này.</div>
+              ) : items.map((tpl, idx) => (
+                <div key={tpl.id} className="px-5 py-3 hover:bg-slate-50/50 transition-colors flex items-start gap-3">
+                  <span className="font-semibold text-slate-400 shrink-0 mt-0.5">{idx + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{tpl.name}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {tpl.requires_photo && <span className="text-[11px] text-green-600 font-bold">📷 Tối thiểu {tpl.min_photo_count} ảnh</span>}
                     </div>
-                  ))}
+                  </div>
                 </div>
-                <div className="border-t border-slate-100 px-5 py-3 bg-slate-50/50">
-                  {addingTo === catName ? (
-                    <div className="flex items-center gap-2">
-                      <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd(catName)} placeholder="Tên công việc mới..." className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:border-cyan-400" />
-                      <button onClick={() => handleAdd(catName)} disabled={submitting || !newName.trim()} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-cyan-700 transition-colors disabled:opacity-50">{submitting ? '...' : 'Thêm'}</button>
-                      <button onClick={() => { setAddingTo(null); setNewName(''); }} className="text-slate-400 hover:text-slate-600 px-2 py-2 text-sm">Hủy</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setAddingTo(catName)} className="text-cyan-600 hover:text-cyan-700 text-sm font-medium flex items-center gap-1">
-                      <span className="text-lg">+</span> Thêm công việc
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
+              ))}
+            </div>
           </div>
         );
       })}
+
+      {/* ======================== MODAL: THÊM / SỬA TIÊU ĐỀ ======================== */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h2 className="font-bold text-slate-800 text-lg">
+                {categoryId ? 'Sửa Tiêu Đề' : 'Thêm Tiêu Đề / Nhóm Việc Mới'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-light leading-none">✕</button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {/* Tiêu đề lớn */}
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">1. Nhập Tiêu Đề Lớn (Category)</label>
+                <input
+                  type="text"
+                  value={categoryName}
+                  onChange={e => setCategoryName(e.target.value)}
+                  placeholder="Ví dụ: Vệ sinh chung, Chuẩn bị phòng..."
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 font-bold text-slate-800"
+                  autoFocus
+                />
+              </div>
+
+              {/* Danh sách việc nhỏ */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">2. Danh sách việc nhỏ</label>
+                
+                <div className="space-y-3">
+                  {tasks.map((task, idx) => (
+                    <div key={idx} className="flex gap-2 items-start bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="text"
+                          value={task.name}
+                          onChange={e => {
+                            const newTasks = [...tasks];
+                            newTasks[idx].name = e.target.value;
+                            setTasks(newTasks);
+                          }}
+                          placeholder={`Việc ${idx + 1}...`}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                        />
+                        <div className="flex items-center gap-2 px-1">
+                          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={task.requires_photo}
+                              onChange={e => {
+                                const newTasks = [...tasks];
+                                newTasks[idx].requires_photo = e.target.checked;
+                                if(e.target.checked && newTasks[idx].min_photo_count === 0) newTasks[idx].min_photo_count = 1;
+                                setTasks(newTasks);
+                              }}
+                              className="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                            />
+                            Bắt buộc chụp ảnh
+                          </label>
+                          {task.requires_photo && (
+                            <input
+                              type="number"
+                              min="1"
+                              max="5"
+                              value={task.min_photo_count || 1}
+                              onChange={e => {
+                                const newTasks = [...tasks];
+                                newTasks[idx].min_photo_count = parseInt(e.target.value) || 1;
+                                setTasks(newTasks);
+                              }}
+                              className="w-16 border border-slate-200 rounded px-2 py-1 text-xs"
+                            />
+                          )}
+                        </div>
+                      </div>
+                      
+                      {tasks.length > 1 && (
+                        <button 
+                          onClick={() => {
+                            const newTasks = tasks.filter((_, i) => i !== idx);
+                            setTasks(newTasks);
+                          }}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600"
+                        >✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0 }])}
+                  className="mt-3 text-cyan-600 font-bold text-sm flex items-center gap-1 hover:underline"
+                >
+                  <span className="text-lg leading-none">+</span> Thêm việc nữa
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3">
+              <button 
+                onClick={() => setShowModal(false)}
+                className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleSave}
+                disabled={submitting}
+                className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold hover:bg-cyan-700 shadow-md disabled:opacity-50"
+              >
+                {submitting ? 'Đang lưu...' : 'Lưu Lại'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

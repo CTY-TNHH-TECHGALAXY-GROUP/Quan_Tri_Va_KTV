@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
+import { KtvWalletService } from '@/lib/services/KtvWalletService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -21,16 +22,13 @@ export async function POST(request: Request) {
         // KTV có thể gửi thông báo rút tiền nhiều lần dù cho lệnh cũ chưa được duyệt.
 
         if (walletType === 'TUA') {
-            const { data: balanceResult, error: balanceError } = await supabase.rpc('get_ktv_wallet_balance', {
-                p_staff_id: techCode
-            });
-
-            if (balanceError) {
-                console.error('Error getting balance:', balanceError);
+            let balanceData;
+            try {
+                balanceData = await KtvWalletService.getBalance(supabase, techCode);
+            } catch (err) {
+                console.error('Error getting balance in withdraw:', err);
                 return NextResponse.json({ success: false, error: 'Lỗi lấy thông tin số dư' }, { status: 500 });
             }
-
-            const balanceData = typeof balanceResult === 'string' ? JSON.parse(balanceResult) : balanceResult;
             
             const effectiveBalance = Number(balanceData.effective_balance || 0);
             const minDeposit = Number(balanceData.min_deposit || 500000);

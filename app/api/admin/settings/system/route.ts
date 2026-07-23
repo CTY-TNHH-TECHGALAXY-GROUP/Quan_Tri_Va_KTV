@@ -4,13 +4,44 @@ import { SystemSettingsSchema } from '@/lib/schemas/admin.schema';
 
 // Các config mặc định nếu chưa có trong DB
 const DEFAULT_CONFIGS = {
+    // KTV Loại A (Mặc định)
+    ktv_bonus_rate_TYPE_A: 1000,
+    ktv_shift_1_bonus_TYPE_A: 20,
+    ktv_shift_2_bonus_TYPE_A: 20,
+    ktv_shift_3_bonus_TYPE_A: 30,
+    ktv_deposit_amount_TYPE_A: 1000000,
+    ktv_sudden_off_penalty_TYPE_A: 50000,
+    ktv_instant_reward_enabled_TYPE_A: true,
+    
+    // KTV Loại B
+    ktv_bonus_rate_TYPE_B: 1000,
+    ktv_shift_1_bonus_TYPE_B: 20,
+    ktv_shift_2_bonus_TYPE_B: 20,
+    ktv_shift_3_bonus_TYPE_B: 20,
+    ktv_deposit_amount_TYPE_B: 0,
+    ktv_sudden_off_penalty_TYPE_B: 0,
+    ktv_instant_reward_enabled_TYPE_B: true,
+
+    // KTV Loại C
+    ktv_bonus_rate_TYPE_C: 1000,
+    ktv_shift_1_bonus_TYPE_C: 20,
+    ktv_shift_2_bonus_TYPE_C: 20,
+    ktv_shift_3_bonus_TYPE_C: 20,
+    ktv_deposit_amount_TYPE_C: 0,
+    ktv_sudden_off_penalty_TYPE_C: 0,
+    ktv_instant_reward_enabled_TYPE_C: true,
+
+    // Global
+    enable_web_advance_booking_email: false,
+    
+    // Legacy (Fallback cho hệ thống cũ chưa migrate)
     ktv_bonus_rate: 1000,
     ktv_shift_1_bonus: 20,
     ktv_shift_2_bonus: 20,
-    ktv_shift_3_bonus: 40,
-    ktv_deposit_amount: 3000000,
+    ktv_shift_3_bonus: 30,
+    ktv_deposit_amount: 1000000,
     ktv_sudden_off_penalty: 50000,
-    enable_web_advance_booking_email: false
+    ktv_instant_reward_enabled: true
 };
 
 export async function GET(request: Request) {

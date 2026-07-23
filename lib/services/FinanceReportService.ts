@@ -58,7 +58,7 @@ export class FinanceReportService {
         dateTo: string,
         langFilter: string = 'all'
     ) {
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase);
+        const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
 
         // 1. Fetch completed bookings in date range
         const { data: bookings, error: bErr } = await supabase
@@ -149,11 +149,13 @@ export class FinanceReportService {
         }
 
         // 4. Fetch Employees
-        const { data: employees } = await supabase.from('Staff').select('id, code, full_name, role');
+        const { data: employees } = await supabase.from('Staff').select('id, code, full_name, role, work_type');
         const allKTV = (employees || []).filter((e: any) => e.role === 'TECHNICIAN' || String(e.code).startsWith('NH'));
         const employeeMap: Record<string, string> = {};
+        const ktvWorkTypeMap: Record<string, string> = {};
         allKTV.forEach((e: any) => {
             employeeMap[e.code] = e.full_name || e.code;
+            ktvWorkTypeMap[e.code] = e.work_type || 'TYPE_A';
         });
 
         return {
@@ -164,8 +166,10 @@ export class FinanceReportService {
             items,
             svcMap,
             employeeMap,
+            ktvWorkTypeMap,
             allKTV,
-            commConfig
+            commConfigs
+
         };
     }
 }

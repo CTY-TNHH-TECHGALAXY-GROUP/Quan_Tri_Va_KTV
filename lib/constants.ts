@@ -26,8 +26,6 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'service_handbook', name: 'Sổ Tay Dịch Vụ', group: 'Kỹ Thuật Viên' },
   { id: 'ai_features', name: 'AI Assistant', group: 'Hệ Thống' },
   { id: 'device_management', name: 'Thiết Bị', group: 'Hệ Thống' },
-  { id: 'staff_features', name: 'Quản Lý Tính Năng', group: 'Hệ Thống' },
-  { id: 'notification_settings', name: 'Cài Đặt Thông Báo', group: 'Hệ Thống' },
   { id: 'support_tasks_admin', name: 'Giao Việc', group: 'Giao Việc' },
   { id: 'employee_tasks', name: 'Công Việc Của Tôi', group: 'Kỹ Thuật Viên' },
   { id: 'system_settings', name: 'Cài Đặt Hệ Thống', group: 'Hệ Thống' },

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
 
     try {
-        const { completedBookings, items, svcMap, commConfig } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
+        const { completedBookings, items, svcMap, commConfigs, ktvWorkTypeMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
         
         const rawDataSheet: any[] = [];
         
@@ -69,8 +69,11 @@ export async function GET(request: Request) {
                     let ktvs = Array.isArray(i.technicianCodes) ? i.technicianCodes.join(', ') : '';
                     let commission = 0;
                     if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
-                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, i.technicianCodes[0], dur) || (dur / i.technicianCodes.length);
-                        commission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * (Number(i.quantity) || 1) * i.technicianCodes.length;
+                        const ktvCode = i.technicianCodes[0];
+                        const workType = ktvWorkTypeMap[ktvCode] || 'TYPE_A';
+                        const config = commConfigs[workType] || commConfigs['TYPE_A'];
+                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, ktvCode, dur) || (dur / i.technicianCodes.length);
+                        commission = KtvCommissionService.calcCommission(myTotalMins, config.milestones, config.ratePer60) * (Number(i.quantity) || 1) * i.technicianCodes.length;
                     }
 
                     rawDataSheet.push({

@@ -19,16 +19,21 @@ export async function GET(request: Request) {
     // 1. Fetch Staff (KTV list)
     const { data: staffList, error: staffErr } = await supabaseAdmin
       .from('Staff')
-      .select('id, full_name, position')
+      .select('id, full_name, position, work_type')
       .eq('status', 'ĐANG LÀM')
       .ilike('id', 'NH%')
       .order('id');
       
     if (staffErr) throw staffErr;
 
+    const ktvWorkTypeMap: Record<string, string> = {};
+    (staffList || []).forEach(s => {
+        ktvWorkTypeMap[s.id] = s.work_type || 'TYPE_A';
+    });
+
     // 2. Fetch Configs for Commission Realtime
     const { KtvCommissionService } = require('@/lib/services/KtvCommissionService');
-    const commConfig = await KtvCommissionService.getCommissionConfig(supabaseAdmin);
+    const commConfigs = await KtvCommissionService.getAllConfigs(supabaseAdmin);
 
     // 3. Fetch Bookings (for Revenue and Orders) - Giống hệt báo cáo Tổng Quan
     const KTV_RANKING_STATUSES = ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'DONE', 'COMPLETED', 'FEEDBACK'];
@@ -314,7 +319,9 @@ export async function GET(request: Request) {
                    let myTotalMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
                    if (myTotalMins === 0) myTotalMins = fallbackDuration / ktvs.length;
                    
-                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
+                   const workType = ktvWorkTypeMap[code] || 'TYPE_A';
+                   const config = commConfigs[workType] || commConfigs['TYPE_A'];
+                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, config.milestones, config.ratePer60) * qty;
                    rankingMap[code].tuaMoney += perKtvCommission;
                }
            }

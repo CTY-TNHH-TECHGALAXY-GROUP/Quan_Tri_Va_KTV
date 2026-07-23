@@ -75,7 +75,16 @@ export async function handleReleaseKTV(ctx: HandlerContext): Promise<void> {
                     }
                 });
                 if (isModified) {
-                    await supabase.from('BookingItems').update({ segments: segs }).eq('id', item.id);
+                    const handoverObj = handoverPhotoUrls.reduce((acc, url, idx) => {
+                        acc[`Ảnh ${idx + 1}`] = url;
+                        return acc;
+                    }, {} as Record<string, string>);
+                    
+                    await supabase.from('BookingItems').update({ 
+                        segments: JSON.stringify(segs),
+                        handover_images: handoverObj,
+                        handover_status: 'PENDING'
+                    }).eq('id', item.id);
                 }
             }
         }

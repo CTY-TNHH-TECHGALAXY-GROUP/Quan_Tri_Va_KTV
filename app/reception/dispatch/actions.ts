@@ -21,7 +21,7 @@ export async function getDispatchData(date: string) {
         if (tuError) throw tuError;
         const techCodes = new Set((techUsers || []).map(u => u.code));
 
-        const { data: allStaffs, error: sError } = await supabase.from('Staff').select('id, full_name, avatar_url, gender, status, skills, phone, position, experience');
+        const { data: allStaffs, error: sError } = await supabase.from('Staff').select('id, full_name, avatar_url, gender, status, skills, phone, position, experience, work_type, feature_flags, online_status, travel_minutes, available_from, available_until');
         if (sError) throw sError;
         
         const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT'));

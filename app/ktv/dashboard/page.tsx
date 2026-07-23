@@ -301,7 +301,7 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
 // ----------------------------------------------------
 
 function ScreenDashboard({ logic }: { logic: any }) {
-  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline, onCallState, handleToggleOnCall } = logic;
+  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline, onCallState, handleToggleOnCall, kpiData } = logic;
   const [bookingUrl, setBookingUrl] = React.useState(DEFAULT_BOOKING_URL);
   const [showOnCallPopup, setShowOnCallPopup] = React.useState(false);
   const [tempMins, setTempMins] = React.useState(onCallState?.travel_time_mins || 30);
@@ -391,7 +391,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                  }`}
                >
                  <div className={`w-2.5 h-2.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
-                 {onCallState.is_on_call ? 'Đang Sẵn Sàng (Ngoài giờ)' : 'Bật Nhận Đơn Ngoài Giờ'}
+                 {onCallState.is_on_call ? 'Đang Sẵn Sàng (KTV Loại B)' : 'Bật Nhận Đơn (Loại B)'}
                </button>
              )}
             <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
@@ -424,19 +424,19 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   </label>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setTempMins(Math.max(15, tempMins - 15))}
+                      onClick={() => setTempMins(Math.max(5, tempMins - 5))}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
-                      -15
+                      -5
                     </button>
                     <div className="flex-1 h-12 rounded-2xl border-2 border-emerald-100 flex items-center justify-center text-xl font-black text-emerald-700">
                       {tempMins}
                     </div>
                     <button
-                      onClick={() => setTempMins(Math.min(120, tempMins + 15))}
+                      onClick={() => setTempMins(Math.min(60, tempMins + 5))}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
-                      +15
+                      +5
                     </button>
                   </div>
                 </div>
@@ -509,6 +509,43 @@ function ScreenDashboard({ logic }: { logic: any }) {
               >
                 {onCallState.is_on_call ? 'Tắt' : 'Bật'}
               </button>
+            </div>
+          )}
+
+          {/* KPI Progress Card (Type B) */}
+          {kpiData && kpiData.targetHours > 0 && (
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-[32px] shadow-sm border border-amber-200/60">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-amber-900 flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <Target size={16} className="text-amber-600" />
+                  Chỉ Tiêu Tháng {new Date().getMonth() + 1}
+                </h3>
+                <span className="text-xs font-black text-amber-700 bg-amber-200/50 px-2.5 py-1 rounded-xl">
+                  {kpiData.progressPercent}%
+                </span>
+              </div>
+              
+              <div className="w-full bg-amber-200/40 rounded-full h-3 mb-4 overflow-hidden border border-amber-100">
+                <div 
+                  className="bg-gradient-to-r from-amber-400 to-orange-500 h-3 rounded-full transition-all duration-1000 shadow-sm" 
+                  style={{ width: `${Math.min(100, kpiData.progressPercent)}%` }}
+                ></div>
+              </div>
+              
+              <div className="flex justify-between text-xs text-amber-800 font-medium px-1">
+                <div>Đã làm: <span className="font-black text-amber-900">{kpiData.totalHours}h</span></div>
+                <div>Mục tiêu: <span className="font-black text-amber-900">{kpiData.targetHours}h</span></div>
+              </div>
+              
+              {kpiData.remainingHours > 0 ? (
+                <p className="text-[10px] text-amber-700/80 mt-4 text-center uppercase tracking-widest font-bold">
+                  Còn {kpiData.remainingHours} giờ nữa để đạt chỉ tiêu
+                </p>
+              ) : (
+                <p className="text-[10px] text-emerald-600 mt-4 text-center uppercase tracking-widest font-black flex items-center justify-center gap-1 bg-emerald-50 py-1.5 rounded-lg border border-emerald-100">
+                  <CheckCircle2 size={12} /> Đã vượt chỉ tiêu tháng!
+                </p>
+              )}
             </div>
           )}
 
@@ -1246,8 +1283,10 @@ function ScreenReview({ logic }: { logic: any }) {
 
 function ScreenHandover({ logic }: { logic: any }) {
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
+  
+  const checklist: string[] = booking?.handoverChecklist || [];
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, itemKey?: string) => {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
       logic.setIsLoading?.(true);
@@ -1274,7 +1313,19 @@ function ScreenHandover({ logic }: { logic: any }) {
       }
       
       if (newPhotos.length > 0) {
-          setHandoverPhotosBase64((prev: string[]) => [...prev, ...newPhotos]);
+          if (itemKey) {
+              setHandoverPhotosBase64((prev: Record<string, string>) => ({
+                  ...prev,
+                  [itemKey]: newPhotos[0] // Chỉ lấy 1 ảnh cho mỗi mục
+              }));
+          } else {
+              // Fallback cho chế độ tự do (không có checklist)
+              const timestamp = Date.now().toString();
+              setHandoverPhotosBase64((prev: Record<string, string>) => ({
+                  ...prev,
+                  [timestamp]: newPhotos[0]
+              }));
+          }
       }
       logic.setIsLoading?.(false);
       if (e.target) e.target.value = '';
@@ -1291,40 +1342,91 @@ function ScreenHandover({ logic }: { logic: any }) {
       </div>
 
       <div className="space-y-4">
-        {handoverPhotosBase64 && handoverPhotosBase64.length > 0 ? (
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center gap-4 animate-in zoom-in-95 duration-200">
-            <div className="grid grid-cols-2 gap-3 w-full">
-              {handoverPhotosBase64.map((photo: string, idx: number) => (
-                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm group bg-white">
-                  <img src={photo} className="w-full h-full object-cover" alt={`Handover preview ${idx + 1}`} />
-                  <button 
-                    onClick={() => setHandoverPhotosBase64((prev: string[]) => prev.filter((_, i) => i !== idx))}
-                    className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 w-full">
-                <label className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer">
-                  <Camera size={16} /> Bổ sung thêm ảnh
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
-                </label>
-            </div>
+        {checklist.length > 0 ? (
+          <div className="space-y-3">
+             <div className="flex items-center justify-between px-1">
+                 <span className="text-sm font-bold text-slate-700">Checklist bàn giao</span>
+                 <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                     {Object.keys(handoverPhotosBase64).filter(k => checklist.includes(k)).length}/{checklist.length}
+                 </span>
+             </div>
+             <div className="grid grid-cols-2 gap-3">
+                 {checklist.map((item, idx) => {
+                     const photo = handoverPhotosBase64[item];
+                     return (
+                         <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group bg-slate-50 flex flex-col items-center justify-center p-2 text-center">
+                             {photo ? (
+                                 <>
+                                     <img src={photo} className="absolute inset-0 w-full h-full object-cover" alt={item} />
+                                     <button 
+                                         onClick={() => {
+                                             const newPhotos = { ...handoverPhotosBase64 };
+                                             delete newPhotos[item];
+                                             setHandoverPhotosBase64(newPhotos);
+                                         }}
+                                         className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                                     >
+                                         <X size={16} />
+                                     </button>
+                                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                         <span className="text-[10px] font-black text-white uppercase tracking-wider">{item}</span>
+                                     </div>
+                                 </>
+                             ) : (
+                                 <label className="w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
+                                     <Camera size={24} className="text-blue-500" />
+                                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter leading-tight px-1">{item}</span>
+                                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
+                                 </label>
+                             )}
+                         </div>
+                     );
+                 })}
+             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <label className="w-full h-24 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-200/50 rounded-[24px] flex flex-col items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45">
-              <Camera size={28} />
-              CHỤP ẢNH BÀN GIAO PHÒNG
-              <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
-            </label>
-            <label className="w-full h-12 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[24px] flex items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh từ thư viện</span>
-              <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} disabled={logic.isLoading} />
-            </label>
-          </div>
+          /* Chế độ chụp tự do khi không có checklist */
+          <>
+            {Object.keys(handoverPhotosBase64).length > 0 ? (
+              <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center gap-4 animate-in zoom-in-95 duration-200">
+                <div className="grid grid-cols-2 gap-3 w-full">
+                  {Object.entries(handoverPhotosBase64).map(([key, photo]) => (
+                    <div key={key} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm group bg-white">
+                      <img src={photo as string} className="w-full h-full object-cover" alt="Handover preview" />
+                      <button 
+                        onClick={() => {
+                            const newPhotos = { ...handoverPhotosBase64 };
+                            delete newPhotos[key];
+                            setHandoverPhotosBase64(newPhotos);
+                        }}
+                        className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 w-full">
+                    <label className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer">
+                      <Camera size={16} /> Bổ sung thêm ảnh
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
+                    </label>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <label className="w-full h-24 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-200/50 rounded-[24px] flex flex-col items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45">
+                  <Camera size={28} />
+                  CHỤP ẢNH BÀN GIAO PHÒNG
+                  <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
+                </label>
+                <label className="w-full h-12 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[24px] flex items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh từ thư viện</span>
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
+                </label>
+              </div>
+            )}
+          </>
         )}
       </div>
 

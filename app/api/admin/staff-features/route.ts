@@ -17,7 +17,7 @@ export async function GET() {
 
         const { data: staff, error } = await supabase
             .from('Staff')
-            .select('id, full_name, status, feature_flags')
+            .select('id, full_name, status, feature_flags, work_type')
             .eq('status', 'ĐANG LÀM')
             .ilike('id', 'NH%')
             .order('id', { ascending: true });
@@ -61,6 +61,22 @@ export async function GET() {
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
+        
+        // If updating work_type
+        if (body.updateWorkType) {
+            const { staffId, workType, newFlags } = body;
+            const supabase = getSupabaseAdmin();
+            if (!supabase) return NextResponse.json({ success: false }, { status: 500 });
+            
+            const { error } = await supabase
+                .from('Staff')
+                .update({ work_type: workType, feature_flags: newFlags })
+                .eq('id', staffId);
+                
+            if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+            return NextResponse.json({ success: true });
+        }
+
         const parseResult = StaffFeaturePatchSchema.safeParse(body);
         if (!parseResult.success) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });

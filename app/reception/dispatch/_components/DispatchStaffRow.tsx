@@ -56,6 +56,7 @@ interface DispatchStaffRowProps {
     genderReq?: string;
     customerName?: string;
     onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
+    now?: Date; // Auto-refreshed from parent hook every 60s
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -88,7 +89,7 @@ const calcEndTime = (start: string, duration: number): string => {
 export const DispatchStaffRow = ({
     row, svcId, orderId, serviceName, svcDuration, availableTurns, rooms, beds, busyBedIds = [], usedKtvIds = [], onUpdate, onRemove, canRemove,
     displayName, serviceDescription, strength, adminNote, customerNote, selectedDate, focus, avoid, realSvcId, reminders = [],
-    billCode, genderReq, customerName, onViewPhoto
+    billCode, genderReq, customerName, onViewPhoto, now: nowProp
 }: DispatchStaffRowProps) => {
 
     const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => serviceName.toLowerCase().includes(k.toLowerCase()))
@@ -97,7 +98,7 @@ export const DispatchStaffRow = ({
 
     const isVip = realSvcId && (realSvcId.toUpperCase().startsWith('NHP') || realSvcId.toUpperCase().startsWith('VIP_'));
 
-    const [now, setNow] = React.useState(new Date());
+    const now = nowProp || new Date();
     const [showTicketPreview, setShowTicketPreview] = React.useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
     const [showReminders, setShowReminders] = React.useState(false);
@@ -119,10 +120,7 @@ export const DispatchStaffRow = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isDropdownOpen, showReminders]);
 
-    React.useEffect(() => {
-        const timer = setInterval(() => setNow(new Date()), 30000); // Update every 30s
-        return () => clearInterval(timer);
-    }, []);
+    // Local setNow interval removed. We use `now` prop passed down from useDispatchBoard.
 
     const handleChange = (patch: Partial<StaffAssignment>) => {
         onUpdate(orderId, svcId, row.id, patch);
@@ -275,6 +273,11 @@ export const DispatchStaffRow = ({
                                                 const hasSkill = targetSkill ? turn.staff?.skills?.[targetSkill] === true : true;
                                                 const isUsedInOtherSvc = usedKtvIds.includes(turn.employee_id);
                                                 
+                                                const isOnCall = (turn.staff?.feature_flags as any)?.is_on_call === true;
+                                                const travelTime = (turn.staff?.feature_flags as any)?.travel_time_mins || 30;
+                                                const arrivalDate = new Date(now.getTime() + travelTime * 60000);
+                                                const arrivalTimeStr = `${String(arrivalDate.getHours()).padStart(2, '0')}:${String(arrivalDate.getMinutes()).padStart(2, '0')}`;
+                                                
                                                 return (
                                                     <div 
                                                         key={turn.employee_id} 
@@ -302,7 +305,9 @@ export const DispatchStaffRow = ({
                                                                     ? <span className="text-amber-500">⌛ Đang làm đến {fmtTime(turn.estimated_end_time)}</span> 
                                                                     : turn.status === 'assigned'
                                                                         ? <span className="text-indigo-500">🔒 Đã xếp lịch {turn.estimated_end_time ? `• Rảnh lúc ${fmtTime(turn.estimated_end_time)}` : ''}</span>
-                                                                        : <span className="text-emerald-500">✅ Sẵn sàng</span>
+                                                                        : (isOnCall && turn.status === 'waiting')
+                                                                            ? <span className="text-amber-500">⌛ Rảnh lúc {arrivalTimeStr}</span>
+                                                                            : <span className="text-emerald-500">✅ Sẵn sàng</span>
                                                                 )
                                                             }
                                                             {!hasSkill && <span className="text-gray-400 font-medium">(Chưa có kỹ năng)</span>}

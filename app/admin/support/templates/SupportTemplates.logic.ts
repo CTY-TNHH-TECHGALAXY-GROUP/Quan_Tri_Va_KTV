@@ -203,19 +203,70 @@ export const useSupportTemplates = () => {
   };
 
   // ============================================================
-  // Add new template to a category
+  // Save Category with multiple templates (Kho Việc UI)
   // ============================================================
-  const addTemplate = async (name: string, categoryId: string) => {
-    const { error } = await supabase
-      .from('TaskTemplates')
-      .insert({ name, category_id: categoryId, is_active: true, requires_photo: false, min_photo_count: 0 });
+  const saveCategoryWithTemplates = async (
+    categoryId: string | null, // null means new category
+    categoryName: string,
+    tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number }[]
+  ) => {
+    try {
+      let finalCategoryId = categoryId;
+      
+      // 1. Create or update category
+      if (!finalCategoryId) {
+        const { data: newCat, error: catErr } = await supabase
+          .from('TaskCategories')
+          .insert({ name: categoryName })
+          .select('id')
+          .single();
+          
+        if (catErr) {
+          console.error('Error creating category:', catErr.message);
+          return false;
+        }
+        finalCategoryId = newCat.id;
+      } else {
+        const { error: catUpdateErr } = await supabase
+          .from('TaskCategories')
+          .update({ name: categoryName })
+          .eq('id', finalCategoryId);
+          
+        if (catUpdateErr) {
+          console.error('Error updating category:', catUpdateErr.message);
+          return false;
+        }
+      }
 
-    if (error) {
-      console.error('Error adding template:', error.message, error.code);
+      // 2. Add new tasks or update existing
+      for (const t of tasksToSave) {
+        if (t.name.trim() === '') continue;
+        
+        if (t.id) {
+          // Update existing
+          await supabase.from('TaskTemplates').update({
+            name: t.name,
+            requires_photo: t.requires_photo,
+            min_photo_count: t.min_photo_count,
+          }).eq('id', t.id);
+        } else {
+          // Insert new
+          await supabase.from('TaskTemplates').insert({
+            name: t.name,
+            category_id: finalCategoryId,
+            requires_photo: t.requires_photo,
+            min_photo_count: t.min_photo_count,
+            is_active: true,
+          });
+        }
+      }
+      
+      await Promise.all([fetchCategories(), fetchTemplates()]);
+      return true;
+    } catch (e) {
+      console.error('saveCategoryWithTemplates exception:', e);
       return false;
     }
-    await fetchTemplates();
-    return true;
   };
 
   return {
@@ -226,7 +277,7 @@ export const useSupportTemplates = () => {
     templates,
     loading,
     getRoleLabel,
-    addTemplate,
+    saveCategoryWithTemplates,
     refetchEmployees: fetchEmployees,
     refetchTemplates: fetchTemplates,
   };

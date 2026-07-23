@@ -32,11 +32,14 @@ interface TodayTask {
   completedAt: string | null;
   photoCount: number;
   current_review_round: number;
+  categoryName?: string;
+  categoryOrder?: number;
 }
 
 interface TemplateOption {
   id: string;
   name: string;
+  categoryId?: string;
   categoryName: string;
 }
 
@@ -47,6 +50,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   const [availableTemplates, setAvailableTemplates] = useState<TemplateOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAdhocModal, setShowAdhocModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -100,7 +104,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   const fetchTodayTasks = useCallback(async () => {
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, current_review_round, updated_at')
+      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name)')
       .eq('assignee_id', employeeId)
       .gte('created_at', TODAY_START.toISOString())
       .lte('created_at', TODAY_END.toISOString())
@@ -127,7 +131,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       });
     }
 
-    const mapped: TodayTask[] = (data || []).map(t => ({
+    const mapped: TodayTask[] = (data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
       status: t.status,
@@ -136,19 +140,21 @@ export const useEmployeeDetail = (employeeId: string) => {
       priority: t.priority,
       completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
       photoCount: photoCounts[t.id] || 0,
-      current_review_round: t.current_review_round,
+      current_review_round: t.current_review_round || 0,
+      categoryName: t.TaskCategories?.name || 'Khác',
+      categoryOrder: 999,
     }));
 
     setTodayTasks(mapped);
   }, [employeeId]);
 
   // ============================================================
-  // Fetch all templates (for the "Add" modal)
+  // Fetch all templates and group by category
   // ============================================================
   const fetchAvailableTemplates = useCallback(async () => {
     const { data, error } = await supabase
       .from('TaskTemplates')
-      .select('id, name, TaskCategories(name)')
+      .select('id, name, category_id, TaskCategories(name)')
       .eq('is_active', true)
       .order('name');
 
@@ -157,10 +163,11 @@ export const useEmployeeDetail = (employeeId: string) => {
       return;
     }
 
-    const mapped: TemplateOption[] = (data || []).map((t: any) => ({
+    const mapped = (data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
-      categoryName: t.TaskCategories?.name || '—',
+      categoryId: t.category_id,
+      categoryName: t.TaskCategories?.name || 'Chưa phân loại',
     }));
 
     setAvailableTemplates(mapped);
@@ -179,14 +186,35 @@ export const useEmployeeDetail = (employeeId: string) => {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        console.error('Error adding routine:', err);
-        return;
+        console.error('Error adding routine');
       }
 
       await fetchRoutines();
-      setShowAddModal(false);
-      setSearchQuery('');
+      // DO NOT close modal automatically so user can assign more
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ============================================================
+  // Assign Entire Category
+  // ============================================================
+  const assignCategory = async (categoryName: string) => {
+    setSubmitting(true);
+    try {
+      const templatesInCategory = availableTemplates.filter(t => t.categoryName === categoryName);
+      // Filter out those already assigned
+      const unassignedTemplates = templatesInCategory.filter(t => !routines.some(r => r.templateId === t.id));
+      
+      for (const t of unassignedTemplates) {
+        await fetch('/api/support/routines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ employeeId, templateId: t.id }),
+        });
+      }
+
+      await fetchRoutines();
     } finally {
       setSubmitting(false);
     }
@@ -202,6 +230,33 @@ export const useEmployeeDetail = (employeeId: string) => {
       return;
     }
     await fetchRoutines();
+  };
+
+  // ============================================================
+  // Create Ad-hoc Task
+  // ============================================================
+  const createAdhocTask = async (name: string) => {
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from('Tasks').insert({
+        name,
+        assignee_id: employeeId,
+        task_type: 'AD-HOC',
+        priority: 'HIGH',
+        status: 'NOT_STARTED',
+        inspection_status: 'NOT_REVIEWED',
+      });
+      
+      if (error) {
+        console.error('Error creating adhoc task:', error.message);
+        return;
+      }
+      
+      await fetchTodayTasks();
+      setShowAdhocModal(false);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ============================================================
@@ -311,15 +366,20 @@ export const useEmployeeDetail = (employeeId: string) => {
     employee,
     routines,
     todayTasks,
+    availableTemplates,
     loading,
     showAddModal,
+    showAdhocModal,
+    setShowAdhocModal,
     setShowAddModal,
     searchQuery,
     setSearchQuery,
     filteredTemplates,
     submitting,
     addRoutine,
+    assignCategory,
     removeRoutine,
+    createAdhocTask,
     reviewTask,
     getRoleLabel,
   };

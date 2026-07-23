@@ -24,8 +24,15 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not init' }, { status: 500 });
 
     try {
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any);
-        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any);
+        const { data: staffData } = await supabase
+            .from('Staff')
+            .select('work_type')
+            .eq('id', techCode)
+            .single();
+        const workType = staffData?.work_type || 'TYPE_A';
+        
+        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any, workType);
+        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType);
 
         // ─── Build date range ────────────────────────────────────────────
         const nowVn = new Date(Date.now() + VN_OFFSET_MS);
@@ -87,7 +94,7 @@ export async function GET(request: Request) {
         // ─── Fetch Bookings ──────────────────────────────────────────────
         const { data: rawBookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, technicianCode, BookingItems!fk_bookingitems_booking(technicianCodes)')
+            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, BookingItems!fk_bookingitems_booking(technicianCodes)')
             .gte('bookingDate', fromFilter)
             .lte('bookingDate', toFilter)
             .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE'])
@@ -113,7 +120,7 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings')
+            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, handover_status, handover_comment')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
@@ -217,6 +224,12 @@ export async function GET(request: Request) {
             // ─── Tip: sum from this KTV's items ────────────────────────
             const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
 
+            // ─── Lấy handover status ──────────────────────────────
+            // Vì handover là chung cho KTV làm đơn, nếu có nhiều dịch vụ gộp thì lấy cái nào có status
+            const handoverItem = relevantItems.find((i: any) => i.handover_status) || relevantItems[0];
+            const handover_status = handoverItem?.handover_status || 'PENDING';
+            const handover_comment = handoverItem?.handover_comment || null;
+
             return {
                 id: b.id,
                 billCode: b.billCode,
@@ -229,6 +242,9 @@ export async function GET(request: Request) {
                 serviceName,
                 duration: totalDuration,
                 bonusPoints,
+                handover_status,
+                handover_comment,
+                ktv_comment: b.notes,
             };
         });
 

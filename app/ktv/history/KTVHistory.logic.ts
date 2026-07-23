@@ -18,6 +18,9 @@ export interface HistoryRecord {
   serviceName: string;
   duration: number;
   bonusPoints: number;
+  handover_status?: string;
+  handover_comment?: string | null;
+  ktv_comment?: string | null;
 }
 
 export type DatePreset = 'today' | 'yesterday' | '7days' | 'custom';

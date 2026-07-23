@@ -16,6 +16,7 @@ import {
   Users, BedDouble, CalendarClock
 } from 'lucide-react';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
+import { DispatchOnlineKtvTable } from './_components/DispatchOnlineKtvTable';
 import { RoomBoard } from '@/components/shared/RoomBoard';
 import { ScheduleBoard } from '@/components/shared/ScheduleBoard';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
@@ -26,6 +27,7 @@ import { QuickDispatchTable } from './_components/QuickDispatchTable';
 import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
+import { ReviewHandoverModal } from './_components/ReviewHandoverModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
 import { useDispatchBoard } from './useDispatchBoard.logic';
 import { MergePromptModal } from '@/app/reception/dispatch/_components/MergePromptModal';
@@ -141,10 +143,12 @@ export default function DispatchBoardPage() {
     allServices, setAllServices,
     roomTransitionTime, setRoomTransitionTime,
     loading, setLoading,
-    fetchData
+    fetchData,
+    now,
   } = useDispatchBoard(selectedDate, selectedOrderId);
 
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
+  const [reviewModalService, setReviewModalService] = useState<ServiceBlock | null>(null);
   const { notifications, soundEnabled, setSoundEnabled, unlockAudio, playSound } = useNotifications();
   const [leftPanelTab, setLeftPanelTab] = useState<DispatchStatus>('pending');
   const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE'>('DISPATCH');
@@ -1094,6 +1098,48 @@ if (!hasPermission('dispatch_board')) {
     }
   }
 
+  const handleApproveHandover = async (itemId: string, comment: string) => {
+        try {
+            const { error } = await supabase.from('BookingItems').update({
+                handover_status: 'APPROVED',
+                handover_comment: comment,
+                // Khi duyệt, nếu chưa DONE thì cho phép chuyển status thành DONE (hoặc để KTVDashboard.logic tự làm)
+            }).eq('id', itemId);
+
+            if (error) throw error;
+            
+            // Xử lý báo cáo tiền tua: Nếu cả quầy duyệt và khách đánh giá tốt -> Tự động tính tiền (Đã có cron xử lý)
+            alert('Đã duyệt ảnh bàn giao thành công!');
+            
+            // Cập nhật state cục bộ
+            fetchData();
+        } catch (err: any) {
+            console.error(err);
+            alert('Lỗi duyệt: ' + err.message);
+        }
+    };
+
+    const handleRejectHandover = async (itemId: string, comment: string) => {
+        try {
+            const { error } = await supabase.from('BookingItems').update({
+                handover_status: 'REJECTED',
+                handover_comment: comment,
+                status: 'CLEANING' // Đẩy lại về CLEANING để KTV làm lại
+            }).eq('id', itemId);
+
+            if (error) throw error;
+            alert('Đã từ chối bàn giao. Đơn đã được chuyển lại về trạng thái Dọn Phòng.');
+            
+            // Gửi push notification cho KTV nếu có sub
+            // push(...) -> Có thể thêm sau
+            
+            fetchData();
+        } catch (err: any) {
+            console.error(err);
+            alert('Lỗi từ chối: ' + err.message);
+        }
+    };
+
   async function handleUpdateStatus(orderId: string, newStatus: string, itemIds?: string[], skipConfirm?: boolean, targetKtvIds?: string[], forceBackward: boolean = false) {
     // Determine context for confirmation
     const isPartial = itemIds && itemIds.length > 0;
@@ -1839,6 +1885,7 @@ if (!hasPermission('dispatch_board')) {
                             selectedDate={selectedDate}
                             isExpanded={expandedSvcIds.includes(svc.id)}
                             onViewPhoto={setSelectedPhoto}
+                            now={now}
                             onToggleExpand={() => {
                               const isOpening = !expandedSvcIds.includes(svc.id);
                               setExpandedSvcIds(prev => 
@@ -1976,12 +2023,18 @@ if (!hasPermission('dispatch_board')) {
                   setContextMenu(null);
                 }
               }}
+              onReviewClick={(service) => setReviewModalService(service)}
             />
           ) : activeMode === 'TURN_QUEUE' ? (
-            <div className="flex-1 overflow-auto bg-white rounded-3xl border border-gray-200 shadow-sm p-4 w-full h-full">
-              {(() => {
-                return <TurnQueueBoard staffs={staffs} />;
-              })()}
+            <div className="flex-1 overflow-auto w-full h-full flex flex-col lg:flex-row gap-4">
+              <div className="flex-[2] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
+                {(() => {
+                  return <TurnQueueBoard staffs={staffs} />;
+                })()}
+              </div>
+              <div className="flex-[1] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
+                <DispatchOnlineKtvTable staffs={staffs} />
+              </div>
             </div>
           ) : activeMode === 'ROOMS' ? (
             <div className="flex-1 overflow-hidden bg-white rounded-3xl border border-gray-200 shadow-sm w-full h-full">

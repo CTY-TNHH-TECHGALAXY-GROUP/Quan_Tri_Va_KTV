@@ -55,6 +55,9 @@ const calcEndTime = (start: string, duration: number): string => {
 
 const genId = () => Math.random().toString(36).slice(2, 8);
 
+// 🔧 UI CONFIGURATION
+const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
+
 export function useDispatchBoard(selectedDate: string, selectedOrderId: string | null) {
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [staffs, setStaffs] = useState<StaffData[]>([]);
@@ -65,6 +68,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
     const [allServices, setAllServices] = useState<any[]>([]);
     const [roomTransitionTime, setRoomTransitionTime] = useState(5);
     const [loading, setLoading] = useState(true);
+    const [now, setNow] = useState(() => new Date());
+
+    // Auto-refresh "now" every 60s to keep on-call KTV travel time display accurate
+    useEffect(() => {
+        const interval = setInterval(() => setNow(new Date()), NOW_REFRESH_INTERVAL_MS);
+        return () => clearInterval(interval);
+    }, []);
 
     const selectedOrderIdRef = useRef(selectedOrderId);
     const needsRefreshRef = useRef(false);
@@ -99,6 +109,28 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     ...t,
                     staff: (sData as unknown as StaffData[]).find(s => s.id === t.employee_id)
                 }));
+                
+                // Thêm các KTV on_call vào merged nếu chưa có (Type B đang rảnh)
+                const onCallStaffs = (sData as unknown as StaffData[]).filter(s => {
+                    const flags = s.feature_flags as any;
+                    return flags && flags.is_on_call === true;
+                });
+                
+                onCallStaffs.forEach(staff => {
+                    if (!merged.some(m => m.employee_id === staff.id)) {
+                        merged.push({
+                            id: `fake-${staff.id}`,
+                            employee_id: staff.id,
+                            check_in_order: 999, // Đẩy xuống cuối
+                            turns_completed: 0,
+                            status: 'waiting',
+                            date: selectedDate,
+                            queue_position: 999,
+                            staff: staff
+                        } as any);
+                    }
+                });
+                
                 setTurns(merged);
             }
 
@@ -318,6 +350,9 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 status: bi.status || 'NEW',
                                 timeStart: bi.timeStart || null,
                                 timeEnd: bi.timeEnd || null,
+                                handover_status: bi.handover_status,
+                                handover_comment: bi.handover_comment,
+                                handover_images: bi.handover_images,
                                 itemRating: bi.itemRating || null,
                                 ktvRatings: bi.ktvRatings || {}
                             };
@@ -522,6 +557,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         allServices, setAllServices,
         roomTransitionTime, setRoomTransitionTime,
         loading, setLoading,
-        fetchData
+        fetchData,
+        now,
     };
 }

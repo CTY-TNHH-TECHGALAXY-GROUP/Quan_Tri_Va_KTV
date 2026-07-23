@@ -45,6 +45,9 @@ export interface ServiceBlock {
   pauseStart?: string | null; // Thời điểm bắt đầu tạm dừng
   mergedIntoId?: string; // Dịch vụ này đã bị gộp vào dịch vụ khác
   mergedServiceIds?: string[]; // Danh sách các dịch vụ con đã gộp vào dịch vụ này
+  handover_status?: string;
+  handover_comment?: string | null;
+  handover_images?: string; // JSON string chứa Record<string, string>
 }
 
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE';
@@ -85,16 +88,22 @@ export interface PendingOrder {
   rawNotes?: any;
 }
 
-export type StaffData = {
+export interface StaffData {
   id: string;
   full_name: string;
-  status: string;
-  gender: string;
-  skills: Record<string, boolean>;
-  phone: string;
-  position: string;
-  avatar_url: string;
-  experience: string;
+  avatar_url?: string;
+  gender?: string;
+  status?: string;
+  skills?: any;
+  phone?: string;
+  position?: string;
+  experience?: string;
+  work_type?: string;
+  feature_flags?: any;
+  online_status?: string;
+  travel_minutes?: number;
+  available_from?: string;
+  available_until?: string;
 };
 
 export type TurnQueueData = {

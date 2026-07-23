@@ -17,6 +17,7 @@ export async function GET() {
             .from('Staff')
             .select('id, full_name')
             .eq('status', 'ĐANG LÀM')
+            .neq('work_type', 'TYPE_C')
             .order('full_name', { ascending: true });
 
         if (error) {

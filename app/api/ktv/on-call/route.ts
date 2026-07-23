@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('Staff')
-      .select('feature_flags')
+      .select('work_type, feature_flags, online_status, travel_minutes, available_until')
       .eq('id', techCode)
       .single();
 
@@ -28,13 +28,20 @@ export async function GET(req: NextRequest) {
     }
 
     const featureFlags = data?.feature_flags || {};
+    const isTypeB = data?.work_type === 'TYPE_B';
+    const allow_on_call = isTypeB || featureFlags.allow_on_call === true;
+    
+    // Tính trạng thái Online thực tế
+    const nowMs = Date.now();
+    const untilMs = data?.available_until ? new Date(data.available_until).getTime() : 0;
+    const is_on_call = data?.online_status === 'ONLINE' && untilMs > nowMs;
 
     return NextResponse.json({
       success: true,
       data: {
-        allow_on_call: featureFlags.allow_on_call || false,
-        is_on_call: featureFlags.is_on_call || false,
-        travel_time_mins: featureFlags.travel_time_mins || 30,
+        allow_on_call,
+        is_on_call,
+        travel_time_mins: data?.travel_minutes || featureFlags.travel_time_mins || 30,
       }
     });
 
@@ -56,10 +63,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Database unavailable' }, { status: 503 });
     }
 
-    // Lấy feature_flags hiện tại
     const { data, error: fetchError } = await supabase
       .from('Staff')
-      .select('feature_flags')
+      .select('work_type, feature_flags')
       .eq('id', techCode)
       .single();
 
@@ -68,21 +74,41 @@ export async function POST(req: NextRequest) {
     }
 
     const currentFlags = data?.feature_flags || {};
+    const isTypeB = data?.work_type === 'TYPE_B';
+    const allow_on_call = isTypeB || currentFlags.allow_on_call === true;
 
-    // Chỉ cập nhật nếu được phép allow_on_call
-    if (!currentFlags.allow_on_call) {
-      return NextResponse.json({ error: 'Tính năng này chưa được kích hoạt cho bạn.' }, { status: 403 });
+    // Chỉ cập nhật nếu được phép allow_on_call (KTV Loại B hoặc được cấp cờ)
+    if (!allow_on_call) {
+      return NextResponse.json({ error: 'Tính năng này chỉ dành cho KTV Loại B (Hợp tác).' }, { status: 403 });
     }
 
+    // Luôn giữ cờ feature_flags để backup/tương thích ngược
     const newFlags = {
       ...currentFlags,
       is_on_call,
       travel_time_mins: travel_time_mins || 30
     };
 
+    // Update các cột Native mới của Phase 4
+    const updates: any = {
+      feature_flags: newFlags,
+      online_status: is_on_call ? 'ONLINE' : 'OFFLINE',
+      travel_minutes: is_on_call ? (travel_time_mins || 30) : null,
+    };
+
+    if (is_on_call) {
+      updates.available_from = new Date().toISOString();
+      const until = new Date();
+      until.setHours(until.getHours() + 4);
+      updates.available_until = until.toISOString();
+    } else {
+      updates.available_from = null;
+      updates.available_until = null;
+    }
+
     const { error: updateError } = await supabase
       .from('Staff')
-      .update({ feature_flags: newFlags })
+      .update(updates)
       .eq('id', techCode);
 
     if (updateError) {

@@ -1,37 +1,54 @@
 'use client';
 
 import React, { useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
+import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
+import { AppLayout } from '@/components/layout/AppLayout';
 
 // 🔧 UI CONFIGURATION
 const PROGRESS_HEIGHT = 'h-3';
 const BUTTON_MIN_SIZE = 'min-h-[44px] min-w-[44px]'; // Touch target >= 44px
 
 export default function SupportEmployeeTasksPage() {
+  const router = useRouter();
   const logic = useSupportTasks();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (logic.loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-slate-500">Đang tải công việc...</p>
+      <AppLayout title="Công Việc Hôm Nay">
+        <div className="flex items-center justify-center min-h-[70vh] bg-slate-50">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-slate-500">Đang tải công việc...</p>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   const todayStr = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
 
   return (
-    <div className="p-4 max-w-lg mx-auto min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-slate-800">📋 Công Việc Hôm Nay</h1>
-        <p className="text-slate-500 text-sm capitalize">{todayStr}</p>
+    <AppLayout title="Công Việc Hôm Nay">
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Mobile Top Header */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
+          <button 
+            onClick={() => router.back()}
+            className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft size={22} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold text-slate-800 truncate">📋 Công Việc Hôm Nay</h1>
+            <p className="text-slate-500 text-xs capitalize truncate">{todayStr}</p>
+          </div>
+        </div>
       </div>
 
+      <div className="p-4 max-w-lg mx-auto">
       {/* Progress bar */}
       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm mb-5">
         <div className="flex justify-between items-baseline mb-2">
@@ -46,12 +63,12 @@ export default function SupportEmployeeTasksPage() {
         </div>
       </div>
 
-      {/* Notifications (Rework alerts) */}
+      {/* Notifications */}
       {logic.notifications.length > 0 && (
         <div className="space-y-2 mb-5">
           {logic.notifications.map((n) => (
             <div key={n.id} className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-3">
-              <span className="text-red-500 text-lg mt-0.5">🔔</span>
+              <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={20} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-red-700">{n.message}</p>
                 <p className="text-xs text-red-400 mt-0.5">
@@ -71,64 +88,35 @@ export default function SupportEmployeeTasksPage() {
 
       {/* ======================== VIỆC ĐỘT XUẤT ======================== */}
       {logic.urgentTasks.length > 0 && (
-        <section className="mb-5">
-          <div className="flex items-center gap-2 mb-3">
+        <section className="mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-t-xl px-4 py-3 flex items-center gap-2">
             <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-            <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">Việc đột xuất ({logic.urgentTasks.length})</h2>
+            <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">CÁC VIỆC ĐỘT XUẤT PHÁT SINH</h2>
           </div>
-          <div className="space-y-2">
-            {logic.urgentTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                variant="urgent"
-                onStart={() => logic.startTask(task.id)}
-                onOpen={() => logic.setSelectedTask(task)}
-              />
+          <div className="bg-white border-x border-b border-red-100 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm">
+            {logic.urgentTasks.map((task, index) => (
+              <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={true} />
             ))}
           </div>
         </section>
       )}
 
-      {/* ======================== CHƯA HOÀN THÀNH ======================== */}
-      {logic.incompleteTasks.length > 0 && (
-        <section className="mb-5">
-          <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">
-            🟡 Chưa hoàn thành ({logic.incompleteTasks.length})
-          </h2>
-          <div className="space-y-2">
-            {logic.incompleteTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                variant="pending"
-                onStart={() => logic.startTask(task.id)}
-                onOpen={() => logic.setSelectedTask(task)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ======================== ĐÃ HOÀN THÀNH ======================== */}
-      {logic.completedTasks.length > 0 && (
-        <section className="mb-5">
-          <h2 className="text-sm font-bold text-green-600 uppercase tracking-wide mb-3">
-            ✅ Đã hoàn thành ({logic.completedTasks.length})
-          </h2>
-          <div className="space-y-2">
-            {logic.completedTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                variant="done"
-                onStart={() => {}}
-                onOpen={() => {}}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* ======================== CÁC DANH MỤC CÔNG VIỆC ======================== */}
+      {logic.sortedCategories.map((group) => {
+        if (group.tasks.length === 0) return null;
+        return (
+          <section key={group.categoryName} className="mb-6">
+            <div className="bg-slate-200 text-slate-700 px-4 py-3 rounded-t-xl">
+              <h2 className="text-sm font-bold uppercase tracking-wide">{group.categoryName}</h2>
+            </div>
+            <div className="bg-white border-x border-b border-slate-200 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm">
+              {group.tasks.map((task, index) => (
+                <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={false} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       {/* No tasks */}
       {logic.totalTasks === 0 && (
@@ -137,164 +125,102 @@ export default function SupportEmployeeTasksPage() {
           <p className="text-slate-500">Chưa có công việc nào được giao cho bạn hôm nay.</p>
         </div>
       )}
-
-      {/* ======================== DRAWER: CHI TIẾT CÔNG VIỆC ======================== */}
-      {logic.selectedTask && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[85vh] flex flex-col">
-            {/* Header */}
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="font-bold text-slate-800 text-lg truncate pr-4">{logic.selectedTask.name}</h2>
-              <button
-                onClick={() => logic.setSelectedTask(null)}
-                className="text-slate-400 hover:text-slate-600 text-xl"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Status */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">Trạng thái:</span>
-                <StatusBadge status={logic.selectedTask.status} inspectionStatus={logic.selectedTask.inspection_status} />
-              </div>
-
-              {/* Photo Section */}
-              {logic.selectedTask.requires_photo && (
-                <div>
-                  <p className="text-sm font-medium text-slate-700 mb-2">
-                    📷 Ảnh minh chứng (Tối thiểu {logic.selectedTask.min_photo_count})
-                  </p>
-                  <p className="text-xs text-slate-400 mb-3">Đã chụp: {logic.selectedTask.photoCount} ảnh</p>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file && logic.selectedTask) {
-                        logic.uploadPhoto(logic.selectedTask.id, file);
-                      }
-                    }}
-                  />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={logic.uploading}
-                    className={`w-full ${BUTTON_MIN_SIZE} bg-slate-100 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-medium hover:bg-cyan-50 hover:border-cyan-300 transition-colors disabled:opacity-50`}
-                  >
-                    {logic.uploading ? 'Đang tải lên...' : '📷 Chụp / Chọn ảnh'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50">
-              {logic.selectedTask.status !== 'COMPLETED' && (
-                <button
-                  onClick={() => logic.completeTask(logic.selectedTask!.id)}
-                  className={`w-full ${BUTTON_MIN_SIZE} bg-green-500 text-white rounded-xl font-bold text-base hover:bg-green-600 transition-colors shadow-lg shadow-green-200`}
-                >
-                  ✓ Hoàn thành công việc
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
+    </AppLayout>
   );
 }
 
 // ============================================================
 // Sub-components
 // ============================================================
-interface TaskCardProps {
-  task: {
-    id: string;
-    name: string;
-    status: string;
-    inspection_status: string;
-    task_type: string;
-    priority: string;
-    completedAt: string | null;
-    photoCount: number;
-  };
-  variant: 'urgent' | 'pending' | 'done';
-  onStart: () => void;
-  onOpen: () => void;
-}
-
-const TaskCard = ({ task, variant, onStart, onOpen }: TaskCardProps) => {
-  const bgMap = {
-    urgent: 'bg-red-50 border-red-200 hover:border-red-300',
-    pending: 'bg-white border-slate-200 hover:border-cyan-300',
-    done: 'bg-green-50/50 border-green-200',
-  };
-
-  const completedTime = task.completedAt
-    ? new Date(task.completedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-    : null;
-
-  const isNotStarted = task.status === 'NOT_STARTED';
+const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; logic: any; isUrgent: boolean }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const isCompleted = task.status === 'COMPLETED';
   const isRework = task.inspection_status === 'REWORK_REQUIRED';
+  const hasEnoughPhotos = !task.requires_photo || task.photoCount >= task.min_photo_count;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      logic.uploadPhoto(task.id, file);
+    }
+  };
 
   return (
-    <div className={`rounded-xl border ${bgMap[variant]} p-4 transition-all`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex-1 min-w-0" onClick={variant !== 'done' ? onOpen : undefined}>
-          <p className={`font-medium truncate ${variant === 'done' ? 'text-green-700 line-through' : 'text-slate-800'}`}>
-            {task.name}
-          </p>
-          <div className="flex items-center gap-2 text-xs mt-1">
-            {variant === 'urgent' && <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold animate-pulse">GẤP!</span>}
-            {isRework && <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">↩ CẦN LÀM LẠI</span>}
-            {task.priority === 'HIGH' && variant !== 'urgent' && <span className="bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-bold">ƯU TIÊN</span>}
-            {task.photoCount > 0 && <span className="text-slate-400">📷 {task.photoCount}</span>}
-            {completedTime && <span className="text-green-600">{completedTime}</span>}
+    <div className={`p-4 flex flex-col gap-3 transition-colors ${isCompleted ? 'bg-green-50/30' : ''} ${isRework ? 'bg-red-50/50' : ''}`}>
+      {/* Top Row: Name and Photo Upload Icon */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0 flex items-start gap-2">
+          <span className="font-semibold text-slate-400 shrink-0">{index}.</span>
+          <div>
+            <p className={`text-sm font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+              {task.name}
+            </p>
+            
+            {/* Status / Tags */}
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              {isRework && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Làm lại</span>}
+              {task.priority === 'HIGH' && !isUrgent && <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Ưu tiên</span>}
+              
+              {task.requires_photo && (
+                <span className={`text-[11px] ${hasEnoughPhotos ? 'text-green-600 font-bold' : 'text-slate-500'}`}>
+                  📷 {task.photoCount}/{task.min_photo_count} ảnh
+                </span>
+              )}
+              {isCompleted && task.completedAt && (
+                <span className="text-[11px] text-green-600 flex items-center gap-1 font-bold">
+                  <Clock size={10} /> {new Date(task.completedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {variant !== 'done' && (
-          isNotStarted ? (
+        {/* Actions (Camera / Check) */}
+        <div className="shrink-0 flex flex-col gap-2">
+          {!isCompleted && task.requires_photo && (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={logic.uploading}
+                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-colors shrink-0 ${
+                  hasEnoughPhotos 
+                  ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' 
+                  : 'bg-cyan-50 text-cyan-500 border border-cyan-200'
+                }`}
+                title="Chụp ảnh minh chứng"
+              >
+                {logic.uploading ? (
+                  <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera size={20} strokeWidth={hasEnoughPhotos ? 2.5 : 2} />
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          {!isCompleted && hasEnoughPhotos && (
             <button
-              onClick={onStart}
-              className="min-h-[44px] min-w-[88px] bg-cyan-500 text-white rounded-xl text-sm font-bold hover:bg-cyan-600 transition-colors shadow-sm"
+              onClick={() => logic.submitTask(task.id)}
+              className="w-12 h-12 bg-cyan-600 text-white rounded-xl text-sm font-bold flex items-center justify-center hover:bg-cyan-700 active:bg-cyan-800 transition-colors shadow-sm"
+              title="Gửi kết quả"
             >
-              BẮT ĐẦU
+              <Upload size={20} />
             </button>
-          ) : (
-            <button
-              onClick={onOpen}
-              className="min-h-[44px] min-w-[88px] bg-green-500 text-white rounded-xl text-sm font-bold hover:bg-green-600 transition-colors shadow-sm"
-            >
-              LÀM TIẾP
-            </button>
-          )
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
-};
-
-const StatusBadge = ({ status, inspectionStatus }: { status: string; inspectionStatus: string }) => {
-  if (inspectionStatus === 'REWORK_REQUIRED') {
-    return <span className="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-xs font-bold">Cần làm lại</span>;
-  }
-  if (inspectionStatus === 'PASSED') {
-    return <span className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-xs font-bold">Đã nghiệm thu ✅</span>;
-  }
-  if (status === 'COMPLETED') {
-    return <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-xs font-bold">Chờ nghiệm thu</span>;
-  }
-  if (status === 'IN_PROGRESS') {
-    return <span className="bg-cyan-100 text-cyan-700 px-2 py-1 rounded-lg text-xs font-bold">Đang làm</span>;
-  }
-  return <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg text-xs font-bold">Chưa bắt đầu</span>;
 };
