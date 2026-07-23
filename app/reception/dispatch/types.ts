@@ -91,19 +91,19 @@ export interface PendingOrder {
 export interface StaffData {
   id: string;
   full_name: string;
-  avatar_url?: string;
-  gender?: string;
-  status?: string;
+  avatar_url?: string | undefined;
+  gender?: string | undefined;
+  status?: string | undefined;
   skills?: any;
-  phone?: string;
-  position?: string;
-  experience?: string;
-  work_type?: string;
+  phone?: string | undefined;
+  position?: string | undefined;
+  experience?: string | undefined;
+  work_type?: string | undefined;
   feature_flags?: any;
-  online_status?: string;
+  online_status?: string | undefined;
   travel_minutes?: number;
-  available_from?: string;
-  available_until?: string;
+  available_from?: string | undefined;
+  available_until?: string | undefined;
 };
 
 export type TurnQueueData = {

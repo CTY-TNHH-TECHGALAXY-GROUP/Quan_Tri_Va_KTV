@@ -1,13 +1,13 @@
 export type StaffData = {
     id: string;
     full_name: string;
-    status?: string;
-    gender?: string;
+    status?: string | undefined;
+    gender?: string | undefined;
     skills?: Record<string, any> | any;
-    phone?: string;
-    position?: string;
-    avatar_url?: string;
-    experience?: string;
+    phone?: string | undefined;
+    position?: string | undefined;
+    avatar_url?: string | undefined;
+    experience?: string | undefined;
 };
 
 export type TurnQueueData = {
