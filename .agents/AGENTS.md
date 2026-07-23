@@ -44,7 +44,7 @@ Khi User yêu cầu "Cập nhật tiến độ" hoặc "Báo cáo tiến độ",
 
 🟢 NHÓM [SỐ]: [TÊN NHÓM LOGIC / TÍNH NĂNG]
 Tiến độ: Hoàn thiện [X]%
-
+![alt text](image.png)
 - **[Tên Tính Năng/Hạng mục 1]:**
   [Mô tả ngắn gọn, súc tích về cách hệ thống hoạt động hoặc cách AI đã tối ưu hóa, gạch đầu dòng rõ ràng, không viết quá dài].
 - **[Tên Tính Năng/Hạng mục 2]:**
@@ -55,25 +55,6 @@ Quy tắc:
 - Bắt buộc dùng icon 🟢 (hoặc 🟡 nếu đang làm) và thống kê % tiến độ.
 - Văn phong chuyên nghiệp, tập trung vào "Giải pháp kỹ thuật" và "Lợi ích mang lại" để User copy nộp cho Quản lý.
 
-## 9. PROACTIVE SCHEMA VERIFICATION & ERROR HANDLING (MỚI BỔ SUNG)
-- **STRICT SCHEMA VERIFICATION**: TRƯỚC KHI viết bất kỳ query SQL hoặc logic backend nào, BẮT BUỘC phải mở và đọc lại `TableInSupabase.md` để xác nhận chính xác TÊN CỘT. Tuyệt đối không tự suy đoán tên cột (VD: không đoán `work_date` nếu schema là `date`).
-- **PROACTIVE ERROR LOGGING**: Khi bắt lỗi (`catch (error)` hoặc `if (error)` trong Supabase), KHÔNG ĐƯỢC return im lặng (swallow errors). Phải có console.error rõ ràng chứa `error.message` và `error.code` để dễ dàng debug nếu xảy ra lỗi.
-- **SKEPTICAL DEBUGGING (Tư duy phản biện)**: Khi User báo lỗi ảo hoặc thật, không chỉ kiểm tra bề mặt UI. Phải dùng script (Node.js) truy vấn trực tiếp vào Database thực tế để kiểm chứng luồng dữ liệu (Data flow) và trạng thái (State) trước khi đưa ra kết luận. Không tin tưởng tuyệt đối vào code mình đã viết trước đó.
-
-## 10. Shared Library Pattern (DRY - Don't Repeat Yourself)
-- **KIỂM TRA TRƯỚC KHI VIẾT**: Trước khi viết bất kỳ logic nghiệp vụ nào inline trong API route / Server Action / Component, **BẮT BUỘC** kiểm tra thư mục `lib/` xem đã có shared utility xử lý logic tương tự chưa.
-  - Nếu **CÓ** → import và dùng lại. KHÔNG được viết lại.
-  - Nếu **CHƯA CÓ** → tạo mới trong `lib/` rồi import vào nơi cần dùng.
-- **NGƯỠNG TẠO THƯ VIỆN**: Khi một logic/thuật toán/business rule được sử dụng ở **2 nơi trở lên** (hoặc DỰ KIẾN sẽ dùng lại), PHẢI extract thành shared utility trong `lib/`.
-- **NAMING CONVENTION**: `lib/[domain].logic.ts` (VD: `lib/customer.logic.ts`, `lib/booking.logic.ts`, `lib/commission.logic.ts`).
-- **STRUCTURE**: Mỗi file shared library phải có:
-  - **SHARED CONSTANTS** ở đầu file (VD: `COMPLETED_STATUSES`, `RETURNING_THRESHOLD`)
-  - **SHARED UTILITIES** là các pure functions export được (VD: `isDummyPhone()`, `isNameMatch()`)
-  - Comment rõ ràng: "Sửa ở đây = áp dụng toàn hệ thống"
-- **KHÔNG HARDCODE**: Khi đã có constant trong shared library, TUYỆT ĐỐI không hardcode lại giá trị đó ở nơi khác. Phải import từ library.
-- **CÁC THƯ VIỆN HIỆN CÓ** (cập nhật khi tạo thêm):
-  - `lib/customer.logic.ts`: `COMPLETED_STATUSES`, `isDummyPhone`, `isDummyEmail`, `isReturningCustomer`, `isNameMatch`, `identifyCustomer` → Dùng ở: Dispatch, Identify API, CRM API, BookingModificationService
-
-## 11. Database Trigger & Migration Regression Prevention
-- **KIỂM TRA LỊCH SỬ TRƯỚC KHI GHI ĐÈ**: Trước khi tạo một file Migration SQL mới để ghi đè (CREATE OR REPLACE) một Hàm (Function) hoặc Trigger đã có sẵn, AI **BẮT BUỘC** phải dùng lệnh `git log -S "tên_hàm" -p` để đọc lại ít nhất 3 file migration gần nhất liên quan đến hàm đó.
+## Database Trigger & Migration Regression Prevention
+- **KIỂM TRA LỊCH SỬ TRƯỚC KHI GHI ĐÈ**: Trước khi tạo một file Migration SQL mới để ghi đè (CREATE OR REPLACE) một Hàm (Function) hoặc Trigger đã có sẵn, AI **BẮT BUỘC** phải dùng lệnh `git log -S "tên_hàm" -p` hoặc `git blame` để đọc lại ít nhất 3 file migration gần nhất liên quan đến hàm đó.
 - Mục đích: Đảm bảo giữ lại và kế thừa toàn bộ các bản vá lỗi (hot-fixes), logic cũ đã được tinh chỉnh, tuyệt đối không được viết đè làm mất logic cũ (Regression Bug).
