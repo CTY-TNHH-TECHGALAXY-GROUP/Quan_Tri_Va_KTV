@@ -10,7 +10,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
     try {
-        const res = await KtvOnlineService.autoOffline(supabase);
+        const res = await KtvOnlineService.cleanupExpiredOnline(supabase);
         
         if (!res.success) {
             return NextResponse.json({ success: false, error: res.error }, { status: 500 });
