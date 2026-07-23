@@ -284,7 +284,9 @@ export async function GET(request: Request) {
             const at_ledger = allTimeMap[techCode];
             const at_gross = (at_ledger.comm + at_rt_commission) + at_adjustment;
             const net_balance = at_gross - at_withdrawn - total_pending;
-            const min_deposit = commConfig.minDeposit;
+            const workType = ktvWorkTypeMap[techCode] || 'TYPE_A';
+            const config = commConfigs[workType] || commConfigs['TYPE_A'];
+            const min_deposit = config.minDeposit;
             const available_balance = Math.max(0, net_balance - min_deposit);
             const effective_balance = Math.max(0, net_balance);
 
