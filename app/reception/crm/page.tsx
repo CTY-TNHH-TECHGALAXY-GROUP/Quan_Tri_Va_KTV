@@ -58,6 +58,7 @@ export default function CRMPage() {
   const [filterVisit, setFilterVisit] = useState('all'); // 'all', 'new', 'old'
   const [filterGuestType, setFilterGuestType] = useState('all'); // 'all', 'group', 'single'
   const [filterNationality, setFilterNationality] = useState('all'); // 'all', dynamic values
+  const [filterDate, setFilterDate] = useState('all'); // 'all', 'today', 'yesterday', 'this_week', 'this_month'
   const [sortByDate, setSortByDate] = useState('newest'); // 'newest', 'oldest', 'latest_visit'
   
   // Pagination state
@@ -212,6 +213,30 @@ export default function CRMPage() {
 
     // 6. Nationality Filter
     if (filterNationality !== 'all' && c.nationality !== filterNationality) return false;
+
+    // 7. Date Filter (using lastVisited or createdAt)
+    if (filterDate !== 'all') {
+      const dateToUse = c.lastVisited || c.createdAt;
+      if (!dateToUse) return false;
+      
+      const d = new Date(dateToUse);
+      const now = new Date();
+      
+      if (filterDate === 'today') {
+        if (d.getDate() !== now.getDate() || d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
+      } else if (filterDate === 'yesterday') {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        if (d.getDate() !== yesterday.getDate() || d.getMonth() !== yesterday.getMonth() || d.getFullYear() !== yesterday.getFullYear()) return false;
+      } else if (filterDate === 'this_week') {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
+        startOfWeek.setHours(0, 0, 0, 0);
+        if (d < startOfWeek) return false;
+      } else if (filterDate === 'this_month') {
+        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
+      }
+    }
 
     return true;
   });
@@ -371,6 +396,18 @@ export default function CRMPage() {
                 ]}
               />
 
+              {/* Date Filter */}
+              <DropdownMenu 
+                button={{ label: filterDate === 'today' ? 'Thời gian: Hôm nay' : filterDate === 'yesterday' ? 'Thời gian: Hôm qua' : filterDate === 'this_week' ? 'Thời gian: Tuần này' : filterDate === 'this_month' ? 'Thời gian: Tháng này' : 'Thời gian: Tất cả', size: 'sm' }}
+                items={[
+                  { label: 'Thời gian: Tất cả', onClick: () => setFilterDate('all') },
+                  { label: 'Thời gian: Hôm nay', onClick: () => setFilterDate('today') },
+                  { label: 'Thời gian: Hôm qua', onClick: () => setFilterDate('yesterday') },
+                  { label: 'Thời gian: Tuần này', onClick: () => setFilterDate('this_week') },
+                  { label: 'Thời gian: Tháng này', onClick: () => setFilterDate('this_month') }
+                ]}
+              />
+
               {/* Date Sort filter */}
               <DropdownMenu 
                 button={{ label: sortByDate === 'newest' ? 'Sắp xếp: Mới nhất' : sortByDate === 'oldest' ? 'Sắp xếp: Cũ nhất' : 'Sắp xếp: Đến gần đây', size: 'sm' }}
@@ -382,9 +419,9 @@ export default function CRMPage() {
               />
 
               {/* Reset button (Only show if active) */}
-              {(filterVip !== 'all' || filterVisit !== 'all' || filterVipMenu !== 'all' || filterGuestType !== 'all' || filterNationality !== 'all') && (
+              {(filterVip !== 'all' || filterVisit !== 'all' || filterVipMenu !== 'all' || filterGuestType !== 'all' || filterNationality !== 'all' || filterDate !== 'all') && (
                 <button 
-                  onClick={() => { setFilterVip('all'); setFilterVipMenu('all'); setFilterVisit('all'); setFilterGuestType('all'); setFilterNationality('all'); }} 
+                  onClick={() => { setFilterVip('all'); setFilterVipMenu('all'); setFilterVisit('all'); setFilterGuestType('all'); setFilterNationality('all'); setFilterDate('all'); }} 
                   className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold transition-colors border border-red-200"
                 >
                   Xóa lọc
