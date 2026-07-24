@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.0.8";
-export const LAST_UPDATE = "Thêm tính năng Đơn TEST, đồng bộ mã đơn WB";
+export const APP_VERSION = "1.0.9";
+export const LAST_UPDATE = "Hoàn tất Đại tu KTV (Xử lý KTV Loại C, Ledger tháng/năm, Tắt kiểm tra độ sáng ảnh bàn giao)";
