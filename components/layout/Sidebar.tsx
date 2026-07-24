@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { APP_VERSION, LAST_UPDATE } from '@/lib/version';
 import { MODULES } from '@/lib/constants';
 import { ModuleId } from '@/lib/types';
 import {
@@ -341,7 +342,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
           
           {isExpanded && (
               <div className="text-[10px] text-gray-400 font-medium w-full text-center mt-1">
-                  Phiên bản: 1.0.2
+                  Phiên bản: {APP_VERSION} ({LAST_UPDATE})
               </div>
           )}
         </div>

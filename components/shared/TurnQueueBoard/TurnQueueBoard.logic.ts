@@ -54,7 +54,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
                 const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && !(t.status === 'waiting' && t.turns_completed > 0));
+                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting' && t.status !== 'off');
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -80,11 +80,11 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 ...t,
                 staff: staffs.find(s => s.id === t.employee_id)
             }));
-            // 🔥 Tách KTV nội bộ và KTV ngoài
-            const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-            const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && !(t.status === 'waiting' && t.turns_completed > 0));
-            setTurns(internal);
-            setExternalTurns(external);
+                // 🔥 Tách KTV nội bộ và KTV ngoài
+                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
+                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting' && t.status !== 'off');
+                setTurns(internal);
+                setExternalTurns(external);
         }
     }, [selectedDate, staffs]);
 

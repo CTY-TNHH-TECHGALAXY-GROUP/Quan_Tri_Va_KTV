@@ -231,24 +231,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             let staffList: any[] = [];
 
                             if (techCodes.length > 0) {
-                                const validTechCodes: string[] = [];
-                                const invalidTechNames: string[] = [];
-                                techCodes.forEach(tCode => {
-                                    const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
-                                    if (staff) {
-                                        validTechCodes.push(tCode);
-                                    } else {
-                                        invalidTechNames.push(tCode);
-                                    }
-                                });
-
-                                if (invalidTechNames.length > 0) {
-                                    const reqNote = `[Khách yêu cầu KTV: ${invalidTechNames.join(', ')}]`;
-                                    extractedCustomerNote = extractedCustomerNote ? `${reqNote} | ${extractedCustomerNote}` : reqNote;
-                                }
-
-                                if (validTechCodes.length > 0) {
-                                    staffList = validTechCodes.map((tCode: string) => {
+                                staffList = techCodes.map((tCode: string) => {
                                         const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
                                         const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
                                         let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
@@ -256,7 +239,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         if (segments.length === 0) {
                                             const st = formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
                                             const totalDur = parsedOptions?.vipDuration || bi.duration || 0;
-                                            const dur = validTechCodes.length > 1 ? Math.ceil(totalDur / validTechCodes.length) : totalDur;
+                                            const dur = techCodes.length > 1 ? Math.ceil(totalDur / techCodes.length) : totalDur;
                                             segments = [{
                                                 id: `seg-${genId()}`,
                                                 roomId: turn?.room_id || bi.roomName || b.roomName,
@@ -274,10 +257,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             segments: segments,
                                             noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || ''
                                         };
-                                    });
-                                }
+                                });
                             }
-                            
                             if (staffList.length === 0 && finalItemTurns.length > 0) {
                                 staffList = finalItemTurns.map((t: any) => {
                                     const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
