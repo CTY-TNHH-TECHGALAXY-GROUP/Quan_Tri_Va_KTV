@@ -626,3 +626,33 @@
 | `decision` | text | `PASSED` / `REWORK_REQUIRED` / `FAILED` |
 | `note` | text | Ghi chú/Lý do yêu cầu làm lại |
 | `created_at` | timestamptz | |
+
+
+### 9. KTVMonthlyLedger (Cuốn Tháng)
+| Column | Type | Ghi chú |
+|---|---|---|
+| id | UUID | PK, auto gen |
+| staff_id | TEXT | Nhân viên |
+| month | INTEGER | Tháng (1-12) |
+| year | INTEGER | Năm |
+| total_commission | NUMERIC | |
+| total_tip | NUMERIC | |
+| total_bonus | NUMERIC | |
+| total_penalty | NUMERIC | |
+| total_bookings | INTEGER | |
+| total_minutes | INTEGER | Tổng phút làm tua |
+| synced_at | TIMESTAMPTZ | |
+
+### 10. KTVYearlyLedger (Cuốn Năm)
+| Column | Type | Ghi chú |
+|---|---|---|
+| id | UUID | PK, auto gen |
+| staff_id | TEXT | Nhân viên |
+| year | INTEGER | Năm |
+| total_commission | NUMERIC | |
+| total_tip | NUMERIC | |
+| total_bonus | NUMERIC | |
+| total_penalty | NUMERIC | |
+| total_bookings | INTEGER | |
+| total_minutes | INTEGER | |
+| synced_at | TIMESTAMPTZ | |

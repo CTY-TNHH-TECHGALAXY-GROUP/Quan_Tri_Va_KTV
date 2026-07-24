@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { processMonthlyLedgerSync, processYearlyLedgerSync } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 
 export const dynamic = 'force-dynamic';
@@ -167,6 +168,20 @@ async function processLedgerSync(targetDateStr: string) {
         if (upsertErr) {
             console.error('Upsert Error:', upsertErr);
             throw upsertErr;
+        }
+    }
+    // 7. Check if targetDate is the last day of the month/year to trigger monthly/yearly sync
+    const d = new Date(targetDateStr);
+    d.setDate(d.getDate() + 1);
+    if (d.getDate() === 1) {
+        // It was the last day of the month!
+        const month = parseInt(targetDateStr.slice(5, 7), 10);
+        const year = parseInt(targetDateStr.slice(0, 4), 10);
+        await processMonthlyLedgerSync(supabase, month, year);
+        
+        if (month === 12) {
+            // It was also the last day of the year!
+            await processYearlyLedgerSync(supabase, year);
         }
     }
 

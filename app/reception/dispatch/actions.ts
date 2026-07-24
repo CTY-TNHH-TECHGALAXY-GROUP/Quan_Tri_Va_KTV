@@ -361,7 +361,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
             if (u.technicianCodes) {
                 if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) allKtvIds.add(c) });
                 else if (typeof u.technicianCodes === 'string') {
-                    // This case shouldn't happen anymore because of pre-processing, but just in case:
                     u.technicianCodes.split(',').forEach(c => {
                         const trimmed = c.trim();
                         if (trimmed) allKtvIds.add(trimmed);
@@ -370,7 +369,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         });
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
-        const externalNameMap: Record<string, string> = {};
 
         console.log('🔍 [EXT-MAP] uniqueKtvIds:', uniqueKtvIds);
 
@@ -382,29 +380,40 @@ export async function processDispatch(bookingId: string, dispatchData: {
             console.log('🔍 [EXT-MAP] existingIds:', existingIds, 'missingIds:', missingIds);
 
             if (missingIds.length > 0) {
-                // Lấy các mã EXT còn trống
-                const { data: extStaff } = await supabase.from('Staff').select('id').ilike('id', 'EXT%');
-                const { data: busyQueue } = await supabase.from('TurnQueue').select('employee_id');
-                const busyIds = busyQueue?.map(q => q.employee_id) || [];
-                const availableExt = (extStaff || []).map(s => s.id).filter(id => !busyIds.includes(id));
-                
-                console.log('🔍 [EXT-MAP] availableExt count:', availableExt.length);
-
-                let extIndex = 0;
                 const idReplacements: Record<string, string> = {};
                 
                 for (const missingName of missingIds) {
-                    const extCode = availableExt[extIndex];
-                    if (extCode) {
-                        idReplacements[missingName] = extCode;
-                        externalNameMap[extCode] = missingName;
-                        extIndex++;
+                    // 1. Tìm KTV TYPE_C trùng tên
+                    const { data: existingTypeC } = await supabase
+                        .from('Staff')
+                        .select('id')
+                        .eq('work_type', 'TYPE_C')
+                        .ilike('full_name', missingName)
+                        .limit(1);
+                    
+                    if (existingTypeC && existingTypeC.length > 0) {
+                        idReplacements[missingName] = existingTypeC[0].id;
+                        // Cập nhật lại status ĐANG LÀM
+                        await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existingTypeC[0].id);
                     } else {
-                        throw new Error(`Không đủ mã KTV Ngoài (Freelance) trống để gán cho: ${missingName}`);
+                        // Insert mới TYPE_C
+                        // Tự generate 1 ID ngẫu nhiên định dạng C_xxxxx
+                        const newId = `C_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                        const { error: insertError } = await supabase
+                            .from('Staff')
+                            .insert({
+                                id: newId,
+                                full_name: missingName,
+                                work_type: 'TYPE_C',
+                                status: 'ĐANG LÀM'
+                            });
+                            
+                        if (insertError) throw new Error(`Lỗi tạo KTV Nhập tay: ${insertError.message}`);
+                        idReplacements[missingName] = newId;
                     }
                 }
                 
-                console.log('✅ [EXT-MAP] idReplacements:', idReplacements, 'externalNameMap:', externalNameMap);
+                console.log('✅ [EXT-MAP] idReplacements:', idReplacements);
 
                 // Rewrite IDs in dispatchData
                 const replaceId = (id: string) => idReplacements[id] || id;
@@ -419,21 +428,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
                         u.segments.forEach(seg => { if (seg.ktvId) seg.ktvId = replaceId(seg.ktvId) });
                     }
                 });
-
-                // 🔥 FIX: Inject external_technician_name vào item.options TRONG dispatchData
-                // để RPC dispatch_confirm_booking lưu cùng lúc, tránh bị ghi đè bởi RPC
-                if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0 && Object.keys(externalNameMap).length > 0) {
-                    for (const item of dispatchData.itemUpdates) {
-                        if (!item.options) item.options = {};
-                        item.options = {
-                            ...item.options,
-                            external_technician_name: {
-                                ...(item.options as any).external_technician_name,
-                                ...externalNameMap
-                            }
-                        };
-                    }
-                }
 
                 console.log('✅ [EXT-MAP] Final technicianCodes:', dispatchData.itemUpdates?.map(u => u.technicianCodes));
                 console.log('✅ [EXT-MAP] Final staffAssignments ktvIds:', dispatchData.staffAssignments?.map(a => a.ktvId));

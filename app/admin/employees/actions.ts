@@ -13,6 +13,7 @@ export async function getStaffList() {
         const { data: staff, error } = await supabase
             .from('Staff')
             .select('*')
+            .neq('work_type', 'TYPE_C')
             .order('created_at', { ascending: false });
 
         if (error) throw error;
