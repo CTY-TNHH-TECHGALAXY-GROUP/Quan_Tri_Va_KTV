@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 
 interface CustomerIdentifyParams {
     phone?: string;
@@ -34,10 +35,17 @@ export class CustomerIdentifyService {
 
         // 1. Tra cứu thông tin Khách hàng
         let customerQuery = supabase.from('Customers').select('fullName, notes, phone, email');
-        if (phone) {
-            customerQuery = customerQuery.eq('phone', phone);
-        } else if (email) {
-            customerQuery = customerQuery.eq('email', email);
+        
+        const validPhone = phone && !isDummyPhone(phone) ? phone : null;
+        const validEmail = email && !isDummyEmail(email) ? email : null;
+
+        if (validPhone) {
+            customerQuery = customerQuery.eq('phone', validPhone);
+        } else if (validEmail) {
+            customerQuery = customerQuery.eq('email', validEmail);
+        } else {
+            // Nếu cả phone và email đều là dummy, không match bất kỳ KH nào
+            customerQuery = customerQuery.eq('id', 'DO_NOT_MATCH_ANYTHING');
         }
 
         const { data: customerData, error: customerError } = await customerQuery.maybeSingle();
@@ -47,10 +55,12 @@ export class CustomerIdentifyService {
 
         // 2. Tra cứu lịch sử Bookings
         let bookingQuery = supabase.from('Bookings').select('id');
-        if (phone) {
-            bookingQuery = bookingQuery.eq('customerPhone', phone);
-        } else if (email) {
-            bookingQuery = bookingQuery.eq('customerEmail', email);
+        if (validPhone) {
+            bookingQuery = bookingQuery.eq('customerPhone', validPhone);
+        } else if (validEmail) {
+            bookingQuery = bookingQuery.eq('customerEmail', validEmail);
+        } else {
+            bookingQuery = bookingQuery.eq('id', 'DO_NOT_MATCH_ANYTHING');
         }
         
         // Cân nhắc các trạng thái đã phục vụ xong (COMPLETED, FEEDBACK, CLEANING, DONE)
