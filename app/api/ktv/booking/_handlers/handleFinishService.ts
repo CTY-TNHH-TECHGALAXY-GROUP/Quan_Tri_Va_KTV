@@ -187,6 +187,19 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         // Booking chỉ DONE khi CẢ HAI điều kiện: KTV xong + Khách đã rate
         // Xử lý cả 2 thứ tự: KTV xong trước hoặc Khách rate trước
         // 🛡️ Nếu còn segments chưa bắt đầu (DV gán muộn), giữ IN_PROGRESS cho item đó
+        let newHandoverImages: Record<string, string> = {};
+        let photoCount = 1;
+        segs.forEach((seg: any) => {
+            if (seg.handoverPhotoUrl) {
+                newHandoverImages[`Ảnh ${photoCount++} (${seg.ktvId})`] = seg.handoverPhotoUrl;
+            }
+            if (seg.handoverPhotoUrls) {
+                seg.handoverPhotoUrls.forEach((url: string) => {
+                    newHandoverImages[`Ảnh ${photoCount++} (${seg.ktvId})`] = url;
+                });
+            }
+        });
+
         const newItemStatus = (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
             : hasUnstartedSegs
@@ -197,7 +210,18 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                         ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
                         : 'IN_PROGRESS';
         
-        await supabase.from('BookingItems').update({ segments: JSON.stringify(segs), status: newItemStatus }).eq('id', item.id);
+        const updatePayload: any = { segments: JSON.stringify(segs), status: newItemStatus };
+        if (Object.keys(newHandoverImages).length > 0) {
+            updatePayload.handover_images = newHandoverImages;
+            // Bắt buộc đẩy về PENDING nếu KTV vừa gửi lên một ảnh mới, kể cả khi trước đó đã APPROVED (đơn nhiều KTV)
+            if (handoverPhotoUrl) {
+                updatePayload.handover_status = 'PENDING';
+            } else if (item.handover_status !== 'APPROVED') {
+                updatePayload.handover_status = 'PENDING';
+            }
+        }
+        
+        await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
         console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated} → ${newItemStatus}`);
     }
     

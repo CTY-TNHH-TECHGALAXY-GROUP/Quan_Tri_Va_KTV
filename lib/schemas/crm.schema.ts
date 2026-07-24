@@ -2,11 +2,12 @@ import { z } from 'zod';
 
 // PATCH /api/rooms
 export const RoomPatchSchema = z.object({
-  roomId: z.number().int().positive("roomId is required"),
+  roomId: z.string().or(z.number()),
   prep_procedure: z.array(z.string()).optional().nullable(),
   clean_procedure: z.array(z.string()).optional().nullable(),
+  handover_checklist: z.array(z.string()).optional().nullable(),
   allowed_services: z.array(z.string()).optional().nullable(),
-  default_reminders: z.array(z.number()).optional().nullable()
+  default_reminders: z.array(z.string().or(z.number())).optional().nullable()
 });
 
 // PATCH /api/customers

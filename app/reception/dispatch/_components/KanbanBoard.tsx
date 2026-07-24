@@ -141,6 +141,20 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
     const [tempCustomName, setTempCustomName] = useState<string>('');
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const [isHandoverReviewEnabled, setIsHandoverReviewEnabled] = useState<boolean>(true);
+
+    React.useEffect(() => {
+        const saved = localStorage.getItem('isHandoverReviewEnabled');
+        if (saved !== null) {
+            setIsHandoverReviewEnabled(saved === 'true');
+        }
+    }, []);
+
+    const toggleHandoverReview = () => {
+        const newValue = !isHandoverReviewEnabled;
+        setIsHandoverReviewEnabled(newValue);
+        localStorage.setItem('isHandoverReviewEnabled', newValue.toString());
+    };
 
     const subOrders = React.useMemo(() => {
         return buildOrderTimeline(orders);
@@ -234,10 +248,21 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
     const getStatusConfig = (id: string) => STATUS_CONFIG.find(s => s.id === id) || STATUS_CONFIG[0];
 
     return (
-        <div className="flex-1 flex gap-4 overflow-x-auto pb-6 no-scrollbar min-h-0">
-            {STATUS_CONFIG.map(column => {
-                const columnSubOrders = subOrders.filter(so => column.dispatchModeId.includes(so.dispatchStatus));
-                return (
+        <div className="flex-1 flex flex-col min-h-0 w-full relative">
+            <div className="flex items-center justify-end px-4 pb-4 shrink-0">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                    <span className="text-xs font-bold text-gray-500 group-hover:text-gray-700 transition-colors uppercase tracking-wider">Yêu cầu duyệt ảnh phòng</span>
+                    <div className={`relative w-10 h-5 rounded-full transition-colors duration-300 flex items-center ${isHandoverReviewEnabled ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                        <div className={`absolute left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isHandoverReviewEnabled ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                    {/* Ẩn checkbox native đi */}
+                    <input type="checkbox" className="sr-only" checked={isHandoverReviewEnabled} onChange={toggleHandoverReview} />
+                </label>
+            </div>
+            <div className="flex-1 flex gap-4 overflow-x-auto pb-6 no-scrollbar min-h-0">
+                {STATUS_CONFIG.map(column => {
+                    const columnSubOrders = subOrders.filter(so => column.dispatchModeId.includes(so.dispatchStatus));
+                    return (
                     <div
                         key={column.id}
                         className={`flex-1 min-w-[300px] max-w-[360px] flex flex-col bg-gray-50/40 rounded-[2rem] border-2 border-transparent transition-all duration-300 ${draggedSubOrderId ? 'bg-indigo-50/30 border-dashed border-indigo-200 shadow-inner' : 'hover:bg-gray-100/50'}`}
@@ -562,7 +587,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                 {!s.isUtility && (
                                                                     <div className="flex flex-col items-end gap-1">
                                                                         <span className="text-[9px] font-black text-indigo-600 bg-white px-1.5 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
-                                                                        {s.handover_status === 'PENDING' && (
+                                                                        {isHandoverReviewEnabled && s.handover_status === 'PENDING' && (
                                                                             <button 
                                                                                 onClick={(e) => { e.stopPropagation(); onReviewClick?.(s); }}
                                                                                 className="text-[9px] font-bold text-white bg-rose-500 animate-pulse px-1.5 py-0.5 rounded shadow-sm border border-rose-600 shrink-0 flex items-center gap-1 hover:bg-rose-600 transition-colors"
@@ -571,7 +596,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                                 Duyệt ảnh
                                                                             </button>
                                                                         )}
-                                                                        {s.handover_status === 'APPROVED' && (
+                                                                        {isHandoverReviewEnabled && s.handover_status === 'APPROVED' && (
                                                                             <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
                                                                                 <Check size={10} />
                                                                                 Đã duyệt
@@ -912,6 +937,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                     </motion.div>
                 )}
             </AnimatePresence>
+            </div>
         </div>
     );
 }

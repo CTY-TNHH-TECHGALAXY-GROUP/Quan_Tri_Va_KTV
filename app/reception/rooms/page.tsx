@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useRoomConfig, MASTER_PREP_STEPS, MASTER_CLEAN_STEPS } from './RoomConfig.logic';
+import { useRoomConfig, MASTER_PREP_STEPS, MASTER_HANDOVER_STEPS } from './RoomConfig.logic';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-    DoorOpen, CheckCircle2, Sparkles, Wrench,
+    DoorOpen, CheckCircle2, Sparkles, Wrench, Camera,
     ChevronRight, Loader2, Check, X, ListChecks,
     ChevronUp, ChevronDown
 } from 'lucide-react';
@@ -15,7 +15,7 @@ const TABS = [
     { id: 'services' as const, label: 'Dịch Vụ', icon: <ListChecks size={16} /> },
     { id: 'reminders' as const, label: 'Nhắc Nhở', icon: <Sparkles size={16} /> },
     { id: 'prep' as const, label: 'Mở Phòng', icon: <DoorOpen size={16} /> },
-    { id: 'clean' as const, label: 'Dọn Phòng', icon: <Sparkles size={16} /> },
+    { id: 'handover' as const, label: 'Ảnh Bàn Giao', icon: <Camera size={16} /> },
 ];
 
 export default function RoomManagementPage() {
@@ -24,13 +24,13 @@ export default function RoomManagementPage() {
         rooms, reminders, selectedRoom, selectedRoomId, setSelectedRoomId,
         isLoading, isSaving, activeTab, setActiveTab,
         servicesByCategory, toggleService, toggleReminder, toggleCategoryServices,
-        togglePrepStep, toggleCleanStep,
-        selectAllPrepSteps, selectAllCleanSteps,
-        clearAllPrepSteps, clearAllCleanSteps,
-        addCustomPrepStep, addCustomCleanStep,
-        removeCustomPrepStep, removeCustomCleanStep,
-        editPrepStep, editCleanStep,
-        reorderPrepStep, reorderCleanStep,
+        togglePrepStep, toggleHandoverStep,
+        selectAllPrepSteps, selectAllHandoverSteps,
+        clearAllPrepSteps, clearAllHandoverSteps,
+        addCustomPrepStep, addCustomHandoverStep,
+        removeCustomPrepStep, removeCustomHandoverStep,
+        editPrepStep, editHandoverStep,
+        reorderPrepStep, reorderHandoverStep,
     } = logic;
 
     if (isLoading) {
@@ -69,7 +69,7 @@ export default function RoomManagementPage() {
                                 {rooms.map(room => {
                                     const isActive = room.id === selectedRoomId;
                                     const prepCount = (room.prep_procedure || []).length;
-                                    const cleanCount = (room.clean_procedure || []).length;
+                                    const handoverCount = (room.handover_checklist || []).length;
                                     const svcCount = (room.allowed_services || []).length;
                                     const remCount = (room.default_reminders || []).length;
                                     return (
@@ -105,8 +105,8 @@ export default function RoomManagementPage() {
                                                     <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md ${prepCount > 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-gray-50 text-gray-300'}`}>
                                                         {prepCount} mở
                                                     </span>
-                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md ${cleanCount > 0 ? 'bg-amber-50 text-amber-500' : 'bg-gray-50 text-gray-300'}`}>
-                                                        {cleanCount} dọn
+                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md ${handoverCount > 0 ? 'bg-amber-50 text-amber-500' : 'bg-gray-50 text-gray-300'}`}>
+                                                        {handoverCount} ảnh
                                                     </span>
                                                 </div>
                                             </div>
@@ -191,18 +191,18 @@ export default function RoomManagementPage() {
                                                 />
                                             </motion.div>
                                         )}
-                                        {activeTab === 'clean' && (
-                                            <motion.div key="clean" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                                        {activeTab === 'handover' && (
+                                            <motion.div key="handover" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                                                 <TabProcedure
-                                                    title="Quy trình DỌN PHÒNG"
-                                                    masterSteps={MASTER_CLEAN_STEPS}
-                                                    selectedSteps={selectedRoom.clean_procedure || []}
-                                                    onSelectAll={selectAllCleanSteps}
-                                                    onClearAll={clearAllCleanSteps}
-                                                    onAddStep={addCustomCleanStep}
-                                                    onRemoveStep={removeCustomCleanStep}
-                                                    onEditStep={editCleanStep}
-                                                    onReorderStep={reorderCleanStep}
+                                                    title="DANH SÁCH ẢNH BÀN GIAO"
+                                                    masterSteps={MASTER_HANDOVER_STEPS}
+                                                    selectedSteps={selectedRoom.handover_checklist || []}
+                                                    onSelectAll={selectAllHandoverSteps}
+                                                    onClearAll={clearAllHandoverSteps}
+                                                    onAddStep={addCustomHandoverStep}
+                                                    onRemoveStep={removeCustomHandoverStep}
+                                                    onEditStep={editHandoverStep}
+                                                    onReorderStep={reorderHandoverStep}
                                                 />
                                             </motion.div>
                                         )}

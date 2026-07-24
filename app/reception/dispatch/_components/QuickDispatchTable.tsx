@@ -8,6 +8,8 @@ import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } fro
 // 🛠 UI CONFIGURATION
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
 
+const FOURHAND_SERVICES = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'];
+
 interface Room { id: string; name: string; type: string; default_reminders?: string[]; }
 interface Bed { id: string; roomId: string; }
 
@@ -101,7 +103,11 @@ export const QuickDispatchTable = ({
          duration: combinedDuration
       };
 
-      const key = `${svcForUI.options.displayName}_${svcForUI.duration}${isUtil ? '_utility' : ''}`;
+      const isFourhand = FOURHAND_SERVICES.includes(svc.serviceId || '');
+      const key = isFourhand 
+         ? `${svcForUI.options.displayName}_${svcForUI.duration}${isUtil ? '_utility' : ''}`
+         : svc.id;
+
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(svcForUI);
     });
@@ -416,6 +422,7 @@ export const QuickDispatchTable = ({
             allServices={services}
             groupItems={items}
             onTriggerMergePrompt={onTriggerMergePrompt}
+            onUpdateServices={onUpdateServices}
           />
         );
       })}
@@ -448,6 +455,7 @@ interface ServiceGroupCardProps {
   allServices: ServiceBlock[];
   groupItems: ServiceBlock[];
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
+  onUpdateServices?: (services: ServiceBlock[]) => void;
 }
 
 const MAX_KTV_PER_GROUP = 10;
@@ -455,7 +463,7 @@ const MAX_KTV_PER_GROUP = 10;
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state, targetSkill,
   availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt
+  allServices, groupItems, onTriggerMergePrompt, onUpdateServices
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const [ktvSearch, setKtvSearch] = useState('');
@@ -516,6 +524,34 @@ const ServiceGroupCard = ({
       const defaultEnd = calcEndTime(defaultStart, duration);
       const defaultRoom = (state.selectedRoomIds || [])[0] || '';
       
+      const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
+
+      // Nếu không phải 4 tay và đã có KTV -> Tách đơn luôn thành dòng mới trên UI
+      if (!isFourhand && state.selectedKtvIds.length >= 1) {
+          const originalItem = groupItems[0];
+          const st = (state.ktvStartTimes || [])[0] || getCurrentTime();
+          const kd = duration;
+          const ed = calcEndTime(st, kd);
+          const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
+          const ktvName = ktvTurn?.staff?.full_name || ktvId;
+
+          const newItem: ServiceBlock = {
+              ...originalItem,
+              id: genId(), // ID giả tạm thời để tách row UI
+              staffList: [{
+                  id: `st-${genId()}`,
+                  ktvId,
+                  ktvName,
+                  segments: [{ id: `seg-${genId()}`, roomId: null, bedId: null, startTime: st, duration: kd, endTime: ed }],
+                  noteForKtv: ''
+              }]
+          };
+          if (onUpdateServices) onUpdateServices([...allServices, newItem]);
+          setKtvSearch('');
+          window.alert(`✅ Đã tách đơn thành công thành dòng mới cho KTV ${ktvName}!`);
+          return;
+      }
+
       onUpdate({ 
         selectedKtvIds: [...state.selectedKtvIds, ktvId], 
         ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], 
@@ -650,7 +686,7 @@ const ServiceGroupCard = ({
   };
 
   const filteredTurns = useMemo(() => {
-    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !t.employee_id.startsWith('EXT')).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
       if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
       return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
     });

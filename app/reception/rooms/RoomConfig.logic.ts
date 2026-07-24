@@ -16,17 +16,12 @@ export const MASTER_PREP_STEPS = [
     'Xịt tinh dầu khuếch tán',
 ];
 
-export const MASTER_CLEAN_STEPS = [
-    'Thu gom khăn bẩn & rác',
-    'Vệ sinh bồn bệ & dụng cụ',
-    'Sắp xếp lại gối, nệm',
-    'Xịt tinh dầu khử mùi',
-    'Lau sàn phòng',
-    'Thay ga trải giường',
-    'Vệ sinh toilet',
-    'Kiểm tra thiết bị điện',
-    'Bổ sung nước uống',
-    'Kiểm tra quên đồ khách',
+export const MASTER_HANDOVER_STEPS = [
+    'Tổng quan phòng',
+    'Giường & Khăn setup',
+    'Bồn rửa & Dụng cụ',
+    'Máy lạnh & Tinh dầu',
+    'Sàn nhà & Thùng rác'
 ];
 
 export interface RoomData {
@@ -36,6 +31,7 @@ export interface RoomData {
     type: string;
     prep_procedure: string[] | null;
     clean_procedure: string[] | null;
+    handover_checklist: string[] | null;
     allowed_services: string[] | null;
     default_reminders: string[] | null;
 }
@@ -63,7 +59,7 @@ export const useRoomConfig = () => {
     const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<'services' | 'prep' | 'clean' | 'reminders'>('services');
+    const [activeTab, setActiveTab] = useState<'services' | 'prep' | 'handover' | 'reminders'>('services');
 
     const selectedRoom = rooms.find(r => r.id === selectedRoomId) || null;
 
@@ -89,7 +85,7 @@ export const useRoomConfig = () => {
         fetchData();
     }, []);
 
-    const updateRoom = async (roomId: string, updates: Partial<Pick<RoomData, 'prep_procedure' | 'clean_procedure' | 'allowed_services' | 'default_reminders'>>) => {
+    const updateRoom = async (roomId: string, updates: Partial<Pick<RoomData, 'prep_procedure' | 'clean_procedure' | 'handover_checklist' | 'allowed_services' | 'default_reminders'>>) => {
         setIsSaving(true);
         try {
             await apiClient.patch<any>(API.ROOMS, { roomId, ...updates });
@@ -135,14 +131,14 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: updated });
     };
 
-    // Toggle a clean step for the selected room
-    const toggleCleanStep = async (step: string) => {
+    // Toggle a handover step for the selected room
+    const toggleHandoverStep = async (step: string) => {
         if (!selectedRoom) return;
-        const current = selectedRoom.clean_procedure || [];
+        const current = selectedRoom.handover_checklist || [];
         const updated = current.includes(step)
             ? current.filter(s => s !== step)
             : [...current, step];
-        await updateRoom(selectedRoom.id, { clean_procedure: updated });
+        await updateRoom(selectedRoom.id, { handover_checklist: updated });
     };
 
     // Select/Deselect all
@@ -151,9 +147,9 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: [...MASTER_PREP_STEPS] });
     };
 
-    const selectAllCleanSteps = async () => {
+    const selectAllHandoverSteps = async () => {
         if (!selectedRoom) return;
-        await updateRoom(selectedRoom.id, { clean_procedure: [...MASTER_CLEAN_STEPS] });
+        await updateRoom(selectedRoom.id, { handover_checklist: [...MASTER_HANDOVER_STEPS] });
     };
 
     const clearAllPrepSteps = async () => {
@@ -161,9 +157,9 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: [] });
     };
 
-    const clearAllCleanSteps = async () => {
+    const clearAllHandoverSteps = async () => {
         if (!selectedRoom) return;
-        await updateRoom(selectedRoom.id, { clean_procedure: [] });
+        await updateRoom(selectedRoom.id, { handover_checklist: [] });
     };
 
     // Toggle entire category of services (add all / remove all)
@@ -187,10 +183,10 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: [...current, step] });
     };
 
-    const addCustomCleanStep = async (step: string) => {
+    const addCustomHandoverStep = async (step: string) => {
         if (!selectedRoom) return;
-        const current = selectedRoom.clean_procedure || [];
-        await updateRoom(selectedRoom.id, { clean_procedure: [...current, step] });
+        const current = selectedRoom.handover_checklist || [];
+        await updateRoom(selectedRoom.id, { handover_checklist: [...current, step] });
     };
 
     // Remove a step from a procedure (works for both master & custom steps)
@@ -200,10 +196,10 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: current.filter(s => s !== step) });
     };
 
-    const removeCustomCleanStep = async (step: string) => {
+    const removeCustomHandoverStep = async (step: string) => {
         if (!selectedRoom) return;
-        const current = selectedRoom.clean_procedure || [];
-        await updateRoom(selectedRoom.id, { clean_procedure: current.filter(s => s !== step) });
+        const current = selectedRoom.handover_checklist || [];
+        await updateRoom(selectedRoom.id, { handover_checklist: current.filter(s => s !== step) });
     };
 
     // Edit (rename) a step in a procedure
@@ -213,10 +209,10 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: current.map(s => s === oldStep ? newStep : s) });
     };
 
-    const editCleanStep = async (oldStep: string, newStep: string) => {
+    const editHandoverStep = async (oldStep: string, newStep: string) => {
         if (!selectedRoom) return;
-        const current = selectedRoom.clean_procedure || [];
-        await updateRoom(selectedRoom.id, { clean_procedure: current.map(s => s === oldStep ? newStep : s) });
+        const current = selectedRoom.handover_checklist || [];
+        await updateRoom(selectedRoom.id, { handover_checklist: current.map(s => s === oldStep ? newStep : s) });
     };
 
     const reorderPrepStep = async (stepIndex: number, direction: 'up' | 'down') => {
@@ -230,15 +226,15 @@ export const useRoomConfig = () => {
         await updateRoom(selectedRoom.id, { prep_procedure: current });
     };
 
-    const reorderCleanStep = async (stepIndex: number, direction: 'up' | 'down') => {
+    const reorderHandoverStep = async (stepIndex: number, direction: 'up' | 'down') => {
         if (!selectedRoom) return;
-        const current = [...(selectedRoom.clean_procedure || [])];
+        const current = [...(selectedRoom.handover_checklist || [])];
         if (direction === 'up' && stepIndex > 0) {
             [current[stepIndex - 1], current[stepIndex]] = [current[stepIndex], current[stepIndex - 1]];
         } else if (direction === 'down' && stepIndex < current.length - 1) {
             [current[stepIndex], current[stepIndex + 1]] = [current[stepIndex + 1], current[stepIndex]];
         } else return;
-        await updateRoom(selectedRoom.id, { clean_procedure: current });
+        await updateRoom(selectedRoom.id, { handover_checklist: current });
     };
 
     // Group services by category
@@ -265,18 +261,18 @@ export const useRoomConfig = () => {
         toggleReminder,
         toggleCategoryServices,
         togglePrepStep,
-        toggleCleanStep,
+        toggleHandoverStep,
         selectAllPrepSteps,
-        selectAllCleanSteps,
+        selectAllHandoverSteps,
         clearAllPrepSteps,
-        clearAllCleanSteps,
+        clearAllHandoverSteps,
         addCustomPrepStep,
-        addCustomCleanStep,
+        addCustomHandoverStep,
         removeCustomPrepStep,
-        removeCustomCleanStep,
+        removeCustomHandoverStep,
         editPrepStep,
-        editCleanStep,
+        editHandoverStep,
         reorderPrepStep,
-        reorderCleanStep,
+        reorderHandoverStep,
     };
 };

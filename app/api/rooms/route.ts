@@ -18,7 +18,7 @@ export async function GET() {
         // Fetch all rooms with procedures & allowed services
         const { data: rooms, error } = await supabase
             .from('Rooms')
-            .select('id, name, capacity, type, prep_procedure, clean_procedure, allowed_services, default_reminders, created_at')
+            .select('id, name, capacity, type, prep_procedure, clean_procedure, handover_checklist, allowed_services, default_reminders, created_at')
             .order('name', { ascending: true });
 
         if (error) throw error;
@@ -63,7 +63,7 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         
-        const { roomId, prep_procedure, clean_procedure, allowed_services, default_reminders } = parseResult.data;
+        const { roomId, prep_procedure, clean_procedure, handover_checklist, allowed_services, default_reminders } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
@@ -72,6 +72,7 @@ export async function PATCH(request: Request) {
         const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
         if (prep_procedure !== undefined) updateData.prep_procedure = prep_procedure;
         if (clean_procedure !== undefined) updateData.clean_procedure = clean_procedure;
+        if (handover_checklist !== undefined) updateData.handover_checklist = handover_checklist;
         if (allowed_services !== undefined) updateData.allowed_services = allowed_services;
         if (default_reminders !== undefined) updateData.default_reminders = default_reminders;
 

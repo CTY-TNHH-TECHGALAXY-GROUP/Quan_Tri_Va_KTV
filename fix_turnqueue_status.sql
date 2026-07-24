@@ -73,7 +73,7 @@ BEGIN
 
             UPDATE "TurnQueue"
             SET 
-                "status" = CASE WHEN "status" = 'off' THEN 'off' ELSE 'waiting' END, -- Sửa tại đây
+                "status" = CASE WHEN "status" = 'off' OR p_employee_id LIKE 'EXT%' THEN 'off' ELSE 'waiting' END,
                 "current_order_id" = NULL,
                 "booking_item_id" = NULL,
                 "booking_item_ids" = ARRAY[]::text[],

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, AlertTriangle, UserCheck, Trash2, Pencil } from 'lucide-react';
+import { Plus, AlertTriangle, UserCheck, Trash2, Pencil, SplitSquareHorizontal } from 'lucide-react';
 import { DispatchStaffRow } from './DispatchStaffRow';
 import { ReminderData, ServiceBlock, StaffAssignment, StaffData, TurnQueueData } from '../types';
 
@@ -159,6 +159,20 @@ export const DispatchServiceBlock = ({
                             <Pencil size={18} strokeWidth={2.5} />
                         </button>
                     )}
+                    {!isUtility && onAddStaff && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onAddStaff(orderId, svc.id);
+                                window.alert(`✅ Đã tách đơn (thêm 1 dòng khách mới) thành công cho dịch vụ ${svc.serviceName}!`);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all active:scale-90 shadow-sm font-bold text-xs"
+                            title="Tách đơn làm 2"
+                        >
+                            <SplitSquareHorizontal size={18} strokeWidth={2.5} />
+                            TÁCH ĐƠN
+                        </button>
+                    )}
                     {onRemoveSvc && (
                         <button
                             onClick={(e) => {
@@ -220,13 +234,29 @@ export const DispatchServiceBlock = ({
                     {/* Tên in phiếu (Tùy chỉnh) */}
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Tên In Phiếu (Tùy chỉnh)</label>
-                        <input
-                            type="text"
-                            value={svc.options?.displayName || ''}
-                            onChange={e => onUpdateSvc(orderId, svc.id, { options: { ...(svc.options || {}), displayName: e.target.value } })}
-                            placeholder={svc.serviceName}
-                            className="w-full px-4 py-2 border border-gray-100 rounded-xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none bg-white transition-all shadow-sm text-gray-800 placeholder:text-gray-300"
-                        />
+                            <input
+                                type="text"
+                                value={svc.options?.displayName || ''}
+                                onChange={e => {
+                                    onUpdateSvc(orderId, svc.id, { options: { ...(svc.options || {}), displayName: e.target.value } });
+                                }}
+                                onBlur={async () => {
+                                    // Tự động lưu ngay khi click ra ngoài (Blur) để chống mất dữ liệu
+                                    try {
+                                        const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+                                        const supabase = getSupabaseAdmin();
+                                        if (supabase) {
+                                            await supabase.from('BookingItems').update({
+                                                options: { ...(svc.options || {}), displayName: svc.options?.displayName || svc.serviceName }
+                                            }).eq('id', svc.id);
+                                        }
+                                    } catch (e) {
+                                        console.error("Auto-save displayName failed:", e);
+                                    }
+                                }}
+                                placeholder={svc.serviceName}
+                                className="w-full px-4 py-2 border border-gray-100 rounded-xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none bg-white transition-all shadow-sm text-gray-800 placeholder:text-gray-300"
+                            />
                     </div>
 
                     {/* Staff Selection Area — ẩn cho dịch vụ phụ phí (phòng riêng) */}
