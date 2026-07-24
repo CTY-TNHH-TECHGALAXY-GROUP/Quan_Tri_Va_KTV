@@ -66,6 +66,7 @@ export class FinanceReportService {
             .select('id, billCode, bookingDate, createdAt, status, totalAmount, tip, technicianCode, customerId, customerLang, source, paymentMethod')
             .gte('bookingDate', `${dateFrom} 00:00:00`)
             .lte('bookingDate', `${dateTo} 23:59:59`)
+            .not('billCode', 'like', 'TEST-%')
             .neq('status', 'CANCELLED')
             .order('bookingDate', { ascending: true });
 

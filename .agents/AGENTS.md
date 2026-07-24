@@ -58,3 +58,9 @@ Quy tắc:
 ## Database Trigger & Migration Regression Prevention
 - **KIỂM TRA LỊCH SỬ TRƯỚC KHI GHI ĐÈ**: Trước khi tạo một file Migration SQL mới để ghi đè (CREATE OR REPLACE) một Hàm (Function) hoặc Trigger đã có sẵn, AI **BẮT BUỘC** phải dùng lệnh `git log -S "tên_hàm" -p` hoặc `git blame` để đọc lại ít nhất 3 file migration gần nhất liên quan đến hàm đó.
 - Mục đích: Đảm bảo giữ lại và kế thừa toàn bộ các bản vá lỗi (hot-fixes), logic cũ đã được tinh chỉnh, tuyệt đối không được viết đè làm mất logic cũ (Regression Bug).
+
+## 9. Version Tracking (BẮT BUỘC)
+- Mỗi khi bạn hoàn thành một tính năng hoặc sửa xong một lỗi (Bug Fix), bạn **BẮT BUỘC** phải mở file `lib/version.ts`.
+- Tăng biến `APP_VERSION` lên một bậc (VD: 1.0.3 -> 1.0.4).
+- Cập nhật biến `LAST_UPDATE` thành một câu mô tả ngắn gọn bằng tiếng Việt về những gì bạn vừa làm (VD: "Fix lỗi kéo thả KTV").
+- Mục đích: Giúp User biết được code mới đã thực sự được nạp vào trình duyệt chưa mà không cần hỏi lại.

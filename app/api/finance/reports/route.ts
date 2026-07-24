@@ -114,6 +114,7 @@ export async function GET(request: Request) {
             .select('id, billCode, bookingDate, createdAt, status, totalAmount, tip, technicianCode, customerId, customerLang, source')
             .gte('bookingDate', utcFrom)
             .lte('bookingDate', utcTo)
+            .not('billCode', 'like', 'TEST-%')
             .neq('status', 'CANCELLED')
             .order('bookingDate', { ascending: true });
 
@@ -125,6 +126,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select('id', { count: 'exact', head: true })
             .eq('status', 'CANCELLED')
+            .not('billCode', 'like', 'TEST-%')
             .gte('bookingDate', utcFrom)
             .lte('bookingDate', utcTo);
 
@@ -152,6 +154,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select('id, technicianCode, totalAmount, status')
             .in('status', KTV_RANKING_STATUSES)
+            .not('billCode', 'like', 'TEST-%')
             .gte('bookingDate', utcFrom)
             .lte('bookingDate', utcTo);
 
@@ -244,6 +247,7 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select('id, totalAmount, customerId')
             .in('status', COMPLETED_STATUSES)
+            .not('billCode', 'like', 'TEST-%')
             .gte('bookingDate', prevUtcFrom)
             .lte('bookingDate', prevUtcTo);
 
@@ -342,6 +346,7 @@ export async function GET(request: Request) {
                 .from('Bookings')
                 .select('customerId')
                 .in('status', COMPLETED_STATUSES)
+                .not('billCode', 'like', 'TEST-%')
                 .in('customerId', customerIdArr);
 
             // Count how many bookings each customer has

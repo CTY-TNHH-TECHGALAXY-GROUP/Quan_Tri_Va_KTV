@@ -41,6 +41,7 @@ export async function GET(request: Request) {
       .from('Bookings')
       .select('id, totalAmount, technicianCode, source, status, bookingDate')
       .in('status', KTV_RANKING_STATUSES)
+      .not('billCode', 'like', 'TEST-%')
       .gte('bookingDate', `${dateFrom} 00:00:00`)
       .lte('bookingDate', `${dateTo} 23:59:59`);
     if (bookErr) throw bookErr;
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       .select('id, status, source, bookingDate')
       .gte('bookingDate', `${dateFrom} 00:00:00`)
       .lte('bookingDate', `${dateTo} 23:59:59`)
+      .not('billCode', 'like', 'TEST-%')
       .neq('status', 'CANCELLED');
     if (bErr2) throw bErr2;
     const completedBookings = (allBookings || []).filter(b => COMPLETED_STATUSES.includes(b.status) || PAID_SOURCES.includes(b.source));

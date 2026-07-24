@@ -22,7 +22,7 @@ interface AddOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   services: ServiceOption[];
-  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; }) => Promise<void>;
+  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; }) => Promise<void>;
   selectedDate: string;
 }
 
@@ -53,6 +53,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [isTestOrder, setIsTestOrder] = useState(false);
 
   // Autocomplete states
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -142,7 +143,8 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
         serviceIds,
         customerLang,
         guestCount,
-        nationality
+        nationality,
+        isTestOrder
       });
       // Reset form
       setCustomerName('');
@@ -153,6 +155,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
       setGuestCount(1);
       setNationality('');
       setSearchTerm('');
+      setIsTestOrder(false);
       onClose();
     } catch (err) {
       console.error('Lỗi khi lưu đơn:', err);
@@ -488,6 +491,20 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* isTestOrder Checkbox */}
+              <div className="shrink-0 flex items-center gap-2.5 px-2">
+                <input 
+                  type="checkbox" 
+                  id="testOrder" 
+                  checked={isTestOrder}
+                  onChange={(e) => setIsTestOrder(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 text-rose-500 focus:ring-rose-500 transition-all cursor-pointer"
+                />
+                <label htmlFor="testOrder" className="text-sm font-bold text-gray-600 cursor-pointer select-none">
+                  Tạo đơn TEST (mã ngẫu nhiên, không tính vào báo cáo)
+                </label>
               </div>
 
               {/* Submit Button */}

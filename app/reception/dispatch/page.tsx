@@ -506,11 +506,27 @@ if (!hasPermission('dispatch_board')) {
       }
   };
 
-  const addStaffRow = (orderId: string, svcId: string) => {
+  const addStaffRow = async (orderId: string, svcId: string) => {
     const svc = orders.find(o => o.id === orderId)?.services.find(s => s.id === svcId);
     const dur = svc?.duration ?? DEFAULT_DURATION;
     
     if (svc && svc.staffList.length >= 1) {
+       const isFourhand = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'].includes(svc.serviceId || '');
+       
+       if (!isFourhand) {
+           // BẮT BUỘC TÁCH LUÔN MÀ KHÔNG CẦN HỎI (Áp dụng cho các DV thường)
+           try {
+               const { splitBookingItem } = await import('./actions');
+               const res = await splitBookingItem(orderId, svcId, dur, dur, selectedDate);
+               if (!res.success) throw new Error(res.error);
+               await fetchData();
+           } catch (err: any) {
+               alert('Lỗi khi tự động tách đơn: ' + err.message);
+           }
+           return;
+       }
+       
+       // NẾU LÀ FOURHAND: Cho phép chọn Nối tiếp hoặc Làm chung (Song song)
        setSplitConfig({
            orderId,
            svcId,
@@ -1201,7 +1217,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleCreateQuickBooking = async (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string }) => {
+  const handleCreateQuickBooking = async (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; }) => {
     try {
       const res = await createQuickBooking({
         ...data,
@@ -1857,7 +1873,13 @@ if (!hasPermission('dispatch_board')) {
                         .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
                         .filter(Boolean) as string[];
                       const currentSvcKtvIds = svc.staffList.map(r => r.ktvId).filter(Boolean);
-                      const busyInCurrentOrder = selectedSubOrder.originalOrder.services.filter(s => s.id !== svc.id)
+                      const busyInCurrentOrder = selectedSubOrder.originalOrder.services.filter(s => {
+                          const isRelated = s.id === svc.id || 
+                                            s.options?.parentItemId === svc.id || 
+                                            svc.options?.parentItemId === s.id || 
+                                            (s.options?.parentItemId && s.options?.parentItemId === svc.options?.parentItemId);
+                          return !isRelated;
+                      })
                         .flatMap(s => s.staffList
                           .filter(r => !currentSvcKtvIds.includes(r.ktvId))
                           .flatMap(r => r.segments.map(seg => seg.bedId)))
@@ -2676,6 +2698,14 @@ if (!hasPermission('dispatch_board')) {
         orders={orders}
         onConfirm={confirmMergeServices}
         onCancel={cancelMergeServices}
+      />
+
+      <ReviewHandoverModal
+        isOpen={reviewModalService !== null}
+        onClose={() => setReviewModalService(null)}
+        service={reviewModalService}
+        onApprove={handleApproveHandover}
+        onReject={handleRejectHandover}
       />
     </AppLayout>
   );

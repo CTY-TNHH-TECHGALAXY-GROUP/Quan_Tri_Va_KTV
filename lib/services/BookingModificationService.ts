@@ -13,16 +13,38 @@ export class BookingModificationService {
         customerLang?: string; // Language code: vi, en, kr, jp, cn
         guestCount?: number;
         nationality?: string;
+        isTestOrder?: boolean;
     }) {
         try {
             await requirePermission('dispatch_board');
             const supabase = getSupabaseAdmin();
             if (!supabase) throw new Error('Supabase admin not initialized');
 
-            // 1. Tạo billCode ngẫu nhiên (VD: S260307-ABCD)
+            // 1. Sinh billCode
             const dateStr = data.bookingDate.replace(/-/g, '').substring(2);
             const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
-            const billCode = `S${dateStr}-${randomStr}`;
+            
+            let billCode = '';
+            let bookingId = crypto.randomUUID(); // Default to UUID for test orders
+            
+            if (data.isTestOrder) {
+                billCode = `TEST-${dateStr}-${randomStr}`;
+            } else {
+                const now = new Date();
+                const dd = String(now.getDate()).padStart(2, '0');
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const yyyy = String(now.getFullYear());
+                const dateFullStr = `${dd}${mm}${yyyy}`;
+                
+                const { count } = await supabase
+                    .from('Bookings')
+                    .select('id', { count: 'exact', head: true })
+                    .like('id', `WB-%-${dateFullStr}`);
+                
+                const seq = String((count || 0) + 1).padStart(3, '0');
+                billCode = `WB-${seq}-${dateFullStr}`;
+                bookingId = billCode; // Sử dụng mã tịnh tiến làm ID giống Web Booking
+            }
 
             // 2. Lấy thông tin dịch vụ
             const { data: svcs, error: sError } = await supabase
@@ -74,7 +96,6 @@ export class BookingModificationService {
             }
 
             // 3. Tạo Booking
-            const bookingId = crypto.randomUUID();
             const { data: booking, error: bError } = await supabase
                 .from('Bookings')
                 .insert({

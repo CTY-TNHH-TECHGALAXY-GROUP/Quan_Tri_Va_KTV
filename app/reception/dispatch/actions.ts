@@ -360,7 +360,13 @@ export async function processDispatch(bookingId: string, dispatchData: {
         if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
             if (u.technicianCodes) {
                 if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) allKtvIds.add(c) });
-                else if (typeof u.technicianCodes === 'string') allKtvIds.add(u.technicianCodes);
+                else if (typeof u.technicianCodes === 'string') {
+                    // This case shouldn't happen anymore because of pre-processing, but just in case:
+                    u.technicianCodes.split(',').forEach(c => {
+                        const trimmed = c.trim();
+                        if (trimmed) allKtvIds.add(trimmed);
+                    });
+                }
             }
         });
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
@@ -620,9 +626,9 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             dispatchData.itemUpdates.forEach(u => {
                 if (u.technicianCodes) {
                     if (Array.isArray(u.technicianCodes)) {
-                        u.technicianCodes = u.technicianCodes.map(c => typeof c === 'string' ? c.toUpperCase() : c);
+                        u.technicianCodes = u.technicianCodes.map(c => typeof c === 'string' ? c.trim().toUpperCase() : c);
                     } else if (typeof u.technicianCodes === 'string') {
-                        u.technicianCodes = u.technicianCodes.toUpperCase();
+                        u.technicianCodes = u.technicianCodes.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
                     }
                 }
                 if (u.segments && Array.isArray(u.segments)) {
@@ -734,7 +740,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                     ? item.technicianCodes 
                     : (typeof item.technicianCodes === 'string' ? item.technicianCodes.split(',').map(c => c.trim()).filter(Boolean) : []);
                 
-                await supabase
+                const { error: updError } = await supabase
                     .from('BookingItems')
                     .update({ 
                         roomName: item.roomName,
@@ -744,6 +750,13 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                         options: item.options 
                     })
                     .eq('id', item.id);
+
+                if (updError) {
+                    console.error('❌ [Server] Lỗi khi update BookingItems trong saveDraftDispatch:', updError);
+                    throw updError;
+                }
+                
+                console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
             }
         }
 
@@ -1226,7 +1239,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             // Lấy tất cả KTV đang làm các item này
             let queryToRelease = supabase
                 .from('TurnQueue')
-                .select('id, turns_completed, status, booking_item_ids')
+                .select('id, turns_completed, status, booking_item_ids, employee_id')
                 .eq('current_order_id', bookingId)
                 .overlaps('booking_item_ids', itemIds)
                 .eq('date', date);
@@ -1254,7 +1267,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     } else {
                         // KTV đã xong tất cả item của họ
                         let newTurnsCompleted = turn.turns_completed || 0;
-                        const newStatus = turn.status === 'off' ? 'off' : 'waiting';
+                        const newStatus = (turn.status === 'off' || turn.employee_id.startsWith('EXT')) ? 'off' : 'waiting';
                         await supabase
                             .from('TurnQueue')
                             .update({
@@ -1307,7 +1320,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
     }
 }
 
-export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; }) {
+export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean }) {
     return await BookingModificationService.createQuickBooking(data);
 }
 
