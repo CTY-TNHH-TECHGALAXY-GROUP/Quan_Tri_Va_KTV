@@ -1296,7 +1296,7 @@ function ScreenHandover({ logic }: { logic: any }) {
 
       for (const file of files) {
           try {
-              const compressed = await compressImageWithWatermark(file, { minBrightness, watermarkText });
+              const compressed = await compressImageWithWatermark(file, { minBrightness: 0, watermarkText });
               newPhotos.push(compressed);
           } catch (err: any) {
               if (err?.message === 'TOO_DARK') {
