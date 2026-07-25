@@ -27,7 +27,7 @@ export const useSupportReviews = () => {
   const fetchPendingReview = useCallback(async () => {
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, assignee_id, status, inspection_status, updated_at, Users!Tasks_assignee_id_fkey(fullName)')
+      .select('id, name, assignee_id, status, inspection_status, updated_at, Users(fullName)')
       .eq('status', 'COMPLETED')
       .in('inspection_status', ['PENDING_REVIEW', 'NOT_REVIEWED'])
       .order('updated_at', { ascending: false });

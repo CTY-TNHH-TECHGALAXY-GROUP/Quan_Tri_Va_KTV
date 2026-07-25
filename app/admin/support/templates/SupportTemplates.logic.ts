@@ -25,6 +25,7 @@ interface CategoryItem {
   id: string;
   name: string;
   description: string | null;
+  type: 'ROLE' | 'ROOM';
   is_active: boolean;
 }
 
@@ -32,6 +33,7 @@ interface TemplateItem {
   id: string;
   name: string;
   categoryName: string;
+  categoryType: 'ROLE' | 'ROOM';
   roomName: string;
   cron_schedule: string;
   requires_photo: boolean;
@@ -40,13 +42,15 @@ interface TemplateItem {
   assignedEmployees: string[]; // fullName list
 }
 
-export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'CATEGORIES' | 'DASHBOARD' | 'REVIEWS';
+export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'CATEGORIES' | 'DASHBOARD' | 'REVIEWS' | 'ROOM_MATRIX';
 
 export const useSupportTemplates = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('EMPLOYEES');
   const [employees, setEmployees] = useState<EmployeeCard[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const [roomMatrix, setRoomMatrix] = useState<Record<string, Set<string>>>({}); // templateId -> Set<roomId>
   const [loading, setLoading] = useState(true);
 
   // ============================================================
@@ -136,7 +140,7 @@ export const useSupportTemplates = () => {
   const fetchTemplates = useCallback(async () => {
     const { data, error } = await supabase
       .from('TaskTemplates')
-      .select('*, TaskCategories(name), Rooms(name)')
+      .select('*, TaskCategories(name, type)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -144,10 +148,10 @@ export const useSupportTemplates = () => {
       return;
     }
 
-    // Fetch all routines with employee names
+    // Step 2: Fetch assigned employees
     const { data: routines, error: routineErr } = await supabase
       .from('EmployeeRoutines')
-      .select('template_id, Users!EmployeeRoutines_employee_id_fkey(fullName)')
+      .select('template_id, Users(fullName)')
       .eq('is_active', true);
 
     if (routineErr) {
@@ -167,7 +171,8 @@ export const useSupportTemplates = () => {
       id: tpl.id,
       name: tpl.name,
       categoryName: (tpl as any).TaskCategories?.name || '—',
-      roomName: (tpl as any).Rooms?.name || 'Chung',
+      categoryType: (tpl as any).TaskCategories?.type || 'ROLE',
+      roomName: 'Đa phòng', // We can't display a single room name here anymore
       cron_schedule: tpl.cron_schedule || '—',
       requires_photo: tpl.requires_photo,
       min_photo_count: tpl.min_photo_count,
@@ -179,16 +184,68 @@ export const useSupportTemplates = () => {
   }, []);
 
   // ============================================================
+  // Fetch Rooms & Room Matrix
+  // ============================================================
+  const fetchRooms = useCallback(async () => {
+    const { data, error } = await supabase.from('Rooms').select('id, name, type, capacity').order('name');
+    if (error) {
+      console.error('Error fetching rooms:', error.message);
+    } else {
+      setRooms(data || []);
+    }
+  }, []);
+
+  const fetchRoomMatrix = useCallback(async () => {
+    const { data, error } = await supabase.from('RoomTaskTemplates').select('room_id, template_id');
+    if (error) {
+      console.error('Error fetching room matrix:', error.message);
+    } else {
+      const matrix: Record<string, Set<string>> = {};
+      (data || []).forEach(row => {
+        if (!matrix[row.template_id]) matrix[row.template_id] = new Set();
+        matrix[row.template_id].add(row.room_id);
+      });
+      setRoomMatrix(matrix);
+    }
+  }, []);
+
+  const toggleRoomMatrix = async (templateId: string, roomId: string, isChecked: boolean) => {
+    // Optimistic UI update
+    setRoomMatrix(prev => {
+      const next = { ...prev };
+      if (!next[templateId]) next[templateId] = new Set();
+      
+      const newSet = new Set(next[templateId]);
+      if (isChecked) {
+        newSet.add(roomId);
+      } else {
+        newSet.delete(roomId);
+      }
+      next[templateId] = newSet;
+      return next;
+    });
+
+    if (isChecked) {
+      await supabase.from('RoomTaskTemplates').insert({ template_id: templateId, room_id: roomId });
+    } else {
+      await supabase.from('RoomTaskTemplates')
+        .delete()
+        .eq('template_id', templateId)
+        .eq('room_id', roomId);
+    }
+  };
+
+  // ============================================================
   // Initial fetch
   // ============================================================
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([fetchEmployees(), fetchCategories(), fetchTemplates()]);
+      await Promise.all([fetchEmployees(), fetchCategories(), fetchTemplates(), fetchRooms(), fetchRoomMatrix()]);
       setLoading(false);
     };
     init();
-  }, [fetchEmployees, fetchCategories, fetchTemplates]);
+  }, [fetchEmployees, fetchCategories, fetchTemplates, fetchRooms, fetchRoomMatrix]);
 
   // ============================================================
   // Role label helper
@@ -208,7 +265,8 @@ export const useSupportTemplates = () => {
   const saveCategoryWithTemplates = async (
     categoryId: string | null, // null means new category
     categoryName: string,
-    tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number }[]
+    tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number }[],
+    categoryType: 'ROLE' | 'ROOM' = 'ROLE'
   ) => {
     try {
       let finalCategoryId = categoryId;
@@ -217,7 +275,7 @@ export const useSupportTemplates = () => {
       if (!finalCategoryId) {
         const { data: newCat, error: catErr } = await supabase
           .from('TaskCategories')
-          .insert({ name: categoryName })
+          .insert({ name: categoryName, type: categoryType })
           .select('id')
           .single();
           
@@ -229,7 +287,7 @@ export const useSupportTemplates = () => {
       } else {
         const { error: catUpdateErr } = await supabase
           .from('TaskCategories')
-          .update({ name: categoryName })
+          .update({ name: categoryName, type: categoryType })
           .eq('id', finalCategoryId);
           
         if (catUpdateErr) {
@@ -275,9 +333,12 @@ export const useSupportTemplates = () => {
     employees,
     categories,
     templates,
+    rooms,
+    roomMatrix,
     loading,
     getRoleLabel,
     saveCategoryWithTemplates,
+    toggleRoomMatrix,
     refetchEmployees: fetchEmployees,
     refetchTemplates: fetchTemplates,
   };

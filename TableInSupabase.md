@@ -564,6 +564,7 @@
 | `id` | uuid PK | Khóa chính |
 | `name` | text | Tên hạng mục (VD: Vệ sinh phòng, Châm thêm tinh dầu) |
 | `description` | text | Mô tả chi tiết |
+| `type` | text | Loại nhóm: `ROLE` (Cho nhân sự) hoặc `ROOM` (Cho phòng). Default: `ROLE`. |
 | `is_active` | boolean | Trạng thái hiển thị |
 | `created_at` | timestamptz | |
 
@@ -578,9 +579,17 @@
 | `requires_photo` | boolean | Bắt buộc chụp ảnh (Default: true) |
 | `min_photo_count` | integer | Số ảnh tối thiểu (Default: 1) |
 | `cron_schedule` | text | Lịch cron chạy ngầm (VD: `0 0 * * *`) |
-| `room_id` | text FK | Trỏ về bảng `Rooms` (Phòng áp dụng việc này) |
 | `is_active` | boolean | Bật/tắt việc chạy tự động |
 | `created_by` | text | Admin tạo |
+| `created_at` | timestamptz | |
+
+### 21.5. RoomTaskTemplates (Ma trận Phòng - Việc)
+**Nhiệm vụ**: Bảng trung gian (N-N) để gán một Mẫu công việc cho nhiều Phòng khác nhau.
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `room_id` | text FK | Trỏ về `Rooms` |
+| `template_id` | uuid FK | Trỏ về `TaskTemplates` |
 | `created_at` | timestamptz | |
 
 ### 22. Tasks

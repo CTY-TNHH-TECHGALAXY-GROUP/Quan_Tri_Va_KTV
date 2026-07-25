@@ -15,6 +15,7 @@ const TAB_ITEMS: { key: ActiveTab; label: string; icon: string }[] = [
   { key: 'EMPLOYEES', label: 'Nhân Viên', icon: '👥' },
   { key: 'TEMPLATES', label: 'Kho Công Việc', icon: '📋' },
   { key: 'CATEGORIES', label: 'Nhóm Việc', icon: '🏷️' },
+  { key: 'ROOM_MATRIX', label: 'Ma Trận Phòng', icon: '🏢' },
   { key: 'REVIEWS', label: 'Nghiệm Thu', icon: '✅' },
   { key: 'DASHBOARD', label: 'Thống Kê Phòng', icon: '📊' },
 ];
@@ -128,11 +129,12 @@ export default function SupportTemplatesPage() {
 
       {/* ======================= TAB: CATEGORIES ======================= */}
       {logic.activeTab === 'CATEGORIES' && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden max-w-2xl">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden w-full">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-600 text-sm border-b border-slate-100">
                 <th className="p-4 font-medium">Tên Nhóm Việc</th>
+                <th className="p-4 font-medium w-32">Loại</th>
                 <th className="p-4 font-medium w-32">Trạng thái</th>
                 <th className="p-4 font-medium text-right w-24">Thao tác</th>
               </tr>
@@ -140,12 +142,19 @@ export default function SupportTemplatesPage() {
             <tbody>
               {logic.categories.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="p-8 text-center text-slate-400">Chưa có nhóm việc nào.</td>
+                  <td colSpan={4} className="p-8 text-center text-slate-400">Chưa có nhóm việc nào.</td>
                 </tr>
               ) : (
                 logic.categories.map((cat) => (
                   <tr key={cat.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors text-sm">
                     <td className="p-4 font-medium text-slate-800">{cat.name}</td>
+                    <td className="p-4">
+                      {cat.type === 'ROOM' ? (
+                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-medium">Phòng</span>
+                      ) : (
+                        <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-medium">Nhân sự</span>
+                      )}
+                    </td>
                     <td className="p-4">
                       {cat.is_active ? (
                         <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">Hoạt động</span>
@@ -169,6 +178,9 @@ export default function SupportTemplatesPage() {
 
       {/* ======================= TAB: DASHBOARD ======================= */}
       {logic.activeTab === 'DASHBOARD' && <DashboardTabContent />}
+
+      {/* ======================= TAB: ROOM MATRIX ======================= */}
+      {logic.activeTab === 'ROOM_MATRIX' && <RoomMatrixTabContent logic={logic} />}
     </div>
     </AppLayout>
   );
@@ -286,10 +298,13 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   ]);
   const [submitting, setSubmitting] = useState(false);
 
-  if (logic.templates.length === 0 && logic.categories.length === 0) {
+  const roleTemplates = logic.templates.filter((t: any) => t.categoryType === 'ROLE');
+  const roleCategories = logic.categories.filter((c: any) => c.type === 'ROLE');
+
+  if (roleTemplates.length === 0 && roleCategories.length === 0) {
     return (
       <div className="text-center py-16 text-slate-400">
-        <p className="mb-4">Chưa có mẫu công việc nào.</p>
+        <p className="mb-4">Chưa có mẫu công việc nhân sự nào.</p>
         <button onClick={() => setShowModal(true)} className="bg-cyan-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-cyan-200">
           + Thêm Tiêu Đề Mới
         </button>
@@ -298,12 +313,12 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   }
 
   const grouped: Record<string, typeof logic.templates> = {};
-  logic.templates.forEach((tpl) => {
+  roleTemplates.forEach((tpl) => {
     const key = tpl.categoryName || 'Chưa phân loại';
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(tpl);
   });
-  logic.categories.forEach(cat => {
+  roleCategories.forEach((cat: any) => {
     if (!grouped[cat.name]) grouped[cat.name] = [];
   });
 
@@ -481,6 +496,223 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
 
             {/* Footer */}
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3">
+              <button 
+                onClick={() => setShowModal(false)}
+                className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleSave}
+                disabled={submitting}
+                className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold hover:bg-cyan-700 shadow-md disabled:opacity-50"
+              >
+                {submitting ? 'Đang lưu...' : 'Lưu Lại'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// Embedded Tab: Room Matrix
+// ============================================================
+const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [tasks, setTasks] = useState([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const roomTemplates = logic.templates.filter((t: any) => t.categoryType === 'ROOM');
+
+  const handleSave = async () => {
+    if (!categoryName.trim()) {
+      alert('Vui lòng nhập tên tiêu đề.');
+      return;
+    }
+    setSubmitting(true);
+    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, 'ROOM');
+    if (ok) {
+      setShowModal(false);
+      setCategoryId(null);
+      setCategoryName('');
+      setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden relative">
+      <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div>
+          <h2 className="font-bold text-slate-800">Ma Trận Phân Bổ Công Việc Theo Phòng</h2>
+          <p className="text-sm text-slate-500">Đánh dấu (tick) để quy định Mẫu công việc nào được áp dụng cho Phòng nào.</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold transition-colors shadow-sm">
+          + Thêm Việc Phòng
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[800px]">
+          <thead>
+            <tr className="bg-slate-100/50 text-slate-600 text-sm border-b border-slate-200">
+              <th className="p-4 font-bold sticky left-0 bg-slate-100/50 z-10 w-64 border-r border-slate-200">Mẫu Công Việc</th>
+              {logic.rooms.map((room: any) => (
+                <th key={room.id} className="p-4 font-semibold text-center border-r border-slate-100 min-w-[100px]">
+                  <div className="text-sm">{room.name}</div>
+                  <div className="text-xs text-slate-400 font-normal">{room.type}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {roomTemplates.length === 0 ? (
+              <tr>
+                <td colSpan={logic.rooms.length + 1} className="p-8 text-center text-slate-400">Chưa có công việc của phòng nào trong kho. Bấm "Thêm Việc Phòng" để tạo.</td>
+              </tr>
+            ) : (
+              roomTemplates.map((tpl: any) => (
+                <tr key={tpl.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sticky left-0 bg-white z-10 border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                    <div className="font-medium text-slate-800 text-sm">{tpl.name}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{tpl.categoryName}</div>
+                  </td>
+                  {logic.rooms.map((room: any) => {
+                    const isChecked = logic.roomMatrix[tpl.id]?.has(room.id);
+                    return (
+                      <td key={room.id} className="p-4 text-center border-r border-slate-100">
+                        <label className="cursor-pointer block w-full h-full flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={!!isChecked}
+                            onChange={(e) => logic.toggleRoomMatrix(tpl.id, room.id, e.target.checked)}
+                            className="w-5 h-5 text-cyan-600 bg-slate-100 border-slate-300 rounded focus:ring-cyan-500 focus:ring-2 cursor-pointer transition-all hover:scale-110"
+                          />
+                        </label>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal Thêm Mẫu Việc Phòng */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
+              <h2 className="font-bold text-xl text-slate-800">
+                {categoryId ? 'Sửa Tiêu Đề Việc Phòng' : 'Tạo Tiêu Đề Việc Phòng Mới'}
+              </h2>
+              <button 
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Tên Nhóm Việc Phòng (Ví dụ: Vệ sinh định kỳ, Setup giường...)</label>
+                <input 
+                  type="text" 
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
+                  placeholder="Nhập tên tiêu đề..."
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 outline-none transition-all"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-bold text-slate-700">Các hạng mục công việc con</label>
+                </div>
+                
+                {tasks.map((task, idx) => (
+                  <div key={idx} className="flex gap-3 items-start bg-slate-50 p-4 rounded-xl border border-slate-100 group">
+                    <div className="flex-1 space-y-3">
+                      <input 
+                        type="text"
+                        value={task.name}
+                        onChange={(e) => {
+                          const newTasks = [...tasks];
+                          newTasks[idx].name = e.target.value;
+                          setTasks(newTasks);
+                        }}
+                        placeholder={`Công việc ${idx + 1}`}
+                        className="w-full border border-slate-200 p-2.5 rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 outline-none transition-all text-sm"
+                      />
+                      <div className="flex items-center gap-4 text-sm">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={task.requires_photo}
+                            onChange={(e) => {
+                              const newTasks = [...tasks];
+                              newTasks[idx].requires_photo = e.target.checked;
+                              if (e.target.checked && newTasks[idx].min_photo_count === 0) {
+                                newTasks[idx].min_photo_count = 1;
+                              }
+                              setTasks(newTasks);
+                            }}
+                            className="w-4 h-4 text-cyan-600 rounded border-slate-300 focus:ring-cyan-500"
+                          />
+                          <span className="text-slate-600">Bắt buộc chụp ảnh</span>
+                        </label>
+                        
+                        {task.requires_photo && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 text-xs">Số lượng tối thiểu:</span>
+                            <input 
+                              type="number"
+                              min="1"
+                              max="10"
+                              value={task.min_photo_count || 1}
+                              onChange={(e) => {
+                                const newTasks = [...tasks];
+                                newTasks[idx].min_photo_count = parseInt(e.target.value) || 1;
+                                setTasks(newTasks);
+                              }}
+                              className="w-16 border border-slate-200 p-1 rounded text-center text-sm focus:border-cyan-500 outline-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {tasks.length > 1 && (
+                      <button 
+                        onClick={() => {
+                          const newTasks = [...tasks];
+                          newTasks.splice(idx, 1);
+                          setTasks(newTasks);
+                        }}
+                        className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Xóa dòng này"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <button 
+                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0 }])}
+                  className="w-full border-2 border-dashed border-slate-200 text-slate-500 py-3 rounded-xl font-medium hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 transition-all"
+                >
+                  + Thêm dòng công việc
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex gap-3 rounded-b-2xl">
               <button 
                 onClick={() => setShowModal(false)}
                 className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50"

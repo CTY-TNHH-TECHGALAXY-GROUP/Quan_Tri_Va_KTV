@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.1.1";
-export const LAST_UPDATE = "Fix lỗi đổi người KTV không trừ tua + Badge loại KTV trên Dispatch";
+export const APP_VERSION = "1.1.3";
+export const LAST_UPDATE = "Thêm tính năng Phí Bảo Trì Hệ Thống hàng tháng cho KTV";
