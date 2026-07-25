@@ -74,6 +74,22 @@ const SERVICE_TO_SKILL: Record<string, string> = {
     'Foot': 'foot',
 };
 
+// 🔧 WORK TYPE BADGE CONFIG
+const WORK_TYPE_BADGE: Record<string, { label: string; className: string }> = {
+    TYPE_A: { label: 'A', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    TYPE_B: { label: 'B', className: 'bg-purple-100 text-purple-700 border-purple-200' },
+    TYPE_C: { label: 'C', className: 'bg-gray-100 text-gray-500 border-gray-200' },
+};
+
+const WorkTypeBadge = ({ workType }: { workType?: string }) => {
+    const badge = WORK_TYPE_BADGE[workType || 'TYPE_A'] || WORK_TYPE_BADGE.TYPE_A;
+    return (
+        <span className={`px-1 py-0.5 text-[8px] font-black rounded border leading-none ${badge.className}`}>
+            {badge.label}
+        </span>
+    );
+};
+
 const genId = () => Math.random().toString(36).substring(2, 9);
 // Format "15:19:00" → "15:19"
 const fmtTime = (t?: string | null) => t ? t.replace(/^(\d{1,2}:\d{2})(:\d{2})?$/, '$1') : '--:--';
@@ -297,6 +313,13 @@ export const DispatchStaffRow = ({
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
                                                                 <span>{turn.employee_id}</span>
+                                                                <WorkTypeBadge workType={turn.staff?.work_type} />
+                                                                {turn.staff?.work_type === 'TYPE_B' && turn.staff?.online_status === 'ONLINE' && (
+                                                                    <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-emerald-100 text-emerald-700 border border-emerald-200 leading-none">Online</span>
+                                                                )}
+                                                                {turn.staff?.work_type === 'TYPE_B' && turn.staff?.online_status === 'AT_VENUE' && (
+                                                                    <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-sky-100 text-sky-700 border border-sky-200 leading-none">Tại spa</span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <div className="text-[10px] font-semibold flex gap-2">

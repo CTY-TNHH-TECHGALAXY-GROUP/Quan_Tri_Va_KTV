@@ -6,10 +6,12 @@ export async function syncTurnsForDate(date: string) {
         if (!supabase) throw new Error('Supabase not initialized');
 
         // 1. Nhóm và đếm số lượng tua từ TurnLedger trong ngày
+        // ⚠️ CRITICAL: Không đếm records bị phạt (is_punished=true) — KTV đã bị đổi người
         const { data: ledgers, error: ledgerError } = await supabase
             .from('TurnLedger')
             .select('employee_id')
-            .eq('date', date);
+            .eq('date', date)
+            .or('is_punished.is.null,is_punished.eq.false');
 
         if (ledgerError) throw ledgerError;
 

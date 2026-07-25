@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.0.9";
-export const LAST_UPDATE = "Hoàn tất Đại tu KTV (Xử lý KTV Loại C, Ledger tháng/năm, Tắt kiểm tra độ sáng ảnh bàn giao)";
+export const APP_VERSION = "1.1.1";
+export const LAST_UPDATE = "Fix lỗi đổi người KTV không trừ tua + Badge loại KTV trên Dispatch";

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, PauseCircle, PlayCircle, UserMinus, UserPlus, Clock, AlertTriangle } from 'lucide-react';
 import { PendingOrder, StaffData } from '../types';
+import { WORK_TYPE_LABELS } from '@/lib/constants/staff.constants';
 
 interface PauseSwapKtvModalProps {
   isOpen: boolean;
@@ -207,7 +208,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           >
                             <option value="">-- Chọn --</option>
                             {currentKtvs.map((staff: any) => (
-                              <option key={staff.ktvId} value={staff.ktvId}>{staff.ktvName}</option>
+                              <option key={staff.ktvId} value={staff.ktvId}>{staff.ktvName || staff.ktvId}</option>
                             ))}
                           </select>
                         </div>
@@ -222,7 +223,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           >
                             <option value="">-- Chọn --</option>
                             {availableKtvs.map(ktv => (
-                              <option key={ktv.id} value={ktv.id}>{ktv.full_name} ({ktv.id})</option>
+                              <option key={ktv.id} value={ktv.id}>{ktv.full_name} ({ktv.id}) [{WORK_TYPE_LABELS[ktv.work_type as keyof typeof WORK_TYPE_LABELS] || 'A'}]</option>
                             ))}
                           </select>
                         </div>

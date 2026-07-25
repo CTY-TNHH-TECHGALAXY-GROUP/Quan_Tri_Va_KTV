@@ -50,6 +50,23 @@ const getDynamicEndTime = (startStr?: string | null, durationMins: number = 60) 
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
+// 🔧 WORK TYPE BADGE CONFIG
+const WORK_TYPE_BADGE_KANBAN: Record<string, { label: string; className: string }> = {
+    TYPE_A: { label: 'A', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    TYPE_B: { label: 'B', className: 'bg-purple-100 text-purple-700 border-purple-200' },
+    TYPE_C: { label: 'C', className: 'bg-gray-100 text-gray-500 border-gray-200' },
+};
+
+const KtvTypeBadge = ({ workType }: { workType?: string }) => {
+    if (!workType || workType === 'TYPE_A') return null; // A is default, skip badge for cleanliness
+    const badge = WORK_TYPE_BADGE_KANBAN[workType] || WORK_TYPE_BADGE_KANBAN.TYPE_A;
+    return (
+        <span className={`px-1 py-0.5 text-[7px] font-black rounded border leading-none ${badge.className}`}>
+            {badge.label}
+        </span>
+    );
+};
+
 interface KanbanBoardProps {
     orders: PendingOrder[];
     onUpdateStatus: (orderId: string, newStatus: string, itemIds?: string[], skipConfirm?: boolean, targetKtvIds?: string[]) => void;
@@ -61,6 +78,7 @@ interface KanbanBoardProps {
     roomTransitionTime?: number;
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
     onReviewClick?: (service: ServiceBlock) => void;
+    staffWorkTypeMap?: Record<string, string>;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services) => {
@@ -135,7 +153,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick }: KanbanBoardProps) {
+export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap }: KanbanBoardProps) {
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
@@ -614,7 +632,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
                                                                         return (
                                                                             <span key={idx} className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md flex items-center gap-1.5">
-                                                                                <span>👤 {st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')}</span>
+                                                                                <span className="flex items-center gap-0.5">👤 {st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                 {startPhotoUrl && (
                                                                                     <button
                                                                                         onClick={(e) => {
@@ -649,7 +667,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                             return (
                                                                                 <div key={stIdx} className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className="text-[9px] font-bold text-gray-500">{st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : st.ktvId}</span>
+                                                                                        <span className="text-[9px] font-bold text-gray-500 flex items-center gap-0.5">{st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         {(() => {
                                                                                             const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
                                                                                             if (!photoSegment) return null;
