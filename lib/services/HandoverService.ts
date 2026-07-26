@@ -39,7 +39,7 @@ export class HandoverService {
      */
     static async generateDynamicChecklist(
         supabase: SupabaseClient,
-        roomId: string,
+        roomId: string | null,
         serviceCode: string,
         serviceCategory: string,
         bookingId: string,
