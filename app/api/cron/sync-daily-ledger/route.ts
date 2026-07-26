@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
-import { processMonthlyLedgerSync, processYearlyLedgerSync } from '@/lib/services/KtvLedgerSyncService';
+import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 
 export const dynamic = 'force-dynamic';
@@ -178,6 +178,7 @@ async function processLedgerSync(targetDateStr: string) {
         const month = parseInt(targetDateStr.slice(5, 7), 10);
         const year = parseInt(targetDateStr.slice(0, 4), 10);
         await processMonthlyLedgerSync(supabase, month, year);
+        await processMonthlyMaintenanceFee(supabase, month, year);
         
         if (month === 12) {
             // It was also the last day of the year!

@@ -10,11 +10,49 @@ import { KtvFeaturesTable } from './KtvFeaturesTable';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
+const FormattedNumberInput = ({ value, onChange, className, suffix, suffixColor = 'text-gray-400' }: any) => {
+    const [displayValue, setDisplayValue] = useState(value?.toLocaleString('vi-VN') || '');
+    
+    useEffect(() => {
+        setDisplayValue(value !== undefined && value !== null ? value.toLocaleString('vi-VN') : '');
+    }, [value]);
+
+    const handleBlur = (e: any) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '');
+        if (raw) {
+            onChange(Number(raw));
+            setDisplayValue(Number(raw).toLocaleString('vi-VN'));
+        } else {
+            onChange(0);
+            setDisplayValue('0');
+        }
+    };
+
+    const handleChange = (e: any) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '');
+        setDisplayValue(raw ? Number(raw).toLocaleString('vi-VN') : '');
+    };
+
+    return (
+        <div className="relative">
+            <input
+                type="text"
+                value={displayValue}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={className}
+            />
+            {suffix && <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-bold ${suffixColor}`}>{suffix}</span>}
+        </div>
+    );
+};
+
 export default function SystemSettingsPage() {
     const [configs, setConfigs] = useState<any>({
         // Tạm thời để trống, sẽ được merge từ API về
         enable_web_advance_booking_email: false
     });
+    const [initialConfigs, setInitialConfigs] = useState<any>({});
     const [activeTab, setActiveTab] = useState<'TYPE_A' | 'TYPE_B' | 'TYPE_C'>('TYPE_A');
     
     const [isLoading, setIsLoading] = useState(true);
@@ -30,6 +68,7 @@ export default function SystemSettingsPage() {
             const data = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
             if (data.data) {
                 setConfigs((prev: any) => ({ ...prev, ...data.data }));
+                setInitialConfigs((prev: any) => ({ ...prev, ...data.data }));
             }
         } catch (error) {
             console.error('Lỗi tải cấu hình:', error);
@@ -51,6 +90,7 @@ export default function SystemSettingsPage() {
             });
             const result = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, payload);
             if (result.success) {
+                setInitialConfigs((prev: any) => ({ ...prev, ...payload }));
                 setSaveStatus('success');
                 setTimeout(() => setSaveStatus('idle'), 3000);
             } else {
@@ -97,6 +137,13 @@ export default function SystemSettingsPage() {
         return val !== undefined ? val : configs[key];
     };
 
+    const hasChanges = (keys: string[]) => {
+        return keys.some(k => {
+            const actualKey = k === 'enable_web_advance_booking_email' ? k : `${k}_${activeTab}`;
+            return configs[actualKey] !== initialConfigs[actualKey];
+        });
+    };
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -136,14 +183,21 @@ export default function SystemSettingsPage() {
                                 </div>
                                 <h2 className="text-lg font-black text-gray-900">Mốc Điểm Thưởng (Bonus)</h2>
                             </div>
-                            <button
-                                onClick={() => handleSaveGroup(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus'], 'bonus')}
-                                disabled={savingGroup === 'bonus'}
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
-                            >
-                                {savingGroup === 'bonus' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                Lưu
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {saveStatus === 'success' && savingGroup === 'bonus' && (
+                                    <span className="text-emerald-500 text-xs font-bold flex items-center gap-1"><CheckCircle2 size={14} /> Đã lưu</span>
+                                )}
+                                {hasChanges(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus']) && (
+                                    <button
+                                        onClick={() => handleSaveGroup(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus'], 'bonus')}
+                                        disabled={savingGroup === 'bonus'}
+                                        className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        {savingGroup === 'bonus' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        Lưu
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="space-y-5">
@@ -152,15 +206,12 @@ export default function SystemSettingsPage() {
                                     <Percent size={14} className="text-indigo-400" />
                                     Tỷ lệ quy đổi điểm (VNĐ / 1 điểm)
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={getValue('ktv_bonus_rate') ?? 0}
-                                        onChange={(e) => handleChange('ktv_bonus_rate', Number(e.target.value))}
-                                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-indigo-400 focus:ring-0 transition-colors"
-                                    />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">VNĐ</span>
-                                </div>
+                                <FormattedNumberInput
+                                    value={getValue('ktv_bonus_rate') ?? 0}
+                                    onChange={(val: number) => handleChange('ktv_bonus_rate', val)}
+                                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-indigo-400 focus:ring-0 transition-colors"
+                                    suffix="VNĐ"
+                                />
                                 <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Ví dụ: 1000 = 1 điểm tương ứng 1.000đ.</p>
                             </div>
 
@@ -172,15 +223,13 @@ export default function SystemSettingsPage() {
                                         <CalendarDays size={14} className="text-emerald-500" />
                                         Ca 1 (Sáng)
                                     </label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            value={getValue('ktv_shift_1_bonus') ?? 0}
-                                            onChange={(e) => handleChange('ktv_shift_1_bonus', Number(e.target.value))}
-                                            className="w-full bg-emerald-50/50 border-2 border-emerald-100 rounded-xl px-4 py-3 text-lg font-bold text-emerald-900 focus:border-emerald-400 focus:ring-0 transition-colors"
-                                        />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-bold">Điểm</span>
-                                    </div>
+                                    <FormattedNumberInput
+                                        value={getValue('ktv_shift_1_bonus') ?? 0}
+                                        onChange={(val: number) => handleChange('ktv_shift_1_bonus', val)}
+                                        className="w-full bg-emerald-50/50 border-2 border-emerald-100 rounded-xl px-4 py-3 text-lg font-bold text-emerald-900 focus:border-emerald-400 focus:ring-0 transition-colors"
+                                        suffix="Điểm"
+                                        suffixColor="text-emerald-600/50"
+                                    />
                                 </div>
                                 
                                 <div>
@@ -188,15 +237,13 @@ export default function SystemSettingsPage() {
                                         <CalendarDays size={14} className="text-blue-500" />
                                         Ca 2 (Chiều)
                                     </label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            value={getValue('ktv_shift_2_bonus') ?? 0}
-                                            onChange={(e) => handleChange('ktv_shift_2_bonus', Number(e.target.value))}
-                                            className="w-full bg-blue-50/50 border-2 border-blue-100 rounded-xl px-4 py-3 text-lg font-bold text-blue-900 focus:border-blue-400 focus:ring-0 transition-colors"
-                                        />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-600/50 font-bold">Điểm</span>
-                                    </div>
+                                    <FormattedNumberInput
+                                        value={getValue('ktv_shift_2_bonus') ?? 0}
+                                        onChange={(val: number) => handleChange('ktv_shift_2_bonus', val)}
+                                        className="w-full bg-blue-50/50 border-2 border-blue-100 rounded-xl px-4 py-3 text-lg font-bold text-blue-900 focus:border-blue-400 focus:ring-0 transition-colors"
+                                        suffix="Điểm"
+                                        suffixColor="text-blue-600/50"
+                                    />
                                 </div>
                             </div>
 
@@ -205,15 +252,13 @@ export default function SystemSettingsPage() {
                                     <CalendarDays size={14} className="text-purple-500" />
                                     Ca 3 (Đêm / Giờ vàng)
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={getValue('ktv_shift_3_bonus') ?? 0}
-                                        onChange={(e) => handleChange('ktv_shift_3_bonus', Number(e.target.value))}
-                                        className="w-full bg-purple-50/50 border-2 border-purple-100 rounded-xl px-4 py-3 text-lg font-bold text-purple-900 focus:border-purple-400 focus:ring-0 transition-colors"
-                                    />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-bold">Điểm</span>
-                                </div>
+                                <FormattedNumberInput
+                                    value={getValue('ktv_shift_3_bonus') ?? 0}
+                                    onChange={(val: number) => handleChange('ktv_shift_3_bonus', val)}
+                                    className="w-full bg-purple-50/50 border-2 border-purple-100 rounded-xl px-4 py-3 text-lg font-bold text-purple-900 focus:border-purple-400 focus:ring-0 transition-colors"
+                                    suffix="Điểm"
+                                    suffixColor="text-purple-600/50"
+                                />
                             </div>
                         </div>
                     </div>
@@ -227,14 +272,21 @@ export default function SystemSettingsPage() {
                                 </div>
                                 <h2 className="text-lg font-black text-gray-900">Tài Chính & Ký Quỹ KTV</h2>
                             </div>
-                            <button
-                                onClick={() => handleSaveGroup(['ktv_deposit_amount', 'ktv_sudden_off_penalty', 'ktv_instant_reward_enabled'], 'finance')}
-                                disabled={savingGroup === 'finance'}
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
-                            >
-                                {savingGroup === 'finance' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                Lưu
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {saveStatus === 'success' && savingGroup === 'finance' && (
+                                    <span className="text-emerald-500 text-xs font-bold flex items-center gap-1"><CheckCircle2 size={14} /> Đã lưu</span>
+                                )}
+                                {hasChanges(['ktv_deposit_amount', 'ktv_sudden_off_penalty', 'ktv_instant_reward_enabled']) && (
+                                    <button
+                                        onClick={() => handleSaveGroup(['ktv_deposit_amount', 'ktv_sudden_off_penalty', 'ktv_instant_reward_enabled'], 'finance')}
+                                        disabled={savingGroup === 'finance'}
+                                        className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        {savingGroup === 'finance' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        Lưu
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="space-y-5">
@@ -242,15 +294,12 @@ export default function SystemSettingsPage() {
                                 <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2">
                                     Tiền cọc duy trì (Ví quỹ)
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={getValue('ktv_deposit_amount') ?? 0}
-                                        onChange={(e) => handleChange('ktv_deposit_amount', Number(e.target.value))}
-                                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-teal-400 focus:ring-0 transition-colors"
-                                    />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">VNĐ</span>
-                                </div>
+                                <FormattedNumberInput
+                                    value={getValue('ktv_deposit_amount') ?? 0}
+                                    onChange={(val: number) => handleChange('ktv_deposit_amount', val)}
+                                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-teal-400 focus:ring-0 transition-colors"
+                                    suffix="VNĐ"
+                                />
                                 <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Số dư tối thiểu mà một KTV cần duy trì trong ví. Nếu số dư thấp hơn định mức này, hệ thống sẽ tự động trích lập từ tiền thu nhập hằng ngày để bù vào.</p>
                             </div>
 
@@ -261,15 +310,13 @@ export default function SystemSettingsPage() {
                                     <AlertCircle size={14} />
                                     Phạt nghỉ đột xuất / Tan ca sớm
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={getValue('ktv_sudden_off_penalty') ?? 0}
-                                        onChange={(e) => handleChange('ktv_sudden_off_penalty', Number(e.target.value))}
-                                        className="w-full bg-rose-50 border-2 border-rose-100 rounded-xl px-4 py-3 text-lg font-bold text-rose-900 focus:border-rose-400 focus:ring-0 transition-colors"
-                                    />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-600/50 font-bold">VNĐ</span>
-                                </div>
+                                <FormattedNumberInput
+                                    value={getValue('ktv_sudden_off_penalty') ?? 0}
+                                    onChange={(val: number) => handleChange('ktv_sudden_off_penalty', val)}
+                                    className="w-full bg-rose-50 border-2 border-rose-100 rounded-xl px-4 py-3 text-lg font-bold text-rose-900 focus:border-rose-400 focus:ring-0 transition-colors"
+                                    suffix="VNĐ"
+                                    suffixColor="text-rose-600/50"
+                                />
                                 <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Mức phạt áp dụng cho mỗi bản ghi "Nghỉ đột xuất" được tạo tự động khi KTV tan ca sớm hoặc nghỉ không phép.</p>
                             </div>
 
@@ -287,13 +334,13 @@ export default function SystemSettingsPage() {
                                         const newVal = !(getValue('ktv_instant_reward_enabled') ?? true);
                                         handleChange('ktv_instant_reward_enabled', newVal);
                                     }}
-                                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                         (getValue('ktv_instant_reward_enabled') ?? true) ? 'bg-teal-500' : 'bg-gray-300'
                                     }`}
                                 >
                                     <span
-                                        className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                                            (getValue('ktv_instant_reward_enabled') ?? true) ? 'translate-x-6' : 'translate-x-0'
+                                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            (getValue('ktv_instant_reward_enabled') ?? true) ? 'translate-x-5' : 'translate-x-0'
                                         }`}
                                     />
                                 </button>
@@ -310,8 +357,100 @@ export default function SystemSettingsPage() {
                         </div>
                     </div>
 
+                    {/* Card: Phí Bảo Trì Hệ Thống */}
+                    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
+                                <Settings size={20} className="text-rose-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Phí Bảo Trì Hệ Thống</h2>
+                                <p className="text-[11px] text-gray-400 font-medium">Trừ vào ngày cuối tháng (Cấu hình riêng cho Loại {activeTab.replace('TYPE_', '')})</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {saveStatus === 'success' && savingGroup === 'maintenance' && (
+                                <span className="text-emerald-500 text-xs font-bold flex items-center gap-1"><CheckCircle2 size={14} /> Đã lưu</span>
+                            )}
+                            {hasChanges(['enable_maintenance_fee', 'maintenance_fee_amount', 'maintenance_fee_deduct_deposit']) && (
+                                <button
+                                    onClick={() => handleSaveGroup(['enable_maintenance_fee', 'maintenance_fee_amount', 'maintenance_fee_deduct_deposit'], 'maintenance')}
+                                    disabled={savingGroup === 'maintenance'}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    {savingGroup === 'maintenance' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    Lưu
+                                </button>
+                            )}
+                        </div>
+                    </div>
 
+                    <div className="space-y-5">
+                        {/* Toggle: Bật/Tắt tính năng */}
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div>
+                                <label className="block text-sm font-black text-gray-900 mb-1">
+                                    Tự động trừ phí bảo trì hàng tháng
+                                </label>
+                                <p className="text-[11px] text-gray-500 font-medium">BẬT = Hệ thống tự trừ tiền cuối mỗi tháng. TẮT = Không trừ.</p>
+                            </div>
+                            <button
+                                onClick={() => handleChange('enable_maintenance_fee', !(getValue('enable_maintenance_fee') ?? true))}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    (getValue('enable_maintenance_fee') ?? true) ? 'bg-rose-500' : 'bg-gray-300'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                        (getValue('enable_maintenance_fee') ?? true) ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        {/* Số tiền phí bảo trì */}
+                        <div>
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
+                                <Coins size={14} className="text-rose-400" />
+                                Số tiền trừ mỗi tháng
+                            </label>
+                            <FormattedNumberInput
+                                value={getValue('maintenance_fee_amount') ?? 50000}
+                                onChange={(val: number) => handleChange('maintenance_fee_amount', val)}
+                                className="w-full bg-rose-50/50 border-2 border-rose-100 rounded-xl px-4 py-3 text-lg font-bold text-rose-900 focus:border-rose-400 focus:ring-0 transition-colors"
+                                suffix="VNĐ"
+                                suffixColor="text-rose-600/50"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Mặc định: 50,000 VND. Ghi chú trên Ví: &quot;Phí bảo trì hệ thống tháng MM/YYYY&quot;</p>
+                        </div>
+
+                        <hr className="border-gray-100 my-4" />
+
+                        {/* Toggle: Cho phép trừ vào tiền cọc */}
+                        <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-100">
+                            <div>
+                                <label className="block text-sm font-black text-gray-900 mb-1">
+                                    Cho phép trừ vào tiền cọc
+                                </label>
+                                <p className="text-[11px] text-amber-700 font-medium">BẬT = Nếu ví không đủ, sẽ trừ vào phần tiền cọc (ký quỹ). TẮT = Ví có thể bị âm nhưng không động vào cọc.</p>
+                            </div>
+                            <button
+                                onClick={() => handleChange('maintenance_fee_deduct_deposit', !(getValue('maintenance_fee_deduct_deposit') ?? true))}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    (getValue('maintenance_fee_deduct_deposit') ?? true) ? 'bg-amber-500' : 'bg-gray-300'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                        (getValue('maintenance_fee_deduct_deposit') ?? true) ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+                    </div>
                 </div>
+                {/* End of grid */}
 
                 {/* Milestones Editor (Tua) */}
                 <MilestonesEditor activeTab={activeTab} />

@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.1.3";
-export const LAST_UPDATE = "Thêm tính năng Phí Bảo Trì Hệ Thống hàng tháng cho KTV";
+export const APP_VERSION = "1.1.6";
+export const LAST_UPDATE = "Tự động cộng tiền thu phí bảo trì vào ví của tài khoản Developer";

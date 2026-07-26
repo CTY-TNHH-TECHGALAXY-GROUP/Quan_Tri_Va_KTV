@@ -118,3 +118,104 @@ export async function processYearlyLedgerSync(supabase: SupabaseClient, year: nu
     console.log(`✅ Synced Yearly Ledger for ${upsertRows.length} KTVs.`);
     return true;
 }
+
+/**
+ * Process monthly maintenance fee deduction for all active KTVs.
+ * Called on the last day of each month during the daily ledger sync cron.
+ * Idempotent: checks if fee was already deducted for the given month/year.
+ */
+export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, month: number, year: number) {
+    console.log(`[Cron] Processing Monthly Maintenance Fee for ${month}/${year}`);
+
+    // Date restriction removed for testing via toggle
+
+    // 1. Check if feature is enabled
+    const { data: enableConfig } = await supabase
+        .from('SystemConfigs')
+        .select('value')
+        .eq('key', 'enable_maintenance_fee')
+        .single();
+
+    const isEnabled = enableConfig?.value === true || enableConfig?.value === 'true';
+    if (!isEnabled) {
+        console.log('[Cron] Maintenance fee is DISABLED. Skipping.');
+        return true;
+    }
+
+    // 2. Get fee amount
+    const { data: amountConfig } = await supabase
+        .from('SystemConfigs')
+        .select('value')
+        .eq('key', 'maintenance_fee_amount')
+        .single();
+
+    let feeAmount = 50000; // default
+    if (amountConfig?.value) {
+        const parsed = Number(String(amountConfig.value).replace(/"/g, ''));
+        if (!isNaN(parsed) && parsed > 0) feeAmount = parsed;
+    }
+
+    // 3. Get all active KTVs
+    const { data: ktvs, error: ktvError } = await supabase
+        .from('Staff')
+        .select('id, full_name, feature_flags')
+        .eq('status', 'ĐANG LÀM')
+        .ilike('id', 'NH%');
+
+    if (ktvError || !ktvs || ktvs.length === 0) {
+        console.log('[Cron] No active KTVs found for maintenance fee.');
+        return true;
+    }
+
+    // 4. Idempotency: Check which KTVs already got charged this month
+    const reasonPattern = `Phí bảo trì hệ thống tháng ${String(month).padStart(2, '0')}/${year}`;
+    const { data: existingRecords } = await supabase
+        .from('WalletAdjustments')
+        .select('staff_id')
+        .eq('reason', reasonPattern)
+        .eq('created_by', 'SYSTEM_CRON');
+
+    const alreadyChargedSet = new Set((existingRecords || []).map(r => r.staff_id));
+
+    // 5. Filter out KTVs that were already charged or have the feature flag disabled
+    const toCharge = ktvs.filter(k => {
+        if (alreadyChargedSet.has(k.id)) return false;
+        if (k.feature_flags && k.feature_flags.maintenance_fee === false) return false;
+        return true;
+    });
+    if (toCharge.length === 0) {
+        console.log('[Cron] All KTVs already charged for this month. Skipping.');
+        return true;
+    }
+
+    // 6. Batch insert negative adjustments
+    const adjustments: any[] = toCharge.map(ktv => ({
+        staff_id: ktv.id,
+        amount: -feeAmount, // Negative = deduction
+        type: 'ADJUST',
+        reason: reasonPattern,
+        created_by: 'SYSTEM_CRON',
+    }));
+
+    // Add total to 'dev' account
+    const totalCollected = feeAmount * toCharge.length;
+    adjustments.push({
+        staff_id: 'dev',
+        amount: totalCollected, // Positive = income
+        type: 'ADJUST',
+        reason: `Thu phí bảo trì hệ thống tháng ${String(month).padStart(2, '0')}/${year} (Từ ${toCharge.length} KTV)`,
+        created_by: 'SYSTEM_CRON',
+    });
+
+    const { error: insertError } = await supabase
+        .from('WalletAdjustments')
+        .insert(adjustments);
+
+    if (insertError) {
+        console.error('[Cron] Error inserting maintenance fee adjustments:', insertError);
+        return false;
+    }
+
+    console.log(`✅ Charged maintenance fee (${feeAmount.toLocaleString()}đ) for ${toCharge.length} KTVs.`);
+    return true;
+}

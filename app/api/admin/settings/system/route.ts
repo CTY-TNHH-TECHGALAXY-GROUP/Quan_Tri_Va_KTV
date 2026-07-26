@@ -33,6 +33,9 @@ const DEFAULT_CONFIGS = {
 
     // Global
     enable_web_advance_booking_email: false,
+    enable_maintenance_fee: false,
+    maintenance_fee_amount: 50000,
+    maintenance_fee_deduct_deposit: false,
     
     // Legacy (Fallback cho hệ thống cũ chưa migrate)
     ktv_bonus_rate: 1000,

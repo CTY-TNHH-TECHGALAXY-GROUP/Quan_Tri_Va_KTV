@@ -34,6 +34,11 @@ export const FEATURE_FLAG_DEFS = [
         label: '💎 Ví Tích Luỹ',
         description: 'Tích luỹ lâu dài',
     },
+    {
+        key: 'maintenance_fee',
+        label: '🔧 Phí Bảo Trì',
+        description: 'Tự động trừ phí bảo trì app hàng tháng',
+    },
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_DEFS[number]['key'];
@@ -56,6 +61,7 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
                 enable_employee_tasks: true,
                 bonus_wallet: true,
                 savings_wallet: true,
+                maintenance_fee: true,
             };
         case 'TYPE_B':
             return {
@@ -65,6 +71,7 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
                 enable_employee_tasks: false,
                 bonus_wallet: false,
                 savings_wallet: false,
+                maintenance_fee: true,
             };
         case 'TYPE_C':
             return {
@@ -74,6 +81,7 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
                 enable_employee_tasks: false,
                 bonus_wallet: false,
                 savings_wallet: false,
+                maintenance_fee: true,
             };
         default:
             return {};
