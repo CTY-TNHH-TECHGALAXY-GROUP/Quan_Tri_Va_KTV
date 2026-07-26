@@ -27,6 +27,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getBusinessDate, ktvMatchesSeg } from '../_shared/utils';
+import { HandoverService } from '@/lib/services/HandoverService';
 
 export async function handleGetBooking(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
@@ -512,11 +513,37 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
+        // ─── 7.5. PREFETCH DYNAMIC CHECKLIST (TỐI ƯU HIỆU NĂNG) ───
+        // Tránh phải gọi thêm 1 cục network request khi frontend đổi screen sang HANDOVER
+        let prefetchedDynamicChecklist = null;
+        let computedStatus = booking.status;
+        const activeItemForStatus = itemsWithService.find((i: any) => i.id === activeItemId) || itemsWithService[0];
+        if (activeItemForStatus) computedStatus = activeItemForStatus.status;
+
+        if (computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING') {
+            try {
+                const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
+                const sCat = activeItemForStatus?.service_category || activeItemForStatus?.category || '';
+                const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomId || null;
+                prefetchedDynamicChecklist = await HandoverService.generateDynamicChecklist(
+                    supabase,
+                    rId,
+                    sCode,
+                    sCat,
+                    booking.id,
+                    activeItemId || activeItemForStatus?.id
+                );
+            } catch (err) {
+                console.error("Prefetch dynamic checklist failed:", err);
+            }
+        }
+
         // ─── 8. RESPONSE ───
         return NextResponse.json({
             success: true,
             data: {
                 ...booking,
+                prefetchedDynamicChecklist,
                 dispatcherNote: booking.notes || '',
                 BookingItems: itemsWithService,
                 assignedItemId: activeItemId,
