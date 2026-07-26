@@ -47,25 +47,38 @@ export class HandoverService {
     ): Promise<HandoverChecklistItem[]> {
         const checklist: HandoverChecklistItem[] = [];
 
-        // 1. Check if this KTV is the LAST one finishing in the room
-        const { count: remainingInRoom } = await supabase
-            .from('BookingItems')
-            .select('id', { count: 'exact', head: true })
-            .eq('bookingId', bookingId)
-            .eq('roomId', roomId)
-            .neq('id', bookingItemId)
-            .in('status', ['PENDING', 'IN_PROGRESS']);
-
-        const isLastKtvInRoom = (remainingInRoom || 0) === 0;
-
-        // 2. If last KTV → add Room checklist
-        if (isLastKtvInRoom) {
-            const { data: room } = await supabase
+        // TỐI ƯU HIỆU NĂNG: Chạy 3 câu truy vấn độc lập song song cùng lúc (Parallel Fetching)
+        const [remainingInRoomRes, roomRes, configRes] = await Promise.all([
+            // 1. Đếm số lượng KTV còn lại trong phòng (chỉ tính PENDING, IN_PROGRESS)
+            supabase
+                .from('BookingItems')
+                .select('id', { count: 'exact', head: true })
+                .eq('bookingId', bookingId)
+                .eq('roomId', roomId)
+                .neq('id', bookingItemId)
+                .in('status', ['PENDING', 'IN_PROGRESS']),
+                
+            // 2. Tải sẵn checklist cấu hình của phòng đó
+            supabase
                 .from('Rooms')
                 .select('handover_checklist')
                 .eq('id', roomId)
-                .single();
+                .single(),
+                
+            // 3. Tải sẵn cấu hình checklist theo nhóm dịch vụ
+            supabase
+                .from('SystemConfigs')
+                .select('value')
+                .eq('key', 'handover_service_mapping')
+                .single()
+        ]);
 
+        const remainingInRoom = remainingInRoomRes.count;
+        const isLastKtvInRoom = (remainingInRoom || 0) === 0;
+
+        // Xử lý checklist Phòng (nếu là KTV cuối cùng)
+        if (isLastKtvInRoom) {
+            const room = roomRes.data;
             if (room?.handover_checklist && Array.isArray(room.handover_checklist)) {
                 room.handover_checklist.forEach((item: string) => {
                     checklist.push({ label: item, source: 'room' });
@@ -73,12 +86,8 @@ export class HandoverService {
             }
         }
 
-        // 3. Get service mapping from SystemConfigs
-        const { data: configRow } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'handover_service_mapping')
-            .single();
+        // Xử lý checklist Dịch vụ
+        const configRow = configRes.data;
 
         if (configRow?.value) {
             let mapping: HandoverMappingConfig;
