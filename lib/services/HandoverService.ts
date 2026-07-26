@@ -54,7 +54,7 @@ export class HandoverService {
             .eq('bookingId', bookingId)
             .eq('roomId', roomId)
             .neq('id', bookingItemId)
-            .not('status', 'in', '("DONE","FEEDBACK")');
+            .in('status', ['PENDING', 'IN_PROGRESS']);
 
         const isLastKtvInRoom = (remainingInRoom || 0) === 0;
 
