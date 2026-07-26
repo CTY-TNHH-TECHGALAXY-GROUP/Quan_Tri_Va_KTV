@@ -82,6 +82,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
     const [isFetchingChecklist, setIsFetchingChecklist] = useState(true);
+    const fetchedChecklistBookingIdRef = useRef<string | null>(null);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
 
@@ -199,7 +200,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (alreadySubmitted && !hasSubmittedReview) {
                 console.log("🌟 [ReviewRestore] This KTV already submitted review, forwarding to HANDOVER...");
                 setHasSubmittedReview(true);
-                setIsFetchingChecklist(true);
                 setScreen('HANDOVER');
             }
         } catch(e) {}
@@ -630,7 +630,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } else {
                 // Nếu đã Review xong, chuyển sang HANDOVER (nếu chưa ở đó hoặc chưa tới REWARD)
                 if (currentScreen !== 'HANDOVER' && currentScreen !== 'REWARD') {
-                    setIsFetchingChecklist(true);
                     setScreen('HANDOVER');
                     setIsTimerRunning(false);
                 }
@@ -1738,7 +1737,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             // Always go to HANDOVER — commission is calculated in handleFinishHandover()
             isTransitioningRef.current = true;
-            setIsFetchingChecklist(true);
             setScreen('HANDOVER');
             setTimeout(() => isTransitioningRef.current = false, 1000);
         } catch (err) {
@@ -1907,6 +1905,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // === HANDOVER V5: Fetch dynamic checklist from API ===
     const fetchDynamicChecklist = useCallback(async () => {
         if (!booking) return;
+        if (fetchedChecklistBookingIdRef.current === booking.id) return; // Đã fetch cho booking này rồi
+        
         setIsFetchingChecklist(true);
         try {
             const item = booking.BookingItems?.find((i: any) => 
@@ -1924,6 +1924,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (res.success && res.checklist) {
                 setDynamicChecklist(res.checklist);
             }
+            // Đánh dấu là đã fetch xong (cho dù có rỗng)
+            fetchedChecklistBookingIdRef.current = booking.id;
         } catch (e) {
             console.error('[Handover V5] Error fetching checklist:', e);
         } finally {
@@ -1931,9 +1933,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [booking]);
 
-    // Fetch checklist when entering HANDOVER screen
+    // Fetch checklist early (ngay từ màn REVIEW) để không bị delay khi sang HANDOVER
     useEffect(() => {
-        if (screen === 'HANDOVER' && booking) {
+        if (['REVIEW', 'HANDOVER'].includes(screen) && booking) {
             fetchDynamicChecklist();
         }
     }, [screen, booking?.id]);
