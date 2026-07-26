@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.1.8";
-export const LAST_UPDATE = "Fix sổ tua: KTV Loại C không còn lẫn vào KTV nội bộ";
+export const APP_VERSION = "1.2.0";
+export const LAST_UPDATE = "Handover V5: Dynamic checklist, 3 nút từ chối (Dọn lại/Trừ tiền/Tước tua), widget nợ bàn giao";

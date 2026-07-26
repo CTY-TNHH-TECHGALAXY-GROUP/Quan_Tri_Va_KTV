@@ -79,6 +79,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [handoverPhotosBase64, setHandoverPhotosBase64] = useState<Record<string, string>>({});
     const [isHandoverComplete, setIsHandoverComplete] = useState(false);
 
+    // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
+    const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
+    const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
+    const [isSkippingHandover, setIsSkippingHandover] = useState(false);
+
     useEffect(() => {
         // Kiểm tra xem đã chụp đủ ảnh theo checklist chưa
         const requiredChecklist = booking?.handoverChecklist || [];
@@ -1895,6 +1900,81 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     };
 
+    // === HANDOVER V5: Fetch dynamic checklist from API ===
+    const fetchDynamicChecklist = useCallback(async () => {
+        if (!booking) return;
+        try {
+            const item = booking.BookingItems?.find((i: any) => 
+                booking.assignedItemIds?.includes(i.id) || booking.assignedItemId === i.id
+            );
+            if (!item) return;
+            const params = new URLSearchParams({
+                roomId: booking.assignedRoomId || item.roomId || '',
+                serviceCode: item.serviceCode || item.service_code || '',
+                serviceCategory: item.service_category || item.category || '',
+                bookingId: booking.id,
+                bookingItemId: item.id,
+            });
+            const res = await apiClient.get<any>(`/api/ktv/handover/checklist?${params.toString()}`);
+            if (res.success && res.checklist) {
+                setDynamicChecklist(res.checklist);
+            }
+        } catch (e) {
+            console.error('[Handover V5] Error fetching checklist:', e);
+        }
+    }, [booking]);
+
+    // Fetch checklist when entering HANDOVER screen
+    useEffect(() => {
+        if (screen === 'HANDOVER' && booking) {
+            fetchDynamicChecklist();
+        }
+    }, [screen, booking?.id]);
+
+    // === HANDOVER V5: Fetch pending (debt) handovers ===
+    const fetchPendingHandovers = useCallback(async () => {
+        if (!ktvId) return;
+        try {
+            const res = await apiClient.get<any>(`/api/ktv/handover/pending?ktvCode=${ktvId}`);
+            if (res.success) {
+                setPendingHandovers(res.items || []);
+            }
+        } catch (e) {
+            console.error('[Handover V5] Error fetching pending:', e);
+        }
+    }, [ktvId]);
+
+    // Fetch pending on DASHBOARD screen
+    useEffect(() => {
+        if (screen === 'DASHBOARD' && ktvId) {
+            fetchPendingHandovers();
+        }
+    }, [screen, ktvId]);
+
+    // === HANDOVER V5: Skip handover ===
+    const handleSkipHandover = useCallback(async () => {
+        if (!booking || !ktvId) return;
+        setIsSkippingHandover(true);
+        try {
+            const itemId = booking.assignedItemId || booking.assignedItemIds?.[0];
+            if (!itemId) return;
+            const res = await apiClient.post<any>('/api/ktv/handover/skip', {
+                bookingItemId: itemId,
+                ktvCode: ktvId,
+            });
+            if (res.success) {
+                // Skip successful → go to REWARD or next order
+                handleFinishHandover();
+            } else {
+                alert(res.error || 'Không thể bỏ qua. Bạn đã nợ quá nhiều đơn.');
+            }
+        } catch (e) {
+            console.error('[Handover V5] Skip error:', e);
+        } finally {
+            setIsSkippingHandover(false);
+        }
+    }, [booking, ktvId, handleFinishHandover]);
+
     const handleInteraction = async (type: 'WATER' | 'SUPPORT' | 'EMERGENCY' | 'BUY_MORE' | 'EARLY_EXIT') => {
         if (!booking) return;
         setIsLoading(true);
@@ -1980,6 +2060,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setHandoverPhotosBase64,
         isHandoverComplete,
         handleFinishHandover,
+        // Handover V5
+        dynamicChecklist,
+        pendingHandovers,
+        isSkippingHandover,
+        handleSkipHandover,
+        fetchPendingHandovers,
         commission,
         bonusMessage,
         setBonusMessage,

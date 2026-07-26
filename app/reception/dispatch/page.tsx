@@ -1116,18 +1116,15 @@ if (!hasPermission('dispatch_board')) {
 
   const handleApproveHandover = async (itemId: string, comment: string) => {
         try {
-            const { error } = await supabase.from('BookingItems').update({
-                handover_status: 'APPROVED',
-                handover_comment: comment,
-                // Khi duyệt, nếu chưa DONE thì cho phép chuyển status thành DONE (hoặc để KTVDashboard.logic tự làm)
-            }).eq('id', itemId);
-
-            if (error) throw error;
+            const res = await fetch('/api/reception/handover/review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingItemId: itemId, action: 'APPROVE' }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
             
-            // Xử lý báo cáo tiền tua: Nếu cả quầy duyệt và khách đánh giá tốt -> Tự động tính tiền (Đã có cron xử lý)
-            alert('Đã duyệt ảnh bàn giao thành công!');
-            
-            // Cập nhật state cục bộ
+            alert('✅ Đã duyệt ảnh bàn giao thành công!');
             fetchData();
         } catch (err: any) {
             console.error(err);
@@ -1135,20 +1132,27 @@ if (!hasPermission('dispatch_board')) {
         }
     };
 
-    const handleRejectHandover = async (itemId: string, comment: string) => {
+    const handleRejectHandover = async (itemId: string, rejectOption: string, reason: string) => {
         try {
-            const { error } = await supabase.from('BookingItems').update({
-                handover_status: 'REJECTED',
-                handover_comment: comment,
-                status: 'CLEANING' // Đẩy lại về CLEANING để KTV làm lại
-            }).eq('id', itemId);
-
-            if (error) throw error;
-            alert('Đã từ chối bàn giao. Đơn đã được chuyển lại về trạng thái Dọn Phòng.');
+            const res = await fetch('/api/reception/handover/review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    bookingItemId: itemId, 
+                    action: 'REJECT', 
+                    rejectOption, 
+                    reason 
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
             
-            // Gửi push notification cho KTV nếu có sub
-            // push(...) -> Có thể thêm sau
-            
+            const messages: Record<string, string> = {
+                REDO: '🔄 Đã yêu cầu KTV dọn lại phòng.',
+                DEDUCT: '💸 Đã trừ tiền phạt KTV.',
+                CONFISCATE: '🚫 Đã tước tiền tua đơn này.',
+            };
+            alert(messages[rejectOption] || data.message);
             fetchData();
         } catch (err: any) {
             console.error(err);

@@ -481,6 +481,44 @@ function ScreenDashboard({ logic }: { logic: any }) {
             </div>
           )}
 
+          {/* V5: Pending Handover Debt Widget */}
+          {logic.pendingHandovers?.length > 0 && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-5 rounded-[32px] shadow-sm border border-amber-200">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center">
+                  <AlertTriangle size={24} className="text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-amber-900 uppercase tracking-widest">Nợ bàn giao</h3>
+                  <p className="text-xs font-medium text-amber-700">
+                    Bạn còn {logic.pendingHandovers.length} đơn chưa bàn giao ảnh
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {logic.pendingHandovers.map((item: any) => (
+                  <div key={item.id} className="bg-white/80 p-3 rounded-2xl flex items-center justify-between border border-amber-100">
+                    <div>
+                      <span className="text-xs font-bold text-slate-700">
+                        #{item.Bookings?.billCode || '---'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 ml-2">
+                        Phòng {item.roomId}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${
+                      item.handover_status === 'REJECTED' 
+                        ? 'bg-rose-100 text-rose-700' 
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {item.handover_status === 'REJECTED' ? 'Bị từ chối' : 'Chưa nộp'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Mobile On-Call Toggle */}
           {onCallState?.allow_on_call && (
             <div className="lg:hidden bg-white p-5 rounded-[32px] shadow-sm border border-emerald-50 flex items-center justify-between">
@@ -1283,8 +1321,15 @@ function ScreenReview({ logic }: { logic: any }) {
 
 function ScreenHandover({ logic }: { logic: any }) {
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
+  const { dynamicChecklist = [], handleSkipHandover, isSkippingHandover } = logic;
   
-  const checklist: string[] = booking?.handoverChecklist || [];
+  // V5: Use dynamic checklist from API, fallback to old checklist from booking
+  const checklist: string[] = dynamicChecklist.length > 0
+    ? dynamicChecklist.map((c: any) => c.label)
+    : (booking?.handoverChecklist || []);
+
+  // V5: Show skip button only if there's a next order
+  const hasNextOrder = !!booking?.nextBookingId;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, itemKey?: string) => {
       const files = Array.from(e.target.files || []);
@@ -1316,10 +1361,9 @@ function ScreenHandover({ logic }: { logic: any }) {
           if (itemKey) {
               setHandoverPhotosBase64((prev: Record<string, string>) => ({
                   ...prev,
-                  [itemKey]: newPhotos[0] // Chỉ lấy 1 ảnh cho mỗi mục
+                  [itemKey]: newPhotos[0]
               }));
           } else {
-              // Fallback cho chế độ tự do (không có checklist)
               const timestamp = Date.now().toString();
               setHandoverPhotosBase64((prev: Record<string, string>) => ({
                   ...prev,
@@ -1337,8 +1381,8 @@ function ScreenHandover({ logic }: { logic: any }) {
         <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Sparkles className="text-blue-600" size={40} />
         </div>
-        <h2 className="text-2xl font-black text-slate-800">Dọn dẹp phòng</h2>
-        <p className="text-slate-500 font-medium">Chụp ảnh phòng đã dọn sạch sẽ để bàn giao.</p>
+        <h2 className="text-2xl font-black text-slate-800">Bàn giao phòng</h2>
+        <p className="text-slate-500 font-medium">Chụp ảnh từng mục bàn giao theo danh sách.</p>
       </div>
 
       <div className="space-y-4">
@@ -1353,6 +1397,8 @@ function ScreenHandover({ logic }: { logic: any }) {
              <div className="grid grid-cols-2 gap-3">
                  {checklist.map((item, idx) => {
                      const photo = handoverPhotosBase64[item];
+                     // V5: Show source badge (room vs service)
+                     const source = dynamicChecklist[idx]?.source;
                      return (
                          <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group bg-slate-50 flex flex-col items-center justify-center p-2 text-center">
                              {photo ? (
@@ -1376,6 +1422,11 @@ function ScreenHandover({ logic }: { logic: any }) {
                                  <label className="w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
                                      <Camera size={24} className="text-blue-500" />
                                      <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter leading-tight px-1">{item}</span>
+                                     {source && (
+                                         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${source === 'room' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>
+                                             {source === 'room' ? 'Phòng' : 'Dịch vụ'}
+                                         </span>
+                                     )}
                                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
                                  </label>
                              )}
@@ -1439,6 +1490,17 @@ function ScreenHandover({ logic }: { logic: any }) {
         Báo sự cố phòng
       </button>
 
+      {/* V5: Skip button — only show if KTV has next order */}
+      {hasNextOrder && (
+        <button
+          onClick={handleSkipHandover}
+          disabled={isSkippingHandover || logic.isLoading}
+          className="w-full py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-700 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-amber-100 disabled:opacity-40"
+        >
+          {isSkippingHandover ? 'Đang xử lý...' : '⏭ Bỏ qua — Nhận đơn mới'}
+        </button>
+      )}
+
       <button
         disabled={!isHandoverComplete || logic.isLoading}
         onClick={handleFinishHandover}
@@ -1451,6 +1513,8 @@ function ScreenHandover({ logic }: { logic: any }) {
     </div>
   );
 }
+
+
 
 function ScreenReward({ logic }: { logic: any }) {
   const { commission, goToDashboard } = logic;
