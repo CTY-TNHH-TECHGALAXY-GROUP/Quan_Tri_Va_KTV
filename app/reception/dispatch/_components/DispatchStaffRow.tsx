@@ -239,7 +239,7 @@ export const DispatchStaffRow = ({
                             <input
                                 type="text"
                                 placeholder="👉 Nhập tên hoặc mã KTV 👈"
-                                value={isDropdownOpen ? searchQuery : (row.ktvId?.startsWith('EXT') ? (row.ktvName || row.ktvId) : (row.ktvId || ''))}
+                                value={isDropdownOpen ? searchQuery : ((row.ktvId?.startsWith('EXT') || row.ktvId?.startsWith('C_')) ? (row.ktvName || row.ktvId) : (row.ktvId || ''))}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
                                     if (!isDropdownOpen) setIsDropdownOpen(true);
@@ -280,7 +280,7 @@ export const DispatchStaffRow = ({
                                     <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
                                         {availableTurns
                                             .filter(t => t.status !== 'off')
-                                            .filter(t => !t.employee_id.startsWith('EXT'))
+                                            .filter(t => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'))
                                             .filter(t => {
                                                 if (!searchQuery) return true;
                                                 const term = searchQuery.toLowerCase();

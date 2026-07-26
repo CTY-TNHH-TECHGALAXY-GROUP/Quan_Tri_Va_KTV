@@ -24,7 +24,7 @@ export async function getDispatchData(date: string) {
         const { data: allStaffs, error: sError } = await supabase.from('Staff').select('id, full_name, avatar_url, gender, status, skills, phone, position, experience, work_type, feature_flags, online_status, travel_minutes, available_from, available_until');
         if (sError) throw sError;
         
-        const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT'));
+        const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT') || s.id.startsWith('C_'));
 
         // 🔧 EGRESS FIX: Only select needed columns for TurnQueue
         const { data: turns, error: tError } = await supabase
@@ -1261,7 +1261,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     } else {
                         // KTV đã xong tất cả item của họ
                         let newTurnsCompleted = turn.turns_completed || 0;
-                        const newStatus = (turn.status === 'off' || turn.employee_id.startsWith('EXT')) ? 'off' : 'waiting';
+                        const newStatus = (turn.status === 'off' || turn.employee_id.startsWith('EXT') || turn.employee_id.startsWith('C_')) ? 'off' : 'waiting';
                         await supabase
                             .from('TurnQueue')
                             .update({

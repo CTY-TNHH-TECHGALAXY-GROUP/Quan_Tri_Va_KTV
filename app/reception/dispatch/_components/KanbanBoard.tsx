@@ -632,7 +632,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
                                                                         return (
                                                                             <span key={idx} className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md flex items-center gap-1.5">
-                                                                                <span className="flex items-center gap-0.5">👤 {st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                <span className="flex items-center gap-0.5">👤 {(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                 {startPhotoUrl && (
                                                                                     <button
                                                                                         onClick={(e) => {
@@ -667,7 +667,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                             return (
                                                                                 <div key={stIdx} className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className="text-[9px] font-bold text-gray-500 flex items-center gap-0.5">{st.ktvId?.startsWith('EXT') ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                        <span className="text-[9px] font-bold text-gray-500 flex items-center gap-0.5">{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         {(() => {
                                                                                             const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
                                                                                             if (!photoSegment) return null;

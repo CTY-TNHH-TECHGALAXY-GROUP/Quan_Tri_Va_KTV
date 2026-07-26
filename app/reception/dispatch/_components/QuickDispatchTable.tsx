@@ -686,7 +686,7 @@ const ServiceGroupCard = ({
   };
 
   const filteredTurns = useMemo(() => {
-    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !t.employee_id.startsWith('EXT')).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_')).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
       if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
       return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
     });
@@ -723,7 +723,7 @@ const ServiceGroupCard = ({
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nhân viên ({state.selectedKtvIds.length})</label>
           <div className="relative" ref={dropdownRef}>
             <div className="min-h-[44px] w-full px-3 py-2 border-2 border-gray-100 rounded-2xl bg-gray-50/30 flex flex-wrap gap-1.5 items-center cursor-text" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-0.5 hover:opacity-60"><X size={12} /></button>
@@ -757,7 +757,7 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const isExternal = ktvId.startsWith('EXT') || !t;
+                const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t;
                 const name = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId;
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';

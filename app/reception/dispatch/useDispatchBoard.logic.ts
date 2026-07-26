@@ -346,7 +346,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 mappedOrders.forEach(order => {
                     order.services.forEach(svc => {
                         svc.staffList?.forEach(st => {
-                            if (st.ktvId?.startsWith('EXT') && st.ktvName && st.ktvName !== st.ktvId) {
+                            if ((st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) && st.ktvName && st.ktvName !== st.ktvId) {
                                 ktvDisplayNames[st.ktvId] = st.ktvName;
                             }
                         });

@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.1.6";
-export const LAST_UPDATE = "Tự động cộng tiền thu phí bảo trì vào ví của tài khoản Developer";
+export const APP_VERSION = "1.1.7";
+export const LAST_UPDATE = "Fix hiển thị tên KTV Loại C (nhập tay) trên Dispatch Board";
