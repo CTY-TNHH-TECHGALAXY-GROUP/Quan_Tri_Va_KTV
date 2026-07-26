@@ -81,7 +81,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
-    const [isFetchingChecklist, setIsFetchingChecklist] = useState(false);
+    const [isFetchingChecklist, setIsFetchingChecklist] = useState(true);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
 
@@ -199,6 +199,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (alreadySubmitted && !hasSubmittedReview) {
                 console.log("🌟 [ReviewRestore] This KTV already submitted review, forwarding to HANDOVER...");
                 setHasSubmittedReview(true);
+                setIsFetchingChecklist(true);
                 setScreen('HANDOVER');
             }
         } catch(e) {}
@@ -629,6 +630,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } else {
                 // Nếu đã Review xong, chuyển sang HANDOVER (nếu chưa ở đó hoặc chưa tới REWARD)
                 if (currentScreen !== 'HANDOVER' && currentScreen !== 'REWARD') {
+                    setIsFetchingChecklist(true);
                     setScreen('HANDOVER');
                     setIsTimerRunning(false);
                 }
@@ -1736,6 +1738,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             // Always go to HANDOVER — commission is calculated in handleFinishHandover()
             isTransitioningRef.current = true;
+            setIsFetchingChecklist(true);
             setScreen('HANDOVER');
             setTimeout(() => isTransitioningRef.current = false, 1000);
         } catch (err) {
