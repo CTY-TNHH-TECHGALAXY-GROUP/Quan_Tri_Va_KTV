@@ -1324,9 +1324,14 @@ function ScreenHandover({ logic }: { logic: any }) {
   const { dynamicChecklist = [], handleSkipHandover, isSkippingHandover } = logic;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
-  const checklist: string[] = dynamicChecklist.length > 0
+  let checklist: string[] = dynamicChecklist.length > 0
     ? dynamicChecklist.map((c: any) => c.label)
     : (booking?.handoverChecklist || []);
+
+  // Nếu cả 2 đều rỗng (chưa cài đặt), fallback về 1 mục chung để giữ giao diện lưới
+  if (checklist.length === 0) {
+      checklist = ['Ảnh tổng quan phòng'];
+  }
 
   // V5: Show skip button only if there's a next order
   const hasNextOrder = !!booking?.nextBookingId;
@@ -1386,7 +1391,6 @@ function ScreenHandover({ logic }: { logic: any }) {
       </div>
 
       <div className="space-y-4">
-        {checklist.length > 0 ? (
           <div className="space-y-3">
              <div className="flex items-center justify-between px-1">
                  <span className="text-sm font-bold text-slate-700">Checklist bàn giao</span>
@@ -1435,50 +1439,6 @@ function ScreenHandover({ logic }: { logic: any }) {
                  })}
              </div>
           </div>
-        ) : (
-          /* Chế độ chụp tự do khi không có checklist */
-          <>
-            {Object.keys(handoverPhotosBase64).length > 0 ? (
-              <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center gap-4 animate-in zoom-in-95 duration-200">
-                <div className="grid grid-cols-2 gap-3 w-full">
-                  {Object.entries(handoverPhotosBase64).map(([key, photo]) => (
-                    <div key={key} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-sm group bg-white">
-                      <img src={photo as string} className="w-full h-full object-cover" alt="Handover preview" />
-                      <button 
-                        onClick={() => {
-                            const newPhotos = { ...handoverPhotosBase64 };
-                            delete newPhotos[key];
-                            setHandoverPhotosBase64(newPhotos);
-                        }}
-                        className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2 w-full">
-                    <label className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 active:scale-95 text-xs font-black uppercase tracking-widest rounded-xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer">
-                      <Camera size={16} /> Bổ sung thêm ảnh
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
-                    </label>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <label className="w-full h-24 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-200/50 rounded-[24px] flex flex-col items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45">
-                  <Camera size={28} />
-                  CHỤP ẢNH BÀN GIAO PHÒNG
-                  <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
-                </label>
-                <label className="w-full h-12 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[24px] flex items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh từ thư viện</span>
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
-                </label>
-              </div>
-            )}
-          </>
-        )}
       </div>
 
       {/* Room Issue Report Button */}
