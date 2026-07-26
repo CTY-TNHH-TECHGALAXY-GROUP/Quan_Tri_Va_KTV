@@ -450,8 +450,8 @@ export default function SystemSettingsPage() {
                         </div>
                     </div>
                 </div>
+                </div>
                 {/* End of grid */}
-
                 {/* Milestones Editor (Tua) */}
                 <MilestonesEditor activeTab={activeTab} />
 
