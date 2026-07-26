@@ -10,7 +10,7 @@ import {
   ClipboardList, Coffee, LogOut, Sparkles, User, Users,
   PlusSquare, HelpCircle, Zap, Target, Ban, AlertCircle,
   Dumbbell, Quote, BookOpen, BellRing, QrCode,
-  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw
+  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
@@ -1321,7 +1321,7 @@ function ScreenReview({ logic }: { logic: any }) {
 
 function ScreenHandover({ logic }: { logic: any }) {
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
-  const { dynamicChecklist = [], handleSkipHandover, isSkippingHandover } = logic;
+  const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover } = logic;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -1395,48 +1395,59 @@ function ScreenHandover({ logic }: { logic: any }) {
              <div className="flex items-center justify-between px-1">
                  <span className="text-sm font-bold text-slate-700">Checklist bàn giao</span>
                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                     {Object.keys(handoverPhotosBase64).filter(k => checklist.includes(k)).length}/{checklist.length}
+                     {isFetchingChecklist ? <Loader2 size={12} className="animate-spin inline-block" /> : `${Object.keys(handoverPhotosBase64).filter(k => checklist.includes(k)).length}/${checklist.length}`}
                  </span>
              </div>
              <div className="grid grid-cols-2 gap-3">
-                 {checklist.map((item, idx) => {
-                     const photo = handoverPhotosBase64[item];
-                     // V5: Show source badge (room vs service)
-                     const source = dynamicChecklist[idx]?.source;
-                     return (
-                         <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group bg-slate-50 flex flex-col items-center justify-center p-2 text-center">
-                             {photo ? (
-                                 <>
-                                     <img src={photo} className="absolute inset-0 w-full h-full object-cover" alt={item} />
-                                     <button 
-                                         onClick={() => {
-                                             const newPhotos = { ...handoverPhotosBase64 };
-                                             delete newPhotos[item];
-                                             setHandoverPhotosBase64(newPhotos);
-                                         }}
-                                         className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
-                                     >
-                                         <X size={16} />
-                                     </button>
-                                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                                         <span className="text-[10px] font-black text-white uppercase tracking-wider">{item}</span>
-                                     </div>
-                                 </>
-                             ) : (
-                                 <label className="w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
-                                     <Camera size={24} className="text-blue-500" />
-                                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter leading-tight px-1">{item}</span>
-                                     {source && (
-                                         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${source === 'room' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>
-                                             {source === 'room' ? 'Phòng' : 'Dịch vụ'}
-                                         </span>
-                                     )}
-                                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
-                                 </label>
-                             )}
+                 {isFetchingChecklist ? (
+                     // Skeleton Loader
+                     Array.from({ length: 4 }).map((_, i) => (
+                         <div key={i} className="relative aspect-square rounded-2xl border-2 border-slate-100 shadow-sm bg-slate-50 flex flex-col items-center justify-center p-2 animate-pulse">
+                             <div className="w-8 h-8 rounded-full bg-slate-200/60 mb-2"></div>
+                             <div className="h-3 bg-slate-200/60 rounded w-16 mb-1"></div>
+                             <div className="h-2 bg-slate-200/60 rounded w-10"></div>
                          </div>
-                     );
-                 })}
+                     ))
+                 ) : (
+                     checklist.map((item, idx) => {
+                         const photo = handoverPhotosBase64[item];
+                         // V5: Show source badge (room vs service)
+                         const source = dynamicChecklist[idx]?.source;
+                         return (
+                             <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group bg-slate-50 flex flex-col items-center justify-center p-2 text-center">
+                                 {photo ? (
+                                     <>
+                                         <img src={photo} className="absolute inset-0 w-full h-full object-cover" alt={item} />
+                                         <button 
+                                             onClick={() => {
+                                                 const newPhotos = { ...handoverPhotosBase64 };
+                                                 delete newPhotos[item];
+                                                 setHandoverPhotosBase64(newPhotos);
+                                             }}
+                                             className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                                         >
+                                             <X size={16} />
+                                         </button>
+                                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                             <span className="text-[10px] font-black text-white uppercase tracking-wider">{item}</span>
+                                         </div>
+                                     </>
+                                 ) : (
+                                     <label className="w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
+                                         <Camera size={24} className="text-blue-500" />
+                                         <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter leading-tight px-1">{item}</span>
+                                         {source && (
+                                             <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${source === 'room' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>
+                                                 {source === 'room' ? 'Phòng' : 'Dịch vụ'}
+                                             </span>
+                                         )}
+                                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
+                                     </label>
+                                 )}
+                             </div>
+                         );
+                     })
+                 )}
              </div>
           </div>
       </div>

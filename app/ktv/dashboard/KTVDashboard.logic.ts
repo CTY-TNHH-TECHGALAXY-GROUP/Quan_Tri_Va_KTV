@@ -81,6 +81,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
+    const [isFetchingChecklist, setIsFetchingChecklist] = useState(false);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
 
@@ -1903,6 +1904,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // === HANDOVER V5: Fetch dynamic checklist from API ===
     const fetchDynamicChecklist = useCallback(async () => {
         if (!booking) return;
+        setIsFetchingChecklist(true);
         try {
             const item = booking.BookingItems?.find((i: any) => 
                 booking.assignedItemIds?.includes(i.id) || booking.assignedItemId === i.id
@@ -1921,6 +1923,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
         } catch (e) {
             console.error('[Handover V5] Error fetching checklist:', e);
+        } finally {
+            setIsFetchingChecklist(false);
         }
     }, [booking]);
 
@@ -2062,6 +2066,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         handleFinishHandover,
         // Handover V5
         dynamicChecklist,
+        isFetchingChecklist,
         pendingHandovers,
         isSkippingHandover,
         handleSkipHandover,
