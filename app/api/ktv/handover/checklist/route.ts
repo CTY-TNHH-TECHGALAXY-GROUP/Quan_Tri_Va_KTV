@@ -15,9 +15,9 @@ export async function GET(request: Request) {
         const bookingId = searchParams.get('bookingId');
         const bookingItemId = searchParams.get('bookingItemId');
 
-        if (!roomId || !bookingId || !bookingItemId) {
+        if (!bookingId || !bookingItemId) {
             return NextResponse.json(
-                { success: false, error: 'roomId, bookingId, and bookingItemId are required' },
+                { success: false, error: 'bookingId and bookingItemId are required' },
                 { status: 400 }
             );
         }

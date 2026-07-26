@@ -48,29 +48,34 @@ export class HandoverService {
         const checklist: HandoverChecklistItem[] = [];
 
         // TỐI ƯU HIỆU NĂNG: Chạy 3 câu truy vấn độc lập song song cùng lúc (Parallel Fetching)
-        const [remainingInRoomRes, roomRes, configRes] = await Promise.all([
-            // 1. Đếm số lượng KTV còn lại trong phòng (chỉ tính PENDING, IN_PROGRESS)
-            supabase
+        const remainingInRoomPromise = roomId 
+            ? supabase
                 .from('BookingItems')
                 .select('id', { count: 'exact', head: true })
                 .eq('bookingId', bookingId)
                 .eq('roomId', roomId)
                 .neq('id', bookingItemId)
-                .in('status', ['PENDING', 'IN_PROGRESS']),
-                
-            // 2. Tải sẵn checklist cấu hình của phòng đó
-            supabase
+                .in('status', ['PENDING', 'IN_PROGRESS'])
+            : Promise.resolve({ count: 0 });
+
+        const roomPromise = roomId
+            ? supabase
                 .from('Rooms')
                 .select('handover_checklist')
                 .eq('id', roomId)
-                .single(),
-                
-            // 3. Tải sẵn cấu hình checklist theo nhóm dịch vụ
-            supabase
-                .from('SystemConfigs')
-                .select('value')
-                .eq('key', 'handover_service_mapping')
                 .single()
+            : Promise.resolve({ data: null });
+
+        const configPromise = supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'handover_service_mapping')
+            .single();
+
+        const [remainingInRoomRes, roomRes, configRes] = await Promise.all([
+            remainingInRoomPromise,
+            roomPromise,
+            configPromise
         ]);
 
         const remainingInRoom = remainingInRoomRes.count;
