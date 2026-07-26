@@ -53,8 +53,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                     staff: staffs.find(s => s.id === t.employee_id)
                 }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
-                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting' && t.status !== 'off');
+                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
+                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')) && t.status !== 'waiting' && t.status !== 'off');
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -81,8 +81,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 staff: staffs.find(s => s.id === t.employee_id)
             }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
-                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT'));
-                const external = merged.filter((t: TurnQueueData) => t.employee_id.startsWith('EXT') && t.status !== 'waiting' && t.status !== 'off');
+                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
+                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')) && t.status !== 'waiting' && t.status !== 'off');
                 setTurns(internal);
                 setExternalTurns(external);
         }
