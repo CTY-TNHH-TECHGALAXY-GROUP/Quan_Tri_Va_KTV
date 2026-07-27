@@ -39,11 +39,11 @@ export class BookingModificationService {
                 const { count } = await supabase
                     .from('Bookings')
                     .select('id', { count: 'exact', head: true })
-                    .like('id', `WB-%-${dateFullStr}`);
+                    .like('id', `NDK-%-${dateFullStr}`);
                 
                 const seq = String((count || 0) + 1).padStart(3, '0');
-                billCode = `WB-${seq}-${dateFullStr}`;
-                bookingId = billCode; // Sử dụng mã tịnh tiến làm ID giống Web Booking
+                billCode = `NDK-${seq}-${dateFullStr}`;
+                bookingId = billCode; // Sử dụng mã tịnh tiến làm ID
             }
 
             // 2. Lấy thông tin dịch vụ
