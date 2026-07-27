@@ -571,14 +571,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
                         const sCat = activeItemForStatus?.service_category || activeItemForStatus?.category || '';
                         const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomId || null;
-                        console.log(`🔍 [Prefetch Checklist] sCode=${sCode} sCat=${sCat} rId=${rId} itemId=${activeItemId || activeItemForStatus?.id} serviceId=${activeItemForStatus?.serviceId}`);
+                        const sId = activeItemForStatus?.serviceId || null;
+                        console.log(`🔍 [Prefetch Checklist] sCode=${sCode} sCat=${sCat} rId=${rId} itemId=${activeItemId || activeItemForStatus?.id} serviceId=${sId}`);
                         const result = await HandoverService.generateDynamicChecklist(
                             supabase,
                             rId,
                             sCode,
                             sCat,
                             booking.id,
-                            activeItemId || activeItemForStatus?.id
+                            activeItemId || activeItemForStatus?.id,
+                            sId
                         );
                         console.log(`✅ [Prefetch Checklist] Result: ${result.length} items`, JSON.stringify(result));
                         return result;

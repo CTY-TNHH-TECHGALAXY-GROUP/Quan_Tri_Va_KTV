@@ -43,11 +43,12 @@ export class HandoverService {
         serviceCode: string,
         serviceCategory: string,
         bookingId: string,
-        bookingItemId: string
+        bookingItemId: string,
+        serviceId?: string // 🆕 Thêm tham số này để fallback nếu code/category rỗng
     ): Promise<HandoverChecklistItem[]> {
         const checklist: HandoverChecklistItem[] = [];
 
-        // TỐI ƯU HIỆU NĂNG: Chạy 3 câu truy vấn độc lập song song cùng lúc (Parallel Fetching)
+        // TỐI ƯU HIỆU NĂNG: Chạy 4 câu truy vấn độc lập song song cùng lúc (Parallel Fetching)
         const remainingInRoomPromise = roomId 
             ? supabase
                 .from('BookingItems')
@@ -72,10 +73,20 @@ export class HandoverService {
             .eq('key', 'handover_service_mapping')
             .single();
 
-        const [remainingInRoomRes, roomRes, configRes] = await Promise.all([
+        // 🆕 Truy vấn bù thông tin Service nếu thiếu
+        const servicePromise = (serviceId && (!serviceCode || !serviceCategory))
+            ? supabase
+                .from('Services')
+                .select('code, category')
+                .eq('id', serviceId)
+                .single()
+            : Promise.resolve({ data: null });
+
+        const [remainingInRoomRes, roomRes, configRes, serviceRes] = await Promise.all([
             remainingInRoomPromise,
             roomPromise,
-            configPromise
+            configPromise,
+            servicePromise
         ]);
 
         const remainingInRoom = remainingInRoomRes.count;
@@ -93,6 +104,11 @@ export class HandoverService {
 
         // Xử lý checklist Dịch vụ
         const configRow = configRes.data;
+        const fallbackSvc = serviceRes.data;
+
+        // Ưu tiên dùng code/category truyền vào, nếu không có thì lấy từ DB (serviceRes)
+        const finalCode = (serviceCode || fallbackSvc?.code || '').trim().toUpperCase();
+        const finalCat = (serviceCategory || fallbackSvc?.category || '').trim().toLowerCase();
 
         if (configRow?.value) {
             let mapping: HandoverMappingConfig;
@@ -105,15 +121,12 @@ export class HandoverService {
             }
 
             // 4. Match by category OR service code
-            const normalizedCode = serviceCode?.trim().toUpperCase() || '';
-            const normalizedCategory = serviceCategory?.trim() || '';
-
             for (const group of Object.values(mapping)) {
                 const matchesCat = group.apply_categories?.some(
-                    (cat: string) => cat.toLowerCase() === normalizedCategory.toLowerCase()
+                    (cat: string) => cat.toLowerCase() === finalCat
                 );
                 const matchesSvc = group.apply_services?.some(
-                    (code: string) => code.toUpperCase() === normalizedCode
+                    (code: string) => code.toUpperCase() === finalCode
                 );
 
                 if (matchesCat || matchesSvc) {
