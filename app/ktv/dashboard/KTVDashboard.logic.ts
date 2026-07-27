@@ -81,7 +81,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
-    const [isFetchingChecklist, setIsFetchingChecklist] = useState(true);
+    const [isFetchingChecklist, setIsFetchingChecklist] = useState(false);
     const fetchedChecklistBookingIdRef = useRef<string | null>(null);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
@@ -766,6 +766,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     }
 
                     console.log(`📡 [KTV] Fetch Success - ID: ${res.data.id} Status: ${res.data.status} Rating: ${res.data.rating} | ⏱️ Network: ${fetchMs}ms | Server: ${JSON.stringify(res._perf || {})}`);
+
+                    // ⚡ INSTANT CHECKLIST: Set checklist ngay tại đây, không đợi useEffect chain
+                    if (res.data.prefetchedDynamicChecklist && fetchedChecklistBookingIdRef.current !== res.data.id) {
+                        console.log("⚡ [KTV] Instant checklist from prefetch!");
+                        setDynamicChecklist(res.data.prefetchedDynamicChecklist);
+                        fetchedChecklistBookingIdRef.current = res.data.id;
+                        setIsFetchingChecklist(false);
+                    }
+
                     // IGNORE if this is the booking we just finished and acknowledged
                     if (res.data.id === lastAcknowledgedIdRef.current) {
                         setBooking(null);
