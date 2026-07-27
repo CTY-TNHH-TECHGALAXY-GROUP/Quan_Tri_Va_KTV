@@ -42,6 +42,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
     const bookingIdParam = searchParams.get('bookingId');
 
     try {
+        const API_START = Date.now();
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -179,6 +180,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
+        const T_RESOLVE = Date.now() - API_START;
+
         // ═══════════════════════════════════════════════════════════════
         // ⚡ NHÓM 2: PARALLEL FETCH CHÍNH (5 queries cùng lúc)
         // Tất cả chỉ cần bookingId + technicianCode → chạy song song
@@ -234,7 +237,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 : Promise.resolve({ data: null, error: null }),
         ]);
 
-        // Unpack results
+        const T_PARALLEL_FETCH = Date.now() - API_START;
         const booking = bookingRes.data;
         const bError = bookingRes.error;
         const turnInfo = turnInfoRes.data;
@@ -286,7 +289,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 : Promise.resolve({ data: null, error: null }),
         ]);
 
-        // 3c. Enrich items với Services data
+        const T_ENRICH_FETCH = Date.now() - API_START;
         let itemsWithService = items || [];
         if (items && items.length > 0) {
             const svcs = svcsRes.data;
@@ -587,9 +590,13 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         nextServiceName = parallelExtras[0];
         prefetchedDynamicChecklist = parallelExtras[1];
 
+        const T_TOTAL = Date.now() - API_START;
+        console.log(`⚡ [API PERF] GET /api/ktv/booking | Resolve: ${T_RESOLVE}ms | ParallelFetch: ${T_PARALLEL_FETCH}ms | Enrich: ${T_ENRICH_FETCH}ms | Total: ${T_TOTAL}ms | bookingId: ${bookingId} | ktv: ${technicianCode}`);
+
         // ─── 8. RESPONSE ───
         return NextResponse.json({
             success: true,
+            _perf: { resolve: T_RESOLVE, fetch: T_PARALLEL_FETCH, enrich: T_ENRICH_FETCH, total: T_TOTAL },
             data: {
                 ...booking,
                 prefetchedDynamicChecklist,

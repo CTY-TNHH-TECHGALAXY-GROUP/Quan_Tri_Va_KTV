@@ -741,7 +741,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
                 // (Đã gộp vào logic ở trên)
 
+                const fetchStart = Date.now();
                 const res = await apiClient.get<any>(url);
+                const fetchMs = Date.now() - fetchStart;
                 
                 if (res.success && res.data && res.data.id) {
                     if (isTransitioningRef.current) {
@@ -763,7 +765,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         try { localStorage.setItem(POST_SERVICE_BOOKING_KEY, currentLockedBookingId); } catch (e) {}
                     }
 
-                    console.log("📡 [KTV] Fetch Success - ID:", res.data.id, "Status:", res.data.status, "Rating:", res.data.rating);
+                    console.log(`📡 [KTV] Fetch Success - ID: ${res.data.id} Status: ${res.data.status} Rating: ${res.data.rating} | ⏱️ Network: ${fetchMs}ms | Server: ${JSON.stringify(res._perf || {})}`);
                     // IGNORE if this is the booking we just finished and acknowledged
                     if (res.data.id === lastAcknowledgedIdRef.current) {
                         setBooking(null);
