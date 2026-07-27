@@ -564,8 +564,9 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 })()
                 : Promise.resolve(null),
 
-            // Extra 2: Prefetch dynamic checklist (nếu KTV đang FEEDBACK/CLEANING)
-            (computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING')
+            // Extra 2: Âm thầm tải trước Checklist Bàn giao ngay từ lúc KTV đang làm dịch vụ (IN_PROGRESS)
+            // Để triệt tiêu hoàn toàn thời gian load (0 giây) khi chuyển sang màn Bàn Giao
+            (computedStatus === 'IN_PROGRESS' || computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING')
                 ? (async () => {
                     try {
                         const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
