@@ -1906,7 +1906,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const fetchDynamicChecklist = useCallback(async () => {
         if (!booking) return;
         if (fetchedChecklistBookingIdRef.current === booking.id) return; // Đã fetch cho booking này rồi
-        
+        // TỐI ƯU HIỆU NĂNG: Ưu tiên dùng dữ liệu prefetch từ /api/ktv/booking (nếu có)
+        if (booking.prefetchedDynamicChecklist) {
+            console.log("⚡ [KTV] Using prefetched dynamic checklist!");
+            setDynamicChecklist(booking.prefetchedDynamicChecklist);
+            fetchedChecklistBookingIdRef.current = booking.id;
+            setIsFetchingChecklist(false);
+            return;
+        }
+
         setIsFetchingChecklist(true);
         try {
             const item = booking.BookingItems?.find((i: any) => 
