@@ -1,5 +1,5 @@
 -- Bảng KTVMonthlyLedger (Cuốn Tháng)
-CREATE TABLE "KTVMonthlyLedger" (
+CREATE TABLE IF NOT EXISTS "KTVMonthlyLedger" (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     staff_id TEXT NOT NULL,
     month INTEGER NOT NULL,        -- VD: 7
@@ -15,7 +15,7 @@ CREATE TABLE "KTVMonthlyLedger" (
 );
 
 -- Bảng KTVYearlyLedger (Cuốn Năm)
-CREATE TABLE "KTVYearlyLedger" (
+CREATE TABLE IF NOT EXISTS "KTVYearlyLedger" (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     staff_id TEXT NOT NULL,
     year INTEGER NOT NULL,         -- VD: 2026

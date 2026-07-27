@@ -16,11 +16,11 @@ DECLARE
   
   tpl_uuid uuid;
 BEGIN
-  -- Xoá các mẫu Test cũ (tuỳ chọn, nếu muốn xoá sạch kho việc cũ thì uncomment)
-  -- DELETE FROM "public"."RoomTaskTemplates";
-  -- DELETE FROM "public"."EmployeeRoutines";
-  -- DELETE FROM "public"."TaskTemplates";
-  -- DELETE FROM "public"."TaskCategories";
+  -- Xoá toàn bộ dữ liệu cũ để tránh trùng lặp khi chạy lại nhiều lần
+  DELETE FROM "public"."RoomTaskTemplates";
+  DELETE FROM "public"."EmployeeRoutines";
+  DELETE FROM "public"."TaskTemplates";
+  DELETE FROM "public"."TaskCategories";
 
   -- 1. Insert Categories
   INSERT INTO "public"."TaskCategories" (id, name, type, is_active)
@@ -97,12 +97,15 @@ BEGIN
   VALUES (cat_daily, 'Đảm bảo đèn tinh dầu luôn sạch sẽ', true, 1, true) RETURNING id INTO tpl_uuid;
   INSERT INTO "public"."RoomTaskTemplates" (room_id, template_id) SELECT id, tpl_uuid FROM "public"."Rooms" WHERE id IN ('PG', 'V3', 'V4', 'WC1', 'WC2', 'BATH_L1');
 
-  -- Task: Đảm bảo móc treo quần áo và giỏ đựng đồ khách (Full trừ sảnh)
+  -- Task: Đảm bảo móc treo quần áo (Full trừ sảnh)
   INSERT INTO "public"."TaskTemplates" (category_id, name, requires_photo, min_photo_count, is_active)
-  VALUES (cat_daily, 'Đảm bảo có đủ móc treo và giỏ đựng đồ', false, 1, true) RETURNING id INTO tpl_uuid;
+  VALUES (cat_daily, 'Đảm bảo móc treo quần áo', false, 1, true) RETURNING id INTO tpl_uuid;
   INSERT INTO "public"."RoomTaskTemplates" (room_id, template_id) SELECT id, tpl_uuid FROM "public"."Rooms" WHERE id IN ('PG', 'V3', 'V4', 'WC1', 'WC2', 'BATH_L1');
 
-  -- Task: Đảm bảo full tủ đồ khách (Full trừ sảnh)
+  -- Task: Đảm bảo đủ số lượng giỏ đựng đồ khách (Full trừ sảnh)
+  INSERT INTO "public"."TaskTemplates" (category_id, name, requires_photo, min_photo_count, is_active)
+  VALUES (cat_daily, 'Đảm bảo đủ số lượng giỏ đựng đồ khách', true, 1, true) RETURNING id INTO tpl_uuid;
+  INSERT INTO "public"."RoomTaskTemplates" (room_id, template_id) SELECT id, tpl_uuid FROM "public"."Rooms" WHERE id IN ('PG', 'V3', 'V4', 'WC1', 'WC2', 'BATH_L1');
   INSERT INTO "public"."TaskTemplates" (category_id, name, requires_photo, min_photo_count, is_active)
   VALUES (cat_daily, 'Đảm bảo tủ đồ khách gọn gàng, đầy đủ', false, 1, true) RETURNING id INTO tpl_uuid;
   INSERT INTO "public"."RoomTaskTemplates" (room_id, template_id) SELECT id, tpl_uuid FROM "public"."Rooms" WHERE id IN ('PG', 'V3', 'V4', 'WC1', 'WC2', 'BATH_L1');
