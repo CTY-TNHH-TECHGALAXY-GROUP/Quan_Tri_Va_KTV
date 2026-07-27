@@ -470,17 +470,41 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                             />
                           )}
                         </div>
+                      <div className="flex flex-col items-center gap-1">
+                        {idx > 0 && (
+                          <button
+                            onClick={() => {
+                              const newTasks = [...tasks];
+                              const temp = newTasks[idx - 1];
+                              newTasks[idx - 1] = newTasks[idx];
+                              newTasks[idx] = temp;
+                              setTasks(newTasks);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 font-bold"
+                          >↑</button>
+                        )}
+                        {idx < tasks.length - 1 && (
+                          <button
+                            onClick={() => {
+                              const newTasks = [...tasks];
+                              const temp = newTasks[idx + 1];
+                              newTasks[idx + 1] = newTasks[idx];
+                              newTasks[idx] = temp;
+                              setTasks(newTasks);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 font-bold"
+                          >↓</button>
+                        )}
+                        {tasks.length > 1 && (
+                          <button 
+                            onClick={() => {
+                              const newTasks = tasks.filter((_, i) => i !== idx);
+                              setTasks(newTasks);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 mt-auto"
+                          >✕</button>
+                        )}
                       </div>
-                      
-                      {tasks.length > 1 && (
-                        <button 
-                          onClick={() => {
-                            const newTasks = tasks.filter((_, i) => i !== idx);
-                            setTasks(newTasks);
-                          }}
-                          className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600"
-                        >✕</button>
-                      )}
                     </div>
                   ))}
                 </div>

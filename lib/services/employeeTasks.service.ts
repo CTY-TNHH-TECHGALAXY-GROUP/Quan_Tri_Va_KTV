@@ -19,7 +19,7 @@ export class EmployeeTasksService {
   /**
    * Auto-generate tasks for an employee based on their active routines
    */
-  static async generateTodayTasks(empId: string) {
+  static async generateTodayTasks(empIds: string[]) {
     const todayStart = getTodayStart();
     const todayEnd = getTodayEnd();
     
@@ -33,24 +33,23 @@ export class EmployeeTasksService {
     const { data: leaveData } = await supabase
       .from('KTVLeaveRequests')
       .select('id')
-      .eq('employeeId', empId)
+      .in('employeeId', empIds)
       .eq('date', todayStr)
       .eq('status', 'APPROVED');
       
     if (leaveData && leaveData.length > 0) {
-      console.log(`Employee ${empId} is on leave today. Skipping task generation.`);
+      console.log(`Employee(s) ${empIds.join(', ')} is on leave today. Skipping task generation.`);
       return { success: true, count: 0, reason: 'ON_LEAVE' };
     }
 
     const { data: dailyAtt } = await supabase
       .from('DailyAttendance')
       .select('status')
-      .eq('employee_id', empId)
-      .eq('date', todayStr)
-      .maybeSingle();
+      .in('employee_id', empIds)
+      .eq('date', todayStr);
       
-    if (dailyAtt && (dailyAtt.status === 'absent' || dailyAtt.status === 'off_leave' || dailyAtt.status === 'off_duty')) {
-      console.log(`Employee ${empId} attendance status is ${dailyAtt.status}. Skipping task generation.`);
+    if (dailyAtt && dailyAtt.some(att => att.status === 'absent' || att.status === 'off_leave' || att.status === 'off_duty')) {
+      console.log(`Employee(s) ${empIds.join(', ')} attendance status is off. Skipping task generation.`);
       return { success: true, count: 0, reason: 'OFF_DUTY' };
     }
 
@@ -58,7 +57,7 @@ export class EmployeeTasksService {
     const { data: existing, error: err1 } = await supabase
       .from('Tasks')
       .select('id, template_id')
-      .eq('assignee_id', empId)
+      .in('assignee_id', empIds)
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd);
 
@@ -73,7 +72,7 @@ export class EmployeeTasksService {
     const { data: routines, error: err2 } = await supabase
       .from('EmployeeRoutines')
       .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count)')
-      .eq('employee_id', empId)
+      .in('employee_id', empIds)
       .eq('is_active', true);
 
     if (err2) {
@@ -91,7 +90,7 @@ export class EmployeeTasksService {
         category_id: r.TaskTemplates?.category_id || null,
         name: r.TaskTemplates?.name || 'Công việc',
         task_type: 'FIXED',
-        assignee_id: empId,
+        assignee_id: empIds[0], // Use the primary ID (UUID) for assignment
         status: 'NOT_STARTED',
         inspection_status: 'NOT_REVIEWED',
         priority: 'NORMAL',
@@ -111,7 +110,7 @@ export class EmployeeTasksService {
   /**
    * Fetch all tasks for an employee today
    */
-  static async fetchTasks(empId: string) {
+  static async fetchTasks(empIds: string[]) {
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase not initialized');
 
@@ -120,8 +119,8 @@ export class EmployeeTasksService {
 
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, updated_at, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name)')
-      .eq('assignee_id', empId)
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name)')
+      .in('assignee_id', empIds)
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -163,6 +162,7 @@ export class EmployeeTasksService {
       category_id: t.category_id,
       categoryName: t.TaskCategories?.name || 'Khác',
       categoryOrder: 999,
+      sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
 
     return { success: true, data: mapped };

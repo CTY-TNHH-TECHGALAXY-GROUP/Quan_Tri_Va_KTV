@@ -38,6 +38,7 @@ interface TemplateItem {
   cron_schedule: string;
   requires_photo: boolean;
   min_photo_count: number;
+  sort_order: number;
   is_active: boolean;
   assignedEmployees: string[]; // fullName list
 }
@@ -141,6 +142,7 @@ export const useSupportTemplates = () => {
     const { data, error } = await supabase
       .from('TaskTemplates')
       .select('*, TaskCategories(name, type)')
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -176,6 +178,7 @@ export const useSupportTemplates = () => {
       cron_schedule: tpl.cron_schedule || '—',
       requires_photo: tpl.requires_photo,
       min_photo_count: tpl.min_photo_count,
+      sort_order: tpl.sort_order || 0,
       is_active: tpl.is_active,
       assignedEmployees: assignmentMap.get(tpl.id) || [],
     }));
@@ -297,7 +300,8 @@ export const useSupportTemplates = () => {
       }
 
       // 2. Add new tasks or update existing
-      for (const t of tasksToSave) {
+      for (let i = 0; i < tasksToSave.length; i++) {
+        const t = tasksToSave[i];
         if (t.name.trim() === '') continue;
         
         if (t.id) {
@@ -306,6 +310,7 @@ export const useSupportTemplates = () => {
             name: t.name,
             requires_photo: t.requires_photo,
             min_photo_count: t.min_photo_count,
+            sort_order: i,
           }).eq('id', t.id);
         } else {
           // Insert new
@@ -314,6 +319,7 @@ export const useSupportTemplates = () => {
             category_id: finalCategoryId,
             requires_photo: t.requires_photo,
             min_photo_count: t.min_photo_count,
+            sort_order: i,
             is_active: true,
           });
         }

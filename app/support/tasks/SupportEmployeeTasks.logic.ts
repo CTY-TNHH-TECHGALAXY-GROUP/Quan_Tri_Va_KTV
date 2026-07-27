@@ -27,6 +27,7 @@ interface TaskItem {
   category_id?: string;
   categoryName?: string;
   categoryOrder?: number;
+  sortOrder?: number;
 }
 
 interface TaskNotification {
@@ -47,7 +48,7 @@ export const useSupportTasks = () => {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [uploading, setUploading] = useState(false);
   
-  const employeeId = user?.code || user?.id || null;
+  const employeeId = user?.id || null;
 
   // Track if we already generated today's tasks
   const hasGeneratedRef = useRef(false);
@@ -57,7 +58,8 @@ export const useSupportTasks = () => {
   // ============================================================
   const fetchTasks = useCallback(async (empId: string) => {
     try {
-      const res = await fetch(`/api/support/tasks?employeeId=${empId}`);
+      const userCodeParam = user?.code ? `&userCode=${user.code}` : '';
+      const res = await fetch(`/api/support/tasks?employeeId=${empId}${userCodeParam}&t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success) {
         setTasks(json.data || []);
@@ -275,7 +277,10 @@ export const useSupportTasks = () => {
     groupedTasks[catId].tasks.push(t);
   });
 
-  const sortedCategories = Object.values(groupedTasks).sort((a, b) => a.categoryOrder - b.categoryOrder);
+  const sortedCategories = Object.values(groupedTasks).map(cat => ({
+    ...cat,
+    tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  })).sort((a, b) => a.categoryOrder - b.categoryOrder);
 
   const totalTasks = tasks.length;
   const doneCount = tasks.filter(t => t.status === 'COMPLETED').length;

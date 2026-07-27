@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
-import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // 🔧 UI CONFIGURATION
@@ -104,18 +104,7 @@ export default function SupportEmployeeTasksPage() {
       {/* ======================== CÁC DANH MỤC CÔNG VIỆC ======================== */}
       {logic.sortedCategories.map((group) => {
         if (group.tasks.length === 0) return null;
-        return (
-          <section key={group.categoryName} className="mb-6">
-            <div className="bg-slate-200 text-slate-700 px-4 py-3 rounded-t-xl">
-              <h2 className="text-sm font-bold uppercase tracking-wide">{group.categoryName}</h2>
-            </div>
-            <div className="bg-white border-x border-b border-slate-200 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm">
-              {group.tasks.map((task, index) => (
-                <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={false} />
-              ))}
-            </div>
-          </section>
-        );
+        return <CategoryGroup key={group.categoryName} group={group} logic={logic} />;
       })}
 
       {/* No tasks */}
@@ -134,6 +123,36 @@ export default function SupportEmployeeTasksPage() {
 // ============================================================
 // Sub-components
 // ============================================================
+const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const doneCount = group.tasks.filter((t: any) => t.status === 'COMPLETED').length;
+  
+  return (
+    <section className="mb-6">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-slate-200 text-slate-700 px-4 py-3 rounded-t-xl flex items-center justify-between cursor-pointer hover:bg-slate-300 transition-colors"
+      >
+        <div className="flex flex-col">
+          <h2 className="text-sm font-bold uppercase tracking-wide">{group.categoryName}</h2>
+          <p className="text-[11px] text-slate-500 font-medium">Hoàn thành {doneCount}/{group.tasks.length}</p>
+        </div>
+        <div className="text-slate-500">
+          {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </div>
+      </div>
+      
+      {isOpen && (
+        <div className="bg-white border-x border-b border-slate-200 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm animate-in slide-in-from-top-2 fade-in duration-200">
+          {group.tasks.map((task: any, index: number) => (
+            <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={false} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; logic: any; isUrgent: boolean }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   

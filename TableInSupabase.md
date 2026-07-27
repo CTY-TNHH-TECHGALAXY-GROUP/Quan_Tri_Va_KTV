@@ -579,6 +579,7 @@
 | `requires_photo` | boolean | Bắt buộc chụp ảnh (Default: true) |
 | `min_photo_count` | integer | Số ảnh tối thiểu (Default: 1) |
 | `cron_schedule` | text | Lịch cron chạy ngầm (VD: `0 0 * * *`) |
+| `sort_order` | integer | (MỚI) Thứ tự sắp xếp công việc trong nhóm |
 | `is_active` | boolean | Bật/tắt việc chạy tự động |
 | `created_by` | text | Admin tạo |
 | `created_at` | timestamptz | |
@@ -607,6 +608,7 @@
 | `inspection_status` | text | Trạng thái QL: `PENDING_REVIEW` / `PASSED` / `REWORK_REQUIRED` / `FAILED` |
 | `due_at` | timestamptz | Hạn chót hoàn thành |
 | `priority` | text | `LOW` / `NORMAL` / `HIGH` |
+| `sort_order` | integer | (MỚI) Thứ tự sắp xếp lấy từ Template |
 | `current_review_round` | integer | Vòng nghiệm thu hiện tại (Khởi tạo 0) |
 | `created_by` | text | Admin/Cron tạo |
 | `created_at` | timestamptz | |
