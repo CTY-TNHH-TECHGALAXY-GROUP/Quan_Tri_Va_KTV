@@ -20,6 +20,13 @@
  *   - Return stale data (luôn query fresh từ DB)
  *   - Tính timeline cho KTV khác (chỉ tính cho requesting KTV)
  * 
+ * ⚡ PERFORMANCE (v2 - 2026-07-27):
+ *   - Parallelize queries bằng Promise.all khi không có dependency
+ *   - Nhóm 1: Resolve bookingId (activeItems || turnQueue)
+ *   - Nhóm 2: Fetch chính (booking + turnInfo + items + rewardConfig + nextAssigns) song song
+ *   - Nhóm 3: Enrich (services + rooms) song song
+ *   - Nhóm 4: Extras (next service + prefetch checklist) song song
+ * 
  * 📤 TRẢ VỀ: NextResponse trực tiếp (không qua orchestrator)
  * ============================================================
  */
@@ -41,6 +48,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         let bookingId = bookingIdParam;
 
         // ─── 1. RESOLVE BOOKING ID ───
+        // (Phần này PHẢI tuần tự vì có logic branching phức tạp)
         if (!bookingId) {
             if (!technicianCode) {
                 return NextResponse.json({ success: false, error: 'Technician code or bookingId is required' }, { status: 400 });
@@ -102,6 +110,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         }
 
         // ─── 2. AUTO-ACTIVATE ASSIGNMENT ───
+        // (PHẢI tuần tự - có write operations / side effects)
         if (bookingId && technicianCode) {
             const today = getBusinessDate();
             const { data: assign } = await supabase
@@ -170,17 +179,74 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
-        // ─── 3. FETCH BOOKING + ENRICH ITEMS ───
-        const { data: booking, error: bError } = await supabase
-            .from('Bookings')
-            .select('*')
-            .eq('id', bookingId)
-            .maybeSingle();
+        // ═══════════════════════════════════════════════════════════════
+        // ⚡ NHÓM 2: PARALLEL FETCH CHÍNH (5 queries cùng lúc)
+        // Tất cả chỉ cần bookingId + technicianCode → chạy song song
+        // ═══════════════════════════════════════════════════════════════
+        const today = getBusinessDate();
+        
+        const [bookingRes, turnInfoRes, itemsRes, rewardConfigRes, nextAssignsRes] = await Promise.all([
+            // Q1: Fetch booking data
+            supabase
+                .from('Bookings')
+                .select('*')
+                .eq('id', bookingId)
+                .maybeSingle(),
+
+            // Q2: Fetch TurnQueue info cho KTV này
+            technicianCode
+                ? supabase
+                    .from('TurnQueue')
+                    .select('last_served_at, start_time, booking_item_id, booking_item_ids, room_id, bed_id, status')
+                    .eq('employee_id', technicianCode)
+                    .eq('date', today)
+                    .eq('current_order_id', bookingId!)
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null }),
+
+            // Q3: Fetch BookingItems
+            supabase
+                .from('BookingItems')
+                .select('*')
+                .eq('bookingId', bookingId!),
+
+            // Q4: Fetch reward config
+            supabase
+                .from('SystemConfigs')
+                .select('value')
+                .eq('key', 'ktv_instant_reward_enabled')
+                .maybeSingle(),
+
+            // Q5: Fetch next assignments (for next booking info)
+            technicianCode
+                ? supabase
+                    .from('KtvAssignments')
+                    .select('booking_id, planned_start_time')
+                    .eq('employee_id', technicianCode)
+                    .eq('business_date', today)
+                    .in('status', ['QUEUED', 'READY'])
+                    .neq('booking_id', bookingId!)
+                    .order('priority', { ascending: true })
+                    .order('planned_start_time', { ascending: true, nullsFirst: false })
+                    .order('sequence_no', { ascending: true })
+                    .order('created_at', { ascending: true })
+                    .limit(5)
+                : Promise.resolve({ data: null, error: null }),
+        ]);
+
+        // Unpack results
+        const booking = bookingRes.data;
+        const bError = bookingRes.error;
+        const turnInfo = turnInfoRes.data;
+        const items = itemsRes.data;
+        const iError = itemsRes.error;
+        const rewardConfig = rewardConfigRes.data;
+        const nextAssignsRaw = nextAssignsRes.data;
 
         if (bError) throw bError;
         if (!booking) {
+            // Booking not found → check for next assignment
             if (technicianCode) {
-                const today = getBusinessDate();
                 const { data: nextAssigns } = await supabase.from('KtvAssignments').select('booking_id').eq('employee_id', technicianCode).eq('business_date', today).in('status', ['QUEUED', 'READY']).order('priority', { ascending: true }).order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
                 let nextAssign = null;
                 if (nextAssigns && nextAssigns.length > 0) {
@@ -194,37 +260,36 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             return NextResponse.json({ success: true, data: null });
         }
 
-        // 3a. Lấy thông tin TurnQueue của booking này
-        let turnInfo = null;
-        if (technicianCode) {
-            const vnMs = new Date().getTime() + (7 * 60 * 60 * 1000);
-            const today = new Date(vnMs).toISOString().split('T')[0];
-            const { data: turn } = await supabase
-                .from('TurnQueue')
-                .select('last_served_at, start_time, booking_item_id, booking_item_ids, room_id, bed_id, status')
-                .eq('employee_id', technicianCode)
-                .eq('date', today)
-                .eq('current_order_id', bookingId)
-                .maybeSingle();
-            turnInfo = turn;
-        }
-
-        // 3b. Lấy BookingItems
-        const { data: items, error: iError } = await supabase
-            .from('BookingItems')
-            .select('*')
-            .eq('bookingId', booking.id);
-
         if (iError) console.error('Error fetching booking items:', iError);
+
+        // ═══════════════════════════════════════════════════════════════
+        // ⚡ NHÓM 3: PARALLEL ENRICH (Services + Rooms cùng lúc)
+        // ═══════════════════════════════════════════════════════════════
+        const roomId = turnInfo?.room_id || booking.roomName;
+
+        const [svcsRes, roomDataRes] = await Promise.all([
+            // Q6: Fetch all services (for enrichment)
+            (items && items.length > 0)
+                ? supabase
+                    .from('Services')
+                    .select('id, code, nameVN, nameEN, duration, focusConfig, description, procedure, service_description, is_utility')
+                    .limit(1000)
+                : Promise.resolve({ data: null, error: null }),
+
+            // Q7: Fetch room procedures
+            roomId
+                ? supabase
+                    .from('Rooms')
+                    .select('prep_procedure, clean_procedure, handover_checklist')
+                    .eq('id', roomId)
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null }),
+        ]);
 
         // 3c. Enrich items với Services data
         let itemsWithService = items || [];
         if (items && items.length > 0) {
-            const { data: svcs, error: svcError } = await supabase
-                .from('Services')
-                .select('id, code, nameVN, nameEN, duration, focusConfig, description, procedure, service_description, is_utility')
-                .limit(1000);
-
+            const svcs = svcsRes.data;
             const svcMap = new Map();
             if (svcs) {
                 svcs.forEach((s: any) => {
@@ -276,7 +341,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     procedure: svc?.procedure || null,
                     focusConfig: svc?.focusConfig || null,
                     duration: finalDuration,
-                    is_utility: svc?.is_utility ?? (sId === 'nhs0900'), // ✅ Truyền is_utility xuống KTVDashboard
+                    is_utility: svc?.is_utility ?? (sId === 'nhs0900'),
                     customerNote: customerNote,
                     noteForKtv: noteForKtv,
                     focus: focusAreas,
@@ -286,6 +351,20 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 };
             });
         }
+
+        // Room procedures
+        let roomProcedures: { prep_procedure: string[] | null, clean_procedure: string[] | null, handover_checklist: string[] | null } = { prep_procedure: null, clean_procedure: null, handover_checklist: null };
+        if (roomDataRes.data) {
+            const roomData = roomDataRes.data;
+            roomProcedures = {
+                prep_procedure: roomData.prep_procedure || null,
+                clean_procedure: roomData.clean_procedure || null,
+                handover_checklist: roomData.handover_checklist || null
+            };
+        }
+
+        // Reward config
+        const ktv_instant_reward_enabled = rewardConfig?.value ?? true;
 
         // ─── 4. RESOLVE ACTIVE ITEM + SEGMENT INDEX ───
         const assignedItemIds = (turnInfo?.booking_item_ids && turnInfo.booking_item_ids.length > 0) 
@@ -349,36 +428,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
-        // ─── 5. FETCH ROOM PROCEDURES ───
-        let roomProcedures: { prep_procedure: string[] | null, clean_procedure: string[] | null, handover_checklist: string[] | null } = { prep_procedure: null, clean_procedure: null, handover_checklist: null };
-        const roomId = turnInfo?.room_id || booking.roomName;
-        if (roomId) {
-            const { data: roomData } = await supabase
-                .from('Rooms')
-                .select('prep_procedure, clean_procedure, handover_checklist')
-                .eq('id', roomId)
-                .maybeSingle();
-            if (roomData) {
-                roomProcedures = {
-                    prep_procedure: roomData.prep_procedure || null,
-                    clean_procedure: roomData.clean_procedure || null,
-                    handover_checklist: roomData.handover_checklist || null
-                };
-            }
-        }
-
         // ─── 6. ON-THE-FLY TIMELINE SHIFT CALCULATION ───
-        
-        // ─── 6.1 FETCH SYSTEM CONFIG ───
-        const { data: rewardConfig } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'ktv_instant_reward_enabled')
-            .maybeSingle();
-        const ktv_instant_reward_enabled = rewardConfig?.value ?? true; // Mặc định là true (tính tiền ngay)
-
-        // CHỈ tính nối tiếp cho segments CỦA CÙNG 1 KTV (gối đầu).
-        // KTV khác nhau → giữ nguyên giờ gốc (song song).
         let finalDispatchStartTime = turnInfo?.start_time;
         
         const formatToHourMinute = (isoString: string | null | undefined): string => {
@@ -425,14 +475,10 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
 
         let myCalculatedStart = '';
         if (mySegments.length > 0) {
-            // Chặng đầu: luôn dùng giờ gốc từ lễ tân
             myCalculatedStart = mySegments[0].origStart;
-
-            // Chặng 2+: nối tiếp nếu cùng KTV (gối đầu)
             let prevEndStr = mySegments[0].actualEndTime || getDynamicEndTime(mySegments[0].actualStartTime || mySegments[0].origStart, mySegments[0].duration);
             for (let i = 1; i < mySegments.length; i++) {
                 let calcStart = mySegments[i].origStart;
-                // Chỉ shift nếu chặng trước kết thúc SAU giờ bắt đầu chặng này
                 if (prevEndStr > calcStart) {
                     calcStart = prevEndStr;
                 }
@@ -445,98 +491,101 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             finalDispatchStartTime = myCalculatedStart;
         }
 
-        // ─── 7. FETCH NEXT BOOKING INFO ───
-        let nextBookingId = null;
-        let nextServiceName = null;
-        let nextStartTime = null;
-        if (technicianCode) {
-            const today = getBusinessDate();
-            const { data: nextAssigns } = await supabase
-                .from('KtvAssignments')
-                .select('booking_id, planned_start_time')
-                .eq('employee_id', technicianCode)
-                .eq('business_date', today)
-                .in('status', ['QUEUED', 'READY'])
-                .neq('booking_id', booking.id)
-                .order('priority', { ascending: true })
-                .order('planned_start_time', { ascending: true, nullsFirst: false })
-                .order('sequence_no', { ascending: true })
-                .order('created_at', { ascending: true })
-                .limit(5);
-            
-            let nextAssign = null;
-            if (nextAssigns && nextAssigns.length > 0) {
-                const bIds = nextAssigns.map((a: any) => a.booking_id);
-                const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED")');
-                const validBIds = new Set(bData?.map((b: any) => b.id) || []);
-                nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
-            }
-            if (nextAssign) {
-                nextBookingId = nextAssign.booking_id;
+        // ═══════════════════════════════════════════════════════════════
+        // ⚡ NHÓM 4: PARALLEL EXTRAS (next booking details + prefetch checklist)
+        // ═══════════════════════════════════════════════════════════════
+        let nextBookingId: string | null = null;
+        let nextServiceName: string | null = null;
+        let nextStartTime: string | null = null;
+        let prefetchedDynamicChecklist: any = null;
 
-                // Format planned_start_time to HH:mm VN
-                if (nextAssign.planned_start_time) {
-                    const pst = new Date(nextAssign.planned_start_time);
-                    const vnPst = new Date(pst.getTime() + 7 * 60 * 60 * 1000);
-                    nextStartTime = `${String(vnPst.getUTCHours()).padStart(2, '0')}:${String(vnPst.getUTCMinutes()).padStart(2, '0')}`;
-                }
+        // Validate next assigns against active bookings
+        let validNextAssign: any = null;
+        if (nextAssignsRaw && nextAssignsRaw.length > 0) {
+            const bIds = nextAssignsRaw.map((a: any) => a.booking_id);
+            const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED")');
+            const validBIds = new Set(bData?.map((b: any) => b.id) || []);
+            validNextAssign = nextAssignsRaw.find((a: any) => validBIds.has(a.booking_id));
+        }
 
-                // Fetch service name from the next booking's items assigned to this KTV
-                const { data: nextItems } = await supabase
-                    .from('BookingItems')
-                    .select('serviceId, options, duration')
-                    .eq('bookingId', nextAssign.booking_id)
-                    .contains('technicianCodes', [technicianCode]);
-
-                if (nextItems && nextItems.length > 0) {
-                    const svcIds = nextItems.map((ni: any) => String(ni.serviceId || '').trim().toLowerCase()).filter(Boolean);
-                    if (svcIds.length > 0) {
-                        const { data: svcs } = await supabase
-                            .from('Services')
-                            .select('id, code, nameVN')
-                            .limit(500);
-                        const svcMap = new Map();
-                        if (svcs) svcs.forEach((s: any) => {
-                            if (s.id) svcMap.set(String(s.id).trim().toLowerCase(), s);
-                            if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
-                        });
-                        const names = nextItems.map((ni: any) => {
-                            const displayName = ni.options?.displayName;
-                            if (displayName) return displayName;
-                            const svc = svcMap.get(String(ni.serviceId || '').trim().toLowerCase());
-                            const nameVN = svc?.nameVN;
-                            return typeof nameVN === 'object' ? (nameVN?.vn || nameVN?.en || `DV`) : (nameVN || `DV`);
-                        });
-                        nextServiceName = names.join(' + ');
-                    }
-                }
+        if (validNextAssign) {
+            nextBookingId = validNextAssign.booking_id;
+            if (validNextAssign.planned_start_time) {
+                const pst = new Date(validNextAssign.planned_start_time);
+                const vnPst = new Date(pst.getTime() + 7 * 60 * 60 * 1000);
+                nextStartTime = `${String(vnPst.getUTCHours()).padStart(2, '0')}:${String(vnPst.getUTCMinutes()).padStart(2, '0')}`;
             }
         }
 
-        // ─── 7.5. PREFETCH DYNAMIC CHECKLIST (TỐI ƯU HIỆU NĂNG) ───
-        // Tránh phải gọi thêm 1 cục network request khi frontend đổi screen sang HANDOVER
-        let prefetchedDynamicChecklist = null;
+        // Determine computed status for prefetch decision
         let computedStatus = booking.status;
         const activeItemForStatus = itemsWithService.find((i: any) => i.id === activeItemId) || itemsWithService[0];
         if (activeItemForStatus) computedStatus = activeItemForStatus.status;
 
-        if (computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING') {
-            try {
-                const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
-                const sCat = activeItemForStatus?.service_category || activeItemForStatus?.category || '';
-                const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomId || null;
-                prefetchedDynamicChecklist = await HandoverService.generateDynamicChecklist(
-                    supabase,
-                    rId,
-                    sCode,
-                    sCat,
-                    booking.id,
-                    activeItemId || activeItemForStatus?.id
-                );
-            } catch (err) {
-                console.error("Prefetch dynamic checklist failed:", err);
-            }
-        }
+        // ⚡ Chạy song song: next service lookup + prefetch checklist
+        const parallelExtras = await Promise.all([
+            // Extra 1: Fetch next service name (nếu có next booking)
+            (validNextAssign && technicianCode)
+                ? (async () => {
+                    try {
+                        const { data: nextItems } = await supabase
+                            .from('BookingItems')
+                            .select('serviceId, options, duration')
+                            .eq('bookingId', validNextAssign.booking_id)
+                            .contains('technicianCodes', [technicianCode]);
+
+                        if (nextItems && nextItems.length > 0) {
+                            const svcIds = nextItems.map((ni: any) => String(ni.serviceId || '').trim().toLowerCase()).filter(Boolean);
+                            if (svcIds.length > 0) {
+                                const { data: svcs } = await supabase
+                                    .from('Services')
+                                    .select('id, code, nameVN')
+                                    .limit(500);
+                                const svcMap = new Map();
+                                if (svcs) svcs.forEach((s: any) => {
+                                    if (s.id) svcMap.set(String(s.id).trim().toLowerCase(), s);
+                                    if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
+                                });
+                                const names = nextItems.map((ni: any) => {
+                                    const displayName = ni.options?.displayName;
+                                    if (displayName) return displayName;
+                                    const svc = svcMap.get(String(ni.serviceId || '').trim().toLowerCase());
+                                    const nameVN = svc?.nameVN;
+                                    return typeof nameVN === 'object' ? (nameVN?.vn || nameVN?.en || `DV`) : (nameVN || `DV`);
+                                });
+                                return names.join(' + ');
+                            }
+                        }
+                        return null;
+                    } catch { return null; }
+                })()
+                : Promise.resolve(null),
+
+            // Extra 2: Prefetch dynamic checklist (nếu KTV đang FEEDBACK/CLEANING)
+            (computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING')
+                ? (async () => {
+                    try {
+                        const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
+                        const sCat = activeItemForStatus?.service_category || activeItemForStatus?.category || '';
+                        const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomId || null;
+                        return await HandoverService.generateDynamicChecklist(
+                            supabase,
+                            rId,
+                            sCode,
+                            sCat,
+                            booking.id,
+                            activeItemId || activeItemForStatus?.id
+                        );
+                    } catch (err) {
+                        console.error("Prefetch dynamic checklist failed:", err);
+                        return null;
+                    }
+                })()
+                : Promise.resolve(null),
+        ]);
+
+        nextServiceName = parallelExtras[0];
+        prefetchedDynamicChecklist = parallelExtras[1];
 
         // ─── 8. RESPONSE ───
         return NextResponse.json({
