@@ -920,14 +920,24 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
                 }
             }
 
-            // 🔧 SMART BOOKING STATUS: Re-query ALL items để tính status chính xác
+            // 🔧 SMART BOOKING STATUS: Re-query ALL items để tính status chính xác (BỎ QUA UTILITY)
             const { data: allItemsAfterPartial } = await supabase
                 .from('BookingItems')
-                .select('id, status')
+                .select('id, status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
                 .eq('bookingId', bookingId);
             
             if (allItemsAfterPartial && allItemsAfterPartial.length > 0) {
-                const statuses = allItemsAfterPartial.map(i => i.status);
+                const validItems = allItemsAfterPartial.filter((i: any) => {
+                    const name = i.Services?.nameVN || '';
+                    return i.Services?.is_utility !== true 
+                        && i.serviceId !== 'NHS0900'
+                        && !name.toLowerCase().includes('phòng riêng')
+                        && !name.toLowerCase().includes('phong rieng');
+                });
+                // Tránh mảng rỗng nếu toàn bộ đơn là dịch vụ tiện ích
+                const finalItems = validItems.length > 0 ? validItems : allItemsAfterPartial;
+                const statuses = finalItems.map(i => i.status);
+
                 const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
                 let smartStatus = recomputeBookingStatus(statuses);
                 

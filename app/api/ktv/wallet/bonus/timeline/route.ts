@@ -92,17 +92,28 @@ export async function GET(request: Request) {
             .from('Bookings')
             .select(`
                 id, timeStart, timeEnd, status, technicianCode, rating, billCode,
-                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings )
+                BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings, status )
             `)
             .gte('timeStart', `${todayStr}T00:00:00+07:00`)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
 
         const bonusConfig = { s1Bonus, s2Bonus, s3Bonus };
 
+        // 6. Calculate bonuses from valid bookings
+        const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
+
         // 4. Merge and Format
         const timeline: any[] = [];
 
-        (bookings || []).forEach(b => {
+        for (const b of validBookings) {
+            const relevantItems = (b.BookingItems || []).filter((i: any) =>
+                i.technicianCodes &&
+                Array.isArray(i.technicianCodes) &&
+                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
+            );
+
+            if (relevantItems.length === 0) continue;
+            
             const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
             if (bonusPts > 0) {
                 // Determine maxKtvRating to show in desc
@@ -139,7 +150,7 @@ export async function GET(request: Request) {
                     desc: `Thưởng đánh giá (${maxKtvRating}★) - Đơn ${b.billCode || b.id.substring(0, 6)}`
                 });
             }
-        });
+        }
 
         (earns || []).forEach(e => {
             timeline.push({
