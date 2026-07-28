@@ -830,7 +830,7 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                 ))}
 
                 <button 
-                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }])}
+                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0 }])}
                   className="w-full border-2 border-dashed border-slate-200 text-slate-500 py-3 rounded-xl font-medium hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 transition-all"
                 >
                   + Thêm dòng công việc
