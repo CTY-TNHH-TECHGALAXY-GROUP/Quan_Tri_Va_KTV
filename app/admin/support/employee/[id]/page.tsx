@@ -262,7 +262,13 @@ export default function EmployeeDetailPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {allAssigned ? (
-                              <span className="text-green-500 text-xs font-bold">Đã gán hết</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); logic.unassignCategory(catName); }}
+                                disabled={logic.submitting}
+                                className="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-100 whitespace-nowrap"
+                              >
+                                ✓ Đã gán (Bỏ)
+                              </button>
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); logic.assignCategory(catName); }}

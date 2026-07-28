@@ -230,6 +230,26 @@ export const useEmployeeDetail = (employeeId: string) => {
   };
 
   // ============================================================
+  // Unassign Entire Category
+  // ============================================================
+  const unassignCategory = async (categoryName: string) => {
+    setSubmitting(true);
+    try {
+      const templatesInCategory = availableTemplates.filter(t => t.categoryName === categoryName);
+      const routinesToRemove = routines.filter(r => templatesInCategory.some(t => t.id === r.templateId));
+      
+      for (const r of routinesToRemove) {
+        await fetch(`/api/support/routines?id=${r.id}`, { method: 'DELETE' });
+      }
+
+      await fetchRoutines();
+      await fetchTodayTasks();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ============================================================
   // Remove routine
   // ============================================================
   const removeRoutine = async (routineId: string) => {
@@ -388,9 +408,11 @@ export const useEmployeeDetail = (employeeId: string) => {
     submitting,
     addRoutine,
     assignCategory,
+    unassignCategory,
     removeRoutine,
     createAdhocTask,
     reviewTask,
+    deleteTask,
     getRoleLabel,
   };
 };
