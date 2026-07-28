@@ -280,7 +280,7 @@ export const useSupportTasks = () => {
   const sortedCategories = Object.values(groupedTasks).map(cat => ({
     ...cat,
     tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-  })).sort((a, b) => a.categoryOrder - b.categoryOrder);
+  })).sort((a, b) => a.categoryName.localeCompare(b.categoryName));
 
   const totalTasks = tasks.length;
   const doneCount = tasks.filter(t => t.status === 'COMPLETED').length;

@@ -73,8 +73,7 @@ export class EmployeeTasksService {
     // Check if tasks already exist for today
     const { data: existing, error: err1 } = await supabase
       .from('Tasks')
-      .select('id, template_id')
-      .in('assignee_id', empIds)
+      .select('id, template_id, room_id, assignee_id')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd);
 
@@ -83,7 +82,8 @@ export class EmployeeTasksService {
       throw new Error('Failed to fetch existing tasks');
     }
 
-    const existingTemplateIds = new Set((existing || []).map(t => t.template_id));
+    const existingTemplateIds = new Set((existing || []).filter(t => t.assignee_id !== null).map(t => t.template_id));
+    const existingRoomTemplates = new Set((existing || []).filter(t => t.room_id !== null).map(t => `${t.template_id}_${t.room_id}`));
 
     // Fetch routines
     const { data: routines, error: err2 } = await supabase
@@ -118,6 +118,34 @@ export class EmployeeTasksService {
         sort_order: r.TaskTemplates?.sort_order || 0
       }));
 
+    // Fetch Room tasks
+    const { data: roomRoutines } = await supabase
+      .from('RoomTaskTemplates')
+      .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, TaskCategories(repeat_mode))');
+
+    if (roomRoutines && roomRoutines.length > 0) {
+      const newRoomTasks = roomRoutines
+        .filter((r: any) => {
+          if (existingRoomTemplates.has(`${r.template_id}_${r.room_id}`)) return false;
+          const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
+          return shouldGenerateTaskToday(repeatMode);
+        })
+        .map((r: any) => ({
+          template_id: r.template_id,
+          room_id: r.room_id,
+          category_id: r.TaskTemplates?.category_id || null,
+          name: r.TaskTemplates?.name || 'Công việc phòng',
+          task_type: 'FIXED',
+          assignee_id: null, // Shared room task
+          status: 'NOT_STARTED',
+          inspection_status: 'NOT_REVIEWED',
+          priority: 'NORMAL',
+          sort_order: r.TaskTemplates?.sort_order || 0
+        }));
+
+      newTasks.push(...newRoomTasks);
+    }
+
     if (newTasks.length > 0) {
       const { error: insertErr } = await supabase.from('Tasks').insert(newTasks);
       if (insertErr) {
@@ -141,8 +169,8 @@ export class EmployeeTasksService {
 
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name)')
-      .in('assignee_id', empIds)
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name)')
+      .or(`assignee_id.in.(${empIds.join(',')}),room_id.not.is.null`)
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -182,7 +210,7 @@ export class EmployeeTasksService {
       requires_photo: t.TaskTemplates?.requires_photo || false,
       min_photo_count: t.TaskTemplates?.min_photo_count || 1,
       category_id: t.category_id,
-      categoryName: t.TaskCategories?.name || 'Khác',
+      categoryName: t.room_id ? `[Phòng ${t.room_id}] ${t.TaskCategories?.name || 'Khác'}` : (t.TaskCategories?.name || 'Khác'),
       categoryOrder: 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
