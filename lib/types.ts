@@ -126,6 +126,7 @@ export interface Customer {
   preferredStrength?: string;
   birthday?: string;
   notes?: string;
+  avatarUrl?: string;
   lastVisited?: string;
   createdAt?: string;
   updatedAt?: string;

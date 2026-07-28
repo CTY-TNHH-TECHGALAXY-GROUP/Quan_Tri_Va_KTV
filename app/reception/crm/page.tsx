@@ -600,9 +600,13 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: {
     <tr className={`transition-colors ${isHighlighted ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-gray-50'}`}>
       <td className="p-4 align-top">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-            {(customer.fullName || '?').charAt(0).toUpperCase()}
-          </div>
+          {customer.avatarUrl ? (
+            <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+              {(customer.fullName || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <span className={`font-medium ${isHighlighted ? 'text-amber-900' : 'text-gray-900'}`}>

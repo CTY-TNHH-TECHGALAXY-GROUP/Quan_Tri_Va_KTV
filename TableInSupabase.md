@@ -495,6 +495,7 @@
 | `gender` | text | Giới tính |
 | `birthday` | timestamp | Ngày sinh |
 | `notes` | text | Ghi chú (sở thích, dị ứng...) |
+| `avatar_url` | text | Ảnh đại diện của khách (lưu public url từ Supabase Storage bucket `avatars/customers`) |
 | `lastVisited` | timestamp | Lần ghé thăm gần nhất |
 | `createdAt` | timestamp | Thời điểm tạo |
 | `updatedAt` | timestamp | Thời điểm cập nhật |

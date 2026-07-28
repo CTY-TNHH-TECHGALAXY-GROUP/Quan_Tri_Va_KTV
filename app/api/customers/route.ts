@@ -329,6 +329,7 @@ export async function GET() {
 
             return {
                 ...customer,
+                avatarUrl: customer.avatar_url,
                 nationality: resolvedNationality || '',
                 guestType,
                 maxGuestCount,

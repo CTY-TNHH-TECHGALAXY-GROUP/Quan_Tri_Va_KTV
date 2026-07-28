@@ -1,5 +1,6 @@
 -- Cập nhật RPC promote_next_assignment và dispatch_confirm_booking
 -- Fix lỗi ghi đè trạng thái 'off' (đã tan ca) thành 'waiting' khi KTV hoàn tất đơn cuối
+-- NOTE: Bản vá này được build dựa trên phiên bản code mới nhất (từ 20260609_fix_addon_service_merge.sql)
 
 -- =================================================================================
 -- 1. Cập nhật promote_next_assignment
@@ -88,7 +89,7 @@ BEGIN
             WHERE "employee_id" = p_employee_id AND "date" = p_business_date;
         END;
 
-        RETURN jsonb_build_object('success', true, 'message', 'No next assignment, KTV set to waiting or kept off');
+        RETURN jsonb_build_object('success', true, 'message', 'No next assignment, KTV set to waiting');
     END IF;
 
     -- 3. Promote to ACTIVE
@@ -170,6 +171,7 @@ BEGIN
     DECLARE
         v_kept_ktv_ids text[];
         v_removed_ktv_id text;
+        v_was_working boolean;
     BEGIN
         SELECT array_agg(elem->>'ktvId') INTO v_kept_ktv_ids
         FROM jsonb_array_elements(p_staff_assignments) elem
@@ -192,7 +194,16 @@ BEGIN
             WHERE "booking_id" = p_booking_id
               AND "employee_id" = v_removed_ktv_id
               AND "status" IN ('ACTIVE', 'QUEUED', 'READY');
-              
+
+            -- ✅ FIX: Check if KTV was working BEFORE clearing TurnQueue
+            SELECT EXISTS(
+                SELECT 1 FROM "TurnQueue"
+                WHERE "employee_id" = v_removed_ktv_id
+                  AND "date" = p_date
+                  AND "current_order_id" = p_booking_id
+                  AND "status" = 'working'
+            ) INTO v_was_working;
+
             -- If their TurnQueue is currently pointing to this order, clear it
             UPDATE "TurnQueue"
             SET "status" = CASE WHEN "status" = 'off' THEN 'off' ELSE 'waiting' END,
@@ -206,6 +217,16 @@ BEGIN
             WHERE "employee_id" = v_removed_ktv_id
               AND "date" = p_date
               AND "current_order_id" = p_booking_id;
+
+            -- ✅ FIX: Delete TurnLedger for removed KTV if they haven't started working
+            -- This prevents ghost turns_completed count for reassigned orders
+            -- If KTV was already working → KEEP TurnLedger (they deserve the turn credit)
+            IF NOT v_was_working THEN
+                DELETE FROM "TurnLedger"
+                WHERE "date" = p_date
+                  AND "booking_id" = p_booking_id
+                  AND "employee_id" = v_removed_ktv_id;
+            END IF;
               
             -- Promote next assignment for the removed KTV
             PERFORM promote_next_assignment(v_removed_ktv_id, p_date);
@@ -260,6 +281,7 @@ BEGIN
         v_sequence_no := COALESCE(NULLIF(v_assignment->>'sequenceNo', '')::integer, 0);
         v_dispatch_source := COALESCE(NULLIF(v_assignment->>'dispatchSource', ''), 'DISPATCH_CONFIRM');
 
+        -- ✅ KtvAssignments.planned_start_time là timestamptz → AT TIME ZONE đúng ở đây
         v_planned_start_time := CASE
             WHEN NULLIF(v_assignment->>'startTime', '') IS NULL OR v_assignment->>'startTime' IN ('undefined', 'null') THEN NULL
             ELSE ((p_date::text || ' ' || (v_assignment->>'startTime'))::timestamp AT TIME ZONE 'Asia/Bangkok')
@@ -313,98 +335,137 @@ BEGIN
             "dispatch_source" = EXCLUDED."dispatch_source"
         RETURNING id INTO v_assignment_id;
 
-        -- 2b. Promote to ACTIVE only when this KTV has no current ACTIVE assignment for the business date
-        IF NOT EXISTS (
-            SELECT 1
-            FROM "KtvAssignments"
-            WHERE "employee_id" = v_assignment->>'ktvId'
-              AND "business_date" = p_date
-              AND "status" = 'ACTIVE'
-              AND "id" <> v_assignment_id
-        ) THEN
-            UPDATE "KtvAssignments"
-            SET "status" = 'ACTIVE'
-            WHERE "id" = v_assignment_id;
+        -- 2b. Xử lý Trạng thái ACTIVE & Đồng bộ TurnQueue
+        DECLARE
+            v_is_active_on_other boolean;
+            v_is_active_on_this boolean;
+        BEGIN
+            -- Kiểm tra xem KTV có đang làm cho khách KHÁC không
+            SELECT EXISTS (
+                SELECT 1
+                FROM "KtvAssignments"
+                WHERE "employee_id" = v_assignment->>'ktvId'
+                  AND "business_date" = p_date
+                  AND "status" = 'ACTIVE'
+                  AND "booking_id" <> p_booking_id
+                  AND "id" <> v_assignment_id
+            ) INTO v_is_active_on_other;
 
-            -- TurnQueue mirrors only the single active assignment.
-            INSERT INTO "TurnQueue" (
-                "employee_id",
-                "date",
-                "status",
-                "current_order_id",
-                "booking_item_id",
-                "booking_item_ids",
-                "room_id",
-                "bed_id",
-                "queue_position",
-                "start_time",
-                "estimated_end_time",
-                "last_served_at"
-            )
-            VALUES (
-                v_assignment->>'ktvId',
-                p_date,
-                'assigned',
-                p_booking_id,
-                v_booking_item_id,
-                ARRAY[v_booking_item_id]::text[],
-                CASE WHEN v_assignment->>'roomId' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'roomId' END,
-                CASE WHEN v_assignment->>'bedId' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'bedId' END,
-                COALESCE((CASE WHEN v_assignment->>'queuePos' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'queuePos' END)::integer, 0),
-                (CASE WHEN v_assignment->>'startTime' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'startTime' END)::time,
-                (CASE WHEN v_assignment->>'endTime' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'endTime' END)::time,
-                now()
-            )
-            ON CONFLICT ("employee_id", "date") DO UPDATE
-            SET
-                "status" = CASE WHEN "TurnQueue"."status" = 'working' THEN 'working' ELSE 'assigned' END,
-                "current_order_id" = EXCLUDED."current_order_id",
-                "booking_item_id" = COALESCE((
-                    SELECT elem->>'bookingItemId'
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                    ORDER BY (p_date::text || ' ' || (elem->>'startTime'))::timestamp AT TIME ZONE 'Asia/Bangkok' ASC NULLS LAST
-                    LIMIT 1
-                ), EXCLUDED."booking_item_id"),
-                "booking_item_ids" = (
-                    SELECT array_agg(DISTINCT elem->>'bookingItemId')
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                ),
-                "room_id" = (
-                    SELECT NULLIF(elem->>'roomId', '')
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                      AND elem->>'roomId' NOT IN ('', 'undefined', 'null')
-                    ORDER BY (p_date::text || ' ' || (elem->>'startTime'))::timestamp AT TIME ZONE 'Asia/Bangkok' ASC NULLS LAST
-                    LIMIT 1
-                ),
-                "bed_id" = (
-                    SELECT NULLIF(elem->>'bedId', '')
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                      AND elem->>'bedId' NOT IN ('', 'undefined', 'null')
-                    ORDER BY (p_date::text || ' ' || (elem->>'startTime'))::timestamp AT TIME ZONE 'Asia/Bangkok' ASC NULLS LAST
-                    LIMIT 1
-                ),
-                "queue_position" = CASE
-                    WHEN EXCLUDED."queue_position" > 0 THEN EXCLUDED."queue_position"
-                    ELSE "TurnQueue"."queue_position"
-                END,
-                "start_time" = COALESCE((
-                    SELECT MIN((p_date::text || ' ' || (elem->>'startTime'))::timestamp AT TIME ZONE 'Asia/Bangkok')::time
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                      AND elem->>'startTime' NOT IN ('', 'undefined', 'null')
-                ), EXCLUDED."start_time"),
-                "estimated_end_time" = COALESCE((
-                    SELECT MAX((p_date::text || ' ' || (elem->>'endTime'))::timestamp AT TIME ZONE 'Asia/Bangkok')::time
-                    FROM jsonb_array_elements(p_staff_assignments) elem
-                    WHERE elem->>'ktvId' = v_assignment->>'ktvId'
-                      AND elem->>'endTime' NOT IN ('', 'undefined', 'null')
-                ), EXCLUDED."estimated_end_time"),
-                "last_served_at" = EXCLUDED."last_served_at";
-        END IF;
+            -- Kiểm tra xem KTV có đang làm cho CHÍNH khách này không (Gộp đơn)
+            SELECT EXISTS (
+                SELECT 1
+                FROM "KtvAssignments"
+                WHERE "employee_id" = v_assignment->>'ktvId'
+                  AND "business_date" = p_date
+                  AND "status" = 'ACTIVE'
+                  AND "booking_id" = p_booking_id
+                  AND "id" <> v_assignment_id
+            ) INTO v_is_active_on_this;
+
+            -- 1. Nếu hoàn toàn rảnh rỗi (Không active đơn nào) -> Promote lên ACTIVE
+            IF NOT v_is_active_on_other AND NOT v_is_active_on_this THEN
+                UPDATE "KtvAssignments"
+                SET "status" = 'ACTIVE'
+                WHERE "id" = v_assignment_id;
+            END IF;
+
+            -- 2. Cập nhật tiến trình hiển thị (TurnQueue)
+            -- Chỉ cập nhật khi KTV rảnh, HOẶC đang làm dịch vụ của chính khách này
+            -- (Nếu KTV đang bận khách khác -> Dịch vụ mới này chỉ nằm chờ ở QUEUED, không update TurnQueue)
+            IF NOT v_is_active_on_other THEN
+                INSERT INTO "TurnQueue" (
+                    "employee_id",
+                    "date",
+                    "status",
+                    "current_order_id",
+                    "booking_item_id",
+                    "booking_item_ids",
+                    "room_id",
+                    "bed_id",
+                    "queue_position",
+                    "start_time",
+                    "estimated_end_time",
+                    "last_served_at"
+                )
+                VALUES (
+                    v_assignment->>'ktvId',
+                    p_date,
+                    'assigned',
+                    p_booking_id,
+                    v_booking_item_id,
+                    ARRAY[v_booking_item_id]::text[],
+                    CASE WHEN v_assignment->>'roomId' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'roomId' END,
+                    CASE WHEN v_assignment->>'bedId' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'bedId' END,
+                    COALESCE((CASE WHEN v_assignment->>'queuePos' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'queuePos' END)::integer, 0),
+                    (CASE WHEN v_assignment->>'startTime' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'startTime' END)::time,
+                    (CASE WHEN v_assignment->>'endTime' IN ('', 'undefined', 'null') THEN NULL ELSE v_assignment->>'endTime' END)::time,
+                    now()
+                )
+                ON CONFLICT ("employee_id", "date") DO UPDATE
+                SET
+                    "status" = CASE WHEN "TurnQueue"."status" = 'working' THEN 'working' ELSE 'assigned' END,
+                    "current_order_id" = EXCLUDED."current_order_id",
+                    "booking_item_id" = COALESCE((
+                        SELECT elem->>'bookingItemId'
+                        FROM jsonb_array_elements(p_staff_assignments) elem
+                        WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                        -- ✅ FIX: ORDER BY dùng ::time trực tiếp, không dùng AT TIME ZONE
+                        ORDER BY (elem->>'startTime')::time ASC NULLS LAST
+                        LIMIT 1
+                    ), EXCLUDED."booking_item_id"),
+                    "booking_item_ids" = (
+                        SELECT array_agg(DISTINCT elem->>'bookingItemId')
+                        FROM jsonb_array_elements(p_staff_assignments) elem
+                        WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                    ),
+                    "room_id" = CASE
+                        WHEN "TurnQueue"."status" = 'working' THEN "TurnQueue"."room_id"
+                        ELSE (
+                            SELECT NULLIF(elem->>'roomId', '')
+                            FROM jsonb_array_elements(p_staff_assignments) elem
+                            WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                              AND elem->>'roomId' NOT IN ('', 'undefined', 'null')
+                            ORDER BY (elem->>'startTime')::time ASC NULLS LAST
+                            LIMIT 1
+                        )
+                    END,
+                    "bed_id" = CASE
+                        WHEN "TurnQueue"."status" = 'working' THEN "TurnQueue"."bed_id"
+                        ELSE (
+                            SELECT NULLIF(elem->>'bedId', '')
+                            FROM jsonb_array_elements(p_staff_assignments) elem
+                            WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                              AND elem->>'bedId' NOT IN ('', 'undefined', 'null')
+                            ORDER BY (elem->>'startTime')::time ASC NULLS LAST
+                            LIMIT 1
+                        )
+                    END,
+                    "queue_position" = CASE
+                        WHEN EXCLUDED."queue_position" > 0 THEN EXCLUDED."queue_position"
+                        ELSE "TurnQueue"."queue_position"
+                    END,
+                    -- 🔥 FIX CHÍNH: KHÔNG GHI ĐÈ GIỜ NẾU ĐANG WORKING
+                    "start_time" = CASE 
+                        WHEN "TurnQueue"."status" = 'working' THEN "TurnQueue"."start_time"
+                        ELSE COALESCE((
+                            SELECT MIN((elem->>'startTime')::time)
+                            FROM jsonb_array_elements(p_staff_assignments) elem
+                            WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                              AND elem->>'startTime' NOT IN ('', 'undefined', 'null')
+                        ), EXCLUDED."start_time")
+                    END,
+                    "estimated_end_time" = CASE
+                        WHEN "TurnQueue"."status" = 'working' THEN "TurnQueue"."estimated_end_time"
+                        ELSE COALESCE((
+                            SELECT MAX((elem->>'endTime')::time)
+                            FROM jsonb_array_elements(p_staff_assignments) elem
+                            WHERE elem->>'ktvId' = v_assignment->>'ktvId'
+                              AND elem->>'endTime' NOT IN ('', 'undefined', 'null')
+                        ), EXCLUDED."estimated_end_time")
+                    END,
+                    "last_served_at" = EXCLUDED."last_served_at";
+            END IF;
+        END;
     END LOOP;
 
     -- 2.5. Validate Booking Status Transition

@@ -139,8 +139,42 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
         <div className="px-6 py-5 space-y-5">
           {/* Customer Info */}
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl font-bold shrink-0">
-              {(customer.fullName || '?').charAt(0).toUpperCase()}
+            <div className="relative group shrink-0">
+              {customer.avatarUrl ? (
+                <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-14 h-14 rounded-full object-cover border border-gray-200 shadow-sm" />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl font-bold">
+                  {(customer.fullName || '?').charAt(0).toUpperCase()}
+                </div>
+              )}
+              {isEditing && (
+                <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity" title="Thay đổi ảnh đại diện">
+                  <span className="text-[9px] font-bold text-center leading-tight">Đổi<br/>Ảnh</span>
+                  <input type="file" accept="image/jpeg, image/png, image/webp" className="hidden" onChange={async (e) => {
+                    if (!e.target.files || e.target.files.length === 0) return;
+                    setIsSaving(true);
+                    const file = e.target.files[0];
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('customerId', customer.id);
+                    try {
+                      const res = await fetch('/api/customers/upload-avatar', { method: 'POST', body: formData });
+                      const data = await res.json();
+                      if (data.success && data.url) {
+                        if (onUpdate) {
+                          onUpdate({ ...customer, avatarUrl: data.url, avatar_url: data.url } as any);
+                        }
+                      } else {
+                        alert('Lỗi: ' + (data.error || 'Không xác định'));
+                      }
+                    } catch (err) {
+                      alert('Lỗi kết nối khi tải ảnh lên');
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }} />
+                </label>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
