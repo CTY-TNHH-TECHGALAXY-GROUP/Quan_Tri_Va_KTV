@@ -13,8 +13,7 @@ const PROGRESS_HEIGHT = 'h-2';
 
 const TAB_ITEMS: { key: ActiveTab; label: string; icon: string }[] = [
   { key: 'EMPLOYEES', label: 'Nhân Viên', icon: '👥' },
-  { key: 'TEMPLATES', label: 'Kho Công Việc', icon: '📋' },
-  { key: 'CATEGORIES', label: 'Nhóm Việc', icon: '🏷️' },
+  { key: 'TEMPLATES', label: 'Kho Việc Tương Tác', icon: '📋' },
   { key: 'ROOM_MATRIX', label: 'Ma Trận Phòng', icon: '🏢' },
   { key: 'REVIEWS', label: 'Nghiệm Thu', icon: '✅' },
   { key: 'DASHBOARD', label: 'Thống Kê Phòng', icon: '📊' },
@@ -127,51 +126,7 @@ export default function SupportTemplatesPage() {
       {/* ======================= TAB: TEMPLATES ======================= */}
       {logic.activeTab === 'TEMPLATES' && <TemplatesTabContent logic={logic} />}
 
-      {/* ======================= TAB: CATEGORIES ======================= */}
-      {logic.activeTab === 'CATEGORIES' && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden w-full">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 text-sm border-b border-slate-100">
-                <th className="p-4 font-medium">Tên Nhóm Việc</th>
-                <th className="p-4 font-medium w-32">Loại</th>
-                <th className="p-4 font-medium w-32">Trạng thái</th>
-                <th className="p-4 font-medium text-right w-24">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logic.categories.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400">Chưa có nhóm việc nào.</td>
-                </tr>
-              ) : (
-                logic.categories.map((cat) => (
-                  <tr key={cat.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors text-sm">
-                    <td className="p-4 font-medium text-slate-800">{cat.name}</td>
-                    <td className="p-4">
-                      {cat.type === 'ROOM' ? (
-                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-medium">Phòng</span>
-                      ) : (
-                        <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-medium">Nhân sự</span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {cat.is_active ? (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">Hoạt động</span>
-                      ) : (
-                        <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-xs font-medium">Đã tắt</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      <button className="text-slate-400 hover:text-cyan-600 transition-colors">Sửa</button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+
 
       {/* ======================= TAB: REVIEWS ======================= */}
       {logic.activeTab === 'REVIEWS' && <ReviewsTabContent />}
@@ -754,20 +709,47 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                           </div>
                         )}
                       </div>
+                    <div className="flex flex-col items-center gap-1">
+                      {idx > 0 && (
+                        <button
+                          onClick={() => {
+                            const newTasks = [...tasks];
+                            const temp = newTasks[idx - 1];
+                            newTasks[idx - 1] = newTasks[idx];
+                            newTasks[idx] = temp;
+                            setTasks(newTasks);
+                          }}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 font-bold"
+                          title="Lên trên"
+                        >↑</button>
+                      )}
+                      {idx < tasks.length - 1 && (
+                        <button
+                          onClick={() => {
+                            const newTasks = [...tasks];
+                            const temp = newTasks[idx + 1];
+                            newTasks[idx + 1] = newTasks[idx];
+                            newTasks[idx] = temp;
+                            setTasks(newTasks);
+                          }}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 font-bold"
+                          title="Xuống dưới"
+                        >↓</button>
+                      )}
+                      {tasks.length > 1 && (
+                        <button 
+                          onClick={() => {
+                            const newTasks = [...tasks];
+                            newTasks.splice(idx, 1);
+                            setTasks(newTasks);
+                          }}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 mt-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Xóa dòng này"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
-                    {tasks.length > 1 && (
-                      <button 
-                        onClick={() => {
-                          const newTasks = [...tasks];
-                          newTasks.splice(idx, 1);
-                          setTasks(newTasks);
-                        }}
-                        className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Xóa dòng này"
-                      >
-                        🗑️
-                      </button>
-                    )}
                   </div>
                 ))}
 

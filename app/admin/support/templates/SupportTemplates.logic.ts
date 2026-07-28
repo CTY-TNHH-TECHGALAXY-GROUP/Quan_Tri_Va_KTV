@@ -44,7 +44,7 @@ interface TemplateItem {
   assignedEmployees: string[]; // fullName list
 }
 
-export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'CATEGORIES' | 'DASHBOARD' | 'REVIEWS' | 'ROOM_MATRIX';
+export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'ROOM_MATRIX' | 'REVIEWS' | 'DASHBOARD';
 
 export const useSupportTemplates = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('EMPLOYEES');
