@@ -107,7 +107,17 @@ export async function GET(request: Request) {
         const utcFrom = startOfVnDayToUtc(dateFrom, cutoffHours);
         const utcTo = endOfVnDayToUtc(dateTo, cutoffHours);
 
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any);
+        const commConfigA = await KtvCommissionService.getCommissionConfig(supabase as any, 'TYPE_A');
+        const commConfigB = await KtvCommissionService.getCommissionConfig(supabase as any, 'TYPE_B');
+        const commConfigC = await KtvCommissionService.getCommissionConfig(supabase as any, 'TYPE_C');
+        const commConfigs: Record<string, any> = { TYPE_A: commConfigA, TYPE_B: commConfigB, TYPE_C: commConfigC };
+
+        const { data: staffData } = await supabase.from('Staff').select('code, work_type');
+        const staffWorkTypeMap: Record<string, string> = {};
+        (staffData || []).forEach((s: any) => {
+            if (s.code) staffWorkTypeMap[s.code.trim()] = s.work_type || 'TYPE_A';
+        });
+
         // ─── 1. Fetch completed bookings in date range ───────────────────
         const { data: bookings, error: bErr } = await supabase
             .from('Bookings')
@@ -531,6 +541,8 @@ export async function GET(request: Request) {
                     myTotalMins = fallbackDuration / techs.length; // Fallback: divide duration by num KTVs
                 }
                 
+                const workType = staffWorkTypeMap[code] || 'TYPE_A';
+                const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
                 const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
                 const perKtvTip = (Number(i.tip) || 0) / techs.length;
                 const hasRating = i.itemRating && Number(i.itemRating) > 0;
@@ -739,9 +751,12 @@ export async function GET(request: Request) {
                     let ktvs = Array.isArray(i.technicianCodes) ? i.technicianCodes.join(', ') : '';
                     let commission = 0;
                     if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
-                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, i.technicianCodes[0], dur) || (dur / i.technicianCodes.length);
-                        // Tổng hoa hồng của tất cả KTV làm chung DV này
-                        commission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * (Number(i.quantity) || 1) * i.technicianCodes.length;
+                        i.technicianCodes.forEach((code: string) => {
+                            const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / i.technicianCodes.length);
+                            const workType = staffWorkTypeMap[code] || 'TYPE_A';
+                            const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
+                            commission += KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * (Number(i.quantity) || 1);
+                        });
                     }
 
                     rawDataSheet.push({

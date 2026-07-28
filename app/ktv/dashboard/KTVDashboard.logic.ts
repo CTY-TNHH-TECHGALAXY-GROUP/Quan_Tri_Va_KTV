@@ -1818,12 +1818,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
             });
 
             let parsedMilestones: any = null;
-            if (typeof settings.ktv_commission_milestones === 'string') {
+            let rawMilestones = settings.ktv_commission_milestones;
+            if (kpiData?.workType === 'TYPE_B') {
+                rawMilestones = settings.ktv_commission_milestones_TYPE_B || settings.ktv_commission_milestones_type_b || rawMilestones;
+            } else if (kpiData?.workType === 'TYPE_C') {
+                rawMilestones = settings.ktv_commission_milestones_TYPE_C || rawMilestones;
+            } else if (settings.ktv_commission_milestones_TYPE_A) {
+                rawMilestones = settings.ktv_commission_milestones_TYPE_A;
+            }
+
+            if (typeof rawMilestones === 'string') {
                 try {
-                    parsedMilestones = JSON.parse(settings.ktv_commission_milestones);
+                    parsedMilestones = JSON.parse(rawMilestones);
                 } catch (e) {}
-            } else if (settings.ktv_commission_milestones && typeof settings.ktv_commission_milestones === 'object') {
-                parsedMilestones = settings.ktv_commission_milestones;
+            } else if (rawMilestones && typeof rawMilestones === 'object') {
+                parsedMilestones = rawMilestones;
             }
 
             const milestones = parsedMilestones || {

@@ -11,6 +11,7 @@ export class KtvKpiService {
         targetHours: number;
         progressPercent: number;
         remainingHours: number;
+        workType: string;
     }> {
         try {
             const { data: staffData, error: staffErr } = await supabase
@@ -29,8 +30,8 @@ export class KtvKpiService {
                 if (typeof flags === 'string') {
                     try { flags = JSON.parse(flags); } catch {}
                 }
-                if (flags && typeof flags.kpi_target_hours === 'number') {
-                    targetHours = flags.kpi_target_hours;
+                if (flags && flags.kpi_target_hours) {
+                    targetHours = typeof flags.kpi_target_hours === 'number' ? flags.kpi_target_hours : 80;
                 }
             }
 
@@ -87,24 +88,24 @@ export class KtvKpiService {
 
             const totalHours = Number((totalMinutes / 60).toFixed(1));
             const progressPercent = targetHours > 0 ? Math.min(100, Math.round((totalHours / targetHours) * 100)) : 100;
-            const remainingHours = targetHours > 0 ? Math.max(0, targetHours - totalHours) : 0;
 
             return {
                 totalMinutes,
-                totalHours,
+                totalHours: parseFloat(totalHours.toFixed(1)),
                 targetHours,
                 progressPercent,
-                remainingHours
+                remainingHours: Math.max(0, parseFloat((targetHours - totalHours).toFixed(1))),
+                workType: staffData?.work_type || 'TYPE_A'
             };
-
-        } catch (e: any) {
-            console.error("Lỗi khi lấy KPI tháng:", e);
+        } catch (e) {
+            console.error('Lỗi tính KPI:', e);
             return {
                 totalMinutes: 0,
                 totalHours: 0,
-                targetHours: 80,
+                targetHours: 0,
                 progressPercent: 0,
-                remainingHours: 80
+                remainingHours: 0,
+                workType: 'TYPE_A'
             };
         }
     }
