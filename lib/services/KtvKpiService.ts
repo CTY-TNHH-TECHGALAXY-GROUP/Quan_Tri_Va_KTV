@@ -15,12 +15,16 @@ export class KtvKpiService {
         try {
             const { data: staffData, error: staffErr } = await supabase
                 .from('Staff')
-                .select('feature_flags')
+                .select('feature_flags, work_type')
                 .eq('id', input.staffId)
                 .single();
             
             let targetHours = 80;
-            if (!staffErr && staffData?.feature_flags) {
+            if (!staffErr && staffData) {
+                if (staffData.work_type !== 'TYPE_B') {
+                    targetHours = 0; // KTV loại A, C không có chỉ tiêu mặc định
+                }
+                
                 let flags = staffData.feature_flags;
                 if (typeof flags === 'string') {
                     try { flags = JSON.parse(flags); } catch {}
@@ -82,8 +86,8 @@ export class KtvKpiService {
             }
 
             const totalHours = Number((totalMinutes / 60).toFixed(1));
-            const progressPercent = Math.min(100, Math.round((totalHours / targetHours) * 100));
-            const remainingHours = Math.max(0, targetHours - totalHours);
+            const progressPercent = targetHours > 0 ? Math.min(100, Math.round((totalHours / targetHours) * 100)) : 100;
+            const remainingHours = targetHours > 0 ? Math.max(0, targetHours - totalHours) : 0;
 
             return {
                 totalMinutes,
