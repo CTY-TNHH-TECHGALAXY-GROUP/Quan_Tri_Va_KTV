@@ -284,12 +284,18 @@ export default function EmployeeDetailPage() {
                         {expandedCategories[catName] && (
                           <div className="border-t border-slate-100 bg-slate-50/50 p-2 space-y-1">
                             {templates.map(tpl => {
-                              const isAdded = logic.routines.some(r => r.templateId === tpl.id);
+                              const assignedRoutine = logic.routines.find(r => r.templateId === tpl.id);
                               return (
                                 <div key={tpl.id} className="flex justify-between items-center py-1.5 px-2 rounded hover:bg-slate-100">
                                   <span className="text-xs text-slate-600 truncate pr-2">{tpl.name}</span>
-                                  {isAdded ? (
-                                    <span className="text-green-500 text-[10px] font-bold shrink-0">Đã gán</span>
+                                  {assignedRoutine ? (
+                                    <button
+                                      onClick={() => logic.removeRoutine(assignedRoutine.id)}
+                                      disabled={logic.submitting}
+                                      className="text-green-600 hover:text-green-800 text-[10px] font-bold bg-green-50 px-2 py-0.5 rounded shadow-sm border border-green-200 shrink-0"
+                                    >
+                                      ✓ Đã gán (Bỏ)
+                                    </button>
                                   ) : (
                                     <button
                                       onClick={() => logic.addRoutine(tpl.id)}
