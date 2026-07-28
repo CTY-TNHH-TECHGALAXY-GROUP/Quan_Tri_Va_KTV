@@ -178,7 +178,20 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.weight !== undefined) staffPayload.weight = updates.weight || null;
         if (updates.work_type !== undefined) staffPayload.work_type = updates.work_type;
         if (updates.skills !== undefined) staffPayload.skills = updates.skills;
-        if (updates.feature_flags !== undefined) staffPayload.feature_flags = updates.feature_flags;
+        let currentFlags = updates.featureFlags || updates.feature_flags || {};
+        if (updates.enableKpiDemo !== undefined) {
+            currentFlags = { ...currentFlags };
+            if (updates.enableKpiDemo) {
+                currentFlags.kpi_target_hours = 80; // or another default
+            } else {
+                currentFlags.kpi_target_hours = 0;
+            }
+            staffPayload.feature_flags = currentFlags;
+        } else if (updates.featureFlags !== undefined) {
+            staffPayload.feature_flags = updates.featureFlags;
+        } else if (updates.feature_flags !== undefined) {
+            staffPayload.feature_flags = updates.feature_flags;
+        }
         if (updates.isActiveVipMenu !== undefined) staffPayload.is_active_vip_menu = updates.isActiveVipMenu;
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
 

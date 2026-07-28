@@ -95,6 +95,8 @@ export interface Employee {
   isHomeSpa?: boolean;
   role?: string;
   work_type?: string;
+  featureFlags?: any;
+  enableKpiDemo?: boolean;
 }
 
 export interface Role {

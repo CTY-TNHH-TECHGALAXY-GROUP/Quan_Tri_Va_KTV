@@ -189,6 +189,12 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                         <input type="checkbox" checked={editedEmployee.isHomeSpa || false} onChange={(e) => updateField('isHomeSpa', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
                         <span className="text-sm font-medium text-gray-700">Đi Home Spa</span>
                       </label>
+                      {editedEmployee.work_type !== 'TYPE_B' && (
+                        <label className="flex items-center gap-2 cursor-pointer mt-2">
+                          <input type="checkbox" checked={editedEmployee.enableKpiDemo || false} onChange={(e) => updateField('enableKpiDemo', e.target.checked)} className="w-4 h-4 text-amber-500 rounded border-amber-300 focus:ring-amber-500" />
+                          <span className="text-sm font-medium text-amber-700">Hiển thị Demo KPI</span>
+                        </label>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">

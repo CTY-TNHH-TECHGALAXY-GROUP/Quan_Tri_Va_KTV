@@ -65,6 +65,19 @@ export const useEmployeeManagement = () => {
                 work_type: s.work_type || 'TYPE_A',
                 baseSalaryPerHour: s.base_salary_per_hour || 180000,
                 targetHoursPerMonth: s.target_hours_per_month || 80,
+                featureFlags: (() => {
+                    if (!s.feature_flags) return {};
+                    if (typeof s.feature_flags === 'string') {
+                        try { return JSON.parse(s.feature_flags); } catch { return {}; }
+                    }
+                    return s.feature_flags;
+                })(),
+                enableKpiDemo: (() => {
+                    const flags = typeof s.feature_flags === 'string' 
+                        ? (function(){ try { return JSON.parse(s.feature_flags); } catch { return {}; } })()
+                        : (s.feature_flags || {});
+                    return (flags.kpi_target_hours || 0) > 0;
+                })(),
                 skills: (() => {
                     const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : DEFAULT_SKILLS;
                     const parsedSkills: any = {};
