@@ -105,7 +105,7 @@ export class EmployeeTasksService {
     if (!routines || routines.length === 0) return { success: true, count: 0 };
 
     // Create missing tasks
-    const newTasks = routines
+    const newTasks: any[] = routines
       .filter((r: any) => {
         if (existingTemplateIds.has(r.template_id)) return false;
         const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
