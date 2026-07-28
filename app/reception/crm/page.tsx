@@ -44,6 +44,7 @@ export default function CRMPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
 
   // Export state
   const [showExport, setShowExport] = useState(false);
@@ -459,6 +460,7 @@ export default function CRMPage() {
                     onUpdate={(updated) => {
                       setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
                     }}
+                    onPreviewAvatar={setPreviewAvatar}
                   />
                 ))}
                 {!isLoading && filteredCustomers.length === 0 && (
@@ -513,6 +515,21 @@ export default function CRMPage() {
               </div>
             </div>
           )}
+          
+          {/* Preview Avatar Modal */}
+          {previewAvatar && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setPreviewAvatar(null)}>
+              <div className="relative max-w-4xl max-h-screen">
+                <button 
+                  className="absolute -top-4 -right-4 md:-top-10 md:-right-10 text-white hover:text-gray-300 bg-black/50 hover:bg-black/80 rounded-full p-2 transition-all"
+                  onClick={(e) => { e.stopPropagation(); setPreviewAvatar(null); }}
+                >
+                  <X size={24} />
+                </button>
+                <img src={previewAvatar} alt="Avatar" className="max-w-full max-h-[85vh] object-contain rounded shadow-2xl" onClick={(e) => e.stopPropagation()} />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -551,11 +568,12 @@ export default function CRMPage() {
 
 // ─── Customer Row ────────────────────────────────────────────────────────────
 
-const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: { 
+const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAvatar }: { 
   customer: Customer; 
   formatVND: (n?: number) => string;
   onViewDetail: (c: Customer) => void;
   onUpdate: (updated: Customer) => void;
+  onPreviewAvatar: (url: string) => void;
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [notes, setNotes] = useState(customer.notes || '');
@@ -601,9 +619,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: {
       <td className="p-4 align-top">
         <div className="flex items-center gap-3">
           {customer.avatarUrl ? (
-            <a href={customer.avatarUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity" title="Xem ảnh gốc">
+            <button type="button" onClick={() => onPreviewAvatar(customer.avatarUrl!)} className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity outline-none" title="Xem ảnh gốc">
               <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" />
-            </a>
+            </button>
           ) : (
             <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">
               {(customer.fullName || '?').charAt(0).toUpperCase()}
