@@ -244,6 +244,7 @@ const DashboardTabContent = () => {
 // ============================================================
 const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTemplates> }) => {
   const [showModal, setShowModal] = useState(false);
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
   
   // Modal state
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -310,29 +311,38 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
 
       {Object.entries(grouped).map(([catName, items]) => {
         const catObj = logic.categories.find(c => c.name === catName);
+        const isExpanded = expandedCats[catName] !== false; // default true
 
         return (
-          <div key={catName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+          <div key={catName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6 transition-all duration-300">
             {/* Tiêu đề cấp 1 */}
-            <div className="bg-slate-200 text-slate-700 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-sm uppercase tracking-wide">{catName}</h3>
+            <div 
+              className="bg-slate-200 text-slate-700 px-5 py-3 border-b border-slate-100 flex items-center justify-between cursor-pointer hover:bg-slate-300/80 transition-colors select-none"
+              onClick={() => setExpandedCats(prev => ({ ...prev, [catName]: !isExpanded }))}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 font-bold w-4 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                <h3 className="font-bold text-sm uppercase tracking-wide">{catName}</h3>
+              </div>
               <div className="flex items-center gap-3">
                 <span className="bg-slate-300 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-full">{items.length} việc</span>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setCategoryId(catObj?.id || null);
                     setCategoryName(catName);
                     setRepeatMode(catObj?.repeat_mode || 'DAILY');
                     setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count })) : [{ name: '', requires_photo: false, min_photo_count: 0 }]);
                     setShowModal(true);
                   }}
-                  className="text-cyan-600 text-xs font-bold hover:underline"
+                  className="text-cyan-600 text-xs font-bold hover:underline bg-white/50 px-3 py-1 rounded-lg hover:bg-white transition-colors"
                 >Sửa</button>
               </div>
             </div>
             
             {/* Tiêu đề cấp 2 (Danh sách công việc) */}
-            <div className="divide-y divide-slate-50">
+            {isExpanded && (
+              <div className="divide-y divide-slate-50 animate-in slide-in-from-top-2 fade-in duration-200">
               {items.length === 0 ? (
                 <div className="px-5 py-6 text-center text-slate-400 text-sm italic">Chưa có công việc nào trong nhóm này.</div>
               ) : items.map((tpl, idx) => (
@@ -346,7 +356,8 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </div>
         );
       })}
