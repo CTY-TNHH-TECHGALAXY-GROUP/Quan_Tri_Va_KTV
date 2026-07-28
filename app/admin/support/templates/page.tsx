@@ -309,7 +309,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
         </button>
       </div>
 
-      {Object.entries(grouped).map(([catName, items]) => {
+      {Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([catName, items]) => {
         const catObj = logic.categories.find(c => c.name === catName);
         const isExpanded = expandedCats[catName] !== false; // default true
 
