@@ -301,14 +301,39 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }
 // ----------------------------------------------------
 
 function ScreenDashboard({ logic }: { logic: any }) {
-  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline, onCallState, handleToggleOnCall, kpiData } = logic;
+  const { booking, checklist, isChecklistComplete, handleConfirmSetup, setShowProcedure, activeSegmentIndex, prepProcedure, toggleChecklist, checkAllChecklist, setShowRoomIssueModal, walletBalance, canViewWallet, walletTimeline, onCallState, handleToggleOnCall, handleArriveAtVenue, kpiData } = logic;
   const [bookingUrl, setBookingUrl] = React.useState(DEFAULT_BOOKING_URL);
   const [showOnCallPopup, setShowOnCallPopup] = React.useState(false);
   const [tempMins, setTempMins] = React.useState(onCallState?.travel_time_mins || 30);
+  const [isFirstInQueue, setIsFirstInQueue] = React.useState(false);
 
   React.useEffect(() => {
     if (onCallState) setTempMins(onCallState.travel_time_mins);
   }, [onCallState]);
+
+  React.useEffect(() => {
+    const isIdle = (!booking || !booking.id);
+    if (!isIdle || !logic.ktvId) return;
+
+    const checkQueue = async () => {
+      try {
+        const date = new Date().toISOString().split('T')[0];
+        const res = await apiClient.get<any>(`/api/turns?date=${date}`);
+        if (res.success && res.data) {
+          const sorted = [...res.data].sort((a: any, b: any) => {
+            if (a.turns_completed !== b.turns_completed) return a.turns_completed - b.turns_completed;
+            return (a.check_in_order || 999) - (b.check_in_order || 999);
+          });
+          const firstWaiting = sorted.find((t: any) => t.status === 'waiting');
+          setIsFirstInQueue(firstWaiting?.employee_id === logic.ktvId);
+        }
+      } catch (e) {}
+    };
+    
+    checkQueue();
+    const interval = setInterval(checkQueue, 15000);
+    return () => clearInterval(interval);
+  }, [booking, logic.ktvId]);
 
   React.useEffect(() => {
     apiClient.get<any>(API.SYSTEM.CONFIG)
@@ -376,23 +401,38 @@ function ScreenDashboard({ logic }: { logic: any }) {
           </div>
           <div className="flex items-center gap-3">
              {onCallState?.allow_on_call && (
-               <button
-                 onClick={() => {
-                   if (onCallState.is_on_call) {
-                     handleToggleOnCall(false, onCallState.travel_time_mins);
-                   } else {
-                     setShowOnCallPopup(true);
-                   }
-                 }}
-                 className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all border shadow-sm ${
-                   onCallState.is_on_call
-                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                     : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                 }`}
-               >
-                 <div className={`w-2.5 h-2.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
-                 {onCallState.is_on_call ? 'Đang Sẵn Sàng (KTV Loại B)' : 'Bật Nhận Đơn (Loại B)'}
-               </button>
+               <div className="flex items-center gap-2">
+                 <button
+                   onClick={() => {
+                     if (onCallState.is_on_call) {
+                       handleToggleOnCall(false, onCallState.travel_time_mins);
+                     } else {
+                       setShowOnCallPopup(true);
+                     }
+                   }}
+                   className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all border shadow-sm ${
+                     onCallState.is_on_call
+                       ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                       : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                   }`}
+                 >
+                   {onCallState.is_on_call ? 'Tắt Nhận Đơn' : 'Bật Nhận Đơn (Loại B)'}
+                 </button>
+                 {onCallState.is_on_call && onCallState.online_status === 'ONLINE' && (
+                   <button
+                     onClick={handleArriveAtVenue}
+                     className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all bg-emerald-600 text-white shadow-md active:scale-95"
+                   >
+                     📍 Đã tới tiệm
+                   </button>
+                 )}
+                 {onCallState.is_on_call && onCallState.online_status === 'AT_VENUE' && (
+                   <span className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm text-emerald-700 bg-emerald-100 border border-emerald-200">
+                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                     Đang ở tiệm
+                   </span>
+                 )}
+               </div>
              )}
             <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
                <User size={20} />
@@ -481,6 +521,27 @@ function ScreenDashboard({ logic }: { logic: any }) {
             </div>
           )}
 
+          {/* V5: First in queue alert */}
+          {isFirstInQueue && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="bg-gradient-to-r from-rose-500 to-red-600 p-5 rounded-[32px] shadow-lg shadow-red-200 border border-red-500 text-white flex items-center gap-4"
+            >
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                <AlertTriangle size={24} className="text-white animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm uppercase tracking-widest mb-1 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
+                  Tua Đầu - Chú ý
+                </h3>
+                <p className="text-xs font-bold opacity-90 leading-relaxed">
+                  Bạn đang đứng tua đầu! Hãy kiểm tra và châm nước (nước uống/nước dịch vụ) để sẵn sàng đón khách.
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           {/* V5: Pending Handover Debt Widget */}
           {logic.pendingHandovers?.length > 0 && (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-5 rounded-[32px] shadow-sm border border-amber-200">
@@ -521,32 +582,42 @@ function ScreenDashboard({ logic }: { logic: any }) {
 
           {/* Mobile On-Call Toggle */}
           {onCallState?.allow_on_call && (
-            <div className="lg:hidden bg-white p-5 rounded-[32px] shadow-sm border border-emerald-50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${onCallState.is_on_call ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
-                  <div className={`w-3.5 h-3.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+            <div className="lg:hidden bg-white p-5 rounded-[32px] shadow-sm border border-emerald-50 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${onCallState.is_on_call ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                    <div className={`w-3.5 h-3.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">Ngoài giờ</h3>
+                    <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? (onCallState.online_status === 'AT_VENUE' ? 'Đã tới tiệm' : `Sẵn sàng (${onCallState.travel_time_mins}p)`) : 'Đang tắt'}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">Ngoài giờ</h3>
-                  <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? `Sẵn sàng (${onCallState.travel_time_mins}p)` : 'Đang tắt'}</p>
-                </div>
+                <button
+                  onClick={() => {
+                     if (onCallState.is_on_call) {
+                       handleToggleOnCall(false, onCallState.travel_time_mins);
+                     } else {
+                       setShowOnCallPopup(true);
+                     }
+                  }}
+                  className={`px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all ${
+                    onCallState.is_on_call 
+                      ? 'bg-red-50 text-red-600 active:scale-95 border border-red-200' 
+                      : 'bg-emerald-600 text-white active:scale-95 shadow-md shadow-emerald-600/20'
+                  }`}
+                >
+                  {onCallState.is_on_call ? 'Tắt' : 'Bật'}
+                </button>
               </div>
-              <button
-                onClick={() => {
-                   if (onCallState.is_on_call) {
-                     handleToggleOnCall(false, onCallState.travel_time_mins);
-                   } else {
-                     setShowOnCallPopup(true);
-                   }
-                }}
-                className={`px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all ${
-                  onCallState.is_on_call 
-                    ? 'bg-slate-100 text-slate-600 active:scale-95' 
-                    : 'bg-emerald-600 text-white active:scale-95 shadow-md shadow-emerald-600/20'
-                }`}
-              >
-                {onCallState.is_on_call ? 'Tắt' : 'Bật'}
-              </button>
+              {onCallState.is_on_call && onCallState.online_status === 'ONLINE' && (
+                <button
+                  onClick={handleArriveAtVenue}
+                  className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all bg-emerald-600 text-white shadow-md active:scale-95"
+                >
+                  📍 Đã tới tiệm
+                </button>
+              )}
             </div>
           )}
 

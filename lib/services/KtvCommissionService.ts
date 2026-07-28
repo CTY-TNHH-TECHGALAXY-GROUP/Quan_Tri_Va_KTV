@@ -156,7 +156,7 @@ export class KtvCommissionService {
         return {
             s1Bonus: bonusMap[`ktv_shift_1_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_1_bonus'] ?? 20,
             s2Bonus: bonusMap[`ktv_shift_2_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_2_bonus'] ?? 20,
-            s3Bonus: bonusMap[`ktv_shift_3_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_3_bonus'] ?? 40
+            s3Bonus: bonusMap[`ktv_shift_3_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_3_bonus'] ?? 30
         };
     }
 
@@ -307,14 +307,37 @@ export class KtvCommissionService {
         if (currentShift === 'SHIFT_2') adjustedBasePoints = bonusConfig.s2Bonus;
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
 
-        // Penalty for short duration
-        if (myTotalDuration < 60) {
-            adjustedBasePoints = adjustedBasePoints / 2;
+        // 4. Calculate points per Service (Item) rather than per Booking
+        let calculatedPoints = 0;
+        for (const item of (booking.BookingItems || [])) {
+            let isTechInvolved = false;
+            let itemTechs = new Set<string>();
+
+            if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
+                item.technicianCodes.forEach((tc: string) => itemTechs.add(tc.toLowerCase()));
+                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+            } else {
+                const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
+                codes.forEach((tc: string) => {
+                    if (tc.trim()) itemTechs.add(tc.trim().toLowerCase());
+                });
+                isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
+            }
+
+            if (isTechInvolved) {
+                const ktvsInItem = itemTechs.size || 1;
+                calculatedPoints += (adjustedBasePoints / ktvsInItem);
+            }
         }
 
-        // 4. Divide by total unique KTVs working on this booking
-        const totalUniqueKTVs = allKtvCodes.size || 1;
-        
-        return Math.floor(adjustedBasePoints / totalUniqueKTVs);
+        // Cap points to max adjustedBasePoints
+        calculatedPoints = Math.min(calculatedPoints, adjustedBasePoints);
+
+        // Penalty for short duration
+        if (myTotalDuration < 60) {
+            calculatedPoints = calculatedPoints / 2;
+        }
+
+        return Math.floor(calculatedPoints);
     }
 }

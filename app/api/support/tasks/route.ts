@@ -7,16 +7,19 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get('employeeId');
+    const userCode = searchParams.get('userCode');
 
-    if (!employeeId) {
-      return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
+    const empIds = Array.from(new Set([employeeId, userCode].filter(Boolean) as string[]));
+
+    if (empIds.length === 0) {
+      return NextResponse.json({ success: false, error: 'Missing employeeId or userCode' }, { status: 400 });
     }
 
     // 1. Generate new tasks for today if not already generated
-    await EmployeeTasksService.generateTodayTasks(employeeId);
+    await EmployeeTasksService.generateTodayTasks(empIds);
 
     // 2. Fetch the tasks
-    const { data } = await EmployeeTasksService.fetchTasks(employeeId);
+    const { data } = await EmployeeTasksService.fetchTasks(empIds);
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

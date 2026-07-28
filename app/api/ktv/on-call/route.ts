@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,16 +32,16 @@ export async function GET(req: NextRequest) {
     const isTypeB = data?.work_type === 'TYPE_B';
     const allow_on_call = isTypeB || featureFlags.allow_on_call === true;
     
-    // Tính trạng thái Online thực tế
-    const nowMs = Date.now();
-    const untilMs = data?.available_until ? new Date(data.available_until).getTime() : 0;
-    const is_on_call = data?.online_status === 'ONLINE' && untilMs > nowMs;
+    // Tính trạng thái Online thực tế (Bao gồm cả ONLINE và AT_VENUE)
+    // Không cần check available_until nữa vì Type B có thể tự do tắt app khi mệt
+    const is_on_call = data?.online_status === 'ONLINE' || data?.online_status === 'AT_VENUE';
 
     return NextResponse.json({
       success: true,
       data: {
         allow_on_call,
         is_on_call,
+        online_status: data?.online_status,
         travel_time_mins: data?.travel_minutes || featureFlags.travel_time_mins || 30,
       }
     });
@@ -89,22 +90,35 @@ export async function POST(req: NextRequest) {
       travel_time_mins: travel_time_mins || 30
     };
 
-    // Update các cột Native mới của Phase 4
+    if (!is_on_call) {
+      // Dùng service chuẩn để xóa TurnQueue và đóng KTVShifts
+      const res = await KtvOnlineService.goOffline(supabase, techCode);
+      if (!res.success) {
+        return NextResponse.json({ error: res.error }, { status: 500 });
+      }
+      
+      // Update cờ feature_flags
+      await supabase.from('Staff').update({ feature_flags: newFlags }).eq('id', techCode);
+      
+      return NextResponse.json({ success: true, data: newFlags });
+    }
+
+    // Tính thời gian KTV sẽ có mặt (hiện tại + thời gian di chuyển)
+    const availableFrom = new Date();
+    availableFrom.setMinutes(availableFrom.getMinutes() + (travel_time_mins || 30));
+
+    // Nếu bật nhận đơn, chỉ update Staff
     const updates: any = {
       feature_flags: newFlags,
-      online_status: is_on_call ? 'ONLINE' : 'OFFLINE',
-      travel_minutes: is_on_call ? (travel_time_mins || 30) : null,
+      online_status: 'ONLINE',
+      travel_minutes: travel_time_mins || 30,
+      available_from: availableFrom.toISOString(),
     };
-
-    if (is_on_call) {
-      updates.available_from = new Date().toISOString();
-      const until = new Date();
-      until.setHours(until.getHours() + 4);
-      updates.available_until = until.toISOString();
-    } else {
-      updates.available_from = null;
-      updates.available_until = null;
-    }
+    
+    // Tạm giữ available_until +4h phòng hờ quên tắt
+    const until = new Date();
+    until.setHours(until.getHours() + 4);
+    updates.available_until = until.toISOString();
 
     const { error: updateError } = await supabase
       .from('Staff')

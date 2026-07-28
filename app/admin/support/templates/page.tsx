@@ -293,6 +293,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   // Modal state
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
+  const [repeatMode, setRepeatMode] = useState('DAILY');
   const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number }[]>([
     { name: '', requires_photo: false, min_photo_count: 0 }
   ]);
@@ -328,7 +329,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
       return;
     }
     setSubmitting(true);
-    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks);
+    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, 'ROLE', repeatMode);
     if (ok) {
       setShowModal(false);
       setCategoryId(null);
@@ -344,6 +345,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
         <button onClick={() => {
           setCategoryId(null);
           setCategoryName('');
+          setRepeatMode('DAILY');
           setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
           setShowModal(true);
         }} className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-cyan-200 flex items-center gap-2 hover:bg-cyan-700 transition-colors">
@@ -365,6 +367,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                   onClick={() => {
                     setCategoryId(catObj?.id || null);
                     setCategoryName(catName);
+                    setRepeatMode(catObj?.repeat_mode || 'DAILY');
                     setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count })) : [{ name: '', requires_photo: false, min_photo_count: 0 }]);
                     setShowModal(true);
                   }}
@@ -419,6 +422,25 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                   className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 font-bold text-slate-800"
                   autoFocus
                 />
+              </div>
+
+              {/* Kiểu Lặp Lại */}
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Chu Kỳ Lặp Lại</label>
+                <select
+                  value={repeatMode}
+                  onChange={e => setRepeatMode(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 text-slate-800 bg-white"
+                >
+                  <option value="DAILY">Hằng ngày</option>
+                  <option value="WEEKLY_MONDAY">Hằng tuần - Thứ 2</option>
+                  <option value="WEEKLY_TUESDAY">Hằng tuần - Thứ 3</option>
+                  <option value="WEEKLY_WEDNESDAY">Hằng tuần - Thứ 4</option>
+                  <option value="WEEKLY_THURSDAY">Hằng tuần - Thứ 5</option>
+                  <option value="WEEKLY_FRIDAY">Hằng tuần - Thứ 6</option>
+                  <option value="WEEKLY_SATURDAY">Hằng tuần - Thứ 7</option>
+                  <option value="WEEKLY_SUNDAY">Hằng tuần - Chủ nhật</option>
+                </select>
               </div>
 
               {/* Danh sách việc nhỏ */}
@@ -549,6 +571,7 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
   const [showModal, setShowModal] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
+  const [repeatMode, setRepeatMode] = useState('DAILY');
   const [tasks, setTasks] = useState([{ name: '', requires_photo: false, min_photo_count: 0 }]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -560,11 +583,12 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
       return;
     }
     setSubmitting(true);
-    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, 'ROOM');
+    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, 'ROOM', repeatMode);
     if (ok) {
       setShowModal(false);
       setCategoryId(null);
       setCategoryName('');
+      setRepeatMode('DAILY');
       setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
     }
     setSubmitting(false);
@@ -654,6 +678,25 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                   placeholder="Nhập tên tiêu đề..."
                   className="w-full border border-slate-200 p-3 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 outline-none transition-all"
                 />
+              </div>
+
+              {/* Kiểu Lặp Lại */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Chu Kỳ Lặp Lại</label>
+                <select
+                  value={repeatMode}
+                  onChange={e => setRepeatMode(e.target.value)}
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 outline-none transition-all bg-white"
+                >
+                  <option value="DAILY">Hằng ngày</option>
+                  <option value="WEEKLY_MONDAY">Hằng tuần - Thứ 2</option>
+                  <option value="WEEKLY_TUESDAY">Hằng tuần - Thứ 3</option>
+                  <option value="WEEKLY_WEDNESDAY">Hằng tuần - Thứ 4</option>
+                  <option value="WEEKLY_THURSDAY">Hằng tuần - Thứ 5</option>
+                  <option value="WEEKLY_FRIDAY">Hằng tuần - Thứ 6</option>
+                  <option value="WEEKLY_SATURDAY">Hằng tuần - Thứ 7</option>
+                  <option value="WEEKLY_SUNDAY">Hằng tuần - Chủ nhật</option>
+                </select>
               </div>
 
               <div className="space-y-4">

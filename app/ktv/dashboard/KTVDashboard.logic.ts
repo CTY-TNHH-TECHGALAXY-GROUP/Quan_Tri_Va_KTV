@@ -256,8 +256,32 @@ export function useKTVDashboard(config?: DashboardConfig) {
         try {
             setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
             await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins });
+            // Re-fetch state to get true online_status from server
+            if (!isOnCall && fetchBookingRef.current) {
+                await fetchBookingRef.current();
+            }
         } catch (e) {
             console.error('Error toggling on call:', e);
+        }
+    };
+
+    const handleArriveAtVenue = async () => {
+        if (!ktvId) return;
+        try {
+            const json = await apiClient.post<{ success: boolean; message?: string; error?: string }>(
+                API.KTV.ON_CALL, 
+                { action: 'arrive', staffId: ktvId }
+            );
+            
+            if (json.success) {
+                if (fetchBookingRef.current) await fetchBookingRef.current();
+                alert('Đã báo cáo tới tiệm thành công! Bạn đã được thêm vào Sổ Tua.');
+            } else {
+                alert('Lỗi: ' + (json.error || 'Không thể cập nhật trạng thái'));
+            }
+        } catch (e) {
+            console.error('Error arrive at venue:', e);
+            alert('Lỗi kết nối khi cập nhật trạng thái tới tiệm.');
         }
     };
 
@@ -2119,6 +2143,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         walletTimeline,
         onCallState,
         handleToggleOnCall,
+        handleArriveAtVenue,
         kpiData,
         canViewWallet,
         forceRefresh: async () => {

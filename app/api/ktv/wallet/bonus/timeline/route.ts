@@ -60,7 +60,7 @@ export async function GET(request: Request) {
         
         const s1Bonus = Number(configMap['ktv_shift_1_bonus'] || 20);
         const s2Bonus = Number(configMap['ktv_shift_2_bonus'] || 20);
-        const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 40);
+        const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 30);
 
         const { data: shiftsData } = await supabase
             .from('KTVShifts')

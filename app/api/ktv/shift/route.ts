@@ -103,6 +103,11 @@ export async function GET(request: NextRequest) {
             // ─── LỌC CA THEO NGÀY (Lịch sử + Tự động khôi phục ca tạm thời) ───
             const dedupMap = new Map<string, typeof data[0]>();
 
+            // Lấy danh sách KTV Loại B để loại trừ khỏi danh sách ca làm
+            const { data: staffData } = await supabase.from('Staff').select('id').eq('work_type', 'TYPE_B');
+            const typeBIds = new Set(staffData?.map(s => s.id) || []);
+
+
             // Lọc ưu tiên: lấy các ca ACTIVE trước, sau đó đến REPLACED
             const sortedData = (data || []).sort((a, b) => {
                 if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
@@ -137,7 +142,8 @@ export async function GET(request: NextRequest) {
                 }
 
                 // Nếu chưa có trong map, đây là bản ghi mới nhất (đã ưu tiên ACTIVE) trước hoặc bằng fetchDate
-                if (!dedupMap.has(shift.employeeId)) {
+                // ĐỒNG THỜI loại trừ KTV Loại B vì họ không có ca cố định
+                if (!typeBIds.has(shift.employeeId) && !dedupMap.has(shift.employeeId)) {
                     const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh';
                     const isExpiredForTarget = isTempShift && shift.effectiveFrom < fetchDate;
 

@@ -70,59 +70,24 @@ export class KtvOnlineService {
     }
 
     /**
-     * KTV Type B confirms arrival at the venue.
-     * Sets online_status = 'AT_VENUE', resets travel_minutes to 0.
-     */
-    static async arriveAtVenue(
-        supabase: SupabaseClient,
-        staffId: string
-    ): Promise<{ success: boolean; error?: string }> {
-        try {
-            const { data: staff } = await supabase
-                .from('Staff')
-                .select('id, online_status')
-                .eq('id', staffId)
-                .single();
-
-            if (!staff) {
-                return { success: false, error: 'Không tìm thấy nhân viên.' };
-            }
-
-            if (staff.online_status !== 'ONLINE') {
-                return { success: false, error: 'Bạn chưa đăng ký nhận đơn. Vui lòng bấm "Bắt đầu nhận đơn" trước.' };
-            }
-
-            const { error } = await supabase
-                .from('Staff')
-                .update({
-                    online_status: 'AT_VENUE',
-                    travel_minutes: 0,
-                })
-                .eq('id', staffId)
-                .eq('work_type', 'TYPE_B');
-
-            if (error) {
-                console.error('KtvOnlineService.arriveAtVenue - Update failed:', error.message, error.code);
-                return { success: false, error: 'Không thể cập nhật trạng thái.' };
-            }
-
-            return { success: true };
-        } catch (e: any) {
-            console.error('KtvOnlineService.arriveAtVenue - Exception:', e);
-            return { success: false, error: e.message };
-        }
-    }
-
-    /**
      * KTV Type B manually goes offline.
      * Sets online_status = 'OFFLINE', clears availability window.
+     * REMOVES from TurnQueue and closes active KTVShifts.
      */
     static async goOffline(
         supabase: SupabaseClient,
         staffId: string
     ): Promise<{ success: boolean; error?: string }> {
         try {
-            const { error } = await supabase
+            // Lấy Business Date hiện tại
+            const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
+            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
+            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
+            const businessDateStr = businessNow.toISOString().slice(0, 10);
+
+            // 1. Cập nhật Staff
+            const { error: staffError } = await supabase
                 .from('Staff')
                 .update({
                     online_status: 'OFFLINE',
@@ -132,14 +97,114 @@ export class KtvOnlineService {
                 })
                 .eq('id', staffId);
 
-            if (error) {
-                console.error('KtvOnlineService.goOffline - Update failed:', error.message, error.code);
-                return { success: false, error: 'Không thể cập nhật trạng thái.' };
+            if (staffError) {
+                console.error('KtvOnlineService.goOffline - Staff Update failed:', staffError.message, staffError.code);
+                return { success: false, error: 'Không thể cập nhật trạng thái Staff.' };
+            }
+
+            // 2. Xóa khỏi TurnQueue (Mất trong sổ tua)
+            await supabase
+                .from('TurnQueue')
+                .delete()
+                .eq('employee_id', staffId)
+                .eq('date', businessDateStr);
+
+            // 3. Đóng ca làm việc (KTVShifts) nếu có
+            const { data: user } = await supabase.from('Users').select('id').eq('staffCode', staffId).maybeSingle();
+            if (user) {
+                await supabase.from('KTVShifts')
+                    .update({ 
+                        actualEndTime: vnNow.toISOString(),
+                        status: 'REPLACED',
+                        reason: 'KTV tự tắt app'
+                    })
+                    .eq('employeeId', user.id)
+                    .eq('effectiveFrom', businessDateStr)
+                    .eq('status', 'ACTIVE');
+                
+                await supabase.from('Users').update({ isOnShift: false }).eq('id', user.id);
             }
 
             return { success: true };
         } catch (e: any) {
+
             console.error('KtvOnlineService.goOffline - Exception:', e);
+            return { success: false, error: e.message };
+        }
+    }
+
+    /**
+     * KTV Type B arrives at the shop (Đã tới tiệm).
+     * Sets online_status = 'AT_VENUE'.
+     * Inserts into KTVShifts (Ca tự do) and TurnQueue.
+     */
+    static async arriveAtVenue(
+        supabase: SupabaseClient,
+        staffId: string
+    ): Promise<{ success: boolean; error?: string }> {
+        try {
+            const { data: staffData } = await supabase.from('Staff').select('id, full_name').eq('id', staffId).single();
+            if (!staffData) return { success: false, error: 'Staff not found' };
+
+            // Lấy Business Date hiện tại
+            const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
+            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
+            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
+            const businessDateStr = businessNow.toISOString().slice(0, 10);
+
+            // 1. Cập nhật Staff
+            const { error: staffError } = await supabase
+                .from('Staff')
+                .update({ online_status: 'AT_VENUE' })
+                .eq('id', staffId);
+
+            if (staffError) return { success: false, error: staffError.message };
+
+            // 2. Cập nhật KTVShifts và Users
+            const { data: user } = await supabase.from('Users').select('id, fullName').eq('staffCode', staffId).maybeSingle();
+            if (user) {
+                // Tắt các ca cũ đang ACTIVE
+                await supabase.from('KTVShifts')
+                    .update({ status: 'REPLACED' })
+                    .eq('employeeId', user.id)
+                    .eq('effectiveFrom', businessDateStr)
+                    .eq('status', 'ACTIVE');
+
+                // Mở Ca tự do mới
+                await supabase.from('KTVShifts').insert({
+                    employeeId: user.id,
+                    employeeName: user.fullName || staffData.full_name,
+                    shiftType: 'FREE',
+                    effectiveFrom: businessDateStr,
+                    reason: 'KTV Loại B tới tiệm',
+                    status: 'ACTIVE',
+                    reviewedBy: 'SYSTEM',
+                    reviewedAt: new Date().toISOString()
+                });
+                
+                await supabase.from('Users').update({ isOnShift: true }).eq('id', user.id);
+            }
+
+            // 3. Thêm vào TurnQueue (Lên tua)
+            const { data: maxPosRow } = await supabase.from('TurnQueue').select('queue_position').eq('date', businessDateStr).order('queue_position', { ascending: false }).limit(1).maybeSingle();
+            const { data: maxCheckInRow } = await supabase.from('TurnQueue').select('check_in_order').eq('date', businessDateStr).order('check_in_order', { ascending: false }).limit(1).maybeSingle();
+            
+            const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
+            const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
+
+            await supabase.from('TurnQueue').upsert({
+                employee_id: staffId,
+                date: businessDateStr,
+                queue_position: nextPosition,
+                check_in_order: nextCheckIn,
+                status: 'waiting',
+                turns_completed: 0,
+            }, { onConflict: 'employee_id,date' });
+
+            return { success: true };
+        } catch (e: any) {
+            console.error('KtvOnlineService.arriveAtVenue - Exception:', e);
             return { success: false, error: e.message };
         }
     }

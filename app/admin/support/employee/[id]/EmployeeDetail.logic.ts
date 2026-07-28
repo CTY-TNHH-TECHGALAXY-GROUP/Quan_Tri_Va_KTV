@@ -102,6 +102,13 @@ export const useEmployeeDetail = (employeeId: string) => {
   // Fetch today's tasks for this employee
   // ============================================================
   const fetchTodayTasks = useCallback(async () => {
+    // 1. Tự động sinh các task mới từ Checklist Cố định (nếu có) thông qua API
+    try {
+      await fetch(`/api/support/tasks?employeeId=${employeeId}&t=${Date.now()}`, { cache: 'no-store' });
+    } catch (e) {
+      console.error('Lỗi khi đồng bộ API Tasks:', e);
+    }
+
     const { data, error } = await supabase
       .from('Tasks')
       .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name)')
@@ -190,6 +197,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       }
 
       await fetchRoutines();
+      await fetchTodayTasks();
       // DO NOT close modal automatically so user can assign more
     } finally {
       setSubmitting(false);
@@ -215,6 +223,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       }
 
       await fetchRoutines();
+      await fetchTodayTasks();
     } finally {
       setSubmitting(false);
     }
@@ -230,6 +239,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       return;
     }
     await fetchRoutines();
+    await fetchTodayTasks();
   };
 
   // ============================================================

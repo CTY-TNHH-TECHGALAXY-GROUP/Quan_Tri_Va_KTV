@@ -15,6 +15,23 @@ const getTodayEnd = () => {
   return d.toISOString();
 };
 
+const shouldGenerateTaskToday = (repeatMode: string) => {
+  if (!repeatMode || repeatMode === 'DAILY') return true;
+  
+  const today = new Date();
+  const day = today.getDay(); // 0 is Sunday, 1 is Monday
+  
+  if (repeatMode === 'WEEKLY_MONDAY' && day === 1) return true;
+  if (repeatMode === 'WEEKLY_TUESDAY' && day === 2) return true;
+  if (repeatMode === 'WEEKLY_WEDNESDAY' && day === 3) return true;
+  if (repeatMode === 'WEEKLY_THURSDAY' && day === 4) return true;
+  if (repeatMode === 'WEEKLY_FRIDAY' && day === 5) return true;
+  if (repeatMode === 'WEEKLY_SATURDAY' && day === 6) return true;
+  if (repeatMode === 'WEEKLY_SUNDAY' && day === 0) return true;
+  
+  return false;
+};
+
 export class EmployeeTasksService {
   /**
    * Auto-generate tasks for an employee based on their active routines
@@ -71,7 +88,7 @@ export class EmployeeTasksService {
     // Fetch routines
     const { data: routines, error: err2 } = await supabase
       .from('EmployeeRoutines')
-      .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count)')
+      .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, TaskCategories(repeat_mode))')
       .in('employee_id', empIds)
       .eq('is_active', true);
 
@@ -84,7 +101,11 @@ export class EmployeeTasksService {
 
     // Create missing tasks
     const newTasks = routines
-      .filter((r: any) => !existingTemplateIds.has(r.template_id))
+      .filter((r: any) => {
+        if (existingTemplateIds.has(r.template_id)) return false;
+        const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
+        return shouldGenerateTaskToday(repeatMode);
+      })
       .map((r: any) => ({
         template_id: r.template_id,
         category_id: r.TaskTemplates?.category_id || null,
@@ -94,6 +115,7 @@ export class EmployeeTasksService {
         status: 'NOT_STARTED',
         inspection_status: 'NOT_REVIEWED',
         priority: 'NORMAL',
+        sort_order: r.TaskTemplates?.sort_order || 0
       }));
 
     if (newTasks.length > 0) {
@@ -127,7 +149,7 @@ export class EmployeeTasksService {
 
     if (error) {
       console.error('Error fetching tasks:', error.message, error.code);
-      throw new Error('Failed to fetch tasks');
+      throw new Error(error.message || 'Failed to fetch tasks');
     }
 
     // Fetch photo counts

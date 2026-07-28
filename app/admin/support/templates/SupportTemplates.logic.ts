@@ -27,6 +27,7 @@ interface CategoryItem {
   description: string | null;
   type: 'ROLE' | 'ROOM';
   is_active: boolean;
+  repeat_mode?: string;
 }
 
 interface TemplateItem {
@@ -126,7 +127,7 @@ export const useSupportTemplates = () => {
     const { data, error } = await supabase
       .from('TaskCategories')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('name', { ascending: true });
 
     if (error) {
       console.error('Error fetching categories:', error.message, error.code);
@@ -228,13 +229,31 @@ export const useSupportTemplates = () => {
       return next;
     });
 
-    if (isChecked) {
-      await supabase.from('RoomTaskTemplates').insert({ template_id: templateId, room_id: roomId });
-    } else {
-      await supabase.from('RoomTaskTemplates')
-        .delete()
-        .eq('template_id', templateId)
-        .eq('room_id', roomId);
+    try {
+      const res = await fetch('/api/support/room-matrix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId, roomId, isChecked }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update room matrix');
+      }
+    } catch (error) {
+      console.error('Error toggling room matrix:', error);
+      // Revert on error
+      setRoomMatrix(prev => {
+        const next = { ...prev };
+        if (!next[templateId]) next[templateId] = new Set();
+        
+        const newSet = new Set(next[templateId]);
+        if (!isChecked) {
+          newSet.add(roomId);
+        } else {
+          newSet.delete(roomId);
+        }
+        next[templateId] = newSet;
+        return next;
+      });
     }
   };
 
@@ -269,7 +288,8 @@ export const useSupportTemplates = () => {
     categoryId: string | null, // null means new category
     categoryName: string,
     tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number }[],
-    categoryType: 'ROLE' | 'ROOM' = 'ROLE'
+    categoryType: 'ROLE' | 'ROOM' = 'ROLE',
+    repeatMode: string = 'DAILY'
   ) => {
     try {
       let finalCategoryId = categoryId;
@@ -278,7 +298,7 @@ export const useSupportTemplates = () => {
       if (!finalCategoryId) {
         const { data: newCat, error: catErr } = await supabase
           .from('TaskCategories')
-          .insert({ name: categoryName, type: categoryType })
+          .insert({ name: categoryName, type: categoryType, repeat_mode: repeatMode })
           .select('id')
           .single();
           
@@ -290,7 +310,7 @@ export const useSupportTemplates = () => {
       } else {
         const { error: catUpdateErr } = await supabase
           .from('TaskCategories')
-          .update({ name: categoryName, type: categoryType })
+          .update({ name: categoryName, type: categoryType, repeat_mode: repeatMode })
           .eq('id', finalCategoryId);
           
         if (catUpdateErr) {
