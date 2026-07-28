@@ -75,6 +75,29 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Routine id is required' }, { status: 400 });
     }
 
+    // 1. Fetch routine to get employee_id and template_id
+    const { data: routine } = await supabase
+      .from('EmployeeRoutines')
+      .select('employee_id, template_id')
+      .eq('id', routineId)
+      .single();
+
+    if (routine) {
+      // 2. Delete generated tasks for today that are NOT_STARTED
+      const d1 = new Date(); d1.setHours(0, 0, 0, 0); const todayStart = d1.toISOString();
+      const d2 = new Date(); d2.setHours(23, 59, 59, 999); const todayEnd = d2.toISOString();
+
+      await supabase
+        .from('Tasks')
+        .delete()
+        .eq('assignee_id', routine.employee_id)
+        .eq('template_id', routine.template_id)
+        .eq('status', 'NOT_STARTED')
+        .gte('created_at', todayStart)
+        .lte('created_at', todayEnd);
+    }
+
+    // 3. Delete the routine
     const { error } = await supabase
       .from('EmployeeRoutines')
       .delete()
