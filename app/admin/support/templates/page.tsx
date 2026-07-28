@@ -470,6 +470,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                             />
                           )}
                         </div>
+                      </div>
                       <div className="flex flex-col items-center gap-1">
                         {idx > 0 && (
                           <button
