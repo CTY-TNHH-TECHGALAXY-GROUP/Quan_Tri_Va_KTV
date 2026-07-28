@@ -250,8 +250,8 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [repeatMode, setRepeatMode] = useState('DAILY');
-  const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number }[]>([
-    { name: '', requires_photo: false, min_photo_count: 0 }
+  const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number; cron_schedule?: string }[]>([
+    { name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }
   ]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -302,7 +302,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
           setCategoryId(null);
           setCategoryName('');
           setRepeatMode('DAILY');
-          setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+          setTasks([{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
           setShowModal(true);
         }} className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-cyan-200 flex items-center gap-2 hover:bg-cyan-700 transition-colors">
           <span className="text-xl leading-none">+</span> Thêm Tiêu Đề Mới
@@ -332,7 +332,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                     setCategoryId(catObj?.id || null);
                     setCategoryName(catName);
                     setRepeatMode(catObj?.repeat_mode || 'DAILY');
-                    setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count })) : [{ name: '', requires_photo: false, min_photo_count: 0 }]);
+                    setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count, cron_schedule: t.cron_schedule && t.cron_schedule !== '—' ? t.cron_schedule : '' })) : [{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
                     setShowModal(true);
                   }}
                   className="text-cyan-600 text-xs font-bold hover:underline bg-white/50 px-3 py-1 rounded-lg hover:bg-white transition-colors"
@@ -399,13 +399,8 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                   className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 text-slate-800 bg-white"
                 >
                   <option value="DAILY">Hằng ngày</option>
-                  <option value="WEEKLY_MONDAY">Hằng tuần - Thứ 2</option>
-                  <option value="WEEKLY_TUESDAY">Hằng tuần - Thứ 3</option>
-                  <option value="WEEKLY_WEDNESDAY">Hằng tuần - Thứ 4</option>
-                  <option value="WEEKLY_THURSDAY">Hằng tuần - Thứ 5</option>
-                  <option value="WEEKLY_FRIDAY">Hằng tuần - Thứ 6</option>
-                  <option value="WEEKLY_SATURDAY">Hằng tuần - Thứ 7</option>
-                  <option value="WEEKLY_SUNDAY">Hằng tuần - Chủ nhật</option>
+                  <option value="WEEKLY">Hằng tuần (Chọn lịch cho từng việc ở dưới)</option>
+                  {repeatMode.startsWith('WEEKLY_') && <option value={repeatMode}>{repeatMode} (Cũ)</option>}
                 </select>
               </div>
 
@@ -720,6 +715,40 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                           </div>
                         )}
                       </div>
+                      
+                      {repeatMode === 'WEEKLY' && (
+                        <div className="flex flex-wrap gap-2 mt-3 p-2 bg-white rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 font-medium self-center mr-1">Lặp lại vào:</span>
+                          {[
+                            { value: '1', label: 'T2' },
+                            { value: '2', label: 'T3' },
+                            { value: '3', label: 'T4' },
+                            { value: '4', label: 'T5' },
+                            { value: '5', label: 'T6' },
+                            { value: '6', label: 'T7' },
+                            { value: '0', label: 'CN' },
+                          ].map(day => {
+                            const selectedDays = (task as any).cron_schedule ? (task as any).cron_schedule.split(',') : [];
+                            const isSelected = selectedDays.includes(day.value);
+                            return (
+                              <button
+                                key={day.value}
+                                onClick={() => {
+                                  let newDays = [...selectedDays];
+                                  if (isSelected) newDays = newDays.filter(d => d !== day.value);
+                                  else newDays.push(day.value);
+                                  const newTasks = [...tasks];
+                                  (newTasks[idx] as any).cron_schedule = newDays.join(',');
+                                  setTasks(newTasks);
+                                }}
+                                className={`px-2 py-1 text-xs rounded font-bold transition-all ${isSelected ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-center gap-1">
                       {idx > 0 && (
@@ -766,7 +795,7 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                 ))}
 
                 <button 
-                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0 }])}
+                  onClick={() => setTasks([...tasks, { name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }])}
                   className="w-full border-2 border-dashed border-slate-200 text-slate-500 py-3 rounded-xl font-medium hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 transition-all"
                 >
                   + Thêm dòng công việc

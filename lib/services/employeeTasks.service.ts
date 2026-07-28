@@ -15,7 +15,7 @@ const getTodayEnd = () => {
   return d.toISOString();
 };
 
-const shouldGenerateTaskToday = (repeatMode: string) => {
+const shouldGenerateTaskToday = (repeatMode: string, cronSchedule?: string | null) => {
   if (!repeatMode || repeatMode === 'DAILY') return true;
   
   const today = new Date();
@@ -28,6 +28,11 @@ const shouldGenerateTaskToday = (repeatMode: string) => {
   if (repeatMode === 'WEEKLY_FRIDAY' && day === 5) return true;
   if (repeatMode === 'WEEKLY_SATURDAY' && day === 6) return true;
   if (repeatMode === 'WEEKLY_SUNDAY' && day === 0) return true;
+  
+  if (repeatMode === 'WEEKLY' && cronSchedule) {
+    const days = cronSchedule.split(',').map(Number);
+    if (days.includes(day)) return true;
+  }
   
   return false;
 };
@@ -88,7 +93,7 @@ export class EmployeeTasksService {
     // Fetch routines
     const { data: routines, error: err2 } = await supabase
       .from('EmployeeRoutines')
-      .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, TaskCategories(repeat_mode))')
+      .select('template_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, cron_schedule, TaskCategories(repeat_mode))')
       .in('employee_id', empIds)
       .eq('is_active', true);
 
@@ -104,7 +109,8 @@ export class EmployeeTasksService {
       .filter((r: any) => {
         if (existingTemplateIds.has(r.template_id)) return false;
         const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
-        return shouldGenerateTaskToday(repeatMode);
+        const cronSchedule = r.TaskTemplates?.cron_schedule;
+        return shouldGenerateTaskToday(repeatMode, cronSchedule);
       })
       .map((r: any) => ({
         template_id: r.template_id,
@@ -121,14 +127,15 @@ export class EmployeeTasksService {
     // Fetch Room tasks
     const { data: roomRoutines } = await supabase
       .from('RoomTaskTemplates')
-      .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, TaskCategories(repeat_mode))');
+      .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, cron_schedule, TaskCategories(repeat_mode))');
 
     if (roomRoutines && roomRoutines.length > 0) {
       const newRoomTasks = roomRoutines
         .filter((r: any) => {
           if (existingRoomTemplates.has(`${r.template_id}_${r.room_id}`)) return false;
           const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
-          return shouldGenerateTaskToday(repeatMode);
+          const cronSchedule = r.TaskTemplates?.cron_schedule;
+          return shouldGenerateTaskToday(repeatMode, cronSchedule);
         })
         .map((r: any) => ({
           template_id: r.template_id,

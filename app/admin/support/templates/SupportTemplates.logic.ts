@@ -287,7 +287,7 @@ export const useSupportTemplates = () => {
   const saveCategoryWithTemplates = async (
     categoryId: string | null, // null means new category
     categoryName: string,
-    tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number }[],
+    tasksToSave: { id?: string; name: string; requires_photo: boolean; min_photo_count: number; cron_schedule?: string }[],
     categoryType: 'ROLE' | 'ROOM' = 'ROLE',
     repeatMode: string = 'DAILY'
   ) => {
@@ -331,6 +331,7 @@ export const useSupportTemplates = () => {
             requires_photo: t.requires_photo,
             min_photo_count: t.min_photo_count,
             sort_order: i,
+            cron_schedule: t.cron_schedule || null,
           }).eq('id', t.id);
         } else {
           // Insert new
@@ -340,6 +341,7 @@ export const useSupportTemplates = () => {
             requires_photo: t.requires_photo,
             min_photo_count: t.min_photo_count,
             sort_order: i,
+            cron_schedule: t.cron_schedule || null,
             is_active: true,
           });
         }
