@@ -453,41 +453,42 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                             />
                           )}
                         </div>
+                        
+                        {repeatMode === 'WEEKLY' && (
+                          <div className="flex flex-wrap gap-2 mt-2 p-2 bg-white rounded-lg border border-slate-200">
+                            <span className="text-xs text-slate-500 font-medium self-center mr-1">Lặp lại vào:</span>
+                            {[
+                              { value: '1', label: 'T2' },
+                              { value: '2', label: 'T3' },
+                              { value: '3', label: 'T4' },
+                              { value: '4', label: 'T5' },
+                              { value: '5', label: 'T6' },
+                              { value: '6', label: 'T7' },
+                              { value: '0', label: 'CN' },
+                            ].map(day => {
+                              const selectedDays = (task as any).cron_schedule ? (task as any).cron_schedule.split(',') : [];
+                              const isSelected = selectedDays.includes(day.value);
+                              return (
+                                <button
+                                  key={day.value}
+                                  onClick={() => {
+                                    let newDays = [...selectedDays];
+                                    if (isSelected) newDays = newDays.filter(d => d !== day.value);
+                                    else newDays.push(day.value);
+                                    const newTasks = [...tasks];
+                                    (newTasks[idx] as any).cron_schedule = newDays.join(',');
+                                    setTasks(newTasks);
+                                  }}
+                                  className={`px-2 py-1 text-xs rounded font-bold transition-all ${isSelected ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                >
+                                  {day.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       
-                      {repeatMode === 'WEEKLY' && (
-                        <div className="flex flex-wrap gap-2 mt-3 p-2 bg-white rounded-lg border border-slate-200">
-                          <span className="text-xs text-slate-500 font-medium self-center mr-1">Lặp lại vào:</span>
-                          {[
-                            { value: '1', label: 'T2' },
-                            { value: '2', label: 'T3' },
-                            { value: '3', label: 'T4' },
-                            { value: '4', label: 'T5' },
-                            { value: '5', label: 'T6' },
-                            { value: '6', label: 'T7' },
-                            { value: '0', label: 'CN' },
-                          ].map(day => {
-                            const selectedDays = (task as any).cron_schedule ? (task as any).cron_schedule.split(',') : [];
-                            const isSelected = selectedDays.includes(day.value);
-                            return (
-                              <button
-                                key={day.value}
-                                onClick={() => {
-                                  let newDays = [...selectedDays];
-                                  if (isSelected) newDays = newDays.filter(d => d !== day.value);
-                                  else newDays.push(day.value);
-                                  const newTasks = [...tasks];
-                                  (newTasks[idx] as any).cron_schedule = newDays.join(',');
-                                  setTasks(newTasks);
-                                }}
-                                className={`px-2 py-1 text-xs rounded font-bold transition-all ${isSelected ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                              >
-                                {day.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
                       <div className="flex flex-col items-center gap-1">
                         {idx > 0 && (
                           <button

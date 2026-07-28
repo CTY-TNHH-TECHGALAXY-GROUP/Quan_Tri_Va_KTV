@@ -1,3 +1,3 @@
 // Update khi có thay đổi quan trọng để force client reload
-export const APP_VERSION = '1.4.1';
-export const LAST_UPDATE = 'Cập nhật lại giao diện, bổ sung đầy đủ nút chọn Thứ (T2-CN) cho Kho Việc Tương Tác';
+export const APP_VERSION = '1.4.2';
+export const LAST_UPDATE = 'Sửa lỗi giao diện thanh chọn Thứ (T2-CN) bị chèn ép, đẩy các khung thông tin về đúng vị trí';
