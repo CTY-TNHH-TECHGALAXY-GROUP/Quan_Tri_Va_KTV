@@ -601,7 +601,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate }: {
       <td className="p-4 align-top">
         <div className="flex items-center gap-3">
           {customer.avatarUrl ? (
-            <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200" />
+            <a href={customer.avatarUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity" title="Xem ảnh gốc">
+              <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" />
+            </a>
           ) : (
             <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">
               {(customer.fullName || '?').charAt(0).toUpperCase()}
