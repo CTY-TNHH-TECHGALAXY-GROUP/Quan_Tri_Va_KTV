@@ -570,8 +570,14 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
   const [repeatMode, setRepeatMode] = useState('DAILY');
   const [tasks, setTasks] = useState([{ name: '', requires_photo: false, min_photo_count: 0 }]);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
 
   const roomTemplates = logic.templates.filter((t: any) => t.categoryType === 'ROOM');
+  const roomTypes = Array.from(new Set(logic.rooms.map((r: any) => r.type))).filter(Boolean) as string[];
+  const visibleRooms = logic.rooms.filter((room: any) => {
+    if (!selectedType) return true;
+    return room.type === selectedType;
+  });
 
   const handleSave = async () => {
     if (!categoryName.trim()) {
@@ -601,12 +607,30 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
           + Thêm Việc Phòng
         </button>
       </div>
+      <div className="px-4 py-3 bg-white border-b border-slate-100 flex gap-2 overflow-x-auto items-center">
+        <span className="text-sm font-semibold text-slate-600 mr-2">Lọc theo loại:</span>
+        <button
+          onClick={() => setSelectedType(null)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${!selectedType ? 'bg-cyan-100 text-cyan-700 border border-cyan-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100'}`}
+        >
+          Tất cả
+        </button>
+        {roomTypes.map(type => (
+          <button
+            key={type}
+            onClick={() => setSelectedType(type)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${selectedType === type ? 'bg-cyan-100 text-cyan-700 border border-cyan-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100'}`}
+          >
+            {type}
+          </button>
+        ))}
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[800px] table-fixed">
           <thead>
             <tr className="bg-slate-100/50 text-slate-600 text-sm border-b border-slate-200">
               <th className="p-4 font-bold sticky left-0 bg-slate-100/50 z-10 min-w-[280px] w-72 border-r border-slate-200">Mẫu Công Việc</th>
-              {logic.rooms.map((room: any) => (
+              {visibleRooms.map((room: any) => (
                 <th key={room.id} className="p-3 font-semibold text-center border-r border-slate-100 w-24">
                   <div className="text-[13px] leading-tight truncate px-1" title={room.name}>{room.id}</div>
                   <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5" title={room.type}>{room.type}</div>
@@ -617,7 +641,7 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
           <tbody>
             {roomTemplates.length === 0 ? (
               <tr>
-                <td colSpan={logic.rooms.length + 1} className="p-8 text-center text-slate-400">Chưa có công việc của phòng nào trong kho. Bấm "Thêm Việc Phòng" để tạo.</td>
+                <td colSpan={visibleRooms.length + 1} className="p-8 text-center text-slate-400">Chưa có công việc của phòng nào trong kho. Bấm "Thêm Việc Phòng" để tạo.</td>
               </tr>
             ) : (
               roomTemplates.map((tpl: any) => (
@@ -626,10 +650,10 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                     <div className="font-medium text-slate-800 text-sm leading-snug">{tpl.name}</div>
                     <div className="text-xs text-slate-400 mt-1">{tpl.categoryName}</div>
                   </td>
-                  {logic.rooms.map((room: any) => {
+                  {visibleRooms.map((room: any) => {
                     const isChecked = logic.roomMatrix[tpl.id]?.has(room.id);
                     return (
-                      <td key={room.id} className="p-4 text-center border-r border-slate-100">
+                      <td key={room.id} className="p-4 text-center border-r border-slate-100 hover:bg-slate-50 transition-colors">
                         <label className="cursor-pointer block w-full h-full flex items-center justify-center">
                           <input
                             type="checkbox"
