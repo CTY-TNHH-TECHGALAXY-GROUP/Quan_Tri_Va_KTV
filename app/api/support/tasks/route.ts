@@ -15,11 +15,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing employeeId or userCode' }, { status: 400 });
     }
 
+    const includeRoomTasks = searchParams.get('includeRoomTasks') !== 'false';
+
     // 1. Generate new tasks for today if not already generated
-    await EmployeeTasksService.generateTodayTasks(empIds);
+    await EmployeeTasksService.generateTodayTasks(empIds, includeRoomTasks);
 
     // 2. Fetch the tasks
-    const { data } = await EmployeeTasksService.fetchTasks(empIds);
+    const { data } = await EmployeeTasksService.fetchTasks(empIds, includeRoomTasks);
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

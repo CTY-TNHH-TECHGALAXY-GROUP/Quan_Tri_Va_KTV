@@ -41,7 +41,7 @@ export class EmployeeTasksService {
   /**
    * Auto-generate tasks for an employee based on their active routines
    */
-  static async generateTodayTasks(empIds: string[]) {
+  static async generateTodayTasks(empIds: string[], includeRoomTasks: boolean = true) {
     const todayStart = getTodayStart();
     const todayEnd = getTodayEnd();
     
@@ -78,7 +78,7 @@ export class EmployeeTasksService {
     // Check if tasks already exist for today
     const { data: existing, error: err1 } = await supabase
       .from('Tasks')
-      .select('id, template_id, room_id, assignee_id')
+      .select('id, template_id, room_id, assignee_id, status, task_type')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd);
 
@@ -100,6 +100,27 @@ export class EmployeeTasksService {
     if (err2) {
       console.error('Error fetching routines:', err2.message, err2.code);
       throw new Error('Failed to fetch routines');
+    }
+
+    const activeTemplateIds = new Set((routines || []).map(r => r.template_id));
+
+    // Cleanup stale FIXED tasks that are NO LONGER in the employee's active routines
+    const staleTasks = (existing || []).filter(t => 
+      t.assignee_id && empIds.includes(t.assignee_id) && // Belongs to this employee
+      t.task_type === 'FIXED' && // Auto-generated
+      t.status === 'NOT_STARTED' && // Hasn't started
+      t.template_id && // Has a template
+      !activeTemplateIds.has(t.template_id) // Template is no longer assigned
+    );
+
+    if (staleTasks.length > 0) {
+      const staleTaskIds = staleTasks.map(t => t.id);
+      const { error: deleteErr } = await supabase.from('Tasks').delete().in('id', staleTaskIds);
+      if (deleteErr) {
+        console.error('Error deleting stale tasks:', deleteErr.message);
+      } else {
+        console.log(`Cleaned up ${staleTasks.length} stale tasks for employee(s) ${empIds.join(', ')}`);
+      }
     }
 
     if (!routines || routines.length === 0) return { success: true, count: 0 };
@@ -124,33 +145,35 @@ export class EmployeeTasksService {
         sort_order: r.TaskTemplates?.sort_order || 0
       }));
 
-    // Fetch Room tasks
-    const { data: roomRoutines } = await supabase
-      .from('RoomTaskTemplates')
-      .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, cron_schedule, TaskCategories(repeat_mode))');
+    if (includeRoomTasks) {
+      // Fetch Room tasks
+      const { data: roomRoutines } = await supabase
+        .from('RoomTaskTemplates')
+        .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, cron_schedule, TaskCategories(repeat_mode))');
 
-    if (roomRoutines && roomRoutines.length > 0) {
-      const newRoomTasks = roomRoutines
-        .filter((r: any) => {
-          if (existingRoomTemplates.has(`${r.template_id}_${r.room_id}`)) return false;
-          const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
-          const cronSchedule = r.TaskTemplates?.cron_schedule;
-          return shouldGenerateTaskToday(repeatMode, cronSchedule);
-        })
-        .map((r: any) => ({
-          template_id: r.template_id,
-          room_id: r.room_id,
-          category_id: r.TaskTemplates?.category_id || null,
-          name: r.TaskTemplates?.name || 'Công việc phòng',
-          task_type: 'FIXED',
-          assignee_id: null, // Shared room task
-          status: 'NOT_STARTED',
-          inspection_status: 'NOT_REVIEWED',
-          priority: 'NORMAL',
-          sort_order: r.TaskTemplates?.sort_order || 0
-        }));
+      if (roomRoutines && roomRoutines.length > 0) {
+        const newRoomTasks = roomRoutines
+          .filter((r: any) => {
+            if (existingRoomTemplates.has(`${r.template_id}_${r.room_id}`)) return false;
+            const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
+            const cronSchedule = r.TaskTemplates?.cron_schedule;
+            return shouldGenerateTaskToday(repeatMode, cronSchedule);
+          })
+          .map((r: any) => ({
+            template_id: r.template_id,
+            room_id: r.room_id,
+            category_id: r.TaskTemplates?.category_id || null,
+            name: r.TaskTemplates?.name || 'Công việc phòng',
+            task_type: 'FIXED',
+            assignee_id: null, // Shared room task
+            status: 'NOT_STARTED',
+            inspection_status: 'NOT_REVIEWED',
+            priority: 'NORMAL',
+            sort_order: r.TaskTemplates?.sort_order || 0
+          }));
 
-      newTasks.push(...newRoomTasks);
+        newTasks.push(...newRoomTasks);
+      }
     }
 
     if (newTasks.length > 0) {
@@ -167,20 +190,27 @@ export class EmployeeTasksService {
   /**
    * Fetch all tasks for an employee today
    */
-  static async fetchTasks(empIds: string[]) {
+  static async fetchTasks(empIds: string[], includeRoomTasks: boolean = true) {
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase not initialized');
 
     const todayStart = getTodayStart();
     const todayEnd = getTodayEnd();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('Tasks')
       .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name)')
-      .or(`assignee_id.in.(${empIds.join(',')}),room_id.not.is.null`)
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
+
+    if (includeRoomTasks) {
+      query = query.or(`assignee_id.in.(${empIds.join(',')}),room_id.not.is.null`);
+    } else {
+      query = query.in('assignee_id', empIds);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching tasks:', error.message, error.code);
