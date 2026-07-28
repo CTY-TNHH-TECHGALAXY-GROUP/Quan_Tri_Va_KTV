@@ -412,7 +412,6 @@ export const useEmployeeDetail = (employeeId: string) => {
     removeRoutine,
     createAdhocTask,
     reviewTask,
-    deleteTask,
     getRoleLabel,
   };
 };
