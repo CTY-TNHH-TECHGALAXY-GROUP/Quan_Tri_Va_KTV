@@ -44,9 +44,26 @@ export const DispatchOnlineKtvTable = ({ staffs }: DispatchOnlineKtvTableProps) 
 
       <div className="flex-1 overflow-y-auto space-y-3 pb-4 pr-1">
         {onlineStaffs.map(staff => {
-            const untilMs = staff.available_until ? new Date(staff.available_until).getTime() : 0;
+            // Helper to parse HH:mm:ss to milliseconds today
+            const parseTimeStr = (t?: string | null) => {
+                if (!t) return 0;
+                const [h, m, s] = t.split(':').map(Number);
+                if (isNaN(h)) return 0;
+                const d = new Date();
+                d.setHours(h, m || 0, s || 0, 0);
+                return d.getTime();
+            };
+
+            const untilMs = parseTimeStr(staff.available_until);
             const remainingMins = Math.max(0, Math.floor((untilMs - now) / 60000));
             const isExpired = remainingMins === 0;
+
+            const formatTimeStr = (t?: string | null) => {
+                if (!t) return '';
+                const parts = t.split(':');
+                if (parts.length >= 2) return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+                return t;
+            };
 
             return (
               <div key={staff.id} className={`p-4 border rounded-2xl transition-all shadow-sm flex items-center justify-between ${isExpired ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-indigo-100 hover:shadow-md'}`}>
@@ -69,7 +86,7 @@ export const DispatchOnlineKtvTable = ({ staffs }: DispatchOnlineKtvTableProps) 
                     {staff.available_from && staff.available_until && (
                       <p className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded flex items-center gap-1 w-max mt-1 border border-indigo-100">
                         <Clock size={10} />
-                        Khung giờ: {new Date(staff.available_from).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})} - {new Date(staff.available_until).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
+                        Khung giờ: {formatTimeStr(staff.available_from)} - {formatTimeStr(staff.available_until)}
                       </p>
                     )}
                   </div>
