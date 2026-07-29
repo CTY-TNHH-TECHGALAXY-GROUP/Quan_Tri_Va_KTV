@@ -25,7 +25,7 @@ interface CategoryItem {
   id: string;
   name: string;
   description: string | null;
-  type: 'ROLE' | 'ROOM';
+  type: 'ROLE' | 'ROOM' | 'ROOM_VIRTUAL';
   is_active: boolean;
   repeat_mode?: string;
 }
@@ -34,7 +34,7 @@ interface TemplateItem {
   id: string;
   name: string;
   categoryName: string;
-  categoryType: 'ROLE' | 'ROOM';
+  categoryType: 'ROLE' | 'ROOM' | 'ROOM_VIRTUAL';
   roomName: string;
   cron_schedule: string;
   requires_photo: boolean;
@@ -53,6 +53,10 @@ export const useSupportTemplates = () => {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
   const [roomMatrix, setRoomMatrix] = useState<Record<string, Set<string>>>({}); // templateId -> Set<roomId>
+  
+  const [virtualCategories, setVirtualCategories] = useState<CategoryItem[]>([]);
+  const [virtualTemplates, setVirtualTemplates] = useState<TemplateItem[]>([]);
+  
   const [loading, setLoading] = useState(true);
 
   // ============================================================
@@ -275,6 +279,43 @@ export const useSupportTemplates = () => {
   }, [fetchEmployees, fetchCategories, fetchTemplates, fetchRooms, fetchRoomMatrix]);
 
   // ============================================================
+  // Build Virtual Categories for Rooms (derived state)
+  // ============================================================
+  useEffect(() => {
+    if (rooms.length === 0 || templates.length === 0 || Object.keys(roomMatrix).length === 0) {
+      setVirtualCategories([]);
+      setVirtualTemplates([]);
+      return;
+    }
+
+    const vCats: CategoryItem[] = rooms.map(r => ({
+      id: `virtual_room_${r.id}`,
+      name: `Phòng ${r.name}`,
+      description: 'Công việc theo ma trận phòng',
+      type: 'ROOM_VIRTUAL' as any,
+      is_active: true
+    }));
+
+    const vTpls: TemplateItem[] = [];
+    templates.forEach(tpl => {
+      const mappedRooms = roomMatrix[tpl.id];
+      if (mappedRooms) {
+        mappedRooms.forEach(roomId => {
+          vTpls.push({
+            ...tpl,
+            id: `virtual_tpl_${tpl.id}_${roomId}`,
+            categoryName: `Phòng ${rooms.find(r => r.id === roomId)?.name || roomId}`,
+            categoryType: 'ROOM_VIRTUAL' as any
+          });
+        });
+      }
+    });
+
+    setVirtualCategories(vCats);
+    setVirtualTemplates(vTpls);
+  }, [rooms, roomMatrix, templates]);
+
+  // ============================================================
   // Role label helper
   // ============================================================
   const getRoleLabel = (role: string) => {
@@ -368,6 +409,8 @@ export const useSupportTemplates = () => {
     templates,
     rooms,
     roomMatrix,
+    virtualCategories,
+    virtualTemplates,
     loading,
     getRoleLabel,
     saveCategoryWithTemplates,
