@@ -18,8 +18,8 @@ export const RETURNING_THRESHOLD = 0;
 /** Check if a phone number is a dummy/placeholder value (rỗng hoặc toàn số 0) */
 export const isDummyPhone = (p: string): boolean => !p || /^0+$/.test(p.trim());
 
-/** Check if an email is a dummy/placeholder value (rỗng hoặc không chứa @) */
-export const isDummyEmail = (e: string): boolean => !e || !e.includes('@');
+/** Check if an email is a dummy/placeholder value (rỗng hoặc không chứa @ hoặc chứa @guest) */
+export const isDummyEmail = (e: string): boolean => !e || !e.includes('@') || e.includes('@guest');
 
 /** Check if visit count qualifies as returning customer */
 export const isReturningCustomer = (visitCount: number): boolean => visitCount > RETURNING_THRESHOLD;

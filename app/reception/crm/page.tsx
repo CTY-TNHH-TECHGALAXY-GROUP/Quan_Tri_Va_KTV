@@ -576,6 +576,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
   onPreviewAvatar: (url: string) => void;
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [fullName, setFullName] = useState(customer.fullName || '');
+  const [phone, setPhone] = useState(customer.phone || '');
+  const [email, setEmail] = useState(customer.email || '');
   const [notes, setNotes] = useState(customer.notes || '');
   const [gender, setGender] = useState(customer.gender || '');
   const [nationality, setNationality] = useState(customer.nationality || '');
@@ -587,6 +590,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
     try {
       await apiClient.patch<any>(API.CUSTOMERS, { 
         id: customer.id, 
+        fullName,
+        phone,
+        email,
         notes, 
         gender, 
         nationality, 
@@ -596,6 +602,9 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
       setIsEditing(false);
       onUpdate({
         ...customer,
+        fullName,
+        phone,
+        email,
         notes,
         gender,
         nationality,
@@ -684,6 +693,20 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
           {/* Ghi chú lễ tân */}
           {isEditing ? (
             <div className="flex flex-col gap-2 mt-2 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-gray-500 font-bold block mb-0.5">Tên khách</label>
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white outline-none font-semibold text-gray-700" placeholder="Nguyễn Văn A" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-gray-500 font-bold block mb-0.5">SĐT</label>
+                  <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white outline-none font-semibold text-gray-700" placeholder="09xxxx..." />
+                </div>
+                <div>
+                  <label className="text-[9px] text-gray-500 font-bold block mb-0.5">Email</label>
+                  <input type="text" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white outline-none font-semibold text-gray-700" placeholder="email@..." />
+                </div>
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 {/* Giới tính */}
                 <div>

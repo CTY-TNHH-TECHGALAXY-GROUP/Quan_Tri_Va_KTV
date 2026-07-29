@@ -8,6 +8,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
+import { isDummyEmail } from '@/lib/customer.logic';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -232,7 +233,7 @@ export async function confirmWebBooking(bookingId: string) {
     const { data: bData } = await supabase
       .from('Bookings')
       .select(`
-        source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
+        source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone, customerId,
         bookingDate, timeBooking, totalAmount, id,
         BookingItems!BookingItems_bookingId_fkey (
           quantity,
@@ -262,6 +263,14 @@ export async function confirmWebBooking(bookingId: string) {
       .eq('status', 'NEW'); // Safety: only update if still NEW
 
     if (error) throw error;
+    
+    // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
+    if (bData?.customerId && bData?.customerEmail && !isDummyEmail(bData.customerEmail)) {
+        const { data: cData } = await supabase.from('Customers').select('email').eq('id', bData.customerId).maybeSingle();
+        if (cData && isDummyEmail(cData.email || '')) {
+            await supabase.from('Customers').update({ email: bData.customerEmail }).eq('id', bData.customerId);
+        }
+    }
 
     const msg = `Đơn ${bookingId} đã được xác nhận. Vui lòng vào Điều Phối để phân công KTV.`;
     

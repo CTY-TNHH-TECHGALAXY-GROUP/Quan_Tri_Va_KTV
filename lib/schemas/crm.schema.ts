@@ -13,6 +13,9 @@ export const RoomPatchSchema = z.object({
 // PATCH /api/customers
 export const CustomerPatchSchema = z.object({
   id: z.string().min(1, "Thiếu ID khách hàng"),
+  fullName: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   gender: z.string().optional().nullable(),
   nationality: z.string().optional().nullable(),

@@ -65,20 +65,28 @@ export class BookingModificationService {
 
             // Try to find existing Customer by real phone or email
             if (!isDummyPhone(phone)) {
-                const { data: existing } = await supabase.from('Customers').select('id').eq('phone', phone).maybeSingle();
-                if (existing) customerId = existing.id;
+                const { data: existing } = await supabase.from('Customers').select('id, email').eq('phone', phone).maybeSingle();
+                if (existing) {
+                    customerId = existing.id;
+                    if (isDummyEmail(existing.email || '') && !isDummyEmail(email)) {
+                        await supabase.from('Customers').update({ email: email }).eq('id', customerId);
+                    }
+                }
             } else if (!isDummyEmail(email)) {
-                const { data: existing } = await supabase.from('Customers').select('id').eq('email', email).maybeSingle();
-                if (existing) customerId = existing.id;
+                const { data: existing } = await supabase.from('Customers').select('id, email').eq('email', email).maybeSingle();
+                if (existing) {
+                    customerId = existing.id;
+                }
             }
 
             // If no existing Customer found, create a new one
             if (!customerId) {
                 const now = new Date().toISOString();
-                customerId = `CUS-${Date.now()}-${Math.floor(Math.random() * 100)}`;
-                const guestCode = `GUEST-${Date.now()}`;
+                const ts = Date.now();
+                customerId = `CUS-${ts}-${Math.floor(Math.random() * 100)}`;
+                const guestCode = `GUEST-${ts}`;
                 const guestPhone = isDummyPhone(phone) ? guestCode : phone;
-                const guestEmail = isDummyEmail(email) ? guestCode : email;
+                const guestEmail = isDummyEmail(email) ? `guest${ts}@guest.com` : email;
 
                 const { error: cusError } = await supabase.from('Customers').insert({
                     id: customerId,

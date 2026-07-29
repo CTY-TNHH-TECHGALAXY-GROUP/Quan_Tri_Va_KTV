@@ -369,7 +369,7 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         
-        const { id, notes, gender, nationality, preferredLang } = parseResult.data;
+        const { id, notes, gender, nationality, preferredLang, fullName, phone, email } = parseResult.data;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase not initialized');
@@ -379,6 +379,9 @@ export async function PATCH(request: Request) {
         if (notes !== undefined) updatePayload.notes = notes;
         if (gender !== undefined) updatePayload.gender = gender;
         if (nationality !== undefined) updatePayload.nationality = nationality;
+        if (fullName !== undefined) updatePayload.fullName = fullName;
+        if (phone !== undefined) updatePayload.phone = phone;
+        if (email !== undefined) updatePayload.email = email;
 
         const { data, error } = await supabase
             .from('Customers')
