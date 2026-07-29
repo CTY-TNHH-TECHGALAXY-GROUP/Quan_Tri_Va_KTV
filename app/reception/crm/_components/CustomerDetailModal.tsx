@@ -25,6 +25,9 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
   const [showAllKtvs, setShowAllKtvs] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [fullName, setFullName] = useState(customer.fullName || '');
+  const [phone, setPhone] = useState(customer.phone || '');
+  const [email, setEmail] = useState(customer.email || '');
   const [notes, setNotes] = useState(customer.notes || '');
   const [gender, setGender] = useState(customer.gender || '');
   const [nationality, setNationality] = useState(customer.nationality || '');
@@ -40,6 +43,9 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id: customer.id, 
+          fullName,
+          phone,
+          email,
           notes, 
           gender, 
           nationality, 
@@ -52,6 +58,9 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
         if (onUpdate) {
           onUpdate({
             ...customer,
+            fullName,
+            phone,
+            email,
             notes,
             gender,
             nationality,
@@ -178,7 +187,11 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-bold text-gray-900 truncate">{customer.fullName}</h3>
+                {isEditing ? (
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="text-lg font-bold text-gray-900 border-b border-gray-300 outline-none bg-transparent placeholder-gray-400" placeholder="Tên khách hàng" />
+                ) : (
+                  <h3 className="text-lg font-bold text-gray-900 truncate">{customer.fullName}</h3>
+                )}
                 {customer.taxCode && (
                   <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${BADGE_COLORS.vat}`}>
                     <Receipt size={10} />
@@ -325,9 +338,24 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
                 </span>
               </div>
               <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
-                <span className="flex items-center gap-1"><Phone size={12} /> {customer.phone}</span>
-                {customer.email && (
-                  <span className="text-indigo-500 flex items-center gap-1">@ {customer.email}</span>
+                {isEditing ? (
+                  <>
+                    <div className="flex items-center gap-1 bg-white border border-gray-300 rounded px-2 py-0.5">
+                      <Phone size={12} className="text-gray-400" />
+                      <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="outline-none bg-transparent w-28 text-xs font-semibold text-gray-700 placeholder-gray-400" placeholder="Số điện thoại" />
+                    </div>
+                    <div className="flex items-center gap-1 bg-white border border-gray-300 rounded px-2 py-0.5">
+                      <Mail size={12} className="text-gray-400" />
+                      <input type="text" value={email} onChange={(e) => setEmail(e.target.value)} className="outline-none bg-transparent w-36 text-xs font-semibold text-gray-700 placeholder-gray-400" placeholder="Email" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1"><Phone size={12} /> {customer.phone}</span>
+                    {customer.email && (
+                      <span className="text-indigo-500 flex items-center gap-1"><Mail size={12} /> {customer.email}</span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
