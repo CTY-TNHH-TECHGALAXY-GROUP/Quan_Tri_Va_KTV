@@ -108,17 +108,17 @@ export async function POST(req: NextRequest) {
     // Tính thời gian KTV sẽ có mặt (hiện tại + thời gian di chuyển)
     let availableFromStr = expected_start;
     if (!availableFromStr) {
-        const availableFrom = new Date();
-        availableFrom.setMinutes(availableFrom.getMinutes() + (travel_time_mins || 30));
-        availableFromStr = availableFrom.toISOString();
+        const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+        vnTime.setMinutes(vnTime.getMinutes() + (travel_time_mins || 30));
+        availableFromStr = `${vnTime.getHours().toString().padStart(2, '0')}:${vnTime.getMinutes().toString().padStart(2, '0')}`;
     }
 
     let availableUntilStr = expected_end;
     if (!availableUntilStr) {
         // Tạm giữ available_until +4h phòng hờ quên tắt
-        const until = new Date();
+        const until = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
         until.setHours(until.getHours() + 4);
-        availableUntilStr = until.toISOString();
+        availableUntilStr = `${until.getHours().toString().padStart(2, '0')}:${until.getMinutes().toString().padStart(2, '0')}`;
     }
 
     // Nếu bật nhận đơn, chỉ update Staff
