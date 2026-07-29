@@ -205,7 +205,7 @@ export class EmployeeTasksService {
 
     let query = supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name)')
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name)')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -253,8 +253,8 @@ export class EmployeeTasksService {
       requires_photo: t.TaskTemplates?.requires_photo || false,
       min_photo_count: t.TaskTemplates?.min_photo_count || 1,
       category_id: t.category_id,
-      categoryName: t.room_id ? `[Phòng ${t.room_id}] ${t.TaskCategories?.name || 'Khác'}` : (t.TaskCategories?.name || 'Khác'),
-      categoryOrder: 999,
+      categoryName: t.room_id ? `[PHÒNG ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}] ${t.TaskCategories?.name || 'Khác'}` : (t.TaskCategories?.name || 'Khác'),
+      categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
 

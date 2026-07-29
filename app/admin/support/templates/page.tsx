@@ -249,19 +249,21 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   // Modal state
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
+  const [categoryType, setCategoryType] = useState('ROLE');
   const [repeatMode, setRepeatMode] = useState('DAILY');
   const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number; cron_schedule?: string }[]>([
     { name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }
   ]);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
-  const roleTemplates = logic.templates.filter((t: any) => t.categoryType === 'ROLE');
-  const roleCategories = logic.categories.filter((c: any) => c.type === 'ROLE');
+  const allTemplates = [...logic.templates, ...logic.virtualTemplates];
+  const allCategories = [...logic.categories, ...logic.virtualCategories];
 
-  if (roleTemplates.length === 0 && roleCategories.length === 0) {
+  if (allTemplates.length === 0 && allCategories.length === 0) {
     return (
       <div className="text-center py-16 text-slate-400">
-        <p className="mb-4">Chưa có mẫu công việc nhân sự nào.</p>
+        <p className="mb-4">Chưa có mẫu công việc nào.</p>
         <button onClick={() => setShowModal(true)} className="bg-cyan-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-cyan-200">
           + Thêm Tiêu Đề Mới
         </button>
@@ -270,12 +272,12 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   }
 
   const grouped: Record<string, typeof logic.templates> = {};
-  roleTemplates.forEach((tpl) => {
+  allTemplates.forEach((tpl) => {
     const key = tpl.categoryName || 'Chưa phân loại';
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(tpl);
   });
-  roleCategories.forEach((cat: any) => {
+  allCategories.forEach((cat: any) => {
     if (!grouped[cat.name]) grouped[cat.name] = [];
   });
 
@@ -285,11 +287,12 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
       return;
     }
     setSubmitting(true);
-    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, 'ROLE', repeatMode);
+    const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, categoryType, repeatMode);
     if (ok) {
       setShowModal(false);
       setCategoryId(null);
       setCategoryName('');
+      setCategoryType('ROLE');
       setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
     }
     setSubmitting(false);
@@ -297,21 +300,40 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
 
   return (
     <div className="space-y-4 relative">
-      <div className="flex justify-end mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        {/* Dropdown lọc danh mục */}
+        <div className="flex-1 max-w-sm">
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full bg-white border border-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all appearance-none cursor-pointer"
+            style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394A3B8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem top 50%', backgroundSize: '0.65rem auto' }}
+          >
+            <option value="ALL">Hiển thị tất cả tiêu đề</option>
+            {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map(catName => (
+              <option key={catName} value={catName}>{catName}</option>
+            ))}
+          </select>
+        </div>
+
         <button onClick={() => {
           setCategoryId(null);
           setCategoryName('');
           setRepeatMode('DAILY');
           setTasks([{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
           setShowModal(true);
-        }} className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-cyan-200 flex items-center gap-2 hover:bg-cyan-700 transition-colors">
+        }} className="bg-cyan-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-cyan-200 flex items-center justify-center gap-2 hover:bg-cyan-700 transition-colors shrink-0">
           <span className="text-xl leading-none">+</span> Thêm Tiêu Đề Mới
         </button>
       </div>
 
-      {Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([catName, items]) => {
-        const catObj = logic.categories.find(c => c.name === catName);
-        const isExpanded = expandedCats[catName] !== false; // default true
+      {Object.entries(grouped)
+        .filter(([catName]) => selectedCategory === 'ALL' || catName === selectedCategory)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([catName, items]) => {
+        const allCats = [...logic.categories, ...logic.virtualCategories];
+        const catObj = allCats.find(c => c.name === catName);
+        const isExpanded = expandedCats[catName] === true; // default false
 
         return (
           <div key={catName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6 transition-all duration-300">
@@ -321,22 +343,28 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
               onClick={() => setExpandedCats(prev => ({ ...prev, [catName]: !isExpanded }))}
             >
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-bold w-4 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                <h3 className="font-bold text-sm uppercase tracking-wide">{catName}</h3>
+                <span className={`text-slate-500 font-bold w-4 text-xs transition-transform ${!isExpanded ? '-rotate-90' : ''}`}>▼</span>
+                <h3 className="font-bold text-sm uppercase tracking-wide">
+                  {catName}
+                  {catObj?.type === 'ROOM_VIRTUAL' && <span className="ml-2 bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-semibold">Chỉ xem (Gán từ Ma Trận)</span>}
+                </h3>
               </div>
               <div className="flex items-center gap-3">
                 <span className="bg-slate-300 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-full">{items.length} việc</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCategoryId(catObj?.id || null);
-                    setCategoryName(catName);
-                    setRepeatMode(catObj?.repeat_mode || 'DAILY');
-                    setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count, cron_schedule: t.cron_schedule && t.cron_schedule !== '—' ? t.cron_schedule : '' })) : [{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
-                    setShowModal(true);
-                  }}
-                  className="text-cyan-600 text-xs font-bold hover:underline bg-white/50 px-3 py-1 rounded-lg hover:bg-white transition-colors"
-                >Sửa</button>
+                {catObj?.type !== 'ROOM_VIRTUAL' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCategoryId(catObj?.id || null);
+                      setCategoryName(catName);
+                      setCategoryType(catObj?.type || 'ROLE');
+                      setRepeatMode(catObj?.repeat_mode || 'DAILY');
+                      setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count, cron_schedule: t.cron_schedule && t.cron_schedule !== '—' ? t.cron_schedule : '' })) : [{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
+                      setShowModal(true);
+                    }}
+                    className="text-cyan-600 text-xs font-bold hover:underline bg-white/50 px-3 py-1 rounded-lg hover:bg-white transition-colors"
+                  >Sửa</button>
+                )}
               </div>
             </div>
             
@@ -603,9 +631,20 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
           <h2 className="font-bold text-slate-800">Ma Trận Phân Bổ Công Việc Theo Phòng</h2>
           <p className="text-sm text-slate-500">Đánh dấu (tick) để quy định Mẫu công việc nào được áp dụng cho Phòng nào.</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold transition-colors shadow-sm">
-          + Thêm Việc Phòng
-        </button>
+        <div className="flex gap-3">
+          {logic.isMatrixDirty && (
+            <button 
+              onClick={logic.saveRoomMatrix}
+              disabled={logic.isSavingMatrix}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 animate-in fade-in zoom-in"
+            >
+              {logic.isSavingMatrix ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+            </button>
+          )}
+          <button onClick={() => setShowModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold transition-colors shadow-sm">
+            + Thêm Việc Phòng
+          </button>
+        </div>
       </div>
       <div className="px-4 py-3 bg-white border-b border-slate-100 flex gap-2 overflow-x-auto items-center">
         <span className="text-sm font-semibold text-slate-600 mr-2">Lọc theo loại:</span>
@@ -625,13 +664,13 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
           </button>
         ))}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
         <table className="w-full text-left border-collapse min-w-[800px] table-fixed">
-          <thead>
-            <tr className="bg-slate-100/50 text-slate-600 text-sm border-b border-slate-200">
-              <th className="p-4 font-bold sticky left-0 bg-slate-100/50 z-10 min-w-[280px] w-72 border-r border-slate-200">Mẫu Công Việc</th>
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-slate-100 text-slate-600 text-sm border-b border-slate-200">
+              <th className="p-4 font-bold sticky left-0 top-0 bg-slate-200 z-30 min-w-[280px] w-72 border-r border-slate-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Mẫu Công Việc</th>
               {visibleRooms.map((room: any) => (
-                <th key={room.id} className="p-3 font-semibold text-center border-r border-slate-100 w-24">
+                <th key={room.id} className="p-3 font-semibold text-center border-r border-slate-200 w-24 sticky top-0 bg-slate-100 z-20">
                   <div className="text-[13px] leading-tight truncate px-1" title={room.name}>{room.id}</div>
                   <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5" title={room.type}>{room.type}</div>
                 </th>
@@ -651,7 +690,7 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                     <div className="text-xs text-slate-400 mt-1">{tpl.categoryName}</div>
                   </td>
                   {visibleRooms.map((room: any) => {
-                    const isChecked = logic.roomMatrix[tpl.id]?.has(room.id);
+                    const isChecked = logic.pendingMatrix[tpl.id]?.has(room.id);
                     return (
                       <td key={room.id} className="p-4 text-center border-r border-slate-100 hover:bg-slate-50 transition-colors">
                         <label className="cursor-pointer block w-full h-full flex items-center justify-center">

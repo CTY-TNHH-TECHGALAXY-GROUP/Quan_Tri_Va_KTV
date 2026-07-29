@@ -165,36 +165,25 @@ export const useEmployeeDetail = (employeeId: string) => {
   // Fetch all templates and group by category
   // ============================================================
   const fetchAvailableTemplates = useCallback(async () => {
-    // 1. Fetch Role Templates
-    const { data: roleData, error: roleErr } = await supabase
-      .from('TaskTemplates')
-      .select('id, name, category_id, TaskCategories(name, type)')
-      .eq('is_active', true);
-
-    // 2. Fetch Room Matrix
-    const { data: roomData, error: roomErr } = await supabase
-      .from('RoomTaskTemplates')
-      .select('room_id, template_id, Rooms(name), TaskTemplates(id, name, category_id, is_active, TaskCategories(name, type))');
-
-    if (roleErr || roomErr) {
-      console.error('Error fetching templates:', roleErr, roomErr);
-      return;
-    }
+    try {
+      const res = await fetch('/api/support/templates/available');
+      if (!res.ok) throw new Error('Failed to fetch available templates');
+      
+      const { roleData, roomData, success } = await res.json();
+      if (!success) throw new Error('API returned success=false');
 
     const mapped: TemplateOption[] = [];
 
     // Add generic Role tasks
     (roleData || []).forEach((t: any) => {
-      if (t.TaskCategories?.type === 'ROLE') {
-        mapped.push({
-          id: t.id, // for generic, id is just template_id
-          templateId: t.id,
-          roomId: null,
-          name: t.name,
-          categoryId: t.category_id,
-          categoryName: t.TaskCategories?.name || 'Chưa phân loại',
-        });
-      }
+      mapped.push({
+        id: t.id, // for generic, id is just template_id
+        templateId: t.id,
+        roomId: null,
+        name: t.name,
+        categoryId: t.category_id,
+        categoryName: t.TaskCategories?.name || 'Chưa phân loại',
+      });
     });
 
     // Add Room specific tasks
@@ -205,9 +194,9 @@ export const useEmployeeDetail = (employeeId: string) => {
           id: `${t.id}_${r.room_id}`, // unique id for rendering
           templateId: t.id,
           roomId: r.room_id,
-          name: `${t.name} (${r.Rooms?.name || r.room_id})`,
+          name: t.name,
           categoryId: t.category_id,
-          categoryName: t.TaskCategories?.name || 'Phòng',
+          categoryName: `Phòng ${r.Rooms?.name || r.room_id}`,
         });
       }
     });
@@ -216,6 +205,9 @@ export const useEmployeeDetail = (employeeId: string) => {
     mapped.sort((a, b) => a.name.localeCompare(b.name));
 
     setAvailableTemplates(mapped);
+    } catch (err) {
+      console.error('Error fetching templates:', err);
+    }
   }, []);
 
   // ============================================================

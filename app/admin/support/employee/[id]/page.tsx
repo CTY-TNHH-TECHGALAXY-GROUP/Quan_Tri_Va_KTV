@@ -216,7 +216,7 @@ export default function EmployeeDetailPage() {
       {/* ======================== MODAL: CẤU HÌNH CHECKLIST ======================== */}
       {logic.showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center p-4 pt-10">
-          <div className="bg-white w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[85vh]">
+          <div className="bg-white w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[85vh]">
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <div>
                 <h2 className="font-bold text-lg text-slate-800">Cấu hình Checklist Cố Định</h2>
@@ -247,7 +247,8 @@ export default function EmployeeDetailPage() {
                         acc[t.categoryName].push(t);
                         return acc;
                       }, {} as Record<string, typeof logic.availableTemplates>)
-                  ).map(([catName, templates]) => {
+                  ).sort((a, b) => a[0].localeCompare(b[0]))
+                  .map(([catName, templates]) => {
                     const allAssigned = templates.every(t => logic.routines.some(r => r.templateId === t.templateId && r.roomId === t.roomId));
                     const assignedCount = templates.filter(t => logic.routines.some(r => r.templateId === t.templateId && r.roomId === t.roomId)).length;
                     return (

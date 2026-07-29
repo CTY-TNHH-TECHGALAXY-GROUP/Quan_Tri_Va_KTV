@@ -52,7 +52,10 @@ export const useSupportTemplates = () => {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
-  const [roomMatrix, setRoomMatrix] = useState<Record<string, Set<string>>>({}); // templateId -> Set<roomId>
+  const [roomMatrix, setRoomMatrix] = useState<Record<string, Set<string>>>({});
+  const [pendingMatrix, setPendingMatrix] = useState<Record<string, Set<string>>>({});
+  const [isMatrixDirty, setIsMatrixDirty] = useState(false);
+  const [isSavingMatrix, setIsSavingMatrix] = useState(false); // templateId -> Set<roomId>
   
   const [virtualCategories, setVirtualCategories] = useState<CategoryItem[]>([]);
   const [virtualTemplates, setVirtualTemplates] = useState<TemplateItem[]>([]);
@@ -216,15 +219,23 @@ export const useSupportTemplates = () => {
           matrix[row.template_id].add(row.room_id);
         });
         setRoomMatrix(matrix);
+
+        // Update pendingMatrix as well when fetching fresh data
+        const cloned: Record<string, Set<string>> = {};
+        for (const k in matrix) {
+          cloned[k] = new Set(matrix[k]);
+        }
+        setPendingMatrix(cloned);
       }
+      setIsMatrixDirty(false);
     } catch (error: any) {
       console.error('Error fetching room matrix:', error.message);
     }
   }, []);
 
   const toggleRoomMatrix = async (templateId: string, roomId: string, isChecked: boolean) => {
-    // Optimistic UI update
-    setRoomMatrix(prev => {
+    // Only update local pending state
+    setPendingMatrix(prev => {
       const next = { ...prev };
       if (!next[templateId]) next[templateId] = new Set();
       
@@ -237,32 +248,41 @@ export const useSupportTemplates = () => {
       next[templateId] = newSet;
       return next;
     });
+    setIsMatrixDirty(true);
+  };
 
+  const saveRoomMatrix = async () => {
+    setIsSavingMatrix(true);
     try {
+      // Flatten pendingMatrix into array
+      const matrixArr: { template_id: string; room_id: string }[] = [];
+      for (const tplId in pendingMatrix) {
+        pendingMatrix[tplId].forEach(rId => {
+          matrixArr.push({ template_id: tplId, room_id: rId });
+        });
+      }
+
       const res = await fetch('/api/support/room-matrix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId, roomId, isChecked }),
+        body: JSON.stringify({ bulk: true, matrix: matrixArr }),
       });
       if (!res.ok) {
-        throw new Error('Failed to update room matrix');
+        throw new Error('Failed to save room matrix');
       }
+      // Commit pending to current
+      const cloned: Record<string, Set<string>> = {};
+      for (const k in pendingMatrix) {
+        cloned[k] = new Set(pendingMatrix[k]);
+      }
+      setRoomMatrix(cloned);
+      setIsMatrixDirty(false);
+      alert('Đã lưu phân bổ công việc phòng thành công!');
     } catch (error) {
-      console.error('Error toggling room matrix:', error);
-      // Revert on error
-      setRoomMatrix(prev => {
-        const next = { ...prev };
-        if (!next[templateId]) next[templateId] = new Set();
-        
-        const newSet = new Set(next[templateId]);
-        if (!isChecked) {
-          newSet.add(roomId);
-        } else {
-          newSet.delete(roomId);
-        }
-        next[templateId] = newSet;
-        return next;
-      });
+      console.error('Error saving room matrix:', error);
+      alert('Có lỗi xảy ra khi lưu. Vui lòng thử lại.');
+    } finally {
+      setIsSavingMatrix(false);
     }
   };
 
@@ -288,9 +308,14 @@ export const useSupportTemplates = () => {
       return;
     }
 
+    const formatRoomName = (name: string) => {
+      if (!name) return '';
+      return name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL');
+    };
+
     const vCats: CategoryItem[] = rooms.map(r => ({
       id: `virtual_room_${r.id}`,
-      name: `Phòng ${r.name}`,
+      name: `Phòng ${formatRoomName(r.name)}`,
       description: 'Công việc theo ma trận phòng',
       type: 'ROOM_VIRTUAL' as any,
       is_active: true
@@ -304,7 +329,7 @@ export const useSupportTemplates = () => {
           vTpls.push({
             ...tpl,
             id: `virtual_tpl_${tpl.id}_${roomId}`,
-            categoryName: `Phòng ${rooms.find(r => r.id === roomId)?.name || roomId}`,
+            categoryName: `Phòng ${formatRoomName(rooms.find(r => r.id === roomId)?.name || roomId)}`,
             categoryType: 'ROOM_VIRTUAL' as any
           });
         });
@@ -409,6 +434,10 @@ export const useSupportTemplates = () => {
     templates,
     rooms,
     roomMatrix,
+    pendingMatrix,
+    isMatrixDirty,
+    isSavingMatrix,
+    saveRoomMatrix,
     virtualCategories,
     virtualTemplates,
     loading,
