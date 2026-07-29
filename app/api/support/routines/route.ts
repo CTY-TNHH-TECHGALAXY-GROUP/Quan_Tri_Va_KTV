@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from('EmployeeRoutines')
-      .select('*, TaskTemplates(id, name, description, requires_photo, min_photo_count, category_id, TaskCategories(name))')
+      .select('*, TaskTemplates(id, name, description, requires_photo, min_photo_count, category_id, TaskCategories(name)), Rooms(name)')
       .eq('employee_id', employeeId)
       .eq('is_active', true);
 
@@ -39,20 +39,38 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { employeeId, templateId } = body;
+    const { employeeId, templateId, roomId } = body;
 
     if (!employeeId || !templateId) {
       return NextResponse.json({ error: 'employeeId and templateId are required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('EmployeeRoutines')
-      .upsert(
-        { employee_id: employeeId, template_id: templateId, is_active: true },
-        { onConflict: 'employee_id,template_id' }
-      )
-      .select()
-      .single();
+    // Check if already exists to simulate upsert due to complex index
+    let query = supabase.from('EmployeeRoutines')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('template_id', templateId);
+      
+    if (roomId) query = query.eq('room_id', roomId);
+    else query = query.is('room_id', null);
+
+    const { data: existing } = await query.single();
+
+    let data, error;
+    if (existing) {
+      const res = await supabase.from('EmployeeRoutines')
+        .update({ is_active: true })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      data = res.data; error = res.error;
+    } else {
+      const res = await supabase.from('EmployeeRoutines')
+        .insert({ employee_id: employeeId, template_id: templateId, room_id: roomId || null, is_active: true })
+        .select()
+        .single();
+      data = res.data; error = res.error;
+    }
 
     if (error) {
       console.error('Error adding routine:', error.message, error.code);
@@ -78,7 +96,7 @@ export async function DELETE(request: Request) {
     // 1. Fetch routine to get employee_id and template_id
     const { data: routine } = await supabase
       .from('EmployeeRoutines')
-      .select('employee_id, template_id')
+      .select('employee_id, template_id, room_id')
       .eq('id', routineId)
       .single();
 
@@ -87,7 +105,7 @@ export async function DELETE(request: Request) {
       const d1 = new Date(); d1.setHours(0, 0, 0, 0); const todayStart = d1.toISOString();
       const d2 = new Date(); d2.setHours(23, 59, 59, 999); const todayEnd = d2.toISOString();
 
-      await supabase
+      let q = supabase
         .from('Tasks')
         .delete()
         .eq('assignee_id', routine.employee_id)
@@ -95,6 +113,11 @@ export async function DELETE(request: Request) {
         .eq('status', 'NOT_STARTED')
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd);
+        
+      if (routine.room_id) q = q.eq('room_id', routine.room_id);
+      else q = q.is('room_id', null);
+      
+      await q;
     }
 
     // 3. Delete the routine

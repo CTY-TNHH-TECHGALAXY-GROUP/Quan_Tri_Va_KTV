@@ -253,6 +253,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     const handleToggleOnCall = async (isOnCall: boolean, mins: number) => {
         if (!ktvId) return;
+        
+        // 🛡️ CHẶN TAN CA / TẮT NHẬN ĐƠN NẾU CÒN NỢ DỌN PHÒNG
+        if (!isOnCall && pendingHandovers.length > 0) {
+            alert('❌ Không thể tắt chế độ nhận việc hoặc tan ca.\nVui lòng hoàn tất dọn phòng trước!');
+            return;
+        }
+
         try {
             setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
             await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins });
@@ -968,7 +975,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             const currentSecs = currentSegDuration * 60;
                             let tStart = assignedItem?.timeStart || res.data.timeStart;
                             
-                            if (currentStatus === 'IN_PROGRESS') {
+                            if (currentStatus === 'IN_PROGRESS' || currentStatus === 'PAUSED') {
                                 // Nếu đã override chặng thủ công, KHÔNG ghi đè timer
                                 if (!manualSegmentOverrideRef.current) {
                                     // Dùng actualStartTime của chặng HIỆN TẠI
@@ -982,7 +989,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                             activeSegStartTime = activeSegStartTime.replace(' ', 'T') + 'Z';
                                         }
                                         const start = new Date(activeSegStartTime).getTime();
-                                        const now = new Date().getTime() + timeOffsetRef.current;
+                                        let now = new Date().getTime() + timeOffsetRef.current;
+                                        if (currentStatus === 'PAUSED' && assignedItem?.pauseStart) {
+                                            const pStart = assignedItem.pauseStart;
+                                            now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
+                                        }
                                         const elapsed = Math.floor((now - start) / 1000);
                                         
                                         // Đếm lùi cho chặng hiện tại
@@ -1081,6 +1092,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }, (payload: any) => {
                 const currentBooking = bookingRef.current;
                 if (!currentBooking) return;
+                
+                // 🔒 Block during post-service & transitioning: Prevent Realtime events from disrupting
+                // the REVIEW → HANDOVER → REWARD flow or the TIMER → REVIEW transition
+                if (isTransitioningRef.current || ['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
+                    console.log("🚫 [KTV] BookingItems realtime blocked — in post-service flow:", screenRef.current);
+                    if (payload.eventType === 'UPDATE') {
+                        setBooking((prev: any) => {
+                            if (!prev) return prev;
+                            const items = prev.BookingItems?.map((i: any) => 
+                                i.id === payload.new.id ? { ...i, ...payload.new } : i
+                            ) || [];
+                            return { ...prev, BookingItems: items };
+                        });
+                    }
+                    return;
+                }
                 
                 const myBookingId = currentBooking.id;
                 const payloadBookingId = payload.new?.bookingId || payload.old?.bookingId;
@@ -1315,9 +1342,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // 🔒 GUARD: Chỉ sync khi có actualStartTime thực sự từ DB
             // Nếu chỉ có tStart (giờ đặt lịch), KHÔNG dùng để tính elapsed → sẽ ra sai
             if (!activeSegStartTime || !allMySegs[0]?.actualStartTime) {
-                // ⚠️ FIX: Nếu Lễ tân ÉP KÉO thẻ sang IN_PROGRESS nhưng KTV chưa tự bấm
+                // ⚠️ FIX: Nếu Lễ tân ÉP KÉO thẻ sang IN_PROGRESS hoặc đang PAUSED
                 // -> Vẫn cho phép tính countdown dựa vào item.timeStart (tStart)
-                if (booking.status === 'IN_PROGRESS' && tStart) {
+                if ((booking.status === 'IN_PROGRESS' || assignedItem?.status === 'PAUSED') && tStart) {
                     activeSegStartTime = tStart;
                 } else {
                     return;
@@ -1334,7 +1361,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             if (activeSegStartTime) {
                 const start = new Date(activeSegStartTime).getTime();
-                const now = new Date().getTime() + timeOffsetRef.current;
+                let now = new Date().getTime() + timeOffsetRef.current;
+                if (assignedItem?.status === 'PAUSED' && assignedItem?.pauseStart) {
+                    const pStart = assignedItem.pauseStart;
+                    now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
+                }
                 const elapsed = Math.floor((now - start) / 1000);
 
                 // 🔥 Lưu vào ref để countdown interval dùng absolute time
@@ -1694,6 +1725,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // 🏁 Chặng cuối cùng done → chuyển sang CLEANING
             console.log(`🏁 [FinishAll] All ${allMySegs.length} segments done, transitioning to CLEANING`);
             setIsLoading(true);
+            
+            // 🛡️ PRE-LOCK: Set guard TRƯỚC khi gọi API để chặn mọi Realtime event
+            // xảy ra trong quá trình API xử lý (BookingItems UPDATE, TurnQueue UPDATE...)
+            isTransitioningRef.current = true;
+            postServiceBookingIdRef.current = booking.id;
+            try { localStorage.setItem(POST_SERVICE_BOOKING_KEY, booking.id); } catch (e) {}
+
             const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
                 bookingId: booking.id, 
                 status: 'CLEANING',
@@ -1712,14 +1750,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }).catch(e => console.error("Broadcast failed", e));
 
                 setIsTimerRunning(false);
-                postServiceBookingIdRef.current = booking.id;
-                try { localStorage.setItem(POST_SERVICE_BOOKING_KEY, booking.id); } catch (e) {}
-                
-                isTransitioningRef.current = true;
                 setScreen('REVIEW');
                 setTimeout(() => isTransitioningRef.current = false, 1000);
             } else {
                 console.error('❌ [KTV Logic] Finish error:', res.error);
+                // Rollback pre-lock nếu API thất bại
+                isTransitioningRef.current = false;
+                postServiceBookingIdRef.current = null;
+                try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch (e) {}
                 alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
             }
             setIsLoading(false);
