@@ -402,40 +402,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-             {onCallState?.allow_on_call && (
-               <div className="flex items-center gap-2">
-                 <button
-                   onClick={() => {
-                     if (onCallState.is_on_call) {
-                       handleToggleOnCall(false, onCallState.travel_time_mins);
-                     } else {
-                       setShowOnCallPopup(true);
-                     }
-                   }}
-                   className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all border shadow-sm ${
-                     onCallState.is_on_call
-                       ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                       : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                   }`}
-                 >
-                   {onCallState.is_on_call ? 'Tắt Nhận Đơn' : 'Bật Nhận Đơn'}
-                 </button>
-                 {onCallState.is_on_call && onCallState.online_status === 'ONLINE' && (
-                   <button
-                     onClick={handleArriveAtVenue}
-                     className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-all bg-emerald-600 text-white shadow-md active:scale-95"
-                   >
-                     📍 Đã tới tiệm
-                   </button>
-                 )}
-                 {onCallState.is_on_call && onCallState.online_status === 'AT_VENUE' && (
-                   <span className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm text-emerald-700 bg-emerald-100 border border-emerald-200">
-                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                     Đang ở tiệm
-                   </span>
-                 )}
-               </div>
-             )}
+             {/* Vùng chứa On-Call đã được chuyển sang tab Chấm Công để dọn dẹp Dashboard */}
             <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
                <User size={20} />
             </div>
@@ -443,93 +410,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
         </div>
       )}
 
-      {showOnCallPopup && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-white rounded-[32px] w-full max-w-sm overflow-hidden shadow-2xl"
-          >
-            <div className="p-6">
-              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-4">
-                <BellRing size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận sẵn sàng</h3>
-              <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                Khi có khách đặt lịch, bạn cần bao nhiêu phút để di chuyển từ nhà đến Spa?
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
-                    Thời gian di chuyển (Phút)
-                  </label>
-                  <div className="flex items-center gap-3 mb-6">
-                    <button
-                      onClick={() => setTempMins(tempMins <= 5 ? 60 : tempMins - 5)}
-                      className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
-                    >
-                      -5
-                    </button>
-                    <div className="flex-1 h-12 rounded-2xl border-2 border-emerald-100 flex items-center justify-center text-xl font-black text-emerald-700">
-                      {tempMins}
-                    </div>
-                    <button
-                      onClick={() => setTempMins(tempMins >= 60 ? 5 : tempMins + 5)}
-                      className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
-                    >
-                      +5
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                        Giờ bắt đầu dự kiến
-                      </label>
-                      <input 
-                        type="time" 
-                        value={expectedStart}
-                        onChange={(e) => setExpectedStart(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                        Giờ kết thúc dự kiến
-                      </label>
-                      <input 
-                        type="time" 
-                        value={expectedEnd}
-                        onChange={(e) => setExpectedEnd(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowOnCallPopup(false)}
-                    className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-transform"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleToggleOnCall(true, tempMins, expectedStart, expectedEnd);
-                      setShowOnCallPopup(false);
-                    }}
-                    className="flex-1 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold active:scale-95 transition-transform shadow-lg shadow-emerald-200"
-                  >
-                    Bật Nhận Đơn
-                  </button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      {/* Popup Bật Nhận Đơn đã được chuyển sang tab Chấm Công */}
 
       {(!booking || !booking.id) ? (
         <div className="space-y-6">
@@ -607,46 +488,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             </div>
           )}
 
-          {/* Mobile On-Call Toggle */}
-          {onCallState?.allow_on_call && (
-            <div className="lg:hidden bg-white p-5 rounded-[32px] shadow-sm border border-emerald-50 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${onCallState.is_on_call ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
-                    <div className={`w-3.5 h-3.5 rounded-full ${onCallState.is_on_call ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-800 uppercase tracking-widest mb-1">Ngoài giờ</h3>
-                    <p className="text-xs font-medium text-slate-500">{onCallState.is_on_call ? (onCallState.online_status === 'AT_VENUE' ? 'Đã tới tiệm' : `Sẵn sàng (${onCallState.travel_time_mins}p)`) : 'Đang tắt'}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                     if (onCallState.is_on_call) {
-                       handleToggleOnCall(false, onCallState.travel_time_mins);
-                     } else {
-                       setShowOnCallPopup(true);
-                     }
-                  }}
-                  className={`px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all ${
-                    onCallState.is_on_call 
-                      ? 'bg-red-50 text-red-600 active:scale-95 border border-red-200' 
-                      : 'bg-emerald-600 text-white active:scale-95 shadow-md shadow-emerald-600/20'
-                  }`}
-                >
-                  {onCallState.is_on_call ? 'Tắt' : 'Bật'}
-                </button>
-              </div>
-              {onCallState.is_on_call && onCallState.online_status === 'ONLINE' && (
-                <button
-                  onClick={handleArriveAtVenue}
-                  className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all bg-emerald-600 text-white shadow-md active:scale-95"
-                >
-                  📍 Đã tới tiệm
-                </button>
-              )}
-            </div>
-          )}
+          {/* Mobile On-Call Toggle đã được xóa khỏi đây */}
 
           {/* KPI Progress Card (Type B) */}
           {kpiData && kpiData.targetHours > 0 && (

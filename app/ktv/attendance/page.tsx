@@ -9,6 +9,7 @@ import {
 import { format } from 'date-fns';
 import { useKTVAttendance } from './Attendance.logic';
 import { t } from './Attendance.i18n';
+import { AttendanceTypeB } from './_components/AttendanceTypeB';
 
 const KTVAttendancePage = () => {
     const {
@@ -34,6 +35,7 @@ const KTVAttendancePage = () => {
         minPhotoBrightness,
         showOvertimeFeature,
         user,
+        workType,
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -232,6 +234,16 @@ const KTVAttendancePage = () => {
                 <div className="flex flex-col items-center justify-center h-64 text-center">
                     <ShieldAlert size={48} className="text-red-500 mb-4" />
                     <h2 className="text-xl font-bold text-gray-900">{t.noAccess}</h2>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    if (workType === 'TYPE_B' && user?.code) {
+        return (
+            <AppLayout title="Chấm Công - Sẵn Sàng (KTV Loại B)">
+                <div className="max-w-sm mx-auto px-4 py-8 relative">
+                    <AttendanceTypeB ktvId={user.code} />
                 </div>
             </AppLayout>
         );

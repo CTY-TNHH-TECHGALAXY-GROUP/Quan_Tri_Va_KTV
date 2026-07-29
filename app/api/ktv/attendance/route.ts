@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { AttendanceSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
+import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import sharp from 'sharp';
 
 // 🔧 CONFIG
@@ -58,7 +59,30 @@ export async function POST(request: Request) {
         // Fallback: nếu không có mã thì dùng tên tạm, nhưng ưu tiên Mã NV theo yêu cầu
         const displayName = staffCode || userData.fullName || empNameInput || 'KTV';
 
-        // ─── Step 0.5: Verify Wi-Fi IP (IP Whitelisting) ─────────────
+        // Lấy thông tin Staff để biết work_type (Loại A hay Loại B)
+        const { data: staffData } = await supabase
+            .from('Staff')
+            .select('work_type')
+            .eq('id', staffCode)
+            .maybeSingle();
+        const isTypeB = staffData?.work_type === 'TYPE_B';
+
+        // ─── Step 0.5: Tách biệt KTV Loại B (SOLID) ─────────────
+        if (isTypeB) {
+            if (checkType === 'CHECK_IN') {
+                const res = await KtvOnlineService.arriveAtVenue(supabase, staffCode);
+                if (!res.success) {
+                    return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                }
+                return NextResponse.json({ success: true, message: 'Đã báo cáo tới tiệm thành công (Loại B)' });
+            } else if (checkType === 'CHECK_OUT') {
+                const res = await KtvOnlineService.goOffline(supabase, staffCode);
+                if (!res.success) {
+                    return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                }
+                return NextResponse.json({ success: true, message: 'Đã tan ca thành công (Loại B)' });
+            }
+        }
         const { data: configData, error: configError } = await supabase
             .from('SystemConfigs')
             .select('value')

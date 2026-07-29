@@ -121,23 +121,20 @@ export async function POST(req: NextRequest) {
         availableUntilStr = `${until.getHours().toString().padStart(2, '0')}:${until.getMinutes().toString().padStart(2, '0')}`;
     }
 
-    // Nếu bật nhận đơn, chỉ update Staff
-    const updates: any = {
-      feature_flags: newFlags,
-      online_status: 'ONLINE',
-      travel_minutes: travel_time_mins || 30,
-      available_from: availableFromStr,
-      available_until: availableUntilStr,
-    };
+    // Dùng service chuẩn để cập nhật trạng thái ONLINE
+    const res = await KtvOnlineService.goOnline(supabase, {
+      staffId: techCode,
+      travelMinutes: travel_time_mins || 30,
+      availableFrom: availableFromStr,
+      availableUntil: availableUntilStr
+    });
 
-    const { error: updateError } = await supabase
-      .from('Staff')
-      .update(updates)
-      .eq('id', techCode);
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (!res.success) {
+      return NextResponse.json({ error: res.error }, { status: 500 });
     }
+
+    // Luôn update cờ feature_flags để backup
+    await supabase.from('Staff').update({ feature_flags: newFlags }).eq('id', techCode);
 
     return NextResponse.json({ success: true, data: newFlags });
 

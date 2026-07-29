@@ -68,6 +68,7 @@ export const useKTVAttendance = () => {
     const [shiftFetchError, setShiftFetchError] = useState(false);
     const [shiftRetryCount, setShiftRetryCount] = useState(0);
     const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
+    const [workType, setWorkType] = useState<string>('TYPE_A');
     const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
@@ -81,14 +82,19 @@ export const useKTVAttendance = () => {
 
         const fetchStatus = async () => {
             try {
-                const [statusRes, settingsRes, configRes] = await Promise.all([
+                const [statusRes, settingsRes, configRes, staffRes] = await Promise.all([
                     apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
                         console.error(`❌ [Attendance] Status API returned error:`, err);
                         return { success: false, checkStatus: 'IDLE', record: null };
                     }),
                     apiClient.get<any>(API.KTV.SETTINGS).catch(() => ({ success: false, data: {} })),
                     apiClient.get<any>(API.SYSTEM.CONFIG).catch(() => ({ success: false, data: {} })),
+                    user.code ? supabase.from('Staff').select('work_type').eq('id', user.code).maybeSingle() : Promise.resolve({ data: null }),
                 ]);
+                
+                if (staffRes.data) {
+                    setWorkType(staffRes.data.work_type || 'TYPE_A');
+                }
                 
                 if (settingsRes.success && settingsRes.data) {
                     if (settingsRes.data.allow_early_checkout !== undefined) {
@@ -381,6 +387,7 @@ export const useKTVAttendance = () => {
         allowEarlyCheckout,
         minPhotoBrightness,
         showOvertimeFeature,
-        user
+        user,
+        workType,
     };
 };

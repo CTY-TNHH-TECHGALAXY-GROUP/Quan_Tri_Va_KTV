@@ -128,7 +128,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [walletBalance, setWalletBalance] = useState<any>(null);
     const [walletTimeline, setWalletTimeline] = useState<any[]>([]);
 
-    const [onCallState, setOnCallState] = useState<{ allow_on_call: boolean; is_on_call: boolean; travel_time_mins: number } | null>(null);
+
     const [kpiData, setKpiData] = useState<any>(null);
 
     const lastAcknowledgedIdRef = useRef<string | null>(null);
@@ -225,18 +225,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
             };
             fetchWallet();
 
-            const fetchOnCall = async () => {
-                try {
-                    const json = await apiClient.get<any>(`${API.KTV.ON_CALL}?techCode=${ktvId}`);
-                    if (json.success && json.data) {
-                        setOnCallState(json.data);
-                    }
-                } catch (e) {
-                    console.error('Error fetching on-call state:', e);
-                }
-            };
-            fetchOnCall();
-
             const fetchKpi = async () => {
                 try {
                     const json = await apiClient.get<any>(`/api/ktv/kpi?techCode=${ktvId}`);
@@ -251,46 +239,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [screen, booking?.id, ktvId]);
 
-    const handleToggleOnCall = async (isOnCall: boolean, mins: number, startTime?: string, endTime?: string) => {
-        if (!ktvId) return;
-        
-        // 🛡️ CHẶN TAN CA / TẮT NHẬN ĐƠN NẾU CÒN NỢ DỌN PHÒNG
-        if (!isOnCall && pendingHandovers.length > 0) {
-            alert('❌ Không thể tắt chế độ nhận việc hoặc tan ca.\nVui lòng hoàn tất dọn phòng trước!');
-            return;
-        }
 
-        try {
-            setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
-            await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins, expected_start: startTime, expected_end: endTime });
-            // Re-fetch state to get true online_status from server
-            if (!isOnCall && fetchBookingRef.current) {
-                await fetchBookingRef.current();
-            }
-        } catch (e) {
-            console.error('Error toggling on call:', e);
-        }
-    };
-
-    const handleArriveAtVenue = async () => {
-        if (!ktvId) return;
-        try {
-            const json = await apiClient.post<{ success: boolean; message?: string; error?: string }>(
-                API.KTV.ON_CALL, 
-                { action: 'arrive', staffId: ktvId }
-            );
-            
-            if (json.success) {
-                if (fetchBookingRef.current) await fetchBookingRef.current();
-                alert('Đã báo cáo tới tiệm thành công! Bạn đã được thêm vào Sổ Tua.');
-            } else {
-                alert('Lỗi: ' + (json.error || 'Không thể cập nhật trạng thái'));
-            }
-        } catch (e) {
-            console.error('Error arrive at venue:', e);
-            alert('Lỗi kết nối khi cập nhật trạng thái tới tiệm.');
-        }
-    };
 
     // 🔄 Full reset of ALL transient state when booking.id changes
     // Prevents timer/segment/prepping/review state from leaking from order 1 into order 2.
@@ -2188,9 +2137,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         settings,
         walletBalance,
         walletTimeline,
-        onCallState,
-        handleToggleOnCall,
-        handleArriveAtVenue,
+
         kpiData,
         canViewWallet,
         forceRefresh: async () => {
