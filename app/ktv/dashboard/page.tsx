@@ -305,6 +305,8 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const [bookingUrl, setBookingUrl] = React.useState(DEFAULT_BOOKING_URL);
   const [showOnCallPopup, setShowOnCallPopup] = React.useState(false);
   const [tempMins, setTempMins] = React.useState(onCallState?.travel_time_mins || 30);
+  const [expectedStart, setExpectedStart] = React.useState('');
+  const [expectedEnd, setExpectedEnd] = React.useState('');
   const [isFirstInQueue, setIsFirstInQueue] = React.useState(false);
 
   React.useEffect(() => {
@@ -416,7 +418,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                    }`}
                  >
-                   {onCallState.is_on_call ? 'Tắt Nhận Đơn' : 'Bật Nhận Đơn (Loại B)'}
+                   {onCallState.is_on_call ? 'Tắt Nhận Đơn' : 'Bật Nhận Đơn'}
                  </button>
                  {onCallState.is_on_call && onCallState.online_status === 'ONLINE' && (
                    <button
@@ -450,7 +452,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
           >
             <div className="p-6">
               <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-4">
-                <Target size={24} />
+                <BellRing size={24} />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận sẵn sàng</h3>
               <p className="text-sm text-slate-500 mb-6 leading-relaxed">
@@ -462,9 +464,9 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">
                     Thời gian di chuyển (Phút)
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 mb-6">
                     <button
-                      onClick={() => setTempMins(Math.max(5, tempMins - 5))}
+                      onClick={() => setTempMins(tempMins <= 5 ? 60 : tempMins - 5)}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
                       -5
@@ -473,11 +475,36 @@ function ScreenDashboard({ logic }: { logic: any }) {
                       {tempMins}
                     </div>
                     <button
-                      onClick={() => setTempMins(Math.min(60, tempMins + 5))}
+                      onClick={() => setTempMins(tempMins >= 60 ? 5 : tempMins + 5)}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
                       +5
                     </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                        Giờ bắt đầu dự kiến
+                      </label>
+                      <input 
+                        type="time" 
+                        value={expectedStart}
+                        onChange={(e) => setExpectedStart(e.target.value)}
+                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                        Giờ kết thúc dự kiến
+                      </label>
+                      <input 
+                        type="time" 
+                        value={expectedEnd}
+                        onChange={(e) => setExpectedEnd(e.target.value)}
+                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -490,7 +517,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   </button>
                   <button
                     onClick={() => {
-                      handleToggleOnCall(true, tempMins);
+                      handleToggleOnCall(true, tempMins, expectedStart, expectedEnd);
                       setShowOnCallPopup(false);
                     }}
                     className="flex-1 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold active:scale-95 transition-transform shadow-lg shadow-emerald-200"

@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { techCode, is_on_call, travel_time_mins } = await req.json();
+    const { techCode, is_on_call, travel_time_mins, expected_start, expected_end } = await req.json();
 
     if (!techCode) {
       return NextResponse.json({ error: 'Missing techCode' }, { status: 400 });
@@ -87,7 +87,9 @@ export async function POST(req: NextRequest) {
     const newFlags = {
       ...currentFlags,
       is_on_call,
-      travel_time_mins: travel_time_mins || 30
+      travel_time_mins: travel_time_mins || 30,
+      expected_start,
+      expected_end
     };
 
     if (!is_on_call) {
@@ -104,21 +106,29 @@ export async function POST(req: NextRequest) {
     }
 
     // Tính thời gian KTV sẽ có mặt (hiện tại + thời gian di chuyển)
-    const availableFrom = new Date();
-    availableFrom.setMinutes(availableFrom.getMinutes() + (travel_time_mins || 30));
+    let availableFromStr = expected_start;
+    if (!availableFromStr) {
+        const availableFrom = new Date();
+        availableFrom.setMinutes(availableFrom.getMinutes() + (travel_time_mins || 30));
+        availableFromStr = availableFrom.toISOString();
+    }
+
+    let availableUntilStr = expected_end;
+    if (!availableUntilStr) {
+        // Tạm giữ available_until +4h phòng hờ quên tắt
+        const until = new Date();
+        until.setHours(until.getHours() + 4);
+        availableUntilStr = until.toISOString();
+    }
 
     // Nếu bật nhận đơn, chỉ update Staff
     const updates: any = {
       feature_flags: newFlags,
       online_status: 'ONLINE',
       travel_minutes: travel_time_mins || 30,
-      available_from: availableFrom.toISOString(),
+      available_from: availableFromStr,
+      available_until: availableUntilStr,
     };
-    
-    // Tạm giữ available_until +4h phòng hờ quên tắt
-    const until = new Date();
-    until.setHours(until.getHours() + 4);
-    updates.available_until = until.toISOString();
 
     const { error: updateError } = await supabase
       .from('Staff')

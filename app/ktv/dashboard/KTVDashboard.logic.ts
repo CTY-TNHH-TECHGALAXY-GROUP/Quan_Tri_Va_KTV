@@ -251,7 +251,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [screen, booking?.id, ktvId]);
 
-    const handleToggleOnCall = async (isOnCall: boolean, mins: number) => {
+    const handleToggleOnCall = async (isOnCall: boolean, mins: number, startTime?: string, endTime?: string) => {
         if (!ktvId) return;
         
         // 🛡️ CHẶN TAN CA / TẮT NHẬN ĐƠN NẾU CÒN NỢ DỌN PHÒNG
@@ -262,7 +262,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         try {
             setOnCallState(prev => prev ? { ...prev, is_on_call: isOnCall, travel_time_mins: mins } : null);
-            await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins });
+            await apiClient.post(API.KTV.ON_CALL, { techCode: ktvId, is_on_call: isOnCall, travel_time_mins: mins, expected_start: startTime, expected_end: endTime });
             // Re-fetch state to get true online_status from server
             if (!isOnCall && fetchBookingRef.current) {
                 await fetchBookingRef.current();
