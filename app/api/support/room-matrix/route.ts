@@ -3,6 +3,24 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+export async function GET() {
+  try {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) throw new Error('Supabase not initialized');
+
+    const { data, error } = await supabase
+      .from('RoomTaskTemplates')
+      .select('room_id, template_id');
+      
+    if (error) throw error;
+    
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error('API Error /api/support/room-matrix GET:', error.message);
+    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();

@@ -17,6 +17,8 @@ interface RoutineItem {
   id: string;
   templateName: string;
   templateId: string;
+  roomId?: string | null;
+  roomName?: string | null;
   categoryName: string;
   requiresPhoto: boolean;
   minPhotoCount: number;
@@ -38,6 +40,8 @@ interface TodayTask {
 
 interface TemplateOption {
   id: string;
+  templateId: string; // The real template_id
+  roomId?: string | null; // null if role task
   name: string;
   categoryId?: string;
   categoryName: string;
@@ -77,7 +81,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   const fetchRoutines = useCallback(async () => {
     const { data, error } = await supabase
       .from('EmployeeRoutines')
-      .select('id, template_id, TaskTemplates(id, name, requires_photo, min_photo_count, category_id, TaskCategories(name))')
+      .select('id, template_id, room_id, Rooms(name), TaskTemplates(id, name, requires_photo, min_photo_count, category_id, TaskCategories(name))')
       .eq('employee_id', employeeId)
       .eq('is_active', true);
 
@@ -89,8 +93,10 @@ export const useEmployeeDetail = (employeeId: string) => {
     const mapped: RoutineItem[] = (data || []).map((r: any) => ({
       id: r.id,
       templateId: r.template_id,
+      roomId: r.room_id || null,
       templateName: r.TaskTemplates?.name || '—',
       categoryName: r.TaskTemplates?.TaskCategories?.name || '—',
+      roomName: r.Rooms?.name || null,
       requiresPhoto: r.TaskTemplates?.requires_photo || false,
       minPhotoCount: r.TaskTemplates?.min_photo_count || 1,
     }));
@@ -159,23 +165,55 @@ export const useEmployeeDetail = (employeeId: string) => {
   // Fetch all templates and group by category
   // ============================================================
   const fetchAvailableTemplates = useCallback(async () => {
-    const { data, error } = await supabase
+    // 1. Fetch Role Templates
+    const { data: roleData, error: roleErr } = await supabase
       .from('TaskTemplates')
-      .select('id, name, category_id, TaskCategories(name)')
-      .eq('is_active', true)
-      .order('name');
+      .select('id, name, category_id, TaskCategories(name, type)')
+      .eq('is_active', true);
 
-    if (error) {
-      console.error('Error fetching templates:', error.message, error.code);
+    // 2. Fetch Room Matrix
+    const { data: roomData, error: roomErr } = await supabase
+      .from('RoomTaskTemplates')
+      .select('room_id, template_id, Rooms(name), TaskTemplates(id, name, category_id, is_active, TaskCategories(name, type))');
+
+    if (roleErr || roomErr) {
+      console.error('Error fetching templates:', roleErr, roomErr);
       return;
     }
 
-    const mapped = (data || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      categoryId: t.category_id,
-      categoryName: t.TaskCategories?.name || 'Chưa phân loại',
-    }));
+    const mapped: TemplateOption[] = [];
+
+    // Add generic Role tasks
+    (roleData || []).forEach((t: any) => {
+      if (t.TaskCategories?.type === 'ROLE') {
+        mapped.push({
+          id: t.id, // for generic, id is just template_id
+          templateId: t.id,
+          roomId: null,
+          name: t.name,
+          categoryId: t.category_id,
+          categoryName: t.TaskCategories?.name || 'Chưa phân loại',
+        });
+      }
+    });
+
+    // Add Room specific tasks
+    (roomData || []).forEach((r: any) => {
+      const t = r.TaskTemplates;
+      if (t && t.is_active) {
+        mapped.push({
+          id: `${t.id}_${r.room_id}`, // unique id for rendering
+          templateId: t.id,
+          roomId: r.room_id,
+          name: `${t.name} (${r.Rooms?.name || r.room_id})`,
+          categoryId: t.category_id,
+          categoryName: t.TaskCategories?.name || 'Phòng',
+        });
+      }
+    });
+
+    // Sort by name
+    mapped.sort((a, b) => a.name.localeCompare(b.name));
 
     setAvailableTemplates(mapped);
   }, []);
@@ -183,13 +221,13 @@ export const useEmployeeDetail = (employeeId: string) => {
   // ============================================================
   // Add routine
   // ============================================================
-  const addRoutine = async (templateId: string) => {
+  const addRoutine = async (templateId: string, roomId?: string | null) => {
     setSubmitting(true);
     try {
       const res = await fetch('/api/support/routines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId, templateId }),
+        body: JSON.stringify({ employeeId, templateId, roomId }),
       });
 
       if (!res.ok) {
@@ -212,13 +250,13 @@ export const useEmployeeDetail = (employeeId: string) => {
     try {
       const templatesInCategory = availableTemplates.filter(t => t.categoryName === categoryName);
       // Filter out those already assigned
-      const unassignedTemplates = templatesInCategory.filter(t => !routines.some(r => r.templateId === t.id));
+      const unassignedTemplates = templatesInCategory.filter(t => !routines.some(r => r.templateId === t.templateId && r.roomId === t.roomId));
       
       for (const t of unassignedTemplates) {
         await fetch('/api/support/routines', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ employeeId, templateId: t.id }),
+          body: JSON.stringify({ employeeId, templateId: t.templateId, roomId: t.roomId }),
         });
       }
 
@@ -236,7 +274,7 @@ export const useEmployeeDetail = (employeeId: string) => {
     setSubmitting(true);
     try {
       const templatesInCategory = availableTemplates.filter(t => t.categoryName === categoryName);
-      const routinesToRemove = routines.filter(r => templatesInCategory.some(t => t.id === r.templateId));
+      const routinesToRemove = routines.filter(r => templatesInCategory.some(t => t.templateId === r.templateId && t.roomId === r.roomId));
       
       for (const r of routinesToRemove) {
         await fetch(`/api/support/routines?id=${r.id}`, { method: 'DELETE' });
@@ -361,9 +399,9 @@ export const useEmployeeDetail = (employeeId: string) => {
   // ============================================================
   // Filtered templates for search
   // ============================================================
-  const existingTemplateIds = new Set(routines.map(r => r.templateId));
+  const existingTemplateIds = new Set(routines.map(r => `${r.templateId}_${r.roomId || ''}`));
   const filteredTemplates = availableTemplates.filter(t => {
-    if (existingTemplateIds.has(t.id)) return false;
+    if (existingTemplateIds.has(`${t.templateId}_${t.roomId || ''}`)) return false;
     if (!searchQuery) return true;
     return t.name.toLowerCase().includes(searchQuery.toLowerCase());
   });

@@ -248,8 +248,8 @@ export default function EmployeeDetailPage() {
                         return acc;
                       }, {} as Record<string, typeof logic.availableTemplates>)
                   ).map(([catName, templates]) => {
-                    const allAssigned = templates.every(t => logic.routines.some(r => r.templateId === t.id));
-                    const assignedCount = templates.filter(t => logic.routines.some(r => r.templateId === t.id)).length;
+                    const allAssigned = templates.every(t => logic.routines.some(r => r.templateId === t.templateId && r.roomId === t.roomId));
+                    const assignedCount = templates.filter(t => logic.routines.some(r => r.templateId === t.templateId && r.roomId === t.roomId)).length;
                     return (
                       <div key={catName} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                         <div 
@@ -284,7 +284,7 @@ export default function EmployeeDetailPage() {
                         {expandedCategories[catName] && (
                           <div className="border-t border-slate-100 bg-slate-50/50 p-2 space-y-1">
                             {templates.map(tpl => {
-                              const assignedRoutine = logic.routines.find(r => r.templateId === tpl.id);
+                              const assignedRoutine = logic.routines.find(r => r.templateId === tpl.templateId && r.roomId === tpl.roomId);
                               return (
                                 <div key={tpl.id} className="flex justify-between items-center py-1.5 px-2 rounded hover:bg-slate-100">
                                   <span className="text-xs text-slate-600 truncate pr-2">{tpl.name}</span>
@@ -298,7 +298,7 @@ export default function EmployeeDetailPage() {
                                     </button>
                                   ) : (
                                     <button
-                                      onClick={() => logic.addRoutine(tpl.id)}
+                                      onClick={() => logic.addRoutine(tpl.templateId, tpl.roomId)}
                                       disabled={logic.submitting}
                                       className="text-cyan-600 hover:text-cyan-800 text-[10px] font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200 shrink-0"
                                     >
@@ -335,7 +335,12 @@ export default function EmployeeDetailPage() {
                       <div className="space-y-2">
                         {routines.map((r) => (
                           <div key={r.id} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between group">
-                            <p className="text-sm font-medium text-slate-700 truncate pr-2">{r.templateName}</p>
+                            <div className="flex flex-col pr-2">
+                              <p className="text-sm font-medium text-slate-700 truncate">
+                                {r.templateName}
+                                {r.roomName && <span className="text-slate-500 font-normal ml-1">({r.roomName})</span>}
+                              </p>
+                            </div>
                             <button
                               onClick={() => logic.removeRoutine(r.id)}
                               className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"

@@ -585,6 +585,17 @@
 | `created_by` | text | Admin tạo |
 | `created_at` | timestamptz | |
 
+### 21.4. EmployeeRoutines (Khung việc cố định)
+**Nhiệm vụ**: Bảng trung gian gán các mẫu công việc cho từng nhân viên cố định. Hàng ngày cron job dựa vào đây để sinh việc `FIXED`.
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | Khóa chính |
+| `employee_id` | text FK | Trỏ về `Staff` |
+| `template_id` | uuid FK | Trỏ về `TaskTemplates` |
+| `room_id` | text FK | (MỚI) Trỏ về `Rooms`. Để null nếu là việc chung. |
+| `is_active` | boolean | Bật/tắt việc chạy tự động |
+| `created_at` | timestamptz | |
+
 ### 21.5. RoomTaskTemplates (Ma trận Phòng - Việc)
 **Nhiệm vụ**: Bảng trung gian (N-N) để gán một Mẫu công việc cho nhiều Phòng khác nhau.
 | Cột | Kiểu | Mô tả chức năng |

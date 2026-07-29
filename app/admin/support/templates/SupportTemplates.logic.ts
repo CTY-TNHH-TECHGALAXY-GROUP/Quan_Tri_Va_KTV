@@ -200,16 +200,21 @@ export const useSupportTemplates = () => {
   }, []);
 
   const fetchRoomMatrix = useCallback(async () => {
-    const { data, error } = await supabase.from('RoomTaskTemplates').select('room_id, template_id');
-    if (error) {
+    try {
+      const res = await fetch('/api/support/room-matrix');
+      if (!res.ok) throw new Error('Failed to fetch room matrix');
+      const { data, success } = await res.json();
+      
+      if (success) {
+        const matrix: Record<string, Set<string>> = {};
+        (data || []).forEach((row: any) => {
+          if (!matrix[row.template_id]) matrix[row.template_id] = new Set();
+          matrix[row.template_id].add(row.room_id);
+        });
+        setRoomMatrix(matrix);
+      }
+    } catch (error: any) {
       console.error('Error fetching room matrix:', error.message);
-    } else {
-      const matrix: Record<string, Set<string>> = {};
-      (data || []).forEach(row => {
-        if (!matrix[row.template_id]) matrix[row.template_id] = new Set();
-        matrix[row.template_id].add(row.room_id);
-      });
-      setRoomMatrix(matrix);
     }
   }, []);
 
