@@ -46,13 +46,13 @@ export async function GET() {
             return NextResponse.json({ success: true, data: [] });
         }
 
-        // 2. Fetch all completed bookings (to calculate stats)
+        // 2. Fetch all bookings (except CANCELLED) to calculate stats & fetch recent selections like language
         let allBookings: any[];
         try {
             allBookings = await fetchAll('Bookings', `
                 id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
-            `, q => q.in('status', ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING']));
+            `, q => q.neq('status', 'CANCELLED'));
         } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
             return NextResponse.json({ success: true, data: customers }); // Return without stats gracefully
@@ -118,7 +118,10 @@ export async function GET() {
             });
             
             const visitCount = combinedBookings.length;
-            const totalSpent = combinedBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
+            const totalSpent = combinedBookings.reduce((sum, b) => {
+                const isCompleted = ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING'].includes(b.status);
+                return sum + (isCompleted ? (Number(b.totalAmount) || 0) : 0);
+            }, 0);
             
             // --- BẮT ĐẦU TÍNH TOÁN CÁC CHỈ SỐ V9 ---
             let vipMenuCount = 0;

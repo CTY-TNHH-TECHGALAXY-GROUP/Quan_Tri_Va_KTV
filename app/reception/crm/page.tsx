@@ -687,7 +687,11 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
                 💪 {customer.preferredStrength}
               </span>
             )}
-            {/* Moved preferredLang to the new column */}
+            {customer.preferredLang && customer.preferredLang !== 'N/A' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                🗣️ {customer.preferredLang}
+              </span>
+            )}
           </div>
           
           {/* Ghi chú lễ tân */}
