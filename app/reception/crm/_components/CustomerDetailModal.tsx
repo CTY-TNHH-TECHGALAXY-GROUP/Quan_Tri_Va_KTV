@@ -15,11 +15,12 @@ const POPULAR_COUNTRIES = [
   'Việt Nam', 'Hàn Quốc', 'Trung Quốc', 'Nhật Bản', 'Đài Loan', 'Mỹ', 'Anh', 'Úc', 'Singapore', 'Thái Lan', 'Malaysia'
 ];
 
-export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: { 
+export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate, onPreviewAvatar }: { 
   customer: Customer; 
   formatVND: (n?: number) => string;
   onClose: () => void; 
   onUpdate?: (updated: Customer) => void;
+  onPreviewAvatar?: (url: string) => void;
 }) => {
   const [showAllServices, setShowAllServices] = useState(false);
   const [showAllKtvs, setShowAllKtvs] = useState(false);
@@ -150,7 +151,9 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate }: 
           <div className="flex items-center gap-4">
             <div className="relative group shrink-0">
               {customer.avatarUrl ? (
-                <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-14 h-14 rounded-full object-cover border border-gray-200 shadow-sm" />
+                <button type="button" onClick={() => onPreviewAvatar && onPreviewAvatar(customer.avatarUrl!)} className="w-14 h-14 rounded-full border border-gray-200 shadow-sm outline-none overflow-hidden hover:opacity-80 transition-opacity">
+                  <img src={customer.avatarUrl} alt={customer.fullName || ''} className="w-full h-full object-cover" />
+                </button>
               ) : (
                 <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl font-bold">
                   {(customer.fullName || '?').charAt(0).toUpperCase()}

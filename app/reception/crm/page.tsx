@@ -543,6 +543,7 @@ export default function CRMPage() {
             setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
             setSelectedCustomer(updated);
           }}
+          onPreviewAvatar={setPreviewAvatar}
         />
       )}
       <datalist id="crm-countries">
