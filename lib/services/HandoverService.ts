@@ -222,7 +222,7 @@ export class HandoverService {
             .from('BookingItems')
             .select(`
                 id, bookingId, roomId, serviceCode, handover_status, handover_skipped,
-                Bookings!inner(billCode)
+                Bookings!BookingItems_bookingId_fkey(billCode)
             `)
             .eq('handover_skipped', true)
             .in('handover_status', ['SKIPPED', 'REJECTED'])
@@ -248,7 +248,7 @@ export class HandoverService {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, handover_reject_count, technicianCodes, Bookings!inner(billCode)')
+            .select('id, bookingId, handover_reject_count, technicianCodes, Bookings!BookingItems_bookingId_fkey(billCode)')
             .eq('id', itemId)
             .single();
 
