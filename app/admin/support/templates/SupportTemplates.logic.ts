@@ -391,6 +391,8 @@ export const useSupportTemplates = () => {
       }
 
       // 2. Add new tasks or update existing
+      const savedTaskIds: string[] = [];
+
       for (let i = 0; i < tasksToSave.length; i++) {
         const t = tasksToSave[i];
         if (t.name.trim() === '') continue;
@@ -404,9 +406,10 @@ export const useSupportTemplates = () => {
             sort_order: i,
             cron_schedule: t.cron_schedule || null,
           }).eq('id', t.id);
+          savedTaskIds.push(t.id);
         } else {
           // Insert new
-          await supabase.from('TaskTemplates').insert({
+          const { data: newTasks } = await supabase.from('TaskTemplates').insert({
             name: t.name,
             category_id: finalCategoryId,
             requires_photo: t.requires_photo,
@@ -414,8 +417,26 @@ export const useSupportTemplates = () => {
             sort_order: i,
             cron_schedule: t.cron_schedule || null,
             is_active: true,
-          });
+          }).select('id');
+          if (newTasks && newTasks.length > 0) {
+            savedTaskIds.push(newTasks[0].id);
+          }
         }
+      }
+      
+      // 3. Soft delete tasks that were removed from the UI
+      if (finalCategoryId && savedTaskIds.length > 0) {
+        await supabase
+          .from('TaskTemplates')
+          .update({ is_active: false })
+          .eq('category_id', finalCategoryId)
+          .not('id', 'in', `(${savedTaskIds.join(',')})`);
+      } else if (finalCategoryId && savedTaskIds.length === 0) {
+        // If all tasks were deleted, soft delete all tasks in the category
+        await supabase
+          .from('TaskTemplates')
+          .update({ is_active: false })
+          .eq('category_id', finalCategoryId);
       }
       
       await Promise.all([fetchCategories(), fetchTemplates()]);
