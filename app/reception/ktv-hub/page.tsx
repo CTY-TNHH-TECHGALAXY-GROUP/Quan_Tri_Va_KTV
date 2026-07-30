@@ -287,17 +287,18 @@ interface HistoryRecord {
     photoUrl?: string | null;
 }
 
-const AttendanceHistorySection = () => {
+const AttendanceHistorySection = ({ selectedDate }: { selectedDate?: string }) => {
     const [records, setRecords] = React.useState<HistoryRecord[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [viewerPhotos, setViewerPhotos] = React.useState<string[] | null>(null);
 
     const fetchHistory = React.useCallback(async () => {
         try {
-            const json = await apiClient.get<any>(API.KTV.ATTENDANCE_HISTORY);
+            const url = selectedDate ? `${API.KTV.ATTENDANCE_HISTORY}?date=${selectedDate}` : API.KTV.ATTENDANCE_HISTORY;
+            const json = await apiClient.get<any>(url);
             if (json.data) setRecords(json.data);
         } catch { /* silent */ }
-    }, []);
+    }, [selectedDate]);
 
     React.useEffect(() => {
         fetchHistory();
@@ -319,7 +320,9 @@ const AttendanceHistorySection = () => {
             >
                 <div className="flex items-center gap-2">
                     <History size={14} className="text-gray-400" />
-                    <span className="font-bold text-gray-700 text-sm">Lịch sử điểm danh hôm nay</span>
+                    <span className="font-bold text-gray-700 text-sm">
+                        Lịch sử điểm danh {selectedDate ? (selectedDate === new Date().toISOString().split('T')[0] ? 'hôm nay' : `ngày ${selectedDate.split('-').reverse().join('/')}`) : 'hôm nay'}
+                    </span>
                 </div>
                 <div className="flex items-center gap-2">
                     {confirmedCount > 0 && (
@@ -423,15 +426,25 @@ const AttendanceHistorySection = () => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
+    // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
+    const getVietnamDateString = () => {
+        const d = new Date();
+        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+        const vnTime = new Date(utc + (3600000 * 7));
+        return vnTime.toISOString().split('T')[0];
+    };
+    
+    const [selectedDate, setSelectedDate] = useState<string>(getVietnamDateString());
+
     return (
         <div className="space-y-4">
             {/* Attendance Pending - Duyệt điểm danh */}
             <AttendancePendingSection />
             
-            <TurnQueueBoard staffs={staffs as any} />
+            <TurnQueueBoard staffs={staffs as any} selectedDate={selectedDate} onDateChange={setSelectedDate} />
 
             {/* Attendance History - Collapsible */}
-            <AttendanceHistorySection />
+            <AttendanceHistorySection selectedDate={selectedDate} />
         </div>
     );
 };

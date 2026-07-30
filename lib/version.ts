@@ -1,3 +1,3 @@
 // Update khi có thay đổi quan trọng để force client reload
-export const APP_VERSION = '1.4.20';
-export const LAST_UPDATE = 'Fix hiển thị tên KTV tự do và hoàn thiện luồng chấm công KTV B';
+export const APP_VERSION = '1.4.22';
+export const LAST_UPDATE = 'Chỉ tính lương và hiển thị KTV loại A, B ở bảng chấm công';

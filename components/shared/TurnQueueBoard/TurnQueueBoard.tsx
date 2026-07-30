@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { StaffData } from './TurnQueueBoard.types';
@@ -7,7 +7,7 @@ import { useTurnQueueBoard } from './TurnQueueBoard.logic';
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
 
-export const TurnQueueBoard = ({ staffs, ktvDisplayNames }: { staffs: StaffData[], ktvDisplayNames?: Record<string, string> }) => {
+export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSelectedDate, onDateChange }: { staffs: StaffData[], ktvDisplayNames?: Record<string, string>, selectedDate?: string, onDateChange?: (date: string) => void }) => {
     const {
         selectedDate,
         setSelectedDate,
@@ -29,6 +29,12 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames }: { staffs: StaffData[
         activeCount,
         externalTurns
     } = useTurnQueueBoard(staffs);
+
+    useEffect(() => {
+        if (propSelectedDate && propSelectedDate !== selectedDate) {
+            setSelectedDate(propSelectedDate);
+        }
+    }, [propSelectedDate]);
 
     const [activeTab, setActiveTab] = useState<'internal' | 'external'>('internal');
 
@@ -94,7 +100,10 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames }: { staffs: StaffData[
                         <input
                             type="date"
                             value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedDate(e.target.value);
+                                if (onDateChange) onDateChange(e.target.value);
+                            }}
                             className="text-xs font-medium border border-gray-200 rounded-md px-2 py-1 outline-none focus:border-indigo-500 text-gray-700 bg-gray-50"
                         />
                     </div>
