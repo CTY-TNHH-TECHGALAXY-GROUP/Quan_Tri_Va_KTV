@@ -10,7 +10,7 @@ import {
   ClipboardList, Coffee, LogOut, Sparkles, User, Users,
   PlusSquare, HelpCircle, Zap, Target, Ban, AlertCircle,
   Dumbbell, Quote, BookOpen, BellRing, QrCode,
-  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw, Loader2
+  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw, Loader2, PauseCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
@@ -932,7 +932,7 @@ function ScreenTimer({ logic }: { logic: any }) {
           <svg className="absolute inset-0 w-full h-full transform -rotate-90 drop-shadow-sm">
             <circle
               cx="128" cy="128" r="115" stroke="currentColor" strokeWidth="12" fill="transparent"
-              className={`${isPrepping ? 'text-blue-400' : 'text-emerald-500'} transition-all duration-1000 ease-linear shadow-inner`}
+              className={`${isPaused ? 'text-amber-500' : isPrepping ? 'text-blue-400' : 'text-emerald-500'} transition-all duration-1000 ease-linear shadow-inner`}
               strokeDasharray={2 * Math.PI * 115}
               strokeDashoffset={2 * Math.PI * 115 * (1 - progress / 100)}
               strokeLinecap="round"
@@ -968,7 +968,7 @@ function ScreenTimer({ logic }: { logic: any }) {
 
       {/* Primary Action Button */}
       <div className="px-6 mb-10">
-        {!isTimerRunning || isPrepping ? (
+        {(!isTimerRunning && !isPaused) || isPrepping ? (
           <div className="space-y-4">
             {/* Selfie Photo Preview (Sequential Flow) */}
             {logic.startPhotoBase64 && (
@@ -1048,8 +1048,8 @@ function ScreenTimer({ logic }: { logic: any }) {
       {/* Special Requirements Section */}
       <CollapsibleRequirements booking={booking} />
 
-      {/* 2x2 Action Grid + Emergency Wide - ONLY SHOW WHEN RUNNING */}
-      {isTimerRunning && (
+      {/* 2x2 Action Grid + Emergency Wide - ONLY SHOW WHEN RUNNING OR PAUSED */}
+      {(isTimerRunning || isPaused) && (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1080,6 +1080,21 @@ function ScreenTimer({ logic }: { logic: any }) {
                   label="HỖ TRỢ" 
                   color="text-blue-600 border-blue-50" 
                 />
+                {isPaused ? (
+                    <ActionGridButton 
+                      onClick={() => {}} 
+                      icon={<Lock size={20} />} 
+                      label="CHỜ QUẦY MỞ" 
+                      color="text-slate-400 border-slate-100 bg-slate-50 opacity-70" 
+                    />
+                ) : (
+                    <ActionGridButton 
+                      onClick={logic.handlePause} 
+                      icon={<PauseCircle size={20} />} 
+                      label="TẠM DỪNG" 
+                      color="text-amber-600 border-amber-50" 
+                    />
+                )}
             </div>
             
             <button

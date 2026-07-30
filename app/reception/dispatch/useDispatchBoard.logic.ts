@@ -329,6 +329,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 quantity: Number(bi.quantity) || 1,
                                 options: parsedOptions,
                                 status: bi.status || 'NEW',
+                                pauseStart: bi.pauseStart || null,
                                 timeStart: bi.timeStart || null,
                                 timeEnd: bi.timeEnd || null,
                                 handover_status: bi.handover_status,

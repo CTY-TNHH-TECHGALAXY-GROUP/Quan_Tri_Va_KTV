@@ -33,7 +33,7 @@ export class BookingItemPauseService {
         // 1. Lấy thông tin BookingItem và Booking
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
-            .select('id, pauseStart, bookingId')
+            .select('id, pauseStart, bookingId, segments')
             .eq('id', bookingItemId)
             .single();
 
@@ -68,7 +68,36 @@ export class BookingItemPauseService {
         const newTimeStartMs = originalTimeStartMs + pauseDurationMs;
         const newTimeStartIso = new Date(newTimeStartMs).toISOString();
 
-        // 3. Cập nhật DB
+        // 3. Tịnh tiến thời gian của các chặng (segments) đang mở (chưa kết thúc)
+        let updatedSegments = item.segments;
+        let isString = typeof updatedSegments === 'string';
+        if (isString) {
+            try {
+                updatedSegments = JSON.parse(updatedSegments);
+            } catch {
+                updatedSegments = [];
+            }
+        }
+
+        if (Array.isArray(updatedSegments)) {
+            updatedSegments = updatedSegments.map((seg: any) => {
+                if (seg.actualStartTime && !seg.actualEndTime) {
+                    const oldStartMs = new Date(seg.actualStartTime.replace(' ', 'T') + (seg.actualStartTime.includes('Z') ? '' : 'Z')).getTime();
+                    const shiftedStartMs = oldStartMs + pauseDurationMs;
+                    return {
+                        ...seg,
+                        actualStartTime: new Date(shiftedStartMs).toISOString()
+                    };
+                }
+                return seg;
+            });
+        }
+        
+        if (isString) {
+            updatedSegments = JSON.stringify(updatedSegments) as any;
+        }
+
+        // 4. Cập nhật DB
         await supabase
             .from('Bookings')
             .update({ timeStart: newTimeStartIso })
@@ -78,7 +107,8 @@ export class BookingItemPauseService {
             .from('BookingItems')
             .update({ 
                 status: 'IN_PROGRESS',
-                pauseStart: null
+                pauseStart: null,
+                segments: updatedSegments
             })
             .eq('id', bookingItemId);
 
@@ -190,7 +220,16 @@ export class BookingItemPauseService {
             newTechCodes.push(newKtvId);
         }
 
-        let segments = Array.isArray(item.segments) ? [...item.segments] : [];
+        let parsedSegments = item.segments;
+        let isSegString = typeof parsedSegments === 'string';
+        if (isSegString) {
+            try {
+                parsedSegments = JSON.parse(parsedSegments);
+            } catch {
+                parsedSegments = [];
+            }
+        }
+        let segments = Array.isArray(parsedSegments) ? [...parsedSegments] : [];
         // Chốt segment cũ
         const aIndex = segments.findIndex(seg => seg.ktvId === oldKtvId && !seg.endTime);
         const pauseTime = item.pauseStart || new Date().toISOString();
@@ -214,7 +253,7 @@ export class BookingItemPauseService {
             .from('BookingItems')
             .update({
                 technicianCodes: newTechCodes,
-                segments: segments
+                segments: isSegString ? JSON.stringify(segments) as any : segments
             })
             .eq('id', bookingItemId);
             

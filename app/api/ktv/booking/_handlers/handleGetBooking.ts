@@ -599,6 +599,25 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         const T_TOTAL = Date.now() - API_START;
         console.log(`⚡ [API PERF] GET /api/ktv/booking | Resolve: ${T_RESOLVE}ms | ParallelFetch: ${T_PARALLEL_FETCH}ms | Enrich: ${T_ENRICH_FETCH}ms | Total: ${T_TOTAL}ms | bookingId: ${bookingId} | ktv: ${technicianCode}`);
 
+        // ─── 7. FETCH STAFF WORK TYPES ───
+        const allKtvIds = new Set<string>();
+        if (technicianCode) allKtvIds.add(technicianCode);
+        itemsWithService.forEach((i: any) => {
+            if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
+                i.technicianCodes.forEach((c: string) => allKtvIds.add(c));
+            }
+        });
+        
+        let ktvWorkTypes: Record<string, string> = {};
+        if (allKtvIds.size > 0) {
+            const { data: staffData } = await supabase.from('Staff').select('id, work_type').in('id', Array.from(allKtvIds));
+            if (staffData) {
+                staffData.forEach((s: any) => {
+                    ktvWorkTypes[s.id] = s.work_type || 'A';
+                });
+            }
+        }
+
         // ─── 8. RESPONSE ───
         return NextResponse.json({
             success: true,
@@ -622,7 +641,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 ktv_instant_reward_enabled: ktv_instant_reward_enabled,
                 nextBookingId: nextBookingId,
                 nextServiceName: nextServiceName,
-                nextStartTime: nextStartTime
+                nextStartTime: nextStartTime,
+                ktvWorkTypes: ktvWorkTypes
             },
             serverTime: new Date().toISOString()
         });
