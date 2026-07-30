@@ -61,7 +61,7 @@ export const usePayrollLogic = () => {
       const endDateISO = format(endDate, 'yyyy-MM-dd');
 
       const [staffRes, attRes, payrollDataRes, usersRes] = await Promise.all([
-        supabase.from('Staff').select('id, full_name').eq('status', 'ĐANG LÀM'),
+        supabase.from('Staff').select('id, full_name, work_type').eq('status', 'ĐANG LÀM').in('work_type', ['TYPE_A', 'TYPE_B']),
         supabase.from('KTVAttendance')
           .select('id, employeeId, date, checkType, status, checkedAt')
           .gte('date', startDateISO)
