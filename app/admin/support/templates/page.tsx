@@ -249,7 +249,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   // Modal state
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
-  const [categoryType, setCategoryType] = useState('ROLE');
+  const [categoryType, setCategoryType] = useState<'ROLE' | 'ROOM'>('ROLE');
   const [repeatMode, setRepeatMode] = useState('DAILY');
   const [tasks, setTasks] = useState<{ id?: string; name: string; requires_photo: boolean; min_photo_count: number; cron_schedule?: string }[]>([
     { name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }
@@ -357,7 +357,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                       e.stopPropagation();
                       setCategoryId(catObj?.id || null);
                       setCategoryName(catName);
-                      setCategoryType(catObj?.type || 'ROLE');
+                      setCategoryType((catObj?.type as 'ROLE' | 'ROOM') || 'ROLE');
                       setRepeatMode(catObj?.repeat_mode || 'DAILY');
                       setTasks(items.length > 0 ? items.map(t => ({ id: t.id, name: t.name, requires_photo: t.requires_photo, min_photo_count: t.min_photo_count, cron_schedule: t.cron_schedule && t.cron_schedule !== '—' ? t.cron_schedule : '' })) : [{ name: '', requires_photo: false, min_photo_count: 0, cron_schedule: '' }]);
                       setShowModal(true);
