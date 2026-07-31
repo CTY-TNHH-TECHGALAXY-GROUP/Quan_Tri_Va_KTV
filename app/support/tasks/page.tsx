@@ -236,7 +236,6 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="hidden"
                 onChange={handleFileChange}
               />

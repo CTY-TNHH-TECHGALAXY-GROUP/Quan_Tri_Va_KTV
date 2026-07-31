@@ -1400,7 +1400,7 @@ function ScreenHandover({ logic }: { logic: any }) {
                                                  {source === 'room' ? 'Phòng' : 'Dịch vụ'}
                                              </span>
                                          )}
-                                         <input type="file" accept="image/*" capture="environment" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
+                                         <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
                                      </label>
                                  )}
                              </div>
