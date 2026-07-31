@@ -107,7 +107,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId }) => {
       <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-center">
         <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
         <p className="text-amber-800 font-bold">Tính năng không khả dụng</p>
-        <p className="text-sm text-amber-600 mt-2">Bạn không được cấp quyền sử dụng chế độ Nhận Đơn (Loại B).</p>
+        <p className="text-sm text-amber-600 mt-2">Bạn không được cấp quyền sử dụng chế độ Nhận Đơn.</p>
       </div>
     );
   }

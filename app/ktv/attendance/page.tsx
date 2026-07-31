@@ -239,9 +239,11 @@ const KTVAttendancePage = () => {
         );
     }
 
+
+
     if (workType === 'TYPE_B' && user?.code) {
         return (
-            <AppLayout title="Chấm Công - Sẵn Sàng (KTV Loại B)">
+            <AppLayout title="Chấm Công">
                 <div className="max-w-sm mx-auto px-4 py-8 relative">
                     <AttendanceTypeB ktvId={user.code} />
                 </div>
