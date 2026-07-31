@@ -64,7 +64,9 @@ export class KtvKpiService {
                 const currentYear = now.getFullYear();
 
                 if (input.month === currentMonth && input.year === currentYear) {
-                    const todayStr = now.toISOString().slice(0, 10);
+                    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+                    const nowVn = new Date(now.getTime() + VN_OFFSET_MS);
+                    const todayStr = nowVn.toISOString().slice(0, 10);
                     const { data: todayBookings, error: todayErr } = await supabase
                         .from('BookingItems')
                         .select('segments')
