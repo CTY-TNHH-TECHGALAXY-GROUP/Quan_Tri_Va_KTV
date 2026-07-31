@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useEmployeeDetail } from './EmployeeDetail.logic';
+import { X } from 'lucide-react';
 
 export default function EmployeeDetailPage() {
   const params = useParams();
@@ -169,7 +170,10 @@ export default function EmployeeDetailPage() {
                             
                             {isPendingReview && (
                               <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-amber-200">
-                                <button className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-amber-300 rounded-lg text-cyan-600 text-xs font-bold hover:bg-cyan-50">
+                                <button 
+                                  onClick={() => logic.fetchTaskPhotos(task.id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-amber-300 rounded-lg text-cyan-600 text-xs font-bold hover:bg-cyan-50"
+                                >
                                   <span>📷</span> Xem {task.photoCount} ảnh
                                 </button>
                                 
@@ -393,6 +397,36 @@ export default function EmployeeDetailPage() {
                   className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-bold hover:bg-red-600 disabled:opacity-50"
                 >Giao Việc Ngay</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Viewer Modal */}
+      {logic.viewingTaskPhotos && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">Ảnh đã tải lên</h3>
+              <button 
+                onClick={() => logic.setViewingTaskPhotos(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-4">
+              {logic.viewingTaskPhotos.photos.map((photo: any, idx: number) => (
+                <div key={idx} className="rounded-xl overflow-hidden border border-slate-200">
+                  <img src={photo.url} alt={`Ảnh ${idx + 1}`} className="w-full h-auto object-contain bg-slate-50" />
+                  <div className="p-2 text-xs text-center text-slate-500 bg-slate-50 border-t border-slate-200">
+                    {new Date(photo.created_at).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+              ))}
+              {logic.viewingTaskPhotos.photos.length === 0 && (
+                <p className="text-center text-slate-500 py-8">Chưa có ảnh nào.</p>
+              )}
             </div>
           </div>
         </div>

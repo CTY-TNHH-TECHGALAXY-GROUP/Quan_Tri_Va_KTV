@@ -57,6 +57,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   const [showAdhocModal, setShowAdhocModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { url: string, created_at: string }[] } | null>(null);
 
   // ============================================================
   // Fetch employee info
@@ -230,6 +231,31 @@ export const useEmployeeDetail = (employeeId: string) => {
       console.error('Error fetching templates:', err);
     }
   }, []);
+
+  // ==========================================
+  // Fetch Task Photos for viewing
+  // ==========================================
+  const fetchTaskPhotos = async (taskId: string) => {
+    const { data, error } = await supabase
+      .from('TaskPhotos')
+      .select('storage_path, created_at')
+      .eq('task_id', taskId)
+      .eq('is_submitted', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching task photos:', error.message);
+      return;
+    }
+
+    if (data) {
+      const photosWithUrls = data.map((p) => {
+        const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
+        return { url: publicUrlData.publicUrl, created_at: p.created_at };
+      });
+      setViewingTaskPhotos({ taskId, photos: photosWithUrls });
+    }
+  };
 
   // ============================================================
   // Add routine
@@ -457,6 +483,9 @@ export const useEmployeeDetail = (employeeId: string) => {
     setSearchQuery,
     filteredTemplates,
     submitting,
+    viewingTaskPhotos,
+    setViewingTaskPhotos,
+    fetchTaskPhotos,
     addRoutine,
     assignCategory,
     unassignCategory,
