@@ -1272,8 +1272,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 if (tErr) console.error('❌ [Server] TurnQueue start error:', tErr);
             }
         }
-
-        if (newStatus === 'CLEANING' || newStatus === 'COMPLETED' || newStatus === 'DONE' || newStatus === 'CANCELLED' || newStatus === 'FEEDBACK') {
+        if (newStatus === 'COMPLETED' || newStatus === 'CANCELLED') {
             // Lấy tất cả KTV đang làm các item này
             let queryToRelease = supabase
                 .from('TurnQueue')

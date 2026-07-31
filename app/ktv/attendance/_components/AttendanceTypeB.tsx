@@ -13,9 +13,11 @@ interface OnCallState {
 
 interface Props {
   ktvId: string;
+  onCheckIn: () => void;
+  onCheckOut: () => void;
 }
 
-export const AttendanceTypeB: React.FC<Props> = ({ ktvId }) => {
+export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut }) => {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -60,28 +62,6 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId }) => {
       });
       if (res.success) {
         setShowPopup(false);
-        await fetchState();
-      } else {
-        alert(res.error || 'Có lỗi xảy ra');
-      }
-    } catch (e) {
-      alert('Lỗi kết nối');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleAttendance = async (checkType: 'CHECK_IN' | 'CHECK_OUT') => {
-    setActionLoading(true);
-    try {
-      const res = await apiClient.post<{ success: boolean, message?: string, error?: string }>('/api/ktv/attendance', {
-        employeeId: ktvId,
-        checkType,
-        photos: null,
-        reason: '',
-      });
-      if (res.success) {
-        alert(res.message || 'Thành công');
         await fetchState();
       } else {
         alert(res.error || 'Có lỗi xảy ra');
@@ -162,7 +142,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId }) => {
         {isOnline && (
             <>
                 <button
-                    onClick={() => handleAttendance('CHECK_IN')}
+                    onClick={() => onCheckIn()}
                     disabled={actionLoading}
                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
@@ -181,7 +161,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId }) => {
         {/* Nếu đã tới tiệm (AT_VENUE) -> Xin Cảm Ơn (Tan ca) */}
         {isAtVenue && (
              <button
-                onClick={() => handleAttendance('CHECK_OUT')}
+                onClick={() => onCheckOut()}
                 disabled={actionLoading}
                 className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
             >

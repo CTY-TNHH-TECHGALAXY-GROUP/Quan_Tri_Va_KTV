@@ -224,7 +224,7 @@ export class HandoverService {
                 id, bookingId, roomId, serviceCode, handover_status, handover_skipped,
                 Bookings!BookingItems_bookingId_fkey(billCode)
             `)
-            .eq('handover_skipped', true)
+            .or('handover_skipped.eq.true,handover_status.eq.REJECTED')
             .in('handover_status', ['SKIPPED', 'REJECTED'])
             .contains('technicianCodes', [ktvCode]);
 

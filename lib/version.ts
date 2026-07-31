@@ -1,3 +1,2 @@
-// Update khi có thay đổi quan trọng để force client reload
-export const APP_VERSION = '1.7.7';
-export const LAST_UPDATE = 'Ẩn yêu cầu nhập giờ về dự kiến khi điểm danh KTV Loại B';
+export const APP_VERSION = '1.7.8';
+export const LAST_UPDATE = 'Sửa lỗi luồng Dọn phòng (Quầy dọn dùm không bị văng) & Sửa lỗi đơn Nợ bàn giao bị ẩn khi Quầy yêu cầu dọn lại';
