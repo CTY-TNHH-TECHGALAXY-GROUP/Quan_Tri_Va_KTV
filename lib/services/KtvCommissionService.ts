@@ -350,6 +350,16 @@ export class KtvCommissionService {
      */
     static checkIsItemPassed(item: any, booking: any, ktvId: string): { isPassed: boolean, reasons: string[] } {
         const reasons: string[] = [];
+
+        // 🔧 YÊU CẦU TỪ KHÁCH: Chỉ áp dụng 3 bước duyệt Hold Salary cho đơn từ tháng 8/2026 trở đi.
+        // Đơn tháng 7/2026 trở về trước (tức < 2026-07-31T17:00:00Z - giờ VN là 00:00 01/08/2026) tự động pass 100%.
+        const bookingDate = booking?.timeStart || booking?.createdAt;
+        if (bookingDate) {
+            const bd = new Date(bookingDate);
+            if (bd.getTime() < 1785517200000) {
+                return { isPassed: true, reasons: [] };
+            }
+        }
         
         // 1. Duyệt phòng
         if (item.handover_status !== 'APPROVED') {
