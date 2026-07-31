@@ -4,21 +4,32 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 // 🔧 CONSTANTS
 // ============================================================
 const getVietnamTime = () => {
+  // Always get VN time correctly regardless of server timezone
   const now = new Date();
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  return new Date(utc + (7 * 60 * 60 * 1000));
+  // Convert to VN by getting UTC ms + 7h offset
+  return new Date(now.getTime() + (7 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60000));
+};
+
+const getVietnamDateStr = () => {
+  // Get YYYY-MM-DD in Vietnam timezone reliably
+  const vnMs = Date.now() + (7 * 60 * 60 * 1000) + (new Date().getTimezoneOffset() * 60000);
+  const vnDate = new Date(vnMs);
+  const y = vnDate.getUTCFullYear();
+  const m = String(vnDate.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(vnDate.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 const getTodayStart = () => {
-  const vnTime = getVietnamTime();
-  vnTime.setHours(0, 0, 0, 0);
-  return new Date(vnTime.getTime() - (7 * 60 * 60 * 1000)).toISOString();
+  // VN midnight = YYYY-MM-DDT00:00:00+07:00 = YYYY-MM-(DD-1)T17:00:00Z
+  const dateStr = getVietnamDateStr();
+  return new Date(`${dateStr}T00:00:00+07:00`).toISOString();
 };
 
 const getTodayEnd = () => {
-  const vnTime = getVietnamTime();
-  vnTime.setHours(23, 59, 59, 999);
-  return new Date(vnTime.getTime() - (7 * 60 * 60 * 1000)).toISOString();
+  // VN end of day = YYYY-MM-DDT23:59:59.999+07:00
+  const dateStr = getVietnamDateStr();
+  return new Date(`${dateStr}T23:59:59.999+07:00`).toISOString();
 };
 
 const shouldGenerateTaskToday = (repeatMode: string, cronSchedule?: string | null) => {
