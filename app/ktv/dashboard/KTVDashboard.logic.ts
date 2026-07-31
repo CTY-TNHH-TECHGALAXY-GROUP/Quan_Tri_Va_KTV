@@ -2157,6 +2157,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         screen,
         booking,
         isLoading,
+        setIsLoading,
         checklist,
         toggleChecklist,
         isChecklistComplete,
