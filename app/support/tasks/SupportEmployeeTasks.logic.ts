@@ -25,6 +25,7 @@ interface TaskItem {
   requires_photo: boolean;
   min_photo_count: number;
   category_id?: string;
+  room_id?: string | null;
   categoryName?: string;
   categoryOrder?: number;
   sortOrder?: number;
@@ -266,7 +267,8 @@ export const useSupportTasks = () => {
   const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
   
   normalTasks.forEach(t => {
-    const groupKey = `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
+    // Use categoryName as group key to ensure room tasks are separated per room
+    const groupKey = t.categoryName || `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
     if (!groupedTasks[groupKey]) {
       groupedTasks[groupKey] = {
         categoryName: t.categoryName || 'Công việc khác',

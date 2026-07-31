@@ -219,7 +219,8 @@ export class EmployeeTasksService {
       .order('created_at', { ascending: true });
 
     if (includeRoomTasks) {
-      query = query.or(`assignee_id.in.(${empIds.join(',')}),room_id.not.is.null`);
+      // Fetch: employee's own tasks OR shared room tasks (assignee_id is null, room_id is not null)
+      query = query.or(`assignee_id.in.(${empIds.join(',')}),and(assignee_id.is.null,room_id.not.is.null)`);
     } else {
       query = query.in('assignee_id', empIds);
     }
@@ -261,6 +262,7 @@ export class EmployeeTasksService {
       requires_photo: t.TaskTemplates?.requires_photo || false,
       min_photo_count: t.TaskTemplates?.min_photo_count || 1,
       category_id: t.category_id,
+      room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
       categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
