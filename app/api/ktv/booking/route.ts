@@ -78,7 +78,6 @@ export async function PATCH(request: Request) {
             .select('id, booking_item_id, booking_item_ids, last_served_at, start_time, turns_completed, status, room_id')
             .eq('employee_id', technicianCode)
             .eq('date', today)
-            .eq('current_order_id', bookingId)
             .maybeSingle();
 
         const updatePayload: any = { updatedAt: new Date().toISOString() };

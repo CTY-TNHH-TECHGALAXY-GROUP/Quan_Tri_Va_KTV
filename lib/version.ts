@@ -1,3 +1,3 @@
 // Update khi có thay đổi quan trọng để force client reload
-export const APP_VERSION = '1.6.8';
-export const LAST_UPDATE = 'Khắc phục lỗi nhân bản việc phòng (do múi giờ) và hiển thị sai ngày lặp lại hằng tuần.';
+export const APP_VERSION = '1.6.9';
+export const LAST_UPDATE = 'Tự động sửa lỗi đồng bộ Sổ hàng đợi tua (kẹt KTV, KTV vào đơn nhưng không đổi trạng thái).';

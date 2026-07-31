@@ -200,7 +200,19 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     // 🔥 CRITICAL: Recalculate TurnQueue.estimated_end_time when KTV actually starts
     if (action === 'START_TIMER' && technicianCode && turnForSync) {
         const nowVN = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
-        const turnUpdatePayload: any = { status: 'working', start_time: nowVN };
+        const turnUpdatePayload: any = { 
+            status: 'working', 
+            start_time: nowVN,
+            current_order_id: bookingId
+        };
+        
+        // Tự động self-heal dữ liệu sổ tua nếu KTV được gán vào từ Draft Mode
+        if (allGlobalSegs && allGlobalSegs.length > 0) {
+            turnUpdatePayload.room_id = allGlobalSegs[0].seg.roomId || turnForSync.room_id || null;
+            turnUpdatePayload.bed_id = allGlobalSegs[0].seg.bedId || null;
+            turnUpdatePayload.booking_item_ids = Array.from(new Set(allGlobalSegs.map((s: any) => s.item.id)));
+            turnUpdatePayload.booking_item_id = turnUpdatePayload.booking_item_ids[0];
+        }
 
         try {
             // Lấy estimated_end_time hiện tại để tính toán (nếu có)
