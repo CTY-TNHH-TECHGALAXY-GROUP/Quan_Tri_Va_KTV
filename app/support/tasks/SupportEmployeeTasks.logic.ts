@@ -48,6 +48,7 @@ export const useSupportTasks = () => {
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { url: string, created_at: string }[] } | null>(null);
   
   const employeeId = user?.id || null;
 
@@ -206,6 +207,31 @@ export const useSupportTasks = () => {
   };
 
   // ============================================================
+  // Fetch Task Photos for viewing
+  // ============================================================
+  const fetchTaskPhotos = async (taskId: string) => {
+    const { data, error } = await supabase
+      .from('TaskPhotos')
+      .select('storage_path, created_at')
+      .eq('task_id', taskId)
+      .eq('is_submitted', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching task photos:', error.message);
+      return;
+    }
+
+    if (data) {
+      const photosWithUrls = data.map((p) => {
+        const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
+        return { url: publicUrlData.publicUrl, created_at: p.created_at };
+      });
+      setViewingTaskPhotos({ taskId, photos: photosWithUrls });
+    }
+  };
+
+  // ============================================================
   // Initialize
   // ============================================================
   useEffect(() => {
@@ -298,5 +324,8 @@ export const useSupportTasks = () => {
     uploadPhoto,
     uploading,
     submitTask,
+    viewingTaskPhotos,
+    setViewingTaskPhotos,
+    fetchTaskPhotos,
   };
 };

@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
-import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, Send, Eye, X } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // 🔧 UI CONFIGURATION
@@ -115,6 +115,37 @@ export default function SupportEmployeeTasksPage() {
         </div>
       )}
       </div>
+
+      {/* Photo Viewer Modal */}
+      {logic.viewingTaskPhotos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">Ảnh đã tải lên</h3>
+              <button 
+                onClick={() => logic.setViewingTaskPhotos(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-4">
+              {logic.viewingTaskPhotos.photos.map((photo: any, idx: number) => (
+                <div key={idx} className="rounded-xl overflow-hidden border border-slate-200">
+                  <img src={photo.url} alt={`Ảnh ${idx + 1}`} className="w-full h-auto object-contain bg-slate-50" />
+                  <div className="p-2 text-xs text-center text-slate-500 bg-slate-50 border-t border-slate-200">
+                    {new Date(photo.created_at).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+              ))}
+              {logic.viewingTaskPhotos.photos.length === 0 && (
+                <p className="text-center text-slate-500 py-8">Chưa có ảnh nào.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
     </AppLayout>
   );
@@ -226,6 +257,17 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
                 )}
               </button>
             </div>
+          )}
+
+          {/* View Photos Button */}
+          {task.photoCount > 0 && (
+            <button
+              onClick={() => logic.fetchTaskPhotos(task.id)}
+              className="flex items-center justify-center w-12 h-12 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors shadow-sm shrink-0"
+              title="Xem ảnh"
+            >
+              <Eye size={20} />
+            </button>
           )}
 
           {/* Submit Button */}
