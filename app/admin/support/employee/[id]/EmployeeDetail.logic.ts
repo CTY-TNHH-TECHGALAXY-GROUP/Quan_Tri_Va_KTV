@@ -413,7 +413,7 @@ export const useEmployeeDetail = (employeeId: string) => {
         return;
       }
 
-      // 3. Send notification to employee (REWORK only)
+      // 3. Send notification to employee and delete old photos (REWORK only)
       if (decision === 'REWORK_REQUIRED') {
         const { error: notifErr } = await supabase
           .from('TaskNotifications')
@@ -426,6 +426,17 @@ export const useEmployeeDetail = (employeeId: string) => {
 
         if (notifErr) {
           console.error('Error sending rework notification:', notifErr.message, notifErr.code);
+        }
+
+        // Call API to delete photos from storage and DB
+        try {
+          await fetch('/api/support/tasks/rework', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId }),
+          });
+        } catch (apiErr) {
+          console.error('Error calling rework API:', apiErr);
         }
       }
 
