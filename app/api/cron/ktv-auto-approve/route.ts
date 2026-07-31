@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
         const now = new Date();
         const mins15Ago = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
-        const mins30Ago = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+        const mins10Ago = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
         // 1. Auto Approve Handover (Reception timeout 15 mins)
         // Tìm những item có handover_status = PENDING và cập nhật đã quá 15 phút
@@ -39,14 +39,14 @@ export async function GET(request: Request) {
             console.log(`[Cron] Auto approved handover for ${itemIds.length} items`);
         }
 
-        // 2. Auto PASS Customer Rating (Customer timeout 30 mins)
-        // Tìm những item đang FEEDBACK, đã APPROVED bàn giao, và cập nhật đã quá 30 phút
+        // 2. Auto PASS Customer Rating (Customer timeout 10 mins)
+        // Tìm những item đang FEEDBACK, đã APPROVED bàn giao, và cập nhật đã quá 10 phút
         const { data: feedbackItems } = await supabase
             .from('BookingItems')
             .select('id, updated_at')
             .eq('status', 'FEEDBACK')
             .eq('handover_status', 'APPROVED')
-            .lte('updated_at', mins30Ago);
+            .lte('updated_at', mins10Ago);
 
         if (feedbackItems && feedbackItems.length > 0) {
             const itemIds = feedbackItems.map(i => i.id);

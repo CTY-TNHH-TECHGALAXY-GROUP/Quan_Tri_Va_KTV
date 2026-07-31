@@ -635,12 +635,12 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                                 Đã duyệt
                                                                             </span>
                                                                         )}
-                                                                        {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.status) && order && (
+                                                                        {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.dispatchStatus) && order && (
                                                                             <button 
                                                                                 onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
-                                                                                className="text-[9px] font-bold text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                                                                className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-1 rounded shadow-md shrink-0 flex items-center gap-1 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all"
                                                                             >
-                                                                                <AlertCircle size={10} />
+                                                                                <AlertCircle size={12} />
                                                                                 Nhận xét KTV
                                                                             </button>
                                                                         )}

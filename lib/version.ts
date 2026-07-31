@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.11';
-export const LAST_UPDATE = 'Tắt trừ phí bảo trì cho tháng 07/2026 (do đã thu tiền mặt).';
+export const APP_VERSION = '1.7.12';
+export const LAST_UPDATE = 'Hotfix: Hiển thị đúng nút Nhận xét KTV do lỗi sai tên trường dữ liệu.';
