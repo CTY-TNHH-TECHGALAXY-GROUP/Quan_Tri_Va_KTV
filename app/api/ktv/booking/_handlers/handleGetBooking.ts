@@ -531,11 +531,20 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             (validNextAssign && technicianCode)
                 ? (async () => {
                     try {
-                        const { data: nextItems } = await supabase
+                        const { data: allNextItems } = await supabase
                             .from('BookingItems')
-                            .select('serviceId, options, duration')
-                            .eq('bookingId', validNextAssign.booking_id)
-                            .contains('technicianCodes', [technicianCode]);
+                            .select('serviceId, options, duration, technicianCodes')
+                            .eq('bookingId', validNextAssign.booking_id);
+
+                        let nextItems = [];
+                        if (allNextItems) {
+                            const upperTechCode = technicianCode.trim().toUpperCase();
+                            nextItems = allNextItems.filter((i: any) => 
+                                i.technicianCodes && 
+                                Array.isArray(i.technicianCodes) &&
+                                i.technicianCodes.some((c: string) => c.trim().toUpperCase() === upperTechCode)
+                            );
+                        }
 
                         if (nextItems && nextItems.length > 0) {
                             const svcIds = nextItems.map((ni: any) => String(ni.serviceId || '').trim().toLowerCase()).filter(Boolean);
