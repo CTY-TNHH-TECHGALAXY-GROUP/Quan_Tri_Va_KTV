@@ -90,16 +90,29 @@ export const useEmployeeDetail = (employeeId: string) => {
       return;
     }
 
-    const mapped: RoutineItem[] = (data || []).map((r: any) => ({
-      id: r.id,
-      templateId: r.template_id,
-      roomId: r.room_id || null,
-      templateName: r.TaskTemplates?.name || '—',
-      categoryName: r.TaskTemplates?.TaskCategories?.name || '—',
-      roomName: r.Rooms?.name || null,
-      requiresPhoto: r.TaskTemplates?.requires_photo || false,
-      minPhotoCount: r.TaskTemplates?.min_photo_count || 1,
-    }));
+    // Helper function to format room names consistently
+    const formatRoomName = (name: string) => {
+      if (!name) return '';
+      return name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL');
+    };
+
+    const mapped: RoutineItem[] = (data || []).map((r: any) => {
+      let catName = r.TaskTemplates?.TaskCategories?.name || '—';
+      if (r.room_id) {
+        catName = `Phòng ${formatRoomName(r.Rooms?.name || r.room_id)}`;
+      }
+
+      return {
+        id: r.id,
+        templateId: r.template_id,
+        roomId: r.room_id || null,
+        templateName: r.TaskTemplates?.name || '—',
+        categoryName: catName,
+        roomName: r.Rooms?.name || null,
+        requiresPhoto: r.TaskTemplates?.requires_photo || false,
+        minPhotoCount: r.TaskTemplates?.min_photo_count || 1,
+      };
+    });
 
     setRoutines(mapped);
   }, [employeeId]);

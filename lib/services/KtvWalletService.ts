@@ -93,19 +93,27 @@ export class KtvWalletService {
             if (relevantItems.length === 0) continue;
 
             let bookingCommission = 0;
+            let bookingTip = 0;
+            let passedItemCount = 0;
+
             for (const item of relevantItems) {
-                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
-                let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
-                if (itemDuration <= 0) itemDuration = 60;
-                bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, staffId);
+                if (isPassed) {
+                    passedItemCount++;
+                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                    let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
+                    if (itemDuration <= 0) itemDuration = 60;
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                    bookingTip += (Number(item.tip) || 0);
+                }
             }
 
-            if (bookingCommission === 0) {
+            if (bookingCommission === 0 && passedItemCount > 0) {
                 bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
             }
 
             // Fixed order bonus cho TYPE_B
-            if (workType === 'TYPE_B') {
+            if (workType === 'TYPE_B' && passedItemCount > 0) {
                 const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
@@ -116,8 +124,12 @@ export class KtvWalletService {
             }
 
             rt_commission += bookingCommission;
-            rt_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
-            rt_bonus += KtvCommissionService.calculateBookingBonus(b, staffId, todayStr, shiftsData || [], bonusConfig);
+            rt_tip += bookingTip;
+
+            // Only add bonus if at least one item passed
+            if (passedItemCount > 0) {
+                rt_bonus += KtvCommissionService.calculateBookingBonus(b, staffId, todayStr, shiftsData || [], bonusConfig);
+            }
         }
 
         // 5. Adjustments & Withdrawals

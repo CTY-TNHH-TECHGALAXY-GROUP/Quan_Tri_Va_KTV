@@ -339,7 +339,6 @@ export default function EmployeeDetailPage() {
                             <div className="flex flex-col pr-2">
                               <p className="text-sm font-medium text-slate-700 truncate">
                                 {r.templateName}
-                                {r.roomName && <span className="text-slate-500 font-normal ml-1">({r.roomName})</span>}
                               </p>
                             </div>
                             <button

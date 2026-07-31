@@ -266,15 +266,22 @@ export const useSupportTasks = () => {
   const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
   
   normalTasks.forEach(t => {
-    const catId = t.category_id || 'OTHER';
-    if (!groupedTasks[catId]) {
-      groupedTasks[catId] = {
-        categoryName: t.categoryName || 'Các công việc khác',
+    const groupKey = `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
+    if (!groupedTasks[groupKey]) {
+      let groupName = t.category_id && categoryMap[t.category_id]
+        ? categoryMap[t.category_id]
+        : 'Công việc khác';
+      
+      if (t.room_id && roomMap[t.room_id]) {
+        groupName = `Phòng ${roomMap[t.room_id]}`;
+      }
+      groupedTasks[groupKey] = {
+        categoryName: groupName,
         categoryOrder: t.categoryOrder || 999,
         tasks: []
       };
     }
-    groupedTasks[catId].tasks.push(t);
+    groupedTasks[groupKey].tasks.push(t);
   });
 
   const sortedCategories = Object.values(groupedTasks).map(cat => ({

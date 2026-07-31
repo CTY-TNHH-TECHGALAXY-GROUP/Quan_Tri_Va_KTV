@@ -127,19 +127,44 @@ async function processLedgerSync(targetDateStr: string) {
             if (relevantItems.length === 0) continue;
 
             let bookingCommission = 0;
+            let bookingTip = 0;
+            let passedItemCount = 0;
+
             for (const item of relevantItems) {
-                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
-                let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                if (itemDuration <= 0) itemDuration = 60;
-                bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
+                if (isPassed) {
+                    passedItemCount++;
+                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                    let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
+                    if (itemDuration <= 0) itemDuration = 60;
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                    bookingTip += (Number(item.tip) || 0);
+                }
             }
 
-            total_commission += bookingCommission || KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
-            total_tip += relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
+            if (bookingCommission === 0 && passedItemCount > 0) {
+                bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+            }
+
+            // Fixed order bonus cho TYPE_B
+            if (workType === 'TYPE_B' && passedItemCount > 0) {
+                const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                const allKtvCodes = new Set<string>();
+                for (const item of (b.BookingItems || [])) {
+                    (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));
+                }
+                const totalKtvs = allKtvCodes.size || 1;
+                bookingCommission += Math.floor(fixedOrderBonus / totalKtvs);
+            }
+
+            total_commission += bookingCommission;
+            total_tip += bookingTip;
             
             // Bonus calculation via Service
-            const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig);
-            total_bonus += bookingBonus;
+            if (passedItemCount > 0) {
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig);
+                total_bonus += bookingBonus;
+            }
         }
 
         const ktvAdjustments = (adjustments || []).filter(a => a.staff_id === techCode);
