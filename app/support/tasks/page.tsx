@@ -136,7 +136,7 @@ export default function SupportEmployeeTasksPage() {
                   <button 
                     onClick={() => {
                       if (confirm('Bạn có chắc chắn muốn xoá ảnh này?')) {
-                        logic.deletePhoto(photo.id, photo.storage_path, logic.viewingTaskPhotos.taskId);
+                        logic.deletePhoto(photo.id, photo.storage_path, logic.viewingTaskPhotos?.taskId || '');
                       }
                     }}
                     className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/80 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity"
