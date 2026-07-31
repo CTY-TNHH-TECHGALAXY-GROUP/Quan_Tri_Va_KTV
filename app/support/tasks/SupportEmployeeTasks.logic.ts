@@ -174,39 +174,32 @@ export const useSupportTasks = () => {
   };
 
   // ============================================================
-  // Upload photo (draft / auto-save)
+  // Upload photo via API (server-side, bypasses RLS)
   // ============================================================
   const uploadPhoto = async (taskId: string, file: File) => {
     if (!employeeId) return;
     setUploading(true);
 
     try {
-      const fileName = `tasks/${taskId}/${Date.now()}_${file.name}`;
-      const { error: uploadErr } = await supabase.storage
-        .from('task-photos')
-        .upload(fileName, file);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('taskId', taskId);
+      formData.append('employeeId', employeeId);
 
-      if (uploadErr) {
-        console.error('Error uploading photo:', uploadErr.message);
-        return;
-      }
+      const res = await fetch('/api/support/tasks/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      const { error: insertErr } = await supabase
-        .from('TaskPhotos')
-        .insert({
-          task_id: taskId,
-          uploaded_by: employeeId,
-          storage_path: fileName,
-          is_submitted: true,
-          review_round: 0,
-        });
-
-      if (insertErr) {
-        console.error('Error saving photo record:', insertErr.message, insertErr.code);
+      const json = await res.json();
+      if (!json.success) {
+        console.error('Error uploading photo:', json.error);
         return;
       }
 
       await fetchTasks(employeeId);
+    } catch (error) {
+      console.error('Failed to upload photo:', error);
     } finally {
       setUploading(false);
     }
