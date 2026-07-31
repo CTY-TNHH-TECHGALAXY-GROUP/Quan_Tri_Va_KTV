@@ -67,22 +67,6 @@ export async function POST(request: Request) {
             .maybeSingle();
         const isTypeB = staffData?.work_type === 'TYPE_B';
 
-        // ─── Step 0.5: Tách biệt KTV Loại B (SOLID) ─────────────
-        if (isTypeB) {
-            if (checkType === 'CHECK_IN') {
-                const res = await KtvOnlineService.arriveAtVenue(supabase, staffCode);
-                if (!res.success) {
-                    return NextResponse.json({ success: false, error: res.error }, { status: 500 });
-                }
-                return NextResponse.json({ success: true, message: 'Đã báo cáo tới tiệm thành công (Loại B)' });
-            } else if (checkType === 'CHECK_OUT') {
-                const res = await KtvOnlineService.goOffline(supabase, staffCode);
-                if (!res.success) {
-                    return NextResponse.json({ success: false, error: res.error }, { status: 500 });
-                }
-                return NextResponse.json({ success: true, message: 'Đã tan ca thành công (Loại B)' });
-            }
-        }
         const { data: configData, error: configError } = await supabase
             .from('SystemConfigs')
             .select('value')
@@ -220,117 +204,146 @@ export async function POST(request: Request) {
 
         // ─── Step 4: TurnQueue & User Shift Update (if auto-approved) ─────
         if (isAutoApprove) {
-            if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
-                // 🔹 Active shift for User
-                await supabase.from('Users').update({ isOnShift: true }).eq('id', employeeId);
+            if (isTypeB) {
+                if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
+                    const res = await KtvOnlineService.arriveAtVenue(supabase, staffCode);
+                    if (!res.success) {
+                        return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                    }
+                } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
+                    const res = await KtvOnlineService.goOffline(supabase, staffCode);
+                    if (!res.success) {
+                        return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                    }
 
-                // 🔹 Update KTVShifts if selectedShiftType is provided (Tạm thời cho hôm nay)
-                if (selectedShiftType) {
-                    const { data: currentActive } = await supabase
-                        .from('KTVShifts')
-                        .select('shiftType')
-                        .eq('employeeId', employeeId)
-                        .eq('status', 'ACTIVE')
-                        .maybeSingle();
+                    // Ghi nhận "Nghỉ đột xuất" vào bảng Lịch OFF (KTVLeaveRequests) theo đúng Business Date
+                    if (checkType === 'SUDDEN_OFF' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') {
+                        const leaveReason = reason || (checkType === 'SUDDEN_OFF' ? 'Xin nghỉ đột xuất ngay đầu ca' : 'Tan ca sớm (Nghỉ đột xuất)');
+                        const { error: leaveErr } = await supabase.from('KTVLeaveRequests').insert({
+                            employeeId,
+                            employeeName: displayName,
+                            date: today, // Sử dụng Business Date chuẩn
+                            reason: leaveReason,
+                            status: 'APPROVED',
+                            is_sudden_off: true,
+                            is_extension: false,
+                        });
+                        if (leaveErr) console.error('❌ [KTVLeaveRequests] Insert Error:', leaveErr);
+                    }
+                }
+            } else {
+                if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
+                    // 🔹 Active shift for User
+                    await supabase.from('Users').update({ isOnShift: true }).eq('id', employeeId);
 
-                    if (currentActive?.shiftType !== selectedShiftType) {
-                        if (currentActive) {
+                    // 🔹 Update KTVShifts if selectedShiftType is provided (Tạm thời cho hôm nay)
+                    if (selectedShiftType) {
+                        const { data: currentActive } = await supabase
+                            .from('KTVShifts')
+                            .select('shiftType')
+                            .eq('employeeId', employeeId)
+                            .eq('status', 'ACTIVE')
+                            .maybeSingle();
+
+                        if (currentActive?.shiftType !== selectedShiftType) {
+                            if (currentActive) {
+                                await supabase
+                                    .from('KTVShifts')
+                                    .update({ status: 'REPLACED' })
+                                    .eq('employeeId', employeeId)
+                                    .eq('status', 'ACTIVE');
+                            }
+
                             await supabase
                                 .from('KTVShifts')
-                                .update({ status: 'REPLACED' })
-                                .eq('employeeId', employeeId)
-                                .eq('status', 'ACTIVE');
+                                .insert({
+                                    employeeId,
+                                    employeeName: displayName,
+                                    shiftType: selectedShiftType,
+                                    effectiveFrom: today,
+                                    previousShift: currentActive?.shiftType || null,
+                                    reason: 'Tự chọn ca lúc điểm danh',
+                                    estimatedEndTime: estimatedEndTime ?? null,
+                                    status: 'ACTIVE',
+                                    reviewedBy: 'SYSTEM',
+                                    reviewedAt: nowUtc.toISOString(),
+                                });
                         }
+                    }
 
+                    if (staffCode && userData.role === 'TECHNICIAN') {
+                        // 🔹 UPSERT into TurnQueue (using staffCode)
+                        const { data: maxPosRow } = await supabase
+                            .from('TurnQueue')
+                            .select('queue_position')
+                            .eq('date', today)
+                            .order('queue_position', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        const { data: maxCheckInRow } = await supabase
+                            .from('TurnQueue')
+                            .select('check_in_order')
+                            .eq('date', today)
+                            .order('check_in_order', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
+                        const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
+
+                        const { error: turnQueueError } = await supabase
+                            .from('TurnQueue')
+                            .upsert({
+                                employee_id: staffCode,
+                                date: today,
+                                queue_position: nextPosition,
+                                check_in_order: nextCheckIn,
+                                status: 'waiting',
+                                turns_completed: 0,
+                            }, { onConflict: 'employee_id,date' });
+
+                        if (turnQueueError) {
+                            console.error('❌ [TurnQueue Upsert Error]:', turnQueueError);
+                        }
+                    }
+                } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
+                    // 🔸 Deactivate shift for User
+                    await supabase.from('Users').update({ isOnShift: false }).eq('id', employeeId);
+
+                    if (staffCode && userData.role === 'TECHNICIAN') {
+                        // 🔸 Set status = off trong TurnQueue (hiển thị mờ ở cuối danh sách)
+                        await supabase
+                            .from('TurnQueue')
+                            .upsert({ 
+                                employee_id: staffCode, 
+                                date: today, 
+                                status: 'off' 
+                            }, { onConflict: 'employee_id,date' });
+                    }
+                    
+                    // 🔸 Ghi nhận "Nghỉ đột xuất" vào bảng Lịch OFF (KTVLeaveRequests) theo đúng Business Date
+                    if (checkType === 'SUDDEN_OFF' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') {
+                        const leaveReason = reason || (checkType === 'SUDDEN_OFF' ? 'Xin nghỉ đột xuất ngay đầu ca' : 'Tan ca sớm (Nghỉ đột xuất)');
+                        const { error: leaveErr } = await supabase.from('KTVLeaveRequests').insert({
+                            employeeId,
+                            employeeName: displayName,
+                            date: today, // Sử dụng Business Date chuẩn
+                            reason: leaveReason,
+                            status: 'APPROVED',
+                            is_sudden_off: true,
+                            is_extension: false,
+                        });
+                        if (leaveErr) console.error('❌ [KTVLeaveRequests] Insert Error:', leaveErr);
+                    }
+                } else if (checkType === 'OVERTIME') {
+                    if (estimatedEndTime) {
                         await supabase
                             .from('KTVShifts')
-                            .insert({
-                                employeeId,
-                                employeeName: displayName,
-                                shiftType: selectedShiftType,
-                                effectiveFrom: today,
-                                previousShift: currentActive?.shiftType || null,
-                                reason: 'Tự chọn ca lúc điểm danh',
-                                estimatedEndTime: estimatedEndTime ?? null,
-                                status: 'ACTIVE',
-                                reviewedBy: 'SYSTEM',
-                                reviewedAt: nowUtc.toISOString(),
-                            });
+                            .update({ estimatedEndTime })
+                            .eq('employeeId', employeeId)
+                            .eq('status', 'ACTIVE');
                     }
-                }
-
-                if (staffCode && userData.role === 'TECHNICIAN') {
-                    // 🔹 UPSERT into TurnQueue (using staffCode)
-                    const { data: maxPosRow } = await supabase
-                        .from('TurnQueue')
-                        .select('queue_position')
-                        .eq('date', today)
-                        .order('queue_position', { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
-
-                    const { data: maxCheckInRow } = await supabase
-                        .from('TurnQueue')
-                        .select('check_in_order')
-                        .eq('date', today)
-                        .order('check_in_order', { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
-
-                    const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
-                    const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
-
-                    const { error: turnQueueError } = await supabase
-                        .from('TurnQueue')
-                        .upsert({
-                            employee_id: staffCode,
-                            date: today,
-                            queue_position: nextPosition,
-                            check_in_order: nextCheckIn,
-                            status: 'waiting',
-                            turns_completed: 0,
-                        }, { onConflict: 'employee_id,date' });
-
-                    if (turnQueueError) {
-                         console.error('❌ [TurnQueue Upsert Error]:', turnQueueError);
-                    }
-                }
-            } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
-                // 🔸 Deactivate shift for User
-                await supabase.from('Users').update({ isOnShift: false }).eq('id', employeeId);
-
-                if (staffCode && userData.role === 'TECHNICIAN') {
-                    // 🔸 Set status = off trong TurnQueue (hiển thị mờ ở cuối danh sách)
-                    await supabase
-                        .from('TurnQueue')
-                        .upsert({ 
-                            employee_id: staffCode, 
-                            date: today, 
-                            status: 'off' 
-                        }, { onConflict: 'employee_id,date' });
-                }
-                
-                // 🔸 Ghi nhận "Nghỉ đột xuất" vào bảng Lịch OFF (KTVLeaveRequests) theo đúng Business Date
-                if (checkType === 'SUDDEN_OFF' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') {
-                    const leaveReason = reason || (checkType === 'SUDDEN_OFF' ? 'Xin nghỉ đột xuất ngay đầu ca' : 'Tan ca sớm (Nghỉ đột xuất)');
-                    const { error: leaveErr } = await supabase.from('KTVLeaveRequests').insert({
-                        employeeId,
-                        employeeName: displayName,
-                        date: today, // Sử dụng Business Date chuẩn
-                        reason: leaveReason,
-                        status: 'APPROVED',
-                        is_sudden_off: true,
-                        is_extension: false,
-                    });
-                    if (leaveErr) console.error('❌ [KTVLeaveRequests] Insert Error:', leaveErr);
-                }
-            } else if (checkType === 'OVERTIME') {
-                if (estimatedEndTime) {
-                    await supabase
-                        .from('KTVShifts')
-                        .update({ estimatedEndTime })
-                        .eq('employeeId', employeeId)
-                        .eq('status', 'ACTIVE');
                 }
             }
         }
