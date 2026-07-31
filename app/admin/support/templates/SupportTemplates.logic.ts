@@ -150,6 +150,7 @@ export const useSupportTemplates = () => {
     const { data, error } = await supabase
       .from('TaskTemplates')
       .select('*, TaskCategories(name, type)')
+      .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 

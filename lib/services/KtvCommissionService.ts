@@ -340,4 +340,48 @@ export class KtvCommissionService {
 
         return Math.floor(calculatedPoints);
     }
+
+    /**
+     * Checks if a BookingItem has passed all conditions to release the salary (Hold Salary Feature).
+     * @param item BookingItems record
+     * @param booking Bookings record (for fallback rating)
+     * @param ktvId Technician ID to check against
+     * @returns { isPassed: boolean, reasons: string[] }
+     */
+    static checkIsItemPassed(item: any, booking: any, ktvId: string): { isPassed: boolean, reasons: string[] } {
+        const reasons: string[] = [];
+        
+        // 1. Duyệt phòng
+        if (item.handover_status !== 'APPROVED') {
+            reasons.push('Phòng chưa được duyệt (hoặc bị từ chối)');
+        }
+        
+        // 2. Khách đánh giá (Rating == 1 thì hold, null hoặc >= 2 thì pass)
+        // Check KTV's specific rating first, then item rating, then booking rating
+        let finalRating: number | null = null;
+        if (item.ktvRatings && typeof item.ktvRatings === 'object' && item.ktvRatings[ktvId]) {
+            finalRating = Number(item.ktvRatings[ktvId]);
+        } else if (item.itemRating != null) {
+            finalRating = Number(item.itemRating);
+        } else if (booking && booking.rating != null) {
+            finalRating = Number(booking.rating);
+        }
+
+        if (finalRating === 1) {
+            reasons.push('Khách hàng đánh giá 1 sao');
+        }
+
+        // 3. Quầy đánh giá KTV (reception_ktv_notes trong options)
+        if (item.options && item.options.reception_ktv_notes && item.options.reception_ktv_notes[ktvId]) {
+            const note = item.options.reception_ktv_notes[ktvId].trim();
+            if (note.length > 0) {
+                reasons.push(`Quầy nhận xét: ${note}`);
+            }
+        }
+
+        return {
+            isPassed: reasons.length === 0,
+            reasons
+        };
+    }
 }

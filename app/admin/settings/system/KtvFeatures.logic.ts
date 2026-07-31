@@ -39,6 +39,11 @@ export const FEATURE_FLAG_DEFS = [
         label: '🔧 Phí Bảo Trì',
         description: 'Tự động trừ phí bảo trì app hàng tháng',
     },
+    {
+        key: 'kpi_target_hours',
+        label: '⏱️ KPI Demo',
+        description: 'Bật hiển thị KPI cho KTV Loại A/C',
+    }
 ] as const;
 
 export type FeatureFlagKey = typeof FEATURE_FLAG_DEFS[number]['key'];

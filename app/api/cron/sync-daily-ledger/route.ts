@@ -19,13 +19,13 @@ async function processLedgerSync(targetDateStr: string) {
     const endTimeStr = `${targetDateStr}T23:59:59.999+07:00`;
 
     // 1. Get configs from centralized service
-    const commConfig = await KtvCommissionService.getCommissionConfig(supabase);
-    const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
+    const allConfigs = await KtvCommissionService.getAllConfigs(supabase);
+    const allBonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
         .from('Staff')
-        .select('id, full_name')
+        .select('id, full_name, work_type')
         .eq('status', 'ĐANG LÀM')
         .ilike('id', 'NH%');
     
@@ -109,6 +109,10 @@ async function processLedgerSync(targetDateStr: string) {
     // 5. Calculate per KTV
     for (const ktv of ktvs) {
         const techCode = ktv.id;
+        const workType = ktv.work_type === 'TYPE_B' ? 'TYPE_B' : ktv.work_type === 'TYPE_C' ? 'TYPE_C' : 'TYPE_A';
+        const commConfig = allConfigs[workType] || allConfigs['TYPE_A'];
+        const bonusConfig = allBonusConfigs[workType] || allBonusConfigs['TYPE_A'];
+
         let total_commission = 0;
         let total_tip = 0;
         let total_bonus = 0;

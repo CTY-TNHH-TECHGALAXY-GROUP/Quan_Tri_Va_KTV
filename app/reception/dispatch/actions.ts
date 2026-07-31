@@ -434,6 +434,40 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         }
 
+        // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
+        // Chặn lọt KTV cơ hữu chưa chấm công thông qua chức năng nhập tay
+        const finalKtvIds = new Set<string>();
+        if (dispatchData.technicianCode) finalKtvIds.add(dispatchData.technicianCode);
+        if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) finalKtvIds.add(a.ktvId) });
+        if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
+            if (u.technicianCodes) {
+                if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) finalKtvIds.add(c) });
+                else if (typeof u.technicianCodes === 'string') u.technicianCodes.split(',').forEach(c => { if (c.trim()) finalKtvIds.add(c.trim()) });
+            }
+        });
+
+        // Chỉ kiểm tra các KTV cơ hữu (không bắt đầu bằng EXT hoặc C_)
+        const coreKtvIds = Array.from(finalKtvIds).filter(id => !id.startsWith('C_') && !id.startsWith('EXT'));
+        
+        if (coreKtvIds.length > 0) {
+            const { data: activeTurns } = await supabase
+                .from('TurnQueue')
+                .select('employee_id')
+                .eq('date', dispatchData.date)
+                .in('employee_id', coreKtvIds)
+                .neq('status', 'off');
+                
+            const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
+            const missingCheckins = coreKtvIds.filter(id => !activeKtvIds.has(id));
+            
+            if (missingCheckins.length > 0) {
+                return { 
+                    success: false, 
+                    error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!` 
+                };
+            }
+        }
+
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
             const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes').eq('bookingId', bookingId);

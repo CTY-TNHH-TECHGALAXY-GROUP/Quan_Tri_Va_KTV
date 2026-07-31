@@ -82,18 +82,17 @@ export const useKTVAttendance = () => {
 
         const fetchStatus = async () => {
             try {
-                const [statusRes, settingsRes, configRes, staffRes] = await Promise.all([
+                const [statusRes, settingsRes, configRes] = await Promise.all([
                     apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
                         console.error(`❌ [Attendance] Status API returned error:`, err);
-                        return { success: false, checkStatus: 'IDLE', record: null };
+                        return { success: false, checkStatus: 'IDLE', record: null, workType: 'TYPE_A' };
                     }),
                     apiClient.get<any>(API.KTV.SETTINGS).catch(() => ({ success: false, data: {} })),
                     apiClient.get<any>(API.SYSTEM.CONFIG).catch(() => ({ success: false, data: {} })),
-                    user.code ? supabase.from('Staff').select('work_type').eq('id', user.code).maybeSingle() : Promise.resolve({ data: null }),
                 ]);
                 
-                if (staffRes.data) {
-                    setWorkType(staffRes.data.work_type || 'TYPE_A');
+                if (statusRes.success && statusRes.workType) {
+                    setWorkType(statusRes.workType);
                 }
                 
                 if (settingsRes.success && settingsRes.data) {

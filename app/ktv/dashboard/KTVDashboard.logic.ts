@@ -88,13 +88,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     useEffect(() => {
         // Kiểm tra xem đã chụp đủ ảnh theo checklist chưa
-        const requiredChecklist = booking?.handoverChecklist || [];
-        const hasAllPhotos = requiredChecklist.length > 0 
-            ? requiredChecklist.every((item: string) => handoverPhotosBase64[item])
-            : Object.keys(handoverPhotosBase64).length > 0;
+        let requiredChecklist = dynamicChecklist.length > 0 
+            ? dynamicChecklist.map((c: any) => c.label) 
+            : (booking?.handoverChecklist || []);
+            
+        if (requiredChecklist.length === 0) {
+            requiredChecklist = ['Ảnh tổng quan phòng'];
+        }
+
+        const hasAllPhotos = requiredChecklist.every((item: string) => handoverPhotosBase64[item]);
             
         setIsHandoverComplete(hasAllPhotos);
-    }, [handoverPhotosBase64, booking?.handoverChecklist]);
+    }, [handoverPhotosBase64, booking?.handoverChecklist, dynamicChecklist]);
 
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
@@ -224,20 +229,24 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
             };
             fetchWallet();
-
-            const fetchKpi = async () => {
-                try {
-                    const json = await apiClient.get<any>(`/api/ktv/kpi?techCode=${ktvId}`);
-                    if (json.success && json.data) {
-                        setKpiData(json.data);
-                    }
-                } catch (e) {
-                    console.error('Error fetching KPI state:', e);
-                }
-            };
-            fetchKpi();
         }
     }, [screen, booking?.id, ktvId]);
+
+    // 🔄 Fetch KPI Data
+    useEffect(() => {
+        if (!ktvId) return;
+        const fetchKpi = async () => {
+            try {
+                const json = await apiClient.get<any>(`/api/ktv/kpi?techCode=${ktvId}`);
+                if (json.success && json.data) {
+                    setKpiData(json.data);
+                }
+            } catch (e) {
+                console.error('Error fetching KPI state:', e);
+            }
+        };
+        fetchKpi();
+    }, [ktvId]);
 
 
 
@@ -437,6 +446,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         'PREPARING': 0,
         'READY': 1,
         'IN_PROGRESS': 2,
+        'PAUSED': 2,
         'COMPLETED': 3,
         'CLEANING': 3,
         'FEEDBACK': 4,
@@ -503,8 +513,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // ⚠️ FIX: Nếu KTV này ĐÃ BẮT ĐẦU nhưng CHƯA XONG (chưa có actualEndTime)
                 // Phải ép giữ ở trạng thái IN_PROGRESS để không bị hoàn thành đột ngột
                 if (!allDone) {
-                    currentStatus = 'IN_PROGRESS';
-                } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS'].includes(currentStatus)) {
+                    if (currentStatus !== 'PAUSED') currentStatus = 'IN_PROGRESS';
+                } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'PAUSED'].includes(currentStatus)) {
                     currentStatus = 'IN_PROGRESS';
                 }
             } else {
@@ -549,6 +559,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const currentScreen = screenRef.current;
         const statusLevel = STATUS_ORDER[currentStatus] ?? -1;
 
+        setIsPaused(currentStatus === 'PAUSED' || assignedItem?.status === 'PAUSED');
+
 
         console.log("📟 [ScreenEngine] Final Check:", { currentStatus, itemStatus: assignedItem?.status, bookingStatus: booking.status, currentScreen, statusLevel });
 
@@ -578,7 +590,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsPrepping(true);
             setScreen('TIMER');
         } 
-        else if (currentStatus === 'IN_PROGRESS') {
+        else if (currentStatus === 'IN_PROGRESS' || currentStatus === 'PAUSED') {
             // Guard: KHÔNG kéo ngược KTV đã hoàn thành về TIMER
             // Ngoại lệ: Nếu postServiceBookingId khác booking hiện tại → KTV đã chuyển sang đơn mới → XÓA guard
             const postServiceScreens = ['REVIEW', 'HANDOVER', 'REWARD'];
@@ -834,7 +846,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             if (allFeedback) currentStatus = 'FEEDBACK';
                             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
                             else if (isAnyStarted) {
-                                if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'CANCELLED'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
+                                if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'CANCELLED', 'PAUSED'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
                             } else {
                                 // ⚠️ FIX: Nếu KTV này CHƯA BẮT ĐẦU (chưa có actualStartTime)
                                 if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
@@ -1160,7 +1172,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     return prev - 1;
                 });
             }, 1000);
-        } else if (isTimerRunning && !isPrepping) {
+        } else if (isTimerRunning && !isPrepping && !isPaused) {
             // ✅ Dùng Absolute Time thay vì prev-1 để chống drift khi treo tab/background
             timer = setInterval(() => {
                 if (!timerStartMsRef.current || !timerTotalSecsRef.current) {
@@ -1174,7 +1186,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [isPrepping, isTimerRunning]); // Bỏ timeRemaining và prepTimeRemaining khỏi deps để không bị khựng clock do clearInterval chạy lại mỗi giây
+    }, [isPrepping, isTimerRunning, isPaused]); // Bỏ timeRemaining và prepTimeRemaining khỏi deps để không bị khựng clock do clearInterval chạy lại mỗi giây
 
     // 📱 Tự động đồng bộ & recalculate Timer khi có data mới từ Lễ tân hoặc khi mở lại app
     useEffect(() => {
@@ -1804,11 +1816,20 @@ export function useKTVDashboard(config?: DashboardConfig) {
                        && !sName.includes('phong rieng');
             });
 
+            let workType = kpiData?.workType;
+            if (!workType) {
+                try {
+                    const { data: staffData } = await supabase.from('Staff').select('work_type').eq('id', ktvId).single();
+                    if (staffData?.work_type) workType = staffData.work_type;
+                } catch (e) {}
+            }
+            if (!workType) workType = 'TYPE_A';
+
             let parsedMilestones: any = null;
             let rawMilestones = settings.ktv_commission_milestones;
-            if (kpiData?.workType === 'TYPE_B') {
+            if (workType === 'TYPE_B') {
                 rawMilestones = settings.ktv_commission_milestones_TYPE_B || settings.ktv_commission_milestones_type_b || rawMilestones;
-            } else if (kpiData?.workType === 'TYPE_C') {
+            } else if (workType === 'TYPE_C') {
                 rawMilestones = settings.ktv_commission_milestones_TYPE_C || rawMilestones;
             } else if (settings.ktv_commission_milestones_TYPE_A) {
                 rawMilestones = settings.ktv_commission_milestones_TYPE_A;
@@ -1826,7 +1847,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, 
                 '90': 150000, '120': 200000, '180': 300000, '300': 500000
             };
-            let rate60 = Number(settings.ktv_commission_per_60min);
+            
+            let rate60 = Number(settings[`ktv_commission_per_60min_${workType}`] || settings[`ktv_commission_per_60min_${workType.toLowerCase()}`] || settings.ktv_commission_per_60min);
             if (isNaN(rate60) || rate60 <= 0) rate60 = 100000;
 
             const calculateCommissionForMins = (mins: number) => {
@@ -2051,6 +2073,53 @@ export function useKTVDashboard(config?: DashboardConfig) {
         alert('Đã gửi yêu cầu về sớm. Hãy đợi Lễ tân xác nhận để hoàn tất đơn hàng.');
     };
 
+    const handlePause = async () => {
+        if (!booking || !ktvId) return;
+        
+        const itemId = booking.assignedItemId || booking.assignedItemIds?.[0];
+        if (!itemId) return;
+
+        setIsLoading(true);
+        try {
+            const action = isPaused ? 'RESUME' : 'PAUSE';
+            if (action === 'RESUME') {
+                alert('Chỉ Lễ tân mới có quyền mở lại ca làm bị tạm dừng!');
+                setIsLoading(false);
+                return;
+            }
+            if (action === 'PAUSE' && !confirm('Xác nhận tạm dừng ca làm? Thời gian sẽ được dừng lại.')) {
+                setIsLoading(false);
+                return;
+            }
+            
+            const res = await apiClient.post<any>('/api/ktv/pause-swap-resume', {
+                action,
+                bookingItemId: itemId
+            });
+
+            if (res.success) {
+                if (fetchBookingRef.current) await fetchBookingRef.current();
+            } else {
+                alert(res.error || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`);
+            }
+        } catch (e: any) {
+            console.error('[KTV] Pause/Resume error:', e);
+            alert(e.message || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSelectDebt = (bookingId: string) => {
+        console.log("🔄 [KTV Logic] Chuyển qua đơn nợ bàn giao:", bookingId);
+        targetBookingIdRef.current = bookingId;
+        postServiceBookingIdRef.current = bookingId;
+        try {
+            localStorage.setItem(POST_SERVICE_BOOKING_KEY, bookingId);
+        } catch(e) {}
+        if (fetchBookingRef.current) fetchBookingRef.current();
+    };
+
     const goToDashboard = (nextId?: string | null) => {
         console.log("🏠 [KTV Logic] Returning to Dashboard. Next ID:", nextId);
         lastAcknowledgedIdRef.current = prevBookingIdRef.current;
@@ -2115,6 +2184,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         isSkippingHandover,
         handleSkipHandover,
         fetchPendingHandovers,
+        handleSelectDebt,
         commission,
         bonusMessage,
         setBonusMessage,
@@ -2123,6 +2193,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setShowProcedure,
         handleInteraction,
         handleEarlyExit,
+        handlePause,
         canStart,
         allowedStartTime,
         activeSegmentIndex,

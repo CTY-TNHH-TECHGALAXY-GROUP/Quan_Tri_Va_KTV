@@ -61,9 +61,28 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        // ─── Fetch Work Type ───
+        let workType = 'TYPE_A';
+        const { data: userRow } = await supabase
+            .from('Users')
+            .select('code')
+            .eq('id', employeeId)
+            .maybeSingle();
+
+        if (userRow?.code) {
+             const { data: staffRow } = await supabase
+                 .from('Staff')
+                 .select('work_type')
+                 .eq('id', userRow.code)
+                 .maybeSingle();
+             if (staffRow?.work_type) {
+                 workType = staffRow.work_type;
+             }
+        }
+
         // ─── Determine status from records ───
         if (!records || records.length === 0) {
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType });
         }
 
         // Find the most relevant record (most recent non-rejected, or fallback)
@@ -73,14 +92,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'CONFIRMED'
         );
         if (confirmedOff) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType });
         }
 
         const pendingOff = records.find(
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'PENDING'
         );
         if (pendingOff) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType });
         }
 
         // 2. Kiểm tra Tan ca
@@ -88,14 +107,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'CONFIRMED'
         );
         if (confirmedCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut });
+            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType });
         }
 
         const pendingCheckOut = records.find(
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'PENDING'
         );
         if (pendingCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType });
         }
 
         // 3. Kiểm tra Vào ca
@@ -103,18 +122,18 @@ export async function GET(request: Request) {
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'CONFIRMED'
         );
         if (confirmedCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType });
         }
 
         const pendingCheckIn = records.find(
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'PENDING'
         );
         if (pendingCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType });
         }
 
         // All records are REJECTED → allow retry
-        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null });
+        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

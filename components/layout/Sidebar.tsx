@@ -340,7 +340,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
             {isExpanded && <span>Làm mới Ứng dụng</span>}
           </button>
           
-          {isExpanded && (
+          {isExpanded && role?.id === 'dev' && (
               <div className="text-[10px] text-gray-400 font-medium w-full text-center mt-1">
                   Phiên bản: {APP_VERSION} ({LAST_UPDATE})
               </div>

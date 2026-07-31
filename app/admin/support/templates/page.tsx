@@ -289,11 +289,14 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
     setSubmitting(true);
     const ok = await logic.saveCategoryWithTemplates(categoryId, categoryName.trim(), tasks, categoryType, repeatMode);
     if (ok) {
+      alert('Đã lưu thành công!');
       setShowModal(false);
       setCategoryId(null);
       setCategoryName('');
       setCategoryType('ROLE');
       setTasks([{ name: '', requires_photo: false, min_photo_count: 0 }]);
+    } else {
+      alert('Có lỗi xảy ra khi lưu, vui lòng thử lại.');
     }
     setSubmitting(false);
   };

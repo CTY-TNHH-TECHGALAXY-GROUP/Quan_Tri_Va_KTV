@@ -466,7 +466,11 @@ function ScreenDashboard({ logic }: { logic: any }) {
               </div>
               <div className="space-y-2">
                 {logic.pendingHandovers.map((item: any) => (
-                  <div key={item.id} className="bg-white/80 p-3 rounded-2xl flex items-center justify-between border border-amber-100">
+                  <div 
+                    key={item.id} 
+                    onClick={() => logic.handleSelectDebt(item.bookingId)}
+                    className="bg-white/80 p-3 rounded-2xl flex items-center justify-between border border-amber-100 cursor-pointer hover:bg-amber-50 active:scale-95 transition-all"
+                  >
                     <div>
                       <span className="text-xs font-bold text-slate-700">
                         #{item.Bookings?.billCode || '---'}
