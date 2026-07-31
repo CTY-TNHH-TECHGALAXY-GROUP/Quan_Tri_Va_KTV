@@ -3,23 +3,29 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 // ============================================================
 // 🔧 CONSTANTS
 // ============================================================
+const getVietnamTime = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  return new Date(utc + (7 * 60 * 60 * 1000));
+};
+
 const getTodayStart = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  const vnTime = getVietnamTime();
+  vnTime.setHours(0, 0, 0, 0);
+  return new Date(vnTime.getTime() - (7 * 60 * 60 * 1000)).toISOString();
 };
 
 const getTodayEnd = () => {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d.toISOString();
+  const vnTime = getVietnamTime();
+  vnTime.setHours(23, 59, 59, 999);
+  return new Date(vnTime.getTime() - (7 * 60 * 60 * 1000)).toISOString();
 };
 
 const shouldGenerateTaskToday = (repeatMode: string, cronSchedule?: string | null) => {
   if (!repeatMode || repeatMode === 'DAILY') return true;
   
-  const today = new Date();
-  const day = today.getDay(); // 0 is Sunday, 1 is Monday
+  const vnTime = getVietnamTime();
+  const day = vnTime.getDay(); // 0 is Sunday, 1 is Monday
   
   if (repeatMode === 'WEEKLY_MONDAY' && day === 1) return true;
   if (repeatMode === 'WEEKLY_TUESDAY' && day === 2) return true;
@@ -128,6 +134,7 @@ export class EmployeeTasksService {
     // Create missing tasks
     const newTasks: any[] = routines
       .filter((r: any) => {
+        if (!r.TaskTemplates || r.TaskTemplates.is_active === false) return false;
         if (existingRoutineIds.has(`${r.template_id}_${r.room_id || ''}`)) return false;
         const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
         const cronSchedule = r.TaskTemplates?.cron_schedule;
@@ -160,6 +167,7 @@ export class EmployeeTasksService {
       if (roomRoutines && roomRoutines.length > 0) {
         const newRoomTasks = roomRoutines
           .filter((r: any) => {
+            if (!r.TaskTemplates || r.TaskTemplates.is_active === false) return false;
             if (existingRoomTemplates.has(`${r.template_id}_${r.room_id}`)) return false;
             const repeatMode = r.TaskTemplates?.TaskCategories?.repeat_mode || 'DAILY';
             const cronSchedule = r.TaskTemplates?.cron_schedule;
