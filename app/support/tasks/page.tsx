@@ -198,7 +198,7 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
         </div>
 
         {/* Actions (Camera / Check) */}
-        <div className="shrink-0 flex flex-col gap-2">
+        <div className="shrink-0 flex items-center gap-2">
           {!isCompleted && task.requires_photo && (
             <div>
               <input
@@ -235,7 +235,7 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
               className="w-12 h-12 bg-cyan-600 text-white rounded-xl text-sm font-bold flex items-center justify-center hover:bg-cyan-700 active:bg-cyan-800 transition-colors shadow-sm"
               title="Gửi kết quả"
             >
-              <Upload size={20} />
+              <Send size={20} className="ml-1" />
             </button>
           )}
         </div>
