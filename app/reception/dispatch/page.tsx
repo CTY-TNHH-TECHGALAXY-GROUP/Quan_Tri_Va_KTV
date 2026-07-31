@@ -161,6 +161,11 @@ export default function DispatchBoardPage() {
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   const [fullCustomerData, setFullCustomerData] = useState<Customer | null>(null);
   const [isFetchingCustomer, setIsFetchingCustomer] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, message: '', onConfirm: () => {} });
 
   useEffect(() => {
     setEditingGuestInfo(null);
@@ -1176,48 +1181,60 @@ if (!hasPermission('dispatch_board')) {
         confirmMsg = `Xác nhận BẮT ĐẦU LÀM thay cho KTV? Hệ thống sẽ bắt đầu tính giờ làm dịch vụ ngay lập tức.`;
       }
       
-      if (!confirm(confirmMsg)) return;
+      setConfirmModal({
+        isOpen: true,
+        message: confirmMsg,
+        onConfirm: () => {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          executeStatusUpdate();
+        }
+      });
+      return;
     }
 
-    try {
-      let res;
-      if (isPartial) {
-          const { updateBookingItemStatus } = await import('./actions');
-          res = await updateBookingItemStatus(itemIds, newStatus, selectedDate, orderId, targetKtvIds);
-      } else {
-          res = await updateBookingStatus(orderId, newStatus, selectedDate);
-      }
-      
-      if (res.success) {
-        setOrders(prev => prev.map(o => {
-            if (o.id !== orderId) return o;
-            if (!isPartial) {
-                // If it's a full update, hide the order if it's completed (if needed) or let fetchData handle it.
-                // We'll just rely on fetchData, no need to hide it if we don't want it to jump weirdly
-                return o;
-            }
-            // Optimistic update for partial services
-            return {
-                ...o,
-                services: o.services.map(s => {
-                    if (itemIds.includes(s.id)) {
-                        return { ...s, status: newStatus };
-                    }
-                    return s;
-                })
-            };
-        }));
-        
-        if (!isPartial && selectedOrderId === orderId) {
-            setSelectedOrderId(null);
+    executeStatusUpdate();
+
+    async function executeStatusUpdate() {
+      try {
+        let res;
+        if (isPartial) {
+            const { updateBookingItemStatus } = await import('./actions');
+            res = await updateBookingItemStatus(itemIds, newStatus, selectedDate, orderId, targetKtvIds);
+        } else {
+            res = await updateBookingStatus(orderId, newStatus, selectedDate);
         }
-        setContextMenu(null);
-        fetchData();
-      } else {
-        alert('Lỗi cập nhật trạng thái: ' + res.error);
+        
+        if (res.success) {
+          setOrders(prev => prev.map(o => {
+              if (o.id !== orderId) return o;
+              if (!isPartial) {
+                  // If it's a full update, hide the order if it's completed (if needed) or let fetchData handle it.
+                  // We'll just rely on fetchData, no need to hide it if we don't want it to jump weirdly
+                  return o;
+              }
+              // Optimistic update for partial services
+              return {
+                  ...o,
+                  services: o.services.map(s => {
+                      if (itemIds.includes(s.id)) {
+                          return { ...s, status: newStatus };
+                      }
+                      return s;
+                  })
+              };
+          }));
+          
+          if (!isPartial && selectedOrderId === orderId) {
+              setSelectedOrderId(null);
+          }
+          setContextMenu(null);
+          fetchData();
+        } else {
+          alert('Lỗi cập nhật trạng thái: ' + res.error);
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống khi cập nhật.');
       }
-    } catch (err) {
-      alert('Lỗi hệ thống khi cập nhật.');
     }
   };
 
@@ -2712,6 +2729,46 @@ if (!hasPermission('dispatch_board')) {
         onApprove={handleApproveHandover}
         onReject={handleRejectHandover}
       />
+
+      {/* Custom Confirm Modal (Fix INP Issue) */}
+      <AnimatePresence>
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100"
+            >
+              <div className="p-5 pb-6">
+                <div className="flex items-center gap-3 text-orange-600 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center border border-orange-100">
+                    <AlertTriangle size={24} />
+                  </div>
+                  <h3 className="text-[17px] font-black">Xác nhận</h3>
+                </div>
+                <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1">
+                  {confirmModal.message}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50/80 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  onClick={confirmModal.onConfirm}
+                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
+                >
+                  Đồng ý
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </AppLayout>
   );
 }
