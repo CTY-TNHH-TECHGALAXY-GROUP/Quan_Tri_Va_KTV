@@ -48,6 +48,7 @@ import {
 
 import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
+import { KtvCommentModal } from './_components/KtvCommentModal';
 
 
 
@@ -154,6 +155,7 @@ export default function DispatchBoardPage() {
   const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE'>('DISPATCH');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddSvcModal, setShowAddSvcModal] = useState(false);
+  const [commentModalData, setCommentModalData] = useState<{subOrder: SubOrder, order: any} | null>(null);
   const [editingSvc, setEditingSvc] = useState<{ orderId: string, svcId: string, oldSvcName: string } | null>(null);
   const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
   const [svcSearchQuery, setSvcSearchQuery] = useState('');
@@ -1982,6 +1984,34 @@ if (!hasPermission('dispatch_board')) {
                     <Save size={20} strokeWidth={3} /> LƯU
                   </button>
                   {(() => {
+                    const isFeedbackOrDone = ['FEEDBACK', 'DONE', 'CLEANING'].includes(selectedSubOrder.dispatchStatus);
+                    
+                    if (isFeedbackOrDone) {
+                      return (
+                        <div className="flex gap-2 w-full col-span-2">
+                           <button
+                             onClick={() => setCommentModalData({ subOrder: selectedSubOrder, order: selectedSubOrder.originalOrder })}
+                             className="flex-1 py-3 rounded-2xl font-black text-amber-700 bg-amber-100 border border-amber-300 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all uppercase text-sm flex items-center justify-center gap-2 shadow-sm"
+                           >
+                              <AlertTriangle size={18} strokeWidth={3} /> Nhận xét KTV
+                           </button>
+                           {selectedSubOrder.dispatchStatus !== 'DONE' && (
+                             <button
+                               onClick={async () => {
+                                 const itemIds = selectedSubOrder.services.map((s:any) => s.id);
+                                 try {
+                                   await handleUpdateStatus(selectedSubOrder.originalOrder.id, 'DONE', itemIds, true);
+                                 } catch(e) {}
+                               }}
+                               className="flex-1 py-3 rounded-2xl font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-all uppercase text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-200"
+                             >
+                                <CheckCircle2 size={18} strokeWidth={3} /> Hoàn tất
+                             </button>
+                           )}
+                        </div>
+                      );
+                    }
+
                     const hasStartedService = selectedSubOrder.originalOrder.services.some(
                       (s: any) => s.status && ['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(s.status)
                     );
@@ -2769,6 +2799,17 @@ if (!hasPermission('dispatch_board')) {
           </div>
         )}
       </AnimatePresence>
+      {commentModalData && (
+        <KtvCommentModal 
+          subOrder={commentModalData.subOrder as any}
+          order={commentModalData.order}
+          onClose={() => setCommentModalData(null)}
+          onSuccess={() => {
+            setCommentModalData(null);
+            fetchData();
+          }}
+        />
+      )}
     </AppLayout>
   );
 }
