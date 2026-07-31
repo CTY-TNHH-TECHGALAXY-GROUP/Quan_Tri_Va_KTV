@@ -129,6 +129,47 @@ export class EmployeeTasksService {
       }
     }
 
+    // Cleanup WEEKLY tasks generated on wrong day (e.g. from previous bugs)
+    const weeklyRoutineTemplateIds = (routines || [])
+      .filter((r: any) => r.TaskTemplates?.TaskCategories?.repeat_mode === 'WEEKLY')
+      .map((r: any) => r.template_id);
+
+    if (weeklyRoutineTemplateIds.length > 0) {
+      const vnDay = getVietnamTime().getDay();
+      const wrongDayTasks = (existing || []).filter(t =>
+        t.assignee_id && empIds.includes(t.assignee_id) &&
+        t.status === 'NOT_STARTED' &&
+        t.template_id &&
+        weeklyRoutineTemplateIds.includes(t.template_id)
+      );
+
+      if (wrongDayTasks.length > 0) {
+        // Check each task's cron_schedule
+        const cronMap: Record<string, string | null> = {};
+        (routines || []).forEach((r: any) => {
+          if (r.TaskTemplates?.cron_schedule) {
+            cronMap[r.template_id] = r.TaskTemplates.cron_schedule;
+          }
+        });
+
+        const tasksToRemove = wrongDayTasks.filter(t => {
+          const cron = cronMap[t.template_id!];
+          if (!cron) return false;
+          const days = cron.split(',').map(Number);
+          return !days.includes(vnDay);
+        });
+
+        if (tasksToRemove.length > 0) {
+          const { error: weeklyDelErr } = await supabase.from('Tasks').delete().in('id', tasksToRemove.map(t => t.id));
+          if (weeklyDelErr) {
+            console.error('Error deleting wrong-day weekly tasks:', weeklyDelErr.message);
+          } else {
+            console.log(`Cleaned up ${tasksToRemove.length} wrong-day weekly tasks`);
+          }
+        }
+      }
+    }
+
     if (!routines || routines.length === 0) return { success: true, count: 0 };
 
     // Create missing tasks
