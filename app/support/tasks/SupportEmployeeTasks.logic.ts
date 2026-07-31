@@ -268,15 +268,8 @@ export const useSupportTasks = () => {
   normalTasks.forEach(t => {
     const groupKey = `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
     if (!groupedTasks[groupKey]) {
-      let groupName = t.category_id && categoryMap[t.category_id]
-        ? categoryMap[t.category_id]
-        : 'Công việc khác';
-      
-      if (t.room_id && roomMap[t.room_id]) {
-        groupName = `Phòng ${roomMap[t.room_id]}`;
-      }
       groupedTasks[groupKey] = {
-        categoryName: groupName,
+        categoryName: t.categoryName || 'Công việc khác',
         categoryOrder: t.categoryOrder || 999,
         tasks: []
       };

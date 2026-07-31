@@ -253,7 +253,7 @@ export class EmployeeTasksService {
       requires_photo: t.TaskTemplates?.requires_photo || false,
       min_photo_count: t.TaskTemplates?.min_photo_count || 1,
       category_id: t.category_id,
-      categoryName: t.room_id ? `[PHÒNG ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}] ${t.TaskCategories?.name || 'Khác'}` : (t.TaskCategories?.name || 'Khác'),
+      categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
       categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
