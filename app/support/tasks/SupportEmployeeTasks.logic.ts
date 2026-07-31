@@ -48,7 +48,7 @@ export const useSupportTasks = () => {
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { url: string, created_at: string }[] } | null>(null);
+  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { id: string, url: string, created_at: string, storage_path: string }[] } | null>(null);
   
   const employeeId = user?.id || null;
 
@@ -212,7 +212,7 @@ export const useSupportTasks = () => {
   const fetchTaskPhotos = async (taskId: string) => {
     const { data, error } = await supabase
       .from('TaskPhotos')
-      .select('storage_path, created_at')
+      .select('id, storage_path, created_at')
       .eq('task_id', taskId)
       .eq('is_submitted', true)
       .order('created_at', { ascending: true });
@@ -225,9 +225,240 @@ export const useSupportTasks = () => {
     if (data) {
       const photosWithUrls = data.map((p) => {
         const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
-        return { url: publicUrlData.publicUrl, created_at: p.created_at };
+        return { id: p.id, url: publicUrlData.publicUrl, created_at: p.created_at, storage_path: p.storage_path };
       });
       setViewingTaskPhotos({ taskId, photos: photosWithUrls });
+    }
+  };
+
+  // ============================================================
+  // Delete Photo
+  // ============================================================
+  const deletePhoto = async (photoId: string, storagePath: string, taskId: string) => {
+    try {
+      setUploading(true);
+      // Delete from storage
+      const { error: storageError } = await supabase.storage.from('task-photos').remove([storagePath]);
+      if (storageError) {
+        console.error('Error deleting from storage:', storageError);
+      }
+      // Delete from database
+      const { error: dbError } = await supabase.from('TaskPhotos').delete().eq('id', photoId);
+      if (dbError) throw dbError;
+
+      // Update local state if currently viewing this task's photos
+      setViewingTaskPhotos(prev => {
+        if (!prev || prev.taskId !== taskId) return prev;
+        return {
+          ...prev,
+          photos: prev.photos.filter(p => p.id !== photoId)
+        };
+      });
+
+      // Update task's photoCount in main list
+      setTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, photoCount: Math.max(0, t.photoCount - 1) } : t
+      ));
+    } catch (err: any) {
+      console.error('Failed to delete photo:', err);
+      alert('Lỗi khi xoá ảnh: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ============================================================
+  // Initialize
+  // ============================================================
+  useEffect(() => {
+    if (!employeeId) return;
+
+    const init = async () => {
+      setLoading(true);
+      await generateTodayTasks(employeeId);
+      await Promise.all([fetchTasks(employeeId), fetchNotifications(employeeId)]);
+      setLoading(false);
+    };
+
+    init();
+  }, [employeeId, generateTodayTasks, fetchTasks, fetchNotifications]);
+
+  // ============================================================
+  // Realtime: Listen to TaskNotifications
+  // ============================================================
+  useEffect(() => {
+    if (!employeeId) return;
+
+    const channel = supabase
+      .channel('task-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'TaskNotifications',
+          filter: `employee_id=eq.${employeeId}`,
+        },
+        (payload) => {
+          const newNotif = payload.new as TaskNotification;
+          setNotifications(prev => [newNotif, ...prev]);
+          // Refresh tasks (in case of rework)
+          fetchTasks(employeeId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employeeId, fetchTasks]);
+
+  // ============================================================
+  // Group tasks by category
+  // ============================================================
+  const urgentTasks = tasks.filter(t => t.task_type === 'AD-HOC');
+  const normalTasks = tasks.filter(t => t.task_type !== 'AD-HOC');
+
+  const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
+  
+  normalTasks.forEach(t => {
+    // Use categoryName as group key to ensure room tasks are separated per room
+    const groupKey = t.categoryName || `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
+    if (!groupedTasks[groupKey]) {
+      groupedTasks[groupKey] = {
+        categoryName: t.categoryName || 'Công việc khác',
+        categoryOrder: t.categoryOrder || 999,
+        tasks: []
+      };
+    }
+    groupedTasks[groupKey].tasks.push(t);
+  });
+
+  const sortedCategories = Object.values(groupedTasks).map(cat => ({
+    ...cat,
+    tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  })).sort((a, b) => {
+    if (a.categoryOrder !== b.categoryOrder) {
+      return a.categoryOrder - b.categoryOrder;
+    }
+    return a.categoryName.localeCompare(b.categoryName);
+  });
+
+  const totalTasks = tasks.length;
+  const doneCount = tasks.filter(t => t.status === 'COMPLETED').length;
+  const pct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
+
+  return {
+    urgentTasks,
+    sortedCategories,
+    doneCount,
+  // Submit Task (Complete)
+  // ============================================================
+  const submitTask = async (taskId: string) => {
+    try {
+      const res = await fetch('/api/support/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'COMPLETE', taskId }),
+      });
+      if (res.ok) {
+        await fetchTasks(employeeId!);
+      }
+    } catch (error) {
+      console.error('Failed to submit task:', error);
+    }
+  };
+
+  // ============================================================
+  // Upload photo via API (server-side, bypasses RLS)
+  // ============================================================
+  const uploadPhoto = async (taskId: string, file: File) => {
+    if (!employeeId) return;
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('taskId', taskId);
+      formData.append('employeeId', employeeId);
+
+      const res = await fetch('/api/support/tasks/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!json.success) {
+        console.error('Error uploading photo:', json.error);
+        return;
+      }
+
+      await fetchTasks(employeeId);
+    } catch (error) {
+      console.error('Failed to upload photo:', error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ============================================================
+  // Fetch Task Photos for viewing
+  // ============================================================
+  const fetchTaskPhotos = async (taskId: string) => {
+    const { data, error } = await supabase
+      .from('TaskPhotos')
+      .select('id, storage_path, created_at')
+      .eq('task_id', taskId)
+      .eq('is_submitted', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching task photos:', error.message);
+      return;
+    }
+
+    if (data) {
+      const photosWithUrls = data.map((p) => {
+        const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
+        return { id: p.id, url: publicUrlData.publicUrl, created_at: p.created_at, storage_path: p.storage_path };
+      });
+      setViewingTaskPhotos({ taskId, photos: photosWithUrls });
+    }
+  };
+
+  // ============================================================
+  // Delete Photo
+  // ============================================================
+  const deletePhoto = async (photoId: string, storagePath: string, taskId: string) => {
+    try {
+      setUploading(true);
+      // Delete from storage
+      const { error: storageError } = await supabase.storage.from('task-photos').remove([storagePath]);
+      if (storageError) {
+        console.error('Error deleting from storage:', storageError);
+      }
+      // Delete from database
+      const { error: dbError } = await supabase.from('TaskPhotos').delete().eq('id', photoId);
+      if (dbError) throw dbError;
+
+      // Update local state if currently viewing this task's photos
+      setViewingTaskPhotos(prev => {
+        if (!prev || prev.taskId !== taskId) return prev;
+        return {
+          ...prev,
+          photos: prev.photos.filter(p => p.id !== photoId)
+        };
+      });
+
+      // Update task's photoCount in main list
+      setTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, photoCount: Math.max(0, t.photoCount - 1) } : t
+      ));
+    } catch (err: any) {
+      console.error('Failed to delete photo:', err);
+      alert('Lỗi khi xoá ảnh: ' + err.message);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -322,8 +553,10 @@ export const useSupportTasks = () => {
     notifications,
     dismissNotification,
     uploadPhoto,
+    deletePhoto,
     uploading,
     submitTask,
+    // Photo Viewer State
     viewingTaskPhotos,
     setViewingTaskPhotos,
     fetchTaskPhotos,

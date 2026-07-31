@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
-import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, Send, Eye, X } from 'lucide-react';
+import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, Send, Eye, X, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // 🔧 UI CONFIGURATION
@@ -131,8 +131,19 @@ export default function SupportEmployeeTasksPage() {
             </div>
             <div className="p-4 overflow-y-auto space-y-4">
               {logic.viewingTaskPhotos.photos.map((photo: any, idx: number) => (
-                <div key={idx} className="rounded-xl overflow-hidden border border-slate-200">
+                <div key={idx} className="relative rounded-xl overflow-hidden border border-slate-200 group">
                   <img src={photo.url} alt={`Ảnh ${idx + 1}`} className="w-full h-auto object-contain bg-slate-50" />
+                  <button 
+                    onClick={() => {
+                      if (confirm('Bạn có chắc chắn muốn xoá ảnh này?')) {
+                        logic.deletePhoto(photo.id, photo.storage_path, logic.viewingTaskPhotos.taskId);
+                      }
+                    }}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/80 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity"
+                    title="Xoá ảnh"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                   <div className="p-2 text-xs text-center text-slate-500 bg-slate-50 border-t border-slate-200">
                     {new Date(photo.created_at).toLocaleString('vi-VN')}
                   </div>
