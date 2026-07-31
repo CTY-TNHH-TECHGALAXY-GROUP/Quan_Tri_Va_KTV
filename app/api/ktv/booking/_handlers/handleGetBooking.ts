@@ -536,7 +536,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                             .select('serviceId, options, duration, technicianCodes')
                             .eq('bookingId', validNextAssign.booking_id);
 
-                        let nextItems = [];
+                        let nextItems: any[] = [];
                         if (allNextItems) {
                             const upperTechCode = technicianCode.trim().toUpperCase();
                             nextItems = allNextItems.filter((i: any) => 
