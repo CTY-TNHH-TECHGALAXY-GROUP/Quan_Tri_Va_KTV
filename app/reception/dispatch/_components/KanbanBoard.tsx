@@ -614,6 +614,18 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                                 Duyệt ảnh
                                                                             </button>
                                                                         )}
+                                                                        {isHandoverReviewEnabled && s.handover_status === 'REJECTED' && (
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                                <Clock size={10} />
+                                                                                Đang dọn lại
+                                                                            </span>
+                                                                        )}
+                                                                        {isHandoverReviewEnabled && s.handover_status === 'SKIPPED' && (
+                                                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                                <X size={10} />
+                                                                                Bỏ qua chụp
+                                                                            </span>
+                                                                        )}
                                                                         {isHandoverReviewEnabled && s.handover_status === 'APPROVED' && (
                                                                             <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
                                                                                 <Check size={10} />
