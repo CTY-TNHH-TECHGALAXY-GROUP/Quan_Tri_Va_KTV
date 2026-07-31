@@ -76,8 +76,8 @@ async function processLedgerSync(targetDateStr: string) {
             id, timeStart, timeEnd, status, technicianCode, rating,
             BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
         `)
-        .gte('timeStart', startTimeStr)
-        .lte('timeStart', endTimeStr)
+        .gte('bookingDate', startTimeStr)
+        .lte('bookingDate', endTimeStr)
         .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK']);
 
     const { data: services } = await supabase.from('Services').select('id, duration');
