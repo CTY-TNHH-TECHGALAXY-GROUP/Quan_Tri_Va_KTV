@@ -993,5 +993,6 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                 />
             )}
         </div>
+        </>
     );
 }

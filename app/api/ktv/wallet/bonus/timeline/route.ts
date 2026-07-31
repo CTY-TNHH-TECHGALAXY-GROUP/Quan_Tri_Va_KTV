@@ -50,17 +50,22 @@ export async function GET(request: Request) {
         const fromDate = `${todayStr}T00:00:00+07:00`;
 
         // 4. Determine Shift and Configs for Realtime Bonus
+        const { data: staffData } = await supabase
+            .from('Staff')
+            .select('work_type')
+            .eq('id', techCode)
+            .single();
+        const workType = staffData?.work_type || 'TYPE_A';
+
+        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase, workType);
+        
         const { data: configs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
-            .in('key', ['ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus', 'holiday_shift2_dates']);
+            .in('key', ['holiday_shift2_dates']);
 
         const configMap: Record<string, any> = {};
         (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
-        
-        const s1Bonus = Number(configMap['ktv_shift_1_bonus'] || 20);
-        const s2Bonus = Number(configMap['ktv_shift_2_bonus'] || 20);
-        const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 30);
 
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
@@ -83,9 +88,9 @@ export async function GET(request: Request) {
         if (Array.isArray(holidayDates) && holidayDates.includes(targetMonthDay)) isHoliday = true;
 
         const shiftType = isHoliday ? 'SHIFT_2' : currentShift;
-        let basePointsForShift = s1Bonus;
-        if (shiftType === 'SHIFT_2') basePointsForShift = s2Bonus;
-        else if (shiftType === 'SHIFT_3') basePointsForShift = s3Bonus;
+        let basePointsForShift = bonusConfig.s1Bonus;
+        if (shiftType === 'SHIFT_2') basePointsForShift = bonusConfig.s2Bonus;
+        else if (shiftType === 'SHIFT_3') basePointsForShift = bonusConfig.s3Bonus;
 
         // 5. Fetch Realtime Bookings for today
         const { data: bookings } = await supabase
@@ -96,8 +101,6 @@ export async function GET(request: Request) {
             `)
             .gte('timeStart', `${todayStr}T00:00:00+07:00`)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
-
-        const bonusConfig = { s1Bonus, s2Bonus, s3Bonus };
 
         // 6. Calculate bonuses from valid bookings
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);

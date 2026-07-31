@@ -94,7 +94,7 @@ export async function GET(request: Request) {
                 .from('Bookings')
                 .select(`
                     id, timeStart, timeEnd, status, technicianCode, billCode, createdAt,
-                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip )
+                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, options, handover_status, rating )
                 `)
                 .gte('timeStart', realtimeStartStr)
                 .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])
@@ -125,26 +125,81 @@ export async function GET(request: Request) {
 
             if (relevantItems.length === 0) continue;
 
-            let totalDuration = 0;
-            let commission = 0;
+            let passedDuration = 0;
+            let passedCommission = 0;
+            let heldDuration = 0;
+            let heldCommission = 0;
+            let allHoldReasons = new Set<string>();
+            let passedCount = 0;
+
             for (const item of relevantItems) {
                 const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
-                totalDuration += itemDuration;
-                commission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
-            }
-            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                
+                const commissionForItem = KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
 
-            if (commission > 0) {
+                const { isPassed, reasons } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
+                
+                if (isPassed) {
+                    passedDuration += itemDuration;
+                    passedCommission += commissionForItem;
+                    passedCount++;
+                } else {
+                    heldDuration += itemDuration;
+                    heldCommission += commissionForItem;
+                    reasons.forEach(r => allHoldReasons.add(r));
+                }
+            }
+            
+            // Fallback for TYPE_A if total passed commission is 0 but they did work
+            if (passedCommission === 0 && passedCount > 0) {
+                passedCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+            }
+            if (heldCommission === 0 && relevantItems.length > passedCount && passedCount === 0) {
+                heldCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+            }
+
+            // Fixed order bonus cho TYPE_B
+            if (workType === 'TYPE_B' && passedCount > 0) {
+                const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                const allKtvCodes = new Set<string>();
+                for (const item of (b.BookingItems || [])) {
+                    (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));
+                }
+                const totalKtvs = allKtvCodes.size || 1;
+                passedCommission += Math.floor(fixedOrderBonus / totalKtvs);
+            } else if (workType === 'TYPE_B' && passedCount === 0 && relevantItems.length > 0) {
+                 const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                 const allKtvCodes = new Set<string>();
+                 for (const item of (b.BookingItems || [])) {
+                     (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));
+                 }
+                 const totalKtvs = allKtvCodes.size || 1;
+                 heldCommission += Math.floor(fixedOrderBonus / totalKtvs);
+            }
+
+            if (passedCommission > 0) {
                 timeline.push({
-                    id: b.id + '_comm',
+                    id: b.id + '_comm_passed',
                     type: 'COMMISSION',
                     title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)}`,
-                    amount: commission,
-                    note: `Tổng thời gian: ${totalDuration} phút`,
+                    amount: passedCommission,
+                    note: `Tổng thời gian: ${passedDuration} phút`,
                     created_at: b.timeStart || b.createdAt,
                     status: 'APPROVED'
+                });
+            }
+
+            if (heldCommission > 0) {
+                timeline.push({
+                    id: b.id + '_comm_held',
+                    type: 'COMMISSION',
+                    title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)} (Đang tạm giữ)`,
+                    amount: heldCommission,
+                    note: Array.from(allHoldReasons).join(', '),
+                    created_at: b.timeStart || b.createdAt,
+                    status: 'HELD'
                 });
             }
 
