@@ -124,9 +124,17 @@ export const useEmployeeDetail = (employeeId: string) => {
   const fetchTodayTasks = useCallback(async () => {
     // 1. Tự động sinh các task mới từ Checklist Cố định (nếu có) thông qua API
     try {
-      await fetch(`/api/support/tasks?employeeId=${employeeId}&t=${Date.now()}`, { cache: 'no-store' });
-    } catch (e) {
-      console.error('Lỗi khi đồng bộ API Tasks:', e);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+      await fetch(`/api/support/tasks?employeeId=${employeeId}&t=${Date.now()}`, { 
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        console.error('Lỗi khi đồng bộ API Tasks:', e);
+      }
     }
 
     const { data, error } = await supabase
