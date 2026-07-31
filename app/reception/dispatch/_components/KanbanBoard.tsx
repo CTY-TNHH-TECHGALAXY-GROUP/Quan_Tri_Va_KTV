@@ -7,6 +7,7 @@ import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
 import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
+import { KtvCommentModal } from './KtvCommentModal';
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -159,6 +160,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
     const [tempCustomName, setTempCustomName] = useState<string>('');
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const [commentModalData, setCommentModalData] = useState<{subOrder: SubOrder, order: PendingOrder} | null>(null);
     const [isHandoverReviewEnabled, setIsHandoverReviewEnabled] = useState<boolean>(true);
 
     React.useEffect(() => {
@@ -266,6 +268,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
     const getStatusConfig = (id: string) => STATUS_CONFIG.find(s => s.id === id) || STATUS_CONFIG[0];
 
     return (
+        <>
         <div className="flex-1 flex flex-col min-h-0 w-full relative">
             <div className="flex items-center justify-end px-4 pb-4 shrink-0">
                 <label className="flex items-center gap-2 cursor-pointer group">
@@ -632,6 +635,15 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                                 Đã duyệt
                                                                             </span>
                                                                         )}
+                                                                        {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.status) && order && (
+                                                                            <button 
+                                                                                onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
+                                                                                className="text-[9px] font-bold text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                                                            >
+                                                                                <AlertCircle size={10} />
+                                                                                Nhận xét KTV
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -968,6 +980,18 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                 )}
             </AnimatePresence>
             </div>
+            
+            {commentModalData && (
+                <KtvCommentModal 
+                    order={commentModalData.order}
+                    subOrder={commentModalData.subOrder}
+                    onClose={() => setCommentModalData(null)}
+                    onSuccess={() => {
+                        setCommentModalData(null);
+                        // Tùy chọn: có thể toast hoặc refresh data nếu cần
+                    }}
+                />
+            )}
         </div>
     );
 }
