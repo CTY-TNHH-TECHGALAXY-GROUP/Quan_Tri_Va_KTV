@@ -241,15 +241,8 @@ const KTVAttendancePage = () => {
 
 
 
-    if (workType === 'TYPE_B' && user?.code) {
-        return (
-            <AppLayout title="Chấm Công">
-                <div className="max-w-sm mx-auto px-4 py-8 relative">
-                    <AttendanceTypeB ktvId={user.code} />
-                </div>
-            </AppLayout>
-        );
-    }
+    // Bỏ cái return ở đây, chuyển logic render TYPE_B xuống dưới cùng với các IDLE / PENDING
+
 
     const openForm = (type: 'CHECK_IN' | 'CHECK_OUT' | 'LATE_CHECKIN' | 'OVERTIME_PROMPT' | 'OVERTIME', isEarlyCheckout?: boolean) => {
         if (type === 'CHECK_IN') {
@@ -430,207 +423,216 @@ const KTVAttendancePage = () => {
                         </>
                     )}
 
-                    {/* IDLE */}
-                    {!initialLoading && checkStatus === 'IDLE' && (
+                    {/* Nếu là KTV Loại B thì hiển thị component riêng của Loại B, nếu không thì hiển thị luồng mặc định (IDLE/PENDING/CONFIRMED...) */}
+                    {workType === 'TYPE_B' && user?.code ? (
+                        <div className="w-full">
+                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} />
+                        </div>
+                    ) : (
                         <>
-                            <div className="text-center">
-                                <p className="font-semibold text-gray-800">{t.startShift}</p>
-                                <p className="text-sm text-gray-400 mt-1">Yêu cầu chụp ảnh tại cơ sở</p>
-                            </div>
-                            <div className="w-full space-y-3">
-                                <button
-                                    onClick={() => openForm('CHECK_IN')}
-                                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
-                                >
-                                    Ngân Hà Xin Chào
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {/* LOADING GPS */}
-                    {!initialLoading && checkStatus === 'LOADING_GPS' && (
-                        <>
-                            <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center">
-                                <MapPin size={40} className="text-blue-400 animate-bounce" />
-                            </div>
-                            <div className="flex items-center gap-2 text-blue-600 font-medium">
-                                <Loader2 size={18} className="animate-spin" />
-                                Đang kiểm tra vị trí & tải ảnh...
-                            </div>
-                        </>
-                    )}
-
-                    {/* PENDING */}
-                    {!initialLoading && checkStatus === 'PENDING' && (
-                        <>
-                            {currentRecord?.checkType === 'SUDDEN_OFF' ? (
+                            {/* IDLE */}
+                            {!initialLoading && checkStatus === 'IDLE' && (
                                 <>
-                                    <div className="w-24 h-24 rounded-full bg-amber-50 flex items-center justify-center">
-                                        <Clock size={40} className="text-amber-500 animate-pulse" />
+                                    <div className="text-center">
+                                        <p className="font-semibold text-gray-800">{t.startShift}</p>
+                                        <p className="text-sm text-gray-400 mt-1">Yêu cầu chụp ảnh tại cơ sở</p>
                                     </div>
-                                    <div className="text-center space-y-2">
-                                        <p className="font-bold text-amber-700 text-xl">Đang chờ duyệt</p>
-                                        <p className="text-sm text-gray-600 font-medium bg-amber-50/50 p-4 rounded-xl border border-amber-100 shadow-sm leading-relaxed">
-                                            Yêu cầu <span className="font-bold text-amber-800 uppercase">Nghỉ đột xuất</span> của bạn đang được hệ thống ghi nhận.
-                                        </p>
-                                        {currentRecord?.checkedAt && (
-                                            <p className="text-xs text-gray-400 font-medium mt-1">
-                                                Gửi lúc: {format(new Date(currentRecord.checkedAt), 'HH:mm:ss dd/MM/yyyy')}
-                                            </p>
-                                        )}
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="w-24 h-24 rounded-full bg-amber-50 flex items-center justify-center">
-                                        <Clock size={40} className="text-amber-500 animate-pulse" />
-                                    </div>
-                                    <div className="text-center space-y-1">
-                                        <p className="font-bold text-amber-700 text-lg">{t.pendingTitle}</p>
-                                        <p className="text-sm text-gray-500">{t.pendingDesc}</p>
-                                        {currentRecord?.checkedAt && (
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                {t.sentAt(format(new Date(currentRecord.checkedAt), 'HH:mm:ss dd/MM/yyyy'))}
-                                            </p>
-                                        )}
+                                    <div className="w-full space-y-3">
+                                        <button
+                                            onClick={() => openForm('CHECK_IN')}
+                                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
+                                        >
+                                            Ngân Hà Xin Chào
+                                        </button>
                                     </div>
                                 </>
                             )}
-                        </>
-                    )}
 
-                    {/* CONFIRMED */}
-                    {!initialLoading && checkStatus === 'CONFIRMED' && (
-                        <>
-                            {currentRecord?.checkType === 'SUDDEN_OFF' ? (
+                            {/* LOADING GPS */}
+                            {!initialLoading && checkStatus === 'LOADING_GPS' && (
                                 <>
                                     <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center">
-                                        <CheckCircle2 size={40} className="text-blue-600" />
+                                        <MapPin size={40} className="text-blue-400 animate-bounce" />
                                     </div>
-                                    <div className="text-center space-y-2">
-                                        <p className="font-bold text-blue-700 text-xl">Đã xin nghỉ</p>
-                                        <p className="text-sm text-gray-600 font-medium bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-sm leading-relaxed">
-                                            Yêu cầu <span className="font-bold text-blue-800 uppercase">Nghỉ đột xuất</span> của bạn đã được ghi nhận.<br/>
-                                            <span className="text-xs font-semibold text-gray-500 mt-2 block">Chúc bạn một ngày nghỉ ngơi vui vẻ!</span>
-                                        </p>
-                                        {currentRecord?.checkedAt && (
-                                            <p className="text-xs text-gray-400 font-medium">
-                                                Ghi nhận lúc: {format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy')}
-                                            </p>
-                                        )}
+                                    <div className="flex items-center gap-2 text-blue-600 font-medium">
+                                        <Loader2 size={18} className="animate-spin" />
+                                        Đang kiểm tra vị trí & tải ảnh...
                                     </div>
                                 </>
-                            ) : (
+                            )}
+
+                            {/* PENDING */}
+                            {!initialLoading && checkStatus === 'PENDING' && (
                                 <>
-                                    <div className="w-24 h-24 rounded-full bg-emerald-50 flex items-center justify-center">
-                                        <CheckCircle2 size={40} className="text-emerald-600" />
-                                    </div>
-                                    <div className="text-center space-y-1">
-                                        <p className="font-bold text-emerald-700 text-lg">{t.confirmedTitle}</p>
-                                        <p className="text-sm text-gray-500">{t.confirmedDesc}</p>
-                                        {currentRecord?.checkedAt && (
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                {t.shiftStart(format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy'))}
-                                            </p>
-                                        )}
-                                        {currentRecord?.estimatedEndTime && (activeShiftType === 'FREE' || showOvertimeFeature) && (
-                                            <p className="text-[13px] font-bold text-teal-600 mt-1.5">
-                                                Giờ về dự kiến: {currentRecord.estimatedEndTime} {activeShiftType !== 'FREE' ? '(Làm thêm)' : ''}
-                                            </p>
-                                        )}
-                                    </div>
-                                    {/* Checkout time restriction warning */}
-                                    {isLoadingShift ? (
-                                        <div className="w-full flex items-center justify-center gap-2 py-3 text-gray-400 text-sm">
-                                            <Loader2 size={16} className="animate-spin" />
-                                            Đang kiểm tra giờ ca...
-                                        </div>
-                                    ) : !canCheckOut && checkoutBlockedUntil ? (
-                                        <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2">
-                                            <p className="text-amber-700 text-sm font-semibold">
-                                                {t.cannotCheckOutYet(checkoutBlockedUntil)}
-                                            </p>
-                                        </div>
-                                    ) : null}
-                                    <button
-                                        onClick={() => {
-                                            let isEarly = false;
-                                            if (!canCheckOut && checkoutBlockedUntil) {
-                                                if (!window.confirm(`Bạn chưa tới giờ tan ca (${checkoutBlockedUntil}). Bạn có chắc chắn muốn tan ca SỚM không?`)) {
-                                                    return;
-                                                }
-                                                isEarly = true;
-                                            }
-
-                                            // Thông báo nhắc nhở riêng cho Ca Tự Do nếu về sớm hơn giờ dự kiến
-                                            if (activeShiftType === 'FREE' && currentRecord?.estimatedEndTime) {
-                                                const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-                                                const [estH, estM] = currentRecord.estimatedEndTime.split(':').map(Number);
-                                                
-                                                const estDate = new Date(vnNow);
-                                                estDate.setUTCHours(estH, estM, 0, 0); 
-                                                
-                                                if (vnNow.getTime() < estDate.getTime()) {
-                                                    if (!window.confirm(`⚠️ Bạn đang tan ca sớm hơn giờ dự kiến (${currentRecord.estimatedEndTime}).\n\nVui lòng thông báo cho lễ tân biết để sắp xếp khách nhé!\n\nNhấn OK để tiếp tục tan ca.`)) {
-                                                        return;
-                                                    }
-                                                }
-                                            }
-
-                                            openForm('CHECK_OUT', isEarly);
-                                        }}
-                                        disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
-                                        className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-                                    >
-                                        <LogOut size={22} /> Ngân Hà Xin Cảm ơn
-                                    </button>
-                                    {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
-                                        <button
-                                            onClick={() => openForm('OVERTIME')}
-                                            className="w-full mt-3 py-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2"
-                                        >
-                                            <Clock size={22} /> Đăng ký làm thêm giờ
-                                        </button>
+                                    {currentRecord?.checkType === 'SUDDEN_OFF' ? (
+                                        <>
+                                            <div className="w-24 h-24 rounded-full bg-amber-50 flex items-center justify-center">
+                                                <Clock size={40} className="text-amber-500 animate-pulse" />
+                                            </div>
+                                            <div className="text-center space-y-2">
+                                                <p className="font-bold text-amber-700 text-xl">Đang chờ duyệt</p>
+                                                <p className="text-sm text-gray-600 font-medium bg-amber-50/50 p-4 rounded-xl border border-amber-100 shadow-sm leading-relaxed">
+                                                    Yêu cầu <span className="font-bold text-amber-800 uppercase">Nghỉ đột xuất</span> của bạn đang được hệ thống ghi nhận.
+                                                </p>
+                                                {currentRecord?.checkedAt && (
+                                                    <p className="text-xs text-gray-400 font-medium mt-1">
+                                                        Gửi lúc: {format(new Date(currentRecord.checkedAt), 'HH:mm:ss dd/MM/yyyy')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="w-24 h-24 rounded-full bg-amber-50 flex items-center justify-center">
+                                                <Clock size={40} className="text-amber-500 animate-pulse" />
+                                            </div>
+                                            <div className="text-center space-y-1">
+                                                <p className="font-bold text-amber-700 text-lg">{t.pendingTitle}</p>
+                                                <p className="text-sm text-gray-500">{t.pendingDesc}</p>
+                                                {currentRecord?.checkedAt && (
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {t.sentAt(format(new Date(currentRecord.checkedAt), 'HH:mm:ss dd/MM/yyyy'))}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </>
                                     )}
                                 </>
                             )}
+
+                            {/* CONFIRMED */}
+                            {!initialLoading && checkStatus === 'CONFIRMED' && (
+                                <>
+                                    {currentRecord?.checkType === 'SUDDEN_OFF' ? (
+                                        <>
+                                            <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center">
+                                                <CheckCircle2 size={40} className="text-blue-600" />
+                                            </div>
+                                            <div className="text-center space-y-2">
+                                                <p className="font-bold text-blue-700 text-xl">Đã xin nghỉ</p>
+                                                <p className="text-sm text-gray-600 font-medium bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-sm leading-relaxed">
+                                                    Yêu cầu <span className="font-bold text-blue-800 uppercase">Nghỉ đột xuất</span> của bạn đã được ghi nhận.<br/>
+                                                    <span className="text-xs font-semibold text-gray-500 mt-2 block">Chúc bạn một ngày nghỉ ngơi vui vẻ!</span>
+                                                </p>
+                                                {currentRecord?.checkedAt && (
+                                                    <p className="text-xs text-gray-400 font-medium">
+                                                        Ghi nhận lúc: {format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="w-24 h-24 rounded-full bg-emerald-50 flex items-center justify-center">
+                                                <CheckCircle2 size={40} className="text-emerald-600" />
+                                            </div>
+                                            <div className="text-center space-y-1">
+                                                <p className="font-bold text-emerald-700 text-lg">{t.confirmedTitle}</p>
+                                                <p className="text-sm text-gray-500">{t.confirmedDesc}</p>
+                                                {currentRecord?.checkedAt && (
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {t.shiftStart(format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy'))}
+                                                    </p>
+                                                )}
+                                                {currentRecord?.estimatedEndTime && (activeShiftType === 'FREE' || showOvertimeFeature) && (
+                                                    <p className="text-[13px] font-bold text-teal-600 mt-1.5">
+                                                        Giờ về dự kiến: {currentRecord.estimatedEndTime} {activeShiftType !== 'FREE' ? '(Làm thêm)' : ''}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {/* Checkout time restriction warning */}
+                                            {isLoadingShift ? (
+                                                <div className="w-full flex items-center justify-center gap-2 py-3 text-gray-400 text-sm">
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    Đang kiểm tra giờ ca...
+                                                </div>
+                                            ) : !canCheckOut && checkoutBlockedUntil ? (
+                                                <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2">
+                                                    <p className="text-amber-700 text-sm font-semibold">
+                                                        {t.cannotCheckOutYet(checkoutBlockedUntil)}
+                                                    </p>
+                                                </div>
+                                            ) : null}
+                                            <button
+                                                onClick={() => {
+                                                    let isEarly = false;
+                                                    if (!canCheckOut && checkoutBlockedUntil) {
+                                                        if (!window.confirm(`Bạn chưa tới giờ tan ca (${checkoutBlockedUntil}). Bạn có chắc chắn muốn tan ca SỚM không?`)) {
+                                                            return;
+                                                        }
+                                                        isEarly = true;
+                                                    }
+
+                                                    // Thông báo nhắc nhở riêng cho Ca Tự Do nếu về sớm hơn giờ dự kiến
+                                                    if (activeShiftType === 'FREE' && currentRecord?.estimatedEndTime) {
+                                                        const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+                                                        const [estH, estM] = currentRecord.estimatedEndTime.split(':').map(Number);
+                                                        
+                                                        const estDate = new Date(vnNow);
+                                                        estDate.setUTCHours(estH, estM, 0, 0); 
+                                                        
+                                                        if (vnNow.getTime() < estDate.getTime()) {
+                                                            if (!window.confirm(`⚠️ Bạn đang tan ca sớm hơn giờ dự kiến (${currentRecord.estimatedEndTime}).\n\nVui lòng thông báo cho lễ tân biết để sắp xếp khách nhé!\n\nNhấn OK để tiếp tục tan ca.`)) {
+                                                                return;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    openForm('CHECK_OUT', isEarly);
+                                                }}
+                                                disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
+                                                className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                                            >
+                                                <LogOut size={22} /> Ngân Hà Xin Cảm ơn
+                                            </button>
+                                            {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
+                                                <button
+                                                    onClick={() => openForm('OVERTIME')}
+                                                    className="w-full mt-3 py-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2"
+                                                >
+                                                    <Clock size={22} /> Đăng ký làm thêm giờ
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+
+                            {/* REJECTED */}
+                            {!initialLoading && checkStatus === 'REJECTED' && (
+                                <>
+                                    <div className="w-24 h-24 rounded-full bg-red-50 flex items-center justify-center">
+                                        <XCircle size={40} className="text-red-500" />
+                                    </div>
+                                    <div className="text-center space-y-1">
+                                        <p className="font-bold text-red-700 text-lg">{t.rejectedTitle}</p>
+                                        <p className="text-sm text-gray-500">{t.rejectedDesc}</p>
+                                    </div>
+                                    <button
+                                        onClick={handleRetry}
+                                        className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-2xl transition-all"
+                                    >
+                                        {t.retry}
+                                    </button>
+                                </>
+                            )}
+
+                            {/* CHECKED OUT */}
+                            {!initialLoading && checkStatus === 'CHECKED_OUT' && (
+                                <>
+                                    <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center">
+                                        <LogOut size={40} className="text-slate-500" />
+                                    </div>
+                                    <div className="text-center space-y-1">
+                                        <p className="font-bold text-slate-700 text-lg">{t.checkedOutTitle}</p>
+                                        <p className="text-sm text-gray-400">{t.checkedOutDesc}</p>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Inline error has been moved to Modal */}
                         </>
                     )}
-
-                    {/* REJECTED */}
-                    {!initialLoading && checkStatus === 'REJECTED' && (
-                        <>
-                            <div className="w-24 h-24 rounded-full bg-red-50 flex items-center justify-center">
-                                <XCircle size={40} className="text-red-500" />
-                            </div>
-                            <div className="text-center space-y-1">
-                                <p className="font-bold text-red-700 text-lg">{t.rejectedTitle}</p>
-                                <p className="text-sm text-gray-500">{t.rejectedDesc}</p>
-                            </div>
-                            <button
-                                onClick={handleRetry}
-                                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-2xl transition-all"
-                            >
-                                {t.retry}
-                            </button>
-                        </>
-                    )}
-
-                    {/* CHECKED OUT */}
-                    {!initialLoading && checkStatus === 'CHECKED_OUT' && (
-                        <>
-                            <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center">
-                                <LogOut size={40} className="text-slate-500" />
-                            </div>
-                            <div className="text-center space-y-1">
-                                <p className="font-bold text-slate-700 text-lg">{t.checkedOutTitle}</p>
-                                <p className="text-sm text-gray-400">{t.checkedOutDesc}</p>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Inline error has been moved to Modal */}
                 </div>
 
                 {/* FORM MODAL */}
@@ -750,7 +752,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && selectedShiftType === 'FREE' && (
+                            {formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -856,7 +858,7 @@ const KTVAttendancePage = () => {
                                     <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                     <button 
                                        onClick={handleSubmitForm}
-                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
+                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                        className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                         <CheckCircle2 size={18} /> Gửi
                                     </button>
