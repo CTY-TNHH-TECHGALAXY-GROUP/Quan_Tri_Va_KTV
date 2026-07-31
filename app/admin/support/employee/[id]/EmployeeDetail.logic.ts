@@ -278,7 +278,10 @@ export const useEmployeeDetail = (employeeId: string) => {
       });
 
       if (!res.ok) {
-        console.error('Error adding routine');
+        const err = await res.json();
+        console.error('Error adding routine:', err);
+        alert('Lỗi khi gán công việc: ' + (err.error || 'Unknown'));
+        return;
       }
 
       await fetchRoutines();

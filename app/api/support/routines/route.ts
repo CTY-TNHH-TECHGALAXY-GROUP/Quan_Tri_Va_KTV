@@ -73,14 +73,14 @@ export async function POST(request: Request) {
     }
 
     if (error) {
-      console.error('Error adding routine:', error.message, error.code);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Error adding routine:', error);
+      return NextResponse.json({ error: error.message || error.details || 'Unknown DB error' }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (err: any) {
-    console.error('Unexpected error in POST /api/support/routines:', err.message);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Unexpected error in POST /api/support/routines:', err);
+    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
   }
 }
 
