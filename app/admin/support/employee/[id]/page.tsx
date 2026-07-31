@@ -47,15 +47,17 @@ export default function EmployeeDetailPage() {
   const groupedTasks = logic.todayTasks.reduce((acc, task) => {
     let cat = task.categoryName || 'Chưa phân loại';
     if (task.task_type === 'AD_HOC') cat = 'VIỆC ĐỘT XUẤT PHÁT SINH';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(task);
+    if (!acc[cat]) acc[cat] = { tasks: [] as typeof logic.todayTasks, order: task.categoryOrder ?? 999 };
+    acc[cat].tasks.push(task);
     return acc;
-  }, {} as Record<string, typeof logic.todayTasks>);
+  }, {} as Record<string, { tasks: typeof logic.todayTasks; order: number }>);
 
-  // Ensure "VIỆC ĐỘT XUẤT PHÁT SINH" is always at the top if it exists
+  // Sort: Đột xuất → Phòng (order=0) → Công việc hằng ngày (order=999)
   const categoryKeys = Object.keys(groupedTasks).sort((a, b) => {
     if (a === 'VIỆC ĐỘT XUẤT PHÁT SINH') return -1;
     if (b === 'VIỆC ĐỘT XUẤT PHÁT SINH') return 1;
+    const orderDiff = (groupedTasks[a].order) - (groupedTasks[b].order);
+    if (orderDiff !== 0) return orderDiff;
     return a.localeCompare(b);
   });
 
@@ -127,7 +129,7 @@ export default function EmployeeDetailPage() {
           <div className="space-y-6">
             {categoryKeys.map((catName) => {
               const isUrgent = catName === 'VIỆC ĐỘT XUẤT PHÁT SINH';
-              const tasks = groupedTasks[catName];
+              const tasks = groupedTasks[catName].tasks;
 
               return (
                 <div key={catName} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">

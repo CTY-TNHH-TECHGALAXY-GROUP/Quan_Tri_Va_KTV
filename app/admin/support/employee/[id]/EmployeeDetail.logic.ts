@@ -130,7 +130,7 @@ export const useEmployeeDetail = (employeeId: string) => {
 
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name)')
+      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name)')
       .eq('assignee_id', employeeId)
       .gte('created_at', TODAY_START.toISOString())
       .lte('created_at', TODAY_END.toISOString())
@@ -157,6 +157,12 @@ export const useEmployeeDetail = (employeeId: string) => {
       });
     }
 
+    // Helper function to format room names consistently
+    const formatRoomName = (name: string) => {
+      if (!name) return '';
+      return name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL');
+    };
+
     const mapped: TodayTask[] = (data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
@@ -167,8 +173,10 @@ export const useEmployeeDetail = (employeeId: string) => {
       completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
       photoCount: photoCounts[t.id] || 0,
       current_review_round: t.current_review_round || 0,
-      categoryName: t.TaskCategories?.name || 'Khác',
-      categoryOrder: 999,
+      categoryName: t.room_id 
+        ? `Phòng ${t.Rooms?.name ? formatRoomName(t.Rooms.name) : t.room_id}` 
+        : (t.TaskCategories?.name || 'Khác'),
+      categoryOrder: t.room_id ? 0 : 999,
     }));
 
     setTodayTasks(mapped);

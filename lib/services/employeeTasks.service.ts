@@ -219,8 +219,9 @@ export class EmployeeTasksService {
       .order('created_at', { ascending: true });
 
     if (includeRoomTasks) {
-      // Fetch: employee's own tasks OR shared room tasks (assignee_id is null, room_id is not null)
-      query = query.or(`assignee_id.in.(${empIds.join(',')}),and(assignee_id.is.null,room_id.not.is.null)`);
+      // Only fetch tasks assigned to this employee (including room tasks assigned via admin)
+      // Shared room tasks (assignee_id = null) are NOT shown to individual employees
+      query = query.in('assignee_id', empIds);
     } else {
       query = query.in('assignee_id', empIds);
     }
