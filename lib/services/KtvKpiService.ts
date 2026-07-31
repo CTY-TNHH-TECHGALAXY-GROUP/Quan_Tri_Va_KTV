@@ -52,9 +52,9 @@ export class KtvKpiService {
                 
                 const { data: monthBookings, error: monthErr } = await supabase
                     .from('BookingItems')
-                    .select('segments')
-                    .gte('timeStart', startOfMonth)
-                    .lte('timeStart', endOfMonth)
+                    .select('segments, Bookings!fk_bookingitems_booking!inner(createdAt)')
+                    .gte('Bookings.createdAt', startOfMonth)
+                    .lte('Bookings.createdAt', endOfMonth)
                     .in('status', ['COMPLETED', 'DONE'])
                     .contains('technicianCodes', [input.staffId]);
 
