@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.10';
-export const LAST_UPDATE = 'Tắt 3 bước duyệt Hold Salary cho các đơn từ tháng 7/2026 trở về trước.';
+export const APP_VERSION = '1.7.11';
+export const LAST_UPDATE = 'Tắt trừ phí bảo trì cho tháng 07/2026 (do đã thu tiền mặt).';

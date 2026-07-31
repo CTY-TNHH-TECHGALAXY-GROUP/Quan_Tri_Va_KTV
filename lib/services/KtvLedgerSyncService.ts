@@ -142,6 +142,13 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
         return true;
     }
 
+    // 🔧 YÊU CẦU TỪ KHÁCH: Tháng 07/2026 đã thu tiền tay, hệ thống sẽ bỏ qua không thu.
+    // Đến 31/08/2026 mới bắt đầu thu tiếp (tức là month >= 8 năm 2026).
+    if (year === 2026 && month <= 7) {
+        console.log('[Cron] Maintenance fee is manually disabled for <= 07/2026 by request. Skipping.');
+        return true;
+    }
+
     // 2. Get fee amount
     const { data: amountConfig } = await supabase
         .from('SystemConfigs')
