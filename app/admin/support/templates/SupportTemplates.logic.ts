@@ -425,18 +425,25 @@ export const useSupportTemplates = () => {
       }
       
       // 3. Soft delete tasks that were removed from the UI
-      if (finalCategoryId && savedTaskIds.length > 0) {
-        await supabase
+      if (finalCategoryId) {
+        const { data: existingTasks } = await supabase
           .from('TaskTemplates')
-          .update({ is_active: false })
+          .select('id')
           .eq('category_id', finalCategoryId)
-          .not('id', 'in', `(${savedTaskIds.join(',')})`);
-      } else if (finalCategoryId && savedTaskIds.length === 0) {
-        // If all tasks were deleted, soft delete all tasks in the category
-        await supabase
-          .from('TaskTemplates')
-          .update({ is_active: false })
-          .eq('category_id', finalCategoryId);
+          .eq('is_active', true);
+          
+        if (existingTasks) {
+          const toDelete = existingTasks
+            .map(t => t.id)
+            .filter(id => !savedTaskIds.includes(id));
+            
+          if (toDelete.length > 0) {
+            await supabase
+              .from('TaskTemplates')
+              .update({ is_active: false })
+              .in('id', toDelete);
+          }
+        }
       }
       
       await Promise.all([fetchCategories(), fetchTemplates()]);
