@@ -15,10 +15,12 @@ export async function GET() {
     };
 
     // 1. Fetch All Active Templates (General tasks)
+    // Exclude category 'CÔNG VIỆC HẰNG NGÀY' (91e53ab1-db26-471b-9142-05d6c421ce01) because its templates are mapped to rooms
     const { data: roleData, error: roleErr } = await supabase
       .from('TaskTemplates')
       .select('id, name, category_id, TaskCategories(name, type)')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('category_id', '91e53ab1-db26-471b-9142-05d6c421ce01');
 
     // 2. Fetch Room Matrix (Room-specific mapped tasks)
     const { data: roomData, error: roomErr } = await supabase

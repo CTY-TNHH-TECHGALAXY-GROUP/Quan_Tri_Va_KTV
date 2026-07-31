@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     if (roomId) query = query.eq('room_id', roomId);
     else query = query.is('room_id', null);
 
-    const { data: existing } = await query.single();
+    const { data: existing, error: findErr } = await query.maybeSingle();
 
     let data, error;
     if (existing) {
