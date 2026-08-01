@@ -146,22 +146,6 @@ async function processLedgerSync(targetDateStr: string) {
                 bookingCommission = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
             }
 
-            // Check if there is any premium service in this booking
-            const hasPremiumService = (b.BookingItems || []).some((item: any) => {
-                const sId = String(item.serviceId || '').toUpperCase();
-                return sId.startsWith('NHP') || sId.startsWith('NHT');
-            });
-
-            // Fixed order bonus cho TYPE_B (chỉ áp dụng cho dịch vụ Premium NHP/NHT)
-            if (workType === 'TYPE_B' && passedItemCount > 0 && hasPremiumService) {
-                const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
-                const allKtvCodes = new Set<string>();
-                for (const item of (b.BookingItems || [])) {
-                    (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));
-                }
-                const totalKtvs = allKtvCodes.size || 1;
-                bookingCommission += Math.floor(fixedOrderBonus / totalKtvs);
-            }
 
             total_commission += bookingCommission;
             total_tip += bookingTip;
