@@ -1576,45 +1576,51 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
 
         setIsLoading(true);
-        const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
-            bookingId: booking.id, 
-            status: 'IN_PROGRESS',
-            techCode: ktvId,
-            action: 'START_TIMER',
-            shouldMerge: shouldMerge,
-            photoBase64: startPhotoBase64
-        });
-        if (res.success) {
-            // 📸 Clean up check-in photo from preview and localStorage
-            setStartPhotoBase64(null);
+        try {
+            const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
+                bookingId: booking.id, 
+                status: 'IN_PROGRESS',
+                techCode: ktvId,
+                action: 'START_TIMER',
+                shouldMerge: shouldMerge,
+                photoBase64: startPhotoBase64
+            });
+            if (res.success) {
+                // 📸 Clean up check-in photo from preview and localStorage
+                setStartPhotoBase64(null);
 
-            // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
-            supabase.channel('dispatch_board_realtime').send({
-                type: 'broadcast',
-                event: 'KTV_STARTED',
-                payload: {
-                    bookingId: booking.id,
-                    ktvId: ktvId,
-                    startTime: new Date().toISOString()
-                }
-            }).catch(e => console.error("Broadcast failed", e));
+                // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
+                supabase.channel('dispatch_board_realtime').send({
+                    type: 'broadcast',
+                    event: 'KTV_STARTED',
+                    payload: {
+                        bookingId: booking.id,
+                        ktvId: ktvId,
+                        startTime: new Date().toISOString()
+                    }
+                }).catch(e => console.error("Broadcast failed", e));
 
-            // 🔥 Set refs NGAY LẬP TỨC để interval countdown chạy được
-            // Không cần chờ recalcTimerFromServer (sẽ chạy sau khi server refresh)
-            const initDuration = shouldMerge
-                ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
-                : (allMySegs.length > 0 ? (Number(allMySegs[0].duration) || 60) : (booking?.assignedItem?.duration || 60));
-            timerStartMsRef.current = Date.now() + timeOffsetRef.current;
-            timerTotalSecsRef.current = initDuration * 60;
-            // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)
-            setTimeRemaining(initDuration * 60);
-            setIsTimerRunning(true);
-            setScreen('TIMER');
-        } else {
-            console.error('❌ [KTV Logic] Start error:', res.error);
-            alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
+                // 🔥 Set refs NGAY LẬP TỨC để interval countdown chạy được
+                // Không cần chờ recalcTimerFromServer (sẽ chạy sau khi server refresh)
+                const initDuration = shouldMerge
+                    ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
+                    : (allMySegs.length > 0 ? (Number(allMySegs[0].duration) || 60) : (booking?.assignedItem?.duration || 60));
+                timerStartMsRef.current = Date.now() + timeOffsetRef.current;
+                timerTotalSecsRef.current = initDuration * 60;
+                // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)
+                setTimeRemaining(initDuration * 60);
+                setIsTimerRunning(true);
+                setScreen('TIMER');
+            } else {
+                console.error('❌ [KTV Logic] Start error:', res.error);
+                alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
+            }
+        } catch (error: any) {
+            console.error('❌ [KTV Logic] Exception during Start:', error);
+            alert('Lỗi hệ thống khi bắt đầu tính giờ: ' + (error.message || 'Unknown error'));
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     };
 
     const handleFinishTimer = async () => {

@@ -160,11 +160,6 @@ export async function GET(request: Request) {
                 heldCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
-
-            } else if (workType === 'TYPE_B' && passedCount === 0 && relevantItems.length > 0) {
-                 // Removed fixedOrderBonus logic from here
-            }
-
             if (passedCommission > 0) {
                 timeline.push({
                     id: b.id + '_comm_passed',

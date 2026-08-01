@@ -62,7 +62,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
     const endOfRange = `${endDate} 23:59:59`;
 
     // Fetch bookings by source, excluding cancelled
-    const { data: bookings, error: bError } = await supabase
+    let { data: bookings, error: bError } = await supabase
       .from('Bookings')
       .select('*')
       .gte('bookingDate', startOfRange)
@@ -462,12 +462,15 @@ export async function getNewWebBookingCount(): Promise<number> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return 0;
 
-    const { count } = await supabase
+    const { data } = await supabase
       .from('Bookings')
-      .select('*', { count: 'exact', head: true })
+      .select('notes, source')
+      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING'])
       .eq('status', 'NEW');
 
-    return count ?? 0;
+    if (!data) return 0;
+
+    return data.length;
   } catch {
     return 0;
   }

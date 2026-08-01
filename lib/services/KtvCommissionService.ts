@@ -62,6 +62,12 @@ export class KtvCommissionService {
         
         // Rate (Không dùng theo Loại nữa vì mỗi mốc đã là VNĐ, nhưng giữ lại fallback)
         let ratePer60 = 100000;
+        let rateKey = `ktv_commission_per_60min${typeSuffix}`;
+        if (configMap[rateKey] !== undefined) {
+            ratePer60 = Number(configMap[rateKey]);
+        } else if (workType === 'TYPE_B') {
+            ratePer60 = 180000;
+        }
         
         // Deposit
         let minDeposit = 500000;
