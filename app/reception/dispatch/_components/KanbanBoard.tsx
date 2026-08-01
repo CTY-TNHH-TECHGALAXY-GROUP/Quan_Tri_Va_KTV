@@ -82,7 +82,7 @@ interface KanbanBoardProps {
     staffWorkTypeMap?: Record<string, string>;
 }
 
-const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services) => {
+const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
     let maxTime = 0;
 
     if (!servicesToCheck || servicesToCheck.length === 0) return null;
@@ -104,7 +104,8 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
 
     // 🔥 FIX: Luôn quét TẤT CẢ segments để lấy max endTime chính xác
     // Không tin mù quáng booking.timeEnd vì nó có thể bị ghi đè sai
-    for (const svc of servicesToCheck) {
+    for (let i = 0; i < servicesToCheck.length; i++) {
+        const svc = servicesToCheck[i];
         let hasValidSegmentTime = false;
         
         // Ưu tiên segment endTime (thời gian phân bổ chính xác nhất)
@@ -112,9 +113,17 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
             for (const staff of svc.staffList) {
                 if (!staff.segments) continue;
                 for (const seg of staff.segments) {
-                    const start = seg.actualStartTime || svc.timeStart || seg.startTime;
+                    // Cải tiến: Nếu service thứ 2 trở đi chưa bắt đầu (vd làm nối tiếp), lấy calculatedStart (đã tịnh tiến) thay vì timeStart gốc của booking
+                    let start = seg.actualStartTime || svc.timeStart || seg.startTime;
+                    if (!seg.actualStartTime && subOrder && subOrder.calculatedStart && i > 0) {
+                        // Tính toán thời gian bắt đầu dự kiến của dịch vụ nối tiếp
+                        start = getDynamicEndTime(subOrder.calculatedStart, servicesToCheck.slice(0, i).reduce((sum, prevSvc) => sum + (Number(prevSvc.duration) || 60), 0));
+                    } else if (!seg.actualStartTime && subOrder && subOrder.calculatedStart) {
+                        start = subOrder.calculatedStart;
+                    }
+
                     const duration = Number(seg.duration) || Number(svc.duration) || 60;
-                    const finalEnd = seg.actualEndTime ? seg.actualEndTime : (seg.actualStartTime || svc.timeStart ? getDynamicEndTime(start, duration) : (svc.timeEnd || seg.endTime));
+                    const finalEnd = seg.actualEndTime ? seg.actualEndTime : (start ? getDynamicEndTime(start, duration) : (svc.timeEnd || seg.endTime));
                     
                     if (finalEnd && finalEnd !== '--:--') {
                         const formattedEnd = formatToHourMinute(finalEnd);
@@ -208,7 +217,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                     if (isPaused) return;
 
                     // Chỉ tính estimated end time từ services CỦA subOrder này (không phải toàn booking)
-                    const estEndStr = getEstimatedEndTime(originalOrder, subOrder.services);
+                    const estEndStr = getEstimatedEndTime(originalOrder, subOrder.services, subOrder);
                     if (estEndStr && estEndStr !== '--:--') {
                         const [h, m] = estEndStr.split(':').map(Number);
                         const estEnd = new Date();

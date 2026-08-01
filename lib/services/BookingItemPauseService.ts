@@ -7,6 +7,50 @@ export class BookingItemPauseService {
     static async pauseItem(supabase: SupabaseClient, bookingItemId: string) {
         const now = new Date().toISOString();
         
+        // 1. Lấy thông tin BookingItem để biết bookingId, KTV, và segments
+        const { data: item } = await supabase
+            .from('BookingItems')
+            .select('id, bookingId, "technicianCodes", segments')
+            .eq('id', bookingItemId)
+            .single();
+
+        if (!item) throw new Error('Không tìm thấy dịch vụ.');
+
+        let itemIdsToPause = [bookingItemId];
+
+        // Tìm các KTV đang thực sự chạy (actualStartTime có, actualEndTime null)
+        let activeKtvIds: string[] = [];
+        let segments = item.segments;
+        if (typeof segments === 'string') {
+            try { segments = JSON.parse(segments); } catch { segments = []; }
+        }
+        if (Array.isArray(segments)) {
+            activeKtvIds = segments
+                .filter((seg: any) => seg.actualStartTime && !seg.actualEndTime && seg.ktvId)
+                .map((seg: any) => seg.ktvId);
+        }
+        if (activeKtvIds.length === 0 && Array.isArray(item.technicianCodes)) {
+            activeKtvIds = item.technicianCodes;
+        }
+
+        // Tìm tất cả các item đang IN_PROGRESS của các KTV đang chạy trong cùng booking để pause chung (Merged services)
+        if (activeKtvIds.length > 0) {
+            const { data: siblingItems } = await supabase
+                .from('BookingItems')
+                .select('id, "technicianCodes"')
+                .eq('bookingId', item.bookingId)
+                .eq('status', 'IN_PROGRESS');
+                
+            if (siblingItems) {
+                const siblingIds = siblingItems
+                    .filter((s: any) => Array.isArray(s.technicianCodes) && s.technicianCodes.some((k: string) => activeKtvIds.includes(k)))
+                    .map((s: any) => s.id);
+                if (siblingIds.length > 0) {
+                    itemIdsToPause = Array.from(new Set([...itemIdsToPause, ...siblingIds]));
+                }
+            }
+        }
+        
         // Cập nhật trạng thái và lưu thời gian pause
         const { error } = await supabase
             .from('BookingItems')
@@ -14,14 +58,14 @@ export class BookingItemPauseService {
                 status: 'PAUSED',
                 pauseStart: now
             })
-            .eq('id', bookingItemId);
+            .in('id', itemIdsToPause);
 
         if (error) {
-            console.error('Error pausing item:', error);
+            console.error('Error pausing items:', error);
             throw new Error('Không thể tạm ngưng dịch vụ.');
         }
 
-        return { success: true, pauseStart: now };
+        return { success: true, pauseStart: now, pausedItemIds: itemIdsToPause };
     }
 
     /**
@@ -33,13 +77,15 @@ export class BookingItemPauseService {
         // 1. Lấy thông tin BookingItem và Booking
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
-            .select('id, pauseStart, bookingId, segments')
+            .select('id, pauseStart, bookingId, segments, "technicianCodes"')
             .eq('id', bookingItemId)
             .single();
 
         if (errItem || !item) {
             throw new Error('Không tìm thấy dịch vụ.');
         }
+
+        let itemIdsToResume = [bookingItemId];
 
         if (!item.pauseStart) {
             // Nếu không có pauseStart, chỉ đổi status
@@ -68,51 +114,87 @@ export class BookingItemPauseService {
         const newTimeStartMs = originalTimeStartMs + pauseDurationMs;
         const newTimeStartIso = new Date(newTimeStartMs).toISOString();
 
-        // 3. Tịnh tiến thời gian của các chặng (segments) đang mở (chưa kết thúc)
-        let updatedSegments = item.segments;
-        let isString = typeof updatedSegments === 'string';
-        if (isString) {
-            try {
-                updatedSegments = JSON.parse(updatedSegments);
-            } catch {
-                updatedSegments = [];
+        // Tìm các KTV đang thực sự bị Pause
+        let activeKtvIds: string[] = [];
+        let segments = item.segments;
+        if (typeof segments === 'string') {
+            try { segments = JSON.parse(segments); } catch { segments = []; }
+        }
+        if (Array.isArray(segments)) {
+            activeKtvIds = segments
+                .filter((seg: any) => seg.actualStartTime && !seg.actualEndTime && seg.ktvId)
+                .map((seg: any) => seg.ktvId);
+        }
+        if (activeKtvIds.length === 0 && Array.isArray(item.technicianCodes)) {
+            activeKtvIds = item.technicianCodes;
+        }
+
+        // 3. Tìm tất cả các items đang PAUSED của các KTV này trong cùng booking (Merged services)
+        let itemsToUpdate = [item];
+        if (activeKtvIds.length > 0) {
+            const { data: siblingItems } = await supabase
+                .from('BookingItems')
+                .select('id, bookingId, pauseStart, segments, "technicianCodes"')
+                .eq('bookingId', item.bookingId)
+                .eq('status', 'PAUSED');
+                
+            if (siblingItems) {
+                const siblings = siblingItems.filter((s: any) => 
+                    s.id !== bookingItemId && 
+                    Array.isArray(s.technicianCodes) && 
+                    s.technicianCodes.some((k: string) => activeKtvIds.includes(k))
+                );
+                itemsToUpdate = [...itemsToUpdate, ...siblings];
             }
         }
 
-        if (Array.isArray(updatedSegments)) {
-            updatedSegments = updatedSegments.map((seg: any) => {
-                if (seg.actualStartTime && !seg.actualEndTime) {
-                    const oldStartMs = new Date(seg.actualStartTime.replace(' ', 'T') + (seg.actualStartTime.includes('Z') ? '' : 'Z')).getTime();
-                    const shiftedStartMs = oldStartMs + pauseDurationMs;
-                    return {
-                        ...seg,
-                        actualStartTime: new Date(shiftedStartMs).toISOString()
-                    };
+        // 4. Tịnh tiến thời gian của các chặng (segments) đang mở cho TẤT CẢ các items liên quan
+        for (const updateItem of itemsToUpdate) {
+            let updatedSegments = updateItem.segments;
+            let isString = typeof updatedSegments === 'string';
+            if (isString) {
+                try {
+                    updatedSegments = JSON.parse(updatedSegments);
+                } catch {
+                    updatedSegments = [];
                 }
-                return seg;
-            });
-        }
-        
-        if (isString) {
-            updatedSegments = JSON.stringify(updatedSegments) as any;
+            }
+
+            if (Array.isArray(updatedSegments)) {
+                updatedSegments = updatedSegments.map((seg: any) => {
+                    if (seg.actualStartTime && !seg.actualEndTime) {
+                        const oldStartMs = new Date(seg.actualStartTime.replace(' ', 'T') + (seg.actualStartTime.includes('Z') ? '' : 'Z')).getTime();
+                        const shiftedStartMs = oldStartMs + pauseDurationMs;
+                        return {
+                            ...seg,
+                            actualStartTime: new Date(shiftedStartMs).toISOString()
+                        };
+                    }
+                    return seg;
+                });
+            }
+            
+            if (isString) {
+                updatedSegments = JSON.stringify(updatedSegments) as any;
+            }
+
+            await supabase
+                .from('BookingItems')
+                .update({ 
+                    status: 'IN_PROGRESS',
+                    pauseStart: null,
+                    segments: updatedSegments
+                })
+                .eq('id', updateItem.id);
         }
 
-        // 4. Cập nhật DB
+        // Cập nhật Bookings timeStart
         await supabase
             .from('Bookings')
             .update({ timeStart: newTimeStartIso })
             .eq('id', booking.id);
 
-        await supabase
-            .from('BookingItems')
-            .update({ 
-                status: 'IN_PROGRESS',
-                pauseStart: null,
-                segments: updatedSegments
-            })
-            .eq('id', bookingItemId);
-
-        return { success: true, newTimeStart: newTimeStartIso };
+        return { success: true, newTimeStart: newTimeStartIso, resumedItemIds: itemsToUpdate.map(i => i.id) };
     }
 
     /**
