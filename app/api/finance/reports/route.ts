@@ -543,7 +543,7 @@ export async function GET(request: Request) {
                 
                 const workType = staffWorkTypeMap[code] || 'TYPE_A';
                 const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
+                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * qty;
                 const perKtvTip = (Number(i.tip) || 0) / techs.length;
                 const hasRating = i.itemRating && Number(i.itemRating) > 0;
                 

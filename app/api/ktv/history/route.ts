@@ -31,7 +31,7 @@ export async function GET(request: Request) {
             .single();
         const workType = staffData?.work_type || 'TYPE_A';
         
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase as any, workType);
+        const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType);
 
         // ─── Build date range ────────────────────────────────────────────

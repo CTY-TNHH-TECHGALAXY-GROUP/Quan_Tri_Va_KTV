@@ -323,7 +323,7 @@ export async function GET(request: Request) {
                    
                    const workType = ktvWorkTypeMap[code] || 'TYPE_A';
                    const config = commConfigs[workType] || commConfigs['TYPE_A'];
-                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * qty;
+                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
                    rankingMap[code].tuaMoney += perKtvCommission;
                }
            }

@@ -170,7 +170,8 @@ export async function GET(request: Request) {
                 const totalKtvs = allKtvCodes.size || 1;
                 passedCommission += Math.floor(fixedOrderBonus / totalKtvs);
             } else if (workType === 'TYPE_B' && passedCount === 0 && relevantItems.length > 0) {
-                 const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                 const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
+                 const fixedOrderBonus = activeConfig.fixedOrderBonus || 20000;
                  const allKtvCodes = new Set<string>();
                  for (const item of (b.BookingItems || [])) {
                      (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));
@@ -269,11 +270,12 @@ export async function GET(request: Request) {
         timeline.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
         let currentBalance = 0;
+        const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
         timeline.forEach(item => {
             if (item.type !== 'TIP' && item.status !== 'REJECTED') {
                 currentBalance += Number(item.amount);
             }
-            item.running_balance = currentBalance - commConfig.minDeposit;
+            item.running_balance = currentBalance - activeConfig.minDeposit;
         });
 
         // Sort timeline desc for display
