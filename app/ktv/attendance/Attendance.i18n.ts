@@ -39,7 +39,7 @@ export const t = {
     // Photo
     addPhoto: (count: number, max: number) => `Thêm ảnh (${count}/${max})`,
     openCamera: 'Mở Camera Điện Thoại',
-    photoRequired: 'Chụp ảnh minh chứng (*)',
+    photoRequired: 'Chụp ảnh bàn giao (*)',
 
     // Rejected
     rejectedTitle: '❌ Admin đã từ chối',

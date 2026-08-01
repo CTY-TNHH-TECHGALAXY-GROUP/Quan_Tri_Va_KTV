@@ -12,7 +12,8 @@ export class KtvWalletService {
         const workType = staffData?.work_type || 'TYPE_A';
 
         // 2. Fetch configs
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase, workType as any);
+        const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
 
         const nowVnDate = new Date(Date.now() + VN_OFFSET_MS);
@@ -103,18 +104,18 @@ export class KtvWalletService {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
                     bookingTip += (Number(item.tip) || 0);
                 }
             }
 
             if (bookingCommission === 0 && passedItemCount > 0) {
-                bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
             // Fixed order bonus cho TYPE_B
             if (workType === 'TYPE_B' && passedItemCount > 0) {
-                const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                const fixedOrderBonus = (commConfigs[workType] || commConfigs['TYPE_A']).fixedOrderBonus || 20000;
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
                     (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));

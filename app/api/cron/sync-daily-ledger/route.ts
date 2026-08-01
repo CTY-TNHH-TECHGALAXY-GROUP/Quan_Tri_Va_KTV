@@ -137,13 +137,13 @@ async function processLedgerSync(targetDateStr: string) {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
                     bookingTip += (Number(item.tip) || 0);
                 }
             }
 
             if (bookingCommission === 0 && passedItemCount > 0) {
-                bookingCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
             // Fixed order bonus cho TYPE_B

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
             .single();
         const workType = staffData?.work_type || 'TYPE_A';
 
-        const commConfig = await KtvCommissionService.getCommissionConfig(supabase, workType);
+        const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
 
         const GLOBAL_START_DATE_STR = '2026-05-04';
         const START_DATE = `${GLOBAL_START_DATE_STR}T00:00:00.000Z`;
@@ -137,7 +137,7 @@ export async function GET(request: Request) {
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 
-                const commissionForItem = KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                const commissionForItem = KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
 
                 const { isPassed, reasons } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
                 
@@ -154,15 +154,15 @@ export async function GET(request: Request) {
             
             // Fallback for TYPE_A if total passed commission is 0 but they did work
             if (passedCommission === 0 && passedCount > 0) {
-                passedCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                passedCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
             if (heldCommission === 0 && relevantItems.length > passedCount && passedCount === 0) {
-                heldCommission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+                heldCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
             // Fixed order bonus cho TYPE_B
             if (workType === 'TYPE_B' && passedCount > 0) {
-                const fixedOrderBonus = commConfig.fixedOrderBonus || 20000;
+                const fixedOrderBonus = (commConfigs[workType] || commConfigs['TYPE_A']).fixedOrderBonus || 20000;
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
                     (item.technicianCodes || []).forEach((tc: string) => allKtvCodes.add(tc));

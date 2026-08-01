@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BellRing, LogOut, Loader2, AlertCircle } from 'lucide-react';
+import { BellRing, LogOut, LogIn, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -14,9 +14,11 @@ interface OnCallState {
 interface Props {
   ktvId: string;
   isOffToday: boolean;
+  onCheckIn: () => void;
+  onStateChange?: (isOnCall: boolean) => void;
 }
 
-export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
+export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, onStateChange }) => {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -34,6 +36,9 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
         setState(res.data);
         if (res.data.travel_time_mins) {
             setTempMins(res.data.travel_time_mins);
+        }
+        if (onStateChange) {
+            onStateChange(res.data.is_on_call === true);
         }
       }
     } catch (e) {
@@ -63,10 +68,11 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
         setShowPopup(false);
         await fetchState();
       } else {
-        alert(res.error || 'Có lỗi xảy ra');
+        alert(res.error || 'Có lỗi xảy ra, vui lòng thử lại!');
       }
-    } catch (e) {
-      alert('Lỗi kết nối');
+    } catch (e: any) {
+      console.error(e);
+      alert('Lỗi kết nối máy chủ, vui lòng thử lại!');
     } finally {
       setActionLoading(false);
     }
@@ -88,30 +94,48 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
       
       {/* ─── KHI ĐANG NHẬN ĐƠN (ONLINE) ─── */}
       {isOnline ? (
-        <div className="p-5 rounded-[24px] border bg-blue-50 border-blue-200 flex flex-col items-center text-center shadow-sm">
-          <div className="w-12 h-12 rounded-full mb-3 flex items-center justify-center bg-blue-100 text-blue-600">
-            <BellRing size={24} className="animate-pulse" />
+        <div className="w-full space-y-4">
+          <div className="p-5 rounded-[24px] border bg-blue-50 border-blue-200 flex flex-col items-center text-center shadow-sm">
+            <div className="w-12 h-12 rounded-full mb-3 flex items-center justify-center bg-blue-100 text-blue-600">
+              <BellRing size={24} className="animate-pulse" />
+            </div>
+            <h3 className="text-lg font-black mb-1 text-blue-700">
+              ĐANG CHỜ ĐƠN
+            </h3>
+            <p className="text-xs font-medium text-blue-600">
+              Đang sẵn sàng từ nhà. Thời gian di chuyển: {state.travel_time_mins} phút.
+            </p>
           </div>
-          <h3 className="text-lg font-black mb-1 text-blue-700">
-            ĐANG CHỜ ĐƠN
-          </h3>
-          <p className="text-xs font-medium text-blue-600 mb-4">
-            Đang sẵn sàng từ nhà. Thời gian di chuyển: {state.travel_time_mins} phút.
-          </p>
           
           <button
+            type="button"
+            onClick={() => onCheckIn()}
+            disabled={actionLoading}
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Đã đến tiệm'}
+          </button>
+          
+          <button
+            type="button"
             onClick={() => handleToggleOnCall(false, state.travel_time_mins)}
             disabled={actionLoading}
-            className="w-full py-3 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-4 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <LogOut size={18} /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
+            <LogOut size={22} className="rotate-180" /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
           </button>
         </div>
       ) : (
         /* ─── KHI ĐANG TẮT (OFFLINE) ─── */
         <div className="w-full">
             <button
-                onClick={() => isOffToday ? setShowPopup(true) : null}
+                type="button"
+                onClick={() => {
+                    console.log("CLICKED BẬT NHẬN ĐƠN, isOffToday=", isOffToday);
+                    if (isOffToday) {
+                        setShowPopup(true);
+                    }
+                }}
                 disabled={actionLoading || !isOffToday}
                 className={`w-full py-4 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2
                     ${isOffToday 
@@ -153,6 +177,7 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
                   </label>
                   <div className="flex items-center gap-3 mb-6">
                     <button
+                      type="button"
                       onClick={() => setTempMins(tempMins <= 5 ? 60 : tempMins - 5)}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
@@ -162,6 +187,7 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
                       {tempMins}
                     </div>
                     <button
+                      type="button"
                       onClick={() => setTempMins(tempMins >= 60 ? 5 : tempMins + 5)}
                       className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold active:scale-95"
                     >
@@ -197,6 +223,7 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
 
                 <div className="flex gap-3 pt-4">
                   <button
+                    type="button"
                     onClick={() => setShowPopup(false)}
                     disabled={actionLoading}
                     className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-transform disabled:opacity-50"
@@ -204,6 +231,7 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday }) => {
                     Hủy
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       handleToggleOnCall(true, tempMins, expectedStart, expectedEnd);
                     }}

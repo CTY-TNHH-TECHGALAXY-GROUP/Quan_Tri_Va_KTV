@@ -189,9 +189,9 @@ export async function GET(request: Request) {
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 totalDuration += itemDuration;
-                commission += KtvCommissionService.calcCommission(itemDuration, commConfig.milestones, commConfig.ratePer60);
+                commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
             }
-            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfig.milestones, commConfig.ratePer60);
+            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
 
             const serviceNames = relevantItems
                 .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())

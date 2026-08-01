@@ -162,7 +162,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
                     disabled={actionLoading}
                     className="w-full py-4 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                    <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
+                    <LogOut size={22} className="rotate-180" /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
                 </button>
             </>
         )}

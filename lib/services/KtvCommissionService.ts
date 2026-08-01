@@ -178,12 +178,30 @@ export class KtvCommissionService {
     /**
      * Calculate basic commission based on duration using milestone map or flat rate fallback
      */
-    static calcCommission(durationMins: number, milestones: Record<string, number>, ratePer60: number): number {
-        const sMins = String(durationMins);
-        if (milestones && milestones[sMins] !== undefined) {
-            return Number(milestones[sMins]);
+    static calcCommission(
+        durationMins: number, 
+        commConfigs: Record<string, CommissionConfig>, 
+        workType: string, 
+        serviceId: string = ''
+    ): number {
+        let activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
+        
+        if (workType === 'TYPE_B') {
+            const sId = String(serviceId || '').toUpperCase();
+            const isPremiumService = sId.startsWith('NHP') || sId.startsWith('NHT');
+            if (!isPremiumService) {
+                // If it's not premium, Type B falls back to Type A rates (e.g. NHS)
+                activeConfig = commConfigs['TYPE_A'];
+            }
         }
+
+        const sMins = String(durationMins);
+        if (activeConfig && activeConfig.milestones && activeConfig.milestones[sMins] !== undefined) {
+            return Number(activeConfig.milestones[sMins]);
+        }
+        
         const h = durationMins / 60;
+        const ratePer60 = activeConfig ? activeConfig.ratePer60 : 100000;
         const comm = Math.round(h * ratePer60);
         return Math.round(comm / 1000) * 1000;
     }

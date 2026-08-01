@@ -195,9 +195,9 @@ export async function GET(request: Request) {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, config.milestones, config.ratePer60);
+                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
                 }
-                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, config.milestones, config.ratePer60);
+                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
                 const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig);
 

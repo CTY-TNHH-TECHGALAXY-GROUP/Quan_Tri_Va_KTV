@@ -67,7 +67,7 @@ export async function GET(request: Request) {
                         const workType = ktvWorkTypeMap[ktvCode] || 'TYPE_A';
                         const config = commConfigs[workType] || commConfigs['TYPE_A'];
                         const myTotalMins = KtvCommissionService.calculateItemDuration(i, ktvCode, dur) || (dur / i.technicianCodes.length);
-                        commission = KtvCommissionService.calcCommission(myTotalMins, config.milestones, config.ratePer60) * (Number(i.quantity) || 1) * i.technicianCodes.length;
+                        commission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1) * i.technicianCodes.length;
                     }
 
                     rawDataSheet.push({

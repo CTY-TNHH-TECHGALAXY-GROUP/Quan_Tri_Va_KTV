@@ -46,6 +46,22 @@ export class KtvOnlineService {
         }
 
         try {
+            // Bảo mật 2 lớp: Kiểm tra trực tiếp tại Service
+            const { data: staff, error: fetchErr } = await supabase
+                .from('Staff')
+                .select('work_type, feature_flags')
+                .eq('id', staffId)
+                .single();
+
+            if (fetchErr || !staff) {
+                return { success: false, error: 'Không tìm thấy nhân viên hợp lệ.' };
+            }
+
+            const isAllowed = staff.work_type === 'TYPE_B' || staff.feature_flags?.allow_on_call === true;
+            if (!isAllowed) {
+                return { success: false, error: 'Lỗ hổng bảo mật: KTV này chưa được cấp quyền nhận đơn ngoài giờ!' };
+            }
+
             const { error } = await supabase
                 .from('Staff')
                 .update({
@@ -54,8 +70,7 @@ export class KtvOnlineService {
                     available_from: availableFrom,
                     available_until: availableUntil,
                 })
-                .eq('id', staffId)
-                .eq('work_type', 'TYPE_B');
+                .eq('id', staffId);
 
             if (error) {
                 console.error('KtvOnlineService.goOnline - Update failed:', error.message, error.code);

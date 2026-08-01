@@ -1826,39 +1826,55 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
             if (!workType) workType = 'TYPE_A';
 
-            let parsedMilestones: any = null;
-            let rawMilestones = settings.ktv_commission_milestones;
+            let baseRawMilestones = settings.ktv_commission_milestones;
+            let baseRate60 = Number(settings.ktv_commission_per_60min) || 100000;
+
+            let typeRawMilestones = baseRawMilestones;
             if (workType === 'TYPE_B') {
-                rawMilestones = settings.ktv_commission_milestones_TYPE_B || settings.ktv_commission_milestones_type_b || rawMilestones;
+                typeRawMilestones = settings.ktv_commission_milestones_TYPE_B || settings.ktv_commission_milestones_type_b || baseRawMilestones;
             } else if (workType === 'TYPE_C') {
-                rawMilestones = settings.ktv_commission_milestones_TYPE_C || rawMilestones;
+                typeRawMilestones = settings.ktv_commission_milestones_TYPE_C || baseRawMilestones;
             } else if (settings.ktv_commission_milestones_TYPE_A) {
-                rawMilestones = settings.ktv_commission_milestones_TYPE_A;
+                typeRawMilestones = settings.ktv_commission_milestones_TYPE_A || baseRawMilestones;
             }
 
-            if (typeof rawMilestones === 'string') {
-                try {
-                    parsedMilestones = JSON.parse(rawMilestones);
-                } catch (e) {}
-            } else if (rawMilestones && typeof rawMilestones === 'object') {
-                parsedMilestones = rawMilestones;
-            }
-
-            const milestones = parsedMilestones || {
-                '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, 
-                '90': 150000, '120': 200000, '180': 300000, '300': 500000
+            const parseMilestones = (raw: any) => {
+                if (typeof raw === 'string') {
+                    try { return JSON.parse(raw); } catch (e) {}
+                } else if (raw && typeof raw === 'object') {
+                    return raw;
+                }
+                return { '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, '90': 150000, '120': 200000, '180': 300000, '300': 500000 };
             };
-            
-            let rate60 = Number(settings[`ktv_commission_per_60min_${workType}`] || settings[`ktv_commission_per_60min_${workType.toLowerCase()}`] || settings.ktv_commission_per_60min);
-            if (isNaN(rate60) || rate60 <= 0) rate60 = 100000;
 
-            const calculateCommissionForMins = (mins: number) => {
+            const baseMilestones = parseMilestones(baseRawMilestones);
+            const typeMilestones = parseMilestones(typeRawMilestones);
+
+            let typeRate60 = Number(settings[`ktv_commission_per_60min_${workType}`] || settings[`ktv_commission_per_60min_${workType.toLowerCase()}`] || settings.ktv_commission_per_60min);
+            if (isNaN(typeRate60) || typeRate60 <= 0) typeRate60 = 100000;
+
+            const calculateCommissionForMins = (mins: number, isPremiumService: boolean) => {
                 if (isNaN(mins) || mins <= 0) return 0;
-                const minsStr = String(mins);
-                if (milestones[minsStr] != null) {
-                    return Number(milestones[minsStr]);
+                
+                let activeMilestones = baseMilestones;
+                let activeRate60 = baseRate60;
+
+                if (workType === 'TYPE_B') {
+                    // Loại B: CHỈ CÓ mã NHP và NHT mới được tính rate TYPE_B, còn lại (NHS...) tính 100k
+                    if (isPremiumService) {
+                        activeMilestones = typeMilestones;
+                        activeRate60 = typeRate60;
+                    }
                 } else {
-                    return Math.round(((mins / 60) * rate60) / 1000) * 1000;
+                    activeMilestones = typeMilestones;
+                    activeRate60 = typeRate60;
+                }
+
+                const minsStr = String(mins);
+                if (activeMilestones[minsStr] != null) {
+                    return Number(activeMilestones[minsStr]);
+                } else {
+                    return Math.round(((mins / 60) * activeRate60) / 1000) * 1000;
                 }
             };
 
@@ -1900,14 +1916,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (isNaN(itemMins) || itemMins <= 0) itemMins = 60; // fallback per item
                 
                 totalMins += itemMins;
-                const comm = calculateCommissionForMins(itemMins);
+                const sId = String(item.serviceId || item.service_id || '').toUpperCase();
+                const isPremiumService = sId.startsWith('NHP') || sId.startsWith('NHT');
+                const comm = calculateCommissionForMins(itemMins, isPremiumService);
                 totalCommission += (isNaN(comm) ? 0 : comm);
             }
             
             // Fallback nếu không có item nào
             if (serviceItems.length === 0) {
                 totalMins = 60;
-                totalCommission = calculateCommissionForMins(60);
+                totalCommission = calculateCommissionForMins(60, false);
             }
             
             if (isNaN(totalCommission)) totalCommission = 0;

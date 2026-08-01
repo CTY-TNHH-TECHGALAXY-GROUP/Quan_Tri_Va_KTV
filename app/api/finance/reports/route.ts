@@ -543,7 +543,7 @@ export async function GET(request: Request) {
                 
                 const workType = staffWorkTypeMap[code] || 'TYPE_A';
                 const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * qty;
+                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
                 const perKtvTip = (Number(i.tip) || 0) / techs.length;
                 const hasRating = i.itemRating && Number(i.itemRating) > 0;
                 
@@ -755,7 +755,7 @@ export async function GET(request: Request) {
                             const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / i.technicianCodes.length);
                             const workType = staffWorkTypeMap[code] || 'TYPE_A';
                             const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-                            commission += KtvCommissionService.calcCommission(myTotalMins, commConfig.milestones, commConfig.ratePer60) * (Number(i.quantity) || 1);
+                            commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
                         });
                     }
 

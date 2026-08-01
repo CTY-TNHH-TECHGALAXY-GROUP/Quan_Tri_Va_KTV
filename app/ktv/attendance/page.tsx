@@ -63,6 +63,7 @@ const KTVAttendancePage = () => {
     const [checkoutIsEarlyStore, setCheckoutIsEarlyStore] = React.useState(false);
     const [photos, setPhotos] = React.useState<string[]>([]);
     const [reason, setReason] = React.useState<string>('');
+    const [isOnCall, setIsOnCall] = React.useState(false);
     const [selectedShiftType, setSelectedShiftType] = React.useState<string>('');
     const [estimatedEndTime, setEstimatedEndTime] = React.useState<string>('');
     const [deviceIP, setDeviceIP] = React.useState<string>('');
@@ -439,15 +440,22 @@ const KTVAttendancePage = () => {
                                         <p className="text-sm text-gray-400 mt-1">Yêu cầu chụp ảnh tại cơ sở</p>
                                     </div>
                                     <div className="w-full space-y-3">
-                                        <button
-                                            onClick={() => openForm('CHECK_IN')}
-                                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
-                                        >
-                                            Ngân Hà Xin Chào
-                                        </button>
+                                        {!isOnCall && (
+                                            <button
+                                                onClick={() => openForm('CHECK_IN')}
+                                                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
+                                            >
+                                                Ngân Hà Xin Chào
+                                            </button>
+                                        )}
                                         
                                         {user?.code && (
-                                            <OnCallWidget ktvId={user.code} isOffToday={isOffToday} />
+                                            <OnCallWidget 
+                                                ktvId={user.code} 
+                                                isOffToday={isOffToday} 
+                                                onCheckIn={() => openForm('CHECK_IN')}
+                                                onStateChange={setIsOnCall}
+                                            />
                                         )}
                                     </div>
                                 </>
