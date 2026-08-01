@@ -325,30 +325,13 @@ export class KtvCommissionService {
         if (currentShift === 'SHIFT_2') adjustedBasePoints = bonusConfig.s2Bonus;
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
 
-        // 4. Calculate points per Service (Item) rather than per Booking
-        let calculatedPoints = 0;
-        for (const item of (booking.BookingItems || [])) {
-            let isTechInvolved = false;
-            let itemTechs = new Set<string>();
+        // 4. Calculate points based on guestCount and total unique KTVs in the booking
+        const totalUniqueKTVs = allKtvCodes.size || 1;
+        const guestCount = booking.guestCount || 1;
+        
+        let calculatedPoints = adjustedBasePoints * (guestCount / totalUniqueKTVs);
 
-            if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
-                item.technicianCodes.forEach((tc: string) => itemTechs.add(tc.toLowerCase()));
-                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
-            } else {
-                const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
-                codes.forEach((tc: string) => {
-                    if (tc.trim()) itemTechs.add(tc.trim().toLowerCase());
-                });
-                isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
-            }
-
-            if (isTechInvolved) {
-                const ktvsInItem = itemTechs.size || 1;
-                calculatedPoints += (adjustedBasePoints / ktvsInItem);
-            }
-        }
-
-        // Cap points to max adjustedBasePoints
+        // Cap points to max adjustedBasePoints (Max ứng 1 Khách chỉ là Base)
         calculatedPoints = Math.min(calculatedPoints, adjustedBasePoints);
 
         // Penalty for short duration
