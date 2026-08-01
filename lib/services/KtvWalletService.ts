@@ -113,8 +113,14 @@ export class KtvWalletService {
                 bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
-            // Fixed order bonus cho TYPE_B
-            if (workType === 'TYPE_B' && passedItemCount > 0) {
+            // Check if there is any premium service in this booking
+            const hasPremiumService = (b.BookingItems || []).some((item: any) => {
+                const sId = String(item.serviceId || '').toUpperCase();
+                return sId.startsWith('NHP') || sId.startsWith('NHT');
+            });
+
+            // Fixed order bonus cho TYPE_B (chỉ áp dụng cho dịch vụ Premium NHP/NHT)
+            if (workType === 'TYPE_B' && passedItemCount > 0 && hasPremiumService) {
                 const fixedOrderBonus = (commConfigs[workType] || commConfigs['TYPE_A']).fixedOrderBonus || 20000;
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {

@@ -160,8 +160,14 @@ export async function GET(request: Request) {
                 heldCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 
+            // Check if there is any premium service in this booking
+            const hasPremiumService = (b.BookingItems || []).some((item: any) => {
+                const sId = String(item.serviceId || '').toUpperCase();
+                return sId.startsWith('NHP') || sId.startsWith('NHT');
+            });
+
             // Fixed order bonus cho TYPE_B
-            if (workType === 'TYPE_B' && passedCount > 0) {
+            if (workType === 'TYPE_B' && passedCount > 0 && hasPremiumService) {
                 const fixedOrderBonus = (commConfigs[workType] || commConfigs['TYPE_A']).fixedOrderBonus || 20000;
                 const allKtvCodes = new Set<string>();
                 for (const item of (b.BookingItems || [])) {
@@ -169,7 +175,7 @@ export async function GET(request: Request) {
                 }
                 const totalKtvs = allKtvCodes.size || 1;
                 passedCommission += Math.floor(fixedOrderBonus / totalKtvs);
-            } else if (workType === 'TYPE_B' && passedCount === 0 && relevantItems.length > 0) {
+            } else if (workType === 'TYPE_B' && passedCount === 0 && relevantItems.length > 0 && hasPremiumService) {
                  const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
                  const fixedOrderBonus = activeConfig.fixedOrderBonus || 20000;
                  const allKtvCodes = new Set<string>();
