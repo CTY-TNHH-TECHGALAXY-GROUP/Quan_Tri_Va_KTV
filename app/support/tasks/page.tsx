@@ -207,6 +207,7 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
     if (file) {
       logic.uploadPhoto(task.id, file);
     }
+    if (e.target) e.target.value = '';
   };
 
   return (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { compressImageWithWatermark } from '@/lib/camera.logic';
 
 // ============================================================
 // 🔧 UI CONFIGURATION
@@ -175,6 +176,21 @@ export const useSupportTasks = () => {
   };
 
   // ============================================================
+  // Helper: Convert data URI to File
+  // ============================================================
+  const dataURItoFile = (dataURI: string, filename: string): File => {
+    const arr = dataURI.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
+
+  // ============================================================
   // Upload photo via API (server-side, bypasses RLS)
   // ============================================================
   const uploadPhoto = async (taskId: string, file: File) => {
@@ -182,8 +198,22 @@ export const useSupportTasks = () => {
     setUploading(true);
 
     try {
+      let finalFile = file;
+      try {
+        const watermarkText = `Task ${taskId.substring(0, 5)}`;
+        const base64 = await compressImageWithWatermark(file, { watermarkText });
+        finalFile = dataURItoFile(base64, file.name);
+      } catch (err: any) {
+        if (err?.message === 'TOO_DARK') {
+          alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi đủ ánh sáng.');
+          setUploading(false);
+          return;
+        }
+        console.warn('Failed to compress, using original file', err);
+      }
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', finalFile);
       formData.append('taskId', taskId);
       formData.append('employeeId', employeeId);
 
