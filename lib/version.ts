@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.20';
-export const LAST_UPDATE = 'Fix lỗi KTV bấm nút Bắt đầu bị kẹt màn hình & Sửa nút Lưu không đồng bộ giờ sang TurnQueue';
+export const APP_VERSION = '1.7.21';
+export const LAST_UPDATE = 'Fix lỗi ví tua không được cộng do API quên select cột handover_status và options';

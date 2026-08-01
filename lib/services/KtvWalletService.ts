@@ -56,7 +56,7 @@ export class KtvWalletService {
                 .from('Bookings')
                 .select(`
                     id, timeStart, status, billCode, createdAt, rating,
-                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
+                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
                 .gte('timeStart', realtimeStartStr)
                 .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])

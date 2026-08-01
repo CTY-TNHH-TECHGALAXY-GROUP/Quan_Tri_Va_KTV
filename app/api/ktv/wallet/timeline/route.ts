@@ -94,7 +94,7 @@ export async function GET(request: Request) {
                 .from('Bookings')
                 .select(`
                     id, timeStart, timeEnd, status, technicianCode, billCode, createdAt,
-                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, options, handover_status, rating )
+                    BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
                 .gte('timeStart', realtimeStartStr)
                 .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])

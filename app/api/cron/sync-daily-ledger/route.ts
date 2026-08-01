@@ -74,7 +74,7 @@ async function processLedgerSync(targetDateStr: string) {
         .from('Bookings')
         .select(`
             id, timeStart, timeEnd, status, technicianCode, rating,
-            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings )
+            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
         `)
         .gte('bookingDate', startTimeStr)
         .lte('bookingDate', endTimeStr)

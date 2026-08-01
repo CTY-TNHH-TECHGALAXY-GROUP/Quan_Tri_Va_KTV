@@ -129,7 +129,7 @@ export async function GET(request: Request) {
         // 4. Fetch Realtime Bookings from realtimeStartStr (ALL TIME)
         const bookings = await fetchAll(
             supabase.from('Bookings')
-            .select(`id, timeStart, timeEnd, status, technicianCode, rating, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings ) `)
+            .select(`id, timeStart, timeEnd, status, technicianCode, rating, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment ) `)
             .gte('timeStart', realtimeStartStr)
             .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING'])
         );
