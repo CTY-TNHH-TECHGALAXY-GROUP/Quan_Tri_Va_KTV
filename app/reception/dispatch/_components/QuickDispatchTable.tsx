@@ -686,12 +686,17 @@ const ServiceGroupCard = ({
   };
 
   const filteredTurns = useMemo(() => {
-    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_')).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
       if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
       return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
     });
 
     return filtered.sort((a, b) => {
+        const isAExt = a.employee_id.startsWith('EXT') || a.employee_id.startsWith('C_');
+        const isBExt = b.employee_id.startsWith('EXT') || b.employee_id.startsWith('C_');
+        if (isAExt && !isBExt) return 1;
+        if (!isAExt && isBExt) return -1;
+        
         if (a.turns_completed !== b.turns_completed) return (a.turns_completed || 0) - (b.turns_completed || 0);
         return (a.check_in_order || 0) - (b.check_in_order || 0);
     });

@@ -27,7 +27,10 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         readyCount,
         workingCount,
         activeCount,
-        externalTurns
+        externalTurns,
+        allExternalStaffs,
+        toggleExternalStaff,
+        deleteExternalStaff
     } = useTurnQueueBoard(staffs);
 
     useEffect(() => {
@@ -83,11 +86,9 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                     }`}
                 >
                     KTV Ngoài
-                    {externalTurns.length > 0 && (
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                            activeTab === 'external' ? 'bg-amber-100 text-amber-600' : 'bg-gray-200 text-gray-500'
-                        }`}>{externalTurns.length}</span>
-                    )}
+                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                        activeTab === 'external' ? 'bg-amber-100 text-amber-600' : 'bg-gray-200 text-gray-500'
+                    }`}>{allExternalStaffs.length}</span>
                 </button>
             </div>
 
@@ -228,57 +229,79 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                 <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
                     <h3 className="font-bold text-amber-800 text-sm flex items-center gap-2">
                         <span className="w-2 h-2 bg-amber-500 rounded-full" />
-                        KTV Ngoài nhập tay
+                        Danh sách KTV Ngoài
                     </h3>
-                    <span className="text-[10px] text-amber-500 font-bold">Quầy nhập tên khi điều phối</span>
+                    <span className="text-[10px] text-amber-500 font-bold">Bật để hiện gợi ý trên Sổ Tua</span>
                 </div>
                 <div className="divide-y divide-amber-50 min-h-[80px]">
-                    {externalTurns.length === 0 ? (
+                    {allExternalStaffs.length === 0 ? (
                         <div className="p-8 text-center text-gray-400 text-sm">
-                            Chưa có KTV ngoài nào đang phục vụ
+                            Chưa có KTV ngoài nào trong hệ thống
                         </div>
-                    ) : externalTurns.map((turn, idx) => (
-                        <div key={turn.employee_id} className="flex items-center gap-3 px-4 py-3 hover:bg-amber-50/30 transition-colors">
-                            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 border border-amber-200 flex items-center justify-center text-sm font-black shrink-0">
+                    ) : allExternalStaffs.map((staff, idx) => {
+                        const turn = externalTurns.find(t => t.employee_id === staff.id);
+                        const isOff = !turn || turn.status === 'off';
+                        const isWorking = turn && (turn.status === 'working' || turn.status === 'assigned');
+
+                        return (
+                        <div key={staff.id} className={`flex items-center gap-3 px-4 py-3 transition-colors ${isOff ? 'opacity-60 bg-gray-50/50' : 'hover:bg-amber-50/30'}`}>
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 border ${isOff ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
                                 {idx + 1}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="font-bold text-sm text-gray-900 truncate">
-                                    {ktvDisplayNames?.[turn.employee_id] || turn.staff?.full_name || turn.employee_id}
+                                    {ktvDisplayNames?.[staff.id] || staff.full_name || staff.id}
                                 </p>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{turn.employee_id}</span>
-                                    {turn.turns_completed > 0 && (
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{staff.id}</span>
+                                    {turn && turn.turns_completed > 0 && (
                                         <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-bold border border-amber-100">
                                             Đã làm {turn.turns_completed} tua
                                         </span>
                                     )}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                {turn.employee_id === firstWaitingExternalKtvId && (
+                            <div className="flex items-center gap-3 shrink-0">
+                                {turn && turn.employee_id === firstWaitingExternalKtvId && (
                                     <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
                                         <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
                                         Tua đầu: Kiểm tra châm nước
                                     </span>
                                 )}
                                 <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
-                                    turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
-                                    turn.status === 'working' ? 'bg-rose-100 text-rose-700' :
-                                    turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
+                                    isOff ? 'bg-gray-100 text-gray-500' :
+                                    turn?.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                    turn?.status === 'working' ? 'bg-rose-100 text-rose-700' :
+                                    turn?.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
                                     'bg-gray-100 text-gray-500'
                                 }`}>
-                                    {turn.status === 'waiting' ? <CheckCircle2 size={10} /> :
-                                        turn.status === 'working' ? <Timer size={10} className="animate-spin" /> :
-                                        turn.status === 'assigned' ? <Clock size={10} /> :
+                                    {isOff ? <Moon size={10} /> :
+                                        turn?.status === 'waiting' ? <CheckCircle2 size={10} /> :
+                                        turn?.status === 'working' ? <Timer size={10} className="animate-spin" /> :
+                                        turn?.status === 'assigned' ? <Clock size={10} /> :
                                         <Moon size={10} />}
                                     <span>
-                                        {turn.status === 'waiting' ? 'Sẵn sàng' : turn.status === 'working' ? ('Đang làm' + (turn.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
+                                        {isOff ? 'Tắt' : turn?.status === 'waiting' ? 'Sẵn sàng' : turn?.status === 'working' ? ('Đang làm' + (turn?.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : turn?.status === 'assigned' ? 'Đã xếp lịch' : 'Tắt'}
                                     </span>
                                 </div>
+                                <button 
+                                    onClick={() => toggleExternalStaff(staff.id, turn)}
+                                    title={'Bật/Tắt KTV'}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer hover:opacity-90 ${!isOff ? 'bg-amber-500' : 'bg-gray-300'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${!isOff ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                                <button
+                                    onClick={() => deleteExternalStaff(staff.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-1"
+                                    title="Xóa KTV ngoài"
+                                >
+                                    <X size={14} strokeWidth={3} />
+                                </button>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
             )}

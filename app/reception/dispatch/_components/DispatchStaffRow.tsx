@@ -280,11 +280,17 @@ export const DispatchStaffRow = ({
                                     <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
                                         {availableTurns
                                             .filter(t => t.status !== 'off')
-                                            .filter(t => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'))
                                             .filter(t => {
                                                 if (!searchQuery) return true;
                                                 const term = searchQuery.toLowerCase();
                                                 return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
+                                            })
+                                            .sort((a, b) => {
+                                                const isAExt = a.employee_id.startsWith('EXT') || a.employee_id.startsWith('C_');
+                                                const isBExt = b.employee_id.startsWith('EXT') || b.employee_id.startsWith('C_');
+                                                if (isAExt && !isBExt) return 1;
+                                                if (!isAExt && isBExt) return -1;
+                                                return 0;
                                             })
                                             .map((turn) => {
                                                 const hasSkill = targetSkill ? turn.staff?.skills?.[targetSkill] === true : true;
@@ -314,10 +320,10 @@ export const DispatchStaffRow = ({
                                                                 <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
                                                                 <span>{turn.employee_id}</span>
                                                                 <WorkTypeBadge workType={turn.staff?.work_type} />
-                                                                {turn.staff?.work_type === 'TYPE_B' && turn.staff?.online_status === 'ONLINE' && (
+                                                                {turn.staff?.online_status === 'ONLINE' && (
                                                                     <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-emerald-100 text-emerald-700 border border-emerald-200 leading-none">Online</span>
                                                                 )}
-                                                                {turn.staff?.work_type === 'TYPE_B' && turn.staff?.online_status === 'AT_VENUE' && (
+                                                                {turn.staff?.online_status === 'AT_VENUE' && (
                                                                     <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-sky-100 text-sky-700 border border-sky-200 leading-none">Tại spa</span>
                                                                 )}
                                                             </div>

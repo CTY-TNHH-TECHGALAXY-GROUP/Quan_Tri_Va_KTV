@@ -14,6 +14,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
     const [selectedDate, setSelectedDate] = useState<string>(getVietnamDateString());
     const [turns, setTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
     const [externalTurns, setExternalTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
+    const [allExternalStaffs, setAllExternalStaffs] = useState<StaffData[]>([]);
     const [shifts, setShifts] = useState<Record<string, { type: string, end: string | null }>>({});
     const [suddenOffs, setSuddenOffs] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
@@ -54,7 +55,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                 }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
                 const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
-                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')) && t.status !== 'waiting' && t.status !== 'off');
+                // Include ALL external turns (even 'off') so we can map them back, or just use externalTurns for active
+                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')));
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -82,7 +84,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             }));
                 // 🔥 Tách KTV nội bộ và KTV ngoài
                 const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
-                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')) && t.status !== 'waiting' && t.status !== 'off');
+                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')));
                 setTurns(internal);
                 setExternalTurns(external);
         }
@@ -90,6 +92,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
 
     useEffect(() => {
         if (staffs.length > 0) {
+            setAllExternalStaffs(staffs.filter(s => s.id.startsWith('EXT') || s.id.startsWith('C_')));
             fetchTurns();
             fetchExtras();
         }
@@ -218,11 +221,72 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         fetchTurns();
     };
 
+    const toggleExternalStaff = async (staffId: string, currentTurn?: TurnQueueData) => {
+        try {
+            if (!currentTurn) {
+                // Toggles ON (Insert new TurnQueue record for today)
+                const maxOrderRes = await supabase.from('TurnQueue').select('check_in_order').eq('date', selectedDate).order('check_in_order', { ascending: false }).limit(1);
+                let nextOrder = 1;
+                if (maxOrderRes.data && maxOrderRes.data.length > 0) {
+                    nextOrder = maxOrderRes.data[0].check_in_order + 1;
+                }
+                const { error } = await supabase.from('TurnQueue').insert({
+                    employee_id: staffId,
+                    date: selectedDate,
+                    check_in_order: nextOrder,
+                    queue_position: nextOrder,
+                    status: 'waiting',
+                    turns_completed: 0
+                });
+                if (error) throw error;
+            } else {
+                // Toggle between 'off' and 'waiting' (no constraints as requested)
+                const newStatus = currentTurn.status === 'off' ? 'waiting' : 'off';
+                const { error } = await supabase.from('TurnQueue').update({ status: newStatus }).eq('id', currentTurn.id);
+                if (error) throw error;
+            }
+        } catch (err) {
+            console.error('Toggle external staff error:', err);
+            alert('Lỗi khi cập nhật trạng thái KTV Ngoài!');
+        }
+    };
+
+    const deleteExternalStaff = async (staffId: string) => {
+        if (!confirm(`Bạn có chắc muốn xóa KTV ${staffId} khỏi danh sách?`)) return;
+        try {
+            // Xóa khỏi TurnQueue hôm nay
+            await supabase.from('TurnQueue').delete().eq('employee_id', staffId).eq('date', selectedDate);
+            // Xóa khỏi Staff
+            const { error } = await supabase.from('Staff').delete().eq('id', staffId);
+            if (error) {
+                // Nếu có liên kết khóa ngoại (BookingItems), chuyển sang ẩn
+                console.warn('Lỗi khóa ngoại, chuyển sang ẩn nhân viên', error);
+                await supabase.from('Staff').update({ status: 'NGHỈ VIỆC' }).eq('id', staffId);
+            }
+            setAllExternalStaffs(prev => prev.filter(s => s.id !== staffId));
+            setExternalTurns(prev => prev.filter(t => t.employee_id !== staffId));
+        } catch (err) {
+            console.error('Delete external staff error:', err);
+            alert('Lỗi khi xóa nhân viên!');
+        }
+    };
+
     const sortedTurns = localOrder;
     const readyCount = turns.filter(t => t.status === 'waiting' && !suddenOffs.has(t.employee_id)).length;
     const workingCount = turns.filter(t => t.status === 'working' && !suddenOffs.has(t.employee_id)).length;
     const offCount = turns.filter(t => t.status === 'off' || suddenOffs.has(t.employee_id)).length;
     const activeCount = turns.length - offCount;
+
+    // Sort KTV ngoài: KTV được bật (không phải off) lên đầu
+    const sortedExternalStaffs = [...allExternalStaffs].sort((a, b) => {
+        const turnA = externalTurns.find(t => t.employee_id === a.id);
+        const turnB = externalTurns.find(t => t.employee_id === b.id);
+        const isOffA = !turnA || turnA.status === 'off';
+        const isOffB = !turnB || turnB.status === 'off';
+        if (isOffA && !isOffB) return 1;
+        if (!isOffA && isOffB) return -1;
+        return 0;
+    });
 
     return {
         selectedDate,
@@ -243,6 +307,9 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         readyCount,
         workingCount,
         activeCount,
-        externalTurns
+        externalTurns,
+        allExternalStaffs: sortedExternalStaffs,
+        toggleExternalStaff,
+        deleteExternalStaff
     };
 };
