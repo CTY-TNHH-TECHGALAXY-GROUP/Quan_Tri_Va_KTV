@@ -397,8 +397,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
                         await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existingTypeC[0].id);
                     } else {
                         // Insert mới TYPE_C
-                        // Tự generate 1 ID ngẫu nhiên định dạng C_xxxxx
-                        const newId = `C_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                        // Tự generate 1 ID ngẫu nhiên định dạng EXT_xxxxx
+                        const newId = `EXT_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
                         const { error: insertError } = await supabase
                             .from('Staff')
                             .insert({
@@ -785,6 +785,30 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 }
                 
                 console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
+
+                // 3. Đồng bộ lại start_time cho TurnQueue (quan trọng để KTV không bị chặn khi Lễ tân đổi giờ)
+                if (item.segments && Array.isArray(item.segments)) {
+                    for (const seg of item.segments) {
+                        if (seg.ktvId && seg.startTime) {
+                            // Convert "10:54" -> "10:54:00" để match kiểu time của PG
+                            const timeStr = String(seg.startTime).length === 5 ? `${seg.startTime}:00` : seg.startTime;
+                            
+                            // Chỉ update nếu KTV đang ở trạng thái 'assigned' cho đúng đơn này
+                            const { error: tqError } = await supabase
+                                .from('TurnQueue')
+                                .update({ start_time: timeStr })
+                                .eq('employee_id', seg.ktvId)
+                                .eq('current_order_id', bookingId)
+                                .eq('status', 'assigned');
+                                
+                            if (tqError) {
+                                console.error(`❌ [Server] Lỗi đồng bộ start_time cho KTV ${seg.ktvId}:`, tqError);
+                            } else {
+                                console.log(`✅ [Server] Đã đồng bộ start_time = ${timeStr} cho KTV ${seg.ktvId} trong TurnQueue`);
+                            }
+                        }
+                    }
+                }
             }
         }
 

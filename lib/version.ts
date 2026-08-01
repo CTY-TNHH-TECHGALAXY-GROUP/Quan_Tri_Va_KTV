@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.18';
-export const LAST_UPDATE = 'Tự động nén ảnh báo cáo Hậu cần trước khi tải lên để tránh lỗi dung lượng ảnh quá lớn.';
+export const APP_VERSION = '1.7.20';
+export const LAST_UPDATE = 'Fix lỗi KTV bấm nút Bắt đầu bị kẹt màn hình & Sửa nút Lưu không đồng bộ giờ sang TurnQueue';

@@ -1609,6 +1609,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)
             setTimeRemaining(initDuration * 60);
             setIsTimerRunning(true);
+            setScreen('TIMER');
         } else {
             console.error('❌ [KTV Logic] Start error:', res.error);
             alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
