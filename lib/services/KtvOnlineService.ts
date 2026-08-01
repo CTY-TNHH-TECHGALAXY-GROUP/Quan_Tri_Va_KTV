@@ -3,7 +3,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 // 🔧 CONFIGURATION
 const MAX_TRAVEL_MINUTES = 60;
 const MIN_TRAVEL_MINUTES = 5;
-const EXPIRED_BUFFER_MINUTES = 60; // Cleanup only if expired > 1 hour
+const EXPIRED_BUFFER_MINUTES = 0; // KTV hết giờ là gỡ khỏi online ngay lập tức
 
 /**
  * KtvOnlineService
@@ -117,10 +117,10 @@ export class KtvOnlineService {
                 return { success: false, error: 'Không thể cập nhật trạng thái Staff.' };
             }
 
-            // 2. Xóa khỏi TurnQueue (Mất trong sổ tua)
+            // 2. Chuyển trạng thái Sổ Tua thành Tan ca (Tránh xoá mất dữ liệu)
             await supabase
                 .from('TurnQueue')
-                .delete()
+                .update({ status: 'off' })
                 .eq('employee_id', staffId)
                 .eq('date', businessDateStr);
 
