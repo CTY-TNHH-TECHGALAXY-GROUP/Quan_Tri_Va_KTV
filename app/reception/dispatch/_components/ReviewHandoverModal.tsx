@@ -55,10 +55,10 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     const [rejectStep, setRejectStep] = useState<'idle' | 'select-option' | 'confirm'>('idle');
     const [selectedRejectOption, setSelectedRejectOption] = useState<RejectOption | null>(null);
 
-    let images: Record<string, string> = {};
+    let handoverImages: Record<string, string> = {};
     if (service?.handover_images && Object.keys(service.handover_images).length > 0) {
         try {
-            images = typeof service.handover_images === 'string' 
+            handoverImages = typeof service.handover_images === 'string' 
                 ? JSON.parse(service.handover_images) 
                 : service.handover_images;
         } catch (e) {
@@ -67,23 +67,42 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     }
 
     // Fallback: scan segments for photos
-    if (Object.keys(images).length === 0 && service?.staffList) {
+    if (Object.keys(handoverImages).length === 0 && service?.staffList) {
         let count = 1;
         service.staffList.forEach(staff => {
             staff.segments?.forEach((seg: any) => {
                 if (seg.handoverPhotoUrl) {
-                    images[`Ảnh ${count++} (${staff.ktvId})`] = seg.handoverPhotoUrl;
+                    handoverImages[`Bàn giao ${count++} (${staff.ktvId})`] = seg.handoverPhotoUrl;
                 }
                 if (seg.handoverPhotoUrls) {
                     seg.handoverPhotoUrls.forEach((url: string) => {
-                        images[`Ảnh ${count++} (${staff.ktvId})`] = url;
+                        handoverImages[`Bàn giao ${count++} (${staff.ktvId})`] = url;
                     });
                 }
             });
         });
     }
     
-    const imageList = Object.entries(images).map(([label, url]) => ({ label, url }));
+    let startImages: Record<string, string> = {};
+    if (service?.staffList) {
+        let count = 1;
+        service.staffList.forEach(staff => {
+            staff.segments?.forEach((seg: any) => {
+                if (seg.startPhotoUrl) {
+                    startImages[`Bắt đầu ${count++} (${staff.ktvId})`] = seg.startPhotoUrl;
+                }
+                if (seg.startPhotoUrls) {
+                    seg.startPhotoUrls.forEach((url: string) => {
+                        startImages[`Bắt đầu ${count++} (${staff.ktvId})`] = url;
+                    });
+                }
+            });
+        });
+    }
+
+    const handoverList = Object.entries(handoverImages).map(([label, url]) => ({ label, url, type: 'handover' }));
+    const startList = Object.entries(startImages).map(([label, url]) => ({ label, url, type: 'start' }));
+    const imageList = [...startList, ...handoverList];
 
     const handleApprove = async () => {
         setIsSubmitting(true);
@@ -165,41 +184,81 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
                         <div className="space-y-6">
                             {/* Images Grid */}
                             <div>
-                                <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                    Ảnh Bàn Giao ({Object.keys(images).length})
-                                </h3>
-                                
-                                {imageList.length > 0 ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                        {imageList.map((img, idx) => (
-                                            <div 
-                                                key={img.label} 
-                                                onClick={() => setCurrentImageIndex(idx)}
-                                                className="group relative aspect-square bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm cursor-pointer"
-                                            >
-                                                <img 
-                                                    src={img.url} 
-                                                    alt={img.label} 
-                                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                                />
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6">
-                                                    <p className="text-white text-xs font-medium truncate">{img.label}</p>
-                                                </div>
-                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                    <div className="bg-white/90 p-2 rounded-full shadow-lg">
-                                                        <Maximize2 size={16} className="text-gray-700" />
+                                {startList.length > 0 && (
+                                    <div className="mb-6">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                            Ảnh Bắt Đầu ({startList.length})
+                                        </h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                            {startList.map((img) => {
+                                                const idx = imageList.findIndex(x => x.url === img.url && x.label === img.label);
+                                                return (
+                                                    <div 
+                                                        key={img.label} 
+                                                        onClick={() => setCurrentImageIndex(idx)}
+                                                        className="group relative aspect-square bg-gray-100 rounded-xl overflow-hidden border border-emerald-200 shadow-sm cursor-pointer"
+                                                    >
+                                                        <img 
+                                                            src={img.url} 
+                                                            alt={img.label} 
+                                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                        />
+                                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6">
+                                                            <p className="text-white text-xs font-medium truncate">{img.label}</p>
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                            <div className="bg-white/90 p-2 rounded-full shadow-lg">
+                                                                <Maximize2 size={16} className="text-gray-700" />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center gap-3 text-orange-700">
-                                        <AlertCircle size={20} className="shrink-0" />
-                                        <p className="text-sm">Không có ảnh bàn giao nào được gửi kèm.</p>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 )}
+
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                        Ảnh Bàn Giao ({handoverList.length})
+                                    </h3>
+                                    
+                                    {handoverList.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                            {handoverList.map((img) => {
+                                                const idx = imageList.findIndex(x => x.url === img.url && x.label === img.label);
+                                                return (
+                                                    <div 
+                                                        key={img.label} 
+                                                        onClick={() => setCurrentImageIndex(idx)}
+                                                        className="group relative aspect-square bg-gray-100 rounded-xl overflow-hidden border border-blue-200 shadow-sm cursor-pointer"
+                                                    >
+                                                        <img 
+                                                            src={img.url} 
+                                                            alt={img.label} 
+                                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                        />
+                                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6">
+                                                            <p className="text-white text-xs font-medium truncate">{img.label}</p>
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                            <div className="bg-white/90 p-2 rounded-full shadow-lg">
+                                                                <Maximize2 size={16} className="text-gray-700" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center gap-3 text-orange-700">
+                                            <AlertCircle size={20} className="shrink-0" />
+                                            <p className="text-sm">Không có ảnh bàn giao nào được gửi kèm.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* V5: Reject Options (Step 2) */}

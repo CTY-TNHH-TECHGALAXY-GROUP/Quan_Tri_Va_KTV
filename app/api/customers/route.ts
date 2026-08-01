@@ -61,12 +61,17 @@ export async function GET() {
         // Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
             supabase!.from('Services').select('id, nameVN, duration'),
-            supabase!.from('Staff').select('code, name')
+            supabase!.from('Staff').select('id, full_name')
         ]);
         
         const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || 'Unknown']));
         const serviceDurationMap = new Map((services || []).map(s => [s.id, s.duration || 0]));
-        const staffMap = new Map((staff || []).map(s => [s.code, s.name || 'Unknown']));
+        const staffMap = new Map((staff || []).map(s => {
+            if (s.id && (s.id.startsWith('C_') || s.id.startsWith('EXT'))) {
+                return [s.id, s.full_name || s.id];
+            }
+            return [s.id, s.id];
+        }));
 
         // 3. Create Maps for grouping bookings by customerId AND email
         const bookingsByCustomerId = new Map<string, any[]>();

@@ -119,7 +119,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
             {isAtVenue ? 'ĐÃ TỚI TIỆM' : isOnline ? 'ĐANG CHỜ ĐƠN' : 'ĐANG TẮT'}
         </h3>
         <p className="text-sm font-medium text-slate-500">
-            {isAtVenue ? 'Sẵn sàng nhận tour tại Spa.' : 
+            {isAtVenue ? 'Đã tới tiệm. Vui lòng bàn giao đồ và sẵn sàng nhận tour.' : 
              isOnline ? `Đang sẵn sàng từ nhà. Thời gian di chuyển: ${state.travel_time_mins} phút.` :
              'Chưa bật nhận đơn. Hãy bật khi bạn rảnh.'}
         </p>
@@ -127,15 +127,24 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
 
       {/* CÁC NÚT ĐIỀU KHIỂN */}
       <div className="space-y-4">
-        {/* Nếu đang tắt -> Chỉ hiện nút Bật */}
+        {/* Nếu đang tắt -> Hiện Bật nhận đơn VÀ Tới tiệm luôn */}
         {isOffline && (
-            <button
-                onClick={() => setShowPopup(true)}
-                disabled={actionLoading}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-                <BellRing size={22} /> {actionLoading ? 'Đang xử lý...' : 'Bật Nhận Đơn'}
-            </button>
+            <div className="space-y-4">
+                <button
+                    onClick={() => onCheckIn()}
+                    disabled={actionLoading}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Ngân Hà Xin Chào'}
+                </button>
+                <button
+                    onClick={() => setShowPopup(true)}
+                    disabled={actionLoading}
+                    className="w-full py-4 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                    <BellRing size={22} /> {actionLoading ? 'Đang xử lý...' : 'Bật Nhận Đơn'}
+                </button>
+            </div>
         )}
 
         {/* Nếu đang chờ đơn (ONLINE) -> Báo tới tiệm hoặc Tắt */}
@@ -146,7 +155,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
                     disabled={actionLoading}
                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Ngân Hà Xin Chào (Tới tiệm)'}
+                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Đã đến tiệm'}
                 </button>
                 <button
                     onClick={() => handleToggleOnCall(false, state.travel_time_mins)}

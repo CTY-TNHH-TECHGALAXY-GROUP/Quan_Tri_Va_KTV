@@ -606,43 +606,47 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                     {s.options?.displayName || s.serviceName}
                                                                 </span>
                                                                 {!s.isUtility && (
-                                                                    <div className="flex flex-col items-end gap-1">
-                                                                        <span className="text-[9px] font-black text-indigo-600 bg-white px-1.5 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
-                                                                        {isHandoverReviewEnabled && s.handover_status === 'PENDING' && (
-                                                                            <button 
-                                                                                onClick={(e) => { e.stopPropagation(); onReviewClick?.(s); }}
-                                                                                className="text-[9px] font-bold text-white bg-rose-500 animate-pulse px-1.5 py-0.5 rounded shadow-sm border border-rose-600 shrink-0 flex items-center gap-1 hover:bg-rose-600 transition-colors"
-                                                                            >
-                                                                                <Camera size={10} />
-                                                                                Duyệt ảnh
-                                                                            </button>
-                                                                        )}
+                                                                    <div className="flex flex-col items-end gap-1.5">
+                                                                        <div className="flex items-center gap-1">
+                                                                            <span className="text-[10px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
+                                                                            
+                                                                            {isHandoverReviewEnabled && s.handover_status === 'PENDING' && (
+                                                                                <button 
+                                                                                    onClick={(e) => { e.stopPropagation(); onReviewClick?.(s); }}
+                                                                                    className="text-white bg-rose-500 animate-pulse p-1 rounded-lg shadow-sm border border-rose-600 shrink-0 flex items-center justify-center hover:bg-rose-600 transition-colors"
+                                                                                    title="Duyệt ảnh"
+                                                                                >
+                                                                                    <Camera size={12} />
+                                                                                </button>
+                                                                            )}
+                                                                            
+                                                                            {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.dispatchStatus) && order && (
+                                                                                <button 
+                                                                                    onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
+                                                                                    className="text-amber-700 bg-amber-100 border border-amber-300 p-1 rounded-lg shadow-sm shrink-0 flex items-center justify-center hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all"
+                                                                                    title="Nhận xét KTV"
+                                                                                >
+                                                                                    <AlertCircle size={12} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                         {isHandoverReviewEnabled && s.handover_status === 'REJECTED' && (
-                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-lg shadow-sm shrink-0 flex items-center gap-1">
                                                                                 <Clock size={10} />
                                                                                 Đang dọn lại
                                                                             </span>
                                                                         )}
                                                                         {isHandoverReviewEnabled && s.handover_status === 'SKIPPED' && (
-                                                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-lg shadow-sm shrink-0 flex items-center gap-1">
                                                                                 <X size={10} />
                                                                                 Bỏ qua chụp
                                                                             </span>
                                                                         )}
                                                                         {isHandoverReviewEnabled && s.handover_status === 'APPROVED' && (
-                                                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded shadow-sm shrink-0 flex items-center gap-1">
+                                                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-lg shadow-sm shrink-0 flex items-center gap-1">
                                                                                 <Check size={10} />
                                                                                 Đã duyệt
                                                                             </span>
-                                                                        )}
-                                                                        {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.dispatchStatus) && order && (
-                                                                            <button 
-                                                                                onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
-                                                                                className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-1 rounded shadow-md shrink-0 flex items-center gap-1 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all"
-                                                                            >
-                                                                                <AlertCircle size={12} />
-                                                                                Nhận xét KTV
-                                                                            </button>
                                                                         )}
                                                                     </div>
                                                                 )}
@@ -778,33 +782,38 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
 
                                                         {/* Ngôi sao để chấm điểm hộ khách (chỉ khi chưa đánh giá) */}
                                                         {!subOrder.rating && (
-                                                            <div className="flex items-center gap-1 mt-1">
-                                                                {[1, 2, 3, 4].map((star) => (
-                                                                    <button
-                                                                        key={star}
+                                                            <div className="flex flex-col items-center justify-center gap-1 mt-3 pb-1">
+                                                                <div className="flex items-center justify-between w-full">
+                                                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center flex-1">Đánh giá chất lượng phục vụ</span>
+                                                                    <button 
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
-                                                                                import('../actions').then(m => {
-                                                                                    m.submitCustomerRating(subOrder.bookingId, star);
-                                                                                });
-                                                                            }
+                                                                            const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                            window.open(ratingUrl, '_blank');
                                                                         }}
-                                                                        className="p-0.5 text-gray-300 hover:text-amber-400 transition-all cursor-pointer"
+                                                                        className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
                                                                     >
-                                                                        <Star size={14} fill="none" strokeWidth={2.5} />
+                                                                        <QrCode size={10} />
                                                                     </button>
-                                                                ))}
-                                                                <button 
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
-                                                                        window.open(ratingUrl, '_blank');
-                                                                    }}
-                                                                    className="ml-auto text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5"
-                                                                >
-                                                                    <QrCode size={10} /> Link
-                                                                </button>
+                                                                </div>
+                                                                <div className="flex items-center gap-1 w-full justify-center">
+                                                                    {[1, 2, 3, 4].map((star) => (
+                                                                        <button
+                                                                            key={star}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
+                                                                                    import('../actions').then(m => {
+                                                                                        m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            className="p-0.5 text-gray-300 hover:text-amber-400 transition-all cursor-pointer hover:scale-110"
+                                                                        >
+                                                                            <Star size={16} fill="none" strokeWidth={2.5} />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -816,12 +825,13 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                     const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
                                                     const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
                                                     return (
-                                                        <div className={`mb-3 rounded-xl px-3 py-2 border ${ratingColor}`}>
+                                                        <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${ratingColor}`}>
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
                                                             <div className="flex items-center gap-1">
                                                                 {[1, 2, 3, 4].map((s) => (
-                                                                    <Star key={s} size={14} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
+                                                                    <Star key={s} size={16} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
                                                                 ))}
-                                                                <span className="ml-1.5 text-[11px] font-black">{ratingLabel}</span>
+                                                                <span className="ml-1.5 text-[12px] font-black">{ratingLabel}</span>
                                                             </div>
                                                         </div>
                                                     );
@@ -860,20 +870,6 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                         }
                                                         return null;
                                                     })()}
-                                                    {(!subOrder.rating && !['DONE', 'CANCELLED'].includes(subOrder.dispatchStatus)) && (
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
-                                                                window.open(ratingUrl, '_blank');
-                                                            }}
-                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
-                                                            title="Link đánh giá"
-                                                        >
-                                                            <QrCode size={12} /> Link
-                                                        </button>
-                                                    )}
-                                                    
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
                                                         const isPaused = services.some((s: any) => s.status === 'PAUSED');
                                                         if (isPaused) {
@@ -906,6 +902,20 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                             </button>
                                                         );
                                                     })()}
+                                                    
+                                                    {(!subOrder.rating && !['DONE', 'CANCELLED'].includes(subOrder.dispatchStatus)) && (
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                window.open(ratingUrl, '_blank');
+                                                            }}
+                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
+                                                            title="Link đánh giá"
+                                                        >
+                                                            <QrCode size={12} /> Link
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </motion.div>
