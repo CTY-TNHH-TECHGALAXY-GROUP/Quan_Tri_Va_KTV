@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error: fetchError } = await supabase
       .from('Staff')
-      .select('work_type, feature_flags')
+      .select('work_type, feature_flags, is_active_vip_menu')
       .eq('id', techCode)
       .single();
 
@@ -84,12 +84,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Luôn giữ cờ feature_flags để backup/tương thích ngược
+    const was_vip = data?.is_active_vip_menu || false;
     const newFlags = {
       ...currentFlags,
       is_on_call,
       travel_time_mins: travel_time_mins || 30,
       expected_start,
-      expected_end
+      expected_end,
+      // Lưu lại trạng thái VIP ban đầu trước khi bật on-call (chỉ ghi đè nếu đang BẬT)
+      was_vip_before_oncall: is_on_call ? was_vip : currentFlags.was_vip_before_oncall
     };
 
     if (!is_on_call) {
@@ -99,8 +102,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: res.error }, { status: 500 });
       }
       
-      // Update cờ feature_flags
-      await supabase.from('Staff').update({ feature_flags: newFlags }).eq('id', techCode);
+      // Update cờ feature_flags và hoàn trả VIP Menu cho Loại A
+      const updatePayload: any = { feature_flags: newFlags };
+      if (!isTypeB && currentFlags.was_vip_before_oncall !== undefined) {
+          updatePayload.is_active_vip_menu = currentFlags.was_vip_before_oncall;
+      }
+
+      await supabase.from('Staff').update(updatePayload).eq('id', techCode);
       
       return NextResponse.json({ success: true, data: newFlags });
     }
@@ -133,8 +141,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: res.error }, { status: 500 });
     }
 
-    // Luôn update cờ feature_flags để backup
-    await supabase.from('Staff').update({ feature_flags: newFlags }).eq('id', techCode);
+    // Luôn update cờ feature_flags để backup và tự động cho Loại A lên VIP Menu
+    const updatePayload: any = { feature_flags: newFlags };
+    if (!isTypeB) {
+        updatePayload.is_active_vip_menu = true;
+    }
+    
+    await supabase.from('Staff').update(updatePayload).eq('id', techCode);
 
     return NextResponse.json({ success: true, data: newFlags });
 

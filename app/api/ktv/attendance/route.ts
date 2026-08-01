@@ -233,6 +233,11 @@ export async function POST(request: Request) {
                 }
             } else {
                 if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
+                    // 🔹 Tự động tắt trạng thái nhận đơn ngoài giờ (nếu có)
+                    if (staffCode) {
+                        await KtvOnlineService.goOffline(supabase, staffCode);
+                    }
+                    
                     // 🔹 Active shift for User
                     await supabase.from('Users').update({ isOnShift: true }).eq('id', employeeId);
 

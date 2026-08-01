@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { useKTVAttendance } from './Attendance.logic';
 import { t } from './Attendance.i18n';
 import { AttendanceTypeB } from './_components/AttendanceTypeB';
+import { OnCallWidget } from './_components/OnCallWidget';
 
 const KTVAttendancePage = () => {
     const {
@@ -444,6 +445,10 @@ const KTVAttendancePage = () => {
                                         >
                                             Ngân Hà Xin Chào
                                         </button>
+                                        
+                                        {user?.code && (
+                                            <OnCallWidget ktvId={user.code} isOffToday={isOffToday} />
+                                        )}
                                     </div>
                                 </>
                             )}
