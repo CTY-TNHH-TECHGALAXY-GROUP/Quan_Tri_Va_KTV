@@ -369,9 +369,10 @@ export class KtvCommissionService {
         }
         
         // 1. Duyệt phòng
-        if (item.handover_status !== 'APPROVED') {
-            reasons.push('Phòng chưa được duyệt (hoặc bị từ chối)');
-        }
+        // Theo yêu cầu mới, bỏ qua bước kiểm tra duyệt phòng, không hold salary vì lý do này nữa.
+        // if (item.handover_status !== 'APPROVED') {
+        //     reasons.push('Phòng chưa được duyệt (hoặc bị từ chối)');
+        // }
         
         // 2. Khách đánh giá (Rating == 1 thì hold, null hoặc >= 2 thì pass)
         // Check KTV's specific rating first, then item rating, then booking rating
