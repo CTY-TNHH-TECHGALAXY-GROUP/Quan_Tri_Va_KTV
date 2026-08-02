@@ -465,6 +465,7 @@
 | `handover_checklist`| jsonb | Danh sách các mục KTV cần chụp ảnh khi dọn xong (JSON array of strings). Tùy chỉnh theo từng phòng (VD: "Máy lạnh", "Giường", "Thùng rác",...). |
 | `allowed_services` | jsonb | Danh sách ID dịch vụ phòng này có thể nhận (JSON array of service IDs) |
 | `default_reminders` | jsonb | Danh sách ID các câu nhắc nhở mặc định (JSON array of reminder IDs) |
+| `has_guests` | boolean | Cờ đánh dấu phòng đang có khách (do Hậu cần báo) |
 | `created_at` | timestamptz | Thời điểm tạo |
 | `updated_at` | timestamptz | Thời điểm cập nhật |
 

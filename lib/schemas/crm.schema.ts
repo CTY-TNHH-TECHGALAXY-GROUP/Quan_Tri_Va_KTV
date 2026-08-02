@@ -7,7 +7,8 @@ export const RoomPatchSchema = z.object({
   clean_procedure: z.array(z.string()).optional().nullable(),
   handover_checklist: z.array(z.string()).optional().nullable(),
   allowed_services: z.array(z.string()).optional().nullable(),
-  default_reminders: z.array(z.string().or(z.number())).optional().nullable()
+  default_reminders: z.array(z.string().or(z.number())).optional().nullable(),
+  has_guests: z.boolean().optional().nullable()
 });
 
 // PATCH /api/customers

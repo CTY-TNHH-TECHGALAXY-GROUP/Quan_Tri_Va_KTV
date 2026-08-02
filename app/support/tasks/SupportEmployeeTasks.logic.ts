@@ -28,6 +28,7 @@ interface TaskItem {
   category_id?: string;
   room_id?: string | null;
   categoryName?: string;
+  roomHasGuest?: boolean;
   categoryOrder?: number;
   sortOrder?: number;
 }
@@ -154,6 +155,33 @@ export const useSupportTasks = () => {
       }
     } catch (error) {
       console.error('Failed to complete task via API:', error);
+    }
+  };
+
+  // ============================================================
+  // Toggle Has Guest
+  // ============================================================
+  const toggleRoomHasGuest = async (roomId: string, currentStatus: boolean) => {
+    try {
+      // Optimistic UI update
+      setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: !currentStatus } : t));
+      
+      const res = await fetch('/api/rooms', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, has_guests: !currentStatus })
+      });
+      const json = await res.json();
+      
+      if (!json.success) {
+        console.error('API error toggling room guest status:', json.error);
+        // Revert on error
+        setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: currentStatus } : t));
+      }
+    } catch (error) {
+      console.error('Failed to toggle room guest status via API:', error);
+      // Revert on error
+      setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: currentStatus } : t));
     }
   };
 
@@ -391,6 +419,7 @@ export const useSupportTasks = () => {
     deletePhoto,
     uploading,
     submitTask,
+    toggleRoomHasGuest,
     // Photo Viewer State
     viewingTaskPhotos,
     setViewingTaskPhotos,

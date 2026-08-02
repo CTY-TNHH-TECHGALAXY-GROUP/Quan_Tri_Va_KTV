@@ -138,6 +138,7 @@ export interface RoomData {
   type: string;
   capacity?: number;
   default_reminders?: string[];
+  has_guests?: boolean;
 }
 
 export interface BedData {

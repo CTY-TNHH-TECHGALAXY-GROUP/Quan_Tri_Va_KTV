@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
-import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, Send, Eye, X, Trash2 } from 'lucide-react';
+import { Camera, Check, Upload, Clock, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, Send, Eye, X, Trash2, User } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // 🔧 UI CONFIGURATION
@@ -169,6 +169,9 @@ const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
   const [isOpen, setIsOpen] = useState(true);
   const doneCount = group.tasks.filter((t: any) => t.status === 'COMPLETED').length;
   
+  const roomId = group.tasks[0]?.room_id;
+  const roomHasGuest = group.tasks[0]?.roomHasGuest;
+
   return (
     <section className="mb-6">
       <div 
@@ -176,10 +179,24 @@ const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
         className="bg-slate-200 text-slate-700 px-4 py-3 rounded-t-xl flex items-center justify-between cursor-pointer hover:bg-slate-300 transition-colors"
       >
         <div className="flex flex-col">
-          <h2 className="text-sm font-bold uppercase tracking-wide">{group.categoryName}</h2>
-          <p className="text-[11px] text-slate-500 font-medium">Hoàn thành {doneCount}/{group.tasks.length}</p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide">{group.categoryName}</h2>
+            {roomId && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); logic.toggleRoomHasGuest(roomId, roomHasGuest); }}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 transition-colors ${
+                  roomHasGuest ? 'bg-red-500 text-white shadow-sm shadow-red-500/30' : 'bg-slate-300 text-slate-500 hover:bg-slate-400'
+                }`}
+                title={roomHasGuest ? 'Phòng đang có khách, nhấn để hủy' : 'Đánh dấu phòng đang có khách'}
+              >
+                <User size={12} />
+                {roomHasGuest ? 'Có khách' : 'Báo có khách'}
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 font-medium mt-0.5">Hoàn thành {doneCount}/{group.tasks.length}</p>
         </div>
-        <div className="text-slate-500">
+        <div className="text-slate-500 shrink-0">
           {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
         </div>
       </div>

@@ -785,9 +785,12 @@ const ServiceGroupCard = ({
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     <select value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
                       <option value="">P.</option>
-                      {rooms.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
+                      {rooms.map((r: any) => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
                     </select>
-                    {selRoom && (<span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 shrink-0">{selBed ? `G.${roomBedsList.findIndex(b => b.id === selBed) + 1}` : String.fromCharCode(8212)}</span>)}
+                    {selRoom && (rooms as any[]).find(r => r.id === selRoom)?.has_guests && (
+                      <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-md border border-red-100 shrink-0" title="Phòng đang có khách (Chưa bàn giao xong)">🙋 Khách</span>
+                    )}
+                    {selRoom && !((rooms as any[]).find(r => r.id === selRoom)?.has_guests) && (<span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 shrink-0">{selBed ? `G.${roomBedsList.findIndex(b => b.id === selBed) + 1}` : String.fromCharCode(8212)}</span>)}
                     <div className="relative">
                         <input
                             type="number"

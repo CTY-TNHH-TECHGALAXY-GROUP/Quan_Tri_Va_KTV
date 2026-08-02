@@ -275,7 +275,7 @@ export async function getDispatchData(date: string) {
         });
 
         // 6. Fetch Rooms, Beds, and Reminders — 🔧 EGRESS FIX: select specific columns
-        const { data: rooms } = await supabase.from('Rooms').select('id, name, capacity, type, default_reminders');
+        const { data: rooms } = await supabase.from('Rooms').select('id, name, capacity, type, default_reminders, has_guests');
         const { data: beds } = await supabase.from('Beds').select('id, name, roomId');
         const { data: reminders } = await supabase.from('Reminders').select('id, content, order_index, is_active').eq('is_active', true).order('order_index', { ascending: true });
         const { data: configs } = await supabase.from('SystemConfigs').select('key, value');

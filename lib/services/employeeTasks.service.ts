@@ -265,7 +265,7 @@ export class EmployeeTasksService {
 
     let query = supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name)')
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -317,6 +317,7 @@ export class EmployeeTasksService {
       category_id: t.category_id,
       room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
+      roomHasGuest: t.Rooms?.has_guests || false,
       categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
