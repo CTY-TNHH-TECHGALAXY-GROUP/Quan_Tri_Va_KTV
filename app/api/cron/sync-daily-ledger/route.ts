@@ -73,7 +73,7 @@ async function processLedgerSync(targetDateStr: string) {
     const { data: bookings } = await supabase
         .from('Bookings')
         .select(`
-            id, timeStart, timeEnd, status, technicianCode, rating,
+            id, timeStart, timeEnd, status, technicianCode, rating, guestCount,
             BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
         `)
         .gte('bookingDate', startTimeStr)

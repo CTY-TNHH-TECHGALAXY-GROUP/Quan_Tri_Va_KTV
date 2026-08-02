@@ -74,7 +74,7 @@ export async function GET(request: Request) {
             let bookingQuery = supabase
                 .from('Bookings')
                 .select(`
-                    id, timeStart, timeEnd, status, technicianCode, rating,
+                    id, timeStart, timeEnd, status, technicianCode, rating, guestCount,
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
                 .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
