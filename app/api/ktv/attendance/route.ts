@@ -317,7 +317,7 @@ export async function POST(request: Request) {
                     await supabase.from('Users').update({ isOnShift: false }).eq('id', employeeId);
 
                     if (staffCode && userData.role === 'TECHNICIAN') {
-                        // 🔸 Set status = off trong TurnQueue (hiển thị mờ ở cuối danh sách)
+                        // 🔸 Set status = off trong TurnQueue (hiển thị mờ ở cuối danh sách màu xám)
                         await supabase
                             .from('TurnQueue')
                             .upsert({ 
@@ -325,6 +325,12 @@ export async function POST(request: Request) {
                                 date: today, 
                                 status: 'off' 
                             }, { onConflict: 'employee_id,date' });
+
+                        // 🔸 Tắt VIP Menu cho KTV khi đã tan ca
+                        await supabase
+                            .from('Staff')
+                            .update({ is_active_vip_menu: false })
+                            .eq('id', staffCode);
                     }
                     
                     // 🔸 Ghi nhận "Nghỉ đột xuất" vào bảng Lịch OFF (KTVLeaveRequests) theo đúng Business Date
