@@ -88,6 +88,16 @@ const WebBookingQR = ({ url }: { url: string }) => {
   );
 };
 
+// ─── ServiceTypeLabel Component ─────────────────────────────────────────────
+const ServiceTypeLabel = ({ serviceId }: { serviceId?: string }) => {
+  if (!serviceId) return null;
+  const prefix = String(serviceId).substring(0, 3).toUpperCase();
+  if (prefix === 'NHP') return <span className="text-[10px] font-black text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-lg whitespace-nowrap shadow-sm uppercase tracking-widest">VIP</span>;
+  if (prefix === 'NHT') return <span className="text-[10px] font-black text-blue-700 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg whitespace-nowrap shadow-sm uppercase tracking-widest">ĐIỀU TRỊ</span>;
+  if (prefix === 'NHS') return <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-lg whitespace-nowrap shadow-sm uppercase tracking-widest">MENU THƯỜNG</span>;
+  return null;
+};
+
 // ----------------------------------------------------
 // MAIN COMPONENT
 // ----------------------------------------------------
@@ -610,6 +620,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
                         {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
+                        <ServiceTypeLabel serviceId={item.serviceId} />
                         <span className="text-sm font-black text-slate-800">#{booking.billCode}</span>
                       </div>
                       {coWorkers.length > 0 && (
@@ -891,6 +902,7 @@ function ScreenTimer({ logic }: { logic: any }) {
               <Clock size={14} />
               <span>{displayDuration} phút</span>
             </div>
+            <ServiceTypeLabel serviceId={item.serviceId} />
           </div>
           {/* CoWorkers display in Timer - chỉ khi cùng 1 dịch vụ */}
           {(() => {

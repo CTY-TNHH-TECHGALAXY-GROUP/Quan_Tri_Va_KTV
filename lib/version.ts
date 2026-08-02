@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.33';
-export const LAST_UPDATE = 'Thêm chức năng báo phòng có khách từ app nhân viên Hậu cần';
+export const APP_VERSION = '1.7.34';
+export const LAST_UPDATE = 'Fix lỗi trừ tiền giặt đồ 2 lần';
