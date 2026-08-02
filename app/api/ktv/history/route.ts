@@ -94,7 +94,7 @@ export async function GET(request: Request) {
         // ─── Fetch Bookings ──────────────────────────────────────────────
         const { data: rawBookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, BookingItems!fk_bookingitems_booking(technicianCodes)')
+            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, guestCount, BookingItems!fk_bookingitems_booking(technicianCodes)')
             .gte('bookingDate', fromFilter)
             .lte('bookingDate', toFilter)
             .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE'])
