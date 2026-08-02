@@ -340,11 +340,6 @@ export class KtvCommissionService {
         // Cap points to max adjustedBasePoints (Max ứng 1 Khách chỉ là Base)
         calculatedPoints = Math.min(calculatedPoints, adjustedBasePoints);
 
-        // Penalty for short duration
-        if (myTotalDuration < 60) {
-            calculatedPoints = calculatedPoints / 2;
-        }
-
         return Math.floor(calculatedPoints);
     }
 
