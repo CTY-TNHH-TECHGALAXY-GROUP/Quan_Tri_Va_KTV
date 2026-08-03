@@ -140,7 +140,7 @@ export const useEmployeeDetail = (employeeId: string) => {
     const { data, error } = await supabase
       .from('Tasks')
       .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name)')
-      .or(`assignee_id.eq.${employeeId},and(assignee_id.is.null,room_id.not.is.null)`)
+      .eq('assignee_id', employeeId)
       .gte('created_at', TODAY_START.toISOString())
       .lte('created_at', TODAY_END.toISOString())
       .order('created_at', { ascending: true });

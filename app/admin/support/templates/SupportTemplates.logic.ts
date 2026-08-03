@@ -100,19 +100,11 @@ export const useSupportTemplates = () => {
 
     // Build lookup maps
     const taskMap = new Map<string, { total: number; completed: number }>();
-    let sharedTotal = 0;
-    let sharedCompleted = 0;
-    
     (todayTasks || []).forEach(t => {
-      if (t.assignee_id === null) {
-        sharedTotal++;
-        if (t.status === 'COMPLETED') sharedCompleted++;
-      } else {
-        const current = taskMap.get(t.assignee_id) || { total: 0, completed: 0 };
-        current.total++;
-        if (t.status === 'COMPLETED') current.completed++;
-        taskMap.set(t.assignee_id, current);
-      }
+      const current = taskMap.get(t.assignee_id) || { total: 0, completed: 0 };
+      current.total++;
+      if (t.status === 'COMPLETED') current.completed++;
+      taskMap.set(t.assignee_id, current);
     });
 
     const routineMap = new Map<string, number>();
@@ -123,13 +115,12 @@ export const useSupportTemplates = () => {
     const mapped: EmployeeCard[] = (users || []).map(u => {
       const taskProgress = taskMap.get(u.id);
       const routineCount = routineMap.get(u.id) || 0;
-      const isRelevantRole = u.role === 'SUPPORT' || u.role === 'TECHNICIAN';
       return {
         id: u.id,
         fullName: u.fullName || 'Chưa đặt tên',
         role: u.role || 'STAFF',
-        totalTasks: (taskProgress?.total || routineCount) + (isRelevantRole ? sharedTotal : 0),
-        completedTasks: (taskProgress?.completed || 0) + (isRelevantRole ? sharedCompleted : 0),
+        totalTasks: taskProgress?.total || routineCount,
+        completedTasks: taskProgress?.completed || 0,
       };
     });
 
