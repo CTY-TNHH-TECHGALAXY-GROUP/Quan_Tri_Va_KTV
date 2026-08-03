@@ -267,11 +267,11 @@ export class KtvOnlineService {
         supabase: SupabaseClient
     ): Promise<{ success: boolean; offlinedCount: number; offlinedIds: string[]; error?: string }> {
         try {
-            // 1. Find all online/at_venue KTVs (Type B only)
+            // 1. Find all online KTVs (chưa đến tiệm)
             const { data: onlineStaff, error: fetchErr } = await supabase
                 .from('Staff')
                 .select('id, available_until')
-                .in('online_status', ['ONLINE', 'AT_VENUE']);
+                .eq('online_status', 'ONLINE');
 
             if (fetchErr) {
                 console.error('KtvOnlineService.cleanupExpiredOnline - Fetch error:', fetchErr.message);
@@ -319,7 +319,6 @@ export class KtvOnlineService {
                 .from('Staff')
                 .update({
                     online_status: 'OFFLINE',
-                    is_active_vip_menu: false, // Tắt VIP Menu khi quá giờ
                     travel_minutes: 0,
                     available_from: null,
                     available_until: null,

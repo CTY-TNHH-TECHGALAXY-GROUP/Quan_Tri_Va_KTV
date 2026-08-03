@@ -102,11 +102,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: res.error }, { status: 500 });
       }
       
-      // Update cờ feature_flags và hoàn trả VIP Menu cho Loại A
+      // Chỉ update cờ feature_flags, KHÔNG ĐỤNG ĐẾN is_active_vip_menu
       const updatePayload: any = { feature_flags: newFlags };
-      if (!isTypeB && currentFlags.was_vip_before_oncall !== undefined) {
-          updatePayload.is_active_vip_menu = currentFlags.was_vip_before_oncall;
-      }
 
       await supabase.from('Staff').update(updatePayload).eq('id', techCode);
       
@@ -141,11 +138,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: res.error }, { status: 500 });
     }
 
-    // Luôn update cờ feature_flags để backup và tự động cho Loại A lên VIP Menu
+    // Chỉ update cờ feature_flags, KHÔNG ĐỤNG ĐẾN is_active_vip_menu
     const updatePayload: any = { feature_flags: newFlags };
-    if (!isTypeB) {
-        updatePayload.is_active_vip_menu = true;
-    }
     
     await supabase.from('Staff').update(updatePayload).eq('id', techCode);
 
