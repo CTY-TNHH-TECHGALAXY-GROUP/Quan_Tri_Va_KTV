@@ -216,6 +216,30 @@ export class EmployeeTasksService {
         .from('RoomTaskTemplates')
         .select('template_id, room_id, TaskTemplates(id, name, category_id, requires_photo, min_photo_count, sort_order, cron_schedule, TaskCategories(repeat_mode))');
 
+      if (roomRoutines) {
+        const activeRoomRoutineIds = new Set(roomRoutines.map((r: any) => `${r.template_id}_${r.room_id}`));
+
+        // Cleanup stale shared room tasks
+        const staleRoomTasks = (existing || []).filter(t =>
+          t.assignee_id === null && // Shared room task
+          t.room_id !== null &&
+          t.task_type === 'FIXED' &&
+          t.status === 'NOT_STARTED' &&
+          t.template_id &&
+          !activeRoomRoutineIds.has(`${t.template_id}_${t.room_id}`)
+        );
+
+        if (staleRoomTasks.length > 0) {
+          const staleTaskIds = staleRoomTasks.map(t => t.id);
+          const { error: deleteErr } = await supabase.from('Tasks').delete().in('id', staleTaskIds);
+          if (deleteErr) {
+            console.error('Error deleting stale room tasks:', deleteErr.message);
+          } else {
+            console.log(`Cleaned up ${staleRoomTasks.length} stale room tasks`);
+          }
+        }
+      }
+
       if (roomRoutines && roomRoutines.length > 0) {
         const newRoomTasks = roomRoutines
           .filter((r: any) => {
