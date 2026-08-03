@@ -28,6 +28,10 @@ export async function POST(request: Request) {
     if (!supabase) throw new Error('Supabase not initialized');
 
     if (body.bulk) {
+      // 1. Fetch current matrix to find additions
+      const { data: oldMatrix } = await supabase.from('RoomTaskTemplates').select('room_id, template_id');
+      const oldMatrixSet = new Set(oldMatrix?.map(m => `${m.room_id}_${m.template_id}`) || []);
+
       // Bulk overwrite
       const { error: delErr } = await supabase.from('RoomTaskTemplates').delete().neq('template_id', '00000000-0000-0000-0000-000000000000');
       if (delErr) throw delErr;
@@ -35,7 +39,58 @@ export async function POST(request: Request) {
       if (body.matrix && body.matrix.length > 0) {
         const { error: insErr } = await supabase.from('RoomTaskTemplates').insert(body.matrix);
         if (insErr) throw insErr;
+        
+        // Auto-assign new additions to employees currently covering those rooms
+        const additions = body.matrix.filter((m: any) => !oldMatrixSet.has(`${m.room_id}_${m.template_id}`));
+        if (additions.length > 0) {
+          const { data: existingRoutines } = await supabase.from('EmployeeRoutines').select('employee_id, room_id').not('room_id', 'is', null);
+          const roomEmployees = new Map<string, Set<string>>();
+          existingRoutines?.forEach(r => {
+             if (!roomEmployees.has(r.room_id)) roomEmployees.set(r.room_id, new Set());
+             roomEmployees.get(r.room_id)!.add(r.employee_id);
+          });
+          
+          const newRoutines: any[] = [];
+          for (const m of additions) {
+            const employees = roomEmployees.get(m.room_id);
+            if (employees) {
+              for (const empId of employees) {
+                newRoutines.push({
+                  employee_id: empId,
+                  room_id: m.room_id,
+                  template_id: m.template_id,
+                  is_active: true
+                });
+              }
+            }
+          }
+          
+          if (newRoutines.length > 0) {
+            await supabase.from('EmployeeRoutines').insert(newRoutines);
+          }
+        }
       }
+      
+      // Cleanup orphaned EmployeeRoutines
+      const { data: routines } = await supabase.from('EmployeeRoutines').select('id, room_id, template_id').not('room_id', 'is', null);
+      const { data: newMatrix } = await supabase.from('RoomTaskTemplates').select('room_id, template_id');
+      const matrixSet = new Set(newMatrix?.map(m => `${m.room_id}_${m.template_id}`) || []);
+      const routinesToDelete = routines?.filter(r => !matrixSet.has(`${r.room_id}_${r.template_id}`)).map(r => r.id) || [];
+      if (routinesToDelete.length > 0) {
+        await supabase.from('EmployeeRoutines').delete().in('id', routinesToDelete);
+      }
+      
+      // Cleanup orphaned NOT_STARTED tasks today
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+      const { data: tasks } = await supabase.from('Tasks').select('id, room_id, template_id')
+        .eq('status', 'NOT_STARTED')
+        .not('room_id', 'is', null)
+        .gte('created_at', todayStart.toISOString());
+      const tasksToDelete = tasks?.filter(t => !matrixSet.has(`${t.room_id}_${t.template_id}`)).map(t => t.id) || [];
+      if (tasksToDelete.length > 0) {
+        await supabase.from('Tasks').delete().in('id', tasksToDelete);
+      }
+      
       return NextResponse.json({ success: true });
     }
 
