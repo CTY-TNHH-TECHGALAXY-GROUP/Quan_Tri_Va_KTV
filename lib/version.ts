@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.44';
-export const LAST_UPDATE = 'Cronjob hết giờ tự động tắt chỉ áp dụng cho KTV chưa đến tiệm. Nếu đã điểm danh (Đã tới tiệm) thì bỏ qua thời gian cài đặt, chỉ dùng nút Tắt Nhận Đơn.';
+export const APP_VERSION = '1.7.45';
+export const LAST_UPDATE = 'Đổi tên nút điểm danh trên App KTV từ "Ngân Hà Xin Cảm ơn" thành "Oria Xin Cảm ơn" cho đồng bộ thương hiệu.';

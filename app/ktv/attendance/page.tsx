@@ -602,7 +602,7 @@ const KTVAttendancePage = () => {
                                                 disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
                                                 className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                                             >
-                                                <LogOut size={22} /> Ngân Hà Xin Cảm ơn
+                                                <LogOut size={22} /> Oria Xin Cảm ơn
                                             </button>
                                             {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
                                                 <button
@@ -659,8 +659,8 @@ const KTVAttendancePage = () => {
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
-                                {formType === 'CHECK_IN' ? (workType === 'TYPE_B' ? 'Báo Cáo Đến Tiệm' : 'Ngân Hà Xin Chào') :
-                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (workType === 'TYPE_B' ? 'Báo Cáo Tan Ca' : 'Ngân Hà Xin Cảm ơn') :
+                                {formType === 'CHECK_IN' ? (workType === 'TYPE_B' ? 'Báo Cáo Đến Tiệm' : 'Oria Xin Chào') :
+                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (workType === 'TYPE_B' ? 'Báo Cáo Tan Ca' : 'Oria Xin Cảm ơn') :
                                  'Điểm danh bổ sung'}
                             </h3>
 
