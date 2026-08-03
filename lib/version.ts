@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.46';
-export const LAST_UPDATE = 'Tự động điền (và làm mờ) Thời gian dự kiến về bằng Thời gian cài đặt nhận đơn đối với KTV B khi điểm danh tới Spa.';
+export const APP_VERSION = '1.7.47';
+export const LAST_UPDATE = 'Sửa lỗi KTV B bị báo "đi trễ" và bắt nhập lý do khi báo cáo đến tiệm.';
