@@ -5,7 +5,7 @@ export const PayrollOverrideSchema = z.object({
   employeeId: z.string().min(1, "Thiếu dữ liệu bắt buộc (employeeId)"),
   employeeName: z.string().optional().nullable(),
   date: z.string().min(1, "Thiếu dữ liệu bắt buộc (date)"),
-  newStatus: z.enum(['off', 'suddenOff', 'free', 'request', 'absent'], {
+  newStatus: z.enum(['off', 'suddenOff', 'free', 'request', 'absent', 'vip'], {
     message: "Trạng thái (newStatus) không hợp lệ"
   }),
   reviewedBy: z.string().optional().nullable()

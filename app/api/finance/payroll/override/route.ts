@@ -32,11 +32,12 @@ export async function POST(request: Request) {
             .match({ employeeId, date });
 
         // 3. Xử lý theo newStatus
-        if (newStatus === 'off' || newStatus === 'suddenOff' || newStatus === 'free' || newStatus === 'request') {
+        if (newStatus === 'off' || newStatus === 'suddenOff' || newStatus === 'free' || newStatus === 'request' || newStatus === 'vip') {
             const isSudden = newStatus === 'suddenOff';
             let reason = 'Chỉnh sửa thủ công từ Bảng lương';
             if (newStatus === 'free') reason = 'OVERRIDE:FREE';
             if (newStatus === 'request') reason = 'OVERRIDE:REQUEST';
+            if (newStatus === 'vip') reason = 'OVERRIDE:VIP';
 
             const { error: insertError } = await supabase
                 .from('KTVLeaveRequests')

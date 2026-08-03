@@ -15,6 +15,7 @@ const SHIFT_START_TIMES: Record<string, string> = {
   'SHIFT_3': '17:00',
   'FREE': '09:00',
   'REQUEST': '09:00',
+  'VIP': '09:00',
 };
 
 export interface AttendanceRecord {
@@ -162,7 +163,7 @@ export const usePayrollLogic = () => {
         for (const s of staffShifts) {
             const effDate = s.effectiveFrom ? s.effectiveFrom.slice(0, 10) : '';
             if (effDate && effDate <= dateStr) {
-                if (s.shiftType !== 'FREE' && s.shiftType !== 'REQUEST') {
+                if (s.shiftType !== 'FREE' && s.shiftType !== 'REQUEST' && s.shiftType !== 'VIP') {
                     lastPermanentShift = s.shiftType;
                 }
                 
@@ -201,7 +202,7 @@ export const usePayrollLogic = () => {
             }
         }
 
-        if (dayLeave && dayLeave.reason !== 'OVERRIDE:FREE' && dayLeave.reason !== 'OVERRIDE:REQUEST') {
+        if (dayLeave && dayLeave.reason !== 'OVERRIDE:FREE' && dayLeave.reason !== 'OVERRIDE:REQUEST' && dayLeave.reason !== 'OVERRIDE:VIP') {
           // Bất kể có đi làm hay không, có đơn xin nghỉ là tính OFF
           status = dayLeave.is_sudden_off ? 'suddenOff' : 'off';
         } else {
@@ -209,6 +210,8 @@ export const usePayrollLogic = () => {
             shiftType = 'FREE';
           } else if (dayLeave?.reason === 'OVERRIDE:REQUEST') {
             shiftType = 'REQUEST';
+          } else if (dayLeave?.reason === 'OVERRIDE:VIP') {
+            shiftType = 'VIP';
           }
           
           if (dayAtt && (dayAtt.check_in_time || dayAtt.check_out_time)) {
@@ -216,7 +219,7 @@ export const usePayrollLogic = () => {
             if (dayAtt.status === 'on_duty' || dayAtt.status === 'off_duty') {
               status = 'present';
               
-              const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
+              const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST' || shiftType === 'VIP';
               if (!isFlexibleShift) {
                   // Calculate late mins based on check_in_time
                   const shiftStartTime = SHIFT_START_TIMES[shiftType];
@@ -240,7 +243,7 @@ export const usePayrollLogic = () => {
             }
           } else {
             // No attendance and no leave request
-            const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST';
+            const isFlexibleShift = shiftType === 'FREE' || shiftType === 'REQUEST' || shiftType === 'VIP';
             if (isPastGracePeriod && !isFlexibleShift) {
                 status = 'suddenOff';
             } else {
@@ -254,8 +257,8 @@ export const usePayrollLogic = () => {
           employeeId: staff.id,
           employeeName: staff.full_name,
           shiftType: shiftType,
-          checkIn: (shiftType === 'FREE' || shiftType === 'REQUEST') ? (dayAtt?.check_in_time || '--:--') : (dayAtt?.check_in_time || null),
-          checkOut: (shiftType === 'FREE' || shiftType === 'REQUEST') ? (dayAtt?.check_out_time || '--:--') : (dayAtt?.check_out_time || null),
+          checkIn: (shiftType === 'FREE' || shiftType === 'REQUEST' || shiftType === 'VIP') ? (dayAtt?.check_in_time || '--:--') : (dayAtt?.check_in_time || null),
+          checkOut: (shiftType === 'FREE' || shiftType === 'REQUEST' || shiftType === 'VIP') ? (dayAtt?.check_out_time || '--:--') : (dayAtt?.check_out_time || null),
           lateMins,
           status
         });
@@ -294,7 +297,7 @@ export const usePayrollLogic = () => {
       totalLate: processedData.filter(r => r.status === 'late').length,
       totalSuddenOff,
       totalLeave,
-      freeShifts: processedData.filter(r => r.shiftType === 'FREE' && r.checkIn).length,
+      freeShifts: processedData.filter(r => (r.shiftType === 'FREE' || r.shiftType === 'VIP') && r.checkIn).length,
       requestShifts: processedData.filter(r => r.shiftType === 'REQUEST' && r.checkIn).length,
       forgotCheckOut: processedData.filter(r => r.checkIn && !r.checkOut && r.date < todayStr).length
     };
@@ -318,7 +321,7 @@ export const usePayrollLogic = () => {
       const totalSuddenOff = staffData.filter(r => r.status === 'suddenOff').length;
       const totalLeave = staffData.filter(r => r.status === 'off').length;
       const totalLate = staffData.filter(r => r.status === 'late').length;
-      const freeShifts = staffData.filter(r => r.shiftType === 'FREE' && r.checkIn).length;
+      const freeShifts = staffData.filter(r => (r.shiftType === 'FREE' || r.shiftType === 'VIP') && r.checkIn).length;
       const requestShifts = staffData.filter(r => r.shiftType === 'REQUEST' && r.checkIn).length;
       const forgotCheckOut = staffData.filter(r => r.checkIn && !r.checkOut && r.date < todayStr).length;
 
@@ -352,7 +355,7 @@ export const usePayrollLogic = () => {
         case 'late': return r.status === 'late';
         case 'suddenOff': return r.status === 'suddenOff';
         case 'off': return r.status === 'off';
-        case 'free': return r.shiftType === 'FREE' && r.checkIn;
+        case 'free': return (r.shiftType === 'FREE' || r.shiftType === 'VIP') && r.checkIn;
         case 'request': return r.shiftType === 'REQUEST' && r.checkIn;
         case 'forgotCheckOut': return r.checkIn && !r.checkOut && r.date < todayStr;
         default: return true;

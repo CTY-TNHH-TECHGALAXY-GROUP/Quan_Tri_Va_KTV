@@ -24,6 +24,7 @@ const SHIFT_LABELS: Record<string, string> = {
     SHIFT_3: t.SHIFT_3,
     FREE: t.FREE,
     REQUEST: t.REQUEST,
+    VIP: t.VIP,
 };
 
 const SHIFT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -32,6 +33,7 @@ const SHIFT_COLORS: Record<string, { bg: string; text: string; border: string }>
     SHIFT_3: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
     FREE: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
     REQUEST: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
+    VIP: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
 };
 
 const LeaveManagementPage = () => {
@@ -575,7 +577,7 @@ const ShiftManagementTab = ({ logic }: { logic: ReturnType<typeof useShiftManage
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-gray-700 block">Chọn Ca</label>
                             <div className="space-y-2">
-                                {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'].map(shift => (
+                                {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'].map(shift => (
                                     <button
                                         key={shift}
                                         type="button"
@@ -587,7 +589,7 @@ const ShiftManagementTab = ({ logic }: { logic: ReturnType<typeof useShiftManage
                                         }`}
                                     >
                                         <div className={`w-2.5 h-2.5 rounded-full ${
-                                            shift === 'SHIFT_1' ? 'bg-blue-600' : shift === 'SHIFT_2' ? 'bg-amber-600' : shift === 'SHIFT_3' ? 'bg-indigo-600' : shift === 'FREE' ? 'bg-teal-500' : 'bg-pink-500'
+                                            shift === 'SHIFT_1' ? 'bg-blue-600' : shift === 'SHIFT_2' ? 'bg-amber-600' : shift === 'SHIFT_3' ? 'bg-indigo-600' : shift === 'FREE' ? 'bg-teal-500' : shift === 'VIP' ? 'bg-orange-500' : 'bg-pink-500'
                                         }`} />
                                         <span className="text-sm font-bold">{SHIFT_LABELS[shift]}</span>
                                         {assignShiftType === shift && <CheckCircle2 size={14} className="ml-auto text-indigo-500" />}

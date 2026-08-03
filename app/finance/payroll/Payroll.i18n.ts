@@ -42,6 +42,7 @@ export const t = {
       SHIFT_3: 'Ca 3',
       FREE: 'Tự do',
       REQUEST: 'Yêu cầu',
+      VIP: 'Ca VIP',
       OFF: 'OFF',
     }
   },
@@ -87,6 +88,7 @@ export const t = {
       SHIFT_3: 'Shift 3',
       FREE: 'Free',
       REQUEST: 'Request',
+      VIP: 'VIP Shift',
       OFF: 'OFF',
     }
   }

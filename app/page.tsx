@@ -157,6 +157,7 @@ const SHIFT_DISPLAY: Record<string, { label: string; time: string; color: string
   SHIFT_3: { label: 'Ca 3', time: '17:00 - 00:00', color: 'text-violet-700', border: 'border-violet-200', bg: 'bg-violet-50' },
   FREE: { label: 'Ca tự do', time: '', color: 'text-emerald-700', border: 'border-emerald-200', bg: 'bg-emerald-50' },
   REQUEST: { label: 'Làm KH yêu cầu', time: '', color: 'text-teal-700', border: 'border-teal-200', bg: 'bg-teal-50' },
+  VIP: { label: 'Ca VIP', time: '', color: 'text-orange-700', border: 'border-orange-200', bg: 'bg-orange-50' },
 };
 
 interface LeaveItem {
@@ -182,7 +183,7 @@ const DailyStaffOverview = () => {
   const [shifts, setShifts] = useState<ShiftItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showOvertime, setShowOvertime] = useState(false);
-  const [expandedShifts, setExpandedShifts] = useState<string[]>(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST']);
+  const [expandedShifts, setExpandedShifts] = useState<string[]>(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP']);
 
   // Get today in VN timezone
   const getVnToday = () => {
@@ -236,7 +237,7 @@ const DailyStaffOverview = () => {
   // Ngược lại (Ca 1,2,3) thì không hiển thị.
   const workingShifts = shifts.filter(s => {
     if (offIds.has(s.employeeId)) {
-      return s.shiftType === 'FREE' || s.shiftType === 'REQUEST';
+      return s.shiftType === 'FREE' || s.shiftType === 'REQUEST' || s.shiftType === 'VIP';
     }
     return true;
   });
@@ -250,7 +251,7 @@ const DailyStaffOverview = () => {
   });
 
   // Order shifts logically
-  const shiftOrder = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'];
+  const shiftOrder = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'];
   const orderedKeys = shiftOrder.filter(k => shiftGroups[k]);
   // Add any unknown keys
   Object.keys(shiftGroups).forEach(k => {
@@ -413,13 +414,13 @@ const DailyStaffOverview = () => {
                             <p className={`text-sm font-bold ${display.color}`}>
                               {staff.employeeId}
                             </p>
-                            {/* FREE shift: always show "Về: HH:MM" | Overtime: gated by toggle */}
-                            {shiftKey === 'FREE' && staff.estimatedEndTime && (
-                              <p className="text-[9px] font-bold leading-tight mt-0.5 text-teal-500">
+                            {/* FREE/VIP shift: always show "Về: HH:MM" | Overtime: gated by toggle */}
+                            {(shiftKey === 'FREE' || shiftKey === 'VIP') && staff.estimatedEndTime && (
+                              <p className={`text-[9px] font-bold leading-tight mt-0.5 ${shiftKey === 'VIP' ? 'text-orange-500' : 'text-teal-500'}`}>
                                 Về: {staff.estimatedEndTime}
                               </p>
                             )}
-                            {shiftKey !== 'FREE' && showOvertime && staff.estimatedEndTime && (
+                            {(shiftKey !== 'FREE' && shiftKey !== 'VIP') && showOvertime && staff.estimatedEndTime && (
                               <p className="text-[9px] font-bold leading-tight mt-0.5 text-purple-500">
                                 Tăng ca: {staff.estimatedEndTime}
                               </p>

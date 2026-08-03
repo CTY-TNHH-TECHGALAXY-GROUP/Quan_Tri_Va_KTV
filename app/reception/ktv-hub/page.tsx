@@ -772,6 +772,7 @@ const SHIFT_LABELS_HUB: Record<string, string> = {
     SHIFT_3: 'Ca 3 (17:00 - 00:00)',
     FREE: 'Ca tự do',
     REQUEST: 'Làm khách yêu cầu',
+    VIP: 'Ca VIP',
 };
 const SHIFT_COLORS_HUB: Record<string, { bg: string; text: string; border: string }> = {
     SHIFT_1: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
@@ -779,6 +780,7 @@ const SHIFT_COLORS_HUB: Record<string, { bg: string; text: string; border: strin
     SHIFT_3: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
     FREE: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
     REQUEST: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
+    VIP: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
 };
 
 const LeaveOffTab = () => {
@@ -1124,13 +1126,13 @@ const LeaveOffTab = () => {
                                         </span>
                                     </h4>
                                     <div className="space-y-3">
-                                        {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'].map(shiftType => {
+                                        {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'].map(shiftType => {
                                             const activeShifts = allShifts.filter(shift => {
                                                 if (shift.shiftType !== shiftType) return false;
                                                 const isOff = selectedLeaves.some(l => l.employeeId === shift.employeeId);
                                                 if (!isOff) return true;
                                                 // Đã đăng ký OFF nhưng có điểm danh chọn ca tạm thời (hoặc tự do/khách yêu cầu) thì vẫn hiển thị
-                                                const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST';
+                                                const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh' || shift.shiftType === 'FREE' || shift.shiftType === 'REQUEST' || shift.shiftType === 'VIP';
                                                 return isTempShift;
                                             });
                                             
@@ -1162,8 +1164,8 @@ const LeaveOffTab = () => {
                                                                             )}
                                                                         </div>
                                                                         {shift.estimatedEndTime && (
-                                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full text-center ${shiftType === 'FREE' ? 'text-teal-600 bg-teal-50 border border-teal-100' : 'text-purple-600 bg-purple-50 border border-purple-100'}`}>
-                                                                                {shiftType === 'FREE' ? 'Về:' : 'Làm thêm:'} {shift.estimatedEndTime}
+                                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm w-full text-center ${shiftType === 'FREE' ? 'text-teal-600 bg-teal-50 border border-teal-100' : shiftType === 'VIP' ? 'text-orange-600 bg-orange-50 border border-orange-100' : 'text-purple-600 bg-purple-50 border border-purple-100'}`}>
+                                                                                {(shiftType === 'FREE' || shiftType === 'VIP') ? 'Về:' : 'Làm thêm:'} {shift.estimatedEndTime}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -1261,7 +1263,7 @@ const LeaveOffTab = () => {
                                                             {SHIFT_LABELS_HUB[shift.shiftType]?.split(' (')[0] || shift.shiftType}
                                                         </span>
                                                         <span className="text-[8px] font-bold opacity-70 leading-none mt-0.5 whitespace-nowrap">
-                                                            {shift.shiftType === 'FREE' && shift.estimatedEndTime ? `Về: ${shift.estimatedEndTime}` : SHIFT_LABELS_HUB[shift.shiftType]?.match(/\((.*)\)/)?.[1] || ''}
+                                                            {(shift.shiftType === 'FREE' || shift.shiftType === 'VIP') && shift.estimatedEndTime ? `Về: ${shift.estimatedEndTime}` : SHIFT_LABELS_HUB[shift.shiftType]?.match(/\((.*)\)/)?.[1] || ''}
                                                         </span>
                                                     </div>
                                                     <button onClick={() => openAssignModal(shift.employeeId, shift.employeeName)}
@@ -1330,10 +1332,10 @@ const LeaveOffTab = () => {
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-gray-700 block">Chọn Ca</label>
                             <div className="space-y-2">
-                                {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'].map(shift => (
+                                {['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'].map(shift => (
                                     <button key={shift} type="button" onClick={() => setAssignShiftType(shift)}
                                         className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${assignShiftType === shift ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-200'}`}>
-                                        <div className={`w-2.5 h-2.5 rounded-full ${shift === 'SHIFT_1' ? 'bg-blue-600' : shift === 'SHIFT_2' ? 'bg-amber-600' : shift === 'SHIFT_3' ? 'bg-indigo-600' : shift === 'FREE' ? 'bg-teal-500' : 'bg-pink-500'}`} />
+                                        <div className={`w-2.5 h-2.5 rounded-full ${shift === 'SHIFT_1' ? 'bg-blue-600' : shift === 'SHIFT_2' ? 'bg-amber-600' : shift === 'SHIFT_3' ? 'bg-indigo-600' : shift === 'FREE' ? 'bg-teal-500' : shift === 'VIP' ? 'bg-orange-500' : 'bg-pink-500'}`} />
                                         <span className="text-sm font-bold">{SHIFT_LABELS_HUB[shift]}</span>
                                         {assignShiftType === shift && <CheckCircle2 size={14} className="ml-auto text-indigo-500" />}
                                     </button>

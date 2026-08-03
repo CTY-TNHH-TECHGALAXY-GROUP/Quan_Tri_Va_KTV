@@ -21,6 +21,7 @@ const SHIFT_START_TIMES: Record<string, string> = {
     FREE: '00:00',
     REQUEST: '00:00',
     SUPPORT: '00:00',
+    VIP: '00:00',
 };
 const SHIFT_END_TIMES: Record<string, string> = {
     SHIFT_1: '17:00',
@@ -30,6 +31,7 @@ const SHIFT_END_TIMES: Record<string, string> = {
     FREE: '00:00',
     REQUEST: '00:00',
     SUPPORT: '00:00',
+    VIP: '00:00',
 };
 
 // --- TYPES ---
@@ -221,7 +223,7 @@ export const useKTVAttendance = () => {
         }
 
         // Bỏ qua check đi muộn cho các ca linh hoạt
-        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT') {
+        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT' || activeShiftType === 'VIP') {
             setIsLate(false);
             return false;
         }
@@ -331,7 +333,7 @@ export const useKTVAttendance = () => {
         if (!activeShiftType || isLoadingShift) return { canCheckOut: true, checkoutBlockedUntil: null };
 
         // Ca tự do và Khách yêu cầu thì luôn cho phép về thẳng (không block, không tính đột xuất)
-        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT') {
+        if (activeShiftType === 'FREE' || activeShiftType === 'REQUEST' || activeShiftType === 'SUPPORT' || activeShiftType === 'VIP') {
             return { canCheckOut: true, checkoutBlockedUntil: null };
         }
 

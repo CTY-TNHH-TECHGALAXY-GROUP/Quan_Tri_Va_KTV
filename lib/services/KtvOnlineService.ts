@@ -186,11 +186,11 @@ export class KtvOnlineService {
                     .eq('effectiveFrom', businessDateStr)
                     .eq('status', 'ACTIVE');
 
-                // Mở Ca tự do mới
+                // Mở Ca VIP mới
                 await supabase.from('KTVShifts').insert({
                     employeeId: user.id,
                     employeeName: user.fullName || staffData.full_name,
-                    shiftType: 'FREE',
+                    shiftType: 'VIP',
                     effectiveFrom: businessDateStr,
                     reason: 'KTV Loại B tới tiệm',
                     status: 'ACTIVE',

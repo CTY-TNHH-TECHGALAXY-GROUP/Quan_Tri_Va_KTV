@@ -12,6 +12,7 @@ const SHIFT_TYPES = {
     FREE: { label: 'Ca tự do', start: '00:00', end: '23:59' },
     REQUEST: { label: 'Làm khách yêu cầu', start: '00:00', end: '23:59' },
     SUPPORT: { label: 'Ca Hậu cần', start: '00:00', end: '23:59' },
+    VIP: { label: 'Ca VIP', start: '00:00', end: '23:59' },
 } as const;
 
 /**

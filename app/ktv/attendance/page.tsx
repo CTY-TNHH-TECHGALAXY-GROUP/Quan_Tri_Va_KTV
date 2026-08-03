@@ -267,7 +267,11 @@ const KTVAttendancePage = () => {
         if (type === 'CHECK_OUT' && isEarlyCheckout) {
             setSelectedShiftType('SUDDEN_OFF_CHECKOUT');
         } else {
-            setSelectedShiftType(activeShiftType || 'FREE');
+            if (workType === 'TYPE_B') {
+                setSelectedShiftType('VIP');
+            } else {
+                setSelectedShiftType(activeShiftType || 'FREE');
+            }
         }
         setIsFormOpen(true);
     };
@@ -411,7 +415,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || workType === 'TYPE_B')) ? estimatedEndTime : null,
+            (formType === 'CHECK_IN' && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || workType === 'TYPE_B')) ? estimatedEndTime : null,
             wantsToWithdraw,
             isLiveCaptureMode
         );
@@ -757,7 +761,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && selectedShiftType !== 'FREE' && user?.roleId !== 'support' && user?.roleId !== 'dev' && formType !== 'OVERTIME_PROMPT' && formType !== 'OVERTIME' && (
+                            {formType === 'CHECK_OUT' && selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'SUDDEN_OFF_CHECKOUT' && selectedShiftType !== 'FREE' && user?.roleId !== 'support' && user?.roleId !== 'dev' && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
                                     <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
                                         <div className="flex items-center h-5 mt-0.5">
@@ -776,7 +780,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && (workType === 'TYPE_B' || selectedShiftType === 'FREE') && (
+                            {formType === 'CHECK_IN' && (workType === 'TYPE_B' || selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -883,7 +887,7 @@ const KTVAttendancePage = () => {
                                     <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                     <button 
                                        onClick={handleSubmitForm}
-                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
+                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                        className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                         <CheckCircle2 size={18} /> Gửi
                                     </button>

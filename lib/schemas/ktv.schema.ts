@@ -20,8 +20,8 @@ export const AttendanceSchema = z.object({
 export const ShiftRequestSchema = z.object({
   employeeId: z.string().min(1, "Missing required field: employeeId"),
   employeeName: z.string().optional(),
-  shiftType: z.enum(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST'], {
-    message: "Invalid shiftType. Must be SHIFT_1, SHIFT_2, SHIFT_3, FREE, or REQUEST"
+  shiftType: z.enum(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'], {
+    message: "Invalid shiftType. Must be SHIFT_1, SHIFT_2, SHIFT_3, FREE, REQUEST, or VIP"
   }),
   reason: z.string().optional().nullable(),
   assignedByAdmin: z.boolean().optional(),
