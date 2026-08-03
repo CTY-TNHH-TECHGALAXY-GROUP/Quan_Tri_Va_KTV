@@ -258,7 +258,7 @@ const KTVAttendancePage = () => {
         setIsLiveCaptureMode(true);
         
         if (type !== 'OVERTIME') {
-            if (type === 'CHECK_IN' && workType === 'TYPE_B' && availableUntil) {
+            if (type === 'CHECK_IN' && availableUntil) {
                 setEstimatedEndTime(availableUntil);
             } else {
                 setEstimatedEndTime('');
@@ -471,6 +471,7 @@ const KTVAttendancePage = () => {
                                                 isOffToday={isOffToday} 
                                                 onCheckIn={() => openForm('CHECK_IN')}
                                                 onStateChange={setIsOnCall}
+                                                onRefreshStatus={refreshAttendanceStatus}
                                             />
                                         )}
                                     </div>

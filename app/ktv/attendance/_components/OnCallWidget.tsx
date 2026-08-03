@@ -16,9 +16,10 @@ interface Props {
   isOffToday: boolean;
   onCheckIn: () => void;
   onStateChange?: (isOnCall: boolean) => void;
+  onRefreshStatus?: () => void;
 }
 
-export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, onStateChange }) => {
+export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, onStateChange, onRefreshStatus }) => {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -67,6 +68,7 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, on
       if (res.success) {
         setShowPopup(false);
         await fetchState();
+        if (onRefreshStatus) onRefreshStatus();
       } else {
         alert(res.error || 'Có lỗi xảy ra, vui lòng thử lại!');
       }
