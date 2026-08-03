@@ -775,8 +775,8 @@ const KTVAttendancePage = () => {
                                             />
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-indigo-900">Hôm nay tôi muốn rút tiền mặt</span>
-                                            <span className="text-xs text-indigo-600 font-medium mt-0.5">Vui lòng báo Thu ngân chuẩn bị giúp tôi</span>
+                                            <span className="text-sm font-bold text-indigo-900">Yêu cầu rút tiền</span>
+                                            <span className="text-xs text-indigo-600 font-medium mt-0.5">Yêu cầu rút tiền của bạn sẽ được xử lý trong vòng 24h</span>
                                         </div>
                                     </label>
                                 </div>
