@@ -389,12 +389,12 @@ export async function POST(request: Request) {
                         .select('id')
                         .eq('staff_id', staffCode)
                         .eq('type', 'PENALTY')
-                        .ilike('reason', 'Trừ tiền giặt đồ%')
+                        .ilike('reason', 'Giặt đồ ngày%')
                         .gte('created_at', dayStart)
                         .lte('created_at', dayEnd)
-                        .maybeSingle();
+                        .limit(1);
 
-                    if (!existingLaundry) {
+                    if (!existingLaundry || existingLaundry.length === 0) {
                         const { error: laundryErr } = await supabase
                             .from('WalletAdjustments')
                             .insert({

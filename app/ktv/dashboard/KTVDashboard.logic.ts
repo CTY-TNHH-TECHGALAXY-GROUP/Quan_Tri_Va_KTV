@@ -510,9 +510,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (allFeedback) currentStatus = 'FEEDBACK';
             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
             else if (isAnyStarted) {
+                const isAnyPaused = allAssignedItems.some((i: any) => i.status === 'PAUSED');
                 // ⚠️ FIX: Nếu KTV này ĐÃ BẮT ĐẦU nhưng CHƯA XONG (chưa có actualEndTime)
                 // Phải ép giữ ở trạng thái IN_PROGRESS để không bị hoàn thành đột ngột
-                if (!allDone) {
+                if (isAnyPaused) {
+                    currentStatus = 'PAUSED';
+                } else if (!allDone) {
                     if (currentStatus !== 'PAUSED') currentStatus = 'IN_PROGRESS';
                 } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'PAUSED'].includes(currentStatus)) {
                     currentStatus = 'IN_PROGRESS';
@@ -558,9 +561,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         const currentScreen = screenRef.current;
         const statusLevel = STATUS_ORDER[currentStatus] ?? -1;
-
-        setIsPaused(currentStatus === 'PAUSED' || assignedItem?.status === 'PAUSED');
-
+        setIsPaused(currentStatus === 'PAUSED' || assignedItem?.status === 'PAUSED' || allAssignedItems.some((i: any) => i.status === 'PAUSED'));
 
         console.log("📟 [ScreenEngine] Final Check:", { currentStatus, itemStatus: assignedItem?.status, bookingStatus: booking.status, currentScreen, statusLevel });
 
@@ -620,8 +621,27 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     setIsTimerRunning(false);
                 }
             } else {
+                // Kiểm tra xem KTV này đã bàn giao phòng chưa (dựa vào handoverTime trong segments)
+                let allHandover = false;
+                if (booking?.BookingItems && ktvId) {
+                    const mySegs = booking.BookingItems.flatMap((i: any) => {
+                        let parsed = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []);
+                        return parsed.filter((s: any) => s.ktvId === ktvId || (s.ktvId && s.ktvId.startsWith(ktvId)));
+                    });
+                    
+                    if (mySegs.length > 0) {
+                        allHandover = mySegs.every((s: any) => !!s.handoverTime);
+                    }
+                }
+
                 // Nếu đã Review xong, chuyển sang HANDOVER (nếu chưa ở đó hoặc chưa tới REWARD)
-                if (currentScreen !== 'HANDOVER' && currentScreen !== 'REWARD') {
+                // Tuy nhiên, nếu allHandover = true (KTV đã bàn giao xong), thì bỏ qua HANDOVER và vào REWARD
+                if (allHandover) {
+                    if (currentScreen !== 'REWARD') {
+                        setScreen('REWARD');
+                        setIsTimerRunning(false);
+                    }
+                } else if (currentScreen !== 'HANDOVER' && currentScreen !== 'REWARD') {
                     setScreen('HANDOVER');
                     setIsTimerRunning(false);
                 }
@@ -846,7 +866,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             if (allFeedback) currentStatus = 'FEEDBACK';
                             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
                             else if (isAnyStarted) {
-                                if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'CANCELLED', 'PAUSED'].includes(currentStatus)) currentStatus = 'IN_PROGRESS';
+                                const isAnyPaused = allAssignedItems.some((i: any) => i.status === 'PAUSED');
+                                if (isAnyPaused) {
+                                    currentStatus = 'PAUSED';
+                                } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'CANCELLED', 'PAUSED'].includes(currentStatus)) {
+                                    currentStatus = 'IN_PROGRESS';
+                                }
                             } else {
                                 // ⚠️ FIX: Nếu KTV này CHƯA BẮT ĐẦU (chưa có actualStartTime)
                                 if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
@@ -951,9 +976,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                         }
                                         const start = new Date(activeSegStartTime).getTime();
                                         let now = new Date().getTime() + timeOffsetRef.current;
-                                        if (currentStatus === 'PAUSED' && assignedItem?.pauseStart) {
-                                            const pStart = assignedItem.pauseStart;
-                                            now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
+                                        if (currentStatus === 'PAUSED') {
+                                            const pausedItem = allAssignedItems.find((i: any) => i.status === 'PAUSED' && i.pauseStart) || assignedItem;
+                                            if (pausedItem && pausedItem.pauseStart) {
+                                                const pStart = pausedItem.pauseStart;
+                                                now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
+                                            }
                                         }
                                         const elapsed = Math.floor((now - start) / 1000);
                                         

@@ -17,13 +17,13 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
         }
 
-        // Fetch configs via Service
-        const { data: staffData } = await supabase
-            .from('Staff')
-            .select('work_type')
-            .eq('id', techCode)
-            .single();
-        const workType = staffData?.work_type || 'TYPE_A';
+        // ─── Resolve workType from Staff (Mới nhất) ───
+        let workType = 'TYPE_A'; // Default
+        const { data: staffData } = await supabase.from('Staff')
+            .select('work_type').eq('id', techCode).single();
+        if (staffData && staffData.work_type) {
+            workType = staffData.work_type;
+        }
 
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
 

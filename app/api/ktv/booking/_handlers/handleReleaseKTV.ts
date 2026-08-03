@@ -60,32 +60,37 @@ export async function handleReleaseKTV(ctx: HandlerContext): Promise<void> {
         handoverPhotoUrls = results.filter(Boolean) as string[];
     }
 
-    // ─── 1. CẬP NHẬT ẢNH VÀO BookingItems.segments ───
-    if (handoverPhotoUrls.length > 0) {
-        // Lấy tất cả items của booking
-        const { data: currentItems } = await supabase.from('BookingItems').select('id, segments').eq('bookingId', bookingId);
-        if (currentItems && currentItems.length > 0) {
-            for (const item of currentItems) {
-                let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
-                let isModified = false;
-                segs.forEach((seg: any) => {
-                    if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
+    // ─── 1. CẬP NHẬT ẢNH VÀ THỜI GIAN BÀN GIAO VÀO BookingItems.segments ───
+    // Lấy tất cả items của booking để cập nhật handoverTime cho KTV này
+    const { data: currentItems } = await supabase.from('BookingItems').select('id, segments').eq('bookingId', bookingId);
+    if (currentItems && currentItems.length > 0) {
+        for (const item of currentItems) {
+            let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+            let isModified = false;
+            segs.forEach((seg: any) => {
+                if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
+                    if (handoverPhotoUrls.length > 0) {
                         seg.handoverPhotoUrls = handoverPhotoUrls;
-                        isModified = true;
                     }
-                });
-                if (isModified) {
+                    // LUÔN GÁN handoverTime kể cả khi không có ảnh
+                    seg.handoverTime = new Date().toISOString();
+                    isModified = true;
+                }
+            });
+            
+            if (isModified) {
+                const updatePayload: any = { segments: JSON.stringify(segs) };
+                
+                if (handoverPhotoUrls.length > 0) {
                     const handoverObj = handoverPhotoUrls.reduce((acc, url, idx) => {
                         acc[`Ảnh ${idx + 1}`] = url;
                         return acc;
                     }, {} as Record<string, string>);
-                    
-                    await supabase.from('BookingItems').update({ 
-                        segments: JSON.stringify(segs),
-                        handover_images: handoverObj,
-                        handover_status: 'PENDING'
-                    }).eq('id', item.id);
+                    updatePayload.handover_images = handoverObj;
+                    updatePayload.handover_status = 'PENDING';
                 }
+                
+                await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
             }
         }
     }
