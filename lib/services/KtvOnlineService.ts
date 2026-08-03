@@ -271,8 +271,7 @@ export class KtvOnlineService {
             const { data: onlineStaff, error: fetchErr } = await supabase
                 .from('Staff')
                 .select('id, available_until')
-                .in('online_status', ['ONLINE', 'AT_VENUE'])
-                .eq('work_type', 'TYPE_B');
+                .in('online_status', ['ONLINE', 'AT_VENUE']);
 
             if (fetchErr) {
                 console.error('KtvOnlineService.cleanupExpiredOnline - Fetch error:', fetchErr.message);
@@ -320,6 +319,7 @@ export class KtvOnlineService {
                 .from('Staff')
                 .update({
                     online_status: 'OFFLINE',
+                    is_active_vip_menu: false, // Tắt VIP Menu khi quá giờ
                     travel_minutes: 0,
                     available_from: null,
                     available_until: null,

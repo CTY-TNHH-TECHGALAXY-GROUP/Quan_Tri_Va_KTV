@@ -135,7 +135,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
                     disabled={actionLoading}
                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Ngân Hà Xin Chào'}
+                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin chào'}
                 </button>
                 <button
                     onClick={() => setShowPopup(true)}
@@ -155,7 +155,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
                     disabled={actionLoading}
                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Đã đến tiệm'}
+                    <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin chào'}
                 </button>
                 <button
                     onClick={() => handleToggleOnCall(false, state.travel_time_mins)}
@@ -167,14 +167,14 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
             </>
         )}
 
-        {/* Nếu đã tới tiệm (AT_VENUE) -> Xin Cảm Ơn (Tan ca) */}
+        {/* Nếu đã tới tiệm (AT_VENUE) -> Tan Ca */}
         {isAtVenue && (
              <button
                 onClick={() => onCheckOut()}
                 disabled={actionLoading}
                 className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
             >
-                <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Ngân Hà Xin Cảm ơn (Tan Ca)'}
+                <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin cảm ơn'}
             </button>
         )}
       </div>

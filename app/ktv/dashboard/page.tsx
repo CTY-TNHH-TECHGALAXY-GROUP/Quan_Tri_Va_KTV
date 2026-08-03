@@ -1444,12 +1444,19 @@ function ScreenHandover({ logic }: { logic: any }) {
       )}
 
       <button
-        disabled={!isHandoverComplete || logic.isLoading}
-        onClick={handleFinishHandover}
+        disabled={logic.isLoading}
+        onClick={() => {
+            if (!isHandoverComplete) {
+                if (!window.confirm("Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị phạt. Nếu bạn đã bàn giao có thể bỏ qua.")) {
+                    return;
+                }
+            }
+            handleFinishHandover();
+        }}
         className={`w-full py-5 rounded-[24px] font-black text-sm uppercase tracking-widest shadow-xl transition-all
-        ${isHandoverComplete ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-slate-200 text-slate-400'}`}
+        ${isHandoverComplete ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-rose-500 text-white shadow-rose-200'}`}
       >
-        {logic.isLoading ? 'Đang xử lý...' : 'Xong & Sẵn sàng đón khách'}
+        {logic.isLoading ? 'Đang xử lý...' : (isHandoverComplete ? 'Xong & Sẵn sàng đón khách' : 'Bỏ qua')}
       </button>
 
     </div>

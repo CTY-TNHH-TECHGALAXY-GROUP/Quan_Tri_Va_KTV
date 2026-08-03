@@ -393,6 +393,12 @@ const KTVAttendancePage = () => {
             handleAttendance('SUDDEN_OFF', null, null, null);
             return;
         }
+        if (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || workType === 'TYPE_B')) {
+            if (!estimatedEndTime) {
+                alert('Vui lòng chọn thời gian dự kiến kết thúc/về!');
+                return;
+            }
+        }
 
         setIsFormOpen(false);
         handleAttendance(
@@ -400,7 +406,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && selectedShiftType === 'FREE') ? estimatedEndTime : null,
+            (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || workType === 'TYPE_B')) ? estimatedEndTime : null,
             wantsToWithdraw,
             isLiveCaptureMode
         );
@@ -445,7 +451,7 @@ const KTVAttendancePage = () => {
                                                 onClick={() => openForm('CHECK_IN')}
                                                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-emerald-200"
                                             >
-                                                Ngân Hà Xin Chào
+                                                Oria Xin chào
                                             </button>
                                         )}
                                         
@@ -653,8 +659,8 @@ const KTVAttendancePage = () => {
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
-                                {formType === 'CHECK_IN' ? 'Ngân Hà Xin Chào' :
-                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? 'Ngân Hà Xin Cảm ơn' :
+                                {formType === 'CHECK_IN' ? (workType === 'TYPE_B' ? 'Báo Cáo Đến Tiệm' : 'Ngân Hà Xin Chào') :
+                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (workType === 'TYPE_B' ? 'Báo Cáo Tan Ca' : 'Ngân Hà Xin Cảm ơn') :
                                  'Điểm danh bổ sung'}
                             </h3>
 
@@ -689,7 +695,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && (
+                            {formType === 'CHECK_IN' && workType !== 'TYPE_B' && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-gray-700 block">Ca làm việc hôm nay</label>
                                     {activeShiftType ? (
@@ -765,7 +771,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && (
+                            {formType === 'CHECK_IN' && (workType === 'TYPE_B' || selectedShiftType === 'FREE') && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
