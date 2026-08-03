@@ -61,8 +61,9 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
-        // ─── Fetch Work Type ───
+        // ─── Fetch Work Type & Available Until ───
         let workType = 'TYPE_A';
+        let availableUntil = null;
         const { data: userRow } = await supabase
             .from('Users')
             .select('code')
@@ -72,17 +73,20 @@ export async function GET(request: Request) {
         if (userRow?.code) {
              const { data: staffRow } = await supabase
                  .from('Staff')
-                 .select('work_type')
+                 .select('work_type, available_until')
                  .eq('id', userRow.code)
                  .maybeSingle();
              if (staffRow?.work_type) {
                  workType = staffRow.work_type;
              }
+             if (staffRow?.available_until) {
+                 availableUntil = staffRow.available_until;
+             }
         }
 
         // ─── Determine status from records ───
         if (!records || records.length === 0) {
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil });
         }
 
         // Find the most relevant record (most recent non-rejected, or fallback)
@@ -92,14 +96,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'CONFIRMED'
         );
         if (confirmedOff) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType, availableUntil });
         }
 
         const pendingOff = records.find(
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'PENDING'
         );
         if (pendingOff) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType, availableUntil });
         }
 
         // 2. Kiểm tra Tan ca
@@ -107,14 +111,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'CONFIRMED'
         );
         if (confirmedCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType });
+            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType, availableUntil });
         }
 
         const pendingCheckOut = records.find(
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'PENDING'
         );
         if (pendingCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType, availableUntil });
         }
 
         // 3. Kiểm tra Vào ca
@@ -122,18 +126,18 @@ export async function GET(request: Request) {
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'CONFIRMED'
         );
         if (confirmedCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType, availableUntil });
         }
 
         const pendingCheckIn = records.find(
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'PENDING'
         );
         if (pendingCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType, availableUntil });
         }
 
         // All records are REJECTED → allow retry
-        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType });
+        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

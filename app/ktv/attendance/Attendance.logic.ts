@@ -69,6 +69,7 @@ export const useKTVAttendance = () => {
     const [shiftRetryCount, setShiftRetryCount] = useState(0);
     const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
     const [workType, setWorkType] = useState<string>('TYPE_A');
+    const [availableUntil, setAvailableUntil] = useState<string | null>(null);
     const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
@@ -91,8 +92,9 @@ export const useKTVAttendance = () => {
                     apiClient.get<any>(API.SYSTEM.CONFIG).catch(() => ({ success: false, data: {} })),
                 ]);
                 
-                if (statusRes.success && statusRes.workType) {
-                    setWorkType(statusRes.workType);
+                if (statusRes.success) {
+                    if (statusRes.workType) setWorkType(statusRes.workType);
+                    if (statusRes.availableUntil) setAvailableUntil(statusRes.availableUntil);
                 }
                 
                 if (settingsRes.success && settingsRes.data) {
@@ -388,5 +390,6 @@ export const useKTVAttendance = () => {
         showOvertimeFeature,
         user,
         workType,
+        availableUntil,
     };
 };

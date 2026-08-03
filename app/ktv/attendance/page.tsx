@@ -37,6 +37,7 @@ const KTVAttendancePage = () => {
         showOvertimeFeature,
         user,
         workType,
+        availableUntil,
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -256,7 +257,11 @@ const KTVAttendancePage = () => {
         setIsLiveCaptureMode(true);
         
         if (type !== 'OVERTIME') {
-            setEstimatedEndTime('');
+            if (type === 'CHECK_IN' && workType === 'TYPE_B' && availableUntil) {
+                setEstimatedEndTime(availableUntil);
+            } else {
+                setEstimatedEndTime('');
+            }
         }
         
         if (type === 'CHECK_OUT' && isEarlyCheckout) {
@@ -780,8 +785,9 @@ const KTVAttendancePage = () => {
                                         type="time" 
                                         value={estimatedEndTime} 
                                         onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium text-gray-700" 
+                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${workType === 'TYPE_B' ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
                                         required
+                                        disabled={workType === 'TYPE_B'}
                                     />
                                     <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>
