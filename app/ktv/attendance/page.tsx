@@ -38,6 +38,7 @@ const KTVAttendancePage = () => {
         user,
         workType,
         availableUntil,
+        refreshAttendanceStatus,
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -443,7 +444,7 @@ const KTVAttendancePage = () => {
                     {/* Nếu là KTV Loại B thì hiển thị component riêng của Loại B, nếu không thì hiển thị luồng mặc định (IDLE/PENDING/CONFIRMED...) */}
                     {workType === 'TYPE_B' && user?.code ? (
                         <div className="w-full">
-                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} />
+                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} />
                         </div>
                     ) : (
                         <>
@@ -789,9 +790,9 @@ const KTVAttendancePage = () => {
                                         type="time" 
                                         value={estimatedEndTime} 
                                         onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${workType === 'TYPE_B' ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
+                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${workType === 'TYPE_B' && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
                                         required
-                                        disabled={workType === 'TYPE_B'}
+                                        disabled={workType === 'TYPE_B' && !!availableUntil}
                                     />
                                     <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>

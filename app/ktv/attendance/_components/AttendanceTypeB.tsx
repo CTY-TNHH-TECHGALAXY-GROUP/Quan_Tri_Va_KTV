@@ -15,9 +15,10 @@ interface Props {
   ktvId: string;
   onCheckIn: () => void;
   onCheckOut: () => void;
+  onRefreshStatus?: () => void;
 }
 
-export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut }) => {
+export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut, onRefreshStatus }) => {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -63,6 +64,7 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut 
       if (res.success) {
         setShowPopup(false);
         await fetchState();
+        if (onRefreshStatus) onRefreshStatus();
       } else {
         alert(res.error || 'Có lỗi xảy ra');
       }

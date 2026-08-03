@@ -76,15 +76,10 @@ export const useKTVAttendance = () => {
 
     useEffect(() => { setMounted(true); }, []);
 
-    // --- Fetch current attendance status on mount ---
-    useEffect(() => {
-        if (!user?.id) {
-            setInitialLoading(false);
-            return;
-        }
-
-        const fetchStatus = async () => {
-            try {
+    // --- Fetch current attendance status ---
+    const refreshAttendanceStatus = useCallback(async () => {
+        if (!user?.id) return;
+        try {
                 const [statusRes, settingsRes, configRes] = await Promise.all([
                     apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
                         console.error(`❌ [Attendance] Status API returned error:`, err);
@@ -127,10 +122,11 @@ export const useKTVAttendance = () => {
             } finally {
                 setInitialLoading(false);
             }
-        };
-
-        fetchStatus();
     }, [user?.id]);
+
+    useEffect(() => {
+        refreshAttendanceStatus();
+    }, [refreshAttendanceStatus]);
 
     // Fetch active shift when IDLE (for checkIsLate) or CONFIRMED (to validate checkout time)
     useEffect(() => {
@@ -393,5 +389,6 @@ export const useKTVAttendance = () => {
         user,
         workType,
         availableUntil,
+        refreshAttendanceStatus,
     };
 };
