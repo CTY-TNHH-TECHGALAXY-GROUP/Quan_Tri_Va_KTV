@@ -857,9 +857,9 @@ const KTVAttendancePage = () => {
                                         )}
                                     </div>
 
-                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
+                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
                                         <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                            {formType === 'CHECK_IN' && isLate && (
+                                            {formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B' && (
                                                 <div className="text-xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 mb-2">
                                                     {t.lateWarning}
                                                 </div>
@@ -883,7 +883,7 @@ const KTVAttendancePage = () => {
                                     <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                     <button 
                                        onClick={handleSubmitForm}
-                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
+                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && selectedShiftType === 'FREE' && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                        className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                         <CheckCircle2 size={18} /> Gửi
                                     </button>

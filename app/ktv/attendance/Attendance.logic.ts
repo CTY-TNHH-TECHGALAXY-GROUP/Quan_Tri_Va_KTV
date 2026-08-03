@@ -210,7 +210,7 @@ export const useKTVAttendance = () => {
 
     // --- Handlers ---
     const checkIsLate = useCallback(() => {
-        if (user?.roleId === 'support') {
+        if (user?.roleId === 'support' || workType === 'TYPE_B') {
             setIsLate(false);
             return false;
         }
@@ -253,7 +253,7 @@ export const useKTVAttendance = () => {
         
         setIsLate(late);
         return late;
-    }, [activeShiftType, dayCutoffHours]);
+    }, [activeShiftType, dayCutoffHours, user?.roleId, workType]);
 
     const retryFetchShift = useCallback(() => {
         setShiftFetchError(false);
