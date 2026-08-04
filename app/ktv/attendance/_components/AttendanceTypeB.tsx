@@ -16,9 +16,10 @@ interface Props {
   onCheckIn: () => void;
   onCheckOut: () => void;
   onRefreshStatus?: () => void;
+  incompleteTasksCount?: number;
 }
 
-export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut, onRefreshStatus }) => {
+export default function AttendanceTypeB({ ktvId, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0 }: Props) {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -159,25 +160,47 @@ export const AttendanceTypeB: React.FC<Props> = ({ ktvId, onCheckIn, onCheckOut,
                 >
                     <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin chào'}
                 </button>
-                <button
-                    onClick={() => handleToggleOnCall(false, state.travel_time_mins)}
-                    disabled={actionLoading}
-                    className="w-full py-4 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                    <LogOut size={22} className="rotate-180" /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
-                </button>
+                <div className="w-full">
+                  <button
+                      onClick={() => {
+                        if (incompleteTasksCount > 0) {
+                          alert(`Bạn còn ${incompleteTasksCount} công việc chưa hoàn thành. Vui lòng hoàn thành trước khi Tắt Nhận Đơn.`);
+                          return;
+                        }
+                        handleToggleOnCall(false, state.travel_time_mins);
+                      }}
+                      disabled={actionLoading || incompleteTasksCount > 0}
+                      className="w-full py-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                      <LogOut size={22} className="rotate-180" /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
+                  </button>
+                  {incompleteTasksCount > 0 && (
+                      <p className="text-red-500 text-xs text-center mt-2 font-medium">Bạn còn {incompleteTasksCount} công việc chưa hoàn thành. Không thể tắt nhận đơn.</p>
+                  )}
+                </div>
             </>
         )}
 
         {/* Nếu đã tới tiệm (AT_VENUE) -> Tan Ca */}
         {isAtVenue && (
-             <button
-                onClick={() => onCheckOut()}
-                disabled={actionLoading}
-                className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-                <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin cảm ơn'}
-            </button>
+             <div className="w-full">
+               <button
+                  onClick={() => {
+                    if (incompleteTasksCount > 0) {
+                      alert(`Bạn còn ${incompleteTasksCount} công việc chưa hoàn thành. Vui lòng hoàn thành trước khi tan ca.`);
+                      return;
+                    }
+                    onCheckOut();
+                  }}
+                  disabled={actionLoading || incompleteTasksCount > 0}
+                  className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                  <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin cảm ơn'}
+              </button>
+              {incompleteTasksCount > 0 && (
+                  <p className="text-red-500 text-xs text-center mt-2 font-medium">Bạn còn {incompleteTasksCount} công việc chưa hoàn thành. Không thể tan ca.</p>
+              )}
+             </div>
         )}
       </div>
 

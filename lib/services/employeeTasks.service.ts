@@ -107,6 +107,18 @@ export class EmployeeTasksService {
     const existingRoutineIds = new Set((existing || []).filter(t => t.assignee_id !== null).map(t => `${t.template_id}_${t.room_id || ''}`));
     const existingRoomTemplates = new Set((existing || []).filter(t => t.room_id !== null).map(t => `${t.template_id}_${t.room_id}`));
 
+    // Fetch custom photo counts from matrix
+    const { data: roomMatrixData } = await supabase
+      .from('RoomTaskTemplates')
+      .select('template_id, room_id, custom_min_photo_count');
+      
+    const customPhotoMap = new Map<string, number>();
+    (roomMatrixData || []).forEach(r => {
+      if (r.custom_min_photo_count !== null && r.custom_min_photo_count !== undefined) {
+        customPhotoMap.set(`${r.template_id}_${r.room_id}`, r.custom_min_photo_count);
+      }
+    });
+
     // Fetch routines
     const { data: routines, error: err2 } = await supabase
       .from('EmployeeRoutines')
@@ -206,7 +218,8 @@ export class EmployeeTasksService {
           status: 'NOT_STARTED',
           inspection_status: 'NOT_REVIEWED',
           priority: 'NORMAL',
-          sort_order: r.TaskTemplates?.sort_order || 0
+          sort_order: r.TaskTemplates?.sort_order || 0,
+          min_photo_count: customPhotoMap.get(`${r.template_id}_${r.room_id}`) ?? r.TaskTemplates?.min_photo_count ?? 1
         };
       });
 
@@ -259,7 +272,8 @@ export class EmployeeTasksService {
             status: 'NOT_STARTED',
             inspection_status: 'NOT_REVIEWED',
             priority: 'NORMAL',
-            sort_order: r.TaskTemplates?.sort_order || 0
+            sort_order: r.TaskTemplates?.sort_order || 0,
+            min_photo_count: customPhotoMap.get(`${r.template_id}_${r.room_id}`) ?? r.TaskTemplates?.min_photo_count ?? 1
           }));
 
         newTasks.push(...newRoomTasks);
@@ -289,7 +303,7 @@ export class EmployeeTasksService {
 
     let query = supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)')
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -337,7 +351,7 @@ export class EmployeeTasksService {
       completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
       photoCount: photoCounts[t.id] || 0,
       requires_photo: t.TaskTemplates?.requires_photo || false,
-      min_photo_count: t.TaskTemplates?.min_photo_count || 1,
+      min_photo_count: t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
       category_id: t.category_id,
       room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),

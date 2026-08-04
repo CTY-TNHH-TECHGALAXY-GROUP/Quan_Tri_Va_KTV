@@ -9,7 +9,7 @@ import {
 import { format } from 'date-fns';
 import { useKTVAttendance } from './Attendance.logic';
 import { t } from './Attendance.i18n';
-import { AttendanceTypeB } from './_components/AttendanceTypeB';
+import AttendanceTypeB from './_components/AttendanceTypeB';
 import { OnCallWidget } from './_components/OnCallWidget';
 
 const KTVAttendancePage = () => {
@@ -39,6 +39,8 @@ const KTVAttendancePage = () => {
         workType,
         availableUntil,
         refreshAttendanceStatus,
+        isTypeB,
+        incompleteTasksCount
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -444,7 +446,7 @@ const KTVAttendancePage = () => {
                     {/* Nếu là KTV Loại B thì hiển thị component riêng của Loại B, nếu không thì hiển thị luồng mặc định (IDLE/PENDING/CONFIRMED...) */}
                     {workType === 'TYPE_B' && user?.code ? (
                         <div className="w-full">
-                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} />
+                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} />
                         </div>
                     ) : (
                         <>
@@ -576,6 +578,15 @@ const KTVAttendancePage = () => {
                                                     <Loader2 size={16} className="animate-spin" />
                                                     Đang kiểm tra giờ ca...
                                                 </div>
+                                            ) : incompleteTasksCount > 0 ? (
+                                                <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center space-y-2">
+                                                    <p className="text-red-700 text-sm font-semibold">
+                                                        ⚠️ Bạn còn {incompleteTasksCount} công việc chưa được Admin nghiệm thu (Passed).
+                                                    </p>
+                                                    <p className="text-red-600 text-xs">
+                                                        Vui lòng hoàn thành công việc và chờ Admin duyệt trước khi tan ca.
+                                                    </p>
+                                                </div>
                                             ) : !canCheckOut && checkoutBlockedUntil ? (
                                                 <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2">
                                                     <p className="text-amber-700 text-sm font-semibold">
@@ -585,13 +596,9 @@ const KTVAttendancePage = () => {
                                             ) : null}
                                             <button
                                                 onClick={() => {
-                                                    let isEarly = false;
-                                                    if (!canCheckOut && checkoutBlockedUntil) {
-                                                        if (!window.confirm(`Bạn chưa tới giờ tan ca (${checkoutBlockedUntil}). Bạn có chắc chắn muốn tan ca SỚM không?`)) {
-                                                            return;
-                                                        }
-                                                        isEarly = true;
-                                                    }
+                                                    if (incompleteTasksCount > 0) return;
+                                                    
+                                                    const isEarly = activeShiftType !== 'FREE' && !canCheckOut && allowEarlyCheckout;
 
                                                     // Thông báo nhắc nhở riêng cho Ca Tự Do nếu về sớm hơn giờ dự kiến
                                                     if (activeShiftType === 'FREE' && currentRecord?.estimatedEndTime) {
@@ -610,10 +617,14 @@ const KTVAttendancePage = () => {
 
                                                     openForm('CHECK_OUT', isEarly);
                                                 }}
-                                                disabled={isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
-                                                className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                                                disabled={incompleteTasksCount > 0 || isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
+                                                className={`w-full py-4 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                                                    incompleteTasksCount > 0
+                                                        ? 'bg-gray-400 text-white cursor-not-allowed opacity-50'
+                                                        : 'bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-md shadow-rose-200'
+                                                }`}
                                             >
-                                                <LogOut size={22} /> Oria Xin Cảm ơn
+                                                <LogOut size={22} /> {incompleteTasksCount > 0 ? 'CHƯA THỂ TAN CA' : 'Oria Xin Cảm ơn'}
                                             </button>
                                             {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
                                                 <button

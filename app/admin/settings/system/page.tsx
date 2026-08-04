@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Settings, Save, CheckCircle2, AlertCircle, Loader2, Coins, CalendarDays, Percent } from 'lucide-react';
+import { Settings, Save, CheckCircle2, AlertCircle, Loader2, Coins, CalendarDays, Percent, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SystemConfigsTable } from './SystemConfigsTable';
 import { MilestonesEditor } from './MilestonesEditor';
@@ -444,6 +444,60 @@ export default function SystemSettingsPage() {
                                 <span
                                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                                         (getValue('maintenance_fee_deduct_deposit') ?? true) ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card: Kiểm soát Tan ca */}
+                <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                                <ShieldAlert size={20} className="text-indigo-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Kiểm soát Tan ca</h2>
+                                <p className="text-[11px] text-gray-400 font-medium">Cấu hình riêng cho Loại {activeTab.replace('TYPE_', '')}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {saveStatus === 'success' && savingGroup === 'checkout_control' && (
+                                <span className="text-emerald-500 text-xs font-bold flex items-center gap-1"><CheckCircle2 size={14} /> Đã lưu</span>
+                            )}
+                            {hasChanges(['block_checkout_incomplete_tasks']) && (
+                                <button
+                                    onClick={() => handleSaveGroup(['block_checkout_incomplete_tasks'], 'checkout_control')}
+                                    disabled={savingGroup === 'checkout_control'}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    {savingGroup === 'checkout_control' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    Lưu
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-5">
+                        {/* Toggle: Chặn tan ca khi chưa xong việc */}
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div>
+                                <label className="block text-sm font-black text-gray-900 mb-1">
+                                    Chặn tan ca khi chưa xong việc
+                                </label>
+                                <p className="text-[11px] text-gray-500 font-medium">BẬT = KTV không thể tan ca nếu còn việc chưa được Admin duyệt. TẮT = Không chặn.</p>
+                            </div>
+                            <button
+                                onClick={() => handleChange('block_checkout_incomplete_tasks', !(getValue('block_checkout_incomplete_tasks') ?? false))}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    (getValue('block_checkout_incomplete_tasks') ?? false) ? 'bg-indigo-500' : 'bg-gray-300'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                        (getValue('block_checkout_incomplete_tasks') ?? false) ? 'translate-x-5' : 'translate-x-0'
                                     }`}
                                 />
                             </button>

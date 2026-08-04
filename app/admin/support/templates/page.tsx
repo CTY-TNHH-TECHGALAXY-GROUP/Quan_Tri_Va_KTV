@@ -693,17 +693,37 @@ const RoomMatrixTabContent = ({ logic }: { logic: any }) => {
                     <div className="text-xs text-slate-400 mt-1">{tpl.categoryName}</div>
                   </td>
                   {visibleRooms.map((room: any) => {
-                    const isChecked = logic.pendingMatrix[tpl.id]?.has(room.id);
+                    const cellData = logic.pendingMatrix[tpl.id]?.[room.id];
+                    const isChecked = cellData?.active;
+                    const customCount = cellData?.custom_min_photo_count;
+                    
                     return (
-                      <td key={room.id} className="p-4 text-center border-r border-slate-100 hover:bg-slate-50 transition-colors">
-                        <label className="cursor-pointer block w-full h-full flex items-center justify-center">
-                          <input
-                            type="checkbox"
-                            checked={!!isChecked}
-                            onChange={(e) => logic.toggleRoomMatrix(tpl.id, room.id, e.target.checked)}
-                            className="w-5 h-5 text-cyan-600 bg-slate-100 border-slate-300 rounded focus:ring-cyan-500 focus:ring-2 cursor-pointer transition-all hover:scale-110"
-                          />
-                        </label>
+                      <td key={room.id} className="p-2 text-center border-r border-slate-100 hover:bg-slate-50 transition-colors align-top">
+                        <div className="flex flex-col items-center justify-center gap-1.5 min-h-[44px]">
+                          <label className="cursor-pointer flex items-center justify-center w-full">
+                            <input
+                              type="checkbox"
+                              checked={!!isChecked}
+                              onChange={(e) => logic.toggleRoomMatrix(tpl.id, room.id, e.target.checked)}
+                              className="w-5 h-5 text-cyan-600 bg-slate-100 border-slate-300 rounded focus:ring-cyan-500 focus:ring-2 cursor-pointer transition-all hover:scale-110"
+                            />
+                          </label>
+                          {isChecked && tpl.requires_photo && (
+                            <input
+                              type="number"
+                              min="1"
+                              max="10"
+                              placeholder={`Mặc định: ${tpl.min_photo_count}`}
+                              value={customCount || ''}
+                              onChange={(e) => {
+                                 const val = e.target.value ? parseInt(e.target.value) : null;
+                                 logic.updateCustomPhotoCount(tpl.id, room.id, val);
+                              }}
+                              className="w-24 border border-slate-200 rounded px-1 py-1 text-[10px] text-center bg-white shadow-sm focus:ring-1 focus:ring-cyan-500 outline-none"
+                              title={`Số ảnh tuỳ chỉnh cho phòng này. Mặc định là ${tpl.min_photo_count}`}
+                            />
+                          )}
+                        </div>
                       </td>
                     );
                   })}

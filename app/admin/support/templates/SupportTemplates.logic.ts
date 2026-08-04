@@ -46,16 +46,21 @@ interface TemplateItem {
 
 export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'ROOM_MATRIX' | 'REVIEWS' | 'DASHBOARD';
 
+export interface MatrixCellData {
+  active: boolean;
+  custom_min_photo_count?: number | null;
+}
+
 export const useSupportTemplates = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('EMPLOYEES');
   const [employees, setEmployees] = useState<EmployeeCard[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
-  const [roomMatrix, setRoomMatrix] = useState<Record<string, Set<string>>>({});
-  const [pendingMatrix, setPendingMatrix] = useState<Record<string, Set<string>>>({});
+  const [roomMatrix, setRoomMatrix] = useState<Record<string, Record<string, MatrixCellData>>>({});
+  const [pendingMatrix, setPendingMatrix] = useState<Record<string, Record<string, MatrixCellData>>>({});
   const [isMatrixDirty, setIsMatrixDirty] = useState(false);
-  const [isSavingMatrix, setIsSavingMatrix] = useState(false); // templateId -> Set<roomId>
+  const [isSavingMatrix, setIsSavingMatrix] = useState(false); // templateId -> roomId -> MatrixCellData
   
   const [virtualCategories, setVirtualCategories] = useState<CategoryItem[]>([]);
   const [virtualTemplates, setVirtualTemplates] = useState<TemplateItem[]>([]);
@@ -214,17 +219,20 @@ export const useSupportTemplates = () => {
       const { data, success } = await res.json();
       
       if (success) {
-        const matrix: Record<string, Set<string>> = {};
+        const matrix: Record<string, Record<string, MatrixCellData>> = {};
         (data || []).forEach((row: any) => {
-          if (!matrix[row.template_id]) matrix[row.template_id] = new Set();
-          matrix[row.template_id].add(row.room_id);
+          if (!matrix[row.template_id]) matrix[row.template_id] = {};
+          matrix[row.template_id][row.room_id] = {
+            active: true,
+            custom_min_photo_count: row.custom_min_photo_count,
+          };
         });
         setRoomMatrix(matrix);
 
         // Update pendingMatrix as well when fetching fresh data
-        const cloned: Record<string, Set<string>> = {};
+        const cloned: Record<string, Record<string, MatrixCellData>> = {};
         for (const k in matrix) {
-          cloned[k] = new Set(matrix[k]);
+          cloned[k] = { ...matrix[k] };
         }
         setPendingMatrix(cloned);
       }
@@ -238,15 +246,33 @@ export const useSupportTemplates = () => {
     // Only update local pending state
     setPendingMatrix(prev => {
       const next = { ...prev };
-      if (!next[templateId]) next[templateId] = new Set();
+      if (!next[templateId]) next[templateId] = {};
       
-      const newSet = new Set(next[templateId]);
+      const newMap = { ...next[templateId] };
       if (isChecked) {
-        newSet.add(roomId);
+        newMap[roomId] = { active: true, custom_min_photo_count: null };
       } else {
-        newSet.delete(roomId);
+        delete newMap[roomId];
       }
-      next[templateId] = newSet;
+      next[templateId] = newMap;
+      return next;
+    });
+    setIsMatrixDirty(true);
+  };
+  
+  const updateCustomPhotoCount = (templateId: string, roomId: string, count: number | null) => {
+    setPendingMatrix(prev => {
+      const next = { ...prev };
+      if (!next[templateId]) return next;
+      if (!next[templateId][roomId]) return next;
+      
+      next[templateId] = {
+        ...next[templateId],
+        [roomId]: {
+          ...next[templateId][roomId],
+          custom_min_photo_count: count
+        }
+      };
       return next;
     });
     setIsMatrixDirty(true);
@@ -256,11 +282,18 @@ export const useSupportTemplates = () => {
     setIsSavingMatrix(true);
     try {
       // Flatten pendingMatrix into array
-      const matrixArr: { template_id: string; room_id: string }[] = [];
+      const matrixArr: { template_id: string; room_id: string; custom_min_photo_count?: number | null }[] = [];
       for (const tplId in pendingMatrix) {
-        pendingMatrix[tplId].forEach(rId => {
-          matrixArr.push({ template_id: tplId, room_id: rId });
-        });
+        for (const rId in pendingMatrix[tplId]) {
+          const cell = pendingMatrix[tplId][rId];
+          if (cell.active) {
+             matrixArr.push({ 
+               template_id: tplId, 
+               room_id: rId,
+               custom_min_photo_count: cell.custom_min_photo_count
+             });
+          }
+        }
       }
 
       const res = await fetch('/api/support/room-matrix', {
@@ -272,9 +305,9 @@ export const useSupportTemplates = () => {
         throw new Error('Failed to save room matrix');
       }
       // Commit pending to current
-      const cloned: Record<string, Set<string>> = {};
+      const cloned: Record<string, Record<string, MatrixCellData>> = {};
       for (const k in pendingMatrix) {
-        cloned[k] = new Set(pendingMatrix[k]);
+        cloned[k] = { ...pendingMatrix[k] };
       }
       setRoomMatrix(cloned);
       setIsMatrixDirty(false);
@@ -326,13 +359,15 @@ export const useSupportTemplates = () => {
     templates.forEach(tpl => {
       const mappedRooms = roomMatrix[tpl.id];
       if (mappedRooms) {
-        mappedRooms.forEach(roomId => {
-          vTpls.push({
-            ...tpl,
-            id: `virtual_tpl_${tpl.id}_${roomId}`,
-            categoryName: `Phòng ${formatRoomName(rooms.find(r => r.id === roomId)?.name || roomId)}`,
-            categoryType: 'ROOM_VIRTUAL' as any
-          });
+        Object.keys(mappedRooms).forEach(roomId => {
+          if (mappedRooms[roomId].active) {
+            vTpls.push({
+              ...tpl,
+              id: `virtual_tpl_${tpl.id}_${roomId}`,
+              categoryName: `Phòng ${formatRoomName(rooms.find(r => r.id === roomId)?.name || roomId)}`,
+              categoryType: 'ROOM_VIRTUAL' as any
+            });
+          }
         });
       }
     });
@@ -473,6 +508,7 @@ export const useSupportTemplates = () => {
     getRoleLabel,
     saveCategoryWithTemplates,
     toggleRoomMatrix,
+    updateCustomPhotoCount,
     refetchEmployees: fetchEmployees,
     refetchTemplates: fetchTemplates,
   };

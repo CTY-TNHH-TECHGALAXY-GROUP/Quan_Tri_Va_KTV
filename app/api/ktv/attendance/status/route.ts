@@ -87,18 +87,36 @@ export async function GET(request: Request) {
         // ─── Fetch Incomplete Tasks ───
         let incompleteTasksCount = 0;
         if (userRow?.code) {
-             const vnDateStr = vnNow.toISOString().slice(0, 10);
-             const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
+             const { data: staffRow } = await supabase
+                 .from('Staff')
+                 .select('work_type')
+                 .eq('id', userRow.code)
+                 .maybeSingle();
 
-             const { data: incompleteTasks } = await supabase
-                 .from('Tasks')
-                 .select('id')
-                 .eq('assignee_id', userRow.code)
-                 .gte('created_at', todayStartIso)
-                 .neq('inspection_status', 'PASSED');
-                 
-             if (incompleteTasks) {
-                 incompleteTasksCount = incompleteTasks.length;
+             let shouldBlock = false;
+             if (staffRow?.work_type) {
+                 const { data: config } = await supabase
+                     .from('SystemConfigs')
+                     .select('value')
+                     .eq('key', `block_checkout_incomplete_tasks_${staffRow.work_type}`)
+                     .maybeSingle();
+                 shouldBlock = !!config?.value;
+             }
+
+             if (shouldBlock) {
+                 const vnDateStr = vnNow.toISOString().slice(0, 10);
+                 const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
+
+                 const { data: incompleteTasks } = await supabase
+                     .from('Tasks')
+                     .select('id')
+                     .eq('assignee_id', userRow.code)
+                     .gte('created_at', todayStartIso)
+                     .neq('inspection_status', 'PASSED');
+                     
+                 if (incompleteTasks) {
+                     incompleteTasksCount = incompleteTasks.length;
+                 }
              }
         }
 

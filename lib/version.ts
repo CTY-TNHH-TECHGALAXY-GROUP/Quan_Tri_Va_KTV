@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.50';
-export const LAST_UPDATE = 'Fix lỗi không lấy được giới tính khách hàng (customerGender) tại bảng điều phối.';
+export const APP_VERSION = '1.7.52';
+export const LAST_UPDATE = 'Thêm chức năng tuỳ chỉnh số lượng ảnh yêu cầu theo từng phòng trong Ma trận công việc.';

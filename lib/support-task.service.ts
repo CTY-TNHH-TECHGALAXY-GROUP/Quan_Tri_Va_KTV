@@ -52,7 +52,7 @@ export class SupportTaskService {
     // 1. Lấy thông tin task hiện tại
     const { data: task, error: fetchError } = await supabase
       .from('Tasks')
-      .select('*, TaskTemplates(requires_photo, min_photo_count)')
+      .select('*, min_photo_count, TaskTemplates(requires_photo, min_photo_count)')
       .eq('id', taskId)
       .single();
 
@@ -69,7 +69,7 @@ export class SupportTaskService {
     // 2. Logic kiểm tra số ảnh tối thiểu nếu muốn COMPLETED
     if (newStatus === 'COMPLETED') {
       const requiresPhoto = task.TaskTemplates?.requires_photo ?? true;
-      const minPhotoCount = task.TaskTemplates?.min_photo_count ?? 1;
+      const minPhotoCount = task.min_photo_count ?? task.TaskTemplates?.min_photo_count ?? 1;
 
       if (requiresPhoto) {
         const { count, error: countError } = await supabase

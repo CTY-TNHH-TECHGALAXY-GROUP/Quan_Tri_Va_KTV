@@ -73,6 +73,7 @@ export const useKTVAttendance = () => {
     const [workType, setWorkType] = useState<string>('TYPE_A');
     const [availableUntil, setAvailableUntil] = useState<string | null>(null);
     const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
+    const [incompleteTasksCount, setIncompleteTasksCount] = useState(0);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -92,6 +93,7 @@ export const useKTVAttendance = () => {
                 if (statusRes.success) {
                     if (statusRes.workType) setWorkType(statusRes.workType);
                     if (statusRes.availableUntil) setAvailableUntil(statusRes.availableUntil);
+                    if (statusRes.incompleteTasksCount !== undefined) setIncompleteTasksCount(statusRes.incompleteTasksCount);
                 }
                 
                 if (settingsRes.success && settingsRes.data) {
@@ -112,10 +114,14 @@ export const useKTVAttendance = () => {
                 }
 
                 if (statusRes.success && statusRes.checkStatus) {
-                    setCheckStatus(statusRes.checkStatus as CheckStatus);
-                    if (statusRes.record) {
-                        setCurrentRecord(statusRes.record);
-                    }
+                    // Update checkStatus and currentRecord
+                    setCheckStatus(statusRes.checkStatus);
+                    setCurrentRecord(statusRes.record || null);
+                    
+                    // Xóa errorMsg nếu đang có
+                    setErrorMsg(null);
+                } else {
+                    setCheckStatus('IDLE');
                 }
             } catch (err) {
                 console.error('❌ [Attendance] Failed to fetch status:', err);
@@ -390,5 +396,6 @@ export const useKTVAttendance = () => {
         workType,
         availableUntil,
         refreshAttendanceStatus,
+        incompleteTasksCount,
     };
 };
