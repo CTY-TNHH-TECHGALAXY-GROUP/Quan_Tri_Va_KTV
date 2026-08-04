@@ -39,7 +39,6 @@ const KTVAttendancePage = () => {
         workType,
         availableUntil,
         refreshAttendanceStatus,
-        isTypeB,
         incompleteTasksCount
     } = useKTVAttendance();
 
