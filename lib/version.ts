@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.52';
-export const LAST_UPDATE = 'Thêm chức năng tuỳ chỉnh số lượng ảnh yêu cầu theo từng phòng trong Ma trận công việc.';
+export const APP_VERSION = '1.7.55';
+export const LAST_UPDATE = 'Thêm Carousel xem ảnh theo phòng (có nút mũi tên, swipe, keyboard) + Nút Duyệt tất cả cho Admin.';

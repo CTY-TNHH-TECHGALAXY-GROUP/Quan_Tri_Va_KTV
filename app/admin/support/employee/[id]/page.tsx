@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useEmployeeDetail } from './EmployeeDetail.logic';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function EmployeeDetailPage() {
   const params = useParams();
@@ -15,6 +15,8 @@ export default function EmployeeDetailPage() {
   const [reviewingTaskId, setReviewingTaskId] = useState<string | null>(null);
   const [adhocTaskName, setAdhocTaskName] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [confirmingGroup, setConfirmingGroup] = useState<string | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const toggleCategory = (catName: string) => {
     setExpandedCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
@@ -134,10 +136,63 @@ export default function EmployeeDetailPage() {
 
               return (
                 <div key={catName} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                  <div className={`px-4 py-3 border-b text-sm font-bold flex items-center gap-2 uppercase ${isUrgent ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
-                    {isUrgent && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                    {catName}
-                  </div>
+                  {(() => {
+                    const pendingCount = tasks.filter(t => t.status === 'COMPLETED' && (t.inspection_status === 'PENDING_REVIEW' || t.inspection_status === 'NOT_REVIEWED')).length;
+                    const totalPhotos = tasks.reduce((sum, t) => sum + (t.photoCount || 0), 0);
+                    const isConfirming = confirmingGroup === catName;
+
+                    return (
+                      <div className={`px-4 py-3 border-b text-sm font-bold flex items-center justify-between gap-2 flex-wrap ${isUrgent ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {isUrgent && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                          <span className="truncate">{catName}</span>
+                          {tasks[0]?.roomHasGuest && (
+                            <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] shadow-sm shadow-red-500/30 shrink-0">
+                              🙋 Có khách
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* View Photos Button */}
+                          {totalPhotos > 0 && (
+                            <button
+                              onClick={() => logic.fetchGroupPhotos(catName, tasks)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-cyan-50 text-cyan-600 rounded-lg text-xs font-bold hover:bg-cyan-100 transition-colors border border-cyan-200"
+                            >
+                              📸 Xem {totalPhotos} ảnh
+                            </button>
+                          )}
+                          {/* Approve All Button */}
+                          {pendingCount > 0 && (
+                            isConfirming ? (
+                              <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-lg px-2 py-1">
+                                <span className="text-xs text-green-700 font-medium">Duyệt {pendingCount} việc?</span>
+                                <button
+                                  onClick={async () => {
+                                    await logic.reviewAllPending(tasks);
+                                    setConfirmingGroup(null);
+                                  }}
+                                  disabled={logic.submitting}
+                                  className="bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold hover:bg-green-600 disabled:opacity-50"
+                                >✓</button>
+                                <button
+                                  onClick={() => setConfirmingGroup(null)}
+                                  className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                                >✕</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmingGroup(catName)}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-600 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors border border-green-200"
+                              >
+                                ✓ Duyệt tất cả ({pendingCount})
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   
                   <div className="divide-y divide-slate-100">
                     {tasks.map((task, idx) => {
@@ -155,7 +210,12 @@ export default function EmployeeDetailPage() {
                             <p className={`font-medium text-slate-800 ${isPassed ? 'line-through text-slate-400' : ''}`}>
                               {idx + 1}. {task.name}
                             </p>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
+                              {task.isCarryOver && (
+                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                                  📅 Tồn đọng {task.carryOverDate ? new Date(task.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : ''}
+                                </span>
+                              )}
                               {task.photoCount > 0 && <span className="text-cyan-600 font-medium">📷 Yêu cầu ảnh</span>}
                               {task.completedAt && <span>Hoàn thành lúc {new Date(task.completedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>}
                             </div>
@@ -171,7 +231,7 @@ export default function EmployeeDetailPage() {
                             {isPendingReview && (
                               <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-amber-200">
                                 <button 
-                                  onClick={() => logic.fetchTaskPhotos(task.id)}
+                                  onClick={() => logic.fetchTaskPhotos(task.id, task.name)}
                                   className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-amber-300 rounded-lg text-cyan-600 text-xs font-bold hover:bg-cyan-50"
                                 >
                                   <span>📷</span> Xem {task.photoCount} ảnh
@@ -402,32 +462,115 @@ export default function EmployeeDetailPage() {
         </div>
       )}
 
-      {/* Photo Viewer Modal */}
-      {logic.viewingTaskPhotos && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800">Ảnh đã tải lên</h3>
+      {/* Photo Carousel Lightbox */}
+      {logic.viewingTaskPhotos && logic.viewingTaskPhotos.photos.length > 0 && (() => {
+        const { title, currentIndex, photos } = logic.viewingTaskPhotos;
+        const current = photos[currentIndex];
+        const total = photos.length;
+
+        return (
+          <div 
+            className="fixed inset-0 z-[60] bg-black/90 flex flex-col"
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') logic.goToNextPhoto();
+              if (e.key === 'ArrowLeft') logic.goToPrevPhoto();
+              if (e.key === 'Escape') logic.setViewingTaskPhotos(null);
+            }}
+            tabIndex={0}
+            ref={(el) => el?.focus()}
+          >
+            {/* Top bar */}
+            <div className="flex items-center justify-between px-4 py-3 bg-black/50">
+              <h3 className="text-white font-bold text-sm truncate flex-1 mr-4">{title}</h3>
               <button 
                 onClick={() => logic.setViewingTaskPhotos(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto space-y-4">
-              {logic.viewingTaskPhotos.photos.map((photo: any, idx: number) => (
-                <div key={idx} className="rounded-xl overflow-hidden border border-slate-200">
-                  <img src={photo.url} alt={`Ảnh ${idx + 1}`} className="w-full h-auto object-contain bg-slate-50" />
-                  <div className="p-2 text-xs text-center text-slate-500 bg-slate-50 border-t border-slate-200">
-                    {new Date(photo.created_at).toLocaleString('vi-VN')}
-                  </div>
-                </div>
-              ))}
-              {logic.viewingTaskPhotos.photos.length === 0 && (
-                <p className="text-center text-slate-500 py-8">Chưa có ảnh nào.</p>
+
+            {/* Image area with navigation */}
+            <div 
+              className="flex-1 flex items-center justify-center relative px-4 min-h-0"
+              onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
+              onTouchEnd={(e) => {
+                if (touchStartX === null) return;
+                const deltaX = e.changedTouches[0].clientX - touchStartX;
+                if (Math.abs(deltaX) > 50) {
+                  if (deltaX < 0) logic.goToNextPhoto();
+                  else logic.goToPrevPhoto();
+                }
+                setTouchStartX(null);
+              }}
+            >
+              {/* Prev button */}
+              {total > 1 && (
+                <button
+                  onClick={logic.goToPrevPhoto}
+                  className="absolute left-2 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              )}
+
+              {/* Current image */}
+              <img 
+                src={current.url} 
+                alt={`Ảnh ${currentIndex + 1}`} 
+                className="max-h-[65vh] max-w-full object-contain rounded-lg select-none"
+                draggable={false}
+              />
+
+              {/* Next button */}
+              {total > 1 && (
+                <button
+                  onClick={logic.goToNextPhoto}
+                  className="absolute right-2 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
+                >
+                  <ChevronRight size={28} />
+                </button>
               )}
             </div>
+
+            {/* Info bar */}
+            <div className="bg-black/50 backdrop-blur-sm px-4 py-3">
+              <p className="text-white font-medium text-sm truncate">📋 {current.taskName}</p>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-white/60 text-xs">
+                  🕒 {new Date(current.created_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                </span>
+                <span className="text-white/80 text-xs font-bold">
+                  Ảnh {currentIndex + 1} / {total}
+                </span>
+              </div>
+              {/* Dot indicators */}
+              {total <= 20 && (
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  {photos.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => logic.setViewingTaskPhotos({ ...logic.viewingTaskPhotos!, currentIndex: idx })}
+                      className={`rounded-full transition-all ${idx === currentIndex ? 'w-2.5 h-2.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/60'}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Empty photo state */}
+      {logic.viewingTaskPhotos && logic.viewingTaskPhotos.photos.length === 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-8 text-center shadow-xl">
+            <p className="text-4xl mb-3">📷</p>
+            <p className="text-slate-500 mb-4">Chưa có ảnh nào.</p>
+            <button 
+              onClick={() => logic.setViewingTaskPhotos(null)}
+              className="bg-slate-100 text-slate-600 px-6 py-2 rounded-xl font-bold hover:bg-slate-200"
+            >Đóng</button>
           </div>
         </div>
       )}

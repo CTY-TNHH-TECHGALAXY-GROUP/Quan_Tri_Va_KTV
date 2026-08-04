@@ -5,18 +5,15 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 // ============================================================
 const getVietnamTime = () => {
   // Always get VN time correctly regardless of server timezone
-  const now = new Date();
-  // Convert to VN by getting UTC ms + 7h offset
-  return new Date(now.getTime() + (7 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60000));
+  return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
 };
 
 const getVietnamDateStr = () => {
   // Get YYYY-MM-DD in Vietnam timezone reliably
-  const vnMs = Date.now() + (7 * 60 * 60 * 1000) + (new Date().getTimezoneOffset() * 60000);
-  const vnDate = new Date(vnMs);
-  const y = vnDate.getUTCFullYear();
-  const m = String(vnDate.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(vnDate.getUTCDate()).padStart(2, '0');
+  const vnTime = getVietnamTime();
+  const y = vnTime.getFullYear();
+  const m = String(vnTime.getMonth() + 1).padStart(2, '0');
+  const d = String(vnTime.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 };
 
@@ -30,6 +27,16 @@ const getTodayEnd = () => {
   // VN end of day = YYYY-MM-DDT23:59:59.999+07:00
   const dateStr = getVietnamDateStr();
   return new Date(`${dateStr}T23:59:59.999+07:00`).toISOString();
+};
+
+const CARRY_OVER_MAX_DAYS = 1;
+
+const getCarryOverStart = () => {
+  // Go back CARRY_OVER_MAX_DAYS days from today in VN timezone
+  const dateStr = getVietnamDateStr();
+  const vnDate = new Date(`${dateStr}T00:00:00+07:00`);
+  vnDate.setDate(vnDate.getDate() - CARRY_OVER_MAX_DAYS);
+  return vnDate.toISOString();
 };
 
 const shouldGenerateTaskToday = (repeatMode: string, cronSchedule?: string | null) => {
@@ -323,6 +330,18 @@ export class EmployeeTasksService {
       throw new Error(error.message || 'Failed to fetch tasks');
     }
 
+    // Fetch custom photo counts from matrix to override dynamically
+    const { data: matrixData } = await supabase
+      .from('RoomTaskTemplates')
+      .select('template_id, room_id, custom_min_photo_count');
+      
+    const customPhotoMap = new Map<string, number>();
+    (matrixData || []).forEach((r: any) => {
+      if (r.custom_min_photo_count !== null && r.custom_min_photo_count !== undefined) {
+        customPhotoMap.set(`${r.template_id}_${r.room_id}`, r.custom_min_photo_count);
+      }
+    });
+
     // Fetch photo counts
     const taskIds = (data || []).map(t => t.id);
     let photoCounts: Record<string, number> = {};
@@ -351,7 +370,7 @@ export class EmployeeTasksService {
       completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
       photoCount: photoCounts[t.id] || 0,
       requires_photo: t.TaskTemplates?.requires_photo || false,
-      min_photo_count: t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
+      min_photo_count: customPhotoMap.get(`${t.template_id}_${t.room_id}`) ?? t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
       category_id: t.category_id,
       room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
@@ -360,7 +379,82 @@ export class EmployeeTasksService {
       sortOrder: t.TaskTemplates?.sort_order || 999,
     }));
 
-    return { success: true, data: mapped };
+    // ============================================================
+    // Fetch carry-over tasks from previous days (max 3 days)
+    // Conditions: NOT_STARTED, IN_PROGRESS, or REWORK_REQUIRED
+    // ============================================================
+    const carryOverStart = getCarryOverStart();
+    const taskSelectFields = 'id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, created_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)';
+
+    let carryOverQuery = supabase
+      .from('Tasks')
+      .select(taskSelectFields)
+      .in('assignee_id', empIds)
+      .gte('created_at', carryOverStart)
+      .lt('created_at', todayStart) // Before today
+      .in('status', ['NOT_STARTED', 'IN_PROGRESS'])
+      .order('created_at', { ascending: true });
+
+    const { data: carryOverData } = await carryOverQuery;
+
+    // Also fetch REWORK_REQUIRED tasks from previous days (status may be IN_PROGRESS after rework)
+    const { data: reworkData } = await supabase
+      .from('Tasks')
+      .select(taskSelectFields)
+      .in('assignee_id', empIds)
+      .gte('created_at', carryOverStart)
+      .lt('created_at', todayStart)
+      .eq('status', 'COMPLETED')
+      .eq('inspection_status', 'REWORK_REQUIRED')
+      .order('created_at', { ascending: true });
+
+    // Merge & dedupe carry-over tasks
+    const carryOverIds = new Set<string>();
+    const allCarryOver = [...(carryOverData || []), ...(reworkData || [])];
+    const uniqueCarryOver = allCarryOver.filter(t => {
+      if (carryOverIds.has(t.id)) return false;
+      carryOverIds.add(t.id);
+      return true;
+    });
+
+    // Fetch photo counts for carry-over tasks
+    const carryOverTaskIds = uniqueCarryOver.map(t => t.id);
+    let carryOverPhotoCounts: Record<string, number> = {};
+    if (carryOverTaskIds.length > 0) {
+      const { data: coPhotos } = await supabase
+        .from('TaskPhotos')
+        .select('task_id')
+        .in('task_id', carryOverTaskIds)
+        .eq('is_submitted', true);
+      if (coPhotos) {
+        coPhotos.forEach(p => {
+          carryOverPhotoCounts[p.task_id] = (carryOverPhotoCounts[p.task_id] || 0) + 1;
+        });
+      }
+    }
+
+    const carryOverMapped = uniqueCarryOver.map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status === 'COMPLETED' && t.inspection_status === 'REWORK_REQUIRED' ? 'IN_PROGRESS' : t.status,
+      inspection_status: t.inspection_status,
+      task_type: t.task_type,
+      priority: t.priority,
+      completedAt: null,
+      photoCount: carryOverPhotoCounts[t.id] || 0,
+      requires_photo: t.TaskTemplates?.requires_photo || false,
+      min_photo_count: customPhotoMap.get(`${t.template_id}_${t.room_id}`) ?? t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
+      category_id: t.category_id,
+      room_id: t.room_id || null,
+      categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
+      roomHasGuest: t.Rooms?.has_guests || false,
+      categoryOrder: t.room_id ? 0 : 999,
+      sortOrder: t.TaskTemplates?.sort_order || 999,
+      isCarryOver: true,
+      carryOverDate: t.created_at,
+    }));
+
+    return { success: true, data: [...carryOverMapped, ...mapped] };
   }
 
   /**

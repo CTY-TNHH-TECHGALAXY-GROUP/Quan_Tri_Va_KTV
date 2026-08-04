@@ -86,6 +86,48 @@ export default function SupportEmployeeTasksPage() {
         </div>
       )}
 
+      {/* ======================== VIỆC TỒN ĐỌNG (CARRY-OVER) ======================== */}
+      {logic.carryOverTasks.length > 0 && (
+        <section className="mb-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-t-xl px-4 py-3 flex items-center gap-2">
+            <span className="w-3 h-3 bg-amber-500 rounded-full animate-pulse" />
+            <h2 className="text-sm font-bold text-amber-700 uppercase tracking-wide">Việc tồn đọng — Cần xử lý trước 9h</h2>
+          </div>
+          <div className="bg-white border-x border-b border-amber-100 rounded-b-xl overflow-hidden shadow-sm">
+            {logic.carryOverTasks.map((group) => (
+              <div key={group.categoryName}>
+                {/* Category header */}
+                <div className="bg-amber-50/50 px-4 py-2 flex items-center justify-between border-b border-amber-100">
+                  <span className="text-xs font-bold text-amber-800 uppercase">{group.categoryName}</span>
+                  {group.carryOverDate && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                      📅 {new Date(group.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+                {/* Tasks */}
+                <div className="divide-y divide-slate-100">
+                  {group.tasks.map((task, index) => (
+                    <div key={task.id} className="relative">
+                      {/* Carry-over badge overlay */}
+                      <div className="absolute top-2 right-2 z-10 flex gap-1">
+                        {task.inspection_status === 'REWORK_REQUIRED' && (
+                          <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">🔁 Làm lại</span>
+                        )}
+                        <span className="text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-bold">
+                          📅 {task.carryOverDate ? new Date(task.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : 'Hôm qua'}
+                        </span>
+                      </div>
+                      <TaskRow index={index + 1} task={task} logic={logic} isUrgent={false} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ======================== VIỆC ĐỘT XUẤT ======================== */}
       {logic.urgentTasks.length > 0 && (
         <section className="mb-6">

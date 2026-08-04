@@ -31,6 +31,8 @@ interface TaskItem {
   roomHasGuest?: boolean;
   categoryOrder?: number;
   sortOrder?: number;
+  isCarryOver?: boolean;
+  carryOverDate?: string;
 }
 
 interface TaskNotification {
@@ -374,8 +376,36 @@ export const useSupportTasks = () => {
   // ============================================================
   // Group tasks by category
   // ============================================================
-  const urgentTasks = tasks.filter(t => t.task_type === 'AD-HOC');
-  const normalTasks = tasks.filter(t => t.task_type !== 'AD-HOC');
+  
+  // Separate carry-over tasks from today's tasks
+  const carryOverTasks = tasks.filter(t => t.isCarryOver);
+  const todayTasks = tasks.filter(t => !t.isCarryOver);
+  
+  const urgentTasks = todayTasks.filter(t => t.task_type === 'AD-HOC');
+  const normalTasks = todayTasks.filter(t => t.task_type !== 'AD-HOC');
+
+  // Group carry-over tasks by category
+  const carryOverGrouped: Record<string, { categoryName: string; categoryOrder: number; carryOverDate: string; tasks: TaskItem[] }> = {};
+  carryOverTasks.forEach(t => {
+    const groupKey = t.categoryName || 'Khác';
+    if (!carryOverGrouped[groupKey]) {
+      carryOverGrouped[groupKey] = {
+        categoryName: t.categoryName || 'Công việc khác',
+        categoryOrder: t.categoryOrder || 999,
+        carryOverDate: t.carryOverDate || '',
+        tasks: []
+      };
+    }
+    carryOverGrouped[groupKey].tasks.push(t);
+  });
+
+  const sortedCarryOver = Object.values(carryOverGrouped).map(cat => ({
+    ...cat,
+    tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  })).sort((a, b) => {
+    if (a.categoryOrder !== b.categoryOrder) return a.categoryOrder - b.categoryOrder;
+    return a.categoryName.localeCompare(b.categoryName);
+  });
 
   const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
   
@@ -402,11 +432,13 @@ export const useSupportTasks = () => {
     return a.categoryName.localeCompare(b.categoryName);
   });
 
-  const totalTasks = tasks.length;
-  const doneCount = tasks.filter(t => t.status === 'COMPLETED').length;
+  // Progress only counts today's tasks (exclude carry-over)
+  const totalTasks = todayTasks.length;
+  const doneCount = todayTasks.filter(t => t.status === 'COMPLETED').length;
   const pct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
 
   return {
+    carryOverTasks: sortedCarryOver,
     urgentTasks,
     sortedCategories,
     doneCount,

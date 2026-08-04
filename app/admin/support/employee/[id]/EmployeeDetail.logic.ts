@@ -4,11 +4,29 @@ import { supabase } from '@/lib/supabase';
 // ============================================================
 // 🔧 UI CONFIGURATION
 // ============================================================
-const TODAY_START = new Date();
-TODAY_START.setHours(0, 0, 0, 0);
+const getVietnamTime = () => {
+  return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
+};
 
-const TODAY_END = new Date();
-TODAY_END.setHours(23, 59, 59, 999);
+const getTodayStart = () => {
+  const d = getVietnamTime();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+};
+
+const getTodayEnd = () => {
+  const d = getVietnamTime();
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+};
+
+const CARRY_OVER_MAX_DAYS = 1;
+const getCarryOverStart = () => {
+  const d = getVietnamTime();
+  d.setDate(d.getDate() - CARRY_OVER_MAX_DAYS);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+};
 
 // ============================================================
 // Types
@@ -36,6 +54,9 @@ interface TodayTask {
   current_review_round: number;
   categoryName?: string;
   categoryOrder?: number;
+  isCarryOver?: boolean;
+  carryOverDate?: string;
+  roomHasGuest?: boolean;
 }
 
 interface TemplateOption {
@@ -57,7 +78,11 @@ export const useEmployeeDetail = (employeeId: string) => {
   const [showAdhocModal, setShowAdhocModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { url: string, created_at: string }[] } | null>(null);
+  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ 
+    title: string; 
+    currentIndex: number; 
+    photos: { url: string; created_at: string; taskName: string }[] 
+  } | null>(null);
 
   // ============================================================
   // Fetch employee info
@@ -97,6 +122,18 @@ export const useEmployeeDetail = (employeeId: string) => {
       return name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL');
     };
 
+    // Fetch custom photo counts from matrix
+    const { data: matrixData } = await supabase
+      .from('RoomTaskTemplates')
+      .select('template_id, room_id, custom_min_photo_count');
+      
+    const customPhotoMap = new Map<string, number>();
+    (matrixData || []).forEach(m => {
+      if (m.custom_min_photo_count !== null && m.custom_min_photo_count !== undefined) {
+        customPhotoMap.set(`${m.template_id}_${m.room_id}`, m.custom_min_photo_count);
+      }
+    });
+
     const mapped: RoutineItem[] = (data || []).map((r: any) => {
       let catName = r.TaskTemplates?.TaskCategories?.name || '—';
       if (r.room_id) {
@@ -111,7 +148,7 @@ export const useEmployeeDetail = (employeeId: string) => {
         categoryName: catName,
         roomName: r.Rooms?.name || null,
         requiresPhoto: r.TaskTemplates?.requires_photo || false,
-        minPhotoCount: r.TaskTemplates?.min_photo_count || 1,
+        minPhotoCount: customPhotoMap.get(`${r.template_id}_${r.room_id}`) ?? r.TaskTemplates?.min_photo_count ?? 1,
       };
     });
 
@@ -139,10 +176,10 @@ export const useEmployeeDetail = (employeeId: string) => {
 
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name)')
+      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name, has_guests)')
       .eq('assignee_id', employeeId)
-      .gte('created_at', TODAY_START.toISOString())
-      .lte('created_at', TODAY_END.toISOString())
+      .gte('created_at', getTodayStart())
+      .lte('created_at', getTodayEnd())
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -186,9 +223,54 @@ export const useEmployeeDetail = (employeeId: string) => {
         ? `Phòng ${t.Rooms?.name ? formatRoomName(t.Rooms.name) : t.room_id}` 
         : (t.TaskCategories?.name || 'Khác'),
       categoryOrder: t.room_id ? 0 : 999,
+      roomHasGuest: t.Rooms?.has_guests || false,
     }));
 
     setTodayTasks(mapped);
+
+    // Fetch carry-over tasks from previous days
+    const { data: carryOverData } = await supabase
+      .from('Tasks')
+      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, created_at, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name, has_guests)')
+      .eq('assignee_id', employeeId)
+      .gte('created_at', getCarryOverStart())
+      .lt('created_at', getTodayStart())
+      .or('status.in.(NOT_STARTED,IN_PROGRESS),and(status.eq.COMPLETED,inspection_status.eq.REWORK_REQUIRED)')
+      .order('created_at', { ascending: true });
+
+    if (carryOverData && carryOverData.length > 0) {
+      const coTaskIds = carryOverData.map(t => t.id);
+      let coPhotoCounts: Record<string, number> = {};
+      const { data: coPhotos } = await supabase
+        .from('TaskPhotos')
+        .select('task_id')
+        .in('task_id', coTaskIds)
+        .eq('is_submitted', true);
+      (coPhotos || []).forEach(p => {
+        coPhotoCounts[p.task_id] = (coPhotoCounts[p.task_id] || 0) + 1;
+      });
+
+      const carryOverMapped: TodayTask[] = carryOverData.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status === 'COMPLETED' && t.inspection_status === 'REWORK_REQUIRED' ? 'IN_PROGRESS' : t.status,
+        inspection_status: t.inspection_status,
+        task_type: t.task_type,
+        priority: t.priority,
+        completedAt: null,
+        photoCount: coPhotoCounts[t.id] || 0,
+        current_review_round: t.current_review_round || 0,
+        categoryName: t.room_id
+          ? `Phòng ${t.Rooms?.name ? formatRoomName(t.Rooms.name) : t.room_id}`
+          : (t.TaskCategories?.name || 'Khác'),
+        categoryOrder: t.room_id ? 0 : 999,
+        roomHasGuest: t.Rooms?.has_guests || false,
+        isCarryOver: true,
+        carryOverDate: t.created_at,
+      }));
+
+      setTodayTasks(prev => [...carryOverMapped, ...prev]);
+    }
   }, [employeeId]);
 
   // ============================================================
@@ -243,7 +325,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   // ==========================================
   // Fetch Task Photos for viewing
   // ==========================================
-  const fetchTaskPhotos = async (taskId: string) => {
+  const fetchTaskPhotos = async (taskId: string, taskName?: string) => {
     const { data, error } = await supabase
       .from('TaskPhotos')
       .select('storage_path, created_at')
@@ -257,11 +339,109 @@ export const useEmployeeDetail = (employeeId: string) => {
     }
 
     if (data) {
+      const task = todayTasks.find(t => t.id === taskId);
+      const name = taskName || task?.name || 'Công việc';
       const photosWithUrls = data.map((p) => {
         const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
-        return { url: publicUrlData.publicUrl, created_at: p.created_at };
+        return { url: publicUrlData.publicUrl, created_at: p.created_at, taskName: name };
       });
-      setViewingTaskPhotos({ taskId, photos: photosWithUrls });
+      setViewingTaskPhotos({ title: name, currentIndex: 0, photos: photosWithUrls });
+    }
+  };
+
+  // ==========================================
+  // Fetch ALL photos for a group/room (Carousel)
+  // ==========================================
+  const fetchGroupPhotos = async (groupTitle: string, tasks: TodayTask[]) => {
+    const taskIds = tasks.map(t => t.id);
+    if (taskIds.length === 0) return;
+
+    const { data, error } = await supabase
+      .from('TaskPhotos')
+      .select('task_id, storage_path, created_at')
+      .in('task_id', taskIds)
+      .eq('is_submitted', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching group photos:', error.message);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      // Build task name map
+      const taskNameMap: Record<string, string> = {};
+      tasks.forEach(t => { taskNameMap[t.id] = t.name; });
+
+      const photosWithUrls = data.map((p) => {
+        const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
+        return {
+          url: publicUrlData.publicUrl,
+          created_at: p.created_at,
+          taskName: taskNameMap[p.task_id] || 'Công việc',
+        };
+      });
+      setViewingTaskPhotos({ title: groupTitle, currentIndex: 0, photos: photosWithUrls });
+    }
+  };
+
+  // ==========================================
+  // Carousel navigation
+  // ==========================================
+  const goToNextPhoto = () => {
+    setViewingTaskPhotos(prev => {
+      if (!prev || prev.photos.length === 0) return prev;
+      return { ...prev, currentIndex: (prev.currentIndex + 1) % prev.photos.length };
+    });
+  };
+
+  const goToPrevPhoto = () => {
+    setViewingTaskPhotos(prev => {
+      if (!prev || prev.photos.length === 0) return prev;
+      return { ...prev, currentIndex: (prev.currentIndex - 1 + prev.photos.length) % prev.photos.length };
+    });
+  };
+
+  // ==========================================
+  // Batch review: Approve all pending tasks
+  // ==========================================
+  const reviewAllPending = async (tasks: TodayTask[]) => {
+    const pending = tasks.filter(t => 
+      t.status === 'COMPLETED' && 
+      (t.inspection_status === 'PENDING_REVIEW' || t.inspection_status === 'NOT_REVIEWED')
+    );
+    if (pending.length === 0) return;
+
+    setSubmitting(true);
+    try {
+      const pendingIds = pending.map(t => t.id);
+
+      // 1. Batch update tasks
+      const { error: taskErr } = await supabase
+        .from('Tasks')
+        .update({ inspection_status: 'PASSED' })
+        .in('id', pendingIds);
+
+      if (taskErr) {
+        console.error('Error batch reviewing:', taskErr.message);
+        return;
+      }
+
+      // 2. Batch insert reviews
+      const reviews = pending.map(t => ({
+        task_id: t.id,
+        round_number: (t.current_review_round || 0) + 1,
+        reviewer_id: null,
+        decision: 'PASSED' as const,
+        note: 'Duyệt hàng loạt',
+      }));
+
+      await supabase.from('TaskReviews').insert(reviews);
+
+      // 3. Refresh UI
+      await fetchTodayTasks();
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -508,6 +688,10 @@ export const useEmployeeDetail = (employeeId: string) => {
     viewingTaskPhotos,
     setViewingTaskPhotos,
     fetchTaskPhotos,
+    fetchGroupPhotos,
+    goToNextPhoto,
+    goToPrevPhoto,
+    reviewAllPending,
     addRoutine,
     assignCategory,
     unassignCategory,
