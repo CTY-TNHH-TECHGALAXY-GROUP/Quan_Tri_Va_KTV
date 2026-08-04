@@ -109,6 +109,28 @@ export async function POST(request: Request) {
             }
         }
 
+        // ─── Step 0.5: Check pending tasks before checkout ─────────────
+        if (checkType === 'CHECK_OUT' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') {
+            const nowUtc = new Date();
+            const vnNow = new Date(nowUtc.getTime() + VN_OFFSET_MS);
+            const vnDateStr = vnNow.toISOString().slice(0, 10);
+            const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
+
+            const { data: incompleteTasks, error: taskErr } = await supabase
+                .from('Tasks')
+                .select('id')
+                .eq('assignee_id', staffCode)
+                .gte('created_at', todayStartIso)
+                .neq('inspection_status', 'PASSED');
+
+            if (incompleteTasks && incompleteTasks.length > 0) {
+                return NextResponse.json({ 
+                    success: false, 
+                    error: `Bạn còn ${incompleteTasks.length} công việc trong ngày chưa được Admin nghiệm thu. Vui lòng hoàn thành và chờ Admin xác nhận trước khi tan ca!` 
+                }, { status: 403 });
+            }
+        }
+
         // ─── Step 1: Prepare Watermark Info ─────────────
         const nowUtc = new Date();
         const nowVn = new Date(nowUtc.getTime() + VN_OFFSET_MS);

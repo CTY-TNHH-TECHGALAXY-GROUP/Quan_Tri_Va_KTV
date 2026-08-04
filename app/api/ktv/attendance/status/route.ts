@@ -84,9 +84,27 @@ export async function GET(request: Request) {
              }
         }
 
+        // ─── Fetch Incomplete Tasks ───
+        let incompleteTasksCount = 0;
+        if (userRow?.code) {
+             const vnDateStr = vnNow.toISOString().slice(0, 10);
+             const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
+
+             const { data: incompleteTasks } = await supabase
+                 .from('Tasks')
+                 .select('id')
+                 .eq('assignee_id', userRow.code)
+                 .gte('created_at', todayStartIso)
+                 .neq('inspection_status', 'PASSED');
+                 
+             if (incompleteTasks) {
+                 incompleteTasksCount = incompleteTasks.length;
+             }
+        }
+
         // ─── Determine status from records ───
         if (!records || records.length === 0) {
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount });
         }
 
         // Find the most relevant record (most recent non-rejected, or fallback)
@@ -96,14 +114,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'CONFIRMED'
         );
         if (confirmedOff) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType, availableUntil, incompleteTasksCount });
         }
 
         const pendingOff = records.find(
             (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'PENDING'
         );
         if (pendingOff) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType, availableUntil, incompleteTasksCount });
         }
 
         // 2. Kiểm tra Tan ca
@@ -111,14 +129,14 @@ export async function GET(request: Request) {
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'CONFIRMED'
         );
         if (confirmedCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType, availableUntil, incompleteTasksCount });
         }
 
         const pendingCheckOut = records.find(
             (r) => r.checkType === 'CHECK_OUT' && r.status === 'PENDING'
         );
         if (pendingCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType, availableUntil, incompleteTasksCount });
         }
 
         // 3. Kiểm tra Vào ca
@@ -126,18 +144,18 @@ export async function GET(request: Request) {
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'CONFIRMED'
         );
         if (confirmedCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType, availableUntil, incompleteTasksCount });
         }
 
         const pendingCheckIn = records.find(
             (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'PENDING'
         );
         if (pendingCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType, availableUntil });
+            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType, availableUntil, incompleteTasksCount });
         }
 
         // All records are REJECTED → allow retry
-        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil });
+        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);
