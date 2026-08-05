@@ -10,7 +10,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('RoomTaskTemplates')
-      .select('room_id, template_id');
+      .select('room_id, template_id, custom_min_photo_count');
       
     if (error) throw error;
     
@@ -67,6 +67,19 @@ export async function POST(request: Request) {
           
           if (newRoutines.length > 0) {
             await supabase.from('EmployeeRoutines').insert(newRoutines);
+          }
+        }
+        
+        // Sync custom photo count to existing NOT_STARTED/IN_PROGRESS tasks for today
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        for (const m of body.matrix) {
+          if (m.custom_min_photo_count !== null && m.custom_min_photo_count !== undefined) {
+            await supabase.from('Tasks')
+              .update({ min_photo_count: m.custom_min_photo_count })
+              .eq('template_id', m.template_id)
+              .eq('room_id', m.room_id)
+              .in('status', ['NOT_STARTED', 'IN_PROGRESS'])
+              .gte('created_at', todayStart.toISOString());
           }
         }
       }

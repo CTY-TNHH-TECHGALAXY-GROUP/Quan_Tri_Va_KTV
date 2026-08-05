@@ -23,11 +23,23 @@ export default function SupportReviewsPage() {
         ) : (
           logic.tasks.map(task => (
             <div key={task.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">
-                  {task.roomName}
+              <div className="flex justify-between items-start mb-3 gap-2">
+                <div className="flex gap-1.5 items-center flex-wrap">
+                  {task.roomName && (
+                    <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded">
+                      {task.roomName}
+                    </span>
+                  )}
+                  {task.roomHasGuest && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      Có khách
+                    </span>
+                  )}
+                </div>
+                <span className="text-slate-500 text-[10px] whitespace-nowrap bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                  Gửi lúc <span className="font-semibold text-slate-700">{new Date(task.completed_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </span>
-                <span className="text-slate-500 text-xs">{new Date(task.completed_at).toLocaleTimeString()}</span>
               </div>
               
               <h3 className="font-bold text-slate-800 text-lg mb-1">{task.name}</h3>

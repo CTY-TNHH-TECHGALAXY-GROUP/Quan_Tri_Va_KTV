@@ -8,6 +8,7 @@ interface ReviewTask {
   id: string;
   name: string;
   roomName: string | null;
+  roomHasGuest: boolean;
   assigneeName: string;
   photoCount: number;
   completed_at: string;
@@ -27,7 +28,7 @@ export const useSupportReviews = () => {
   const fetchPendingReview = useCallback(async () => {
     const { data, error } = await supabase
       .from('Tasks')
-      .select('id, name, assignee_id, status, inspection_status, updated_at, Users(fullName)')
+      .select('id, name, assignee_id, room_id, status, inspection_status, updated_at, Users(fullName), Rooms(name, has_guests)')
       .eq('status', 'COMPLETED')
       .in('inspection_status', ['PENDING_REVIEW', 'NOT_REVIEWED'])
       .order('updated_at', { ascending: false });
@@ -58,7 +59,8 @@ export const useSupportReviews = () => {
     const mapped: ReviewTask[] = (data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
-      roomName: null,
+      roomName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : null,
+      roomHasGuest: t.Rooms?.has_guests || false,
       assigneeName: t.Users?.fullName || 'Chưa rõ',
       photoCount: photoCounts[t.id] || 0,
       completed_at: t.updated_at,

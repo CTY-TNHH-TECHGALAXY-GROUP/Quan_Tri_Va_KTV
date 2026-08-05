@@ -361,11 +361,14 @@ export const useSupportTemplates = () => {
       if (mappedRooms) {
         Object.keys(mappedRooms).forEach(roomId => {
           if (mappedRooms[roomId].active) {
+            const customCount = mappedRooms[roomId].custom_min_photo_count;
             vTpls.push({
               ...tpl,
               id: `virtual_tpl_${tpl.id}_${roomId}`,
               categoryName: `Phòng ${formatRoomName(rooms.find(r => r.id === roomId)?.name || roomId)}`,
-              categoryType: 'ROOM_VIRTUAL' as any
+              categoryType: 'ROOM_VIRTUAL' as any,
+              // Override min_photo_count from matrix if custom value exists
+              min_photo_count: customCount ?? tpl.min_photo_count
             });
           }
         });

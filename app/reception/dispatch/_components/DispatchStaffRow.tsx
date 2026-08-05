@@ -318,7 +318,13 @@ export const DispatchStaffRow = ({
                                                         <div className="flex items-center justify-between">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
-                                                                <span>{turn.employee_id}</span>
+                                                                <span>
+                                                                    {turn.employee_id.startsWith('C_') && turn.staff?.full_name
+                                                                        ? turn.staff.full_name
+                                                                        : turn.employee_id.startsWith('EXT') && turn.staff?.full_name
+                                                                            ? `${turn.employee_id} - ${turn.staff.full_name}`
+                                                                            : turn.employee_id}
+                                                                </span>
                                                                 <WorkTypeBadge workType={turn.staff?.work_type} />
                                                                 {turn.staff?.online_status === 'ONLINE' && (
                                                                     <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-emerald-100 text-emerald-700 border border-emerald-200 leading-none">Online</span>
