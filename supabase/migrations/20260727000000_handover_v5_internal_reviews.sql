@@ -63,7 +63,7 @@ INSERT INTO "SystemConfigs" (key, value, description) VALUES
             "apply_services": ["NHS0607", "NHS0705", "NHS0706"]
         },
         "FACIAL": {
-            "items": ["Ống hút mụn", "Máy Facial", "Khăn lau mặt"],
+            "items": ["Ống hút mụn", "Máy Facial"],
             "apply_categories": ["Facial"],
             "apply_services": ["NHS0607"]
         },
