@@ -30,6 +30,11 @@ async function processLedgerSync(targetDateStr: string) {
         .ilike('id', 'NH%');
     
     if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, message: 'No KTVs found' });
+    
+    const staffWorkTypeMap: Record<string, string> = {};
+    ktvs.forEach(k => {
+        staffWorkTypeMap[k.id.toLowerCase()] = k.work_type || 'TYPE_A';
+    });
 
     // 2.5 Fetch Shifts
     const { data: shiftsData } = await supabase
@@ -152,7 +157,7 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig);
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap);
                 total_bonus += bookingBonus;
             }
         }

@@ -13,6 +13,7 @@ export interface BonusConfig {
     s1Bonus: number;
     s2Bonus: number;
     s3Bonus: number;
+    enableBonus: boolean;
 }
 
 export class KtvCommissionService {
@@ -148,21 +149,33 @@ export class KtvCommissionService {
             `ktv_shift_2_bonus${typeSuffix}`,
             `ktv_shift_2_bonus`,
             `ktv_shift_3_bonus${typeSuffix}`,
-            `ktv_shift_3_bonus`
+            `ktv_shift_3_bonus`,
+            `enable_ktv_bonus${typeSuffix}`,
+            `enable_ktv_bonus`
         ];
         
         const { data: bonusConfigs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
             .in('key', keysToFetch);
+        const bonusMap: Record<string, any> = {};
+        (bonusConfigs || []).forEach((c: any) => { bonusMap[c.key] = c.value; });
         
-        const bonusMap: Record<string, number> = {};
-        (bonusConfigs || []).forEach((c: any) => { bonusMap[c.key] = Number(c.value) || 20; });
-        
+        let enableBonus = false;
+        if (bonusMap[`enable_ktv_bonus${typeSuffix}`] !== undefined) {
+            enableBonus = bonusMap[`enable_ktv_bonus${typeSuffix}`] === 'true' || bonusMap[`enable_ktv_bonus${typeSuffix}`] === true;
+        } else if (bonusMap[`enable_ktv_bonus`] !== undefined) {
+            enableBonus = bonusMap[`enable_ktv_bonus`] === 'true' || bonusMap[`enable_ktv_bonus`] === true;
+        } else {
+            // Default: TYPE_B is true, others are false
+            enableBonus = workType === 'TYPE_B';
+        }
+
         return {
-            s1Bonus: bonusMap[`ktv_shift_1_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_1_bonus'] ?? 20,
-            s2Bonus: bonusMap[`ktv_shift_2_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_2_bonus'] ?? 20,
-            s3Bonus: bonusMap[`ktv_shift_3_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_3_bonus'] ?? 30
+            s1Bonus: Number(bonusMap[`ktv_shift_1_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_1_bonus'] ?? 20),
+            s2Bonus: Number(bonusMap[`ktv_shift_2_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_2_bonus'] ?? 20),
+            s3Bonus: Number(bonusMap[`ktv_shift_3_bonus${typeSuffix}`] ?? bonusMap['ktv_shift_3_bonus'] ?? 30),
+            enableBonus
         };
     }
 
@@ -244,8 +257,10 @@ export class KtvCommissionService {
         techCode: string, 
         todayStr: string, 
         shiftsData: any[], 
-        bonusConfig: BonusConfig
+        bonusConfig: BonusConfig,
+        staffWorkTypeMap: Record<string, string> = {}
     ): number {
+        if (!bonusConfig.enableBonus) return 0;
         // Compute all unique technicians in this booking for dividing points
         const allKtvCodes = new Set<string>();
         for (const item of (booking.BookingItems || [])) {
@@ -259,6 +274,14 @@ export class KtvCommissionService {
                 if (c.trim()) allKtvCodes.add(c.trim().toLowerCase());
             });
         }
+        
+        let validUniqueKTVs = 0;
+        allKtvCodes.forEach(code => {
+            const wt = staffWorkTypeMap[code] || 'TYPE_C'; // Fallback to TYPE_C (invisible) for unknown staff
+            if (wt !== 'TYPE_C') {
+                validUniqueKTVs++;
+            }
+        });
 
         // 1. Determine Max Rating for this KTV
         let maxKtvRating = 0;
@@ -332,7 +355,7 @@ export class KtvCommissionService {
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
 
         // 4. Calculate points based on guestCount and total unique KTVs in the booking
-        const totalUniqueKTVs = allKtvCodes.size || 1;
+        const totalUniqueKTVs = validUniqueKTVs > 0 ? validUniqueKTVs : 1;
         const guestCount = booking.guestCount || 1;
         
         let calculatedPoints = adjustedBasePoints * (guestCount / totalUniqueKTVs);

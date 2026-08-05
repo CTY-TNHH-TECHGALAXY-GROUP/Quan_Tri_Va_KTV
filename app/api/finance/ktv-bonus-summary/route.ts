@@ -21,7 +21,7 @@ export async function GET(request: Request) {
         // 1. Fetch Staff (only active ones)
         const { data: staffList, error: staffError } = await supabase
             .from('Staff')
-            .select('id, full_name, status, feature_flags')
+            .select('id, full_name, status, feature_flags, work_type')
             .eq('status', 'ĐANG LÀM')
             .ilike('id', 'NH%')
             .order('id', { ascending: true });
@@ -37,6 +37,11 @@ export async function GET(request: Request) {
         if (staffIds.length === 0) {
             return NextResponse.json({ success: true, data: [] });
         }
+        
+        const staffWorkTypeMap: Record<string, string> = {};
+        (staffList || []).forEach(s => {
+            staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+        });
 
         // Fetch KTV shifts to determine bonus per KTV
         const { data: shiftsData } = await supabase
@@ -149,7 +154,7 @@ export async function GET(request: Request) {
                 const sId = staffIds.find(id => id.toLowerCase() === techCode);
                 if (!sId || !statsMap[sId]) return;
 
-                const bonusPts = KtvCommissionService.calculateBookingBonus(b, sId, todayStr, shiftsData || [], bonusConfig);
+                const bonusPts = KtvCommissionService.calculateBookingBonus(b, sId, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap);
                 statsMap[sId].totalEarned += bonusPts;
             });
         });

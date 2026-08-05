@@ -49,16 +49,27 @@ export async function GET(request: Request) {
         const todayStr = nowVn.toISOString().split('T')[0];
         const fromDate = `${todayStr}T00:00:00+07:00`;
 
-        // 4. Determine Shift and Configs for Realtime Bonus
-        const { data: staffData } = await supabase
+        // 4. Determine Shift
+        const { data: allStaffData } = await supabase
             .from('Staff')
-            .select('work_type')
-            .eq('id', techCode)
-            .single();
-        const workType = staffData?.work_type || 'TYPE_A';
+            .select('id, work_type');
+            
+        let workType = 'TYPE_A';
+        const staffWorkTypeMap: Record<string, string> = {};
+        (allStaffData || []).forEach(s => {
+            staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+            if (s.id === techCode) {
+                workType = s.work_type || 'TYPE_A';
+            }
+        });
 
-        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase, workType);
-        
+        // 3. Fetch System Configs
+        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType);
+        const s1Bonus = bonusConfigData.s1Bonus;
+        const s2Bonus = bonusConfigData.s2Bonus;
+        const s3Bonus = bonusConfigData.s3Bonus;
+        const enableBonus = bonusConfigData.enableBonus;
+
         const { data: configs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
@@ -88,9 +99,11 @@ export async function GET(request: Request) {
         if (Array.isArray(holidayDates) && holidayDates.includes(targetMonthDay)) isHoliday = true;
 
         const shiftType = isHoliday ? 'SHIFT_2' : currentShift;
-        let basePointsForShift = bonusConfig.s1Bonus;
-        if (shiftType === 'SHIFT_2') basePointsForShift = bonusConfig.s2Bonus;
-        else if (shiftType === 'SHIFT_3') basePointsForShift = bonusConfig.s3Bonus;
+        let basePointsForShift = s1Bonus;
+        if (shiftType === 'SHIFT_2') basePointsForShift = s2Bonus;
+        else if (shiftType === 'SHIFT_3') basePointsForShift = s3Bonus;
+
+        const bonusConfig = { s1Bonus, s2Bonus, s3Bonus, enableBonus };
 
         // 5. Fetch Realtime Bookings for today
         const { data: bookings } = await supabase
@@ -117,7 +130,7 @@ export async function GET(request: Request) {
 
             if (relevantItems.length === 0) continue;
             
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
+            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap);
             if (bonusPts > 0) {
                 // Determine maxKtvRating to show in desc
                 let maxKtvRating = 0;

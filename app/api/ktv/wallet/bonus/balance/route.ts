@@ -16,6 +16,27 @@ export async function GET(request: Request) {
 
         const START_DATE = '2026-06-01';
 
+        const { data: allStaffData } = await supabase
+            .from('Staff')
+            .select('id, work_type');
+            
+        let workType = 'TYPE_A';
+        const staffWorkTypeMap: Record<string, string> = {};
+        (allStaffData || []).forEach(s => {
+            staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+            if (s.id === techCode) {
+                workType = s.work_type || 'TYPE_A';
+            }
+        });
+
+        // 4. Fetch Bonus Configs via KtvCommissionService
+        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType);
+        // Map to expected structure in legacy code or use it directly
+        const s1Bonus = bonusConfigData.s1Bonus;
+        const s2Bonus = bonusConfigData.s2Bonus;
+        const s3Bonus = bonusConfigData.s3Bonus;
+        const enableBonus = bonusConfigData.enableBonus;
+
         // 1. Fetch Earned Bonus
         const { data: earns, error: earnErr } = await supabase
             .from('KTVDailyLedger')
@@ -100,11 +121,11 @@ export async function GET(request: Request) {
             .gte('timeStart', fromDate)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
 
-        const bonusConfig = { s1Bonus, s2Bonus, s3Bonus };
+        const bonusConfig = { s1Bonus, s2Bonus, s3Bonus, enableBonus };
 
         let rt_bonus = 0;
         (bookings || []).forEach(b => {
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig);
+            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap);
             rt_bonus += bonusPts;
         });
 

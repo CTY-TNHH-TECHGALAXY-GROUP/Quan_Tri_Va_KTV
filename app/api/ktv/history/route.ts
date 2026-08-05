@@ -24,12 +24,18 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not init' }, { status: 500 });
 
     try {
-        const { data: staffData } = await supabase
+        const { data: allStaffData } = await supabase
             .from('Staff')
-            .select('work_type')
-            .eq('id', techCode)
-            .single();
-        const workType = staffData?.work_type || 'TYPE_A';
+            .select('id, work_type');
+            
+        let workType = 'TYPE_A';
+        const staffWorkTypeMap: Record<string, string> = {};
+        (allStaffData || []).forEach(s => {
+            staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+            if (s.id === techCode) {
+                workType = s.work_type || 'TYPE_A';
+            }
+        });
         
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType);
@@ -219,7 +225,7 @@ export async function GET(request: Request) {
                 effectiveFrom: bDateStr
             }];
             
-            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig);
+            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap);
 
             // ─── Tip: sum from this KTV's items ────────────────────────
             const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);

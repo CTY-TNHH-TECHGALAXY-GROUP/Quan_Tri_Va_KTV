@@ -49,6 +49,7 @@ export async function GET(request: Request) {
         const ktvWorkTypeMap: Record<string, string> = {};
         ktvs.forEach(k => {
             ktvWorkTypeMap[k.id] = k.work_type || 'TYPE_A';
+            ktvWorkTypeMap[k.id.toLowerCase()] = k.work_type || 'TYPE_A';
         });
 
         // Fetch KTV shifts to determine bonus per KTV
@@ -199,7 +200,7 @@ export async function GET(request: Request) {
                 }
                 if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig);
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig, ktvWorkTypeMap);
 
                 at_rt_commission += bookingCommission;
                 at_rt_tip += bookingTip;

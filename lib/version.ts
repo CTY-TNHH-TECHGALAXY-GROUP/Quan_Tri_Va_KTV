@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.64';
-export const LAST_UPDATE = 'Đồng bộ tính toán thời gian KTV và xử lý hiển thị quá giờ';
+export const APP_VERSION = '1.7.66';
+export const LAST_UPDATE = 'Cập nhật hiển thị mã email ngẫu nhiên cho khách hàng vãng lai';

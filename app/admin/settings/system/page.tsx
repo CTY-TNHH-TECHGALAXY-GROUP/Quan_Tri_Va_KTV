@@ -187,9 +187,9 @@ export default function SystemSettingsPage() {
                                 {saveStatus === 'success' && savingGroup === 'bonus' && (
                                     <span className="text-emerald-500 text-xs font-bold flex items-center gap-1"><CheckCircle2 size={14} /> Đã lưu</span>
                                 )}
-                                {hasChanges(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus']) && (
+                                {hasChanges(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus', 'enable_ktv_bonus']) && (
                                     <button
-                                        onClick={() => handleSaveGroup(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus'], 'bonus')}
+                                        onClick={() => handleSaveGroup(['ktv_bonus_rate', 'ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus', 'enable_ktv_bonus'], 'bonus')}
                                         disabled={savingGroup === 'bonus'}
                                         className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
                                     >
@@ -213,6 +213,41 @@ export default function SystemSettingsPage() {
                                     suffix="VNĐ"
                                 />
                                 <p className="text-[11px] text-gray-400 mt-1.5 font-medium">Ví dụ: 1000 = 1 điểm tương ứng 1.000đ.</p>
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <div>
+                                    <label className="block text-sm font-black text-gray-900 mb-1">
+                                        Nhận điểm thưởng (Bonus)
+                                    </label>
+                                    <p className="text-[11px] text-gray-500 font-medium">BẬT = KTV nhóm này được nhận điểm thưởng. TẮT = Không được nhận.</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        // Default fallback logic matching backend
+                                        const defaultVal = activeTab === 'TYPE_B';
+                                        const currentVal = getValue('enable_ktv_bonus');
+                                        const resolvedVal = currentVal !== undefined ? (currentVal === 'true' || currentVal === true) : defaultVal;
+                                        handleChange('enable_ktv_bonus', !resolvedVal);
+                                    }}
+                                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        (() => {
+                                            const defaultVal = activeTab === 'TYPE_B';
+                                            const currentVal = getValue('enable_ktv_bonus');
+                                            return (currentVal !== undefined ? (currentVal === 'true' || currentVal === true) : defaultVal) ? 'bg-teal-500' : 'bg-gray-300';
+                                        })()
+                                    }`}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            (() => {
+                                                const defaultVal = activeTab === 'TYPE_B';
+                                                const currentVal = getValue('enable_ktv_bonus');
+                                                return (currentVal !== undefined ? (currentVal === 'true' || currentVal === true) : defaultVal) ? 'translate-x-5' : 'translate-x-0';
+                                            })()
+                                        }`}
+                                    />
+                                </button>
                             </div>
 
                             <hr className="border-gray-100 my-4" />
