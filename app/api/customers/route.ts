@@ -389,8 +389,8 @@ export async function PATCH(request: Request) {
         if (gender !== undefined) updatePayload.gender = gender;
         if (nationality !== undefined) updatePayload.nationality = nationality;
         if (fullName !== undefined) updatePayload.fullName = fullName;
-        if (phone !== undefined) updatePayload.phone = isDummyPhone(phone) ? '' : phone;
-        if (email !== undefined) updatePayload.email = isDummyEmail(email) ? `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com` : email;
+        if (phone !== undefined) updatePayload.phone = (phone && isDummyPhone(phone)) ? '' : phone;
+        if (email !== undefined) updatePayload.email = (email && isDummyEmail(email)) ? `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com` : email;
 
         const { data, error } = await supabase
             .from('Customers')

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         });
 
         // 4. Fetch Bonus Configs via KtvCommissionService
-        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType);
+        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);
         // Map to expected structure in legacy code or use it directly
         const s1Bonus = bonusConfigData.s1Bonus;
         const s2Bonus = bonusConfigData.s2Bonus;
@@ -77,14 +77,10 @@ export async function GET(request: Request) {
         const { data: configs } = await supabase
             .from('SystemConfigs')
             .select('key, value')
-            .in('key', ['ktv_shift_1_bonus', 'ktv_shift_2_bonus', 'ktv_shift_3_bonus', 'holiday_shift2_dates']);
+            .eq('key', 'holiday_shift2_dates');
 
         const configMap: Record<string, any> = {};
         (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
-        
-        const s1Bonus = Number(configMap['ktv_shift_1_bonus'] || 20);
-        const s2Bonus = Number(configMap['ktv_shift_2_bonus'] || 20);
-        const s3Bonus = Number(configMap['ktv_shift_3_bonus'] || 30);
 
         const { data: shiftsData } = await supabase
             .from('KTVShifts')

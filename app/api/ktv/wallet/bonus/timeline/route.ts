@@ -64,7 +64,7 @@ export async function GET(request: Request) {
         });
 
         // 3. Fetch System Configs
-        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType);
+        const bonusConfigData = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);
         const s1Bonus = bonusConfigData.s1Bonus;
         const s2Bonus = bonusConfigData.s2Bonus;
         const s3Bonus = bonusConfigData.s3Bonus;

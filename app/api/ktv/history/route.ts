@@ -38,7 +38,7 @@ export async function GET(request: Request) {
         });
         
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
-        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType);
+        const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);
 
         // ─── Build date range ────────────────────────────────────────────
         const nowVn = new Date(Date.now() + VN_OFFSET_MS);
