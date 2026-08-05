@@ -105,3 +105,63 @@ export function recalculateEstimatedEndTime(
         return originalEndTime;
     }
 }
+
+/**
+ * Tính toán thời gian kết thúc chính xác nhất dựa trên tổng thời lượng (duration) của tất cả các chặng (segments).
+ * Hàm này dùng chung cho toàn hệ thống để đảm bảo Sổ Tua (TurnQueue) và Kanban luôn đồng bộ.
+ * @param allSegments Mảng các segment KTV đang thực hiện (hỗ trợ cả dạng [{seg: {...}}] hoặc mảng segment trực tiếp)
+ * @param actualStartTime Thời gian bắt đầu thực tế (HH:mm:ss)
+ * @returns Chuỗi thời gian kết thúc (HH:mm:ss)
+ */
+export function calculateAccurateEndTimeFromSegments(allSegments: any[], actualStartTime: string): string {
+    if (!allSegments || allSegments.length === 0) return actualStartTime;
+    
+    let totalMins = 0;
+    let earliestStartMins = Number.MAX_SAFE_INTEGER;
+    let latestEndMins = 0;
+    let hasValidStartEnd = false;
+
+    // Quét toàn bộ segment để thử tìm thời gian bao phủ (từ st đến en)
+    allSegments.forEach((s: any) => {
+        const seg = s.seg ? s.seg : s;
+        const st = seg.startTime;
+        const en = seg.endTime;
+        if (st && en) {
+            const shParts = String(st).split(':').map(Number);
+            const ehParts = String(en).split(':').map(Number);
+            if (shParts.length >= 2 && ehParts.length >= 2 && !isNaN(shParts[0]) && !isNaN(ehParts[0])) {
+                const smins = shParts[0] * 60 + shParts[1];
+                let emins = ehParts[0] * 60 + ehParts[1];
+                if (emins < smins) emins += 24 * 60; // Qua đêm
+                earliestStartMins = Math.min(earliestStartMins, smins);
+                latestEndMins = Math.max(latestEndMins, emins);
+                hasValidStartEnd = true;
+            }
+        }
+    });
+
+    if (hasValidStartEnd && earliestStartMins < Number.MAX_SAFE_INTEGER && latestEndMins > 0) {
+        totalMins = latestEndMins - earliestStartMins;
+    } else {
+        // Fallback: cộng dồn duration
+        allSegments.forEach((s: any) => {
+            const seg = s.seg ? s.seg : s;
+            const d = Number(seg.duration);
+            if (!isNaN(d)) totalMins += d;
+        });
+    }
+
+    if (totalMins <= 0) return actualStartTime;
+
+    const ahParts = actualStartTime.split(':').map(Number);
+    if (ahParts.length < 2 || isNaN(ahParts[0])) return actualStartTime;
+
+    const ah = ahParts[0];
+    const am = ahParts[1];
+
+    let endMins = ah * 60 + am + totalMins;
+    const endH = Math.floor(endMins / 60) % 24;
+    const endM = endMins % 60;
+
+    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+}

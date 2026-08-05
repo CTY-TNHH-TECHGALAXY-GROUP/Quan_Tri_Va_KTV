@@ -1,1 +1,1 @@
-export { recalculateEstimatedEndTime } from './time.logic';
+export { recalculateEstimatedEndTime, calculateAccurateEndTimeFromSegments, getVnTimeStr } from './time.logic';

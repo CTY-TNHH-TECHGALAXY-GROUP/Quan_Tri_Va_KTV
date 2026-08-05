@@ -3,6 +3,7 @@ import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2 } from 'l
 import { motion } from 'motion/react';
 import { StaffData } from './TurnQueueBoard.types';
 import { useTurnQueueBoard } from './TurnQueueBoard.logic';
+import { getVnTimeStr } from '@/lib/time-helper';
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
@@ -40,6 +41,14 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
     }, [propSelectedDate]);
 
     const [activeTab, setActiveTab] = useState<'internal' | 'external'>('internal');
+    const [currentTime, setCurrentTime] = useState(getVnTimeStr());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(getVnTimeStr());
+        }, 10000); // Update every 10s
+        return () => clearInterval(timer);
+    }, []);
 
     const firstWaitingInternalKtvId = sortedTurns.find(t => t.status === 'waiting' && !suddenOffs.has(t.employee_id))?.employee_id;
     const firstWaitingExternalKtvId = externalTurns.find(t => t.status === 'waiting')?.employee_id;
@@ -165,7 +174,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 <div
                                     onClick={(e) => { e.stopPropagation(); setEditingKtvId(turn.employee_id); }}
                                     className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all ${suddenOffs.has(turn.employee_id) ? 'bg-red-100 text-red-500 border border-red-200' : turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
-                                        turn.status === 'working' ? 'bg-rose-100 text-rose-600 border border-rose-200' :
+                                        turn.status === 'working' ? ((turn.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-600 border border-orange-300 animate-pulse' : 'bg-rose-100 text-rose-600 border border-rose-200') :
                                         turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' :
                                             'bg-gray-100 text-gray-500 border border-gray-200'
                                     }`}>
@@ -202,19 +211,29 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     </span>
                                 )}
                                 {/* Status badge */}
-                                <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
-                                    turn.status === 'working' ? 'bg-rose-100 text-rose-700' :
-                                    turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
-                                        'bg-gray-100 text-gray-500'
-                                    }`}>
-                                    {turn.status === 'waiting' ? <CheckCircle2 size={10} /> :
-                                        turn.status === 'working' ? <Timer size={10} className="animate-spin" /> :
-                                        turn.status === 'assigned' ? <Clock size={10} /> :
-                                            <Moon size={10} />}
-                                    <span>
-                                        {turn.status === 'waiting' ? 'Sẵn sàng' : turn.status === 'working' ? (turn.estimated_end_time ? `Đang làm (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : 'Đang làm') : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
-                                    </span>
-                                </div>
+                                {(() => {
+                                    const isOverdue = turn.status === 'working' && turn.estimated_end_time && turn.estimated_end_time < currentTime;
+                                    return (
+                                        <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
+                                            turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                            isOverdue ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
+                                            turn.status === 'working' ? 'bg-rose-100 text-rose-700' :
+                                            turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
+                                                'bg-gray-100 text-gray-500'
+                                            }`}>
+                                            {turn.status === 'waiting' ? <CheckCircle2 size={10} /> :
+                                                turn.status === 'working' ? <Timer size={10} className={!isOverdue ? "animate-spin" : ""} /> :
+                                                turn.status === 'assigned' ? <Clock size={10} /> :
+                                                    <Moon size={10} />}
+                                            <span>
+                                                {turn.status === 'waiting' ? 'Sẵn sàng' : 
+                                                 isOverdue ? 'Quá giờ - Chờ dọn' :
+                                                 turn.status === 'working' ? (turn.estimated_end_time ? `Đang làm (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : 'Đang làm') : 
+                                                 turn.status === 'assigned' ? 'Đã xếp lịch' : 'Tan ca'}
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                         </motion.div>
@@ -271,17 +290,22 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
                                     isOff ? 'bg-gray-100 text-gray-500' :
                                     turn?.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                    (isWorking && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
                                     turn?.status === 'working' ? 'bg-rose-100 text-rose-700' :
                                     turn?.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
                                     'bg-gray-100 text-gray-500'
                                 }`}>
                                     {isOff ? <Moon size={10} /> :
                                         turn?.status === 'waiting' ? <CheckCircle2 size={10} /> :
-                                        turn?.status === 'working' ? <Timer size={10} className="animate-spin" /> :
+                                        turn?.status === 'working' ? <Timer size={10} className={!(turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? "animate-spin" : ""} /> :
                                         turn?.status === 'assigned' ? <Clock size={10} /> :
                                         <Moon size={10} />}
                                     <span>
-                                        {isOff ? 'Tắt' : turn?.status === 'waiting' ? 'Sẵn sàng' : turn?.status === 'working' ? ('Đang làm' + (turn?.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : turn?.status === 'assigned' ? 'Đã xếp lịch' : 'Tắt'}
+                                        {isOff ? 'Tắt' : 
+                                         turn?.status === 'waiting' ? 'Sẵn sàng' : 
+                                         (turn?.status === 'working' && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'Quá giờ - Chờ dọn' :
+                                         turn?.status === 'working' ? ('Đang làm' + (turn?.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : 
+                                         turn?.status === 'assigned' ? 'Đã xếp lịch' : 'Tắt'}
                                     </span>
                                 </div>
                                 <button 
