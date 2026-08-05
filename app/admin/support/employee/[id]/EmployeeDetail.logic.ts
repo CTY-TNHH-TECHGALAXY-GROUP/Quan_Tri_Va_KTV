@@ -235,7 +235,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       .eq('assignee_id', employeeId)
       .gte('created_at', getCarryOverStart())
       .lt('created_at', getTodayStart())
-      .or('status.in.(NOT_STARTED,IN_PROGRESS),and(status.eq.COMPLETED,inspection_status.eq.REWORK_REQUIRED)')
+      .or('status.in.(NOT_STARTED,IN_PROGRESS),and(status.eq.COMPLETED,inspection_status.in.(REWORK_REQUIRED,PENDING_REVIEW))')
       .order('created_at', { ascending: true });
 
     if (carryOverData && carryOverData.length > 0) {

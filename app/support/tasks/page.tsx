@@ -88,59 +88,12 @@ export default function SupportEmployeeTasksPage() {
 
       {/* ======================== VIỆC TỒN ĐỌNG (CARRY-OVER) ======================== */}
       {logic.carryOverTasks.length > 0 && (
-        <section className="mb-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-t-xl px-4 py-3 flex items-center gap-2">
-            <span className="w-3 h-3 bg-amber-500 rounded-full animate-pulse" />
-            <h2 className="text-sm font-bold text-amber-700 uppercase tracking-wide">Việc tồn đọng — Cần xử lý trước 9h</h2>
-          </div>
-          <div className="bg-white border-x border-b border-amber-100 rounded-b-xl overflow-hidden shadow-sm">
-            {logic.carryOverTasks.map((group) => (
-              <div key={group.categoryName}>
-                {/* Category header */}
-                <div className="bg-amber-50/50 px-4 py-2 flex items-center justify-between border-b border-amber-100">
-                  <span className="text-xs font-bold text-amber-800 uppercase">{group.categoryName}</span>
-                  {group.carryOverDate && (
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-                      📅 {new Date(group.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-                {/* Tasks */}
-                <div className="divide-y divide-slate-100">
-                  {group.tasks.map((task, index) => (
-                    <div key={task.id} className="relative">
-                      {/* Carry-over badge overlay */}
-                      <div className="absolute top-2 right-2 z-10 flex gap-1">
-                        {task.inspection_status === 'REWORK_REQUIRED' && (
-                          <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">🔁 Làm lại</span>
-                        )}
-                        <span className="text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-bold">
-                          📅 {task.carryOverDate ? new Date(task.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : 'Hôm qua'}
-                        </span>
-                      </div>
-                      <TaskRow index={index + 1} task={task} logic={logic} isUrgent={false} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <CarryOverSection groups={logic.carryOverTasks} logic={logic} />
       )}
 
       {/* ======================== VIỆC ĐỘT XUẤT ======================== */}
       {logic.urgentTasks.length > 0 && (
-        <section className="mb-6">
-          <div className="bg-red-50 border border-red-200 rounded-t-xl px-4 py-3 flex items-center gap-2">
-            <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-            <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">CÁC VIỆC ĐỘT XUẤT PHÁT SINH</h2>
-          </div>
-          <div className="bg-white border-x border-b border-red-100 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm">
-            {logic.urgentTasks.map((task, index) => (
-              <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={true} />
-            ))}
-          </div>
-        </section>
+        <UrgentSection tasks={logic.urgentTasks} logic={logic} />
       )}
 
       {/* ======================== CÁC DANH MỤC CÔNG VIỆC ======================== */}
@@ -207,8 +160,101 @@ export default function SupportEmployeeTasksPage() {
 // ============================================================
 // Sub-components
 // ============================================================
+
+const CarryOverSection = ({ groups, logic }: { groups: any[], logic: any }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const totalTasks = groups.reduce((acc, g) => acc + g.tasks.length, 0);
+
+  return (
+    <section className="mb-6">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-amber-50 border border-amber-200 rounded-t-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-amber-100 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 bg-amber-500 rounded-full animate-pulse" />
+          <h2 className="text-sm font-bold text-amber-700 uppercase tracking-wide">Việc tồn đọng — Cần xử lý trước 9h</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold text-amber-600 bg-amber-200/50 px-2 py-0.5 rounded-full">{totalTasks} việc</span>
+          <div className="text-amber-600">
+            {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </div>
+        </div>
+      </div>
+      
+      {isOpen && (
+        <div className="bg-white border-x border-b border-amber-100 rounded-b-xl overflow-hidden shadow-sm animate-in slide-in-from-top-2 fade-in duration-200">
+          {groups.map((group) => (
+            <div key={group.categoryName}>
+              {/* Category header */}
+              <div className="bg-amber-50/50 px-4 py-2 flex items-center justify-between border-b border-amber-100">
+                <span className="text-xs font-bold text-amber-800 uppercase">{group.categoryName}</span>
+                {group.carryOverDate && (
+                  <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                    📅 {new Date(group.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              {/* Tasks */}
+              <div className="divide-y divide-slate-100">
+                {group.tasks.map((task: any, index: number) => (
+                  <div key={task.id} className="relative">
+                    {/* Carry-over badge overlay */}
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      {task.inspection_status === 'REWORK_REQUIRED' && (
+                        <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">🔁 Làm lại</span>
+                      )}
+                      <span className="text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-bold">
+                        📅 {task.carryOverDate ? new Date(task.carryOverDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : 'Hôm qua'}
+                      </span>
+                    </div>
+                    <TaskRow index={index + 1} task={task} logic={logic} isUrgent={false} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
+const UrgentSection = ({ tasks, logic }: { tasks: any[], logic: any }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <section className="mb-6">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-red-50 border border-red-200 rounded-t-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-red-100 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+          <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">CÁC VIỆC ĐỘT XUẤT PHÁT SINH</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold text-red-600 bg-red-200/50 px-2 py-0.5 rounded-full">{tasks.length} việc</span>
+          <div className="text-red-600">
+            {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </div>
+        </div>
+      </div>
+      
+      {isOpen && (
+        <div className="bg-white border-x border-b border-red-100 rounded-b-xl overflow-hidden divide-y divide-slate-100 shadow-sm animate-in slide-in-from-top-2 fade-in duration-200">
+          {tasks.map((task: any, index: number) => (
+            <TaskRow key={task.id} index={index + 1} task={task} logic={logic} isUrgent={true} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const doneCount = group.tasks.filter((t: any) => t.status === 'COMPLETED').length;
   
   const roomId = group.tasks[0]?.room_id;

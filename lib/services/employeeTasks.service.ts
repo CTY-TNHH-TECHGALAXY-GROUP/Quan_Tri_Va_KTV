@@ -62,10 +62,20 @@ const shouldGenerateTaskToday = (repeatMode: string, cronSchedule?: string | nul
 };
 
 export class EmployeeTasksService {
+  static generationLocks = new Set<string>();
+
   /**
    * Auto-generate tasks for an employee based on their active routines
    */
   static async generateTodayTasks(empIds: string[], includeRoomTasks: boolean = true) {
+    const lockKey = empIds.join(',');
+    if (this.generationLocks.has(lockKey)) {
+      console.log(`Task generation for ${lockKey} is already in progress. Skipping to prevent race condition.`);
+      return { success: true, count: 0, reason: 'GENERATING' };
+    }
+    this.generationLocks.add(lockKey);
+
+    try {
     const todayStart = getTodayStart();
     const todayEnd = getTodayEnd();
     
@@ -296,6 +306,9 @@ export class EmployeeTasksService {
     }
 
     return { success: true, count: newTasks.length };
+    } finally {
+      EmployeeTasksService.generationLocks.delete(lockKey);
+    }
   }
 
   /**
@@ -380,42 +393,23 @@ export class EmployeeTasksService {
     }));
 
     // ============================================================
-    // Fetch carry-over tasks from previous days (max 3 days)
-    // Conditions: NOT_STARTED, IN_PROGRESS, or REWORK_REQUIRED
+    // Fetch carry-over tasks from previous days (max 1 days)
+    // Conditions: NOT_STARTED, IN_PROGRESS, REWORK_REQUIRED
+    // OR tasks that were updated TODAY (so they don't disappear when submitted/passed today)
     // ============================================================
     const carryOverStart = getCarryOverStart();
     const taskSelectFields = 'id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, created_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)';
 
-    let carryOverQuery = supabase
+    const { data: carryOverData } = await supabase
       .from('Tasks')
       .select(taskSelectFields)
       .in('assignee_id', empIds)
       .gte('created_at', carryOverStart)
       .lt('created_at', todayStart) // Before today
-      .in('status', ['NOT_STARTED', 'IN_PROGRESS'])
+      .or('status.in.(NOT_STARTED,IN_PROGRESS),and(status.eq.COMPLETED,inspection_status.in.(REWORK_REQUIRED,PENDING_REVIEW))')
       .order('created_at', { ascending: true });
 
-    const { data: carryOverData } = await carryOverQuery;
-
-    // Also fetch REWORK_REQUIRED tasks from previous days (status may be IN_PROGRESS after rework)
-    const { data: reworkData } = await supabase
-      .from('Tasks')
-      .select(taskSelectFields)
-      .in('assignee_id', empIds)
-      .gte('created_at', carryOverStart)
-      .lt('created_at', todayStart)
-      .eq('status', 'COMPLETED')
-      .eq('inspection_status', 'REWORK_REQUIRED')
-      .order('created_at', { ascending: true });
-
-    // Merge & dedupe carry-over tasks
-    const carryOverIds = new Set<string>();
-    const allCarryOver = [...(carryOverData || []), ...(reworkData || [])];
-    const uniqueCarryOver = allCarryOver.filter(t => {
-      if (carryOverIds.has(t.id)) return false;
-      carryOverIds.add(t.id);
-      return true;
-    });
+    const uniqueCarryOver = carryOverData || [];
 
     // Fetch photo counts for carry-over tasks
     const carryOverTaskIds = uniqueCarryOver.map(t => t.id);
