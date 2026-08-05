@@ -342,7 +342,7 @@ export class KtvCommissionService {
 
         // Penalty for short duration
         if (myTotalDuration < 60) {
-            calculatedPoints = calculatedPoints / 2;
+            return 0;
         }
 
         return Math.floor(calculatedPoints);
