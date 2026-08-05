@@ -182,9 +182,13 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         const allSegsDone = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.actualEndTime);
         const hasUnstartedSegs = segs.some((s: any) => !s.actualStartTime && s.ktvId);
         const alreadyRated = (item as any).itemRating !== null && (item as any).itemRating !== undefined;
+        // 🛡️ FIX: Kiểm tra KTV đã bàn giao phòng chưa (handoverTime trong segment)
+        // Nếu khách rate trước nhưng KTV chưa bàn giao → giữ CLEANING để ScreenEngine
+        // dẫn KTV đi đúng luồng: REVIEW → HANDOVER → REWARD → rồi mới DONE
+        const allHandovered = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.handoverTime);
 
-        // 🧠 DUAL-CONDITION COMPLETION:
-        // Booking chỉ DONE khi CẢ HAI điều kiện: KTV xong + Khách đã rate
+        // 🧠 DUAL-CONDITION COMPLETION (v2 — Triple-Condition):
+        // Item chỉ DONE khi CẢ BA điều kiện: KTV xong + Khách đã rate + KTV đã bàn giao
         // Xử lý cả 2 thứ tự: KTV xong trước hoặc Khách rate trước
         // 🛡️ Nếu còn segments chưa bắt đầu (DV gán muộn), giữ IN_PROGRESS cho item đó
         let newHandoverImages: Record<string, string> = {};
@@ -204,8 +208,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
             : hasUnstartedSegs
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
-                : (alreadyRated && allSegsDone)
-                    ? 'DONE'                  // 🧠 Khách đã rate + KTV xong → hoàn tất
+                : (alreadyRated && allSegsDone && allHandovered)
+                    ? 'DONE'                  // 🧠 Khách đã rate + KTV xong + KTV đã bàn giao → hoàn tất
                     : allSegsDone
                         ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
                         : 'IN_PROGRESS';
@@ -222,7 +226,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         }
         
         await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
-        console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated} → ${newItemStatus}`);
+        console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
     }
     
     // ─── 4. 🔄 RECOMPUTE BOOKING STATUS ───

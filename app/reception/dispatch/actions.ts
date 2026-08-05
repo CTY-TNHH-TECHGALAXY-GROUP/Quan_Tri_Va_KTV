@@ -1437,22 +1437,64 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        // Kiểm tra trạng thái hiện tại để quyết định chuyển hay không
-        const { data: current } = await supabase
-            .from('Bookings')
-            .select('status')
-            .eq('id', bookingId)
-            .single();
-
         const updatePayload: any = { 
             rating, 
             feedbackNote,
             updatedAt: new Date().toISOString() 
         };
 
-        // Nếu đã dọn xong (FEEDBACK) hoặc đang dọn (CLEANING) mà khách rate → Cả 2 tag ✅ → DONE
-        if (current?.status === 'FEEDBACK' || current?.status === 'CLEANING') {
-            updatePayload.status = 'DONE';
+        // 🛡️ SMART DONE: Chỉ set booking DONE nếu TẤT CẢ KTV đã bàn giao phòng xong
+        // Nếu còn KTV chưa handover → giữ nguyên status, để handleReleaseKTV quyết định sau
+        const { data: items } = await supabase
+            .from('BookingItems')
+            .select('id, status, segments, serviceId')
+            .eq('bookingId', bookingId);
+
+        if (items && items.length > 0) {
+            // Lọc bỏ tiện ích (phòng riêng, etc.)
+            const serviceItems = items.filter((i: any) => {
+                const sId = String(i.serviceId || '').toUpperCase();
+                return sId !== 'NHS0900';
+            });
+            const checkItems = serviceItems.length > 0 ? serviceItems : items;
+
+            let allKTVsHandovered = true;
+            for (const item of checkItems) {
+                let segs: any[] = [];
+                try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
+                const startedSegs = segs.filter((s: any) => !!s.actualStartTime && !!s.ktvId);
+                if (startedSegs.length > 0 && !startedSegs.every((s: any) => !!s.handoverTime)) {
+                    allKTVsHandovered = false;
+                    break;
+                }
+            }
+
+            if (allKTVsHandovered) {
+                // Tất cả KTV đã bàn giao → an toàn set DONE
+                for (const item of checkItems) {
+                    if (item.status !== 'DONE') {
+                        let segs: any[] = [];
+                        try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
+                        const startedSegs = segs.filter((s: any) => !!s.actualStartTime);
+                        const allSegsDone = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.actualEndTime);
+                        if (allSegsDone) {
+                            await supabase.from('BookingItems').update({ status: 'DONE' }).eq('id', item.id);
+                        }
+                    }
+                }
+                // Recompute booking status
+                const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+                const { data: refreshedItems } = await supabase.from('BookingItems').select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
+                if (refreshedItems && refreshedItems.length > 0) {
+                    const validItems = refreshedItems.filter((i: any) => i.Services?.is_utility !== true && i.serviceId !== 'NHS0900');
+                    const finalItems = validItems.length > 0 ? validItems : refreshedItems;
+                    const bStatus = recomputeBookingStatus(finalItems.map((i: any) => i.status));
+                    updatePayload.status = bStatus;
+                }
+                console.log(`✅ [submitCustomerRating] All KTVs handovered → booking ${bookingId} → ${updatePayload.status}`);
+            } else {
+                console.log(`⏳ [submitCustomerRating] Some KTVs not yet handovered → keeping current status for booking ${bookingId}`);
+            }
         }
 
         const { error } = await supabase
@@ -1467,6 +1509,7 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
         return { success: false, error: error.message };
     }
 }
+
 
 export async function splitBookingItem(bookingId: string, itemId: string, dur1: number, dur2: number, date: string) {
     return await BookingModificationService.splitBookingItem(bookingId, itemId, dur1, dur2, date);
