@@ -8,7 +8,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
-import { isDummyEmail } from '@/lib/customer.logic';
+import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -253,11 +253,35 @@ export async function confirmWebBooking(bookingId: string) {
       newSource = 'MIXED_WALK_IN';
     }
 
+    // 🛡️ SANITIZE: Thay thế dummy email bằng mã ngẫu nhiên để không bị trùng
+    const sanitizePayload: Record<string, any> = {};
+    if (bData?.customerEmail && isDummyEmail(bData.customerEmail)) {
+      sanitizePayload.customerEmail = `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com`;
+    }
+    if (bData?.customerPhone && isDummyPhone(bData.customerPhone)) {
+      sanitizePayload.customerPhone = '';
+    }
+    
+    if (bData?.customerId) {
+      // Đồng thời clean email/phone dummy trên Customer record
+      const cusClean: Record<string, any> = {};
+      if (bData.customerEmail && isDummyEmail(bData.customerEmail)) {
+        cusClean.email = `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com`;
+      }
+      if (bData.customerPhone && isDummyPhone(bData.customerPhone)) {
+        cusClean.phone = '';
+      }
+      if (Object.keys(cusClean).length > 0) {
+        await supabase.from('Customers').update(cusClean).eq('id', bData.customerId);
+      }
+    }
+
     const { error } = await supabase
       .from('Bookings')
       .update({
         source: newSource,
         updatedAt: new Date().toISOString(),
+        ...sanitizePayload,
       })
       .eq('id', bookingId)
       .eq('status', 'NEW'); // Safety: only update if still NEW

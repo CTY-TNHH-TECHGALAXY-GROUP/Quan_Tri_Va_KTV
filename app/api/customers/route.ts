@@ -2,6 +2,7 @@ import { parseDbDate } from "@/lib/utils";
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
+import { isDummyEmail, isDummyPhone } from '@/lib/customer.logic';
 
 export const dynamic = 'force-dynamic';
 
@@ -388,8 +389,8 @@ export async function PATCH(request: Request) {
         if (gender !== undefined) updatePayload.gender = gender;
         if (nationality !== undefined) updatePayload.nationality = nationality;
         if (fullName !== undefined) updatePayload.fullName = fullName;
-        if (phone !== undefined) updatePayload.phone = phone;
-        if (email !== undefined) updatePayload.email = email;
+        if (phone !== undefined) updatePayload.phone = isDummyPhone(phone) ? '' : phone;
+        if (email !== undefined) updatePayload.email = isDummyEmail(email) ? `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com` : email;
 
         const { data, error } = await supabase
             .from('Customers')

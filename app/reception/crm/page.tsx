@@ -10,6 +10,7 @@ import { DropdownMenu } from '@/components/ui/DropdownMenu';
 import { CustomerDetailModal } from './_components/CustomerDetailModal';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { isDummyEmail } from '@/lib/customer.logic';
 
 // 🔧 UI CONFIGURATION
 const MODAL_ANIMATION_MS = 200;
