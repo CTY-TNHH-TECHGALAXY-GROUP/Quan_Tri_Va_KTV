@@ -172,6 +172,19 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
     const [commentModalData, setCommentModalData] = useState<{subOrder: SubOrder, order: PendingOrder} | null>(null);
     const [isHandoverReviewEnabled, setIsHandoverReviewEnabled] = useState<boolean>(true);
 
+    // 🔧 MAP ĐIỂM CHUYÊN CẦN
+    const staffPointsMap = React.useMemo(() => {
+        const map: Record<string, number> = {};
+        if (staffs) {
+            staffs.forEach(s => {
+                if (s.totalPoints !== undefined) {
+                    map[s.id] = s.totalPoints;
+                }
+            });
+        }
+        return map;
+    }, [staffs]);
+
     React.useEffect(() => {
         const saved = localStorage.getItem('isHandoverReviewEnabled');
         if (saved !== null) {
@@ -668,7 +681,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                         const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
                                                                         return (
-                                                                            <span key={idx} className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md flex items-center gap-1.5">
+                                                                            <span key={idx} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' : 'bg-gray-100 text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>
                                                                                 <span className="flex items-center gap-0.5">👤 {(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                 {startPhotoUrl && (
                                                                                     <button
@@ -704,7 +717,7 @@ export function KanbanBoard({ orders, onUpdateStatus, onOpenDetail, onConfirmAdd
                                                                             return (
                                                                                 <div key={stIdx} className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className="text-[9px] font-bold text-gray-500 flex items-center gap-0.5">{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                        <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         {(() => {
                                                                                             const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
                                                                                             if (!photoSegment) return null;

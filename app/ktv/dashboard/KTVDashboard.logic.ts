@@ -135,6 +135,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
 
     const [kpiData, setKpiData] = useState<any>(null);
+    const [disciplineStatus, setDisciplineStatus] = useState<any>(null);
 
     const lastAcknowledgedIdRef = useRef<string | null>(null);
     const prevBookingIdRef = useRef<string | null>(null);
@@ -232,20 +233,25 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [screen, booking?.id, ktvId]);
 
-    // 🔄 Fetch KPI Data
+    // 🔄 Fetch KPI Data & Discipline Status
     useEffect(() => {
         if (!ktvId) return;
-        const fetchKpi = async () => {
+        const fetchData = async () => {
             try {
                 const json = await apiClient.get<any>(`/api/ktv/kpi?techCode=${ktvId}`);
                 if (json.success && json.data) {
                     setKpiData(json.data);
                 }
+
+                const discJson = await apiClient.get<any>(`/api/ktv/discipline/status?staffId=${ktvId}`);
+                if (discJson.success && discJson.data) {
+                    setDisciplineStatus(discJson.data);
+                }
             } catch (e) {
-                console.error('Error fetching KPI state:', e);
+                console.error('Error fetching KPI/Discipline state:', e);
             }
         };
-        fetchKpi();
+        fetchData();
     }, [ktvId]);
 
 
@@ -2264,6 +2270,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         walletTimeline,
 
         kpiData,
+        disciplineStatus,
         canViewWallet,
         forceRefresh: async () => {
             if (fetchBookingRef.current) await fetchBookingRef.current();

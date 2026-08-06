@@ -31,6 +31,17 @@ const DEFAULT_CONFIGS = {
     ktv_sudden_off_penalty_TYPE_C: 0,
     ktv_instant_reward_enabled_TYPE_C: true,
 
+    // KTV Discipline
+    ktv_discipline_demotion_threshold: 80,
+    ktv_continuous_work_gap_mins: 30,
+    ktv_continuous_work_exempt_hours: 4,
+    ktv_discipline_rules: [
+        { code: 'ORDER_REJECT', name: 'Từ chối đơn', points: 10 },
+        { code: 'LATE', name: 'Đi làm trễ', points: 5 },
+        { code: 'BAD_REVIEW', name: 'Khách phàn nàn', points: 15 },
+        { code: 'BAD_HANDOVER', name: 'Lỗi bàn giao phòng', points: 5 }
+    ],
+
     // Global
     enable_web_advance_booking_email: false,
     enable_maintenance_fee: false,

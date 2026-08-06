@@ -26,6 +26,22 @@ export async function getDispatchData(date: string) {
         
         const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT') || s.id.startsWith('C_'));
 
+        // Fetch Discipline Points cho tháng hiện tại
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+        const { data: pointsData } = await supabase
+            .from('KTVDisciplinePoints')
+            .select('staff_id, total_points')
+            .eq('month', month)
+            .eq('year', year);
+        
+        const pointsMap = Object.fromEntries((pointsData || []).map(p => [p.staff_id, p.total_points]));
+        
+        staffs.forEach(s => {
+            (s as any).totalPoints = pointsMap[s.id] !== undefined ? pointsMap[s.id] : 100;
+        });
+
         // 🔧 EGRESS FIX: Only select needed columns for TurnQueue
         const { data: turns, error: tError } = await supabase
             .from('TurnQueue')

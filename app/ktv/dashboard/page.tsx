@@ -318,6 +318,35 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const [expectedStart, setExpectedStart] = React.useState('');
   const [expectedEnd, setExpectedEnd] = React.useState('');
   const [isFirstInQueue, setIsFirstInQueue] = React.useState(false);
+  const [showRejectModal, setShowRejectModal] = React.useState(false);
+
+  const handleRejectOrder = async (reason: string) => {
+    if (!logic.booking?.nextBookingId) return;
+    try {
+      logic.setIsLoading(true);
+      const res = await apiClient.post<any>('/api/ktv/discipline/reject-order', {
+        staffId: logic.ktvId,
+        bookingItemId: logic.booking.nextBookingId,
+        reason
+      });
+      if (res.success) {
+        if (res.isExempted) {
+          alert('✅ Bạn đã được miễn phạt do làm việc liên tục đạt ngưỡng. Lễ tân đã nhận được báo cáo.');
+        } else {
+          alert(`⚠️ Bạn đã bị trừ ${res.penaltyPoints} điểm chuyên cần. Lễ tân đã nhận được báo cáo.`);
+        }
+        setShowRejectModal(false);
+        // Refresh dashboard data
+        logic.forceRefresh();
+      } else {
+        alert('Lỗi: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Lỗi kết nối: ' + e.message);
+    } finally {
+      logic.setIsLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     if (onCallState) setTempMins(onCallState.travel_time_mins);
@@ -604,8 +633,68 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   <Play size={14} fill="white" />
                   Nhận ngay đơn tiếp theo
                 </button>
+
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline text-center mt-2"
+                >
+                  Tạm thời không thể nhận đơn này?
+                </button>
               </div>
             </motion.div>
+          )}
+
+          {/* Discipline & Endurance Gamification Widget */}
+          {logic.disciplineStatus && (
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-[32px] shadow-sm border border-indigo-200/60 mt-6">
+               <div className="flex justify-between items-center mb-4">
+                 <h3 className="font-bold text-indigo-900 flex items-center gap-2 uppercase tracking-widest text-xs">
+                   <ShieldAlert size={16} className="text-indigo-600" />
+                   Điểm Chuyên Cần
+                 </h3>
+                 <span className={`text-xs font-black px-2.5 py-1 rounded-xl ${
+                    logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 
+                    ? 'bg-rose-200/50 text-rose-700 animate-pulse' 
+                    : 'bg-indigo-200/50 text-indigo-700'
+                 }`}>
+                   {logic.disciplineStatus.totalPoints}/100
+                 </span>
+               </div>
+               
+               <div className="w-full bg-indigo-200/40 rounded-full h-3 mb-4 overflow-hidden border border-indigo-100">
+                 <div 
+                   className={`h-3 rounded-full transition-all duration-1000 shadow-sm ${
+                      logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 
+                      ? 'bg-gradient-to-r from-rose-400 to-red-500' 
+                      : 'bg-gradient-to-r from-indigo-400 to-blue-500'
+                   }`}
+                   style={{ width: `${Math.max(0, Math.min(100, logic.disciplineStatus.totalPoints))}%` }}
+                 ></div>
+               </div>
+
+               {logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 && (
+                  <p className="text-[10px] text-rose-600 mb-4 text-center uppercase tracking-widest font-black animate-pulse bg-rose-100/50 py-1.5 rounded-lg">
+                     ⚠️ CHÚ Ý: BẠN SẮP RỚT HẠNG!
+                  </p>
+               )}
+
+               {/* Endurance (Continuous Work) */}
+               <div className="mt-4 pt-4 border-t border-indigo-100/50">
+                  <div className="flex justify-between items-center mb-2">
+                     <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-widest flex items-center gap-1">
+                        <Coffee size={12} /> Sức bền (Liên tục)
+                     </span>
+                     <span className="text-[10px] font-black text-indigo-600">
+                        {Math.floor(logic.disciplineStatus.continuousWorkMins / 60)}h {logic.disciplineStatus.continuousWorkMins % 60}m / {logic.disciplineStatus.exemptHours}h
+                     </span>
+                  </div>
+                  {logic.disciplineStatus.continuousWorkMins >= logic.disciplineStatus.exemptHours * 60 && (
+                     <p className="text-[9px] bg-emerald-100 text-emerald-700 p-2 rounded-xl text-center font-bold">
+                        ✅ Bạn đã làm việc chăm chỉ, có thể bỏ qua tua tiếp theo mà không bị phạt!
+                     </p>
+                  )}
+               </div>
+            </div>
           )}
         </div>
       ) : (
@@ -733,6 +822,15 @@ function ScreenDashboard({ logic }: { logic: any }) {
           )}
         </div>
       )}
+
+      {/* Reject Order Modal */}
+      <RejectOrderModal 
+        isOpen={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        onSubmit={handleRejectOrder}
+        disciplineStatus={logic.disciplineStatus}
+        isExempted={logic.disciplineStatus ? logic.disciplineStatus.continuousWorkMins >= logic.disciplineStatus.exemptHours * 60 : false}
+      />
     </div>
   );
 }
@@ -1781,6 +1879,94 @@ function RoomIssueModal({ isOpen, onClose, onSubmit, roomId }: { isOpen: boolean
             className="w-full py-3 text-slate-400 font-bold text-xs uppercase tracking-widest"
           >
             Huỷ
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function RejectOrderModal({ 
+  isOpen, 
+  onClose, 
+  onSubmit, 
+  isExempted, 
+  disciplineStatus 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onSubmit: (reason: string) => void, 
+  isExempted: boolean,
+  disciplineStatus: any
+}) {
+  const [reason, setReason] = React.useState('');
+  
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6">
+      <motion.div
+        initial={{ opacity: 0, y: 100 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white w-full sm:max-w-md max-h-[90vh] rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col"
+      >
+        <div className={`${isExempted ? 'bg-emerald-600' : 'bg-rose-600'} p-6 text-white flex items-center justify-between`}>
+          <div>
+            <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+              <Ban size={20} />
+              Từ Chối Nhận Đơn
+            </h3>
+          </div>
+          <button onClick={onClose} className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {isExempted ? (
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-emerald-800 text-sm font-bold flex gap-3 items-start">
+               <ShieldAlert size={20} className="shrink-0 text-emerald-600 mt-0.5" />
+               <p>
+                 ✅ Bạn đã làm việc liên tục {Math.floor((disciplineStatus?.continuousWorkMins || 0) / 60)}h {(disciplineStatus?.continuousWorkMins || 0) % 60}m (đạt ngưỡng miễn phạt). <br/>
+                 Bạn có thể từ chối đơn này để nghỉ ngơi mà <b>KHÔNG bị trừ điểm.</b>
+               </p>
+            </div>
+          ) : (
+            <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl text-rose-800 text-sm font-bold flex gap-3 items-start">
+               <ShieldAlert size={20} className="shrink-0 text-rose-600 mt-0.5" />
+               <p>
+                 ⚠️ Từ chối nhận đơn sẽ bị <b>trừ 10 điểm chuyên cần</b>.<br/> 
+                 Việc này sẽ ảnh hưởng trực tiếp đến thi đua và cấp bậc KTV của bạn!
+               </p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lý do từ chối (bắt buộc)</p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="VD: Sức khoẻ không đảm bảo, kẹt xe..."
+              className="w-full p-4 rounded-2xl border-2 border-slate-100 focus:border-indigo-300 focus:ring-0 outline-none text-sm font-bold text-slate-700 resize-none h-24 placeholder:text-slate-300"
+            />
+          </div>
+        </div>
+
+        <div className="p-5 border-t border-slate-100 space-y-2">
+          <button
+            onClick={() => {
+               if (!reason.trim()) return alert("Vui lòng nhập lý do từ chối!");
+               onSubmit(reason);
+            }}
+            className={`w-full py-4 ${isExempted ? 'bg-emerald-600 shadow-emerald-200' : 'bg-rose-600 shadow-rose-200'} text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2`}
+          >
+            Xác nhận từ chối đơn
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-3 text-slate-400 font-bold text-xs uppercase tracking-widest"
+          >
+            Huỷ, tôi sẽ nhận đơn
           </button>
         </div>
       </motion.div>

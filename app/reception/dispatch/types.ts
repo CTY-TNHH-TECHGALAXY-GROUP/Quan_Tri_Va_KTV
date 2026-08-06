@@ -101,6 +101,7 @@ export interface StaffData {
   work_type?: string | undefined;
   feature_flags?: any;
   online_status?: string | undefined;
+  totalPoints?: number;
   travel_minutes?: number;
   available_from?: string | undefined;
   available_until?: string | undefined;

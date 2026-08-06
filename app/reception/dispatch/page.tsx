@@ -1121,12 +1121,12 @@ if (!hasPermission('dispatch_board')) {
     }
   }
 
-  const handleApproveHandover = async (itemId: string, comment: string) => {
+  const handleApproveHandover = async (itemId: string, comment: string, deductPoints: boolean) => {
         try {
             const res = await fetch('/api/reception/handover/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingItemId: itemId, action: 'APPROVE' }),
+                body: JSON.stringify({ bookingItemId: itemId, action: 'APPROVE', deductPoints }),
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error);
@@ -1139,7 +1139,7 @@ if (!hasPermission('dispatch_board')) {
         }
     };
 
-    const handleRejectHandover = async (itemId: string, rejectOption: string, reason: string) => {
+    const handleRejectHandover = async (itemId: string, rejectOption: string, reason: string, deductPoints: boolean) => {
         try {
             const res = await fetch('/api/reception/handover/review', {
                 method: 'POST',
@@ -1148,7 +1148,8 @@ if (!hasPermission('dispatch_board')) {
                     bookingItemId: itemId, 
                     action: 'REJECT', 
                     rejectOption, 
-                    reason 
+                    reason,
+                    deductPoints
                 }),
             });
             const data = await res.json();

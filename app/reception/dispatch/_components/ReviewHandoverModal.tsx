@@ -42,8 +42,8 @@ interface ReviewHandoverModalProps {
     isOpen: boolean;
     onClose: () => void;
     service: ServiceBlock | null;
-    onApprove: (itemId: string, comment: string) => Promise<void>;
-    onReject: (itemId: string, rejectOption: RejectOption, reason: string) => Promise<void>;
+    onApprove: (itemId: string, comment: string, deductPoints: boolean) => Promise<void>;
+    onReject: (itemId: string, rejectOption: RejectOption, reason: string, deductPoints: boolean) => Promise<void>;
 }
 
 export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onReject }: ReviewHandoverModalProps) {
@@ -54,6 +54,7 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     // V5: 2-step rejection flow
     const [rejectStep, setRejectStep] = useState<'idle' | 'select-option' | 'confirm'>('idle');
     const [selectedRejectOption, setSelectedRejectOption] = useState<RejectOption | null>(null);
+    const [deductPoints, setDeductPoints] = useState(false);
 
     let handoverImages: Record<string, string> = {};
     if (service?.handover_images && Object.keys(service.handover_images).length > 0) {
@@ -107,7 +108,7 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     const handleApprove = async () => {
         setIsSubmitting(true);
         try {
-            await onApprove(service!.id, comment);
+            await onApprove(service!.id, comment, deductPoints);
             onClose();
             resetState();
         } finally {
@@ -124,7 +125,7 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
         }
         setIsSubmitting(true);
         try {
-            await onReject(service!.id, selectedRejectOption, comment || 'Không đạt yêu cầu');
+            await onReject(service!.id, selectedRejectOption, comment || 'Không đạt yêu cầu', deductPoints);
             onClose();
             resetState();
         } finally {
@@ -136,6 +137,7 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
         setComment('');
         setRejectStep('idle');
         setSelectedRejectOption(null);
+        setDeductPoints(false);
     };
 
     const handleClose = () => {
@@ -363,6 +365,15 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
                                         placeholder="Nhập nhận xét của bạn về tình trạng phòng... (Tùy chọn)"
                                         className="w-full rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none resize-none min-h-[100px]"
                                     />
+                                    <label className="flex items-center gap-3 mt-4 cursor-pointer p-3 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={deductPoints} 
+                                            onChange={(e) => setDeductPoints(e.target.checked)} 
+                                            className="w-5 h-5 text-rose-600 rounded border-rose-300 focus:ring-rose-500 bg-white" 
+                                        />
+                                        <span className="text-sm font-bold text-rose-800">Gắn cờ vi phạm chất lượng ảnh / Dịch vụ (Trừ 5đ chuyên cần)</span>
+                                    </label>
                                 </div>
                             )}
                         </div>

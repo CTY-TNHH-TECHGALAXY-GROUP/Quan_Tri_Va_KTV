@@ -28,6 +28,17 @@ export async function POST(request: Request) {
             if (!result.success) {
                 return NextResponse.json({ success: false, error: result.error }, { status: 400 });
             }
+
+            if (body.deductPoints) {
+                const KtvDisciplineService = (await import('@/lib/services/KtvDisciplineService')).KtvDisciplineService;
+                const { data: item } = await supabase.from('BookingItems').select('technicianCodes').eq('id', bookingItemId).single();
+                if (item?.technicianCodes?.length) {
+                    for (const staffId of item.technicianCodes) {
+                        await KtvDisciplineService.deductPoints(supabase, staffId, 'BAD_HANDOVER', `Vi phạm quy chuẩn bàn giao phòng (Đơn #${bookingItemId})`);
+                    }
+                }
+            }
+
             return NextResponse.json({ success: true, message: 'Đã duyệt bàn giao.' });
         }
 
@@ -58,6 +69,17 @@ export async function POST(request: Request) {
 
             if (!result.success) {
                 return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+            }
+
+            if (body.deductPoints) {
+                const KtvDisciplineService = (await import('@/lib/services/KtvDisciplineService')).KtvDisciplineService;
+                // Get KTVs assigned to this booking item
+                const { data: item } = await supabase.from('BookingItems').select('technicianCodes').eq('id', bookingItemId).single();
+                if (item?.technicianCodes?.length) {
+                    for (const staffId of item.technicianCodes) {
+                        await KtvDisciplineService.deductPoints(supabase, staffId, 'BAD_HANDOVER', `Vi phạm quy chuẩn bàn giao phòng (Đơn #${bookingItemId})`);
+                    }
+                }
             }
 
             const messages: Record<string, string> = {
