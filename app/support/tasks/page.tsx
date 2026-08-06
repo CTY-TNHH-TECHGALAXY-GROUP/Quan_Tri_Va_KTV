@@ -254,11 +254,12 @@ const UrgentSection = ({ tasks, logic }: { tasks: any[], logic: any }) => {
 };
 
 const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const doneCount = group.tasks.filter((t: any) => t.status === 'COMPLETED').length;
+  const [isOpen, setIsOpen] = useState(doneCount < group.tasks.length);
   
   const roomId = group.tasks[0]?.room_id;
   const roomHasGuest = group.tasks[0]?.roomHasGuest;
+  const roomHasGuestUpdatedAt = group.tasks[0]?.roomHasGuestUpdatedAt;
 
   return (
     <section className="mb-6">
@@ -278,7 +279,9 @@ const CategoryGroup = ({ group, logic }: { group: any; logic: any }) => {
                 title={roomHasGuest ? 'Phòng đang có khách, nhấn để hủy' : 'Đánh dấu phòng đang có khách'}
               >
                 <User size={12} />
-                {roomHasGuest ? 'Có khách' : 'Báo có khách'}
+                {roomHasGuest ? (
+                  <>Có khách {roomHasGuestUpdatedAt ? <span className="opacity-80">({new Date(roomHasGuestUpdatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})</span> : ''}</>
+                ) : 'Báo có khách'}
               </button>
             )}
           </div>
@@ -342,6 +345,27 @@ const TaskRow = ({ task, index, logic, isUrgent }: { task: any; index: number; l
                 </span>
               )}
             </div>
+            
+            {/* Rework Info */}
+            {isRework && (task.reworkNote || task.reworkPhoto) && (
+              <div className="mt-2 bg-white/60 p-2.5 rounded-lg border border-red-100 flex flex-col gap-2">
+                {task.reworkNote && (
+                  <p className="text-xs text-red-700 font-medium">💬 Ghi chú: {task.reworkNote}</p>
+                )}
+                {task.reworkPhoto && (
+                  <button 
+                    onClick={() => {
+                       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                       window.open(`${supabaseUrl}/storage/v1/object/public/task-photos/${task.reworkPhoto}`, '_blank');
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-cyan-600 font-bold hover:text-cyan-700 w-fit"
+                  >
+                    📸 Xem ảnh lỗi quản lý gửi
+                  </button>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
 

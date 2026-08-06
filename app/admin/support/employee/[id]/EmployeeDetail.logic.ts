@@ -78,11 +78,20 @@ export const useEmployeeDetail = (employeeId: string) => {
   const [showAdhocModal, setShowAdhocModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [reviewFile, setReviewFile] = useState<File | null>(null);
   const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ 
     title: string; 
     currentIndex: number; 
     photos: { url: string; created_at: string; taskName: string }[] 
   } | null>(null);
+
+  const toggleCategory = (catName: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [catName]: !prev[catName]
+    }));
+  };
 
   // ============================================================
   // Fetch employee info
@@ -560,13 +569,34 @@ export const useEmployeeDetail = (employeeId: string) => {
   // ============================================================
   // Review task (PASSED / REWORK_REQUIRED)
   // ============================================================
-  const reviewTask = async (taskId: string, decision: 'PASSED' | 'REWORK_REQUIRED', note?: string) => {
+  const reviewTask = async (taskId: string, decision: 'PASSED' | 'REWORK_REQUIRED', note?: string, currentReviewFile?: File | null) => {
     setSubmitting(true);
     try {
       const task = todayTasks.find(t => t.id === taskId);
       if (!task) return;
 
       const roundNumber = task.current_review_round + 1;
+
+      // 0. Upload review photo if needed
+      let uploadedPhotoUrl: string | null = null;
+      if (decision === 'REWORK_REQUIRED' && currentReviewFile) {
+        const formData = new FormData();
+        formData.append('file', currentReviewFile);
+        
+        const res = await fetch('/api/support/tasks/rework-photo', {
+          method: 'POST',
+          body: formData
+        });
+        const json = await res.json();
+        
+        if (!json.success) {
+          console.error('Error uploading review photo:', json.error);
+          alert('Lỗi tải ảnh lên: ' + json.error);
+          setSubmitting(false);
+          return;
+        }
+        uploadedPhotoUrl = json.path;
+      }
 
       // 1. Insert review record
       const { error: reviewErr } = await supabase
@@ -577,6 +607,7 @@ export const useEmployeeDetail = (employeeId: string) => {
           reviewer_id: null, // TODO: Get current admin user
           decision,
           note: note || null,
+          photo_url: uploadedPhotoUrl,
         });
 
       if (reviewErr) {
@@ -671,6 +702,25 @@ export const useEmployeeDetail = (employeeId: string) => {
     return map[role] || role;
   };
 
+  // ============================================================
+  // Delete task
+  // ============================================================
+  const deleteTask = async (taskId: string) => {
+    if (!confirm('Bạn có chắc muốn xóa công việc này?')) return;
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from('Tasks').delete().eq('id', taskId);
+      if (error) {
+        console.error('Error deleting task:', error.message);
+        alert('Lỗi xóa công việc: ' + error.message);
+        return;
+      }
+      await fetchTodayTasks();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return {
     employee,
     routines,
@@ -685,6 +735,10 @@ export const useEmployeeDetail = (employeeId: string) => {
     setSearchQuery,
     filteredTemplates,
     submitting,
+    expandedCategories,
+    toggleCategory,
+    reviewFile,
+    setReviewFile,
     viewingTaskPhotos,
     setViewingTaskPhotos,
     fetchTaskPhotos,
@@ -698,6 +752,7 @@ export const useEmployeeDetail = (employeeId: string) => {
     removeRoutine,
     createAdhocTask,
     reviewTask,
+    deleteTask,
     getRoleLabel,
   };
 };

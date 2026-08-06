@@ -323,7 +323,7 @@ export class EmployeeTasksService {
 
     let query = supabase
       .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)')
+      .select('id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests, updated_at), TaskReviews(note, photo_url, created_at)')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd)
       .order('created_at', { ascending: true });
@@ -373,7 +373,10 @@ export class EmployeeTasksService {
       }
     }
 
-    const mapped = (data || []).map((t: any) => ({
+    const mapped = (data || []).map((t: any) => {
+      const reviews = t.TaskReviews || [];
+      const latestReview = reviews.length > 0 ? reviews.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] : null;
+      return {
       id: t.id,
       name: t.name,
       status: t.status,
@@ -388,9 +391,12 @@ export class EmployeeTasksService {
       room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
       roomHasGuest: t.Rooms?.has_guests || false,
+      roomHasGuestUpdatedAt: t.Rooms?.updated_at || null,
       categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
-    }));
+      reworkNote: latestReview?.note || null,
+      reworkPhoto: latestReview?.photo_url || null,
+    };});
 
     // ============================================================
     // Fetch carry-over tasks from previous days (max 1 days)
@@ -398,7 +404,7 @@ export class EmployeeTasksService {
     // OR tasks that were updated TODAY (so they don't disappear when submitted/passed today)
     // ============================================================
     const carryOverStart = getCarryOverStart();
-    const taskSelectFields = 'id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, created_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests)';
+    const taskSelectFields = 'id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, updated_at, created_at, TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests, updated_at), TaskReviews(note, photo_url, created_at)';
 
     const { data: carryOverData } = await supabase
       .from('Tasks')
@@ -427,7 +433,10 @@ export class EmployeeTasksService {
       }
     }
 
-    const carryOverMapped = uniqueCarryOver.map((t: any) => ({
+    const carryOverMapped = uniqueCarryOver.map((t: any) => {
+      const reviews = t.TaskReviews || [];
+      const latestReview = reviews.length > 0 ? reviews.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] : null;
+      return {
       id: t.id,
       name: t.name,
       status: t.status === 'COMPLETED' && t.inspection_status === 'REWORK_REQUIRED' ? 'IN_PROGRESS' : t.status,
@@ -442,11 +451,14 @@ export class EmployeeTasksService {
       room_id: t.room_id || null,
       categoryName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : (t.TaskCategories?.name || 'Khác'),
       roomHasGuest: t.Rooms?.has_guests || false,
+      roomHasGuestUpdatedAt: t.Rooms?.updated_at || null,
       categoryOrder: t.room_id ? 0 : 999,
       sortOrder: t.TaskTemplates?.sort_order || 999,
       isCarryOver: true,
       carryOverDate: t.created_at,
-    }));
+      reworkNote: latestReview?.note || null,
+      reworkPhoto: latestReview?.photo_url || null,
+    };});
 
     return { success: true, data: [...carryOverMapped, ...mapped] };
   }

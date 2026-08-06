@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useEmployeeDetail } from './EmployeeDetail.logic';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function EmployeeDetailPage() {
   const params = useParams();
@@ -14,13 +14,8 @@ export default function EmployeeDetailPage() {
   const [reviewNote, setReviewNote] = useState('');
   const [reviewingTaskId, setReviewingTaskId] = useState<string | null>(null);
   const [adhocTaskName, setAdhocTaskName] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [confirmingGroup, setConfirmingGroup] = useState<string | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
-
-  const toggleCategory = (catName: string) => {
-    setExpandedCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
-  };
 
   if (logic.loading) {
     return (
@@ -142,8 +137,12 @@ export default function EmployeeDetailPage() {
                     const isConfirming = confirmingGroup === catName;
 
                     return (
-                      <div className={`px-4 py-3 border-b text-sm font-bold flex items-center justify-between gap-2 flex-wrap ${isUrgent ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                      <div 
+                        onClick={() => logic.toggleCategory(catName)}
+                        className={`px-4 py-3 border-b text-sm font-bold flex items-center justify-between gap-2 flex-wrap cursor-pointer transition-colors hover:bg-slate-100 ${isUrgent ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                      >
                         <div className="flex items-center gap-2 min-w-0">
+                          {logic.expandedCategories[catName] !== false ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
                           {isUrgent && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
                           <span className="truncate">{catName}</span>
                           {tasks[0]?.roomHasGuest && (
@@ -152,7 +151,7 @@ export default function EmployeeDetailPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                           {/* View Photos Button */}
                           {totalPhotos > 0 && (
                             <button
@@ -194,6 +193,7 @@ export default function EmployeeDetailPage() {
                     );
                   })()}
                   
+                  {logic.expandedCategories[catName] !== false && (
                   <div className="divide-y divide-slate-100">
                     {tasks.map((task, idx) => {
                       const isPendingReview = task.status === 'COMPLETED' && (task.inspection_status === 'PENDING_REVIEW' || task.inspection_status === 'NOT_REVIEWED');
@@ -203,7 +203,7 @@ export default function EmployeeDetailPage() {
                       const isNotStarted = task.status === 'NOT_STARTED';
 
                       return (
-                        <div key={task.id} className={`flex items-center justify-between p-4 gap-4 transition-colors ${isPendingReview ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+                        <div key={task.id} className={`flex flex-col md:flex-row md:items-center justify-between p-4 gap-4 transition-colors ${isPendingReview ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
                           
                           {/* Info */}
                           <div className="flex-1 min-w-0">
@@ -222,11 +222,19 @@ export default function EmployeeDetailPage() {
                           </div>
 
                           {/* Inline Controls or Badges */}
-                          <div className="flex-shrink-0">
+                          <div className="flex-shrink-0 flex items-center gap-2">
                             {isNotStarted && <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-xs font-bold">Chưa làm</span>}
                             {isInProgress && <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-lg text-xs font-bold">⏳ Đang làm</span>}
                             {isRework && <span className="px-3 py-1 bg-red-100 text-red-600 rounded-lg text-xs font-bold">🔴 Đang làm lại</span>}
                             {isPassed && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">✓ Đã duyệt</span>}
+                            
+                            <button 
+                              onClick={() => logic.deleteTask(task.id)} 
+                              className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100 flex items-center justify-center bg-white shadow-sm" 
+                              title="Xóa công việc này"
+                            >
+                              🗑️
+                            </button>
                             
                             {isPendingReview && (
                               <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-amber-200">
@@ -238,19 +246,31 @@ export default function EmployeeDetailPage() {
                                 </button>
                                 
                                 {reviewingTaskId === task.id ? (
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-red-200 shadow-sm mt-2 md:mt-0 w-full md:w-auto">
+                                    <p className="text-xs font-bold text-red-600">Yêu cầu làm lại</p>
                                     <input
                                       type="text"
-                                      placeholder="Lý do làm lại..."
+                                      placeholder="Ghi chú lỗi (Bắt buộc)..."
                                       value={reviewNote}
                                       onChange={(e) => setReviewNote(e.target.value)}
-                                      className="text-xs border border-slate-200 rounded px-2 py-1.5 w-32 focus:outline-none focus:border-red-400"
+                                      className="text-sm border border-slate-200 rounded px-3 py-2 focus:outline-none focus:border-red-400 w-full md:w-64"
                                     />
-                                    <button 
-                                      onClick={() => { logic.reviewTask(task.id, 'REWORK_REQUIRED', reviewNote); setReviewingTaskId(null); setReviewNote(''); }}
-                                      className="bg-red-500 text-white px-2 py-1.5 rounded text-xs font-bold hover:bg-red-600"
-                                    >Gửi</button>
-                                    <button onClick={() => setReviewingTaskId(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={(e) => logic.setReviewFile(e.target.files?.[0] || null)}
+                                      className="text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
+                                    />
+                                    <div className="flex items-center gap-2 justify-end mt-1">
+                                      <button onClick={() => { setReviewingTaskId(null); logic.setReviewFile(null); setReviewNote(''); }} className="text-slate-500 hover:text-slate-700 text-xs font-bold px-3 py-1.5 bg-slate-100 rounded-lg">Hủy</button>
+                                      <button 
+                                        onClick={() => { logic.reviewTask(task.id, 'REWORK_REQUIRED', reviewNote, logic.reviewFile); setReviewingTaskId(null); setReviewNote(''); logic.setReviewFile(null); }}
+                                        disabled={!reviewNote.trim() || !logic.reviewFile || logic.submitting}
+                                        className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-600 disabled:opacity-50"
+                                      >
+                                        Gửi yêu cầu
+                                      </button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <>
@@ -271,6 +291,7 @@ export default function EmployeeDetailPage() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -321,7 +342,7 @@ export default function EmployeeDetailPage() {
                       <div key={catName} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                         <div 
                           className="p-3 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
-                          onClick={() => toggleCategory(catName)}
+                          onClick={() => logic.toggleCategory(catName)}
                         >
                           <div className="min-w-0 pr-2">
                             <p className="text-sm font-bold text-slate-700 truncate">{catName}</p>
@@ -345,10 +366,10 @@ export default function EmployeeDetailPage() {
                                 + Gán toàn bộ
                               </button>
                             )}
-                            <span className="text-slate-400 w-5 text-center text-xs">{expandedCategories[catName] ? '▲' : '▼'}</span>
+                            <span className="text-slate-400 w-5 text-center text-xs">{logic.expandedCategories[catName] ? '▲' : '▼'}</span>
                           </div>
                         </div>
-                        {expandedCategories[catName] && (
+                        {logic.expandedCategories[catName] && (
                           <div className="border-t border-slate-100 bg-slate-50/50 p-2 space-y-1">
                             {templates.map(tpl => {
                               const assignedRoutine = logic.routines.find(r => r.templateId === tpl.templateId && r.roomId === tpl.roomId);

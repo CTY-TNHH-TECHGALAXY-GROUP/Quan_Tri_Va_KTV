@@ -649,6 +649,7 @@
 | `reviewer_id` | text FK | Quản lý đánh giá |
 | `decision` | text | `PASSED` / `REWORK_REQUIRED` / `FAILED` |
 | `note` | text | Ghi chú/Lý do yêu cầu làm lại |
+| `photo_url` | text | Ảnh minh chứng khi yêu cầu làm lại (Lưu đường dẫn Storage) |
 | `created_at` | timestamptz | |
 
 
