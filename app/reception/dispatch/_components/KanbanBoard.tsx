@@ -80,6 +80,7 @@ interface KanbanBoardProps {
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
     onReviewClick?: (service: ServiceBlock) => void;
     staffWorkTypeMap?: Record<string, string>;
+    staffs?: any[];
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {

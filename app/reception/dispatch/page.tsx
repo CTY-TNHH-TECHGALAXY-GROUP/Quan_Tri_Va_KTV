@@ -2083,6 +2083,7 @@ if (!hasPermission('dispatch_board')) {
           ) : activeMode === 'MONITOR' ? (
             <KanbanBoard 
               orders={orders} 
+              staffs={staffs}
               staffWorkTypeMap={Object.fromEntries(turns.filter(t => t.staff?.work_type).map(t => [t.employee_id, t.staff!.work_type!]))}
               onUpdateCustomerName={async (orderId, itemIds, ktvIds, newName) => {
                 try {
