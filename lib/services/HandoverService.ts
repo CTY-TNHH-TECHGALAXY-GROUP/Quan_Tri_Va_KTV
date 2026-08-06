@@ -54,7 +54,7 @@ export class HandoverService {
                 .from('BookingItems')
                 .select('id', { count: 'exact', head: true })
                 .eq('bookingId', bookingId)
-                .eq('roomId', roomId)
+                .eq('roomName', roomId)
                 .neq('id', bookingItemId)
                 .in('status', ['PENDING', 'IN_PROGRESS'])
             : Promise.resolve({ count: 0 });
