@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.71';
-export const LAST_UPDATE = 'Bảo lưu điểm thưởng Bonus cho các đơn hàng cũ (dưới 60p) trước ngày 05/08/2026';
+export const APP_VERSION = '1.7.72';
+export const LAST_UPDATE = 'Đổi ngày bắt đầu áp dụng luật phạt Bonus (dưới 60p = 0) sang ngày 06/08/2026';

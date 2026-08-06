@@ -366,9 +366,9 @@ export class KtvCommissionService {
         // Cap points to max adjustedBasePoints (Max ứng 1 Khách chỉ là Base)
         calculatedPoints = Math.min(calculatedPoints, adjustedBasePoints);
 
-        // Penalty for short duration (Applied from 2026-08-05 onwards)
+        // Penalty for short duration (Applied from 2026-08-06 onwards)
         const bookingDate = new Date(booking.timeStart || booking.createdAt || todayStr);
-        const ruleStartDate = new Date('2026-08-05T00:00:00+07:00'); // Assuming timezone is VN
+        const ruleStartDate = new Date('2026-08-06T00:00:00+07:00'); // Assuming timezone is VN
         
         if (myTotalDuration < 60 && bookingDate >= ruleStartDate) {
             return 0;
