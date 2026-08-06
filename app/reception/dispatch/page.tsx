@@ -175,6 +175,7 @@ export default function DispatchBoardPage() {
     itemIds?: string[];
     targetKtvIds?: string[];
     plannedStartTime: string | null;
+    onConfirm?: (time: string) => void;
   }>({ isOpen: false, orderId: '', itemIds: undefined, targetKtvIds: undefined, plannedStartTime: null });
 
   useEffect(() => {
@@ -1195,7 +1196,7 @@ if (!hasPermission('dispatch_board')) {
             const service = order.services.find(s => itemIds.includes(s.id));
             if (service) {
                try {
-                   const segs = JSON.parse(service.segments || '[]');
+                   const segs = JSON.parse((service as any).segments || '[]');
                    const targetSeg = segs.find((seg: any) => targetKtvIds?.includes(seg.ktvId));
                    if (targetSeg && targetSeg.startTime) {
                        plannedTime = targetSeg.startTime;
@@ -1208,7 +1209,8 @@ if (!hasPermission('dispatch_board')) {
            orderId,
            itemIds,
            targetKtvIds,
-           plannedStartTime: plannedTime
+           plannedStartTime: plannedTime,
+           onConfirm: (time: string) => executeStatusUpdate(time)
         });
         return;
       }
@@ -2855,7 +2857,7 @@ if (!hasPermission('dispatch_board')) {
                   <button
                     onClick={() => {
                         setStartServiceModal(prev => ({ ...prev, isOpen: false }));
-                        executeStatusUpdate(new Date().toISOString());
+                        if (startServiceModal.onConfirm) startServiceModal.onConfirm(new Date().toISOString());
                     }}
                     className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
                   >
@@ -2865,7 +2867,7 @@ if (!hasPermission('dispatch_board')) {
                     <button
                       onClick={() => {
                           setStartServiceModal(prev => ({ ...prev, isOpen: false }));
-                          executeStatusUpdate(startServiceModal.plannedStartTime!);
+                          if (startServiceModal.onConfirm) startServiceModal.onConfirm(startServiceModal.plannedStartTime!);
                       }}
                       className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100 active:scale-95 transition-all"
                     >
