@@ -1,2 +1,2 @@
 export const APP_VERSION = '1.7.68';
-export const LAST_UPDATE = 'Fix lỗi KTV bị trôi bước bàn giao phòng khi khách đánh giá trước (Triple-Condition)';
+export const LAST_UPDATE = 'Thêm tính năng Bật/Tắt tính điểm Bonus cho từng cá nhân (trong chi tiết nhân viên)';

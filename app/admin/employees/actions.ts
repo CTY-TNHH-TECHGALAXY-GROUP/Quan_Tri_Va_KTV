@@ -33,7 +33,8 @@ export async function getStaffList() {
                 ...s,
                 username: authInfo?.username || s.id,
                 password: authInfo?.password || '---',
-                userRole: authInfo?.role || 'TECHNICIAN'
+                userRole: authInfo?.role || 'TECHNICIAN',
+                enableBonus: s.feature_flags?.enable_bonus ?? true
             };
         }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !s.id.startsWith('EXT') && s.work_type !== 'TYPE_C');
 
@@ -179,12 +180,17 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.work_type !== undefined) staffPayload.work_type = updates.work_type;
         if (updates.skills !== undefined) staffPayload.skills = updates.skills;
         let currentFlags = updates.featureFlags || updates.feature_flags || {};
-        if (updates.enableKpiDemo !== undefined) {
+        if (updates.enableKpiDemo !== undefined || updates.enableBonus !== undefined) {
             currentFlags = { ...currentFlags };
-            if (updates.enableKpiDemo) {
-                currentFlags.kpi_target_hours = 80; // or another default
-            } else {
-                currentFlags.kpi_target_hours = 0;
+            if (updates.enableKpiDemo !== undefined) {
+                if (updates.enableKpiDemo) {
+                    currentFlags.kpi_target_hours = 80;
+                } else {
+                    currentFlags.kpi_target_hours = 0;
+                }
+            }
+            if (updates.enableBonus !== undefined) {
+                currentFlags.enable_bonus = updates.enableBonus;
             }
             staffPayload.feature_flags = currentFlags;
         } else if (updates.featureFlags !== undefined) {

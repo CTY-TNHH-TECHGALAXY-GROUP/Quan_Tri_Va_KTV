@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         // 2. Fetch KTVs
         const { data: ktvs } = await supabase
             .from('Staff')
-            .select('id, full_name, position, work_type')
+            .select('id, full_name, position, work_type, feature_flags')
             .eq('status', 'ĐANG LÀM')
             .ilike('id', 'NH%')
             .order('id');
@@ -47,9 +47,13 @@ export async function GET(request: Request) {
         if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, data: [] });
 
         const ktvWorkTypeMap: Record<string, string> = {};
+        const staffBonusMap: Record<string, boolean> = {};
         ktvs.forEach(k => {
             ktvWorkTypeMap[k.id] = k.work_type || 'TYPE_A';
             ktvWorkTypeMap[k.id.toLowerCase()] = k.work_type || 'TYPE_A';
+            const canBonus = k.feature_flags?.enable_bonus ?? true;
+            staffBonusMap[k.id.toLowerCase()] = canBonus;
+            staffBonusMap[k.id] = canBonus;
         });
 
         // Fetch KTV shifts to determine bonus per KTV
@@ -200,7 +204,7 @@ export async function GET(request: Request) {
                 }
                 if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig, ktvWorkTypeMap);
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig, ktvWorkTypeMap, staffBonusMap);
 
                 at_rt_commission += bookingCommission;
                 at_rt_tip += bookingTip;

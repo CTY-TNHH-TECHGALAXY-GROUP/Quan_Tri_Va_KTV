@@ -258,9 +258,12 @@ export class KtvCommissionService {
         todayStr: string, 
         shiftsData: any[], 
         bonusConfig: BonusConfig,
-        staffWorkTypeMap: Record<string, string> = {}
+        staffWorkTypeMap: Record<string, string> = {},
+        staffBonusMap: Record<string, boolean> = {}
     ): number {
         if (!bonusConfig.enableBonus) return 0;
+        // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
+        if (staffBonusMap[techCode.toLowerCase()] === false) return 0;
         // Compute all unique technicians in this booking for dividing points
         const allKtvCodes = new Set<string>();
         for (const item of (booking.BookingItems || [])) {

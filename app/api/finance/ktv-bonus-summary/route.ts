@@ -39,8 +39,10 @@ export async function GET(request: Request) {
         }
         
         const staffWorkTypeMap: Record<string, string> = {};
+        const staffBonusMap: Record<string, boolean> = {};
         (staffList || []).forEach(s => {
             staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+            staffBonusMap[s.id.toLowerCase()] = s.feature_flags?.enable_bonus ?? true;
         });
 
         // Fetch KTV shifts to determine bonus per KTV
@@ -154,7 +156,7 @@ export async function GET(request: Request) {
                 const sId = staffIds.find(id => id.toLowerCase() === techCode);
                 if (!sId || !statsMap[sId]) return;
 
-                const bonusPts = KtvCommissionService.calculateBookingBonus(b, sId, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap);
+                const bonusPts = KtvCommissionService.calculateBookingBonus(b, sId, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap);
                 statsMap[sId].totalEarned += bonusPts;
             });
         });

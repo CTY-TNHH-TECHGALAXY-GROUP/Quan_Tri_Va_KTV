@@ -25,15 +25,19 @@ async function processLedgerSync(targetDateStr: string) {
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
         .from('Staff')
-        .select('id, full_name, work_type')
+        .select('id, full_name, work_type, feature_flags')
         .eq('status', 'ĐANG LÀM')
         .ilike('id', 'NH%');
     
     if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, message: 'No KTVs found' });
     
     const staffWorkTypeMap: Record<string, string> = {};
+    const staffBonusMap: Record<string, boolean> = {};
     ktvs.forEach(k => {
         staffWorkTypeMap[k.id.toLowerCase()] = k.work_type || 'TYPE_A';
+        const canBonus = k.feature_flags?.enable_bonus ?? true;
+        staffBonusMap[k.id.toLowerCase()] = canBonus;
+        staffBonusMap[k.id] = canBonus;
     });
 
     // 2.5 Fetch Shifts
@@ -157,7 +161,7 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap);
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
                 total_bonus += bookingBonus;
             }
         }

@@ -26,12 +26,15 @@ export async function GET(request: Request) {
     try {
         const { data: allStaffData } = await supabase
             .from('Staff')
-            .select('id, work_type');
+            .select('id, work_type, feature_flags');
             
         let workType = 'TYPE_A';
         const staffWorkTypeMap: Record<string, string> = {};
+        const staffBonusMap: Record<string, boolean> = {};
         (allStaffData || []).forEach(s => {
             staffWorkTypeMap[s.id.toLowerCase()] = s.work_type || 'TYPE_A';
+            const canBonus = s.feature_flags?.enable_bonus ?? true;
+            staffBonusMap[s.id.toLowerCase()] = canBonus;
             if (s.id === techCode) {
                 workType = s.work_type || 'TYPE_A';
             }
@@ -225,7 +228,7 @@ export async function GET(request: Request) {
                 effectiveFrom: bDateStr
             }];
             
-            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap);
+            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
 
             // ─── Tip: sum from this KTV's items ────────────────────────
             const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);

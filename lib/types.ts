@@ -97,6 +97,7 @@ export interface Employee {
   work_type?: string;
   featureFlags?: any;
   enableKpiDemo?: boolean;
+  enableBonus?: boolean;
 }
 
 export interface Role {
