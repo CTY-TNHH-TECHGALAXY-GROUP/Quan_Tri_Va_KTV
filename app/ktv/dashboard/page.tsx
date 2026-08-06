@@ -10,7 +10,7 @@ import {
   ClipboardList, Coffee, LogOut, Sparkles, User, Users,
   PlusSquare, HelpCircle, Zap, Target, Ban, AlertCircle,
   Dumbbell, Quote, BookOpen, BellRing, QrCode,
-  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw, Loader2, PauseCircle
+  ChevronDown, ChevronUp, Heart, MicOff, Banknote, TrendingDown, TrendingUp, RefreshCw, Loader2, PauseCircle, Eye, EyeOff, Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
@@ -319,6 +319,8 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const [expectedEnd, setExpectedEnd] = React.useState('');
   const [isFirstInQueue, setIsFirstInQueue] = React.useState(false);
   const [showRejectModal, setShowRejectModal] = React.useState(false);
+  const [showQRModal, setShowQRModal] = React.useState(false);
+  const [showWallet, setShowWallet] = React.useState(false);
 
   const handleRejectOrder = async (reason: string) => {
     if (!logic.booking?.nextBookingId) return;
@@ -431,271 +433,218 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const coWorkers = (assignedItem?.technicianCodes || []).filter((code: string) => code !== logic.ktvId);
 
   return (
-    <div className="p-2 lg:p-4 space-y-4 lg:space-y-6">
-      {/* Header - Only show when NO active booking - Hidden on Mobile */}
+    <div className="p-3 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24">
+      {/* ─── HEADER ─── */}
       {(!booking || !booking.id) && (
-        <div className="hidden lg:flex items-center justify-between">
-          <div>
-            <h1 className={`text-xl font-bold ${THEME.textBase}`}>
-              Xin chào, <span className="text-emerald-600 ml-1">{logic.ktvId || 'Kỹ thuật viên'}</span>
-            </h1>
-          </div>
+        <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2">
           <div className="flex items-center gap-3">
-             {/* Vùng chứa On-Call đã được chuyển sang tab Chấm Công để dọn dẹp Dashboard */}
-            <div className={`w-10 h-10 ${THEME.primaryMuted} rounded-full flex items-center justify-center font-bold`}>
-               <User size={20} />
-            </div>
+             <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-inner border border-white">
+                <span className="text-xl">🧑‍⚕️</span>
+             </div>
+             <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Xin chào,</p>
+                <h1 className="text-lg font-black text-slate-800 leading-none">
+                  {logic.ktvId || 'Kỹ thuật viên'}
+                </h1>
+             </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Wallet Icon */}
+            {canViewWallet && (
+               <Link href="/ktv/wallet" className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 active:scale-95 transition-transform">
+                  <Wallet size={18} className="text-emerald-600" />
+               </Link>
+            )}
+            
+            {/* Notification Bell */}
+            <button className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 active:scale-95 transition-transform">
+               <BellRing size={18} className="text-slate-600" />
+               {logic.booking?.nextBookingId && (
+                  <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 border-2 border-white rounded-full animate-pulse"></span>
+               )}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Popup Bật Nhận Đơn đã được chuyển sang tab Chấm Công */}
-
       {(!booking || !booking.id) ? (
-        <div className="space-y-6">
-          {canViewWallet && (
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-6 rounded-[32px] shadow-lg text-white flex items-center justify-between mb-6">
-              <div>
-                <h3 className="font-bold text-emerald-100 flex items-center gap-2 uppercase tracking-widest text-xs mb-1">
-                  <Zap size={16} className="text-amber-300 fill-amber-300" />
-                  Ví Thu Nhập KTV
-                </h3>
-                <p className="text-xs text-emerald-100/80">Xem số dư, lịch sử giao dịch và rút tiền</p>
+        <div className="space-y-4">
+          
+          {/* ─── HERO SECTION (ALERTS) ─── */}
+          
+          {/* 1. Có Đơn Mới (Highest Priority) */}
+          {logic.booking?.nextBookingId ? (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              className="p-6 rounded-[32px] bg-gradient-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-200/50 relative overflow-hidden"
+            >
+              <div className="absolute -top-12 -right-12 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+              <div className="relative z-10 flex flex-col gap-4">
+                <div className="flex items-start gap-4 text-white">
+                  <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shrink-0 border border-white/30">
+                    <Sparkles size={24} className="animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="font-black text-lg uppercase tracking-tight mb-1">Đơn mới đã sẵn sàng!</p>
+                    <p className="text-sm font-medium text-emerald-50">
+                      {logic.booking.nextServiceName || 'Dịch vụ'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => logic.goToDashboard(logic.booking.nextBookingId)}
+                  className="w-full py-4 bg-white text-emerald-700 font-black rounded-2xl text-sm uppercase tracking-widest shadow-lg shadow-emerald-900/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Play size={16} fill="currentColor" />
+                  NHẬN ĐƠN NGAY
+                </button>
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  className="text-xs font-bold text-emerald-100 hover:text-white underline text-center opacity-80"
+                >
+                  Tôi muốn từ chối tua này
+                </button>
               </div>
-              <Link href="/ktv/wallet" className="bg-white text-emerald-700 font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-transform shadow-md flex items-center gap-2">
-                Mở Ví <ArrowRight size={16} />
-              </Link>
-            </div>
+            </motion.div>
+          ) : (
+            /* 2. Trạng Thái Rảnh (Idle) */
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="p-8 rounded-[32px] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[180px]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-50/50 to-transparent"></div>
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 relative z-10">
+                 <Coffee size={28} className="text-slate-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-700 mb-2 relative z-10">Đang chờ điều phối...</h3>
+              <p className="text-xs text-slate-400 font-medium relative z-10">
+                Hãy thư giãn, hệ thống sẽ báo ngay khi có khách.
+              </p>
+            </motion.div>
           )}
 
-          {/* V5: First in queue alert */}
+          {/* Cảnh Báo Tua Đầu & Nợ Bàn Giao */}
           {isFirstInQueue && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              className="bg-gradient-to-r from-rose-500 to-red-600 p-5 rounded-[32px] shadow-lg shadow-red-200 border border-red-500 text-white flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
-                <AlertTriangle size={24} className="text-white animate-pulse" />
-              </div>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-50 p-4 rounded-3xl border border-red-100 flex items-center gap-3">
+              <AlertTriangle size={20} className="text-red-500 animate-pulse shrink-0" />
               <div>
-                <h3 className="font-black text-sm uppercase tracking-widest mb-1 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
-                  Tua Đầu - Chú ý
-                </h3>
-                <p className="text-xs font-bold opacity-90 leading-relaxed">
-                  Bạn đang đứng tua đầu! Hãy kiểm tra và châm nước (nước uống/nước dịch vụ) để sẵn sàng đón khách.
-                </p>
+                <h3 className="font-bold text-xs text-red-700 uppercase tracking-widest">Tua Đầu - Chú ý</h3>
+                <p className="text-[10px] text-red-600/80 font-medium">Bạn đang đứng tua đầu! Hãy kiểm tra châm nước phòng.</p>
               </div>
             </motion.div>
           )}
 
-          {/* V5: Pending Handover Debt Widget */}
           {logic.pendingHandovers?.length > 0 && (
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-5 rounded-[32px] shadow-sm border border-amber-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center">
-                  <AlertTriangle size={24} className="text-amber-600" />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm text-amber-900 uppercase tracking-widest">Nợ bàn giao</h3>
-                  <p className="text-xs font-medium text-amber-700">
-                    Bạn còn {logic.pendingHandovers.length} đơn chưa bàn giao ảnh
-                  </p>
-                </div>
+            <div className="bg-amber-50 p-4 rounded-3xl border border-amber-100">
+              <div className="flex items-center justify-between mb-2">
+                 <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="text-amber-600" />
+                    <h3 className="font-bold text-xs text-amber-900 uppercase tracking-widest">Nợ bàn giao ({logic.pendingHandovers.length})</h3>
+                 </div>
               </div>
               <div className="space-y-2">
                 {logic.pendingHandovers.map((item: any) => (
-                  <div 
-                    key={item.id} 
-                    onClick={() => logic.handleSelectDebt(item.bookingId)}
-                    className="bg-white/80 p-3 rounded-2xl flex items-center justify-between border border-amber-100 cursor-pointer hover:bg-amber-50 active:scale-95 transition-all"
-                  >
-                    <div>
-                      <span className="text-xs font-bold text-slate-700">
-                        #{item.Bookings?.billCode || '---'}
-                      </span>
-                      <span className="text-[10px] text-slate-500 ml-2">
-                        Phòng {item.roomId}
-                      </span>
-                    </div>
-                    <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${
-                      item.handover_status === 'REJECTED' 
-                        ? 'bg-rose-100 text-rose-700' 
-                        : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {item.handover_status === 'REJECTED' ? 'Bị từ chối' : 'Chưa nộp'}
-                    </span>
+                  <div key={item.id} onClick={() => logic.handleSelectDebt(item.bookingId)} className="bg-white p-2.5 rounded-2xl flex items-center justify-between border border-amber-100 cursor-pointer hover:bg-amber-100/50">
+                    <span className="text-xs font-bold text-slate-700">#{item.Bookings?.billCode || '---'} <span className="text-[10px] text-slate-400 font-normal ml-1">P.{item.roomId}</span></span>
+                    <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-lg">Chưa nộp</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Mobile On-Call Toggle đã được xóa khỏi đây */}
+          {/* ─── BENTO GRID ─── */}
+          <div className="flex flex-col gap-4">
 
-          {/* KPI Progress Card (Type B) */}
-          {kpiData && kpiData.targetHours > 0 && (
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-[32px] shadow-sm border border-amber-200/60">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-amber-900 flex items-center gap-2 uppercase tracking-widest text-xs">
-                  <Target size={16} className="text-amber-600" />
-                  Chỉ Tiêu Tháng {new Date().getMonth() + 1}
-                </h3>
-                <span className="text-xs font-black text-amber-700 bg-amber-200/50 px-2.5 py-1 rounded-xl">
-                  {kpiData.progressPercent}%
-                </span>
-              </div>
-              
-              <div className="w-full bg-amber-200/40 rounded-full h-3 mb-4 overflow-hidden border border-amber-100">
-                <div 
-                  className="bg-gradient-to-r from-amber-400 to-orange-500 h-3 rounded-full transition-all duration-1000 shadow-sm" 
-                  style={{ width: `${Math.min(100, kpiData.progressPercent)}%` }}
-                ></div>
-              </div>
-              
-              <div className="flex justify-between text-xs text-amber-800 font-medium px-1">
-                <div>Đã làm: <span className="font-black text-amber-900">{kpiData.totalHours}h</span></div>
-                <div>Mục tiêu: <span className="font-black text-amber-900">{kpiData.targetHours}h</span></div>
-              </div>
-              
-              {kpiData.remainingHours > 0 ? (
-                <p className="text-[10px] text-amber-700/80 mt-4 text-center uppercase tracking-widest font-bold">
-                  Còn {kpiData.remainingHours} giờ nữa để đạt chỉ tiêu
-                </p>
-              ) : (
-                <p className="text-[10px] text-emerald-600 mt-4 text-center uppercase tracking-widest font-black flex items-center justify-center gap-1 bg-emerald-50 py-1.5 rounded-lg border border-emerald-100">
-                  <CheckCircle2 size={12} /> Đã vượt chỉ tiêu tháng!
-                </p>
-              )}
-            </div>
-          )}
+             {/* ─── GRID 2x2: Điểm, Sức Bền, Chỉ Tiêu, Mã QR ─── */}
+             <div className="grid grid-cols-2 gap-4">
+                {/* 1. Điểm chuyên cần */}
+                {logic.disciplineStatus && (
+                   <div className={`p-4 rounded-[32px] border ${logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'} flex flex-col items-center justify-center relative`}>
+                      <h3 className="font-bold text-[10px] uppercase tracking-widest mb-3 flex items-center gap-1.5 text-slate-500">
+                         <ShieldAlert size={14} /> Điểm số
+                      </h3>
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 ? 'border-red-500 text-red-600 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-pulse' : 'border-indigo-500 text-indigo-700'}`}>
+                         <span className="font-black text-xl">{logic.disciplineStatus.totalPoints}</span>
+                      </div>
+                   </div>
+                )}
 
-          <div className={`${THEME.bgCard} ${THEME.border} ${THEME.radius} p-8 text-center border shadow-sm`}>
-            {/* QR Code Section - Web Booking for Customers */}
-            <div className="flex flex-col items-center mb-8">
-               <div className="relative group mb-4">
-                  <div className="absolute -inset-2 bg-emerald-50 rounded-[2rem] blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative p-3 bg-white rounded-[2rem] shadow-xl border border-emerald-100/50 transition-transform active:scale-95 duration-300">
-                     <WebBookingQR url={bookingUrl} />
-                  </div>
-               </div>
-               <div className="space-y-1 text-center flex flex-col items-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                    <QrCode size={12} className="text-emerald-500" />
-                    QR MENU KHÁCH HÀNG
-                  </p>
-                  <p className="text-[9px] text-slate-300 font-medium">Khách quét để xem menu & đặt lịch</p>
-                  <a
-                    href={bookingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:scale-95 rounded-xl text-xs font-black transition-all border border-emerald-100 shadow-sm"
-                  >
-                    Mở liên kết
-                    <ArrowRight size={12} />
-                  </a>
-               </div>
-            </div>
+                {/* 2. Sức bền (Hình tròn) */}
+                {logic.disciplineStatus && (
+                   <div className="bg-white p-4 rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center relative">
+                      <h3 className="font-bold text-[10px] uppercase tracking-widest mb-3 flex items-center gap-1.5 text-slate-500">
+                         <Dumbbell size={14} /> Sức bền
+                      </h3>
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center border-4 border-amber-500 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.1)] relative">
+                         <span className="font-black text-sm">{Math.floor(logic.disciplineStatus.continuousWorkMins / 60)}h{logic.disciplineStatus.continuousWorkMins % 60}m</span>
+                         <span className="text-[10px] absolute -bottom-2 bg-white font-bold px-1 rounded-sm text-slate-400 border border-slate-100">/ {logic.disciplineStatus.exemptHours}h</span>
+                      </div>
+                   </div>
+                )}
 
-            <div className={`w-12 h-12 ${THEME.primaryMuted} rounded-full flex items-center justify-center mx-auto mb-4 opacity-50`}>
-              <Clock size={20} className="text-emerald-600" />
-            </div>
-            <h3 className={`text-lg font-bold ${THEME.textBase} mb-2`}>
-              {logic.booking?.nextBookingId ? 'Có đơn hàng chờ xác nhận' : 'Chưa có đơn hàng'}
-            </h3>
-            <p className={`text-sm ${THEME.textMuted}`}>
-              {logic.booking?.nextBookingId 
-                ? 'Vui lòng nhấn nút bên dưới để nhận đơn và xem thông tin chi tiết.'
-                : 'Hệ thống sẽ thông báo ngay khi có khách hàng được xếp phòng.'}
-            </p>
+                {/* 3. Chỉ tiêu tháng (Hình tròn cam) */}
+                {kpiData && kpiData.targetHours > 0 && (
+                   <div className="bg-white p-4 rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center relative">
+                      <h3 className="font-bold text-[10px] uppercase tracking-widest mb-3 flex items-center gap-1.5 text-slate-500">
+                         <Target size={14} /> Chỉ tiêu
+                      </h3>
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center border-4 border-orange-500 text-orange-600 shadow-[0_0_15px_rgba(249,115,22,0.1)] relative">
+                         <span className="font-black text-xl">{kpiData.totalHours}</span>
+                         <span className="text-[10px] absolute -bottom-2 bg-white font-bold px-1 rounded-sm text-slate-400 border border-slate-100">/ {kpiData.targetHours}h</span>
+                      </div>
+                   </div>
+                )}
+
+                {/* 4. Nút mở Mã QR */}
+                <button onClick={() => setShowQRModal(true)} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-[32px] shadow-lg text-white flex flex-col items-center justify-center relative active:scale-95 transition-transform">
+                   <h3 className="font-bold text-[10px] uppercase tracking-widest mb-2 flex items-center gap-1.5 text-indigo-100">
+                      Mã QR Khách
+                   </h3>
+                   <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30">
+                      <QrCode size={32} />
+                   </div>
+                </button>
+             </div>
           </div>
+          
 
-          {/* Next Order Notification when Dashboard is empty */}
-          {logic.booking?.nextBookingId && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              className="p-5 rounded-[28px] bg-emerald-50 border-2 border-emerald-200 shadow-xl shadow-emerald-100/50"
-            >
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3 text-emerald-700">
-                  <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
-                    <BellRing size={20} className="animate-bounce" />
-                  </div>
-                  <div>
-                    <p className="font-black text-sm uppercase tracking-tight">Đơn mới đã sẵn sàng!</p>
-                    <p className="text-[11px] font-bold opacity-80">{logic.booking.nextServiceName || 'Dịch vụ'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => logic.goToDashboard(logic.booking.nextBookingId)}
-                  className="w-full py-4 bg-emerald-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+
+          {/* QR Modal (Backdrop Blur) */}
+          <AnimatePresence>
+             {showQRModal && (
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+                  onClick={() => setShowQRModal(false)}
                 >
-                  <Play size={14} fill="white" />
-                  Nhận ngay đơn tiếp theo
-                </button>
+                   <motion.div
+                     initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                     className="bg-white rounded-[40px] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center"
+                     onClick={e => e.stopPropagation()}
+                   >
+                      <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-6">
+                         <QrCode size={32} />
+                      </div>
+                      <h2 className="text-xl font-black text-slate-800 mb-2">Quét để đặt lịch</h2>
+                      <p className="text-sm font-medium text-slate-500 mb-8">Đưa khách hàng quét mã này để truy cập Menu và Đặt lịch hẹn.</p>
+                      
+                      <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(0,0,0,0.08)] border border-slate-100 mb-8">
+                         <WebBookingQR url={bookingUrl} />
+                      </div>
 
-                <button
-                  onClick={() => setShowRejectModal(true)}
-                  className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline text-center mt-2"
-                >
-                  Tạm thời không thể nhận đơn này?
-                </button>
-              </div>
-            </motion.div>
-          )}
+                      <button
+                        onClick={() => setShowQRModal(false)}
+                        className="w-full py-4 bg-slate-100 text-slate-700 font-bold rounded-2xl active:scale-95 transition-transform"
+                      >
+                         Đóng
+                      </button>
+                   </motion.div>
+                </motion.div>
+             )}
+          </AnimatePresence>
 
-          {/* Discipline & Endurance Gamification Widget */}
-          {logic.disciplineStatus && (
-            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-[32px] shadow-sm border border-indigo-200/60 mt-6">
-               <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-indigo-900 flex items-center gap-2 uppercase tracking-widest text-xs">
-                   <ShieldAlert size={16} className="text-indigo-600" />
-                   Điểm Chuyên Cần
-                 </h3>
-                 <span className={`text-xs font-black px-2.5 py-1 rounded-xl ${
-                    logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 
-                    ? 'bg-rose-200/50 text-rose-700 animate-pulse' 
-                    : 'bg-indigo-200/50 text-indigo-700'
-                 }`}>
-                   {logic.disciplineStatus.totalPoints}/100
-                 </span>
-               </div>
-               
-               <div className="w-full bg-indigo-200/40 rounded-full h-3 mb-4 overflow-hidden border border-indigo-100">
-                 <div 
-                   className={`h-3 rounded-full transition-all duration-1000 shadow-sm ${
-                      logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 
-                      ? 'bg-gradient-to-r from-rose-400 to-red-500' 
-                      : 'bg-gradient-to-r from-indigo-400 to-blue-500'
-                   }`}
-                   style={{ width: `${Math.max(0, Math.min(100, logic.disciplineStatus.totalPoints))}%` }}
-                 ></div>
-               </div>
-
-               {logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 && (
-                  <p className="text-[10px] text-rose-600 mb-4 text-center uppercase tracking-widest font-black animate-pulse bg-rose-100/50 py-1.5 rounded-lg">
-                     ⚠️ CHÚ Ý: BẠN SẮP RỚT HẠNG!
-                  </p>
-               )}
-
-               {/* Endurance (Continuous Work) */}
-               <div className="mt-4 pt-4 border-t border-indigo-100/50">
-                  <div className="flex justify-between items-center mb-2">
-                     <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-widest flex items-center gap-1">
-                        <Coffee size={12} /> Sức bền (Liên tục)
-                     </span>
-                     <span className="text-[10px] font-black text-indigo-600">
-                        {Math.floor(logic.disciplineStatus.continuousWorkMins / 60)}h {logic.disciplineStatus.continuousWorkMins % 60}m / {logic.disciplineStatus.exemptHours}h
-                     </span>
-                  </div>
-                  {logic.disciplineStatus.continuousWorkMins >= logic.disciplineStatus.exemptHours * 60 && (
-                     <p className="text-[9px] bg-emerald-100 text-emerald-700 p-2 rounded-xl text-center font-bold">
-                        ✅ Bạn đã làm việc chăm chỉ, có thể bỏ qua tua tiếp theo mà không bị phạt!
-                     </p>
-                  )}
-               </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-6">

@@ -55,3 +55,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const taskId = searchParams.get('taskId');
+
+    if (!taskId) {
+      return NextResponse.json({ success: false, error: 'Missing taskId' }, { status: 400 });
+    }
+
+    const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+    const supabase = getSupabaseAdmin();
+    if (!supabase) throw new Error('Supabase not initialized');
+
+    const { error } = await supabase.from('Tasks').delete().eq('id', taskId);
+
+    if (error) {
+      console.error('Error deleting task:', error.message);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('API Error /api/support/tasks DELETE:', error.message);
+    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
+}

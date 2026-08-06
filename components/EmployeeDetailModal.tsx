@@ -193,7 +193,6 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                           <input type="checkbox" checked={editedEmployee.enableKpiDemo || false} onChange={(e) => updateField('enableKpiDemo', e.target.checked)} className="w-4 h-4 text-amber-500 rounded border-amber-300 focus:ring-amber-500" />
                           <span className="text-sm font-medium text-amber-700">Hiển thị Demo KPI</span>
                         </label>
-                      )}
                       <label className="flex items-center gap-2 cursor-pointer mt-2 pt-2 border-t border-gray-100">
                         <input type="checkbox" checked={editedEmployee.enableBonus ?? true} onChange={(e) => updateField('enableBonus', e.target.checked)} className="w-4 h-4 text-emerald-500 rounded border-emerald-300 focus:ring-emerald-500" />
                         <span className="text-sm font-medium text-emerald-700">Tính điểm Bonus (Ví Bonus)</span>

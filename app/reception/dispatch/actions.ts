@@ -1154,7 +1154,7 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
     }
 }
 
-export async function updateBookingItemStatus(itemIds: string[], newStatus: string, date: string, bookingId: string, targetKtvIds?: string[], forceBackward: boolean = false) {
+export async function updateBookingItemStatus(itemIds: string[], newStatus: string, date: string, bookingId: string, targetKtvIds?: string[], forceBackward: boolean = false, customStartTime?: string) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
@@ -1189,7 +1189,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                         return;
                     }
                     if (!s.actualStartTime) {
-                        s.actualStartTime = new Date().toISOString();
+                        s.actualStartTime = customStartTime || new Date().toISOString();
                         segmentsModified = true;
                     }
                 });

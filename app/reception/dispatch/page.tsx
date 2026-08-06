@@ -169,6 +169,14 @@ export default function DispatchBoardPage() {
     onConfirm: () => void;
   }>({ isOpen: false, message: '', onConfirm: () => {} });
 
+  const [startServiceModal, setStartServiceModal] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    itemIds?: string[];
+    targetKtvIds?: string[];
+    plannedStartTime: string | null;
+  }>({ isOpen: false, orderId: '', itemIds: undefined, targetKtvIds: undefined, plannedStartTime: null });
+
   useEffect(() => {
     setEditingGuestInfo(null);
   }, [selectedSubOrderId]);
@@ -1181,7 +1189,28 @@ if (!hasPermission('dispatch_board')) {
       } else if (newStatus === 'DONE') {
         confirmMsg = `Xác nhận ĐÃ DỌN XONG PHÒNG VÀ HOÀN TẤT? Giường sẽ được nhả ra để đón khách mới.`;
       } else if (newStatus === 'IN_PROGRESS') {
-        confirmMsg = `Xác nhận BẮT ĐẦU LÀM thay cho KTV? Hệ thống sẽ bắt đầu tính giờ làm dịch vụ ngay lập tức.`;
+        const order = orders.find(o => o.id === orderId);
+        let plannedTime = order?.timeBooking || null;
+        if (isPartial && order && itemIds) {
+            const service = order.services.find(s => itemIds.includes(s.id));
+            if (service) {
+               try {
+                   const segs = JSON.parse(service.segments || '[]');
+                   const targetSeg = segs.find((seg: any) => targetKtvIds?.includes(seg.ktvId));
+                   if (targetSeg && targetSeg.startTime) {
+                       plannedTime = targetSeg.startTime;
+                   }
+               } catch(e) {}
+            }
+        }
+        setStartServiceModal({
+           isOpen: true,
+           orderId,
+           itemIds,
+           targetKtvIds,
+           plannedStartTime: plannedTime
+        });
+        return;
       }
       
       setConfirmModal({
@@ -1197,13 +1226,14 @@ if (!hasPermission('dispatch_board')) {
 
     executeStatusUpdate();
 
-    async function executeStatusUpdate() {
+    async function executeStatusUpdate(customStartTime?: string) {
       try {
         let res;
         if (isPartial) {
             const { updateBookingItemStatus } = await import('./actions');
-            res = await updateBookingItemStatus(itemIds, newStatus, selectedDate, orderId, targetKtvIds);
+            res = await updateBookingItemStatus(itemIds, newStatus, selectedDate, orderId, targetKtvIds, forceBackward, customStartTime);
         } else {
+            // Note: full booking status update currently does not accept customStartTime in our implementation.
             res = await updateBookingStatus(orderId, newStatus, selectedDate);
         }
         
@@ -2800,6 +2830,62 @@ if (!hasPermission('dispatch_board')) {
           </div>
         )}
       </AnimatePresence>
+      {/* Custom Start Service Modal */}
+      <AnimatePresence>
+        {startServiceModal.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100"
+            >
+              <div className="p-5 pb-6">
+                <div className="flex items-center gap-3 text-orange-600 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center border border-orange-100">
+                    <Clock size={24} />
+                  </div>
+                  <h3 className="text-[17px] font-black">Bắt đầu dịch vụ</h3>
+                </div>
+                <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1">
+                  Hệ thống sẽ bắt đầu tính giờ làm. Vui lòng chọn mốc thời gian:
+                </p>
+                <div className="mt-5 flex flex-col gap-3 px-1">
+                  <button
+                    onClick={() => {
+                        setStartServiceModal(prev => ({ ...prev, isOpen: false }));
+                        executeStatusUpdate(new Date().toISOString());
+                    }}
+                    className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
+                  >
+                    Lấy giờ hiện tại ({new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
+                  </button>
+                  {startServiceModal.plannedStartTime && (
+                    <button
+                      onClick={() => {
+                          setStartServiceModal(prev => ({ ...prev, isOpen: false }));
+                          executeStatusUpdate(startServiceModal.plannedStartTime!);
+                      }}
+                      className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100 active:scale-95 transition-all"
+                    >
+                      Giờ dự kiến ({new Date(startServiceModal.plannedStartTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50/80 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => setStartServiceModal(prev => ({ ...prev, isOpen: false }))}
+                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all"
+                >
+                  Hủy bỏ
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {commentModalData && (
         <KtvCommentModal 
           subOrder={commentModalData.subOrder as any}

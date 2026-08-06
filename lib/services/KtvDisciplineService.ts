@@ -75,53 +75,60 @@ export class KtvDisciplineService {
         return typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
     }
 
-    /**
-     * Tính tổng thời gian làm liên tục của KTV trong ngày
-     * Trả về tổng phút và thời điểm kết thúc đơn cuối cùng
-     */
     static async calculateContinuousWorkMins(supabase: SupabaseClient, staffId: string): Promise<{ totalMins: number, lastEndTime: Date | null }> {
         const { data: gapData } = await supabase.from('SystemConfigs').select('value').eq('key', 'ktv_continuous_work_gap_mins').single();
         const gapMinsAllowed = gapData?.value ? Number(gapData.value) : 30;
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const vnOffset = 7 * 60 * 60 * 1000;
         
+        // Tính mốc 00:00:00 và 23:59:59 giờ Việt Nam, sau đó convert sang UTC để query
+        const vnNow = new Date(now.getTime() + vnOffset);
+        const vnStartOfDay = new Date(vnNow.getTime());
+        vnStartOfDay.setUTCHours(0, 0, 0, 0);
+        const utcStartOfDay = new Date(vnStartOfDay.getTime() - vnOffset);
+        
+        const vnEndOfDay = new Date(vnNow.getTime());
+        vnEndOfDay.setUTCHours(23, 59, 59, 999);
+        const utcEndOfDay = new Date(vnEndOfDay.getTime() - vnOffset);
+
         const { data: items, error } = await supabase
             .from('BookingItems')
-            .select('timeStart, timeEnd')
+            .select('timeStart, timeEnd, status')
             .contains('technicianCodes', [staffId])
-            .gte('timeStart', `${todayStr}T00:00:00.000Z`)
-            .lte('timeStart', `${todayStr}T23:59:59.999Z`)
-            .not('timeEnd', 'is', null)
-            .order('timeEnd', { ascending: false });
+            .gte('timeStart', utcStartOfDay.toISOString())
+            .lte('timeStart', utcEndOfDay.toISOString())
+            .in('status', ['IN_PROGRESS', 'COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE'])
+            .order('timeStart', { ascending: false });
 
         if (error || !items || items.length === 0) return { totalMins: 0, lastEndTime: null };
 
-        let totalMins = 0;
-        let lastTime: Date | null = null;
-        let previousStart: Date | null = null;
+        const intervals = items.map(item => ({
+            start: new Date(item.timeStart).getTime(),
+            end: item.timeEnd ? new Date(item.timeEnd).getTime() : now.getTime()
+        }));
 
-        for (const item of items) {
-            const end = new Date(item.timeEnd);
-            const start = new Date(item.timeStart);
-            
-            if (!lastTime) {
-                lastTime = end;
-                previousStart = start;
+        let blockStart = intervals[0].start;
+        let blockEnd = intervals[0].end;
+
+        for (let i = 1; i < intervals.length; i++) {
+            const int = intervals[i];
+            const gap = (blockStart - int.end) / 60000;
+            if (gap <= gapMinsAllowed) {
+                blockStart = Math.min(blockStart, int.start);
+                blockEnd = Math.max(blockEnd, int.end);
             } else {
-                const gap = (previousStart!.getTime() - end.getTime()) / 60000;
-                if (gap <= gapMinsAllowed && gap >= 0) {
-                    previousStart = start;
-                } else {
-                    break;
-                }
+                break;
             }
         }
         
-        if (lastTime && previousStart) {
-            totalMins = (lastTime.getTime() - previousStart.getTime()) / 60000;
+        const gapToNow = (now.getTime() - blockEnd) / 60000;
+        if (gapToNow > gapMinsAllowed) {
+            return { totalMins: 0, lastEndTime: null };
         }
 
-        return { totalMins: Math.max(0, Math.round(totalMins)), lastEndTime: lastTime };
+        const totalMins = (blockEnd - blockStart) / 60000;
+        return { totalMins: Math.max(0, Math.round(totalMins)), lastEndTime: new Date(blockEnd) };
     }
 
     /**
