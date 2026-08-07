@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -122,6 +123,14 @@ export async function GET(request: Request) {
 
         // ─── Determine status from records ───
         if (!records || records.length === 0) {
+            // CƠ CHẾ BẢO VỆ: Nếu KTV chưa điểm danh hôm nay nhưng bị kẹt AT_VENUE ở bảng Staff (do quên tan ca hôm trước) -> Auto reset về OFFLINE
+            if (userRow?.code) {
+                const { data: staffStatus } = await supabase.from('Staff').select('online_status').eq('id', userRow.code).maybeSingle();
+                if (staffStatus?.online_status === 'AT_VENUE') {
+                    console.log(`[Auto-Protect] KTV ${userRow.code} stuck AT_VENUE from previous day. Resetting to OFFLINE.`);
+                    await KtvOnlineService.goOffline(supabase, userRow.code);
+                }
+            }
             return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount });
         }
 

@@ -445,7 +445,7 @@ const KTVAttendancePage = () => {
                     {/* Nếu là KTV Loại B thì hiển thị component riêng của Loại B, nếu không thì hiển thị luồng mặc định (IDLE/PENDING/CONFIRMED...) */}
                     {workType === 'TYPE_B' && user?.code ? (
                         <div className="w-full">
-                            <AttendanceTypeB ktvId={user.code} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} />
+                            <AttendanceTypeB ktvId={user.code} checkStatus={checkStatus} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} />
                         </div>
                     ) : (
                         <>

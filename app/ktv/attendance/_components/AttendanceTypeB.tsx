@@ -13,13 +13,14 @@ interface OnCallState {
 
 interface Props {
   ktvId: string;
+  checkStatus?: string;
   onCheckIn: () => void;
   onCheckOut: () => void;
   onRefreshStatus?: () => void;
   incompleteTasksCount?: number;
 }
 
-export default function AttendanceTypeB({ ktvId, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0 }: Props) {
+export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0 }: Props) {
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -96,8 +97,9 @@ export default function AttendanceTypeB({ ktvId, onCheckIn, onCheckOut, onRefres
   }
 
   const isOnline = state.online_status === 'ONLINE';
-  const isAtVenue = state.online_status === 'AT_VENUE';
-  const isOffline = state.online_status === 'OFFLINE' || (!isOnline && !isAtVenue);
+  // Ngăn lỗi kẹt trạng thái AT_VENUE sang ngày mới: Chỉ khi đã điểm danh hôm nay mới tính là AT_VENUE.
+  const isAtVenue = state.online_status === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
+  const isOffline = (state.online_status === 'OFFLINE' || state.online_status === 'AT_VENUE') && !isOnline && !isAtVenue;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
