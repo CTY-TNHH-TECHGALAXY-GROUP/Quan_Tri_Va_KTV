@@ -1250,7 +1250,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
         }
 
         if (newStatus === 'IN_PROGRESS') {
-            const now = new Date().toISOString();
+            const now = customStartTime || new Date().toISOString();
             
             // Cập nhật timeStart cho Bookings nếu chưa có
             await supabase.from('Bookings').update({ timeStart: now }).eq('id', bookingId).is('timeStart', null);
@@ -1282,7 +1282,8 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             }
 
             // Cập nhật TurnQueue thành working + recalculate estimated_end_time
-            const nowVN2 = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
+            const dateObj = new Date(now);
+            const nowVN2 = dateObj.toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
             let fetchQuery = supabase
                 .from('TurnQueue')
                 .select('id, employee_id, start_time, estimated_end_time')

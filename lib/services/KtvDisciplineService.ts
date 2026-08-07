@@ -94,19 +94,46 @@ export class KtvDisciplineService {
 
         const { data: items, error } = await supabase
             .from('BookingItems')
-            .select('timeStart, timeEnd, status')
+            .select(`
+                id, status, segments,
+                Bookings!fk_bookingitems_booking!inner(timeStart)
+            `)
             .contains('technicianCodes', [staffId])
-            .gte('timeStart', utcStartOfDay.toISOString())
-            .lte('timeStart', utcEndOfDay.toISOString())
-            .in('status', ['IN_PROGRESS', 'COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE'])
-            .order('timeStart', { ascending: false });
+            .gte('Bookings.timeStart', utcStartOfDay.toISOString())
+            .lte('Bookings.timeStart', utcEndOfDay.toISOString())
+            .in('status', ['IN_PROGRESS', 'COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']);
 
         if (error || !items || items.length === 0) return { totalMins: 0, lastEndTime: null };
 
-        const intervals = items.map(item => ({
-            start: new Date(item.timeStart).getTime(),
-            end: item.timeEnd ? new Date(item.timeEnd).getTime() : now.getTime()
-        }));
+        const intervals: { start: number, end: number }[] = [];
+
+        for (const item of items) {
+            let segs = item.segments;
+            if (typeof segs === 'string') {
+                try { segs = JSON.parse(segs); } catch (e) { segs = []; }
+            }
+            if (!Array.isArray(segs)) segs = [];
+
+            const mySegs = segs.filter((s: any) => 
+                s.ktvId === staffId || 
+                (Array.isArray(s.ktvId) && s.ktvId.includes(staffId)) || 
+                (s.ktvInfo && s.ktvInfo.code === staffId) ||
+                (s.technicianCodes && s.technicianCodes.includes(staffId))
+            );
+
+            for (const s of mySegs) {
+                if (s.actualStartTime) {
+                    const startMs = new Date(s.actualStartTime).getTime();
+                    const endMs = s.actualEndTime ? new Date(s.actualEndTime).getTime() : now.getTime();
+                    intervals.push({ start: startMs, end: endMs });
+                }
+            }
+        }
+
+        if (intervals.length === 0) return { totalMins: 0, lastEndTime: null };
+
+        // Sắp xếp các khoảng thời gian giảm dần (mới nhất đầu tiên)
+        intervals.sort((a, b) => b.start - a.start);
 
         let blockStart = intervals[0].start;
         let blockEnd = intervals[0].end;

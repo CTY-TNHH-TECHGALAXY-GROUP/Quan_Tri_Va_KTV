@@ -178,6 +178,8 @@ export default function DispatchBoardPage() {
     onConfirm?: (time: string) => void;
   }>({ isOpen: false, orderId: '', itemIds: undefined, targetKtvIds: undefined, plannedStartTime: null });
 
+  const [customStartInputValue, setCustomStartInputValue] = useState<string>('');
+
   useEffect(() => {
     setEditingGuestInfo(null);
   }, [selectedSubOrderId]);
@@ -1204,12 +1206,31 @@ if (!hasPermission('dispatch_board')) {
                } catch(e) {}
             }
         }
+        
+        let plannedTimeIso = null;
+        try {
+            if (plannedTime) {
+                // Tạo ISO string từ selectedDate và plannedTime (HH:mm)
+                const [h, m] = plannedTime.split(':');
+                const d = new Date(selectedDate);
+                d.setHours(Number(h), Number(m), 0, 0);
+                plannedTimeIso = d.toISOString();
+            } else if (order?.createdAt) {
+                plannedTimeIso = order.createdAt.endsWith('Z') || order.createdAt.includes('+') 
+                    ? order.createdAt 
+                    : order.createdAt + 'Z';
+            }
+        } catch(e) {}
+        
+        const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        setCustomStartInputValue(nowTime);
+
         setStartServiceModal({
            isOpen: true,
            orderId,
            itemIds,
            targetKtvIds,
-           plannedStartTime: plannedTime,
+           plannedStartTime: plannedTimeIso,
            onConfirm: (time: string) => executeStatusUpdate(time)
         });
         return;
@@ -2856,17 +2877,32 @@ if (!hasPermission('dispatch_board')) {
                   >
                     Lấy giờ hiện tại ({new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
                   </button>
-                  {startServiceModal.plannedStartTime && (
-                    <button
-                      onClick={() => {
-                          setStartServiceModal(prev => ({ ...prev, isOpen: false }));
-                          if (startServiceModal.onConfirm) startServiceModal.onConfirm(startServiceModal.plannedStartTime!);
-                      }}
-                      className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100 active:scale-95 transition-all"
-                    >
-                      Giờ dự kiến ({new Date(startServiceModal.plannedStartTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
-                    </button>
-                  )}
+                  <div className="mt-2 pt-4 border-t border-gray-100">
+                    <p className="text-[13px] font-medium text-gray-500 mb-2">Hoặc nhập giờ tùy chỉnh:</p>
+                    <div className="flex gap-2">
+                      <input 
+                        type="time" 
+                        value={customStartInputValue}
+                        onChange={(e) => setCustomStartInputValue(e.target.value)}
+                        className="flex-1 px-4 py-3 rounded-2xl border border-gray-200 text-[15px] font-semibold text-gray-700 outline-none focus:border-orange-500 transition-all bg-gray-50"
+                      />
+                      <button
+                        onClick={() => {
+                            if (!customStartInputValue) return;
+                            setStartServiceModal(prev => ({ ...prev, isOpen: false }));
+                            
+                            const [h, m] = customStartInputValue.split(':');
+                            const d = new Date(selectedDate);
+                            d.setHours(Number(h), Number(m), 0, 0);
+                            
+                            if (startServiceModal.onConfirm) startServiceModal.onConfirm(d.toISOString());
+                        }}
+                        className="px-6 py-3 rounded-2xl text-[14px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                      >
+                        Áp dụng
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="p-4 bg-gray-50/80 border-t border-gray-100 flex gap-3">
