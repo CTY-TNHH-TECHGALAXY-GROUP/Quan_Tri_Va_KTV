@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.75';
-export const LAST_UPDATE = 'Tách riêng hiển thị ghi chú dịch vụ độc lập trên Giao diện Điều phối';
+export const APP_VERSION = '1.7.77';
+export const LAST_UPDATE = 'Sắp xếp thứ tự phòng ưu tiên: T, PG, V1, V2, V3, Yumi, V4';

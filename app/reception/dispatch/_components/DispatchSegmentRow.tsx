@@ -92,7 +92,21 @@ export const DispatchSegmentRow = ({
             <div className="space-y-3 p-3 bg-slate-50/50 rounded-2xl border border-slate-100/50">
                 <div className="space-y-2.5">
                     <div className="flex flex-wrap gap-1.5">
-                        {rooms.map(room => {
+                        {rooms.filter(room => {
+                            const name = (room.name || (room as any).nameVN || '').toLowerCase();
+                            return !name.includes('vệ sinh') && !name.includes('tắm');
+                        }).sort((a, b) => {
+                            const order = ['T', 'PG', 'V1', 'V2', 'V3', 'YUMI', 'V4'];
+                            const nameA = (a.name || (a as any).nameVN || '').toUpperCase();
+                            const nameB = (b.name || (b as any).nameVN || '').toUpperCase();
+                            const indexA = order.indexOf(nameA);
+                            const indexB = order.indexOf(nameB);
+                            
+                            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                            if (indexA !== -1) return -1;
+                            if (indexB !== -1) return 1;
+                            return nameA.localeCompare(nameB);
+                        }).map(room => {
                             if (realSvcId && room.allowed_services && room.allowed_services.length > 0) {
                                 if (!room.allowed_services.includes(realSvcId)) {
                                     return null;
