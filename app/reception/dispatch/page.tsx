@@ -1890,13 +1890,6 @@ if (!hasPermission('dispatch_board')) {
                       // TODO: QuickPrintTicket integration
                       alert(`🖨️ In phiếu: ${group.displayName || group.serviceName} x${group.items.length}\nKTV: ${group.selectedKtvIds.join(', ')}\n${(group.ktvStartTimes || [])[0] || '--:--'} → ${(group.ktvEndTimes || [])[0] || '--:--'}`);
                     }}
-                    customerReqs={selectedSubOrder.services[0] ? {
-                      genderReq: selectedSubOrder.services[0].genderReq,
-                      strength: selectedSubOrder.services[0].strength,
-                      focus: selectedSubOrder.services[0].focus,
-                      avoid: selectedSubOrder.services[0].avoid,
-                      customerNote: selectedSubOrder.services[0].customerNote,
-                    } : undefined}
                     reminders={reminders}
                     billCode={selectedSubOrder.originalOrder.billCode}
                     customerName={selectedSubOrder.originalOrder.customerName}

@@ -35,7 +35,7 @@ interface QuickDispatchTableProps {
   busyBedIds: string[];
   onUpdateServices: (updatedServices: ServiceBlock[]) => void;
   onPrintGroup: (group: ServiceGroup) => void;
-  customerReqs?: { genderReq?: string; strength?: string; focus?: string; avoid?: string; customerNote?: string; };
+  // customerReqs removed (passed down directly to groups instead)
   reminders?: ReminderData[];
   billCode?: string;
   customerName?: string;
@@ -354,30 +354,6 @@ export const QuickDispatchTable = ({
 
   return (
     <div className="space-y-5">
-      {/* Customer Requirements Banner */}
-      {customerReqs && (((!isVipOrder && !isVipSource && customerReqs.genderReq)) || customerReqs.strength || customerReqs.focus || customerReqs.avoid || customerReqs.customerNote) && (
-        <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-3 space-y-2">
-          <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ Yêu Cầu Từ Khách</p>
-          <div className="flex flex-wrap gap-1.5">
-            {!isVipOrder && !isVipSource && customerReqs.genderReq && (
-              <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-100">🧑 {customerReqs.genderReq}</span>
-            )}
-            {customerReqs.strength && (
-              <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-orange-50 text-orange-700 border border-orange-100">💪 {customerReqs.strength}</span>
-            )}
-            {customerReqs.focus && (
-              <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100">🎯 {customerReqs.focus}</span>
-            )}
-            {customerReqs.avoid && (
-              <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-100">🚫 {customerReqs.avoid}</span>
-            )}
-          </div>
-          {customerReqs.customerNote && (
-            <p className="text-xs text-amber-800 bg-white/60 p-2 rounded-xl font-bold italic border border-amber-100">&quot;{customerReqs.customerNote}&quot;</p>
-          )}
-        </div>
-      )}
-
       {/* Service Groups */}
       {Array.from(initialGroups.entries()).map(([groupKey, items]) => {
         const state = groupStates.get(groupKey);
@@ -415,7 +391,13 @@ export const QuickDispatchTable = ({
               }
               onDispatchGroup({ serviceName: displayServiceName, items, ...state }, specificSvcId);
             }}
-            customerReqs={customerReqs}
+            customerReqs={items[0] ? {
+              genderReq: items[0].genderReq,
+              strength: items[0].strength,
+              focus: items[0].focus,
+              avoid: items[0].avoid,
+              customerNote: items[0].customerNote,
+            } : undefined}
             reminders={reminders}
             getLatestEndTime={getLatestEndTime}
             isVipOrder={isVipOrder}

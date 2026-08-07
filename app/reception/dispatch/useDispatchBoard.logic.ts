@@ -320,7 +320,6 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 focus: Array.isArray(parsedOptions?.focus) ? parsedOptions.focus.join(', ') : (parsedOptions?.focus || b.focusAreaNote || ''),
                                 avoid: Array.isArray(parsedOptions?.avoid) ? parsedOptions.avoid.join(', ') : (parsedOptions?.avoid || ''),
                                 customerNote: [
-                                    extractedCustomerNote,
                                     parsedOptions?.note || parsedOptions?.customerNotes,
                                     Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
                                     b.focusAreaNote
