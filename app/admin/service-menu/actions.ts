@@ -71,7 +71,9 @@ export async function updateServiceBulkSync(originalNameVN: string, payload: Par
             showNotes: payload.showNotes,
             showGender: payload.showGender,
             showStrength: payload.showStrength,
-            showFocus: payload.showFocus
+            showFocus: payload.showFocus,
+            min_ktv_required: payload.min_ktv_required,
+            service_group: payload.service_group
         };
 
         const cleanPayload = Object.fromEntries(

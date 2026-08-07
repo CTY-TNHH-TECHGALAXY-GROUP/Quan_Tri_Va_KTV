@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.7.85';
-export const LAST_UPDATE = 'Gỡ bỏ nút Lấy giờ trong bill, chỉ giữ lại Lấy giờ hiện tại và Nhập giờ tùy chỉnh';
+export const APP_VERSION = '1.7.89';
+export const LAST_UPDATE = 'Tích hợp logic cấu hình Dịch vụ (Min KTV & Nhóm Dịch Vụ) vào Bảng Điều Phối';

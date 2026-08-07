@@ -2066,7 +2066,37 @@ if (!hasPermission('dispatch_board')) {
                     
                     return (
                       <button
-                        onClick={() => setShowDispatchConfirmModal(true)}
+                        onClick={() => {
+                          setShowDispatchConfirmModal(true);
+                          
+                          // TỰ ĐỘNG NỘI SUY SỐ KHÁCH: Phân loại Dịch vụ Chính và Phụ từ DB (service_group)
+                          let mainCount = 0;
+                          let addonCounts: Record<string, number> = {};
+                          
+                          (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
+                              const sId = svc.serviceId || svc.id;
+                              const group = svc.service_group || 'MAIN'; // Fallback nếu chưa cấu hình
+                              
+                              if (group === 'MAIN' || group === 'COMBO') {
+                                  mainCount++;
+                              } else {
+                                  addonCounts[sId] = (addonCounts[sId] || 0) + 1;
+                              }
+                          });
+
+                          let guessedCount = 1;
+                          if (mainCount > 0) {
+                              // Nhóm Dịch vụ Chính / Combo: Cứ có 1 dịch vụ = 1 Khách
+                              guessedCount = mainCount;
+                          } else if (Object.keys(addonCounts).length > 0) {
+                              // Nhóm Dịch vụ Phụ (không có DV chính): Lấy Max số lần lặp
+                              guessedCount = Math.max(1, ...Object.values(addonCounts));
+                          }
+                          
+                          // Ưu tiên số đã nhập (nếu > 1), nếu chưa nhập hoặc = 1 thì lấy số đoán tự động
+                          const currentGuestCount = selectedSubOrder.originalOrder.guestCount || 1;
+                          updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: Math.max(currentGuestCount, guessedCount) }));
+                        }}
                         disabled={!ready}
                         title={hasStartedService ? "Đã có dịch vụ bắt đầu, vui lòng điều phối lẻ từng dịch vụ!" : ""}
                         className={`flex-[2] flex-col py-3 rounded-3xl font-black text-sm lg:text-base tracking-widest uppercase transition-all flex items-center justify-center gap-1 shadow-2xl ${ready
@@ -2271,7 +2301,14 @@ if (!hasPermission('dispatch_board')) {
 
       {/* Dispatch Confirmation Modal */}
       <AnimatePresence>
-        {showDispatchConfirmModal && selectedOrder && (
+        {showDispatchConfirmModal && selectedOrder && (() => {
+          const isMissingKTVs = selectedOrder.services.some((svc: any) => {
+            const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
+            const minKtv = svc.min_ktv_required || 1;
+            return assignedKTVs < minKtv && !svc.is_utility;
+          });
+
+          return (
           <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div 
               initial={{ opacity: 0 }} 
@@ -2310,7 +2347,21 @@ if (!hasPermission('dispatch_board')) {
                   <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({selectedOrder.services.length})</h4>
                   {selectedOrder.services.map((svc, sIdx) => (
                     <div key={svc.id || sIdx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                      <p className="font-bold text-gray-900 text-sm mb-3 pb-2 border-b border-gray-100">{sIdx + 1}. {svc.serviceName}</p>
+                      <div className="mb-3 pb-2 border-b border-gray-100">
+                        <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.serviceName}</p>
+                        {(() => {
+                            const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
+                            const minKtv = svc.min_ktv_required || 1;
+                            if (assignedKTVs < minKtv && !svc.is_utility) {
+                                return (
+                                    <p className="text-xs text-rose-500 font-bold mt-1">
+                                        ⚠️ Dịch vụ yêu cầu tối thiểu {minKtv} KTV (Đang thiếu {minKtv - assignedKTVs})
+                                    </p>
+                                );
+                            }
+                            return null;
+                        })()}
+                      </div>
                       <div className="space-y-3">
                         {svc.staffList.map((st, stIdx) => (
                           <div key={st.ktvId ? `${svc.id}-${st.ktvId}` : `${svc.id}-st-${stIdx}`} className="pl-2 border-l-2 border-indigo-200 flex flex-col gap-1.5">
@@ -2349,18 +2400,24 @@ if (!hasPermission('dispatch_board')) {
                   Quay lại sửa
                 </button>
                 <button
+                  disabled={isMissingKTVs}
                   onClick={() => {
                     setShowDispatchConfirmModal(false);
                     handleDispatch();
                   }}
-                  className="w-full py-4 rounded-2xl font-black text-white bg-indigo-600 hover:bg-indigo-700 transition-colors uppercase text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-200"
+                  className={`w-full py-4 rounded-2xl font-black text-white transition-colors uppercase text-sm flex items-center justify-center gap-2 shadow-lg ${
+                    isMissingKTVs 
+                      ? 'bg-gray-400 cursor-not-allowed shadow-none'
+                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                  }`}
                 >
                   <Send size={18} strokeWidth={3} /> Gửi & Dọn Phòng
                 </button>
               </div>
             </motion.div>
           </div>
-        )}
+          );
+        })()}
       </AnimatePresence>
       {/* Context Menu for Cancellation */}
       <AnimatePresence>

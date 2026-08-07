@@ -111,6 +111,8 @@
 | `tags` | jsonb | Danh sách các Tag đa ngôn ngữ (VD: Mang thai) |
 | `comboTags` | jsonb | Mảng các combo tags (VD: ["body"]) |
 | `is_utility` | boolean | ✅ **Cờ dịch vụ tiện ích** — Không gán KTV, không tính hoa hồng, không hiện timer KTV. Default: `false`. Set `true` cho Phòng riêng (`NHS0900`) và các DV phụ trợ khác. |
+| `min_ktv_required` | integer | Số lượng nhân viên làm tối thiểu cho dịch vụ (Default: 1) |
+| `service_group` | text | Nhóm dịch vụ: `MAIN` (Chính), `ADDON` (Lẻ/Phụ), `COMBO`. Dùng để nội suy số khách. Default: `MAIN` |
 
 ---
 

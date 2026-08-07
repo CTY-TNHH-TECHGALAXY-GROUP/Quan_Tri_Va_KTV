@@ -26,6 +26,9 @@ export interface ServiceBlock {
   serviceId?: string;
   serviceName: string;
   serviceDescription?: string;
+  is_utility?: boolean;
+  min_ktv_required?: number;
+  service_group?: string;
   duration: number;
   price?: number;
   quantity?: number;

@@ -164,7 +164,7 @@ export async function getDispatchData(date: string) {
         // 4. Fetch Services FIRST to build map (safer than complex filtering)
         const { data: allServices, error: svcError } = await supabase
             .from('Services')
-            .select('id, code, nameVN, nameEN, duration, description, category, priceVND, imageUrl, is_utility')
+            .select('id, code, nameVN, nameEN, duration, description, category, priceVND, imageUrl, is_utility, min_ktv_required, service_group')
             .limit(1000);
 
         if (svcError) {
@@ -172,7 +172,7 @@ export async function getDispatchData(date: string) {
         }
         console.log(`📡 [Server] Fetched: ${allServices?.length || 0} services for mapping`);
 
-        let servicesMap: Record<string, { name: string; duration: number; description: string; is_utility: boolean }> = {};
+        let servicesMap: Record<string, { name: string; duration: number; description: string; is_utility: boolean; min_ktv_required?: number; service_group?: string; category?: string }> = {};
         if (allServices) {
             allServices.forEach((s: any) => {
                 const info = {
@@ -182,6 +182,8 @@ export async function getDispatchData(date: string) {
                         ? (s.description.vn || s.description.en || '') 
                         : (s.description || ''),
                     is_utility: s.is_utility ?? false,  // ✅ is_utility từ DB
+                    min_ktv_required: s.min_ktv_required ?? 1,
+                    service_group: s.service_group ?? 'MAIN',
                     category: s.category
                 };
                 
@@ -273,6 +275,8 @@ export async function getDispatchData(date: string) {
                             service_description: (b.source === 'VIP_MENU' || parsedOptions?.vipDuration || parsedOptions?.selectedSkills) ? '' : (svcInfo?.description || ''),
                             duration: finalDuration,
                             is_utility: svcInfo?.is_utility ?? (sId === 'nhs0900'), // ✅ is_utility, fallback legacy
+                            min_ktv_required: svcInfo?.min_ktv_required ?? 1,
+                            service_group: svcInfo?.service_group ?? 'MAIN',
                             timeStart: i.timeStart || null,
                             timeEnd: i.timeEnd || null,
                             status: i.status || 'NEW',
@@ -337,6 +341,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
         segments?: any[],
         options: any 
     }[];
+    guestCount?: number;
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -547,6 +552,10 @@ export async function processDispatch(bookingId: string, dispatchData: {
             if (dbWeight > incomingWeight) {
                 dispatchData.status = currentBooking.status;
             }
+        }
+
+        if (dispatchData.guestCount) {
+            await supabase.from('Bookings').update({ guestCount: dispatchData.guestCount }).eq('id', bookingId);
         }
 
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION

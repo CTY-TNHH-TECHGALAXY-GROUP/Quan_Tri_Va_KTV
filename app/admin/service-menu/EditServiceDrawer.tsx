@@ -154,6 +154,8 @@ export function EditServiceDrawer({ isOpen, onClose, service, onSuccess }: EditS
         showGender: formData.showGender,
         showStrength: formData.showStrength,
         showFocus: formData.showFocus,
+        min_ktv_required: formData.min_ktv_required,
+        service_group: formData.service_group,
 
         focusConfig: formData.focusConfig,
         tags: formData.tags?.filter(t => {
@@ -229,6 +231,18 @@ export function EditServiceDrawer({ isOpen, onClose, service, onSuccess }: EditS
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Thời lượng (Phút)</label>
                     <input type="number" name="duration" value={formData.duration || 0} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Số KTV tối thiểu</label>
+                    <input type="number" name="min_ktv_required" value={formData.min_ktv_required || 1} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Nhóm Dịch Vụ</label>
+                    <select name="service_group" value={formData.service_group || 'MAIN'} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm">
+                      <option value="MAIN">MAIN (Dịch vụ chính - 1 Khách)</option>
+                      <option value="ADDON">ADDON (Dịch vụ phụ/lẻ)</option>
+                      <option value="COMBO">COMBO (Gói nhiều DV - 1 Khách)</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Giá (VND)</label>

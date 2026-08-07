@@ -196,6 +196,9 @@ export interface Service {
   service_description?: string;
   procedure?: string;
   
+  min_ktv_required?: number;
+  service_group?: string;
+  
   imageUrl?: string;
   image_url?: string; // legacy fallback
   
