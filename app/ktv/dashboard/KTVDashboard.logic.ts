@@ -96,9 +96,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
             requiredChecklist = ['Ảnh tổng quan phòng'];
         }
 
-        const hasAllPhotos = requiredChecklist.every((item: string) => handoverPhotosBase64[item]);
-            
-        setIsHandoverComplete(hasAllPhotos);
+        // Thay vì yêu cầu ảnh theo từng key (định danh), ta đếm tổng số lượng ảnh được tải lên so với tổng số lượng item yêu cầu
+        const totalUploadedPhotos = Object.keys(handoverPhotosBase64).length;
+        const requiredCount = requiredChecklist.length;
+        setIsHandoverComplete(totalUploadedPhotos >= requiredCount);
     }, [handoverPhotosBase64, booking?.handoverChecklist, dynamicChecklist]);
 
     // Initialize checklist arrays when booking/procedures change

@@ -1381,18 +1381,15 @@ function ScreenHandover({ logic }: { logic: any }) {
       }
       
       if (newPhotos.length > 0) {
-          if (itemKey) {
-              setHandoverPhotosBase64((prev: Record<string, string>) => ({
-                  ...prev,
-                  [itemKey]: newPhotos[0]
-              }));
-          } else {
-              const timestamp = Date.now().toString();
-              setHandoverPhotosBase64((prev: Record<string, string>) => ({
-                  ...prev,
-                  [timestamp]: newPhotos[0]
-              }));
-          }
+          setHandoverPhotosBase64((prev: Record<string, string>) => {
+              const updated = { ...prev };
+              let timestamp = Date.now();
+              newPhotos.forEach((photo) => {
+                  updated[timestamp.toString()] = photo;
+                  timestamp++;
+              });
+              return updated;
+          });
       }
       logic.setIsLoading?.(false);
       if (e.target) e.target.value = '';
@@ -1411,62 +1408,67 @@ function ScreenHandover({ logic }: { logic: any }) {
       <div className="space-y-4">
           <div className="space-y-3">
              <div className="flex items-center justify-between px-1">
-                 <span className="text-sm font-bold text-slate-700">Checklist bàn giao</span>
+                 <span className="text-sm font-bold text-slate-700">Yêu cầu bàn giao</span>
                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                     {isFetchingChecklist ? <Loader2 size={12} className="animate-spin inline-block" /> : `${Object.keys(handoverPhotosBase64).filter(k => checklist.includes(k)).length}/${checklist.length}`}
+                     {isFetchingChecklist ? <Loader2 size={12} className="animate-spin inline-block" /> : `${Object.keys(handoverPhotosBase64).length}/${checklist.length}`}
                  </span>
              </div>
-             <div className="grid grid-cols-2 gap-3">
+             
+             {/* Danh sách yêu cầu */}
+             <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-100">
                  {isFetchingChecklist ? (
-                     // Skeleton Loader
-                     Array.from({ length: 4 }).map((_, i) => (
-                         <div key={i} className="relative aspect-square rounded-2xl border-2 border-slate-100 shadow-sm bg-slate-50 flex flex-col items-center justify-center p-2 animate-pulse">
-                             <div className="w-8 h-8 rounded-full bg-slate-200/60 mb-2"></div>
-                             <div className="h-3 bg-slate-200/60 rounded w-16 mb-1"></div>
-                             <div className="h-2 bg-slate-200/60 rounded w-10"></div>
-                         </div>
-                     ))
+                     <div className="space-y-2 animate-pulse">
+                         <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                         <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                     </div>
                  ) : (
-                     checklist.map((item, idx) => {
-                         const photo = handoverPhotosBase64[item];
-                         // V5: Show source badge (room vs service)
-                         const source = dynamicChecklist[idx]?.source;
-                         return (
-                             <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group bg-slate-50 flex flex-col items-center justify-center p-2 text-center">
-                                 {photo ? (
-                                     <>
-                                         <img src={photo} className="absolute inset-0 w-full h-full object-cover" alt={item} />
-                                         <button 
-                                             onClick={() => {
-                                                 const newPhotos = { ...handoverPhotosBase64 };
-                                                 delete newPhotos[item];
-                                                 setHandoverPhotosBase64(newPhotos);
-                                             }}
-                                             className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
-                                         >
-                                             <X size={16} />
-                                         </button>
-                                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                                             <span className="text-[10px] font-black text-white uppercase tracking-wider">{item}</span>
-                                         </div>
-                                     </>
-                                 ) : (
-                                     <label className="relative w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
-                                         <Camera size={24} className="text-blue-500" />
-                                         <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter leading-tight px-1">{item}</span>
-                                         {source && (
-                                             <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${source === 'room' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>
-                                                 {source === 'room' ? 'Phòng' : 'Dịch vụ'}
-                                             </span>
-                                         )}
-                                         <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleFileUpload(e, item)} disabled={logic.isLoading} />
-                                     </label>
+                     <ul className="space-y-2">
+                         {checklist.map((item, idx) => (
+                             <li key={idx} className="flex flex-col gap-0.5">
+                                 <div className="flex items-start gap-2">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"></div>
+                                     <span className="text-xs font-semibold text-slate-700">{item}</span>
+                                 </div>
+                                 {dynamicChecklist[idx]?.source && (
+                                     <span className="text-[10px] text-slate-400 ml-3.5">
+                                         Từ {dynamicChecklist[idx]?.source === 'room' ? 'Phòng' : 'Dịch vụ'}
+                                     </span>
                                  )}
-                             </div>
-                         );
-                     })
+                             </li>
+                         ))}
+                     </ul>
                  )}
              </div>
+
+             {/* Khu vực Upload */}
+             <div className="pt-2">
+                 <label className="w-full flex items-center justify-center gap-2 py-4 bg-blue-50 text-blue-600 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-blue-100/50">
+                     <Camera size={20} />
+                     <span className="font-bold text-sm">Chụp / Tải ảnh lên</span>
+                     <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileUpload(e)} disabled={logic.isLoading} />
+                 </label>
+             </div>
+
+             {/* Grid Ảnh Đã Up */}
+             {Object.keys(handoverPhotosBase64).length > 0 && (
+                 <div className="grid grid-cols-3 gap-2 mt-4">
+                     {Object.entries(handoverPhotosBase64).map(([key, photo]) => (
+                         <div key={key} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm group">
+                             <img src={photo as string} className="absolute inset-0 w-full h-full object-cover" alt="Uploaded" />
+                             <button 
+                                 onClick={() => {
+                                     const newPhotos = { ...handoverPhotosBase64 };
+                                     delete newPhotos[key];
+                                     setHandoverPhotosBase64(newPhotos);
+                                 }}
+                                 className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                             >
+                                 <X size={14} />
+                             </button>
+                         </div>
+                     ))}
+                 </div>
+             )}
           </div>
       </div>
 
