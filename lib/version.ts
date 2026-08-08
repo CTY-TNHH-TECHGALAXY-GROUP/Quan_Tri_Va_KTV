@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.68';
-export const LAST_UPDATE = 'Ẩn Nhà vệ sinh và Nhà tắm khỏi menu chọn phòng Bảng Điều Phối';
+export const APP_VERSION = '1.2.69';
+export const LAST_UPDATE = 'Gỡ bỏ thông tin Ghi chú hệ thống dư thừa trong Lịch sử KTV';
