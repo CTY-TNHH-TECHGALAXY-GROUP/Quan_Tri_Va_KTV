@@ -148,15 +148,6 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
                 </div>
               </div>
 
-              {order.ktv_comment && (
-                <div className="flex justify-between items-start gap-4">
-                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider shrink-0">Bạn Đ.Giá</span>
-                  <div className="bg-indigo-50/50 rounded-lg p-2.5 text-xs text-indigo-700 italic flex-1 text-right border border-indigo-100">
-                    &ldquo;{order.ktv_comment}&rdquo;
-                  </div>
-                </div>
-              )}
-
               {/* Bàn giao phòng */}
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Quầy duyệt</span>
