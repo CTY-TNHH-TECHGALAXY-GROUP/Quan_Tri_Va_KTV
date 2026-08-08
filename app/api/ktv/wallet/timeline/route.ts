@@ -110,18 +110,27 @@ export async function GET(request: Request) {
         }
         const bookings = allBookings;
 
-        const { data: services } = await supabase.from('Services').select('id, duration');
+        const { data: services } = await supabase.from('Services').select('id, duration, is_utility');
         const svcDurationMap: Record<string, number> = {};
-        (services || []).forEach(s => { svcDurationMap[String(s.id)] = s.duration || 60; });
+        const svcUtilityMap: Record<string, boolean> = {};
+        (services || []).forEach(s => { 
+            svcDurationMap[String(s.id)] = s.duration || 0; 
+            svcUtilityMap[String(s.id)] = !!s.is_utility; 
+        });
 
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
 
         for (const b of validBookings) {
-            const relevantItems = (b.BookingItems || []).filter((i: any) =>
+            const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes &&
                 Array.isArray(i.technicianCodes) &&
                 i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
             );
+
+            let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+            if (relevantItems.length === 0 && relevantItemsOriginal.length > 0) {
+                relevantItems = relevantItemsOriginal;
+            }
 
             if (relevantItems.length === 0) continue;
 
@@ -133,7 +142,7 @@ export async function GET(request: Request) {
             let passedCount = 0;
 
             for (const item of relevantItems) {
-                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 
