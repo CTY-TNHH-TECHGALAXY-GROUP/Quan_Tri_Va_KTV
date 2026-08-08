@@ -2354,7 +2354,7 @@ if (!hasPermission('dispatch_board')) {
                         {(() => {
                             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
                             const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
-                              const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+                              const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
                               if (assignedKTVs < minKtv && !isUtility) {
                                 return (
                                     <p className="text-xs text-rose-500 font-bold mt-1">
