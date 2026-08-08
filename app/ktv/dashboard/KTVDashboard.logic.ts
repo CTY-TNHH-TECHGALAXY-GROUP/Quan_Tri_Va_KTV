@@ -1290,7 +1290,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (!timeStr) return new Date().getTime();
                 if (typeof timeStr === 'string' && /^\d{1,2}:\d{2}/.test(timeStr)) {
                     const [h, m] = timeStr.split(':').map(Number);
-                    const d = new Date(); d.setHours(h, m, 0, 0);
+                    let d = new Date();
+                    if (tStart) {
+                        d = new Date(typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+') ? tStart.replace(' ', 'T') + 'Z' : tStart);
+                    }
+                    d.setHours(h, m, 0, 0);
+                    // Handle cross-midnight
+                    const baseTimeMs = new Date(typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+') ? tStart.replace(' ', 'T') + 'Z' : (tStart || new Date())).getTime();
+                    if (d.getTime() < baseTimeMs - 12 * 3600 * 1000) {
+                        d.setDate(d.getDate() + 1); // Đã qua ngày mới
+                    } else if (d.getTime() > baseTimeMs + 12 * 3600 * 1000) {
+                        d.setDate(d.getDate() - 1); // Đề phòng lỗi lùi ngày
+                    }
                     return d.getTime();
                 }
                 if (typeof timeStr === 'string' && !timeStr.includes('Z') && !timeStr.includes('+')) {
@@ -1349,7 +1360,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             if (activeSegStartTime && typeof activeSegStartTime === 'string' && /^\d{1,2}:\d{2}/.test(activeSegStartTime)) {
                 const [h, m] = activeSegStartTime.split(':').map(Number);
-                const d = new Date(); d.setHours(h, m, 0, 0);
+                let d = new Date();
+                if (tStart) {
+                    d = new Date(typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+') ? tStart.replace(' ', 'T') + 'Z' : tStart);
+                }
+                d.setHours(h, m, 0, 0);
+                const baseTimeMs = new Date(typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+') ? tStart.replace(' ', 'T') + 'Z' : (tStart || new Date())).getTime();
+                if (d.getTime() < baseTimeMs - 12 * 3600 * 1000) {
+                    d.setDate(d.getDate() + 1);
+                } else if (d.getTime() > baseTimeMs + 12 * 3600 * 1000) {
+                    d.setDate(d.getDate() - 1);
+                }
                 activeSegStartTime = d.toISOString();
             } else if (activeSegStartTime && typeof activeSegStartTime === 'string' && !activeSegStartTime.includes('Z') && !activeSegStartTime.includes('+')) {
                 activeSegStartTime = activeSegStartTime.replace(' ', 'T') + 'Z';

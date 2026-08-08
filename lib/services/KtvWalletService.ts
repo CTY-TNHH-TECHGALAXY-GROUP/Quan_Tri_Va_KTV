@@ -77,19 +77,25 @@ export class KtvWalletService {
             .order('effectiveFrom', { ascending: true })
             .order('createdAt', { ascending: true });
 
-        const { data: services } = await supabase.from('Services').select('id, duration');
+        const { data: services } = await supabase.from('Services').select('id, duration, is_utility');
         const svcDurationMap: Record<string, number> = {};
-        (services || []).forEach(s => { svcDurationMap[String(s.id)] = s.duration || 60; });
+        const svcUtilityMap: Record<string, boolean> = {};
+        (services || []).forEach(s => { svcDurationMap[String(s.id)] = s.duration || 0; svcUtilityMap[String(s.id)] = !!s.is_utility; });
 
         let rt_commission = 0;
         let rt_tip = 0;
         let rt_bonus = 0;
 
         for (const b of allBookings) {
-            const relevantItems = (b.BookingItems || []).filter((i: any) =>
+            const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes && Array.isArray(i.technicianCodes) &&
                 i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(staffId.toLowerCase()))
             );
+
+            let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+            if (relevantItems.length === 0 && relevantItemsOriginal.length > 0) {
+                relevantItems = relevantItemsOriginal;
+            }
 
             if (relevantItems.length === 0) continue;
 
@@ -101,7 +107,7 @@ export class KtvWalletService {
                 const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, staffId);
                 if (isPassed) {
                     passedItemCount++;
-                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
                     bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
