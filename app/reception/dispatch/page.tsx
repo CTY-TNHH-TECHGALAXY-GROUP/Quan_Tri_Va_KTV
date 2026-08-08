@@ -2305,8 +2305,9 @@ if (!hasPermission('dispatch_board')) {
         {showDispatchConfirmModal && selectedOrder && (() => {
           const isMissingKTVs = selectedOrder.services.some((svc: any) => {
             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
-            const minKtv = svc.min_ktv_required || 1;
-            return assignedKTVs < minKtv && !svc.is_utility;
+            const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
+              const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+              return assignedKTVs < minKtv && !isUtility;
           });
 
           return (
@@ -2352,8 +2353,9 @@ if (!hasPermission('dispatch_board')) {
                         <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.serviceName}</p>
                         {(() => {
                             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
-                            const minKtv = svc.min_ktv_required || 1;
-                            if (assignedKTVs < minKtv && !svc.is_utility) {
+                            const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
+                              const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+                              if (assignedKTVs < minKtv && !isUtility) {
                                 return (
                                     <p className="text-xs text-rose-500 font-bold mt-1">
                                         ⚠️ Dịch vụ yêu cầu tối thiểu {minKtv} KTV (Đang thiếu {minKtv - assignedKTVs})

@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.74';
-export const LAST_UPDATE = 'Fix lỗi ẩn cảnh báo KTV của Dịch vụ Phòng riêng trên giao diện Dispatch';
+export const APP_VERSION = '1.2.75';
+export const LAST_UPDATE = 'Sửa dứt điểm lỗi hiển thị cảnh báo minKtv của dịch vụ phòng riêng ở AddOrderModal';
