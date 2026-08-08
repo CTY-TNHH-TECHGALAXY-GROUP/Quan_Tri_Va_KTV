@@ -138,17 +138,20 @@ export async function GET(request: Request) {
 
         let svcMap: Record<string, string> = {};
         let svcDurationMap: Record<string, number> = {};
+        let svcUtilityMap: Record<string, boolean> = {};
         if (allServiceIds.length > 0) {
             // Try id lookup first
             const { data: svcsById } = await supabase
                 .from('Services')
-                .select('id, code, nameVN, duration')
+                .select('id, code, nameVN, duration, is_utility')
                 .in('id', allServiceIds);
             (svcsById || []).forEach((s: any) => {
                 if (s.id)   svcMap[String(s.id)]   = s.nameVN || s.code || String(s.id);
                 if (s.code) svcMap[String(s.code)]  = s.nameVN || s.code || String(s.id);
-                if (s.id)   svcDurationMap[String(s.id)]   = Number(s.duration) || 60;
-                if (s.code) svcDurationMap[String(s.code)]  = Number(s.duration) || 60;
+                if (s.id)   svcDurationMap[String(s.id)]   = Number(s.duration) || 0;
+                if (s.id)   svcUtilityMap[String(s.id)] = !!s.is_utility;
+                if (s.code) svcDurationMap[String(s.code)]  = Number(s.duration) || 0;
+                if (s.code) svcUtilityMap[String(s.code)] = !!s.is_utility;
             });
 
             // Fallback: serviceId may be a code string — query by code for unresolved ones
@@ -156,13 +159,15 @@ export async function GET(request: Request) {
             if (unresolved.length > 0) {
                 const { data: svcsByCode } = await supabase
                     .from('Services')
-                    .select('id, code, nameVN, duration')
+                    .select('id, code, nameVN, duration, is_utility')
                     .in('code', unresolved);
                 (svcsByCode || []).forEach((s: any) => {
                     if (s.id)   svcMap[String(s.id)]   = s.nameVN || s.code || String(s.id);
                     if (s.code) svcMap[String(s.code)]  = s.nameVN || s.code || String(s.id);
-                    if (s.id)   svcDurationMap[String(s.id)]   = Number(s.duration) || 60;
-                    if (s.code) svcDurationMap[String(s.code)]  = Number(s.duration) || 60;
+                    if (s.id)   svcDurationMap[String(s.id)]   = Number(s.duration) || 0;
+                if (s.id)   svcUtilityMap[String(s.id)] = !!s.is_utility;
+                    if (s.code) svcDurationMap[String(s.code)]  = Number(s.duration) || 0;
+                if (s.code) svcUtilityMap[String(s.code)] = !!s.is_utility;
                 });
             }
         }
@@ -187,14 +192,22 @@ export async function GET(request: Request) {
             );
 
             // Fallback: first item if no techCode match (single-KTV booking)
-            const relevantItems = myItems.length > 0 ? myItems : allItems;
+            
+            const relevantItemsOriginal = myItems.length > 0 ? myItems : allItems;
+            let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+            
+            // Nếu lọc xong mà rỗng (vd: chỉ làm mỗi tiện ích? Thường ko có), ta giữ lại để tránh lỗi
+            if (relevantItems.length === 0 && relevantItemsOriginal.length > 0) {
+                relevantItems = relevantItemsOriginal;
+            }
+
 
             console.log(`🔍 [DEBUG] Booking ${b.billCode}: myItems=${myItems.length}, relevant=${relevantItems.length}, tips=${relevantItems.map((i: any) => i.tip)}`);
 
             let totalDuration = 0;
             let commission = 0;
             for (const item of relevantItems) {
-                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 totalDuration += itemDuration;
@@ -206,7 +219,7 @@ export async function GET(request: Request) {
                 .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
                 .filter(Boolean);
             const serviceName = serviceNames.length > 1
-                ? `${serviceNames.length} dịch vụ`
+                ? serviceNames.join(' + ')
                 : (serviceNames[0] || '—');
 
             // ─── Rating: lấy từ BookingItems (item-level) thay vì Bookings ────
