@@ -1564,9 +1564,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
             const isMerge = allMySegs.length > 1 && uniqueItemIdsForPrep.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
+            const activeIdx = allMySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
+            const currentActiveIdx = activeIdx >= 0 ? activeIdx : 0;
             const initDuration = isMerge
                 ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
-                : (allMySegs.length > 0 ? (Number(allMySegs[0].duration) || 60) : (assignedItem?.duration || 60));
+                : (allMySegs.length > 0 ? (Number(allMySegs[currentActiveIdx].duration) || 60) : (assignedItem?.duration || 60));
             
             setTimeRemaining(initDuration * 60);
             const parsed = Number(settings.ktv_setup_duration_minutes);
@@ -1601,6 +1603,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
             allMySegs.push(...mySegsWithId);
         }
+        
+        allMySegs.sort((a, b) => {
+            const timeA = a.startTime || '23:59';
+            const timeB = b.startTime || '23:59';
+            return timeA.localeCompare(timeB);
+        });
         
         // Merge: gộp tất cả các dịch vụ riêng biệt (cùng phòng) thành 1 chặng liên tục
         const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
@@ -1637,9 +1645,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                 // 🔥 Set refs NGAY LẬP TỨC để interval countdown chạy được
                 // Không cần chờ recalcTimerFromServer (sẽ chạy sau khi server refresh)
+                const activeIdx = allMySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
+                const currentActiveIdx = activeIdx >= 0 ? activeIdx : 0;
                 const initDuration = shouldMerge
                     ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
-                    : (allMySegs.length > 0 ? (Number(allMySegs[0].duration) || 60) : (booking?.assignedItem?.duration || 60));
+                    : (allMySegs.length > 0 ? (Number(allMySegs[currentActiveIdx].duration) || 60) : (booking?.assignedItem?.duration || 60));
                 timerStartMsRef.current = Date.now() + timeOffsetRef.current;
                 timerTotalSecsRef.current = initDuration * 60;
                 // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)

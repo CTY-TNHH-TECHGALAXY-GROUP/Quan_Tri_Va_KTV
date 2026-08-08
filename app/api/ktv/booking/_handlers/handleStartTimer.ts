@@ -147,10 +147,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
                     const hasFinishedSegment = allGlobalSegs.some((s: any) => s.item.status === 'DONE' || (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS'));
                     
-                    const isMergeAtStart = allGlobalSegs.length > 1 
-                        && mergeItemIds.size === allGlobalSegs.length
-                        && uniqueRoomIds.size === 1
-                        && !hasFinishedSegment;
+                    const isMergeAtStart = body.shouldMerge === true;
                         
                     if (isMergeAtStart) {
                         console.log(`🔒 [Merge Lock] Stamping actualStartTime on ${allGlobalSegs.length} segments for ${technicianCode}`);
