@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep -l \"dispatch_confirm_booking\\\\|auto.dispatch\\\\|assign.*ktv\\\\|shift.*assign\")",
+      "Bash(find app/api/ktv app/ktv lib/ktv* -name \"*.ts\" -o -name \"*.tsx\")"
+    ]
+  }
+}

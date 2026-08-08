@@ -1,0 +1,913 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
+  public: {
+    Tables: {
+      Beds: {
+        Row: {
+          id: string
+          name: string
+          room_id: string | null
+          roomId: string
+        }
+        Insert: {
+          id: string
+          name: string
+          room_id?: string | null
+          roomId: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          room_id?: string | null
+          roomId?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "Beds_roomId_fkey"
+            columns: ["roomId"]
+            isOneToOne: false
+            referencedRelation: "Rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      BookingItems: {
+        Row: {
+          bedId: string | null
+          bookingId: string
+          id: string
+          itemFeedback: string | null
+          itemRating: number | null
+          ktvRatings: Json | null
+          options: Json | null
+          price: number
+          quantity: number
+          roomName: string | null
+          segments: Json | null
+          serviceId: string | null
+          status: string | null
+          technicianCodes: string[] | null
+          timeEnd: string | null
+          timeStart: string | null
+          tip: number
+        }
+        Insert: {
+          bedId?: string | null
+          bookingId: string
+          id: string
+          itemFeedback?: string | null
+          itemRating?: number | null
+          ktvRatings?: Json | null
+          options?: Json | null
+          price: number
+          quantity?: number
+          roomName?: string | null
+          segments?: Json | null
+          serviceId?: string | null
+          status?: string | null
+          technicianCodes?: string[] | null
+          timeEnd?: string | null
+          timeStart?: string | null
+          tip?: number
+        }
+        Update: {
+          bedId?: string | null
+          bookingId?: string
+          id?: string
+          itemFeedback?: string | null
+          itemRating?: number | null
+          ktvRatings?: Json | null
+          options?: Json | null
+          price?: number
+          quantity?: number
+          roomName?: string | null
+          segments?: Json | null
+          serviceId?: string | null
+          status?: string | null
+          technicianCodes?: string[] | null
+          timeEnd?: string | null
+          timeStart?: string | null
+          tip?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "BookingItems_bookingId_fkey"
+            columns: ["bookingId"]
+            isOneToOne: false
+            referencedRelation: "Bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "BookingItems_serviceId_fkey"
+            columns: ["serviceId"]
+            isOneToOne: false
+            referencedRelation: "Services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_bookingitems_booking"
+            columns: ["bookingId"]
+            isOneToOne: false
+            referencedRelation: "Bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_bookingitems_service"
+            columns: ["serviceId"]
+            isOneToOne: false
+            referencedRelation: "Services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      Bookings: {
+        Row: {
+          bedId: string | null
+          billCode: string
+          bookingDate: string
+          branchName: string | null
+          createdAt: string
+          customerEmail: string | null
+          customerId: string | null
+          customerLang: string | null
+          customerName: string | null
+          customerPhone: string | null
+          feedbackNote: string | null
+          focusAreaNote: string | null
+          id: string
+          idLegacy: string | null
+          notes: string | null
+          paymentMethod: string | null
+          rating: number | null
+          roomName: string | null
+          status: Database["public"]["Enums"]["BookingStatus"]
+          technicianCode: string | null
+          timeBooking: string | null
+          timeEnd: string | null
+          timeStart: string | null
+          tip: number
+          tipAmount: number | null
+          totalAmount: number
+          updatedAt: string
+          violations: Json | null
+        }
+        Insert: {
+          bedId?: string | null
+          billCode: string
+          bookingDate?: string
+          branchName?: string | null
+          createdAt?: string
+          customerEmail?: string | null
+          customerId?: string | null
+          customerLang?: string | null
+          customerName?: string | null
+          customerPhone?: string | null
+          feedbackNote?: string | null
+          focusAreaNote?: string | null
+          id: string
+          idLegacy?: string | null
+          notes?: string | null
+          paymentMethod?: string | null
+          rating?: number | null
+          roomName?: string | null
+          status?: Database["public"]["Enums"]["BookingStatus"]
+          technicianCode?: string | null
+          timeBooking?: string | null
+          timeEnd?: string | null
+          timeStart?: string | null
+          tip?: number
+          tipAmount?: number | null
+          totalAmount?: number
+          updatedAt: string
+          violations?: Json | null
+        }
+        Update: {
+          bedId?: string | null
+          billCode?: string
+          bookingDate?: string
+          branchName?: string | null
+          createdAt?: string
+          customerEmail?: string | null
+          customerId?: string | null
+          customerLang?: string | null
+          customerName?: string | null
+          customerPhone?: string | null
+          feedbackNote?: string | null
+          focusAreaNote?: string | null
+          id?: string
+          idLegacy?: string | null
+          notes?: string | null
+          paymentMethod?: string | null
+          rating?: number | null
+          roomName?: string | null
+          status?: Database["public"]["Enums"]["BookingStatus"]
+          technicianCode?: string | null
+          timeBooking?: string | null
+          timeEnd?: string | null
+          timeStart?: string | null
+          tip?: number
+          tipAmount?: number | null
+          totalAmount?: number
+          updatedAt?: string
+          violations?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "Bookings_bedId_fkey"
+            columns: ["bedId"]
+            isOneToOne: false
+            referencedRelation: "Beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Bookings_customerId_fkey"
+            columns: ["customerId"]
+            isOneToOne: false
+            referencedRelation: "Customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_bookings_customer"
+            columns: ["customerId"]
+            isOneToOne: false
+            referencedRelation: "Customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      Customers: {
+        Row: {
+          birthday: string | null
+          createdAt: string
+          email: string | null
+          fullName: string
+          gender: string | null
+          id: string
+          lastVisited: string | null
+          notes: string | null
+          phone: string
+          updatedAt: string
+        }
+        Insert: {
+          birthday?: string | null
+          createdAt?: string
+          email?: string | null
+          fullName: string
+          gender?: string | null
+          id: string
+          lastVisited?: string | null
+          notes?: string | null
+          phone: string
+          updatedAt: string
+        }
+        Update: {
+          birthday?: string | null
+          createdAt?: string
+          email?: string | null
+          fullName?: string
+          gender?: string | null
+          id?: string
+          lastVisited?: string | null
+          notes?: string | null
+          phone?: string
+          updatedAt?: string
+        }
+        Relationships: []
+      }
+      DailyAttendance: {
+        Row: {
+          check_in_time: string | null
+          check_out_time: string | null
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          note: string | null
+          status: string
+        }
+        Insert: {
+          check_in_time?: string | null
+          check_out_time?: string | null
+          created_at?: string
+          date?: string
+          employee_id: string
+          id?: string
+          note?: string | null
+          status?: string
+        }
+        Update: {
+          check_in_time?: string | null
+          check_out_time?: string | null
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          note?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "DailyAttendance_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "Staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      KTVAttendance: {
+        Row: {
+          checkedAt: string
+          checkType: string
+          confirmedAt: string | null
+          confirmedBy: string | null
+          employeeId: string
+          employeeName: string | null
+          id: string
+          latitude: number | null
+          locationText: string | null
+          longitude: number | null
+          photoUrl: string | null
+          status: string
+        }
+        Insert: {
+          checkedAt?: string
+          checkType?: string
+          confirmedAt?: string | null
+          confirmedBy?: string | null
+          employeeId: string
+          employeeName?: string | null
+          id?: string
+          latitude?: number | null
+          locationText?: string | null
+          longitude?: number | null
+          photoUrl?: string | null
+          status?: string
+        }
+        Update: {
+          checkedAt?: string
+          checkType?: string
+          confirmedAt?: string | null
+          confirmedBy?: string | null
+          employeeId?: string
+          employeeName?: string | null
+          id?: string
+          latitude?: number | null
+          locationText?: string | null
+          longitude?: number | null
+          photoUrl?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      Rooms: {
+        Row: {
+          capacity: number
+          created_at: string | null
+          id: string
+          name: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          capacity?: number
+          created_at?: string | null
+          id: string
+          name: string
+          type?: string
+          updated_at?: string | null
+        }
+        Update: {
+          capacity?: number
+          created_at?: string | null
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      Services: {
+        Row: {
+          category: string | null
+          code: string
+          description: Json | null
+          duration: number
+          focusConfig: Json | null
+          hint: Json | null
+          id: string
+          imageUrl: string | null
+          isActive: boolean
+          isBestChoice: boolean
+          isBestSeller: boolean
+          nameCN: string | null
+          nameEN: string | null
+          nameJP: string | null
+          nameKR: string | null
+          nameVN: string | null
+          priceUSD: number
+          priceVND: number
+          procedure: string | null
+          service_description: string | null
+          tags: Json | null
+        }
+        Insert: {
+          category?: string | null
+          code: string
+          description?: Json | null
+          duration: number
+          focusConfig?: Json | null
+          hint?: Json | null
+          id: string
+          imageUrl?: string | null
+          isActive?: boolean
+          isBestChoice?: boolean
+          isBestSeller?: boolean
+          nameCN?: string | null
+          nameEN?: string | null
+          nameJP?: string | null
+          nameKR?: string | null
+          nameVN?: string | null
+          priceUSD?: number
+          priceVND?: number
+          procedure?: string | null
+          service_description?: string | null
+          tags?: Json | null
+        }
+        Update: {
+          category?: string | null
+          code?: string
+          description?: Json | null
+          duration?: number
+          focusConfig?: Json | null
+          hint?: Json | null
+          id?: string
+          imageUrl?: string | null
+          isActive?: boolean
+          isBestChoice?: boolean
+          isBestSeller?: boolean
+          nameCN?: string | null
+          nameEN?: string | null
+          nameJP?: string | null
+          nameKR?: string | null
+          nameVN?: string | null
+          priceUSD?: number
+          priceVND?: number
+          procedure?: string | null
+          service_description?: string | null
+          tags?: Json | null
+        }
+        Relationships: []
+      }
+      Staff: {
+        Row: {
+          avatar_url: string | null
+          bank_account: string | null
+          bank_name: string | null
+          birthday: string | null
+          created_at: string | null
+          email: string | null
+          experience: string | null
+          full_name: string
+          gender: string | null
+          height: number | null
+          id: string
+          id_card: string | null
+          join_date: string | null
+          phone: string | null
+          position: string | null
+          skills: Json | null
+          status: string | null
+          weight: number | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          bank_account?: string | null
+          bank_name?: string | null
+          birthday?: string | null
+          created_at?: string | null
+          email?: string | null
+          experience?: string | null
+          full_name: string
+          gender?: string | null
+          height?: number | null
+          id: string
+          id_card?: string | null
+          join_date?: string | null
+          phone?: string | null
+          position?: string | null
+          skills?: Json | null
+          status?: string | null
+          weight?: number | null
+        }
+        Update: {
+          avatar_url?: string | null
+          bank_account?: string | null
+          bank_name?: string | null
+          birthday?: string | null
+          created_at?: string | null
+          email?: string | null
+          experience?: string | null
+          full_name?: string
+          gender?: string | null
+          height?: number | null
+          id?: string
+          id_card?: string | null
+          join_date?: string | null
+          phone?: string | null
+          position?: string | null
+          skills?: Json | null
+          status?: string | null
+          weight?: number | null
+        }
+        Relationships: []
+      }
+      StaffNotifications: {
+        Row: {
+          bookingId: string | null
+          createdAt: string | null
+          employeeId: string | null
+          id: string
+          isRead: boolean | null
+          message: string
+          type: string
+        }
+        Insert: {
+          bookingId?: string | null
+          createdAt?: string | null
+          employeeId?: string | null
+          id?: string
+          isRead?: boolean | null
+          message: string
+          type: string
+        }
+        Update: {
+          bookingId?: string | null
+          createdAt?: string | null
+          employeeId?: string | null
+          id?: string
+          isRead?: boolean | null
+          message?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "StaffNotifications_bookingId_fkey"
+            columns: ["bookingId"]
+            isOneToOne: false
+            referencedRelation: "Bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      StaffPushSubscriptions: {
+        Row: {
+          created_at: string | null
+          id: string
+          staff_id: string | null
+          subscription: Json
+          updated_at: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          staff_id?: string | null
+          subscription: Json
+          updated_at?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          staff_id?: string | null
+          subscription?: Json
+          updated_at?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "StaffPushSubscriptions_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "Staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      SystemConfigs: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          key: string
+          updated_at: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string | null
+          value: Json
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
+      TurnQueue: {
+        Row: {
+          bed_id: string | null
+          booking_item_id: string | null
+          check_in_order: number
+          created_at: string
+          current_order_id: string | null
+          date: string
+          employee_id: string
+          estimated_end_time: string | null
+          id: string
+          last_served_at: string | null
+          queue_position: number
+          room_id: string | null
+          start_time: string | null
+          status: string
+          turns_completed: number
+        }
+        Insert: {
+          bed_id?: string | null
+          booking_item_id?: string | null
+          check_in_order?: number
+          created_at?: string
+          current_order_id?: string | null
+          date?: string
+          employee_id: string
+          estimated_end_time?: string | null
+          id?: string
+          last_served_at?: string | null
+          queue_position?: number
+          room_id?: string | null
+          start_time?: string | null
+          status?: string
+          turns_completed?: number
+        }
+        Update: {
+          bed_id?: string | null
+          booking_item_id?: string | null
+          check_in_order?: number
+          created_at?: string
+          current_order_id?: string | null
+          date?: string
+          employee_id?: string
+          estimated_end_time?: string | null
+          id?: string
+          last_served_at?: string | null
+          queue_position?: number
+          room_id?: string | null
+          start_time?: string | null
+          status?: string
+          turns_completed?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "TurnQueue_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "Staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      Users: {
+        Row: {
+          code: string | null
+          createdAt: string
+          fullName: string
+          gender: string | null
+          googleId: string | null
+          id: string
+          isBusy: boolean
+          isOnShift: boolean
+          password: string | null
+          permissions: Json | null
+          role: Database["public"]["Enums"]["Role"]
+          username: string | null
+        }
+        Insert: {
+          code?: string | null
+          createdAt?: string
+          fullName: string
+          gender?: string | null
+          googleId?: string | null
+          id: string
+          isBusy?: boolean
+          isOnShift?: boolean
+          password?: string | null
+          permissions?: Json | null
+          role?: Database["public"]["Enums"]["Role"]
+          username?: string | null
+        }
+        Update: {
+          code?: string | null
+          createdAt?: string
+          fullName?: string
+          gender?: string | null
+          googleId?: string | null
+          id?: string
+          isBusy?: boolean
+          isOnShift?: boolean
+          password?: string | null
+          permissions?: Json | null
+          role?: Database["public"]["Enums"]["Role"]
+          username?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      BookingStatus:
+        | "NEW"
+        | "IN_PROGRESS"
+        | "DONE"
+        | "CANCELLED"
+        | "PREPARING"
+        | "COMPLETED"
+        | "FEEDBACK";
+      Role:
+        | "ADMIN"
+        | "MANAGER"
+        | "RECEPTIONIST"
+        | "TECHNICIAN"
+        | "SUPPORT"
+        | "LEAD_RECEPTIONIST";
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      BookingStatus: [
+        "NEW",
+        "IN_PROGRESS",
+        "DONE",
+        "CANCELLED",
+        "PREPARING",
+        "COMPLETED",
+        "FEEDBACK",
+      ],
+      Role: [
+        "ADMIN",
+        "MANAGER",
+        "RECEPTIONIST",
+        "TECHNICIAN",
+        "SUPPORT",
+        "LEAD_RECEPTIONIST",
+      ],
+    },
+  },
+} as const
