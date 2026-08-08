@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.69';
-export const LAST_UPDATE = 'Gỡ bỏ thông tin Ghi chú hệ thống dư thừa trong Lịch sử KTV';
+export const APP_VERSION = '1.2.70';
+export const LAST_UPDATE = 'Hiển thị thông báo và hình ảnh khi Lễ tân từ chối bàn giao (KTV Dashboard)';

@@ -10,7 +10,7 @@ import { HandoverService, RejectOption } from '@/lib/services/HandoverService';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { bookingItemId, action, rejectOption, reason, ktvCode } = body;
+        const { bookingItemId, action, rejectOption, reason, ktvCode, rejectImages } = body;
 
         if (!bookingItemId || !action) {
             return NextResponse.json(
@@ -59,12 +59,41 @@ export async function POST(request: Request) {
                 );
             }
 
+            let newRejectUrls: string[] = [];
+            if (rejectImages && Array.isArray(rejectImages) && rejectImages.length > 0) {
+                for (const base64Str of rejectImages) {
+                    try {
+                        const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
+                        const fileName = `reject_${bookingItemId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+                        
+                        const { data: uploadData, error: uploadError } = await supabase.storage
+                            .from('attendance')
+                            .upload(fileName, buffer, {
+                                contentType: `image/${fileExt}`,
+                                upsert: false
+                            });
+                        
+                        if (uploadError) {
+                            console.error('[API] Reject photo upload error:', uploadError);
+                        } else if (uploadData?.path) {
+                            const { data: publicUrlData } = supabase.storage.from('attendance').getPublicUrl(uploadData.path);
+                            newRejectUrls.push(publicUrlData.publicUrl);
+                        }
+                    } catch (err) {
+                        console.error('[API] Failed to upload reject image:', err);
+                    }
+                }
+            }
+
             const result = await HandoverService.rejectHandover(
                 supabase,
                 bookingItemId,
                 rejectOption as RejectOption,
                 reason || 'Không đạt yêu cầu',
-                ktvCode
+                ktvCode,
+                newRejectUrls
             );
 
             if (!result.success) {

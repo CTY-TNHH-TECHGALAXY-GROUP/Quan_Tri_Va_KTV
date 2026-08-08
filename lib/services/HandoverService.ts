@@ -243,18 +243,21 @@ export class HandoverService {
         itemId: string,
         option: RejectOption,
         reason: string,
-        ktvCode?: string
+        ktvCode?: string,
+        rejectImagesUrls?: string[]
     ): Promise<{ success: boolean; error?: string }> {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, handover_reject_count, technicianCodes, Bookings!BookingItems_bookingId_fkey(billCode)')
+            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings!BookingItems_bookingId_fkey(billCode)')
             .eq('id', itemId)
             .single();
 
         if (fetchErr || !item) return { success: false, error: 'Item not found' };
 
         const currentCount = item.handover_reject_count || 0;
+        const oldRejectImages = Array.isArray(item.handover_reject_images) ? item.handover_reject_images : [];
+        const newRejectImages = [...oldRejectImages, ...(rejectImagesUrls || [])];
 
         // 2. Get max reject config
         const { data: configRow } = await supabase
@@ -275,15 +278,20 @@ export class HandoverService {
                 }
 
                 // Push back to CLEANING
+                const updatePayload: any = {
+                    handover_status: 'REJECTED',
+                    handover_reject_action: 'REDO',
+                    handover_reject_count: currentCount + 1,
+                    handover_comment: reason,
+                    status: 'CLEANING', // Push back
+                };
+                if (rejectImagesUrls && rejectImagesUrls.length > 0) {
+                    updatePayload.handover_reject_images = newRejectImages;
+                }
+
                 const { error: updateErr } = await supabase
                     .from('BookingItems')
-                    .update({
-                        handover_status: 'REJECTED',
-                        handover_reject_action: 'REDO',
-                        handover_reject_count: currentCount + 1,
-                        handover_comment: reason,
-                        status: 'CLEANING', // Push back
-                    })
+                    .update(updatePayload)
                     .eq('id', itemId);
 
                 if (updateErr) return { success: false, error: updateErr.message };

@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, MessageSquare, AlertCircle, ChevronLeft, ChevronRight, Maximize2, RotateCcw, Banknote, ShieldX } from 'lucide-react';
+import { X, Check, MessageSquare, AlertCircle, ChevronLeft, ChevronRight, Maximize2, RotateCcw, Banknote, ShieldX, Camera } from 'lucide-react';
 import { ServiceBlock } from '../types';
+import { compressImageWithWatermark } from '@/lib/camera.logic';
 
 // 🔧 UI CONFIGURATION
 const REJECT_OPTIONS = [
@@ -43,7 +44,7 @@ interface ReviewHandoverModalProps {
     onClose: () => void;
     service: ServiceBlock | null;
     onApprove: (itemId: string, comment: string, deductPoints: boolean) => Promise<void>;
-    onReject: (itemId: string, rejectOption: RejectOption, reason: string, deductPoints: boolean) => Promise<void>;
+    onReject: (itemId: string, rejectOption: RejectOption, reason: string, deductPoints: boolean, rejectImages?: string[]) => Promise<void>;
 }
 
 export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onReject }: ReviewHandoverModalProps) {
@@ -55,6 +56,7 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     const [rejectStep, setRejectStep] = useState<'idle' | 'select-option' | 'confirm'>('idle');
     const [selectedRejectOption, setSelectedRejectOption] = useState<RejectOption | null>(null);
     const [deductPoints, setDeductPoints] = useState(false);
+    const [rejectImages, setRejectImages] = useState<string[]>([]);
 
     let handoverImages: Record<string, string> = {};
     if (service?.handover_images && Object.keys(service.handover_images).length > 0) {
@@ -119,13 +121,13 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
     const handleRejectConfirm = async () => {
         if (!selectedRejectOption) return;
         const opt = REJECT_OPTIONS.find(o => o.key === selectedRejectOption);
-        if (opt?.needsReason && !comment.trim()) {
-            alert('Vui lòng nhập lý do cho hành động này.');
+        if (opt?.needsReason && !comment.trim() && rejectImages.length === 0) {
+            alert('Vui lòng nhập lý do hoặc đính kèm ảnh minh chứng.');
             return;
         }
         setIsSubmitting(true);
         try {
-            await onReject(service!.id, selectedRejectOption, comment || 'Không đạt yêu cầu', deductPoints);
+            await onReject(service!.id, selectedRejectOption, comment || 'Không đạt yêu cầu', deductPoints, rejectImages);
             onClose();
             resetState();
         } finally {
@@ -138,6 +140,34 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
         setRejectStep('idle');
         setSelectedRejectOption(null);
         setDeductPoints(false);
+        setRejectImages([]);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        setIsSubmitting(true);
+        const newPhotos: string[] = [];
+        
+        for (const file of files) {
+            try {
+                const compressed = await compressImageWithWatermark(file, { minBrightness: 0, watermarkText: 'Quầy Fb Reject' });
+                newPhotos.push(compressed);
+            } catch (err: any) {
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => resolve(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                });
+                if (base64) newPhotos.push(base64);
+            }
+        }
+        
+        if (newPhotos.length > 0) {
+            setRejectImages(prev => [...prev, ...newPhotos]);
+        }
+        setIsSubmitting(false);
+        if (e.target) e.target.value = '';
     };
 
     const handleClose = () => {
@@ -333,6 +363,32 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
                                         placeholder={selectedRejectOption === 'REDO' ? 'Lý do dọn lại (tùy chọn)...' : 'Nhập lý do (BẮT BUỘC)...'}
                                         className="w-full rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-sm focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all outline-none resize-none min-h-[80px]"
                                     />
+
+                                    {selectedRejectOption === 'REDO' && (
+                                        <div className="mt-2">
+                                            <label className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 border-2 border-dashed border-blue-200 rounded-xl cursor-pointer hover:bg-blue-100 transition-colors">
+                                                <Camera size={18} />
+                                                <span className="font-bold text-sm">Tải ảnh minh chứng phòng chưa đạt</span>
+                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} disabled={isSubmitting} />
+                                            </label>
+                                            
+                                            {rejectImages.length > 0 && (
+                                                <div className="grid grid-cols-4 gap-2 mt-3">
+                                                    {rejectImages.map((photo, i) => (
+                                                        <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm group">
+                                                            <img src={photo} className="absolute inset-0 w-full h-full object-cover" alt="Uploaded" />
+                                                            <button 
+                                                                onClick={() => setRejectImages(prev => prev.filter((_, idx) => idx !== i))}
+                                                                className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full flex items-center justify-center hover:bg-rose-500 transition-colors"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="flex gap-3">
                                         <button

@@ -986,6 +986,33 @@ function ScreenTimer({ logic }: { logic: any }) {
         </div>
       </div>
 
+      {/* Rejected Handover Alert */}
+      {item?.handover_status === 'REJECTED' && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="mx-2 mb-6 p-4 rounded-3xl bg-rose-50 border border-rose-200 shadow-sm"
+        >
+          <div className="flex items-center gap-2 mb-2 text-rose-700">
+            <AlertTriangle size={18} />
+            <h3 className="font-bold text-sm uppercase tracking-widest">Lễ tân yêu cầu dọn lại</h3>
+          </div>
+          {item?.handover_comment && (
+            <p className="text-sm font-medium text-rose-800 bg-white p-3 rounded-2xl mb-3 border border-rose-100 shadow-sm">
+              "{item.handover_comment}"
+            </p>
+          )}
+          {item?.handover_reject_images && Array.isArray(item.handover_reject_images) && item.handover_reject_images.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {item.handover_reject_images.map((url: string, idx: number) => (
+                <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-rose-200 bg-white shadow-sm flex-shrink-0 cursor-pointer" onClick={() => window.open(url, '_blank')}>
+                  <img src={url} alt={`Reject ${idx + 1}`} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* Main Timer Display */}
       <div className="flex flex-col items-center justify-center pb-8">
         <div className="relative w-64 h-64 flex items-center justify-center">

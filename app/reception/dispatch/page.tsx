@@ -1150,7 +1150,7 @@ if (!hasPermission('dispatch_board')) {
         }
     };
 
-    const handleRejectHandover = async (itemId: string, rejectOption: string, reason: string, deductPoints: boolean) => {
+    const handleRejectHandover = async (itemId: string, rejectOption: string, reason: string, deductPoints: boolean, rejectImages: string[] = []) => {
         try {
             const res = await fetch('/api/reception/handover/review', {
                 method: 'POST',
@@ -1160,7 +1160,8 @@ if (!hasPermission('dispatch_board')) {
                     action: 'REJECT', 
                     rejectOption, 
                     reason,
-                    deductPoints
+                    deductPoints,
+                    rejectImages
                 }),
             });
             const data = await res.json();

@@ -72,6 +72,7 @@
 | `bedId` | text | Giường phục vụ riêng item |
 | `segments` | jsonb | Quy trình step-by-step (VD: ["Rửa mặt", "Đắp mặt nạ"]) |
 | `handover_images` | jsonb | Mảng URL ảnh bàn giao phòng do KTV chụp |
+| `handover_reject_images` | jsonb | Mảng URL ảnh minh chứng phòng dơ từ Lễ Tân khi từ chối |
 | `handover_status` | text | Trạng thái duyệt ảnh: `PENDING`, `APPROVED`, `REJECTED` (mặc định: `PENDING`) |
 | `handover_comment` | text | Lý do từ chối hoặc feedback của Lễ tân khi duyệt ảnh |
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
