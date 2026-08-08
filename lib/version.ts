@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.70';
-export const LAST_UPDATE = 'Hiển thị thông báo và hình ảnh khi Lễ tân từ chối bàn giao (KTV Dashboard)';
+export const APP_VERSION = '1.2.71';
+export const LAST_UPDATE = 'Fix lỗi hiển thị và gộp thời gian cho KTV khi gán Tiện Ích Phòng Riêng';
