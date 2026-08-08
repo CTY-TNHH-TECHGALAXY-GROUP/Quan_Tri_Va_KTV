@@ -767,7 +767,7 @@ const ServiceGroupCard = ({
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     <select value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
                       <option value="">P.</option>
-                      {rooms.map((r: any) => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
+                      {rooms.filter((r: any) => !r.name?.toLowerCase().includes('vệ sinh') && !r.name?.toLowerCase().includes('tắm')).map((r: any) => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
                     </select>
                     {selRoom && (rooms as any[]).find(r => r.id === selRoom)?.has_guests && (
                       <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-md border border-red-100 shrink-0" title="Phòng đang có khách (Chưa bàn giao xong)">🙋 Khách</span>
