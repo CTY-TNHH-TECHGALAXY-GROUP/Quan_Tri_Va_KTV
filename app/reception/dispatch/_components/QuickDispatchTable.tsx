@@ -70,7 +70,7 @@ const genId = () => Math.random().toString(36).substring(2, 9);
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, customerReqs, reminders = [], onDispatchGroup, onTriggerMergePrompt
+  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
