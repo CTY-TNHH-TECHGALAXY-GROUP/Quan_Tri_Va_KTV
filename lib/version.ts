@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.73';
-export const LAST_UPDATE = 'Force reload để sửa đồng hồ trôi giờ';
+export const APP_VERSION = '1.2.74';
+export const LAST_UPDATE = 'Fix lỗi ẩn cảnh báo KTV của Dịch vụ Phòng riêng trên giao diện Dispatch';
