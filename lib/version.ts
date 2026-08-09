@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.78';
-export const LAST_UPDATE = 'Cập nhật Bảng xếp hạng KTV: Thêm Tổng giờ làm và thống kê Xuất sắc/Tệ';
+export const APP_VERSION = '1.2.79';
+export const LAST_UPDATE = 'Tự động bắt lỗi sai IP Wi-Fi để Quầy/Admin duyệt nhanh trên màn hình Thiết Bị';

@@ -28,7 +28,7 @@ interface RegisteredDevice {
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 const DeviceManagementPage = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [devices, setDevices] = useState<RegisteredDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -129,7 +129,7 @@ const DeviceManagementPage = () => {
 
   if (!mounted) return null;
 
-  if (!hasPermission('device_management')) {
+  if (!hasPermission('device_management') && user?.roleId !== 'support' && user?.roleId !== 'admin') {
     return (
       <AppLayout title="Thiết Bị">
         <div className="flex flex-col items-center justify-center h-64 text-center">

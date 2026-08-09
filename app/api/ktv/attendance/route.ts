@@ -85,7 +85,7 @@ export async function POST(request: Request) {
                 if (checkType !== 'SUDDEN_OFF' && !allowedPrefixes.includes(clientPrefix)) {
                     console.error(`❌ [Attendance] IP prefix mismatch: clientIp=${clientIp} (prefix=${clientPrefix}), allowedPrefixes=${allowedPrefixes}`);
                     
-                    // LOG TO SECURITY AUDIT LOGS
+                    // LOG TO SECURITY AUDIT LOGS & SYSTEM CONFIG
                     const rejectedName = displayName || staffCode || employeeId;
                     try {
                         const userAgent = request.headers.get('user-agent') || 'unknown';
@@ -97,8 +97,14 @@ export async function POST(request: Request) {
                             user_agent: userAgent,
                             details: { checkType, expected_prefixes: allowedPrefixes }
                         });
+                        
+                        // Upsert vào SystemConfigs để hiển thị trên UI Quản lý Wi-Fi của Admin/Quầy
+                        await supabase.from('SystemConfigs').upsert({
+                            key: 'spa_wifi_last_rejected_ip',
+                            value: { ip: clientIp, name: rejectedName, time: new Date().toISOString() }
+                        }, { onConflict: 'key' });
                     } catch (e) {
-                        console.error('Lỗi khi lưu SecurityAuditLog:', e);
+                        console.error('Lỗi khi lưu SecurityAuditLog / SystemConfigs:', e);
                     }
 
                     return NextResponse.json({ 
