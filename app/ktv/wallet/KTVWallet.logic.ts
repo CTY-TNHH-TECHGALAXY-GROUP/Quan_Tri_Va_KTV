@@ -75,31 +75,10 @@ export const useKTVWallet = () => {
         }
     }, [ktvId, canViewWallet, fetchWallet]);
 
-    const checkAttendanceStatus = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('TurnQueue')
-                .select('status')
-                .eq('employee_id', ktvId)
-                .order('queue_position', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            
-            if (error || !data || data.status === 'off') {
-                alert('Bạn phải Đang trong Ca làm việc mới được thực hiện chức năng này!');
-                return false;
-            }
-            return true;
-        } catch (err) {
-            return false;
-        }
-    };
+    // Yêu cầu: Tắt tính năng kiểm tra trong ca mới được rút tiền
 
     const submitWithdraw = async (amount: number) => {
         if (!walletBalance) return false;
-        
-        const isOnline = await checkAttendanceStatus();
-        if (!isOnline) return false;
 
         try {
             await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, { techCode: ktvId, amount, walletType: 'TUA' });
@@ -114,9 +93,6 @@ export const useKTVWallet = () => {
 
     const submitRedeemBonus = async (pointsToRedeem: number) => {
         if (!bonusBalance || bonusBalance.points <= 0) return false;
-        
-        const isOnline = await checkAttendanceStatus();
-        if (!isOnline) return false;
 
         if (pointsToRedeem > bonusBalance.points) {
             alert('Số điểm vượt quá mức khả dụng!');
