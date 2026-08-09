@@ -12,6 +12,9 @@ const SORT_OPTIONS = [
   { value: 'revenue', label: 'Doanh thu (Cao nhất)' },
   { value: 'tuaMoney', label: 'Tiền tua (Cao nhất)' },
   { value: 'bonus', label: 'Điểm Bonus (Cao nhất)' },
+  { value: 'totalWorkingHours', label: 'Tổng giờ làm (Cao nhất)' },
+  { value: 'excellentCount', label: 'Lượt xuất sắc (Nhiều nhất)' },
+  { value: 'badCount', label: 'Đánh giá Tệ (Nhiều nhất)' },
   { value: 'avgWorkingHours', label: 'Giờ làm/Ngày (Cao nhất)' },
   { value: 'workingDays', label: 'Ngày công (Nhiều nhất)' },
   { value: 'leaveDays', label: 'Ngày nghỉ (Nhiều nhất)' },
@@ -90,10 +93,10 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Doanh Thu</th>
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Tiền Tua</th>
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Điểm Bonus</th>
-                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Ngày Công</th>
-                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Ngày Nghỉ</th>
-                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Giờ TB/Ngày</th>
-                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center min-w-[150px]">Lượt khách</th>
+                  <th className="font-bold text-gray-500 py-4 px-4 text-center">NGÀY CÔNG</th>
+                  <th className="font-bold text-gray-500 py-4 px-4 text-center">NGÀY NGHỈ</th>
+                  <th className="font-bold text-gray-500 py-4 px-4 text-center">TỔNG GIỜ LÀM</th>
+                  <th className="font-bold text-gray-500 py-4 px-4 text-left">LƯỢT KHÁCH</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -153,26 +156,30 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex flex-col items-center justify-center">
-                          <div className="flex items-center gap-1 text-indigo-600 font-black">
+                          <div className="flex items-center gap-1 text-indigo-600 font-black" title="Tổng số giờ lên khách">
                             <Clock size={14} />
-                            {ktv.avgWorkingHours}h
+                            {ktv.totalWorkingHours}h
                           </div>
-                          <div className="text-[10px] text-gray-400 font-medium mt-0.5">Mỗi ngày</div>
+                          <div className="text-[10px] text-gray-400 font-medium mt-0.5">TB {ktv.avgWorkingHours}h/ngày</div>
                         </div>
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1.5 text-xs font-medium">
                           <div className="flex justify-between items-center text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
-                            <span>Đánh giá TB:</span>
+                            <span>Xuất sắc:</span>
                             <span className="font-black flex items-center gap-1">
-                              {ktv.avgRating > 0 ? (
+                              {ktv.excellentCount > 0 ? (
                                 <>
-                                  {ktv.avgRating.toFixed(1)} <Star size={12} className="fill-amber-500 text-amber-500" />
+                                  {ktv.excellentCount} lần <Star size={12} className="fill-amber-500 text-amber-500" />
                                 </>
                               ) : (
-                                'Chưa có'
+                                '0 lần'
                               )}
                             </span>
+                          </div>
+                          <div className="flex justify-between items-center text-red-500 bg-red-50 px-2 py-1 rounded-md">
+                            <span>Đánh giá Tệ:</span>
+                            <span className="font-black">{ktv.badCount} lần</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
                             <span>Tour tự do:</span>

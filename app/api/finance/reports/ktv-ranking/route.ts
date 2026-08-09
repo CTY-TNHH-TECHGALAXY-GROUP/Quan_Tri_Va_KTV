@@ -237,8 +237,8 @@ export async function GET(request: Request) {
         tuaMoney: ledgerCommMap[id] || 0,
         bonus: ledgerBonusMap[id] || 0,
         totalTip: ledgerTipMap[id] || 0,
-        workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0,
-        sumRating: 0, ratingCount: 0, avgRating: 0,
+        workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0, totalWorkingHours: 0,
+        sumRating: 0, ratingCount: 0, avgRating: 0, excellentCount: 0, badCount: 0,
         uniqueBookings: new Set()
       };
     });
@@ -300,6 +300,11 @@ export async function GET(request: Request) {
                    if (myRating > 0) {
                        rankingMap[code].sumRating += myRating;
                        rankingMap[code].ratingCount += 1;
+                       if (myRating >= 4) { // Điểm xuất sắc (>= 4 sao)
+                           rankingMap[code].excellentCount += 1;
+                       } else if (myRating <= 1) { // Điểm tệ/chưa đạt (1 sao)
+                           rankingMap[code].badCount += 1;
+                       }
                    }
                }
                
@@ -313,18 +318,22 @@ export async function GET(request: Request) {
                    shouldCountRealtime = true; // Không có Ledger, tất cả là Realtime
                }
                
-               // Tính tiền tua & Tip Realtime
-               if (shouldCountRealtime && isValidStatus) {
-                   rankingMap[code].totalTip += tipPerKtv;
-
+               // Lấy thời gian làm việc để cộng dồn (Không phụ thuộc realtime, miễn là hoàn thành)
+               if (isValidStatus) {
                    let fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                    let myTotalMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
                    if (myTotalMins === 0) myTotalMins = fallbackDuration / ktvs.length;
                    
-                   const workType = ktvWorkTypeMap[code] || 'TYPE_A';
-                   const config = commConfigs[workType] || commConfigs['TYPE_A'];
-                   const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
-                   rankingMap[code].tuaMoney += perKtvCommission;
+                   rankingMap[code].totalWorkingMins += myTotalMins;
+
+                   // Tính tiền tua & Tip Realtime
+                   if (shouldCountRealtime) {
+                       rankingMap[code].totalTip += tipPerKtv;
+                       const workType = ktvWorkTypeMap[code] || 'TYPE_A';
+                       const config = commConfigs[workType] || commConfigs['TYPE_A'];
+                       const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
+                       rankingMap[code].tuaMoney += perKtvCommission;
+                   }
                }
            }
         });
@@ -384,9 +393,12 @@ export async function GET(request: Request) {
       // Tính điểm trung bình
       ktv.avgRating = ktv.ratingCount > 0 ? parseFloat((ktv.sumRating / ktv.ratingCount).toFixed(1)) : 0;
       
-      // 100k = 1 hour
+      // 100k = 1 hour (Công thức quy đổi ảo cũ)
       const totalTuaHours = ktv.tuaMoney / 100000;
       ktv.avgWorkingHours = ktv.workingDays > 0 ? parseFloat((totalTuaHours / wDays).toFixed(2)) : 0;
+      
+      // Tổng giờ thực tế lên khách (Tổng số phút / 60)
+      ktv.totalWorkingHours = parseFloat((ktv.totalWorkingMins / 60).toFixed(2));
       return ktv;
     }).filter(ktv => ktv.revenue > 0 || ktv.tuaMoney > 0 || ktv.workingDays > 0 || ktv.leaveDays > 0); // Only show active ktvs
 
