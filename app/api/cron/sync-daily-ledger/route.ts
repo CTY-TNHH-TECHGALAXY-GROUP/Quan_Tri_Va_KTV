@@ -25,9 +25,7 @@ async function processLedgerSync(targetDateStr: string) {
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
         .from('Staff')
-        .select('id, full_name, work_type, feature_flags')
-        .eq('status', 'ĐANG LÀM')
-        .ilike('id', 'NH%');
+        .select('id, full_name, work_type, feature_flags');
     
     if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, message: 'No KTVs found' });
     

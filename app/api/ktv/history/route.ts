@@ -206,14 +206,20 @@ export async function GET(request: Request) {
 
             let totalDuration = 0;
             let commission = 0;
+            let passedCount = 0;
             for (const item of relevantItems) {
                 const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                 let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                 if (itemDuration <= 0) itemDuration = 60;
                 totalDuration += itemDuration;
-                commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                
+                const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
+                if (isPassed) {
+                    passedCount++;
+                    commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                }
             }
-            if (commission === 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+            if (commission === 0 && passedCount > 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
 
             const serviceNames = relevantItems
                 .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
@@ -241,7 +247,10 @@ export async function GET(request: Request) {
                 effectiveFrom: bDateStr
             }];
             
-            const bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
+            let bonusPoints = 0;
+            if (passedCount > 0) {
+                bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
+            }
 
             // ─── Tip: sum from this KTV's items ────────────────────────
             const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
@@ -267,6 +276,7 @@ export async function GET(request: Request) {
                 handover_status,
                 handover_comment,
                 ktv_comment: b.notes,
+                isHeld: passedCount === 0
             };
         });
 
