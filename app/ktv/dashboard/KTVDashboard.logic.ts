@@ -684,10 +684,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 
                 if (res.success && res.data) {
                     setNotifications(res.data);
-                    setUnreadCount(res.data.filter((n: any) => !n.is_read).length);
+                    setUnreadCount(res.data.filter((n: any) => !n.isRead).length);
 
                     // Show popups cho thông báo loại REWARD chưa đọc (tuỳ chọn)
-                    const unreadRewards = res.data.filter((n: any) => !n.is_read && n.type === 'REWARD');
+                    const unreadRewards = res.data.filter((n: any) => !n.isRead && n.type === 'REWARD');
                     if (unreadRewards.length > 0) {
                         const notify = unreadRewards[0];
                         setBonusMessage(notify.message);
@@ -865,7 +865,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
                         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
                         const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
-                        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
+                        const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
 
                         let currentStatus = assignedItem?.status || res.data.status;
                         
@@ -1647,7 +1647,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
         const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
+        const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
 
         setIsLoading(true);
         try {
@@ -1728,7 +1728,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
         const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
-        const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || allMySegs.some((s: any) => s.isMergedRun));
+        const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
 
         const currentIdx = activeSegmentIndex;
         // Nếu shouldMerge = true, bỏ qua advance và coi như đã làm xong chặng cuối

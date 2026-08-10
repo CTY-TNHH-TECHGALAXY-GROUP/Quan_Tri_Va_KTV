@@ -832,6 +832,41 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
+  const handleUnmergeService = async (orderId: string, svcId: string) => {
+    if (!confirm('Xác nhận tách gộp đơn này? Hệ thống sẽ tách các dịch vụ về trạng thái riêng lẻ ban đầu.')) return;
+    try {
+      // Find the order
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
+      
+      const parentSvc = order.services.find(s => s.id === svcId);
+      if (!parentSvc || !parentSvc.mergedServiceIds || parentSvc.mergedServiceIds.length === 0) return;
+
+      const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+      const supabase = getSupabaseAdmin();
+      if (!supabase) throw new Error('No Supabase connection');
+
+      // Update parent
+      await supabase.from('BookingItems').update({
+          mergedServiceIds: null,
+          options: { ...parentSvc.options, displayName: parentSvc.serviceName }
+      }).eq('id', parentSvc.id);
+
+      // Update all children
+      for (const childId of parentSvc.mergedServiceIds) {
+          await supabase.from('BookingItems').update({
+              mergedIntoId: null
+          }).eq('id', childId);
+      }
+
+      alert('✅ Đã tách gộp đơn thành công!');
+      fetchData(); // Reload the whole page to get fresh data
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi hệ thống khi tách gộp đơn!');
+    }
+  };
+
   const handleSaveDraft = async () => {
     if (!selectedOrder) return;
     
@@ -1983,6 +2018,7 @@ if (!hasPermission('dispatch_board')) {
                     reminders={reminders}
                     billCode={selectedSubOrder.originalOrder.billCode}
                     customerName={selectedSubOrder.originalOrder.customerName}
+                    onRemoveSvc={removeServiceBlock}
                   />
                 ) : (
                   /* Detail Dispatch Mode */

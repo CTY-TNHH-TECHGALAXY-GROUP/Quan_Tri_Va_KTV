@@ -254,7 +254,9 @@ export class KtvCommissionService {
                     realMins = this.getMinsFromTimes(seg.startTime, seg.endTime);
                 }
 
-                if (realMins > 0) return sum + Math.max(realMins, baseMins);
+                // 🔥 Fix: Return baseMins (which is the actual duration assigned on UI)
+                // to match the exact behavior of KTV Dashboard. 
+                // Do not use realMins (Math.max) to prevent overpaying for slow work.
                 return sum + baseMins;
             }, 0);
         } else {

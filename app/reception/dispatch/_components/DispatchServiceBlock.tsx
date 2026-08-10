@@ -38,13 +38,14 @@ interface DispatchServiceBlockProps {
     onDispatchSvc?: (orderId: string, svcId: string) => void;
     reminders?: ReminderData[];
     onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
+    onUnmergeSvc?: (orderId: string, svcId: string) => void;
     orderSource?: string;
     now?: Date;
 }
 
 export const DispatchServiceBlock = ({
     svc, svcIndex, orderId, rooms, beds, busyBedIds = [], usedKtvIds = [], availableTurns,
-    onUpdateSvc, onUpdateStaff, onAddStaff, onRemoveStaff, onRemoveSvc, onEditSvc, selectedDate,
+    onUpdateSvc, onUpdateStaff, onAddStaff, onRemoveStaff, onRemoveSvc, onEditSvc, onUnmergeSvc, selectedDate,
     isExpanded = true, onToggleExpand, onDispatchSvc, reminders = [], onViewPhoto, orderSource, now
 }: DispatchServiceBlockProps) => {
 
@@ -171,6 +172,19 @@ export const DispatchServiceBlock = ({
                         >
                             <SplitSquareHorizontal size={18} strokeWidth={2.5} />
                             TÁCH ĐƠN
+                        </button>
+                    )}
+                    {svc.mergedServiceIds && svc.mergedServiceIds.length > 0 && onUnmergeSvc && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onUnmergeSvc(orderId, svc.id);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all active:scale-90 shadow-sm font-bold text-xs"
+                            title="Hủy Gộp Đơn"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+                            HỦY GỘP
                         </button>
                     )}
                     {onRemoveSvc && (

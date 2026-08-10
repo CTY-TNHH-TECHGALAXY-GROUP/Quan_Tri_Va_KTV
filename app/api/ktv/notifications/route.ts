@@ -15,9 +15,9 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from('StaffNotifications')
-      .select('id, title, message, type, is_read, created_at')
-      .eq('staff_id', techCode)
-      .order('created_at', { ascending: false })
+      .select('id, message, type, isRead, createdAt')
+      .eq('employeeId', techCode)
+      .order('createdAt', { ascending: false })
       .limit(20);
 
     if (error) throw error;
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     const { error } = await supabase
       .from('StaffNotifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
+      .update({ isRead: true })
       .in('id', notificationIds);
 
     if (error) throw error;

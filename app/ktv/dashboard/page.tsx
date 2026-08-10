@@ -53,7 +53,7 @@ const formatMultiServiceNames = (segments: any[]) => {
     if (!segments || segments.length === 0) return '';
     if (segments.length === 1) return segments[0]?._serviceName || 'Dịch vụ';
     
-    const groups = new Map<string, Set<string>>();
+    const groups = new globalThis.Map<string, Set<string>>();
     
     segments.forEach(seg => {
         const roomName = seg.roomId || '';

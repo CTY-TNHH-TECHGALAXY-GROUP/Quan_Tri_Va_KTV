@@ -60,8 +60,18 @@ export class BookingModificationService {
             // 2.5 Auto-create Customer record for walk-in guests
             // If phone/email are dummy values, create a unique Customer so they show up in CRM
             let customerId: string | null = null;
-            const phone = data.customerPhone || '';
-            const email = data.customerEmail || '';
+            let phone = data.customerPhone || '';
+            let email = data.customerEmail || '';
+
+            // BẮT BUỘC: Ép các email/phone ảo thành rỗng ngay tại đây
+            // (Đề phòng trường hợp Next.js HMR không cập nhật hàm isDummyEmail)
+            const cleanEmail = email.trim().toLowerCase();
+            if (cleanEmail === 'aa' || cleanEmail === 'a' || (email && !email.includes('@'))) {
+                email = '';
+            }
+            if (/^0+$/.test(phone.trim())) {
+                phone = '';
+            }
 
             // Try to find existing Customer by real phone or email
             let existingCustomer: any = null;

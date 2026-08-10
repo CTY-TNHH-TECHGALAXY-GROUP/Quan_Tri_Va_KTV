@@ -623,7 +623,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                             const firstSeg = s.staffList?.[0]?.segments?.[0];
                                                             const explicitStart = firstSeg?.actualStartTime || s.timeStart || firstSeg?.startTime;
-                                                            const duration = Number(firstSeg?.duration) || Number(s.duration) || 60;
+                                                            let duration = Number(firstSeg?.duration) || Number(s.duration) || 60;
                                                             
                                                             let maxActualEndTime = firstSeg?.actualEndTime;
                                                             if (s.options?.mergedServiceIds?.length) {
@@ -631,6 +631,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     const childSvc = services.find((cs: any) => cs.id === childId);
                                                                     if (childSvc) {
                                                                         const childSeg = childSvc.staffList?.[0]?.segments?.[0];
+                                                                        duration += Number(childSeg?.duration) || Number(childSvc.duration) || 0;
                                                                         if (childSeg?.actualEndTime && (!maxActualEndTime || childSeg.actualEndTime > maxActualEndTime)) {
                                                                             maxActualEndTime = childSeg.actualEndTime;
                                                                         }

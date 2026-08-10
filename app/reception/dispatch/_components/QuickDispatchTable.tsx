@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Printer, X, ChevronDown, ChevronUp, Plus, Clock, AlertCircle, CheckCircle2, Send } from 'lucide-react';
+import { Printer, X, ChevronDown, ChevronUp, Plus, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 
@@ -42,6 +42,7 @@ interface QuickDispatchTableProps {
   isVipSource?: boolean;
   onDispatchGroup?: (group: ServiceGroup, specificSvcId?: string) => void;
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
+  onRemoveSvc?: (orderId: string, svcId: string) => void;
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -70,7 +71,7 @@ const genId = () => Math.random().toString(36).substring(2, 9);
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt
+  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -405,6 +406,8 @@ export const QuickDispatchTable = ({
             groupItems={items}
             onTriggerMergePrompt={onTriggerMergePrompt}
             onUpdateServices={onUpdateServices}
+            onRemoveSvc={onRemoveSvc}
+            orderId={orderId}
           />
         );
       })}
@@ -438,6 +441,8 @@ interface ServiceGroupCardProps {
   groupItems: ServiceBlock[];
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
   onUpdateServices?: (services: ServiceBlock[]) => void;
+  onRemoveSvc?: (orderId: string, svcId: string) => void;
+  orderId?: string;
 }
 
 const MAX_KTV_PER_GROUP = 10;
@@ -445,7 +450,7 @@ const MAX_KTV_PER_GROUP = 10;
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state, targetSkill,
   availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt, onUpdateServices
+  allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc, orderId
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const [ktvSearch, setKtvSearch] = useState('');
@@ -698,9 +703,13 @@ const ServiceGroupCard = ({
           {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200">+{state.selectedKtvIds.length - count} nối tiếp</span>}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-400 font-bold shrink-0">Tên in phiếu:</span>
           <input type="text" value={state.displayName} onChange={e => onUpdate({ displayName: e.target.value })} placeholder={serviceName}
             className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-bold w-40 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none bg-white" />
+          {onRemoveSvc && groupItems.length === 1 && orderId && (
+            <button onClick={() => onRemoveSvc(orderId, groupItems[0].id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100" title="Xóa dịch vụ">
+                <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
 

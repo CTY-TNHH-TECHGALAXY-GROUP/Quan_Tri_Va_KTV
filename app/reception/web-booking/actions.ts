@@ -255,7 +255,10 @@ export async function confirmWebBooking(bookingId: string) {
 
     // 🛡️ SANITIZE: Thay thế dummy email bằng mã ngẫu nhiên để không bị trùng
     const sanitizePayload: Record<string, any> = {};
-    if (bData?.customerEmail && isDummyEmail(bData.customerEmail)) {
+    const bEmail = (bData?.customerEmail || '').trim().toLowerCase();
+    const isEmailDummy = bEmail === 'aa' || bEmail === 'a' || !bEmail.includes('@') || bEmail.includes('@guest');
+    
+    if (bData?.customerEmail && isEmailDummy) {
       sanitizePayload.customerEmail = `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com`;
     }
     if (bData?.customerPhone && isDummyPhone(bData.customerPhone)) {
@@ -289,9 +292,15 @@ export async function confirmWebBooking(bookingId: string) {
     if (error) throw error;
     
     // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
-    if (bData?.customerId && bData?.customerEmail && !isDummyEmail(bData.customerEmail)) {
+    // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
+    const bEmailCheck = (bData?.customerEmail || '').trim().toLowerCase();
+    const isNewEmailDummy = bEmailCheck === 'aa' || bEmailCheck === 'a' || !bEmailCheck.includes('@') || bEmailCheck.includes('@guest');
+
+    if (bData?.customerId && bData?.customerEmail && !isNewEmailDummy) {
         const { data: cData } = await supabase.from('Customers').select('email').eq('id', bData.customerId).maybeSingle();
-        if (cData && isDummyEmail(cData.email || '')) {
+        const cEmailCheck = (cData?.email || '').trim().toLowerCase();
+        const isOldEmailDummy = cEmailCheck === 'aa' || cEmailCheck === 'a' || !cEmailCheck.includes('@') || cEmailCheck.includes('@guest');
+        if (cData && isOldEmailDummy) {
             await supabase.from('Customers').update({ email: bData.customerEmail }).eq('id', bData.customerId);
         }
     }

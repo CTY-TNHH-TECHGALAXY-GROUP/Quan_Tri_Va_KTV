@@ -327,6 +327,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 price: Number(bi.price) || 0,
                                 quantity: Number(bi.quantity) || 1,
                                 options: parsedOptions,
+                                mergedIntoId: parsedOptions?.mergedIntoId,
+                                mergedServiceIds: parsedOptions?.mergedServiceIds,
                                 status: bi.status || 'NEW',
                                 pauseStart: bi.pauseStart || null,
                                 timeStart: bi.timeStart || null,
