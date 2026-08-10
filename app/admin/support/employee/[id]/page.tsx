@@ -147,7 +147,7 @@ export default function EmployeeDetailPage() {
                           <span className="truncate">{catName}</span>
                           {tasks[0]?.roomHasGuest && (
                             <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] shadow-sm shadow-red-500/30 shrink-0">
-                              🙋 Có khách
+                              🙋 Có khách {tasks[0]?.roomHasGuestUpdatedAt && <span className="opacity-80">({new Date(tasks[0].roomHasGuestUpdatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})</span>}
                             </span>
                           )}
                         </div>
