@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
@@ -18,6 +18,20 @@ const STATUS_CONFIG = [
 ];
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
+
+const formatCompactPrice = (n: number) => {
+    if (n >= 1000000) {
+        const tr = Math.floor(n / 1000000);
+        const k = Math.floor((n % 1000000) / 1000);
+        if (k > 0) {
+            return `${tr}tr${String(k).padStart(3, '0')}`;
+        }
+        return `${tr}tr`;
+    } else if (n >= 1000) {
+        return `${Math.floor(n / 1000)}k`;
+    }
+    return `${n}đ`;
+};
 
 const formatToHourMinute = (isoString?: string | null) => {
     if (!isoString) return '--:--';
@@ -425,8 +439,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-start justify-between mb-4">
-                                                    <div className="flex items-center gap-3">
+                                                <div className="flex items-start justify-between mb-4 gap-2">
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
                                                         <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-xl shadow-indigo-100 shrink-0">
                                                             {(() => {
                                                               const customNames = services[0]?.options?.customNames;
@@ -435,7 +449,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                               return display ? display.charAt(0).toUpperCase() : '?';
                                                             })()}
                                                         </div>
-                                                        <div className="min-w-0">
+                                                        <div className="min-w-0 flex-1">
                                                             <div className="flex flex-col gap-0.5 mb-1.5">
                                                               <div className="flex items-center gap-1.5">
                                                                 {editingNameSubOrderId === subOrder.id ? (
@@ -484,9 +498,30 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                                                                       </button>
                                                                     </p>
-                                                                    {order.services[0]?.adminNote?.includes('VIP_APPOINTMENT') && (
-                                                                      <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-200 to-yellow-400 text-[9px] font-black text-amber-900 shadow-sm border border-yellow-300">VIP</span>
-                                                                    )}
+                                                                    {(() => {
+                                                                      const isVipMenu = services.some((svc: any) => 
+                                                                        (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
+                                                                        (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
+                                                                      );
+                                                                      const isTreatment = services.some((svc: any) => 
+                                                                        (svc.serviceId && String(svc.serviceId).toUpperCase().startsWith('NHT')) ||
+                                                                        (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
+                                                                      );
+                                                                      return (
+                                                                        <>
+                                                                          {isVipMenu && (
+                                                                            <span className="shrink-0 px-1.5 py-1 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm flex items-center justify-center ml-1" title="Menu VIP">
+                                                                              <Crown size={12} className="fill-[#6b3e00]/20" />
+                                                                            </span>
+                                                                          )}
+                                                                          {isTreatment && (
+                                                                            <span className="shrink-0 px-1.5 py-1 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm flex items-center justify-center ml-1" title="Menu Điều Trị">
+                                                                              <Stethoscope size={12} />
+                                                                            </span>
+                                                                          )}
+                                                                        </>
+                                                                      );
+                                                                    })()}
                                                                   </>
                                                                 )}
                                                               </div>
@@ -570,7 +605,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                         return (
                                                           <div className="flex flex-col items-end shrink-0 gap-1.5">
-                                                            <p className="text-sm font-black text-gray-900 leading-none">{formatVND(subOrderTotal)}</p>
+                                                            <p className="text-sm font-black text-gray-900 leading-none" title={formatVND(subOrderTotal)}>{formatCompactPrice(subOrderTotal)}</p>
                                                             <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${bgClass}`} title={pmText}>
                                                               {pmIcon}
                                                               <span className={`text-[9px] font-bold ${colorClass}`}>{pmText}</span>

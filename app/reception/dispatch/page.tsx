@@ -13,7 +13,7 @@ import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
   ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
-  Users, BedDouble, CalendarClock
+  Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope
 } from 'lucide-react';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
 import { DispatchOnlineKtvTable } from './_components/DispatchOnlineKtvTable';
@@ -73,6 +73,20 @@ import { KtvCommentModal } from './_components/KtvCommentModal';
 const getCurrentTime = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+const formatCompactPrice = (n: number) => {
+    if (n >= 1000000) {
+        const tr = Math.floor(n / 1000000);
+        const k = Math.floor((n % 1000000) / 1000);
+        if (k > 0) {
+            return `${tr}tr${String(k).padStart(3, '0')}`;
+        }
+        return `${tr}tr`;
+    } else if (n >= 1000) {
+        return `${Math.floor(n / 1000)}k`;
+    }
+    return `${n}đ`;
 };
 
 const formatToHourMinute = (isoString?: string | null) => {
@@ -1605,14 +1619,28 @@ if (!hasPermission('dispatch_board')) {
                             (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
                           );
-                          return isVipMenu ? (
-                            <span className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-black bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm uppercase tracking-wide" title="Menu VIP">
-                              VIP
-                            </span>
-                          ) : (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase" title="Menu Thường">
-                              THƯỜNG
-                            </span>
+                          const isTreatment = subOrder.services.some((svc: any) => 
+                            (svc.serviceId && String(svc.serviceId).toUpperCase().startsWith('NHT')) ||
+                            (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
+                          );
+                          return (
+                            <>
+                              {isVipMenu && (
+                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm flex items-center justify-center" title="Menu VIP">
+                                  <Crown size={12} className="fill-[#6b3e00]/20" />
+                                </span>
+                              )}
+                              {isTreatment && (
+                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm flex items-center justify-center" title="Menu Điều Trị">
+                                  <Stethoscope size={12} />
+                                </span>
+                              )}
+                              {!isVipMenu && !isTreatment && (
+                                <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase" title="Menu Thường">
+                                  THƯỜNG
+                                </span>
+                              )}
+                            </>
                           );
                         })()}
                         {order.isReturning && (
@@ -1633,7 +1661,7 @@ if (!hasPermission('dispatch_board')) {
                         <p className="font-black text-gray-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight truncate">{order.customerName}</p>
                       </div>
                         <div className="shrink-0 text-[11px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-xl flex items-center gap-1 border border-emerald-100/50">
-                          <span>{(subOrder.services.reduce((acc, svc) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0)).toLocaleString('vi-VN')}đ</span>
+                          <span title={(subOrder.services.reduce((acc, svc) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0)).toLocaleString('vi-VN') + 'đ'}>{formatCompactPrice(subOrder.services.reduce((acc, svc) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0))}</span>
                           <span className="opacity-30">·</span>
                           <span>{order.paymentMethod === 'Cash' || order.paymentMethod === 'cash_vnd' ? 'cash' : (order.paymentMethod === 'Transfer' ? 'ck' : order.paymentMethod)}</span>
                         </div>
@@ -1673,10 +1701,34 @@ if (!hasPermission('dispatch_board')) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
-                    <h2 className="font-black text-gray-900 text-base truncate flex-1">
+                    <h2 className="font-black text-gray-900 text-base truncate flex-1 flex items-center gap-2">
                       Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName} — {
                         [selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'
                       }
+                      {(() => {
+                          const isVipMenu = selectedSubOrder.services.some((svc: any) => 
+                            (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
+                            (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
+                          );
+                          const isTreatment = selectedSubOrder.services.some((svc: any) => 
+                            (svc.serviceId && String(svc.serviceId).toUpperCase().startsWith('NHT')) ||
+                            (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
+                          );
+                          return (
+                            <>
+                              {isVipMenu && (
+                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm flex items-center justify-center" title="Menu VIP">
+                                  <Crown size={12} className="fill-[#6b3e00]/20" />
+                                </span>
+                              )}
+                              {isTreatment && (
+                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm flex items-center justify-center" title="Menu Điều Trị">
+                                  <Stethoscope size={12} />
+                                </span>
+                              )}
+                            </>
+                          );
+                      })()}
                     </h2>
                     {selectedSubOrder.originalOrder.isWebBooking ? (
                       <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-100 uppercase ml-2" title="Đơn từ Web Booking">
