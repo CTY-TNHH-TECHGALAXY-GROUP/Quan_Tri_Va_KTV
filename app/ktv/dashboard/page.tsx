@@ -421,7 +421,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
   const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || ktvSegments.some((s: any) => s.isMergedRun));
+  const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
   
   // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
@@ -436,7 +436,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
     <div className="p-3 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24">
       {/* ─── HEADER ─── */}
       {(!booking || !booking.id) && (
-        <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2">
+        <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2 relative z-50">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-inner border border-white">
                 <span className="text-xl">🧑‍⚕️</span>
@@ -930,7 +930,7 @@ function ScreenTimer({ logic }: { logic: any }) {
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
   const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
-  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && (!hasFinishedSegment || isFinishedMerge || ktvSegments.some((s: any) => s.isMergedRun));
+  const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
 
   const totalAssignedMins = ktvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;

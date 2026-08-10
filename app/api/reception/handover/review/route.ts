@@ -94,7 +94,8 @@ export async function POST(request: Request) {
                 rejectOption as RejectOption,
                 reason || 'Không đạt yêu cầu',
                 ktvCode,
-                newRejectUrls
+                newRejectUrls,
+                body.deductPoints
             );
 
             if (!result.success) {

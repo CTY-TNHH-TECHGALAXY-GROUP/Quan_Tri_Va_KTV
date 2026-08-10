@@ -244,7 +244,8 @@ export class HandoverService {
         option: RejectOption,
         reason: string,
         ktvCode?: string,
-        rejectImagesUrls?: string[]
+        rejectImagesUrls?: string[],
+        deductPoints?: boolean
     ): Promise<{ success: boolean; error?: string }> {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
@@ -305,6 +306,15 @@ export class HandoverService {
                         message: `⚠️ Hình bàn giao đơn #${(item as any).Bookings?.billCode || ''} bị từ chối: ${reason}. Vui lòng dọn lại. (Lần ${currentCount + 1}/${maxReject})`,
                         bookingId: item.bookingId,
                     });
+                    
+                    if (deductPoints) {
+                        await createNotification({
+                            type: 'DISCIPLINE',
+                            employeeId: tc,
+                            message: `⚠️ Bạn bị gắn cờ vi phạm: Trừ 5đ chuyên cần. Lý do: ${reason}`,
+                            bookingId: item.bookingId,
+                        });
+                    }
                 }
                 break;
             }
@@ -348,6 +358,15 @@ export class HandoverService {
                         message: `💸 Bạn bị trừ ${deductAmount.toLocaleString()}đ do bàn giao không đạt: ${reason}`,
                         bookingId: item.bookingId,
                     });
+                    
+                    if (deductPoints) {
+                        await createNotification({
+                            type: 'DISCIPLINE',
+                            employeeId: tc,
+                            message: `⚠️ Bạn bị gắn cờ vi phạm: Trừ 5đ chuyên cần. Lý do: ${reason}`,
+                            bookingId: item.bookingId,
+                        });
+                    }
                 }
                 break;
             }
@@ -369,11 +388,20 @@ export class HandoverService {
                 const techCodes: string[] = item.technicianCodes || [];
                 for (const tc of techCodes) {
                     await createNotification({
-                        type: 'HANDOVER_CONFISCATED',
+                        type: 'HANDOVER_CONFISCATE',
                         employeeId: tc,
-                        message: `🚫 Tiền tua đơn #${(item as any).Bookings?.billCode || ''} đã bị tước: ${reason}`,
+                        message: `🚫 Bạn đã bị tước toàn bộ tiền tua đơn #${(item as any).Bookings?.billCode || ''}. Lý do: ${reason}`,
                         bookingId: item.bookingId,
                     });
+                    
+                    if (deductPoints) {
+                        await createNotification({
+                            type: 'DISCIPLINE',
+                            employeeId: tc,
+                            message: `⚠️ Bạn bị gắn cờ vi phạm: Trừ 5đ chuyên cần. Lý do: ${reason}`,
+                            bookingId: item.bookingId,
+                        });
+                    }
                 }
                 break;
             }
