@@ -865,6 +865,8 @@ if (!hasPermission('dispatch_board')) {
               options: {
                   ...(svc.options || {}),
                   displayName: svc.options?.displayName || svc.serviceName,
+                  mergedIntoId: svc.mergedIntoId,
+                  mergedServiceIds: svc.mergedServiceIds,
                   order: index,
                   note: svc.customerNote?.split(' | ')[0] || '', 
                   therapist: svc.genderReq,
@@ -919,7 +921,17 @@ if (!hasPermission('dispatch_board')) {
       const orderToValidate = specificSvcIds && specificSvcIds.length > 0 
         ? { ...orderToDispatch, services: orderToDispatch.services.filter(s => specificSvcIds.includes(s.id)) }
         : orderToDispatch;
-      const missing = getMissingInfo(orderToValidate);
+        
+      // Lọc bỏ các KTV trống để không báo lỗi "Chưa chọn KTV" (cho phép xoá KTV và lưu luôn)
+      const cleanOrderToValidate = {
+          ...orderToValidate,
+          services: orderToValidate.services.map(svc => ({
+              ...svc,
+              staffList: svc.staffList.filter(r => r.ktvId)
+          }))
+      };
+      
+      const missing = getMissingInfo(cleanOrderToValidate);
       if (missing.length > 0) {
         alert(`⚠️ Vui lòng điền đầy đủ thông tin:\n\n${missing.map(m => `• ${m}`).join('\n')}`);
         return;
@@ -1035,6 +1047,8 @@ if (!hasPermission('dispatch_board')) {
               options: {
                   ...(svc.options || {}),
                   displayName: svc.options?.displayName || svc.serviceName,
+                  mergedIntoId: svc.mergedIntoId,
+                  mergedServiceIds: svc.mergedServiceIds,
                   order: originalIndex !== -1 ? originalIndex : 999,
                   note: svc.customerNote?.split(' | ')[0] || '', 
                   therapist: svc.genderReq,
@@ -1957,7 +1971,9 @@ if (!hasPermission('dispatch_board')) {
                       });
                     }}
                     onDispatchGroup={(group, specificSvcId) => {
-                      const svcIds = specificSvcId ? [specificSvcId] : group.items.map(i => i.id);
+                      const svcIds = specificSvcId 
+                        ? [specificSvcId] 
+                        : group.items.flatMap(i => [i.id, ...(i.mergedServiceIds || [])]);
                       handleDispatch(false, svcIds);
                     }}
                     onPrintGroup={(group) => {

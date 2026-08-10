@@ -8,7 +8,7 @@ import {
   MapPin, Clock, X, MessageSquare, AlertCircle, FileText, Gift,
   CheckSquare, Check, XCircle, AlertTriangle, CheckCircle, ShieldAlert, Dumbbell, Target, QrCode, ScanLine, Search, Trash2, Camera, LogOut, FileImage, UploadCloud, FileDown,
   Info, LogIn, ChevronLeft, CalendarClock, History, Calendar, Heart, Shield, Star, Crown, Lock, ChevronDown, CheckIcon, MapPinIcon, LayoutDashboard, CalendarCheck, FileOutput, ShieldCheck,
-  Zap, MessageCircle, XOctagon, Hand, ThumbsUp, Map, Navigation2, RefreshCw, Smartphone, MonitorPlay, Wifi, Coffee, Sparkles, Plus, Wallet, FilePlus, ExternalLink, Link as LinkIcon, HandHeart, CheckCheck, HandMetal, Smile, Image as ImageIcon,
+  Zap, MessageCircle, XOctagon, Hand, ThumbsUp, Map as MapIcon, Navigation2, RefreshCw, Smartphone, MonitorPlay, Wifi, Coffee, Sparkles, Plus, Wallet, FilePlus, ExternalLink, Link as LinkIcon, HandHeart, CheckCheck, HandMetal, Smile, Image as ImageIcon,
   ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Users, Loader2, ChevronUp, Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';

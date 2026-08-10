@@ -619,10 +619,25 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                     {(() => {
                                                         let currentCumulativeStr: string | null = null;
                                                         return services.map((s: any, idx: number) => {
+                                                            if (s.options?.mergedIntoId) return null;
+
                                                             const firstSeg = s.staffList?.[0]?.segments?.[0];
                                                             const explicitStart = firstSeg?.actualStartTime || s.timeStart || firstSeg?.startTime;
                                                             const duration = Number(firstSeg?.duration) || Number(s.duration) || 60;
                                                             
+                                                            let maxActualEndTime = firstSeg?.actualEndTime;
+                                                            if (s.options?.mergedServiceIds?.length) {
+                                                                s.options.mergedServiceIds.forEach((childId: string) => {
+                                                                    const childSvc = services.find((cs: any) => cs.id === childId);
+                                                                    if (childSvc) {
+                                                                        const childSeg = childSvc.staffList?.[0]?.segments?.[0];
+                                                                        if (childSeg?.actualEndTime && (!maxActualEndTime || childSeg.actualEndTime > maxActualEndTime)) {
+                                                                            maxActualEndTime = childSeg.actualEndTime;
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+
                                                             // Kiểm tra xem đây có phải là dịch vụ gộp (Merge Lock / Chung thời gian hoàn thành)
                                                             let isMergeGoiDau = false;
                                                             if (firstSeg?.isMergedRun) {
@@ -632,7 +647,6 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     const prevSvc = services[prevIdx];
                                                                     const prevSeg = prevSvc.staffList?.[0]?.segments?.[0];
                                                                     if (prevSeg && firstSeg && prevSeg.ktvId === firstSeg.ktvId) {
-                                                                        // Gộp nếu có isMergedRun, hoặc cùng actualStartTime (đang chạy), hoặc cùng actualEndTime (đã xong)
                                                                         if (prevSeg.isMergedRun || 
                                                                            (prevSeg.actualStartTime && prevSeg.actualStartTime === firstSeg.actualStartTime) ||
                                                                            (prevSeg.actualEndTime && prevSeg.actualEndTime === firstSeg.actualEndTime)) {
@@ -644,7 +658,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             }
                                                             let displayStart = (firstSeg?.actualStartTime && !isMergeGoiDau) ? firstSeg.actualStartTime : (currentCumulativeStr || explicitStart);
                                                             
-                                                            let displayEnd = firstSeg?.actualEndTime ? firstSeg.actualEndTime : (displayStart ? getDynamicEndTime(displayStart, duration) : (s.timeEnd || firstSeg?.endTime));
+                                                            let displayEnd = maxActualEndTime ? maxActualEndTime : (displayStart ? getDynamicEndTime(displayStart, duration) : (s.timeEnd || firstSeg?.endTime));
                                                             if (s.staffList && s.staffList.length > 1) {
                                                                 const lastSt = s.staffList[s.staffList.length - 1];
                                                                 const lastSeg = lastSt?.segments?.[0];

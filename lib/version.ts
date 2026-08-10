@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.84';
-export const LAST_UPDATE = 'Đồng bộ logic lọc dịch vụ tiện ích ở API Ví để khớp 100% với Lịch sử KTV';
+export const APP_VERSION = '1.2.85';
+export const LAST_UPDATE = 'Fix lỗi hiển thị gộp dịch vụ trên Kanban và sửa lỗi build Vercel';
