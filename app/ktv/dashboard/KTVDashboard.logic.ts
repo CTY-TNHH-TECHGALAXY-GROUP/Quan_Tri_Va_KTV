@@ -2183,6 +2183,26 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }, 100);
     };
 
+    const markNotificationAsRead = async (id?: string) => {
+        try {
+            const unreadIds = id 
+                ? [id] 
+                : notifications.filter(n => !n.isRead).map(n => n.id);
+                
+            if (unreadIds.length === 0) return;
+            
+            // Optimistic update
+            setNotifications(prev => prev.map(n => 
+                unreadIds.includes(n.id) ? { ...n, isRead: true } : n
+            ));
+            setUnreadCount(prev => Math.max(0, prev - unreadIds.length));
+            
+            await apiClient.post('/api/ktv/notifications', { notificationIds: unreadIds });
+        } catch (error) {
+            console.error('Failed to mark notifications as read', error);
+        }
+    };
+
     return {
         user,
         ktvId,

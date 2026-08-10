@@ -460,16 +460,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             {/* Notification Bell */}
             <div className="relative">
               <button 
-                onClick={() => {
-                   if (!logic.showNoti) {
-                     // Nếu có noti chưa đọc, mark read
-                     const unreadIds = (logic.notifications || []).filter((n: any) => !n.is_read).map((n: any) => n.id);
-                     if (unreadIds.length > 0) {
-                        apiClient.post('/api/ktv/notifications', { notificationIds: unreadIds });
-                     }
-                   }
-                   logic.setShowNoti(!logic.showNoti);
-                }}
+                onClick={() => logic.setShowNoti(!logic.showNoti)}
                 className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 active:scale-95 transition-transform"
               >
                  <BellRing size={18} className="text-slate-600" />
@@ -491,23 +482,42 @@ function ScreenDashboard({ logic }: { logic: any }) {
                   >
                     <div className="p-3 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
                       <h3 className="font-bold text-sm text-slate-700">Thông báo</h3>
-                      <button onClick={() => logic.setShowNoti(false)} className="text-slate-400 hover:text-slate-600">
-                         <X size={16} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {logic.unreadCount > 0 && (
+                          <button 
+                            onClick={() => logic.markNotificationAsRead()}
+                            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium px-2 py-1 bg-emerald-50 rounded-lg transition-colors"
+                          >
+                            Đánh dấu tất cả đã đọc
+                          </button>
+                        )}
+                        <button onClick={() => logic.setShowNoti(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                           <X size={16} />
+                        </button>
+                      </div>
                     </div>
                     <div className="overflow-y-auto flex-1 p-2 space-y-1">
                       {(!logic.notifications || logic.notifications.length === 0) ? (
                         <div className="text-center py-6 text-slate-400 text-xs">Chưa có thông báo nào</div>
                       ) : (
                         logic.notifications.map((n: any) => (
-                           <div key={n.id} className={`p-3 rounded-xl border ${n.is_read ? 'bg-white border-transparent' : 'bg-indigo-50/50 border-indigo-100'} flex gap-3`}>
+                           <div key={n.id} className={`relative p-3 rounded-xl border ${n.isRead ? 'bg-white border-transparent' : 'bg-indigo-50/50 border-indigo-100'} flex gap-3 group`}>
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.type === 'REWARD' ? 'bg-amber-100 text-amber-600' : n.type === 'DISCIPLINE' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                                  {n.type === 'REWARD' ? <Gift size={14} /> : n.type === 'DISCIPLINE' ? <ShieldAlert size={14} /> : <MessageSquare size={14} />}
                               </div>
-                              <div>
-                                 <h4 className={`text-xs font-bold ${n.is_read ? 'text-slate-700' : 'text-indigo-900'}`}>{n.title}</h4>
+                              <div className="flex-1 pr-6">
+                                 <h4 className={`text-xs font-bold ${n.isRead ? 'text-slate-700' : 'text-indigo-900'}`}>{n.title}</h4>
                                  <p className="text-[11px] text-slate-500 mt-0.5">{n.message}</p>
                               </div>
+                              {!n.isRead && (
+                                <button
+                                  onClick={() => logic.markNotificationAsRead(n.id)}
+                                  className="absolute top-3 right-3 p-1 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Đánh dấu đã đọc"
+                                >
+                                  <CheckCircle2 size={16} />
+                                </button>
+                              )}
                            </div>
                         ))
                       )}
