@@ -280,8 +280,34 @@ export async function GET(request: Request) {
             };
         });
 
+        // ─── Fetch KTV Discipline Data ─────────────────────────────────────
+        const currentMonth = new Date(fromDate).getMonth() + 1;
+        const currentYear = new Date(fromDate).getFullYear();
 
-        return NextResponse.json({ success: true, data: result });
+        const { data: ptsData } = await supabase
+            .from('KTVDisciplinePoints')
+            .select('total_points')
+            .eq('staff_id', techCode)
+            .eq('month', currentMonth)
+            .eq('year', currentYear)
+            .maybeSingle();
+            
+        const { data: discData } = await supabase
+            .from('KTVDisciplineLedger')
+            .select('id, rule_code, points_deducted, reason, images, status, created_at, booking_id')
+            .eq('staff_id', techCode)
+            .gte('created_at', fromFilter)
+            .lte('created_at', toFilter)
+            .order('created_at', { ascending: false });
+
+        return NextResponse.json({ 
+            success: true, 
+            data: {
+                bookings: result,
+                disciplinePoints: ptsData?.total_points ?? 100,
+                disciplines: discData || []
+            } 
+        });
 
     } catch (err: any) {
         console.error('❌ [KTV History API]', err.message);

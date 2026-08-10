@@ -1,67 +1,55 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
-export const dynamic = 'force-dynamic';
-
-/**
- * API Lấy và cập nhật thông báo của KTV (Bonus/Rewards)
- * GET /api/ktv/notifications?techCode=NH001
- * PATCH /api/ktv/notifications?id=uuid
- */
 export async function GET(request: Request) {
+  try {
     const { searchParams } = new URL(request.url);
     const techCode = searchParams.get('techCode');
 
     if (!techCode) {
-        return NextResponse.json({ success: false, error: 'techCode is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Missing techCode' }, { status: 400 });
     }
 
-    try {
-        const supabase = getSupabaseAdmin();
-        if (!supabase) throw new Error('Supabase admin not initialized');
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return NextResponse.json({ success: false, error: 'DB Init Error' }, { status: 500 });
 
-        // Lấy các thông báo REWARD chưa đọc của KTV
-        const { data, error } = await supabase
-            .from('StaffNotifications')
-            .select('*')
-            .eq('employeeId', techCode)
-            .eq('type', 'REWARD')
-            .eq('isRead', false)
-            .order('createdAt', { ascending: false });
+    const { data, error } = await supabase
+      .from('StaffNotifications')
+      .select('id, title, message, type, is_read, created_at')
+      .eq('staff_id', techCode)
+      .order('created_at', { ascending: false })
+      .limit(20);
 
-        if (error) throw error;
+    if (error) throw error;
 
-        return NextResponse.json({ success: true, data });
-    } catch (error: any) {
-        console.error('API Error (GET /api/ktv/notifications):', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    }
+    return NextResponse.json({ success: true, data });
+
+  } catch (err: any) {
+    console.error('❌ [KTV Notifications API]', err.message);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }
 
-export async function PATCH(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-        return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+export async function POST(request: Request) {
+  try {
+    const { notificationIds } = await request.json();
+    if (!notificationIds || !Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 });
     }
 
-    try {
-        const supabase = getSupabaseAdmin();
-        if (!supabase) throw new Error('Supabase admin not initialized');
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return NextResponse.json({ success: false, error: 'DB Init Error' }, { status: 500 });
 
-        const { data, error } = await supabase
-            .from('StaffNotifications')
-            .update({ isRead: true })
-            .eq('id', id)
-            .select()
-            .single();
+    const { error } = await supabase
+      .from('StaffNotifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .in('id', notificationIds);
 
-        if (error) throw error;
+    if (error) throw error;
 
-        return NextResponse.json({ success: true, data });
-    } catch (error: any) {
-        console.error('API Error (PATCH /api/ktv/notifications):', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    }
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('❌ [KTV Notifications API Mark Read]', err.message);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }

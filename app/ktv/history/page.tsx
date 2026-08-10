@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, History, Clock, Star, TrendingUp,
   Gift, CalendarDays, ChevronRight, ChevronDown,
-  Loader2, CheckCircle2, Award
+  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -30,6 +30,79 @@ const RATING_CONFIG: Record<number, { label: string; color: string; bg: string }
   3: { label: 'Tốt',          color: 'text-emerald-700', bg: 'bg-emerald-50' },
   4: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
   5: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+};
+
+// ─── Image Modal ──────────────────────────────────────────────────────────────
+
+const ImageModal = ({ src, onClose }: { src: string; onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+      <button className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full">
+        <X size={24} />
+      </button>
+      <img src={src} alt="Bằng chứng" className="max-w-full max-h-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+    </div>
+  );
+};
+
+// ─── Discipline Card ──────────────────────────────────────────────────────────
+
+const DisciplineCard = ({ item }: { item: HistoryRecord }) => {
+  const [selectedImg, setSelectedImg] = React.useState<string | null>(null);
+  
+  // Format the raw DB rule_code into readable title
+  const title = item.rule_code === 'RECEPTION_COMPLAINT' ? 'Quầy đánh giá / Phàn nàn' 
+              : item.rule_code === 'HANDOVER_REJECT' ? 'Lỗi bàn giao phòng'
+              : item.rule_code === 'ORDER_REJECT' ? 'Từ chối nhận tua'
+              : item.rule_code || 'Vi phạm chuyên cần';
+
+  const images = Array.isArray(item.images) ? item.images : [];
+
+  return (
+    <>
+      <div className="bg-red-50/50 rounded-2xl border border-red-100 shadow-sm p-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-red-100/50 to-transparent rounded-bl-3xl"></div>
+        <div className="flex gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <AlertCircle size={20} className="text-red-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start gap-2">
+              <h4 className="text-sm font-bold text-red-900 leading-tight">{title}</h4>
+              <span className="text-sm font-black text-red-600 shrink-0">-{item.points_deducted}đ</span>
+            </div>
+            <p className="text-[11px] text-red-400 mt-1">
+              {format(parseDbDate(item.createdAt), 'HH:mm — dd/MM/yyyy')}
+            </p>
+            {item.reason && (
+              <div className="mt-2 text-xs text-red-800 bg-red-100/50 p-2 rounded-lg italic">
+                "{item.reason}"
+              </div>
+            )}
+            
+            {/* Ảnh bằng chứng */}
+            {images.length > 0 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                {images.map((img: string, idx: number) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => setSelectedImg(img)}
+                    className="relative w-16 h-16 rounded-xl overflow-hidden border border-red-200 shrink-0 bg-white"
+                  >
+                    <img src={img} alt="Evidence" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <FileImage size={16} className="text-white" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      {selectedImg && <ImageModal src={selectedImg} onClose={() => setSelectedImg(null)} />}
+    </>
+  );
 };
 
 // ─── Expandable Order Card ────────────────────────────────────────────────────
@@ -275,6 +348,19 @@ export default function KTVHistoryPage() {
           </div>
 
           {/* Summary Cards */}
+          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl px-4 py-3 shadow-lg shadow-indigo-100/50 flex justify-between items-center text-white mb-2">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-100">Điểm Chuyên Cần Tháng Này</p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-2xl font-black">{summary.disciplinePoints}</span>
+                <span className="text-sm font-medium text-indigo-200">/ 100đ</span>
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+              <Award size={24} className="text-white" />
+            </div>
+          </div>
+          
           <div className="grid grid-cols-4 gap-2">
             <div className="bg-indigo-600 text-white rounded-2xl px-2.5 py-3 shadow-lg shadow-indigo-100">
               <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Tiền tua</p>
@@ -351,8 +437,10 @@ export default function KTVHistoryPage() {
                 <p className="text-sm text-gray-400">Chưa có đơn hàng nào.</p>
               </div>
             ) : (
-              history.map(order => (
-                <OrderCard key={order.id} order={order} getStatusLabel={getStatusLabel} techCode={user?.id || ''} refetch={refetch} />
+              history.map(item => (
+                item.type === 'DISCIPLINE'
+                  ? <DisciplineCard key={item.id} item={item} />
+                  : <OrderCard key={item.id} order={item} getStatusLabel={getStatusLabel} techCode={user?.id || ''} refetch={refetch} />
               ))
             )}
           </div>

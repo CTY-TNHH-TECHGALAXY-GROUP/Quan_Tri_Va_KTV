@@ -5,6 +5,7 @@ import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 
 export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVER';
 
@@ -137,6 +138,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     const [kpiData, setKpiData] = useState<any>(null);
     const [disciplineStatus, setDisciplineStatus] = useState<any>(null);
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     const lastAcknowledgedIdRef = useRef<string | null>(null);
     const prevBookingIdRef = useRef<string | null>(null);
@@ -679,14 +682,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 const res = await apiClient.get<any>(API.KTV.NOTIFICATIONS(ktvId));
                 
-                if (res.success && res.data && res.data.length > 0) {
-                    const notify = res.data[0];
-                    setBonusMessage(notify.message);
-                    
-                    // Marks as read, sound is played by global NotificationProvider via Realtime
-                    await apiClient.patch(API.KTV.NOTIFICATION_MARK_READ(notify.id));
-                    
-                    setTimeout(() => setBonusMessage(null), 15000);
+                if (res.success && res.data) {
+                    setNotifications(res.data);
+                    setUnreadCount(res.data.filter((n: any) => !n.is_read).length);
+
+                    // Show popups cho thông báo loại REWARD chưa đọc (tuỳ chọn)
+                    const unreadRewards = res.data.filter((n: any) => !n.is_read && n.type === 'REWARD');
+                    if (unreadRewards.length > 0) {
+                        const notify = unreadRewards[0];
+                        setBonusMessage(notify.message);
+                        
+                        await apiClient.post('/api/ktv/notifications', { notificationIds: [notify.id] });
+                        
+                        setTimeout(() => setBonusMessage(null), 15000);
+                        setUnreadCount(prev => Math.max(0, prev - 1));
+                    }
                 }
             } catch (err) {
                 console.error('Error checking rewards:', err);
@@ -956,10 +966,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             
                             // [Sửa đổi]: Đếm lùi theo từng chặng (current segment only)
                             const currentSeg = allMySegs[calculatedSegIdx] || allMySegs[0] || {};
-                            let currentSegDuration = Number(currentSeg.duration) || assignedItem?.duration || 60;
+                            let currentSegDuration = (currentSeg.duration != null && currentSeg.duration !== '' ? Number(currentSeg.duration) : (assignedItem?.duration != null ? Number(assignedItem.duration) : 60));
                             
                             if (shouldMerge) {
-                                currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0);
+                                currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)), 0);
                             }
                             
                             console.log("⏱️ [Timer] calculatedSegIdx:", calculatedSegIdx, "currentSegDuration:", currentSegDuration, "totalSegs:", allMySegs.length, "shouldMerge:", shouldMerge);
@@ -1319,7 +1329,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // sau đó dịch ngược thời gian bắt đầu ảo (synthesizedStartMs) để bộ đếm lùi tuyệt đối chạy đúng.
                 
                 // 🔥 Smart Merge: Tính tổng duration
-                currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0);
+                currentSegDuration = allMySegs.reduce((sum: number, s: any) => sum + ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)), 0);
                 
                 // Nếu chưa có actualStartTime thật sự từ DB, giữ nguyên để GUARD chặn lại
                 if (!allMySegs[0].actualStartTime) {
@@ -1328,7 +1338,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     // Smart Merge Sequential Time Allocation
                     let currentVirtualEndMs = parseTimeHelper(allMySegs[0].actualStartTime);
                     for (const s of allMySegs) {
-                        const durMs = (Number(s.duration) || 60) * 60 * 1000;
+                        const durMs = ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)) * 60 * 1000;
                         const dispatchTimeMs = parseTimeHelper(s.startTime || s.actualStartTime || tStart);
                         const segmentStartMs = Math.max(currentVirtualEndMs, dispatchTimeMs);
                         currentVirtualEndMs = segmentStartMs + durMs;
@@ -1340,7 +1350,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } else {
                 // Normal: duration chặng hiện tại
                 const currentSeg = allMySegs[calculatedSegIdx] || allMySegs[0] || {};
-                currentSegDuration = Number(currentSeg.duration) || assignedItem?.duration || 60;
+                currentSegDuration = (currentSeg.duration != null && currentSeg.duration !== '' ? Number(currentSeg.duration) : (assignedItem?.duration != null ? Number(assignedItem.duration) : 60));
                 activeSegStartTime = currentSeg.actualStartTime || tStart;
             }
 
@@ -1588,8 +1598,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const activeIdx = allMySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
             const currentActiveIdx = activeIdx >= 0 ? activeIdx : 0;
             const initDuration = isMerge
-                ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
-                : (allMySegs.length > 0 ? (Number(allMySegs[currentActiveIdx].duration) || 60) : (assignedItem?.duration || 60));
+                ? allMySegs.reduce((sum: number, s: any) => sum + ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)), 0)
+                : (allMySegs.length > 0 ? ((allMySegs[currentActiveIdx].duration != null && allMySegs[currentActiveIdx].duration !== '' ? Number(allMySegs[currentActiveIdx].duration) : 60)) : ((assignedItem?.duration != null && assignedItem?.duration !== '' ? Number(assignedItem.duration) : 60)));
             
             setTimeRemaining(initDuration * 60);
             const parsed = Number(settings.ktv_setup_duration_minutes);
@@ -1669,8 +1679,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const activeIdx = allMySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 const currentActiveIdx = activeIdx >= 0 ? activeIdx : 0;
                 const initDuration = shouldMerge
-                    ? allMySegs.reduce((sum: number, s: any) => sum + (Number(s.duration) || 60), 0)
-                    : (allMySegs.length > 0 ? (Number(allMySegs[currentActiveIdx].duration) || 60) : (booking?.assignedItem?.duration || 60));
+                    ? allMySegs.reduce((sum: number, s: any) => sum + ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)), 0)
+                    : (allMySegs.length > 0 ? ((allMySegs[currentActiveIdx].duration != null && allMySegs[currentActiveIdx].duration !== '' ? Number(allMySegs[currentActiveIdx].duration) : 60)) : (booking?.(assignedItem?.duration != null && assignedItem?.duration !== '' ? Number(assignedItem.duration) : 60)));
                 timerStartMsRef.current = Date.now() + timeOffsetRef.current;
                 timerTotalSecsRef.current = initDuration * 60;
                 // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)
@@ -1744,7 +1754,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                 // Reset timer cho chặng mới
                 const nextSeg = allMySegs[nextIdx];
-                const nextDuration = Number(nextSeg?.duration) || 60;
+                const nextDuration = (nextSeg?.duration != null && nextSeg?.duration !== '' ? Number(nextSeg.duration) : 60);
                 setTimeRemaining(nextDuration * 60);
                 console.log(`⏱️ [AutoAdvance] Timer reset to ${nextDuration} minutes for segment ${nextIdx}`);
 
@@ -1910,87 +1920,19 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 typeRawMilestones = settings.ktv_commission_milestones_TYPE_A || baseRawMilestones;
             }
 
-            const parseMilestones = (raw: any) => {
-                if (typeof raw === 'string') {
-                    try { return JSON.parse(raw); } catch (e) {}
-                } else if (raw && typeof raw === 'object') {
-                    return raw;
-                }
-                return { '1': 2000, '30': 50000, '45': 75000, '60': 100000, '70': 115000, '90': 150000, '120': 200000, '180': 300000, '300': 500000 };
-            };
-
-            const baseMilestones = parseMilestones(baseRawMilestones);
-            const typeMilestones = parseMilestones(typeRawMilestones);
-
-            let typeRate60 = Number(settings[`ktv_commission_per_60min_${workType}`] || settings[`ktv_commission_per_60min_${workType.toLowerCase()}`] || settings.ktv_commission_per_60min);
-            if (isNaN(typeRate60) || typeRate60 <= 0) typeRate60 = 100000;
-
-            const calculateCommissionForMins = (mins: number, isPremiumService: boolean) => {
-                if (isNaN(mins) || mins <= 0) return 0;
-                
-                let activeMilestones = baseMilestones;
-                let activeRate60 = baseRate60;
-
-                if (workType === 'TYPE_B') {
-                    // Loại B: CHỈ CÓ mã NHP và NHT mới được tính rate TYPE_B, còn lại (NHS...) tính 100k
-                    if (isPremiumService) {
-                        activeMilestones = typeMilestones;
-                        activeRate60 = typeRate60;
-                    }
-                } else {
-                    activeMilestones = typeMilestones;
-                    activeRate60 = typeRate60;
-                }
-
-                const minsStr = String(mins);
-                if (activeMilestones[minsStr] != null) {
-                    return Number(activeMilestones[minsStr]);
-                } else {
-                    return Math.round(((mins / 60) * activeRate60) / 1000) * 1000;
-                }
-            };
-
-            // Tính tiền cho TỪNG dịch vụ riêng biệt rồi cộng lại (Thay vì cộng dồn phút rồi mới tính tiền)
+            // Dùng thư viện chung KtvCommissionService để đảm bảo nguyên tắc tính tiền không bị lệch
+            const workType = ktvWorkTypes[ktvId] || 'TYPE_A';
+            const commConfigs = settings?.commission || {};
+            
             let totalCommission = 0;
             let totalMins = 0; // Vẫn tính totalMins để log
             
             for (const item of serviceItems) {
-                let itemMins = 0;
-                if (item?.segments) {
-                    try {
-                        const segs = typeof item.segments === 'string' 
-                            ? JSON.parse(item.segments) 
-                            : (item.segments || []);
-                        const mySegs = segs.filter((seg: any) => 
-                                            ktvMatchesSeg(seg.ktvId, ktvId)
-                        );
-                        if (mySegs.length > 0) {
-                            itemMins = mySegs.reduce((sum: number, seg: any) => {
-                                const realMins = getMinsFromTimes(seg.startTime, seg.endTime);
-                                if (realMins > 0) return sum + realMins;
-                                const dur = Number(seg.duration);
-                                return sum + (isNaN(dur) ? 0 : dur);
-                            }, 0);
-                        } else {
-                            const dur = Number(item.duration);
-                            itemMins = isNaN(dur) || dur <= 0 ? 60 : dur;
-                        }
-                    } catch { 
-                        const dur = Number(item.duration);
-                        itemMins = isNaN(dur) || dur <= 0 ? 60 : dur; 
-                    }
-                } else {
-                    const dur = Number(item?.duration);
-                    itemMins = isNaN(dur) || dur <= 0 ? 60 : dur;
-                }
-                
-                itemMins = Number(itemMins);
-                if (isNaN(itemMins) || itemMins <= 0) itemMins = 60; // fallback per item
-                
+                const itemMins = KtvCommissionService.calculateItemDuration(item, ktvId, 60);
                 totalMins += itemMins;
-                const sId = String(item.serviceId || item.service_id || '').toUpperCase();
-                const isPremiumService = sId.startsWith('NHP') || sId.startsWith('NHT');
-                const comm = calculateCommissionForMins(itemMins, isPremiumService);
+                
+                const sId = String(item.serviceId || item.service_id || '');
+                const comm = KtvCommissionService.calcCommission(itemMins, commConfigs, workType, sId);
                 totalCommission += (isNaN(comm) ? 0 : comm);
             }
             
@@ -2300,6 +2242,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         settings,
         walletBalance,
         walletTimeline,
+        notifications,
+        unreadCount,
 
         kpiData,
         disciplineStatus,

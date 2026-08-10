@@ -21,6 +21,13 @@ export interface HistoryRecord {
   handover_status?: string;
   handover_comment?: string | null;
   ktv_comment?: string | null;
+  // Các field cho bảng KTVDisciplineLedger
+  type?: 'BOOKING' | 'DISCIPLINE';
+  rule_code?: string;
+  points_deducted?: number;
+  reason?: string;
+  images?: any;
+  booking_id?: string;
 }
 
 export type DatePreset = 'today' | 'yesterday' | '7days' | 'custom';
@@ -35,18 +42,47 @@ export const useKTVHistory = () => {
 
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [summary, setSummary] = useState({ totalCommission: 0, totalTip: 0, totalOrders: 0, totalBonus: 0 });
+  const [summary, setSummary] = useState({ totalCommission: 0, totalTip: 0, totalOrders: 0, totalBonus: 0, disciplinePoints: 100 });
 
   const fetchHistory = useCallback(async (from: string, to: string) => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
       const result = await apiClient.get<any>(API.KTV.HISTORY(user.id, from, to));
-      setHistory(result.data || []);
-      const totalCommission = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.commission || 0), 0);
-      const totalTip        = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.tip || 0), 0);
-      const totalBonus      = (result.data as HistoryRecord[] || []).reduce((s, r) => s + (r.bonusPoints || 0), 0);
-      setSummary({ totalCommission, totalTip, totalOrders: (result.data || []).length, totalBonus });
+      
+      const resData = result.data || {};
+      const bookings = Array.isArray(resData) ? resData : (resData.bookings || []);
+      const disciplines = resData.disciplines || [];
+      const disciplinePoints = resData.disciplinePoints ?? 100;
+
+      // Chuẩn hoá bookings
+      const bkList = bookings.map((b: any) => ({ ...b, type: 'BOOKING' as const }));
+      
+      // Chuẩn hoá disciplines
+      const dcList = disciplines.map((d: any) => ({
+        id: d.id,
+        type: 'DISCIPLINE' as const,
+        createdAt: d.created_at,
+        status: d.status || 'APPROVED',
+        rule_code: d.rule_code,
+        points_deducted: d.points_deducted,
+        reason: d.reason,
+        images: d.images,
+        booking_id: d.booking_id,
+        // Điền rác cho đúng interface
+        billCode: d.booking_id || 'PHẠT LỖI',
+        tip: 0, commission: 0, duration: 0, bonusPoints: 0, serviceName: '', rating: null
+      }));
+
+      const combined = [...bkList, ...dcList].sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      setHistory(combined);
+      const totalCommission = bkList.reduce((s: number, r: any) => s + (r.commission || 0), 0);
+      const totalTip        = bkList.reduce((s: number, r: any) => s + (r.tip || 0), 0);
+      const totalBonus      = bkList.reduce((s: number, r: any) => s + (r.bonusPoints || 0), 0);
+      setSummary({ totalCommission, totalTip, totalOrders: bkList.length, totalBonus, disciplinePoints });
     } catch (err: any) {
       console.error('[KTVHistory]', err.message || err);
     } finally {
