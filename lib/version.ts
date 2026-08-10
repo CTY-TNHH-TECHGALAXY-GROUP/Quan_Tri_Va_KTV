@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.80';
-export const LAST_UPDATE = 'Hoàn thiện luồng Lịch sử, Đánh giá và Chuông thông báo KTV';
+export const APP_VERSION = '1.2.81';
+export const LAST_UPDATE = 'Fix lỗi điểm danh 2 lần làm tăng thứ tự hàng đợi KTV';

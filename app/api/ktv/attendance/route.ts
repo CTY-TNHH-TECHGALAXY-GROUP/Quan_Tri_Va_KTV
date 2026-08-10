@@ -325,38 +325,58 @@ export async function POST(request: Request) {
 
                     if (staffCode && userData.role === 'TECHNICIAN') {
                         // 🔹 UPSERT into TurnQueue (using staffCode)
-                        const { data: maxPosRow } = await supabase
+                        // 🔹 Check if KTV is already in TurnQueue today
+                        const { data: existingTurn } = await supabase
                             .from('TurnQueue')
-                            .select('queue_position')
+                            .select('id, status')
+                            .eq('employee_id', staffCode)
                             .eq('date', today)
-                            .order('queue_position', { ascending: false })
-                            .limit(1)
                             .maybeSingle();
 
-                        const { data: maxCheckInRow } = await supabase
-                            .from('TurnQueue')
-                            .select('check_in_order')
-                            .eq('date', today)
-                            .order('check_in_order', { ascending: false })
-                            .limit(1)
-                            .maybeSingle();
+                        if (existingTurn) {
+                            // Đã tồn tại trong hàng đợi
+                            // Nếu đang 'off' (vd: xin nghỉ đột xuất rồi quay lại điểm danh) thì đổi thành waiting
+                            if (existingTurn.status === 'off') {
+                                await supabase
+                                    .from('TurnQueue')
+                                    .update({ status: 'waiting' })
+                                    .eq('id', existingTurn.id);
+                            }
+                        } else {
+                            // Chưa có, cấp vị trí mới
+                            const { data: maxPosRow } = await supabase
+                                .from('TurnQueue')
+                                .select('queue_position')
+                                .eq('date', today)
+                                .order('queue_position', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
 
-                        const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
-                        const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
+                            const { data: maxCheckInRow } = await supabase
+                                .from('TurnQueue')
+                                .select('check_in_order')
+                                .eq('date', today)
+                                .order('check_in_order', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
 
-                        const { error: turnQueueError } = await supabase
-                            .from('TurnQueue')
-                            .upsert({
-                                employee_id: staffCode,
-                                date: today,
-                                queue_position: nextPosition,
-                                check_in_order: nextCheckIn,
-                                status: 'waiting',
-                                turns_completed: 0,
-                            }, { onConflict: 'employee_id,date' });
+                            const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
+                            const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
 
-                        if (turnQueueError) {
-                            console.error('❌ [TurnQueue Upsert Error]:', turnQueueError);
+                            const { error: turnQueueError } = await supabase
+                                .from('TurnQueue')
+                                .insert({
+                                    employee_id: staffCode,
+                                    date: today,
+                                    queue_position: nextPosition,
+                                    check_in_order: nextCheckIn,
+                                    status: 'waiting',
+                                    turns_completed: 0,
+                                });
+
+                            if (turnQueueError) {
+                                console.error('❌ [TurnQueue Insert Error]:', turnQueueError);
+                            }
                         }
                     }
                 } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
