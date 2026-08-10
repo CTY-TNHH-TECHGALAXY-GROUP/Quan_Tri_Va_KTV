@@ -222,7 +222,7 @@ export class HandoverService {
             .from('BookingItems')
             .select(`
                 id, bookingId, roomId, serviceCode, handover_status, handover_skipped,
-                Bookings!BookingItems_bookingId_fkey(billCode)
+                Bookings(billCode)
             `)
             .or('handover_skipped.eq.true,handover_status.eq.REJECTED')
             .in('handover_status', ['SKIPPED', 'REJECTED'])
@@ -249,7 +249,7 @@ export class HandoverService {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings!BookingItems_bookingId_fkey(billCode)')
+            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings(billCode)')
             .eq('id', itemId)
             .single();
 
@@ -333,13 +333,13 @@ export class HandoverService {
                 // Create WalletAdjustment record (negative amount = deduction)
                 const techCodes: string[] = item.technicianCodes || [];
                 for (const tc of techCodes) {
-                    await supabase.from('KTVDailyLedger').insert({
-                        ktvCode: tc,
-                        date: new Date().toISOString().split('T')[0],
-                        type: 'DEDUCTION',
+                    await supabase.from('WalletAdjustments').insert({
+                        staff_id: tc,
                         amount: -deductAmount,
-                        note: `Phạt bàn giao: ${reason} (Đơn #${(item as any).Bookings?.billCode || ''})`,
-                        bookingId: item.bookingId,
+                        type: 'PENALTY',
+                        wallet_type: 'MAIN',
+                        reason: `Phạt bàn giao: ${reason} (Đơn #${(item as any).Bookings?.billCode || ''})`,
+                        created_by: 'System'
                     });
 
                     await createNotification({

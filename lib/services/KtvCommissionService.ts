@@ -240,7 +240,20 @@ export class KtvCommissionService {
             return mySegs.reduce((sum: number, seg: any) => {
                 if (seg.customCommissionDuration) return sum + Number(seg.customCommissionDuration);
                 const baseMins = Number(seg.duration) || fallbackDuration || 60;
-                const realMins = this.getMinsFromTimes(seg.startTime, seg.endTime);
+                
+                let realMins = 0;
+                if (seg.actualStartTime && seg.actualEndTime) {
+                    const t1 = new Date(seg.actualStartTime).getTime();
+                    const t2 = new Date(seg.actualEndTime).getTime();
+                    if (!isNaN(t1) && !isNaN(t2)) {
+                        realMins = Math.round((t2 - t1) / 60000);
+                    }
+                }
+                
+                if (realMins <= 0) {
+                    realMins = this.getMinsFromTimes(seg.startTime, seg.endTime);
+                }
+
                 if (realMins > 0) return sum + Math.max(realMins, baseMins);
                 return sum + baseMins;
             }, 0);

@@ -64,18 +64,45 @@ export class BookingModificationService {
             const email = data.customerEmail || '';
 
             // Try to find existing Customer by real phone or email
-            if (!isDummyPhone(phone)) {
-                const { data: existing } = await supabase.from('Customers').select('id, email').eq('phone', phone).maybeSingle();
-                if (existing) {
-                    customerId = existing.id;
-                    if (isDummyEmail(existing.email || '') && !isDummyEmail(email)) {
-                        await supabase.from('Customers').update({ email: email }).eq('id', customerId);
-                    }
+            let existingCustomer: any = null;
+
+            if (!isDummyPhone(phone) && !phone.startsWith('GUEST-')) {
+                const { data: existing } = await supabase.from('Customers').select('id, phone, email, nationality').eq('phone', phone).maybeSingle();
+                if (existing) existingCustomer = existing;
+            }
+
+            // Nếu không tìm thấy bằng SĐT nhưng có email thật, tìm tiếp bằng email
+            if (!existingCustomer && !isDummyEmail(email)) {
+                const { data: existing } = await supabase.from('Customers').select('id, phone, email, nationality').eq('email', email).maybeSingle();
+                if (existing) existingCustomer = existing;
+            }
+
+            if (existingCustomer) {
+                customerId = existingCustomer.id;
+                // Data Enrichment: Cập nhật thông tin còn thiếu (Lấp đầy thông tin)
+                const updates: any = {};
+                
+                const isExistingPhoneDummy = isDummyPhone(existingCustomer.phone) || (existingCustomer.phone || '').startsWith('GUEST-');
+                const isNewPhoneReal = !isDummyPhone(phone) && !phone.startsWith('GUEST-');
+                
+                // Cập nhật SĐT thật nếu DB đang lưu SĐT ảo
+                if (isExistingPhoneDummy && isNewPhoneReal) {
+                    updates.phone = phone;
                 }
-            } else if (!isDummyEmail(email)) {
-                const { data: existing } = await supabase.from('Customers').select('id, email').eq('email', email).maybeSingle();
-                if (existing) {
-                    customerId = existing.id;
+                
+                // Cập nhật Email thật nếu DB đang lưu email ảo
+                if (isDummyEmail(existingCustomer.email || '') && !isDummyEmail(email)) {
+                    updates.email = email;
+                }
+                
+                // Cập nhật quốc tịch nếu DB đang trống
+                if (!existingCustomer.nationality && data.nationality) {
+                    updates.nationality = data.nationality;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    updates.updatedAt = new Date().toISOString();
+                    await supabase.from('Customers').update(updates).eq('id', customerId);
                 }
             }
 

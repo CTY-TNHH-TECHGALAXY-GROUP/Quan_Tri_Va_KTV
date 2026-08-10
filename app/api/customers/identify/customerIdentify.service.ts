@@ -33,29 +33,36 @@ export class CustomerIdentifyService {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin not initialized");
 
-        // 1. Tra cứu thông tin Khách hàng
-        let customerQuery = supabase.from('Customers').select('fullName, notes, phone, email');
-        
         const validPhone = phone && !isDummyPhone(phone) ? phone : null;
         const validEmail = email && !isDummyEmail(email) ? email : null;
 
+        // 1. Tra cứu thông tin Khách hàng
+        let customerData: any = null;
+        let customerError: any = null;
+
         if (validPhone) {
-            customerQuery = customerQuery.eq('phone', validPhone);
-        } else if (validEmail) {
-            customerQuery = customerQuery.eq('email', validEmail);
-        } else {
-            // Nếu cả phone và email đều là dummy, không match bất kỳ KH nào
-            customerQuery = customerQuery.eq('id', 'DO_NOT_MATCH_ANYTHING');
+            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email').eq('phone', validPhone).maybeSingle();
+            customerData = data;
+            customerError = error;
         }
 
-        const { data: customerData, error: customerError } = await customerQuery.maybeSingle();
+        if (!customerData && validEmail) {
+            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email').eq('email', validEmail).maybeSingle();
+            customerData = data;
+            customerError = error;
+        }
+
         if (customerError) {
             console.error('Error fetching customer:', customerError.message, customerError.code);
         }
 
         // 2. Tra cứu lịch sử Bookings
         let bookingQuery = supabase.from('Bookings').select('id');
-        if (validPhone) {
+        
+        if (customerData) {
+            // Nếu đã tìm thấy khách, dùng ID của khách để tìm toàn bộ lịch sử
+            bookingQuery = bookingQuery.eq('customerId', customerData.id);
+        } else if (validPhone) {
             bookingQuery = bookingQuery.eq('customerPhone', validPhone);
         } else if (validEmail) {
             bookingQuery = bookingQuery.eq('customerEmail', validEmail);
