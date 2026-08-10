@@ -1680,7 +1680,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const currentActiveIdx = activeIdx >= 0 ? activeIdx : 0;
                 const initDuration = shouldMerge
                     ? allMySegs.reduce((sum: number, s: any) => sum + ((s.duration != null && s.duration !== '' ? Number(s.duration) : 60)), 0)
-                    : (allMySegs.length > 0 ? ((allMySegs[currentActiveIdx].duration != null && allMySegs[currentActiveIdx].duration !== '' ? Number(allMySegs[currentActiveIdx].duration) : 60)) : (booking?.(assignedItem?.duration != null && assignedItem?.duration !== '' ? Number(assignedItem.duration) : 60)));
+                    : (allMySegs.length > 0 ? ((allMySegs[currentActiveIdx].duration != null && allMySegs[currentActiveIdx].duration !== '' ? Number(allMySegs[currentActiveIdx].duration) : 60)) : 60);
                 timerStartMsRef.current = Date.now() + timeOffsetRef.current;
                 timerTotalSecsRef.current = initDuration * 60;
                 // ✅ Set timeRemaining ngay để timer hiển thị đúng duration (nhất là merged 2-DV = 10 phút)
@@ -1921,7 +1921,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             // Dùng thư viện chung KtvCommissionService để đảm bảo nguyên tắc tính tiền không bị lệch
-            const workType = ktvWorkTypes[ktvId] || 'TYPE_A';
             const commConfigs = settings?.commission || {};
             
             let totalCommission = 0;
@@ -1939,7 +1938,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // Fallback nếu không có item nào
             if (serviceItems.length === 0) {
                 totalMins = 60;
-                totalCommission = calculateCommissionForMins(60, false);
+                totalCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
             
             if (isNaN(totalCommission)) totalCommission = 0;

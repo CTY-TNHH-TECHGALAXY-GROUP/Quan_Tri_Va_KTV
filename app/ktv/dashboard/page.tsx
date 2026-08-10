@@ -8,7 +8,8 @@ import {
   MapPin, Clock, X, MessageSquare, AlertCircle, FileText, Gift,
   CheckSquare, Check, XCircle, AlertTriangle, CheckCircle, ShieldAlert, Dumbbell, Target, QrCode, ScanLine, Search, Trash2, Camera, LogOut, FileImage, UploadCloud, FileDown,
   Info, LogIn, ChevronLeft, CalendarClock, History, Calendar, Heart, Shield, Star, Crown, Lock, ChevronDown, CheckIcon, MapPinIcon, LayoutDashboard, CalendarCheck, FileOutput, ShieldCheck,
-  Zap, MessageCircle, XOctagon, Hand, ThumbsUp, Map, Navigation2, RefreshCw, Smartphone, MonitorPlay, Wifi, Coffee, Sparkles, Plus, Wallet, FilePlus, ExternalLink, Link as LinkIcon, HandHeart, CheckCheck, HandMetal, Smile, Image as ImageIcon
+  Zap, MessageCircle, XOctagon, Hand, ThumbsUp, Map, Navigation2, RefreshCw, Smartphone, MonitorPlay, Wifi, Coffee, Sparkles, Plus, Wallet, FilePlus, ExternalLink, Link as LinkIcon, HandHeart, CheckCheck, HandMetal, Smile, Image as ImageIcon,
+  ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Users, Loader2, ChevronUp, Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
@@ -18,7 +19,7 @@ import { useKTVDashboard } from './KTVDashboard.logic';
 import { ROOM_ISSUE_OPTIONS } from './KTVDashboard.logic';
 import { useNotifications } from '@/components/NotificationProvider';
 import { apiClient } from '@/lib/apiClient';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabase';
 import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
@@ -65,7 +66,7 @@ const formatMultiServiceNames = (segments: any[]) => {
     });
     
     const parts: string[] = [];
-    groups.forEach((serviceSet, roomName) => {
+    groups.forEach((serviceSet: Set<string>, roomName: string) => {
         const servicesStr = Array.from(serviceSet).join(' - ');
         parts.push(roomName ? `${servicesStr} ${roomName}` : servicesStr);
     });
