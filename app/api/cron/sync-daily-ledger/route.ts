@@ -87,9 +87,13 @@ async function processLedgerSync(targetDateStr: string) {
         .lte('bookingDate', endTimeStr)
         .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK']);
 
-    const { data: services } = await supabase.from('Services').select('id, duration');
+    const { data: services } = await supabase.from('Services').select('id, duration, is_utility_service');
     const svcDurationMap: Record<string, number> = {};
-    (services || []).forEach(s => { svcDurationMap[String(s.id)] = s.duration || 60; });
+    const svcUtilityMap: Record<string, boolean> = {};
+    (services || []).forEach(s => { 
+        svcDurationMap[String(s.id)] = s.duration || 60; 
+        svcUtilityMap[String(s.id)] = s.is_utility_service === true;
+    });
 
     // 4. Fetch Adjustments & Withdrawals for the target date
     const { data: adjustments } = await supabase
@@ -159,7 +163,9 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
+                const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                const bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
                 total_bonus += bookingBonus;
             }
         }

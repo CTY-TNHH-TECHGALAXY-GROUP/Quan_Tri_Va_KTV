@@ -108,6 +108,10 @@ export async function GET(request: Request) {
 
         const bonusConfig = { s1Bonus, s2Bonus, s3Bonus, enableBonus };
 
+        const { data: services } = await supabase.from('Services').select('id, is_utility_service');
+        const svcUtilityMap: Record<string, boolean> = {};
+        (services || []).forEach(s => { svcUtilityMap[String(s.id)] = s.is_utility_service === true; });
+
         // 5. Fetch Realtime Bookings for today
         const { data: bookings } = await supabase
             .from('Bookings')
@@ -115,8 +119,8 @@ export async function GET(request: Request) {
                 id, timeStart, timeEnd, status, technicianCode, rating, billCode, guestCount,
                 BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
             `)
-            .gte('timeStart', `${todayStr}T00:00:00+07:00`)
-            .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
+            .gte('bookingDate', todayStr)
+            .in('status', ['DONE', 'COMPLETED', 'FEEDBACK', 'CLEANING']);
 
         // 6. Calculate bonuses from valid bookings
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
@@ -133,7 +137,10 @@ export async function GET(request: Request) {
 
             if (relevantItems.length === 0) continue;
             
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap);
+            const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+            const bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+            
+            const bonusPts = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap);
             if (bonusPts > 0) {
                 // Determine maxKtvRating to show in desc
                 let maxKtvRating = 0;

@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.81';
-export const LAST_UPDATE = 'Fix lỗi điểm danh 2 lần làm tăng thứ tự hàng đợi KTV';
+export const APP_VERSION = '1.2.84';
+export const LAST_UPDATE = 'Đồng bộ logic lọc dịch vụ tiện ích ở API Ví để khớp 100% với Lịch sử KTV';
