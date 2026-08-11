@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.2.82";
-export const LAST_UPDATE = "Reset thông báo KTV theo ngày (chỉ hiển thị thông báo trong ngày hôm nay)";
+export const APP_VERSION = '1.2.87';
+export const LAST_UPDATE = 'Tách riêng 2 công thức (Trước mùng 6 và Sau mùng 6)';

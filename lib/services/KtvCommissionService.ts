@@ -274,7 +274,8 @@ export class KtvCommissionService {
         shiftsData: any[], 
         bonusConfig: BonusConfig,
         staffWorkTypeMap: Record<string, string> = {},
-        staffBonusMap: Record<string, boolean> = {}
+        staffBonusMap: Record<string, boolean> = {},
+        isNewRule: boolean = true
     ): number {
         if (!bonusConfig.enableBonus) return 0;
         // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
@@ -335,13 +336,11 @@ export class KtvCommissionService {
         // Must be >= 4 to receive bonus
         if (maxKtvRating < 4) return 0;
 
-        // 2. Calculate working duration for THIS KTV specifically
-        let myTotalDuration = 0;
+        // 2 & 3. Calculate points per item and sum them up
+        let totalDurationForBonus = 0;
+        
         for (const item of (booking.BookingItems || [])) {
-            let segs: any[] = [];
-            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
-            const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
-            
+            // Kiểm tra KTV có tham gia item này không
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
                 isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
@@ -350,14 +349,16 @@ export class KtvCommissionService {
                 isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
             }
 
-            if (mySegs.length > 0) {
-                myTotalDuration += mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
-            } else if (isTechInvolved) {
-                myTotalDuration += 60; // Fallback
-            }
+            if (!isTechInvolved) continue;
+
+            // Tính tổng thời lượng của KTV này
+            const fallbackMins = Number(item.duration) || 60;
+            const itemDuration = this.calculateItemDuration(item, techCode, fallbackMins);
+            totalDurationForBonus += itemDuration;
         }
 
-        // 3. Determine Shift Bonus Points
+        // ĐIỀU LUẬT TÍNH ĐIỂM:
+        // Cả trước và sau 06/08 đều áp dụng công thức: Base * (Guest / KTV)
         const bookingDateStr = booking.timeStart ? booking.timeStart.slice(0, 10) : todayStr;
         let currentShift = 'SHIFT_1';
         const ktvShifts = (shiftsData || []).filter(s => s.employeeId === techCode);
@@ -367,26 +368,32 @@ export class KtvCommissionService {
                 currentShift = s.shiftType;
             }
         }
-
+        
         let adjustedBasePoints = bonusConfig.s1Bonus;
         if (currentShift === 'SHIFT_2') adjustedBasePoints = bonusConfig.s2Bonus;
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
 
-        // 4. Calculate points based on guestCount and total unique KTVs in the booking
         const totalUniqueKTVs = validUniqueKTVs > 0 ? validUniqueKTVs : 1;
         const guestCount = booking.guestCount || 1;
         
-        let calculatedPoints = adjustedBasePoints * (guestCount / totalUniqueKTVs);
+        let calculatedPoints = 0;
 
-        // Cap points to max adjustedBasePoints (Max ứng 1 Khách chỉ là Base)
-        calculatedPoints = Math.min(calculatedPoints, adjustedBasePoints);
+        if (isNewRule) {
+            // TỪ NGÀY 06/08 TRỞ ĐI: Công thức mới (Tính theo số Khách)
+            calculatedPoints = adjustedBasePoints * (guestCount / totalUniqueKTVs);
+            
+            // LUẬT MỚI: Dưới 60 phút thì mất trắng (0 điểm)
+            if (totalDurationForBonus < 60) {
+                return 0;
+            }
+        } else {
+            // TRƯỚC NGÀY 06/08: Công thức cũ (1 đơn chỉ có BasePoints, chia cho KTV)
+            calculatedPoints = adjustedBasePoints / totalUniqueKTVs;
 
-        // Penalty for short duration (Applied from 2026-08-06 onwards)
-        const bookingDate = new Date(booking.timeStart || booking.createdAt || todayStr);
-        const ruleStartDate = new Date('2026-08-06T00:00:00+07:00'); // Assuming timezone is VN
-        
-        if (myTotalDuration < 60 && bookingDate >= ruleStartDate) {
-            return 0;
+            // LUẬT CŨ: Dưới 60 phút thì bị chia đôi điểm
+            if (totalDurationForBonus < 60) {
+                calculatedPoints = calculatedPoints / 2;
+            }
         }
 
         return Math.floor(calculatedPoints);
