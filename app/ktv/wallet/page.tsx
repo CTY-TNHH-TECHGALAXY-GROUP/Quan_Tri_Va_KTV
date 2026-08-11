@@ -323,7 +323,7 @@ export default function KTVWalletPage() {
 
                                             <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
                                                 {group.items.map((item: any, idx: number) => {
-                                                    const isPositive = activeTab === 'BONUS' ? Number(item.points) > 0 : (activeTab === 'TICH_LUY' ? item.type === 'DEPOSIT' : Number(item.amount) >= 0);
+                                                    const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : (activeTab === 'TICH_LUY' ? item.type === 'DEPOSIT' : Number(item.amount) >= 0);
                                                     const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : (activeTab === 'TICH_LUY' ? item.type === 'WITHDRAW' : item.type === 'WITHDRAWAL');
                                                     const isPending = item.status === 'PENDING';
                                                     const isRejected = item.status === 'REJECTED';
@@ -366,6 +366,11 @@ export default function KTVWalletPage() {
                                                                         {activeTab === 'TUA' && item.type !== 'TIP' && !isRejected && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
                                                                                 Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()}đ</span>
+                                                                            </span>
+                                                                        )}
+                                                                        {activeTab === 'BONUS' && !isRejected && (
+                                                                            <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
+                                                                                Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()} điểm</span>
                                                                             </span>
                                                                         )}
                                                                     </div>
