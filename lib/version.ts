@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.94';
-export const LAST_UPDATE = 'Sửa hiển thị trạng thái lịch sử KTV theo BookingItem thay vì Booking cha';
+export const APP_VERSION = '1.2.95';
+export const LAST_UPDATE = 'Triệt tiêu kẹt tiền tua: tất cả API/Cron xét theo BookingItem status, không phụ thuộc Booking cha';

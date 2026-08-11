@@ -85,7 +85,7 @@ async function processLedgerSync(targetDateStr: string) {
         `)
         .gte('bookingDate', startTimeStr)
         .lte('bookingDate', endTimeStr)
-        .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK']);
+        .not('status', 'in', '("CANCELLED","NEW")');
 
     const { data: services } = await supabase.from('Services').select('id, duration, is_utility');
     const svcDurationMap: Record<string, number> = {};
@@ -130,9 +130,12 @@ async function processLedgerSync(targetDateStr: string) {
         let total_penalty = 0; // Penalty now handled via WalletAdjustments (attendance API)
         
         for (const b of validBookings) {
+            // 🧠 Filter theo ITEM STATUS thay vì Booking cha — tránh kẹt tiền khi Booking cha chưa cập nhật
+            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
             const relevantItems = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes && Array.isArray(i.technicianCodes) &&
-                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
+                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase())) &&
+                DONE_STATUSES.includes(i.status)
             );
 
             if (relevantItems.length === 0) continue;

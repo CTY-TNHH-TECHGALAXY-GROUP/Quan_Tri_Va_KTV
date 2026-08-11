@@ -97,7 +97,7 @@ export async function GET(request: Request) {
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
                 .gte('timeStart', realtimeStartStr)
-                .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])
+                .not('status', 'in', '("CANCELLED","NEW")')
                 .range(page * pageSize, (page + 1) * pageSize - 1);
                 
             if (error) {
@@ -121,10 +121,13 @@ export async function GET(request: Request) {
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
 
         for (const b of validBookings) {
+            // 🧠 Filter theo ITEM STATUS thay vì Booking cha — triệt tiêu kẹt tiền
+            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
             const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes &&
                 Array.isArray(i.technicianCodes) &&
-                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
+                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase())) &&
+                DONE_STATUSES.includes(i.status)
             );
 
             let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
