@@ -375,7 +375,24 @@ export class BookingModificationService {
             const newTotalAmount = Math.max(0, (Number(booking.totalAmount) || 0) - itemTotal);
             const vnTimeStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
             
-            await supabase.from('Bookings').update({ totalAmount: newTotalAmount, updatedAt: vnTimeStr }).eq('id', bookingId);
+            // Recompute booking status based on remaining items
+            const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+            const { data: refreshedItems } = await supabase.from('BookingItems').select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
+            
+            let newStatus = booking.status;
+            if (refreshedItems && refreshedItems.length > 0) {
+                const validItems = refreshedItems.filter((i: any) => i.Services?.is_utility !== true && i.serviceId !== 'NHS0900');
+                const finalItems = validItems.length > 0 ? validItems : refreshedItems;
+                newStatus = recomputeBookingStatus(finalItems.map((i: any) => i.status));
+            } else if (refreshedItems && refreshedItems.length === 0) {
+                newStatus = 'CANCELLED';
+            }
+
+            await supabase.from('Bookings').update({ 
+                totalAmount: newTotalAmount, 
+                status: newStatus,
+                updatedAt: vnTimeStr 
+            }).eq('id', bookingId);
 
             const { data: turnsAffected } = await supabase
                 .from('TurnQueue')

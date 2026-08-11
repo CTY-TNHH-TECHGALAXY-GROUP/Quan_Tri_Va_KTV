@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.90';
-export const LAST_UPDATE = 'Khắc phục lỗi KTV được nhận vượt mức 20đ khi làm chung đơn với KTV loại C';
+export const APP_VERSION = '1.2.92';
+export const LAST_UPDATE = 'Cập nhật logic tự động chuyển trạng thái đơn hàng sang Xong khi xoá dịch vụ cuối cùng còn lại';
