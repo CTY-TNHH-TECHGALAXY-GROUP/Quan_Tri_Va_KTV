@@ -166,12 +166,12 @@ BEGIN
 
     -- 2. Process TurnLedger (Commission)
     FOR v_turn IN 
-        SELECT DISTINCT booking_id, counted_at, id as turn_id
-        FROM "TurnLedger" 
-        WHERE employee_id = p_staff_id
-          AND counted_at >= '2026-05-04'::date
-          AND EXTRACT(MONTH FROM counted_at) = p_month
-          AND EXTRACT(YEAR FROM counted_at) = p_year
+        SELECT DISTINCT t.booking_id, t.counted_at, t.id as turn_id
+        FROM "TurnLedger" t
+        WHERE t.employee_id = p_staff_id
+          AND t.counted_at >= '2026-05-04'::date
+          AND EXTRACT(MONTH FROM t.counted_at) = p_month
+          AND EXTRACT(YEAR FROM t.counted_at) = p_year
     LOOP
         v_ktv_duration := 0;
 
@@ -230,14 +230,14 @@ BEGIN
 
     -- 3. Process Tips
     FOR v_turn IN
-        SELECT id, tip, "timeEnd", "bookingId", "technicianCodes"
-        FROM "BookingItems"
-        WHERE p_staff_id = ANY("technicianCodes")
-          AND status = 'DONE'
-          AND tip > 0
-          AND "timeEnd" >= '2026-05-04'::date
-          AND EXTRACT(MONTH FROM "timeEnd") = p_month
-          AND EXTRACT(YEAR FROM "timeEnd") = p_year
+        SELECT b.id, b.tip, b."timeEnd", b."bookingId", b."technicianCodes"
+        FROM "BookingItems" b
+        WHERE p_staff_id = ANY(b."technicianCodes")
+          AND b.status = 'DONE'
+          AND b.tip > 0
+          AND b."timeEnd" >= '2026-05-04'::date
+          AND EXTRACT(MONTH FROM b."timeEnd") = p_month
+          AND EXTRACT(YEAR FROM b."timeEnd") = p_year
     LOOP
         id := v_turn.id;
         type := 'TIP';
@@ -255,12 +255,12 @@ BEGIN
 
     -- 4. Process Adjustments
     FOR v_turn IN
-        SELECT id, type as adj_type, reason, amount as adj_amount, created_at as adj_date
-        FROM "WalletAdjustments"
-        WHERE staff_id = p_staff_id
-          AND created_at >= '2026-05-04'::date
-          AND EXTRACT(MONTH FROM created_at) = p_month
-          AND EXTRACT(YEAR FROM created_at) = p_year
+        SELECT w.id, w.type as adj_type, w.reason, w.amount as adj_amount, w.created_at as adj_date
+        FROM "WalletAdjustments" w
+        WHERE w.staff_id = p_staff_id
+          AND w.created_at >= '2026-05-04'::date
+          AND EXTRACT(MONTH FROM w.created_at) = p_month
+          AND EXTRACT(YEAR FROM w.created_at) = p_year
     LOOP
         id := v_turn.id::text;
         IF v_turn.adj_type = 'GIFT' THEN type := 'GIFT';
@@ -282,12 +282,12 @@ BEGIN
 
     -- 5. Process Withdrawals
     FOR v_turn IN
-        SELECT id, amount as w_amount, request_date, status as w_status, note as w_note
-        FROM "KTVWithdrawals"
-        WHERE staff_id = p_staff_id
-          AND request_date >= '2026-05-04'::date
-          AND EXTRACT(MONTH FROM request_date) = p_month
-          AND EXTRACT(YEAR FROM request_date) = p_year
+        SELECT k.id, k.amount as w_amount, k.request_date, k.status as w_status, k.note as w_note
+        FROM "KTVWithdrawals" k
+        WHERE k.staff_id = p_staff_id
+          AND k.request_date >= '2026-05-04'::date
+          AND EXTRACT(MONTH FROM k.request_date) = p_month
+          AND EXTRACT(YEAR FROM k.request_date) = p_year
     LOOP
         id := v_turn.id::text;
         type := 'WITHDRAWAL';
