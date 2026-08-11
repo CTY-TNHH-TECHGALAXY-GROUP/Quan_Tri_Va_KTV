@@ -387,7 +387,9 @@ export class KtvCommissionService {
 
         if (isNewRule) {
             // TỪ NGÀY 06/08 TRỞ ĐI: Công thức mới (Tính theo số Khách)
-            calculatedPoints = adjustedBasePoints * (guestCount / totalUniqueKTVs);
+            // Khống chế tỷ lệ tối đa = 1 để KTV không nhận vượt quá BasePoints khi có KTV loại C bị loại.
+            const ratio = Math.min(guestCount / totalUniqueKTVs, 1);
+            calculatedPoints = adjustedBasePoints * ratio;
             
             // LUẬT MỚI: Dưới 60 phút thì mất trắng (0 điểm)
             if (totalDurationForBonus < 60) {
