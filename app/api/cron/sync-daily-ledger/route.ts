@@ -80,7 +80,7 @@ async function processLedgerSync(targetDateStr: string) {
     const { data: bookings } = await supabase
         .from('Bookings')
         .select(`
-            id, timeStart, timeEnd, status, technicianCode, rating, guestCount,
+            id, timeStart, timeEnd, status, technicianCode, rating, guestCount, createdAt,
             BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
         `)
         .gte('bookingDate', startTimeStr)
@@ -163,7 +163,7 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const bDate = new Date(b.timeStart || b.createdAt || targetDateStr);
+                const bDate = new Date(b.timeStart || (b as any).createdAt || targetDateStr);
                 const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
                 let bForBonus = b;
                 if (!isNewRule) {

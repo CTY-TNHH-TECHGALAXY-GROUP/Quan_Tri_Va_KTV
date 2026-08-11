@@ -249,7 +249,7 @@ export async function GET(request: Request) {
             
             let bonusPoints = 0;
             if (passedCount > 0) {
-                const bDate = new Date(b.timeStart || b.createdAt || bDateStr);
+                const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
                 const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
                 let bForBonus = fullBooking;
                 if (!isNewRule) {

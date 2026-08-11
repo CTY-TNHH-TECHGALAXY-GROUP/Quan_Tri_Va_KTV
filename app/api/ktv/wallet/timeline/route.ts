@@ -176,7 +176,7 @@ export async function GET(request: Request) {
                     title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)}`,
                     amount: passedCommission,
                     note: `Tổng thời gian: ${passedDuration} phút`,
-                    created_at: b.timeStart || b.createdAt,
+                    created_at: b.timeStart || (b as any).createdAt,
                     status: 'APPROVED'
                 });
             }
@@ -188,7 +188,7 @@ export async function GET(request: Request) {
                     title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)} (Đang tạm giữ)`,
                     amount: heldCommission,
                     note: Array.from(allHoldReasons).join(', '),
-                    created_at: b.timeStart || b.createdAt,
+                    created_at: b.timeStart || (b as any).createdAt,
                     status: 'HELD'
                 });
             }

@@ -137,7 +137,7 @@ export async function GET(request: Request) {
 
             if (relevantItems.length === 0) continue;
             
-            const bDate = new Date(b.timeStart || b.createdAt || todayStr);
+            const bDate = new Date(b.timeStart || (b as any).createdAt || todayStr);
             const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
             let bForBonus = b;
             if (!isNewRule) {
