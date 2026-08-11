@@ -1908,20 +1908,34 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
             if (!workType) workType = 'TYPE_A';
 
-            let baseRawMilestones = settings.ktv_commission_milestones;
-            let baseRate60 = Number(settings.ktv_commission_per_60min) || 100000;
+            const buildCommConfig = (type: string) => {
+                const typeSuffix = type === 'TYPE_A' ? '' : `_${type}`;
+                let milestoneKey = `ktv_commission_milestones${typeSuffix}`;
+                if (!settings[milestoneKey]) milestoneKey = type === 'TYPE_B' ? 'ktv_commission_milestones_type_b' : 'ktv_commission_milestones';
+                
+                let milestones = { "1": 2000, "30": 50000, "45": 75000, "60": 100000, "70": 115000, "90": 150000, "100": 165000, "120": 200000, "180": 300000, "300": 500000 };
+                if (settings[milestoneKey]) {
+                    try {
+                        milestones = typeof settings[milestoneKey] === 'string' ? JSON.parse(settings[milestoneKey]) : settings[milestoneKey];
+                    } catch (e) {}
+                }
+                
+                let rateKey = `ktv_commission_per_60min${typeSuffix}`;
+                let ratePer60 = type === 'TYPE_B' ? 180000 : 100000;
+                if (settings[rateKey] !== undefined) {
+                    ratePer60 = Number(settings[rateKey]);
+                } else if (settings['ktv_commission_per_60min'] !== undefined) {
+                    ratePer60 = Number(settings['ktv_commission_per_60min']);
+                }
+                
+                return { milestones, ratePer60 };
+            };
 
-            let typeRawMilestones = baseRawMilestones;
-            if (workType === 'TYPE_B') {
-                typeRawMilestones = settings.ktv_commission_milestones_TYPE_B || settings.ktv_commission_milestones_type_b || baseRawMilestones;
-            } else if (workType === 'TYPE_C') {
-                typeRawMilestones = settings.ktv_commission_milestones_TYPE_C || baseRawMilestones;
-            } else if (settings.ktv_commission_milestones_TYPE_A) {
-                typeRawMilestones = settings.ktv_commission_milestones_TYPE_A || baseRawMilestones;
-            }
-
-            // Dùng thư viện chung KtvCommissionService để đảm bảo nguyên tắc tính tiền không bị lệch
-            const commConfigs = settings?.commission || {};
+            const commConfigs: any = {
+                'TYPE_A': buildCommConfig('TYPE_A'),
+                'TYPE_B': buildCommConfig('TYPE_B'),
+                'TYPE_C': buildCommConfig('TYPE_C')
+            };
             
             let totalCommission = 0;
             let totalMins = 0; // Vẫn tính totalMins để log
