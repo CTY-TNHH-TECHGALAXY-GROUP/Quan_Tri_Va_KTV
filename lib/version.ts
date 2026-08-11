@@ -1,2 +1,2 @@
-export const APP_VERSION = "1.2.80";
-export const LAST_UPDATE = "Thêm tính năng xác nhận đã đọc thông báo trong KTV Dashboard";
+export const APP_VERSION = "1.2.82";
+export const LAST_UPDATE = "Reset thông báo KTV theo ngày (chỉ hiển thị thông báo trong ngày hôm nay)";

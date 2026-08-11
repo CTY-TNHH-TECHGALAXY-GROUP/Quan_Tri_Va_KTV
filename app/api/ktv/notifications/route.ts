@@ -13,12 +13,17 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
     if (!supabase) return NextResponse.json({ success: false, error: 'DB Init Error' }, { status: 500 });
 
+    const now = new Date();
+    const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const startOfVNDay = new Date(`${vnTime.toISOString().split('T')[0]}T00:00:00+07:00`).toISOString();
+
     const { data, error } = await supabase
       .from('StaffNotifications')
-      .select('id, message, type, isRead, createdAt')
+      .select('id, message, type, isRead, createdAt, title')
       .eq('employeeId', techCode)
+      .gte('createdAt', startOfVNDay)
       .order('createdAt', { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (error) throw error;
 
