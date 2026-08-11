@@ -108,9 +108,9 @@ export async function GET(request: Request) {
 
         const bonusConfig = { s1Bonus, s2Bonus, s3Bonus, enableBonus };
 
-        const { data: services } = await supabase.from('Services').select('id, is_utility_service');
+        const { data: services } = await supabase.from('Services').select('id, is_utility');
         const svcUtilityMap: Record<string, boolean> = {};
-        (services || []).forEach(s => { svcUtilityMap[String(s.id)] = s.is_utility_service === true; });
+        (services || []).forEach(s => { svcUtilityMap[String(s.id)] = s.is_utility === true; });
 
         // 5. Fetch Realtime Bookings for today
         const { data: bookings } = await supabase
@@ -137,10 +137,15 @@ export async function GET(request: Request) {
 
             if (relevantItems.length === 0) continue;
             
-            const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
-            const bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+            const bDate = new Date(b.timeStart || b.createdAt || todayStr);
+            const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+            let bForBonus = b;
+            if (!isNewRule) {
+                const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+            }
             
-            const bonusPts = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap);
+            const bonusPts = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
             if (bonusPts > 0) {
                 // Determine maxKtvRating to show in desc
                 let maxKtvRating = 0;
@@ -181,7 +186,7 @@ export async function GET(request: Request) {
         (earns || []).forEach(e => {
             timeline.push({
                 id: `earn-${e.date}`,
-                date: e.date,
+                date: `${e.date}T23:59:59+07:00`,
                 points: Number(e.total_bonus),
                 type: 'EARN',
                 desc: 'Điểm làm dịch vụ'
@@ -209,6 +214,21 @@ export async function GET(request: Request) {
                 desc: `Quy đổi điểm (${w.status})`,
                 status: w.status
             });
+        });
+
+        // Sort timeline asc by date to calculate running balance
+        timeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        let currentBalance = 0;
+        timeline.forEach(item => {
+            if (item.status !== 'REJECTED') {
+                if (item.type === 'EARN' || item.type === 'GIFT') {
+                    currentBalance += Number(item.points);
+                } else if (item.type === 'PENALTY' || item.type === 'REDEEM') {
+                    currentBalance -= Number(item.points);
+                }
+            }
+            item.running_balance = currentBalance;
         });
 
         // Sort by Date Descending

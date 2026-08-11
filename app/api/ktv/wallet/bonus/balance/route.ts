@@ -120,11 +120,22 @@ export async function GET(request: Request) {
             .gte('timeStart', fromDate)
             .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
 
+        const { data: services } = await supabase.from('Services').select('id, is_utility');
+        const svcUtilityMap: Record<string, boolean> = {};
+        (services || []).forEach(s => { svcUtilityMap[String(s.id)] = s.is_utility === true; });
+
         const bonusConfig = { s1Bonus, s2Bonus, s3Bonus, enableBonus };
 
         let rt_bonus = 0;
         (bookings || []).forEach(b => {
-            const bonusPts = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap);
+            const bDate = new Date(b.timeStart || b.createdAt || todayStr);
+            const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+            let bForBonus = b;
+            if (!isNewRule) {
+                const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+            }
+            const bonusPts = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, todayStr, shiftsData || [], bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
             rt_bonus += bonusPts;
         });
 

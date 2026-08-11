@@ -87,12 +87,12 @@ async function processLedgerSync(targetDateStr: string) {
         .lte('bookingDate', endTimeStr)
         .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK']);
 
-    const { data: services } = await supabase.from('Services').select('id, duration, is_utility_service');
+    const { data: services } = await supabase.from('Services').select('id, duration, is_utility');
     const svcDurationMap: Record<string, number> = {};
     const svcUtilityMap: Record<string, boolean> = {};
     (services || []).forEach(s => { 
         svcDurationMap[String(s.id)] = s.duration || 60; 
-        svcUtilityMap[String(s.id)] = s.is_utility_service === true;
+        svcUtilityMap[String(s.id)] = s.is_utility === true;
     });
 
     // 4. Fetch Adjustments & Withdrawals for the target date
@@ -163,9 +163,14 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
-                const bForBonus = { ...b, BookingItems: filteredItemsForBonus };
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
+                const bDate = new Date(b.timeStart || b.createdAt || targetDateStr);
+                const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+                let bForBonus = b;
+                if (!isNewRule) {
+                    const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                    bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+                }
+                const bookingBonus = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
                 total_bonus += bookingBonus;
             }
         }

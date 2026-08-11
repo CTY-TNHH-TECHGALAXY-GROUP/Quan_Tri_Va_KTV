@@ -249,7 +249,14 @@ export async function GET(request: Request) {
             
             let bonusPoints = 0;
             if (passedCount > 0) {
-                bonusPoints = KtvCommissionService.calculateBookingBonus(fullBooking, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap);
+                const bDate = new Date(b.timeStart || b.createdAt || bDateStr);
+                const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+                let bForBonus = fullBooking;
+                if (!isNewRule) {
+                    const filteredItemsForBonus = (fullBooking.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                    bForBonus = { ...fullBooking, BookingItems: filteredItemsForBonus };
+                }
+                bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
             }
 
             // ─── Tip: sum from this KTV's items ────────────────────────
