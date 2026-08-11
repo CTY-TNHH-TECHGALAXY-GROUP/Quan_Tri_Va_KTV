@@ -185,6 +185,28 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
                 <span className="text-sm font-medium text-gray-700 text-right">{order.serviceName}</span>
               </div>
 
+              {/* Số lượng khách */}
+              {order.guestCount && order.guestCount > 0 && (
+                <div className="flex justify-between items-start">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Số lượng khách</span>
+                  <span className="text-sm text-gray-600">{order.guestCount} khách</span>
+                </div>
+              )}
+
+              {/* KTV làm cùng */}
+              {order.coWorkers && order.coWorkers.length > 0 && (
+                <div className="flex justify-between items-start">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">KTV làm cùng</span>
+                  <div className="flex gap-1 flex-wrap justify-end">
+                    {order.coWorkers.map(cw => (
+                      <span key={cw} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[11px] font-bold rounded-md">
+                        {cw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Thời lượng */}
               {order.duration > 0 && (
                 <div className="flex justify-between items-start">

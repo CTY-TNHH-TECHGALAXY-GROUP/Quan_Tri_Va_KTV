@@ -268,6 +268,17 @@ export async function GET(request: Request) {
             const handover_status = handoverItem?.handover_status || 'PENDING';
             const handover_comment = handoverItem?.handover_comment || null;
 
+            // Tìm KTV làm cùng
+            const allKTVsInBooking = new Set<string>();
+            (fullBooking.BookingItems || []).forEach((i: any) => {
+                if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
+                    i.technicianCodes.forEach((tc: string) => {
+                        if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
+                    });
+                }
+            });
+            const coWorkers = Array.from(allKTVsInBooking).filter(tc => tc.toLowerCase() !== techCode.toLowerCase());
+
             return {
                 id: b.id,
                 billCode: b.billCode,
@@ -283,6 +294,8 @@ export async function GET(request: Request) {
                 handover_status,
                 handover_comment,
                 ktv_comment: b.notes,
+                guestCount: b.guestCount || 1,
+                coWorkers,
                 isHeld: passedCount === 0
             };
         });

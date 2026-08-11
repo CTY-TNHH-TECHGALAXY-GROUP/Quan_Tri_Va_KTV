@@ -21,6 +21,8 @@ export interface HistoryRecord {
   handover_status?: string;
   handover_comment?: string | null;
   ktv_comment?: string | null;
+  guestCount?: number;
+  coWorkers?: string[];
   // Các field cho bảng KTVDisciplineLedger
   type?: 'BOOKING' | 'DISCIPLINE';
   rule_code?: string;
