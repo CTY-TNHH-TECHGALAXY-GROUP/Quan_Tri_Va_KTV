@@ -223,7 +223,7 @@ export default function DispatchBoardPage() {
   const { user } = useAuth();
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string } | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
@@ -1174,6 +1174,26 @@ if (!hasPermission('dispatch_board')) {
       alert('Lỗi hệ thống khi hủy đơn.');
     }
   };
+  const handleCancelBookingItem = async (orderId: string, itemId: string) => {
+    const reason = prompt('Nhập lý do hủy dịch vụ này (không bắt buộc):');
+    if (reason === null) return; // user clicked Cancel on prompt
+    try {
+      const res = await apiClient.post<any>('/api/bookings/cancel-item', {
+        bookingId: orderId,
+        itemId: itemId,
+        reason: reason
+      });
+      if (res.success) {
+        fetchData(); // reload data
+        setContextMenu(null);
+      } else {
+        alert('Lỗi khi hủy dịch vụ: ' + res.error);
+      }
+    } catch (err) {
+      alert('Lỗi hệ thống khi hủy dịch vụ.');
+    }
+  };
+
 
   async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean) {
     try {
@@ -2625,12 +2645,22 @@ if (!hasPermission('dispatch_board')) {
               Gửi đơn ngay (bỏ qua kiểm tra)
             </button>
 
+            {contextMenu.itemId && (
+              <button
+                onClick={() => handleCancelBookingItem(contextMenu.orderId, contextMenu.itemId!)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 hover:bg-orange-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
+              >
+                <Trash2 size={18} />
+                Hủy dịch vụ này
+              </button>
+            )}
+
             <button
               onClick={() => handleCancelBooking(contextMenu.orderId)}
               className="w-full flex items-center gap-3 px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider"
             >
               <Trash2 size={18} />
-              Hủy đơn hàng này
+              Hủy toàn bộ đơn hàng
             </button>
             <button
               onClick={() => setContextMenu(null)}

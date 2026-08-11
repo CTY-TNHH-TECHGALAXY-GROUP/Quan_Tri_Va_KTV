@@ -422,6 +422,85 @@ export class BookingModificationService {
         }
     }
 
+    static async cancelBookingItem(bookingId: string, itemId: string, reason: string = '') {
+        try {
+            await requirePermission('dispatch_board');
+            const supabase = getSupabaseAdmin();
+            if (!supabase) throw new Error('Supabase admin not initialized');
+
+            const { data: item, error: iError } = await supabase.from('BookingItems').select('*').eq('id', itemId).single();
+            if (iError || !item) return { success: false, error: 'Không tìm thấy dịch vụ' };
+            
+            const { data: booking, error: bError } = await supabase.from('Bookings').select('*').eq('id', bookingId).single();
+            if (bError) throw bError;
+            
+            const vnTimeStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+            
+            let opts = item.options;
+            if (typeof opts === 'string') {
+                try { opts = JSON.parse(opts); } catch { opts = {}; }
+            }
+            opts = opts || {};
+            opts.cancelReason = reason;
+
+            const { error: updateItemErr } = await supabase.from('BookingItems').update({ 
+                status: 'CANCELLED',
+                options: opts
+            }).eq('id', itemId);
+            if (updateItemErr) throw updateItemErr;
+
+            const itemTotal = (item.price || 0) * (item.quantity || 1);
+            const newTotalAmount = Math.max(0, (Number(booking.totalAmount) || 0) - itemTotal);
+            
+            const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+            const { data: refreshedItems } = await supabase.from('BookingItems').select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
+            
+            let newStatus = booking.status;
+            if (refreshedItems && refreshedItems.length > 0) {
+                const validItems = refreshedItems.filter((i: any) => i.Services?.is_utility !== true && i.serviceId !== 'NHS0900');
+                const finalItems = validItems.length > 0 ? validItems : refreshedItems;
+                newStatus = recomputeBookingStatus(finalItems.map((i: any) => i.status));
+            } else if (refreshedItems && refreshedItems.length === 0) {
+                newStatus = 'CANCELLED';
+            }
+
+            await supabase.from('Bookings').update({ 
+                totalAmount: newTotalAmount, 
+                status: newStatus,
+                updatedAt: vnTimeStr 
+            }).eq('id', bookingId);
+
+            const { data: turnsAffected } = await supabase
+                .from('TurnQueue')
+                .select('id, status, booking_item_ids')
+                .eq('current_order_id', bookingId)
+                .contains('booking_item_ids', [itemId]);
+
+            if (turnsAffected && turnsAffected.length > 0) {
+                for (const turn of turnsAffected) {
+                    const currentItemIds = turn.booking_item_ids || [];
+                    const remainingItemIds = currentItemIds.filter((id: string) => id !== itemId);
+                    if (remainingItemIds.length > 0) {
+                        await supabase.from('TurnQueue').update({ booking_item_id: remainingItemIds.join(','), booking_item_ids: remainingItemIds }).eq('id', turn.id);
+                    } else {
+                        const newStatus = turn.status === 'off' ? 'off' : 'waiting';
+                        await supabase.from('TurnQueue').update({
+                            status: newStatus, current_order_id: null, booking_item_id: null, booking_item_ids: [],
+                            room_id: null, bed_id: null, start_time: null, estimated_end_time: null
+                        }).eq('id', turn.id);
+                    }
+                }
+            }
+
+            await createNotification({ bookingId: bookingId, type: 'SYSTEM_LOG', message: `Đã hủy dịch vụ ${item.serviceId} trong đơn ${booking.billCode || bookingId}. Lý do: ${reason}` });
+
+            return { success: true, newTotalAmount };
+        } catch (error: any) {
+            console.error("❌ [Server] Lỗi hủy dịch vụ:", error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
     static async editBookingService(bookingId: string, itemId: string, newServiceId: string) {
         try {
             await requirePermission('dispatch_board');

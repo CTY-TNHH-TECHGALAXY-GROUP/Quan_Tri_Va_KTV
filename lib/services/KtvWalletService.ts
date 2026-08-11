@@ -60,7 +60,7 @@ export class KtvWalletService {
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
                 .gte('timeStart', realtimeStartStr)
-                .in('status', ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'])
+                // Lấy TẤT CẢ trạng thái của Booking (để tính tiền ngay cả khi Booking IN_PROGRESS)
                 .range(page * pageSize, (page + 1) * pageSize - 1);
                 
             if (error || !data || data.length === 0) break;
@@ -89,7 +89,8 @@ export class KtvWalletService {
         for (const b of allBookings) {
             const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes && Array.isArray(i.technicianCodes) &&
-                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(staffId.toLowerCase()))
+                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(staffId.toLowerCase())) &&
+                ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'].includes(i.status) // Chỉ tính tiền cho các Item đã xong
             );
 
             let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
