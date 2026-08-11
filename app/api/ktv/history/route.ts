@@ -129,7 +129,7 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment')
+            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, status')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
@@ -279,12 +279,20 @@ export async function GET(request: Request) {
             });
             const coWorkers = Array.from(allKTVsInBooking).filter(tc => tc.toLowerCase() !== techCode.toLowerCase());
 
+            // 🧠 STATUS: Xét theo BookingItems (item-level) thay vì Booking cha
+            // Nếu tất cả items của KTV này đều DONE → hiện DONE, không phụ thuộc Booking cha
+            const myItemStatuses = relevantItems.map((i: any) => i.status || 'NEW');
+            const { recomputeBookingStatus } = require('@/lib/dispatch-status');
+            const itemBasedStatus = myItemStatuses.length > 0
+                ? recomputeBookingStatus(myItemStatuses)
+                : b.status;
+
             return {
                 id: b.id,
                 billCode: b.billCode,
                 createdAt: b.createdAt,
                 bookingDate: b.bookingDate,
-                status: b.status,
+                status: itemBasedStatus,
                 rating: itemRating,
                 tip: ktvTip,
                 commission,

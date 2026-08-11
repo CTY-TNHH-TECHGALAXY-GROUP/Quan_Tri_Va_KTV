@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.93';
-export const LAST_UPDATE = 'Hoàn thiện cơ chế tính tiền tua độc lập theo từng BookingItem và thêm tính năng Hủy dịch vụ tại Kanban';
+export const APP_VERSION = '1.2.94';
+export const LAST_UPDATE = 'Sửa hiển thị trạng thái lịch sử KTV theo BookingItem thay vì Booking cha';
