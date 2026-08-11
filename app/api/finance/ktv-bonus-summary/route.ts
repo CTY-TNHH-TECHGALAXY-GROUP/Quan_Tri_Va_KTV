@@ -84,7 +84,7 @@ export async function GET(request: Request) {
                     id, timeStart, timeEnd, status, technicianCode, rating, guestCount,
                     BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, itemRating, ktvRatings, options, handover_status, handover_comment )
                 `)
-                .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
+                .not('status', 'in', '("CANCELLED","NEW")');
 
             // Mốc mặc định lấy từ hôm nay (vì quá khứ đã nằm trong Sổ Cái)
             let rtStart = `${todayStr}T00:00:00+07:00`;
@@ -144,9 +144,10 @@ export async function GET(request: Request) {
         // Sum Earned from Realtime Bookings (ĐỒNG BỘ LOGIC VỚI API VÍ KTV bonus/balance)
         realtimeBookings.forEach(b => {
             // Collect all KTV codes in this booking
+            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
             const allKtvCodes = new Set<string>();
             for (const item of (b.BookingItems || [])) {
-                if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                if (item.technicianCodes && Array.isArray(item.technicianCodes) && DONE_STATUSES.includes(item.status)) {
                     item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
                 }
             }

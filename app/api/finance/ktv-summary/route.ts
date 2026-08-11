@@ -136,7 +136,7 @@ export async function GET(request: Request) {
             supabase.from('Bookings')
             .select(`id, timeStart, timeEnd, status, technicianCode, rating, guestCount, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment ) `)
             .gte('timeStart', realtimeStartStr)
-            .in('status', ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING'])
+            .not('status', 'in', '("CANCELLED","NEW")')
         );
 
         const { data: services } = await supabase.from('Services').select('id, duration');
@@ -183,9 +183,12 @@ export async function GET(request: Request) {
             let prev_rt_bonus = 0;
 
             for (const b of validBookings) {
+                // 🧠 Filter theo ITEM STATUS — triệt tiêu kẹt tiền khi Booking cha chưa update
+                const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
                 const relevantItems = (b.BookingItems || []).filter((i: any) =>
                     i.technicianCodes && Array.isArray(i.technicianCodes) &&
-                    i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
+                    i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase())) &&
+                    DONE_STATUSES.includes(i.status)
                 );
 
                 if (relevantItems.length === 0) continue;

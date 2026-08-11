@@ -118,7 +118,7 @@ export async function GET(request: Request) {
                 BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
             `)
             .gte('timeStart', fromDate)
-            .in('status', ['DONE', 'FEEDBACK', 'CLEANING']);
+            .not('status', 'in', '("CANCELLED","NEW")');
 
         const { data: services } = await supabase.from('Services').select('id, is_utility');
         const svcUtilityMap: Record<string, boolean> = {};

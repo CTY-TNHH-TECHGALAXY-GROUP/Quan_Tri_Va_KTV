@@ -120,7 +120,7 @@ export async function GET(request: Request) {
                 BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment )
             `)
             .gte('bookingDate', todayStr)
-            .in('status', ['DONE', 'COMPLETED', 'FEEDBACK', 'CLEANING']);
+            .not('status', 'in', '("CANCELLED","NEW")');
 
         // 6. Calculate bonuses from valid bookings
         const validBookings = (bookings || []).filter(b => b.BookingItems && b.BookingItems.length > 0);
@@ -129,10 +129,12 @@ export async function GET(request: Request) {
         const timeline: any[] = [];
 
         for (const b of validBookings) {
+            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
             const relevantItems = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes &&
                 Array.isArray(i.technicianCodes) &&
-                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
+                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase())) &&
+                DONE_STATUSES.includes(i.status)
             );
 
             if (relevantItems.length === 0) continue;
