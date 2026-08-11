@@ -57,6 +57,7 @@ interface TodayTask {
   isCarryOver?: boolean;
   carryOverDate?: string;
   roomHasGuest?: boolean;
+  roomHasGuestUpdatedAt?: string | null;
 }
 
 interface TemplateOption {
