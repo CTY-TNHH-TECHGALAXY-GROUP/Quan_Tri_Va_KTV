@@ -435,7 +435,6 @@ function ScreenDashboard({ logic }: { logic: any }) {
   return (
     <div className="p-3 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24">
       {/* ─── HEADER ─── */}
-      {(!booking || !booking.id) && (
         <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2 relative z-50">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-inner border border-white">
@@ -512,7 +511,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                               {!n.isRead && (
                                 <button
                                   onClick={() => logic.markNotificationAsRead(n.id)}
-                                  className="absolute top-3 right-3 p-1 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                  className="absolute top-3 right-3 p-1 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors"
                                   title="Đánh dấu đã đọc"
                                 >
                                   <CheckCircle2 size={16} />
@@ -528,8 +527,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
             </div>
           </div>
         </div>
-      )}
-
+      
       {(!booking || !booking.id) ? (
         <div className="space-y-4">
           
