@@ -2124,6 +2124,7 @@ if (!hasPermission('dispatch_board')) {
                             onAddStaff={addStaffRow}
                             onRemoveStaff={removeStaffRow}
                             onRemoveSvc={removeServiceBlock}
+                            onUnmergeSvc={handleUnmergeService}
                             onEditSvc={(orderId, svcId) => setEditingSvc({ orderId, svcId, oldSvcName: svc.serviceName })}
                             selectedDate={selectedDate}
                             isExpanded={expandedSvcIds.includes(svc.id)}
