@@ -461,12 +461,35 @@ if (!hasPermission('dispatch_board')) {
         }),
       };
       
+      // Get child service duration before merging into parent
+      const targetSvc = updatedOrder.services.find(s => s.id === targetSvcId);
+      const childDuration = targetSvc?.staffList?.[0]?.segments?.[0]?.duration || targetSvc?.duration || 0;
+
       updatedOrder = {
         ...updatedOrder,
-        services: updatedOrder.services.map(s => s.id === sourceSvcId
-          ? { ...s, mergedServiceIds: [...(s.mergedServiceIds || []), targetSvcId] }
-          : s
-        )
+        services: updatedOrder.services.map(s => {
+          if (s.id === sourceSvcId) {
+            return {
+              ...s,
+              mergedServiceIds: [...(s.mergedServiceIds || []), targetSvcId],
+              // Cộng duration DV con vào segment đầu tiên của DV cha
+              staffList: s.staffList.map(r => ({
+                ...r,
+                segments: r.segments.map((seg, idx) => {
+                  if (idx === 0 && childDuration > 0) {
+                    const newDur = (seg.duration || s.duration) + childDuration;
+                    const [h, m] = (seg.startTime || '08:00').split(':').map(Number);
+                    const end = new Date(); end.setHours(h, m + newDur, 0, 0);
+                    const newEnd = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+                    return { ...seg, duration: newDur, endTime: newEnd };
+                  }
+                  return seg;
+                })
+              }))
+            };
+          }
+          return s;
+        })
       };
 
       updatedOrder = recalculateAllTimes(updatedOrder, roomTransitionTime);
@@ -1756,25 +1779,27 @@ if (!hasPermission('dispatch_board')) {
           </div>
 
           {/* CENTER: Assignment Panel */}
-          <div className={`${selectedOrderId ? 'flex' : 'hidden lg:flex'} flex-1 flex flex-col border border-gray-200 bg-white rounded-3xl overflow-hidden shadow-sm min-w-0 min-h-0 transition-all`}>
-            <div className="p-4 lg:p-5 border-b border-gray-100 bg-white shrink-0 flex items-center gap-3">
+          <div className={`${selectedOrderId ? 'flex' : 'hidden md:flex'} flex-1 flex flex-col border border-gray-200 bg-white rounded-3xl overflow-hidden shadow-sm min-w-0 min-h-0 transition-all`}>
+            <div className="p-4 lg:p-5 border-b border-gray-100 bg-white shrink-0 flex items-start sm:items-center gap-3">
               {selectedOrderId && (
                 <button 
                   onClick={() => { setSelectedOrderId(null); setSelectedSubOrderId(null); }}
-                  className="lg:hidden p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-400"
+                  className="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-400 mt-1 sm:mt-0"
                 >
                   <ChevronLeft size={24} />
                 </button>
               )}
               {selectedSubOrder ? (
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
-                    <h2 className="font-black text-gray-900 text-base truncate flex-1 flex items-center gap-2">
-                      Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName} — {
-                        [selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'
-                      }
-                      {(() => {
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
+                      <h2 className="font-black text-gray-900 text-base flex-1 flex flex-wrap items-center gap-2">
+                        Đơn {selectedSubOrder.originalOrder.billCode} — {selectedSubOrder.originalOrder.customerName}
+                        <span className="text-gray-400 font-normal text-sm block sm:inline">
+                          — {[selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'}
+                        </span>
+                        {(() => {
                           const isVipMenu = selectedSubOrder.services.some((svc: any) => 
                             (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
@@ -1809,7 +1834,8 @@ if (!hasPermission('dispatch_board')) {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-1 ml-4">
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-2 sm:ml-4">
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Đang điều phối</p>
                     {/* Toggle Quick/Detail */}
                     {(() => {
@@ -1839,7 +1865,7 @@ if (!hasPermission('dispatch_board')) {
                         const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGuestCount !== (selectedSubOrder.originalOrder.guestCount || 1) || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male'));
                         
                         return (
-                            <div className="flex items-center gap-2 ml-4 border-l border-gray-200 pl-4">
+                            <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:border-l border-gray-200 sm:pl-4 mt-2 sm:mt-0 w-full sm:w-auto">
                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính</span>
                                 <select
                                   value={currentGender}
