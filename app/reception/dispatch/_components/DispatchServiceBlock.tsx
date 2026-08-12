@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, AlertTriangle, UserCheck, Trash2, Pencil, SplitSquareHorizontal } from 'lucide-react';
+import { Plus, AlertTriangle, UserCheck, Trash2, Pencil, SplitSquareHorizontal, Bed as BedIcon } from 'lucide-react';
 import { DispatchStaffRow } from './DispatchStaffRow';
 import { ReminderData, ServiceBlock, StaffAssignment, StaffData, TurnQueueData } from '../types';
 
@@ -73,7 +73,7 @@ export const DispatchServiceBlock = ({
                           svc.staffList.some(r => r.ktvId) ? 'bg-indigo-500 text-white shadow-indigo-200' : 
                           'bg-amber-100 text-amber-600 border border-amber-200'}
                     `}>
-                        {isUtility ? <Bed size={24} strokeWidth={2} /> : <UserCheck size={24} strokeWidth={2} />}
+                        {isUtility ? <BedIcon size={24} strokeWidth={2} /> : <UserCheck size={24} strokeWidth={2} />}
                     </div>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
