@@ -277,6 +277,26 @@ export default function CRMPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-sm text-gray-500">Lưu trữ thông tin, lịch sử dịch vụ và phân hạng thành viên.</p>
           <div className="flex items-center gap-2">
+            {/* Tách Khách Ảo Button */}
+            <button
+              onClick={async () => {
+                if (!confirm('Bạn có chắc chắn muốn quét và tự động tách các đơn hàng bị gộp nhầm do email ảo (aa) không?')) return;
+                try {
+                  const res = await fetch('/api/customers/clean-dummy', { method: 'POST' });
+                  const result = await res.json();
+                  if (!res.ok) throw new Error(result.error || 'Lỗi không xác định');
+                  alert(result.message);
+                  fetchCustomers(); // Tải lại danh sách sau khi tách
+                } catch (e: any) {
+                  alert('Lỗi: ' + e.message);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm transition-colors"
+              title="Sửa lỗi Khách Cũ khi nhập email ảo"
+            >
+              🧹 Tách Khách Ảo
+            </button>
+
             <div className="relative">
               <button 
                 onClick={() => setShowExport(!showExport)}
