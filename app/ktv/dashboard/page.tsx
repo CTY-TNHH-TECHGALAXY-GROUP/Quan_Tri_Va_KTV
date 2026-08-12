@@ -214,12 +214,12 @@ export default function KTVDashboardPage() {
 
 // ─── WORKING TIMELINE ────────────────────────────────────────────────────────
 
-function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean }) {
+function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean, totalAssignedMins?: number }) {
   if (!segments || segments.length === 0) return null;
 
   let displaySegments = segments;
   if (shouldMerge && segments.length > 0) {
-    const totalDuration = segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0);
+    const totalDuration = totalAssignedMins || segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0);
     displaySegments = [{
       ...segments[0],
       id: 'merged-' + segments[0].id,
@@ -767,6 +767,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
                     activeIndex={booking.status === 'IN_PROGRESS' ? activeSegmentIndex : undefined}
                     actualStartTime={ktvSegments[0]?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null}
                     shouldMerge={shouldMerge}
+                    totalAssignedMins={totalAssignedMins}
                   />
                 </div>
               )}
