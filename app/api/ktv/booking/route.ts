@@ -126,6 +126,40 @@ export async function PATCH(request: Request) {
             data = res.data;
         }
 
+        // ─── 6.5 🛡️ SAFETY RECOMPUTE — Anti Race Condition ───
+        // Re-read latest item statuses AFTER all updates are committed,
+        // then recompute booking status one final time to catch race conditions
+        // where 2 KTVs finish nearly simultaneously.
+        if (status === 'CLEANING' || status === 'FEEDBACK' || status === 'DONE') {
+            try {
+                const { data: latestItems } = await supabase
+                    .from('BookingItems')
+                    .select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
+                    .eq('bookingId', bookingId);
+                if (latestItems && latestItems.length > 0) {
+                    const validItems = latestItems.filter((i: any) => {
+                        const name = i.Services?.nameVN || '';
+                        return i.Services?.is_utility !== true
+                            && i.serviceId !== 'NHS0900'
+                            && !name.toLowerCase().includes('phòng riêng')
+                            && !name.toLowerCase().includes('phong rieng');
+                    });
+                    const finalItems = validItems.length > 0 ? validItems : latestItems;
+                    const statuses = finalItems.map((i: any) => i.status);
+                    const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+                    const correctStatus = recomputeBookingStatus(statuses);
+                    
+                    if (data && data.status !== correctStatus) {
+                        console.log(`🛡️ [Safety Recompute] Race condition detected! Booking ${bookingId}: ${data.status} → ${correctStatus} (items: ${statuses.join(',')})`);
+                        await supabase.from('Bookings').update({ status: correctStatus }).eq('id', bookingId);
+                        data.status = correctStatus;
+                    }
+                }
+            } catch (safetyErr) {
+                console.error('⚠️ [Safety Recompute] Non-critical error:', safetyErr);
+            }
+        }
+
         // ─── 7. RELEASE_KTV (runs after booking update, independent) ───
         if (action === 'RELEASE_KTV' && technicianCode) {
             await handleReleaseKTV(ctx);
