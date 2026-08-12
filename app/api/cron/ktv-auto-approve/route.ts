@@ -43,13 +43,14 @@ export async function GET(request: Request) {
         // Tìm những item đang FEEDBACK, đã APPROVED bàn giao, và cập nhật đã quá 10 phút
         const { data: feedbackItems } = await supabase
             .from('BookingItems')
-            .select('id, updated_at')
+            .select('id, updated_at, bookingId')
             .eq('status', 'FEEDBACK')
             .eq('handover_status', 'APPROVED')
             .lte('updated_at', mins10Ago);
 
         if (feedbackItems && feedbackItems.length > 0) {
             const itemIds = feedbackItems.map(i => i.id);
+            const uniqueBookingIds = Array.from(new Set(feedbackItems.map(i => i.bookingId).filter(Boolean)));
             
             // Đẩy status lên DONE
             await supabase
@@ -58,6 +59,18 @@ export async function GET(request: Request) {
                 .in('id', itemIds);
             
             console.log(`[Cron] Auto set DONE for ${itemIds.length} items`);
+
+            // Recompute booking statuses
+            const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+            for (const bId of uniqueBookingIds) {
+                const { data: bItems } = await supabase.from('BookingItems').select('status, serviceId, Services!BookingItems_serviceId_fkey(is_utility)').eq('bookingId', bId);
+                if (bItems && bItems.length > 0) {
+                    const validItems = bItems.filter((i: any) => i.Services?.is_utility !== true && String(i.serviceId).toUpperCase() !== 'NHS0900');
+                    const finalItems = validItems.length > 0 ? validItems : bItems;
+                    const newBStatus = recomputeBookingStatus(finalItems.map((i: any) => i.status));
+                    await supabase.from('Bookings').update({ status: newBStatus }).eq('id', bId);
+                }
+            }
 
             // Gửi push notification cho KTV báo có tiền tua
             // (Thực tế tiền tua sẽ được view_wallet timeline tính dựa trên status DONE)
