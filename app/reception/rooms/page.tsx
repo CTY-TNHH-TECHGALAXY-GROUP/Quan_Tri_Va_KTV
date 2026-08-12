@@ -58,9 +58,9 @@ export default function RoomManagementPage() {
                     <p className="text-sm text-gray-500 mt-1 ml-[52px]">Cấu hình dịch vụ, nhắc nhở và quy trình cho từng phòng</p>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-6">
+                <div className="flex flex-col md:flex-row gap-6">
                     {/* Left Panel: Room List */}
-                    <div className="lg:w-64 shrink-0">
+                    <div className="md:w-72 shrink-0">
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                             <div className="p-4 border-b border-gray-100">
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh sách phòng</p>

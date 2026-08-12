@@ -383,7 +383,7 @@ export default function KTVHistoryPage() {
             </div>
           </div>
           
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="bg-indigo-600 text-white rounded-2xl px-2.5 py-3 shadow-lg shadow-indigo-100">
               <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Tiền tua</p>
               <p className="text-base font-black tabular-nums mt-0.5">{summary.totalCommission.toLocaleString('vi-VN')}đ</p>

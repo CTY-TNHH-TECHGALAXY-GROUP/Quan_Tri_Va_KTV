@@ -1596,11 +1596,11 @@ if (!hasPermission('dispatch_board')) {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col lg:flex-row gap-5 overflow-hidden pb-4 sm:pb-0">
+        <div className="flex-1 flex flex-col md:flex-row gap-5 overflow-hidden pb-4 sm:pb-0">
           {activeMode === 'DISPATCH' ? (
             <>
           {/* LEFT: Order Panel */}
-          <div className={`${selectedOrderId ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 flex-1 lg:flex-none shrink-0 flex-col border border-gray-200 bg-white rounded-3xl shadow-sm transition-all min-h-0 overflow-hidden`}>
+          <div className={`${selectedOrderId ? 'hidden md:flex' : 'flex'} w-full md:w-80 flex-1 md:flex-none shrink-0 flex-col border border-gray-200 bg-white rounded-3xl shadow-sm transition-all min-h-0 overflow-hidden`}>
             <div className="p-4 border-b border-gray-100 bg-white shrink-0">
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -2303,7 +2303,7 @@ if (!hasPermission('dispatch_board')) {
               onReviewClick={(service) => setReviewModalService(service)}
             />
           ) : activeMode === 'TURN_QUEUE' ? (
-            <div className="flex-1 overflow-auto w-full h-full flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 overflow-auto w-full h-full flex flex-col md:flex-row gap-4">
               <div className="flex-[2] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
                 {(() => {
                   return <TurnQueueBoard staffs={staffs} />;

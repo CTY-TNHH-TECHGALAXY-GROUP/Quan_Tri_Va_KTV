@@ -433,7 +433,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const coWorkers = (assignedItem?.technicianCodes || []).filter((code: string) => code !== logic.ktvId);
 
   return (
-    <div className="p-3 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24">
+    <div className="p-3 md:p-5 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24 md:max-w-5xl md:mx-auto">
       {/* ─── HEADER ─── */}
         <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2 relative z-50">
           <div className="flex items-center gap-3">
@@ -618,7 +618,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
           <div className="flex flex-col gap-4">
 
              {/* ─── GRID 2x2: Điểm, Sức Bền, Chỉ Tiêu, Mã QR ─── */}
-             <div className="grid grid-cols-2 gap-4">
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {/* 1. Điểm chuyên cần */}
                 {logic.disciplineStatus && (
                    <div className={`p-4 rounded-[32px] border ${logic.disciplineStatus.totalPoints <= logic.disciplineStatus.demotionThreshold + 5 ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'} flex flex-col items-center justify-center relative`}>
@@ -987,7 +987,7 @@ function ScreenTimer({ logic }: { logic: any }) {
 
 
   return (
-    <div className="p-4 h-full flex flex-col pt-8">
+    <div className="p-4 md:p-8 h-full flex flex-col pt-8 md:pt-12 md:max-w-4xl md:mx-auto w-full">
       {/* Header Info */}
       <div className="flex justify-between items-start mb-6 px-2">
         <div className="flex flex-col gap-1">
@@ -1205,7 +1205,7 @@ function ScreenTimer({ logic }: { logic: any }) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           className="flex flex-col gap-3 mb-12"
         >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <ActionGridButton 
                   onClick={handleEarlyExit} 
                   icon={<LogOut size={20} />} 
@@ -1483,7 +1483,7 @@ function ScreenHandover({ logic }: { logic: any }) {
   };
 
   return (
-    <div className="p-6 pt-12 space-y-8">
+    <div className="p-6 md:p-10 pt-12 md:pt-16 space-y-8 md:max-w-2xl md:mx-auto w-full">
       <div className="text-center space-y-2">
         <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Sparkles className="text-blue-600" size={40} />
@@ -1538,7 +1538,7 @@ function ScreenHandover({ logic }: { logic: any }) {
 
              {/* Grid Ảnh Đã Up */}
              {Object.keys(handoverPhotosBase64).length > 0 && (
-                 <div className="grid grid-cols-3 gap-2 mt-4">
+                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-4">
                      {Object.entries(handoverPhotosBase64).map(([key, photo]) => (
                          <div key={key} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm group">
                              <img src={photo as string} className="absolute inset-0 w-full h-full object-cover" alt="Uploaded" />
@@ -1660,7 +1660,7 @@ function ScreenReward({ logic }: { logic: any }) {
   };
 
   return (
-    <div className="p-4 h-full flex flex-col items-center justify-start text-center space-y-4 pt-10 pb-20 overflow-y-auto">
+    <div className="p-4 md:p-8 h-full flex flex-col items-center justify-start text-center space-y-4 md:space-y-6 pt-10 md:pt-16 pb-20 overflow-y-auto md:max-w-2xl md:mx-auto w-full">
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1, rotate: [0, 10, -10, 0] }}
