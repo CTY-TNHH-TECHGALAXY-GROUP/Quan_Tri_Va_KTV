@@ -286,7 +286,7 @@ export default function CRMPage() {
                   const result = await res.json();
                   if (!res.ok) throw new Error(result.error || 'Lỗi không xác định');
                   alert(result.message);
-                  fetchCustomers(); // Tải lại danh sách sau khi tách
+                  window.location.reload(); // Tải lại danh sách sau khi tách
                 } catch (e: any) {
                   alert('Lỗi: ' + e.message);
                 }
