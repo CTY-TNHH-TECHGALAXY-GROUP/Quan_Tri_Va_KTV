@@ -1129,6 +1129,7 @@ function ScreenTimer({ logic }: { logic: any }) {
             activeIndex={activeSegmentIndex} 
             actualStartTime={ktvSegments[0]?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null}
             shouldMerge={shouldMerge}
+            totalAssignedMins={totalAssignedMins}
           />
         </div>
       )}
