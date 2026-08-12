@@ -397,8 +397,11 @@ function ScreenDashboard({ logic }: { logic: any }) {
     : [booking?.BookingItems?.[0]].filter(Boolean);
   const item = allItems[0] || {};
   
-  // Tên tất cả DV
-  const allServiceNames = allItems.map((i: any) => i.service_name).filter(Boolean);
+  // Tên tất cả DV — khi gộp, item cha đã chứa tên đầy đủ (VD: "THÁI 70 + RÁY 30")
+  const mergedParentItem = allItems.find((i: any) => i.options?.mergedServiceIds?.length > 0);
+  const allServiceNames = mergedParentItem
+    ? [mergedParentItem.service_name]
+    : allItems.map((i: any) => i.service_name).filter(Boolean);
   // Tổng thời gian các segments admin gán cho KTV
   const allKtvSegments = allItems.flatMap((i: any) => {
     let segs = [];
@@ -421,7 +424,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
   const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
-  const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
   
   // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
@@ -914,7 +917,11 @@ function ScreenTimer({ logic }: { logic: any }) {
     ? booking?.BookingItems?.filter((i: any) => allTimerItemIds.includes(i.id)) || []
     : [booking?.BookingItems?.[0]].filter(Boolean);
   const item = allTimerItems[0] || {};
-  const allTimerServiceNames = allTimerItems.map((i: any) => i.service_name).filter(Boolean);
+  // Khi gộp, item cha đã chứa tên đầy đủ → chỉ dùng tên cha, không ghép tên con
+  const mergedTimerParentItem = allTimerItems.find((i: any) => i.options?.mergedServiceIds?.length > 0);
+  const allTimerServiceNames = mergedTimerParentItem
+    ? [mergedTimerParentItem.service_name]
+    : allTimerItems.map((i: any) => i.service_name).filter(Boolean);
   
   // Gộp tất cả segments của KTV này
   const ktvSegments = allTimerItems.flatMap((i: any) => {
@@ -938,7 +945,7 @@ function ScreenTimer({ logic }: { logic: any }) {
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
   const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
-  const shouldMerge = false; // TẮT TÍNH NĂNG TỰ ĐỘNG GỘP
+  const shouldMerge = ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
   const totalAssignedMins = ktvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
