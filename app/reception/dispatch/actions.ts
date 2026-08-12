@@ -1743,3 +1743,56 @@ export async function updateBookingCustomerName(bookingId: string, newName: stri
         return { success: false, error: 'Cannot update booking name' };
     }
 }
+
+export async function unmergeServicesAction(
+    parentSvcId: string,
+    mergedServiceIds: string[],
+    parentOptions: any,
+    parentServiceName: string,
+    resetSegments: any[]
+) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // 1. Cập nhật các child item (xóa mergedIntoId khỏi options, clear assignments)
+        const { data: childItems } = await supabase
+            .from('BookingItems')
+            .select('id, options')
+            .in('id', mergedServiceIds);
+            
+        if (childItems) {
+            for (const child of childItems) {
+                const childOptions = child.options || {};
+                delete childOptions.mergedIntoId;
+                
+                await supabase.from('BookingItems').update({
+                    options: childOptions,
+                    technicianCodes: [],
+                    status: 'NEW',
+                    segments: '[]'
+                }).eq('id', child.id);
+            }
+        }
+        
+        // 2. Cập nhật parent item (xóa mergedServiceIds khỏi options)
+        const updatedParentOptions = { ...(parentOptions || {}) };
+        delete updatedParentOptions.mergedServiceIds;
+        
+        const { error: parentErr } = await supabase
+            .from('BookingItems')
+            .update({
+                options: updatedParentOptions,
+                segments: JSON.stringify(resetSegments)
+            })
+            .eq('id', parentSvcId);
+
+        if (parentErr) throw parentErr;
+        
+        return { success: true };
+    } catch (error: any) {
+        console.error('❌ [Server] unmergeServicesAction error:', error);
+        return { success: false, error: error.message };
+    }
+}

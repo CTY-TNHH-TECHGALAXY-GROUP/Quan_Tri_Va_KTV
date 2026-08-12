@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from('StaffNotifications')
-      .select('id, message, type, isRead, createdAt, title')
+      .select('id, message, type, isRead, createdAt')
       .eq('employeeId', techCode)
       .gte('createdAt', startOfVNDay)
       .order('createdAt', { ascending: false })
