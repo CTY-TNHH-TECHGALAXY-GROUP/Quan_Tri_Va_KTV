@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.3.6'; // Tăng version khi có cập nhật mới
-export const LAST_UPDATE = 'Bổ sung nút Bỏ Gộp vào giao diện điều phối chi tiết'; // Mô tả ngắn gọn thay đổi gần nhất
+export const APP_VERSION = '1.3.7'; // Tăng version khi có cập nhật mới
+export const LAST_UPDATE = 'Fix lỗi KTV bị hiển thị dư 1 thẻ tên và fix thẻ KTV (lễ tân) hiển thị chưa cộng thời gian khi gộp.'; // Mô tả ngắn gọn thay đổi gần nhất

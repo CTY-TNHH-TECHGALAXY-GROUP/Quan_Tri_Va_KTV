@@ -52,21 +52,33 @@ export const DispatchServiceBlock = ({
     const isUtility = !!(svc as any).isUtility;
     const isVip = (svc.serviceId && (svc.serviceId.toUpperCase().startsWith('NHP') || svc.serviceId.toUpperCase().startsWith('VIP_'))) || orderSource === 'VIP_WALK_IN' || orderSource === 'VIP_MENU';
 
+    const actualDuration = svc.staffList?.[0]?.segments?.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0) || svc.duration;
+
     return (
-        <div className={`border rounded-3xl overflow-hidden shadow-sm transition-all ${isUtility ? 'border-amber-200 bg-amber-50/30' : 'border-gray-100 bg-white hover:shadow-md hover:border-indigo-100'}`}>
-            {/* Service Header */}
+        <div className={`
+            relative mb-4 lg:mb-6 rounded-3xl transition-all duration-300
+            ${isUtility ? 'bg-gradient-to-br from-gray-50 to-white border-2 border-gray-100/50 shadow-sm' : 
+              isExpanded ? 'bg-white shadow-xl shadow-gray-200/40 border-2 border-indigo-100 ring-4 ring-indigo-50/50' : 
+              'bg-white border-2 border-transparent hover:border-indigo-50 hover:shadow-lg shadow-md'}
+        `}>
+            {/* Header (Always Visible) */}
             <div 
-                className={`px-4 py-4 lg:px-6 flex items-center justify-between backdrop-blur-sm ${isUtility ? 'bg-amber-50/50 cursor-default' : 'bg-gray-50/80 border-b border-gray-100 cursor-pointer'}`}
+                className={`flex items-center justify-between p-4 lg:p-6 rounded-3xl ${!isUtility && 'cursor-pointer hover:bg-gray-50/50 active:scale-[0.99] transition-all'}`}
                 onClick={isUtility ? undefined : onToggleExpand}
             >
-                <div className="flex items-center gap-3">
-                    <span className={`text-white text-[10px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest shadow-lg ${isUtility ? 'bg-amber-500 shadow-amber-100' : 'bg-indigo-600 shadow-indigo-100'}`}>
-                        {isUtility ? '₫' : svcIndex + 1}
-                    </span>
-                    <div className="flex flex-col w-full">
-                        <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-4 flex-1">
+                    <div className={`
+                        w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm
+                        ${isUtility ? 'bg-gray-100 text-gray-500' : 
+                          svc.staffList.some(r => r.ktvId) ? 'bg-indigo-500 text-white shadow-indigo-200' : 
+                          'bg-amber-100 text-amber-600 border border-amber-200'}
+                    `}>
+                        {isUtility ? <Bed size={24} strokeWidth={2} /> : <UserCheck size={24} strokeWidth={2} />}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-black text-gray-900 text-base leading-tight">{svc.options?.displayName || svc.serviceName}</h3>
-                            {!isUtility && <span className="inline-block text-xs text-gray-400 font-bold bg-white px-2 py-1 rounded-lg border border-gray-100">{svc.duration}p</span>}
+                            {!isUtility && <span className="inline-block text-xs text-gray-400 font-bold bg-white px-2 py-1 rounded-lg border border-gray-100">{actualDuration}p</span>}
                             {isUtility && <span className="inline-block text-[10px] text-amber-600 font-black bg-amber-100 px-2 py-1 rounded-lg border border-amber-200 uppercase tracking-wider">Tiện ích</span>}
                             
                             {/* Quick View: Assigned KTV & Room */}
@@ -297,7 +309,7 @@ export const DispatchServiceBlock = ({
                                         orderId={orderId}
                                         serviceName={svc.serviceName}
                                         displayName={svc.options?.displayName}
-                                        svcDuration={svc.duration}
+                                        svcDuration={actualDuration}
                                         availableTurns={availableTurns}
                                         rooms={rooms}
                                         beds={beds}

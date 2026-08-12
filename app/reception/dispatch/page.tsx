@@ -865,22 +865,23 @@ if (!hasPermission('dispatch_board')) {
       const parentSvc = order.services.find(s => s.id === svcId);
       if (!parentSvc || !parentSvc.mergedServiceIds || parentSvc.mergedServiceIds.length === 0) return;
 
-      const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
-      const supabase = getSupabaseAdmin();
-      if (!supabase) throw new Error('No Supabase connection');
+      const { unmergeServicesAction } = await import('./actions');
+      const resetSegments = parentSvc.staffList.flatMap(r => 
+          r.segments.map(seg => ({
+              ...seg,
+              duration: parentSvc.duration
+          }))
+      );
+      
+      const res = await unmergeServicesAction(
+          parentSvc.id, 
+          parentSvc.mergedServiceIds, 
+          parentSvc.options, 
+          parentSvc.serviceName, 
+          resetSegments
+      );
 
-      // Update parent
-      await supabase.from('BookingItems').update({
-          mergedServiceIds: null,
-          options: { ...parentSvc.options, displayName: parentSvc.serviceName }
-      }).eq('id', parentSvc.id);
-
-      // Update all children
-      for (const childId of parentSvc.mergedServiceIds) {
-          await supabase.from('BookingItems').update({
-              mergedIntoId: null
-          }).eq('id', childId);
-      }
+      if (!res.success) throw new Error(res.error || 'Unknown error from server');
 
       alert('✅ Đã tách gộp đơn thành công!');
       fetchData(); // Reload the whole page to get fresh data
@@ -1007,6 +1008,8 @@ if (!hasPermission('dispatch_board')) {
         : clonedOrder.services;
 
       for (const svc of targetServices) {
+        if (svc.mergedIntoId) continue; // 🔥 DO NOT CREATE assignments for merged child services
+        
         for (const row of svc.staffList) {
           if (!row.ktvId) continue;
           
@@ -1099,8 +1102,8 @@ if (!hasPermission('dispatch_board')) {
               // Lấy room/bed riêng cho service này từ segment đầu tiên của nó
               roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
               bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-              technicianCodes: svc.staffList.map(r => r.ktvId).filter(Boolean),
-              status: (svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING', 
+              technicianCodes: svc.mergedIntoId ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
+              status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
               segments: allSegments,
               options: {
                   ...(svc.options || {}),
