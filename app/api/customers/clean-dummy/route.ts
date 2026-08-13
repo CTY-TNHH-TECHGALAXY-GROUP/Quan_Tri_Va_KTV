@@ -44,18 +44,30 @@ export async function POST(req: Request) {
                 const newCustomerId = `CUS-${ts}-${randomPart}`;
                 
                 // 2.1 Tạo khách hàng mới tinh cho booking này
-                await supabase.from('Customers').insert({
+                const { error: insErr } = await supabase.from('Customers').insert({
                     id: newCustomerId,
                     fullName: bk.customerName || 'Khách Vãng Lai',
                     email: `guest${ts}_${randomPart}@guest.com`,
-                    phone: ''
+                    phone: `GUEST-${ts}${randomPart}`,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 });
 
+                if (insErr) {
+                    console.error('Lỗi tạo khách mới:', insErr);
+                    continue;
+                }
+
                 // 2.2 Gắn mã khách hàng mới vào booking
-                await supabase.from('Bookings').update({
+                const { error: updErr } = await supabase.from('Bookings').update({
                     customerId: newCustomerId,
                     customerEmail: '' // Đè email rỗng luôn cho sạch
                 }).eq('id', bk.id);
+                
+                if (updErr) {
+                    console.error('Lỗi cập nhật booking:', updErr);
+                    continue;
+                }
 
                 totalSeparated++;
             }
