@@ -35,7 +35,7 @@
 | `roomName` | text | Tên phòng phục vụ |
 | `totalAmount` | numeric | Tổng tiền đơn hàng |
 | `paymentMethod` | text | Phương thức thanh toán |
-| `status` | BookingStatus | Trạng thái: NEW → PREPARING → READY → IN_PROGRESS → COMPLETED → FEEDBACK → CLEANING → DONE |
+| `status` | BookingStatus | Trạng thái: NEW → PREPARING → READY → IN_PROGRESS → COMPLETED → FEEDBACK → CLEANING → DONE. `SPLIT` (đơn cha đã bị tách) |
 | `source` | text | Phân loại nguồn đơn hàng: `STANDARD_WALK_IN`, `VIP_MENU`, `WEB_BOOKING` (default: `STANDARD_WALK_IN`) |
 | `rating` | numeric | Rating tổng đơn hàng (legacy — ít dùng) |
 | `tipAmount` | numeric | Tiền tip khách gửi |
@@ -45,6 +45,8 @@
 | `createdAt` | timestamp | Thời điểm tạo đơn |
 | `updatedAt` | timestamp | Thời điểm cập nhật cuối |
 | `idLegacy` | text | ID hệ thống cũ (nếu có) |
+| `parent_booking_id` | text | FK → `Bookings.id`. NULL = đơn gốc/đơn cha. Dùng để tách đơn. |
+| `sub_suffix` | text | Hậu tố đơn con (VD: 'A', 'B', 'C'). NULL = đơn gốc/đơn cha. |
 
 **Triggers:**
 - `SendPushOnNewBooking` → Gửi push notification khi có đơn mới
