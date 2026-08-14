@@ -280,7 +280,7 @@ export default function CRMPage() {
             {/* Tách Khách Ảo Button */}
             <button
               onClick={async () => {
-                if (!confirm('Bạn có chắc chắn muốn quét và tự động tách các đơn hàng bị gộp nhầm do email ảo (aa) không?')) return;
+                if (!confirm('Bạn có chắc chắn muốn quét và tự động tách các đơn hàng bị gộp nhầm do email/tên bị trùng không?')) return;
                 try {
                   const res = await fetch('/api/customers/clean-dummy', { method: 'POST' });
                   const result = await res.json();
@@ -292,9 +292,9 @@ export default function CRMPage() {
                 }
               }}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm transition-colors"
-              title="Sửa lỗi Khách Cũ khi nhập email ảo"
+              title="Tự động tách các đơn hàng bị gộp nhầm do nhập email/tên trùng lặp (ví dụ: aa, a)"
             >
-              🧹 Tách Khách Ảo
+              🧹 Sửa lỗi gộp Khách
             </button>
 
             <div className="relative">
