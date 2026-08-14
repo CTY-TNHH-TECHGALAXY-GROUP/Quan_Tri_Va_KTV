@@ -31,7 +31,11 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         externalTurns,
         allExternalStaffs,
         toggleExternalStaff,
-        deleteExternalStaff
+        deleteExternalStaff,
+        waterRefillerId,
+        assignWaterRefiller,
+        updateKtvStatus,
+        updateTurnsCompleted
     } = useTurnQueueBoard(staffs);
 
     useEffect(() => {
@@ -52,6 +56,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
 
     const firstWaitingInternalKtvId = sortedTurns.find(t => t.status === 'waiting' && !suddenOffs.has(t.employee_id))?.employee_id;
     const firstWaitingExternalKtvId = externalTurns.find(t => t.status === 'waiting')?.employee_id;
+    const actualWaterRefillerId = waterRefillerId || firstWaitingInternalKtvId;
 
     if (loading) return <div className="p-10 text-center text-gray-500">Đang tải hàng đợi...</div>;
 
