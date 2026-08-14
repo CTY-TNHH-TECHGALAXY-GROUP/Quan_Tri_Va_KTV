@@ -259,8 +259,8 @@ export async function GET(request: Request) {
                 if (passedCount > 0) {
                     const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
                     const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
-                    // 🔥 Truyền đúng groupItems vào để tính bonus. Nếu tách lẻ thì = 45p (ko bonus), nếu gộp thì = 90p (có bonus).
-                    const bForBonus = { ...fullBooking, BookingItems: groupItems };
+                    // 🔥 Truyền đúng fullBooking vào để tính bonus. Không truyền groupItems vì sẽ làm sai totalUniqueKTVs (lỗi chia điểm).
+                    const bForBonus = fullBooking;
                     bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
                 }
 
