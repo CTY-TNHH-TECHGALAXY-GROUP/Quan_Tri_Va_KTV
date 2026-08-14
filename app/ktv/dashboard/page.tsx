@@ -18,8 +18,8 @@ import Image from 'next/image';
 import { useKTVDashboard } from './KTVDashboard.logic';
 import { ROOM_ISSUE_OPTIONS } from './KTVDashboard.logic';
 import { useNotifications } from '@/components/NotificationProvider';
-import { apiClient } from '@/lib/apiClient';
 import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
 // 🔧 UI CONFIGURATION
@@ -362,13 +362,19 @@ function ScreenDashboard({ logic }: { logic: any }) {
       try {
         const date = new Date().toISOString().split('T')[0];
         const res = await apiClient.get<any>(`/api/turns?date=${date}`);
+        const configRes = await supabase.from('SystemConfigs').select('value').eq('key', 'daily_water_refiller').maybeSingle();
         if (res.success && res.data) {
           const sorted = [...res.data].sort((a: any, b: any) => {
             if (a.turns_completed !== b.turns_completed) return a.turns_completed - b.turns_completed;
             return (a.check_in_order || 999) - (b.check_in_order || 999);
           });
           const firstWaiting = sorted.find((t: any) => t.status === 'waiting');
-          setIsFirstInQueue(firstWaiting?.employee_id === logic.ktvId);
+          
+          let waterId = firstWaiting?.employee_id;
+          if (configRes.data?.value && configRes.data.value.date === date && configRes.data.value.employeeId) {
+             waterId = configRes.data.value.employeeId;
+          }
+          setIsFirstInQueue(waterId === logic.ktvId);
         }
       } catch (e) {}
     };
@@ -443,7 +449,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
   return (
     <div className="p-3 md:p-5 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24 md:max-w-5xl md:mx-auto">
       {/* ─── HEADER ─── */}
-        <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2 relative z-50">
+        <div className="flex items-center justify-between bg-white/50 backdrop-blur-xl p-4 rounded-3xl border border-slate-100 shadow-sm mb-2 relative z-30">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-inner border border-white">
                 <span className="text-xl">🧑‍⚕️</span>
@@ -1588,31 +1594,37 @@ function ScreenHandover({ logic }: { logic: any }) {
         Báo sự cố phòng
       </button>
 
-      {/* V5: Skip button — only show if KTV has next order */}
-      {hasNextOrder && (
-        <button
-          onClick={handleSkipHandover}
-          disabled={isSkippingHandover || logic.isLoading}
-          className="w-full py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-700 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-amber-100 disabled:opacity-40"
-        >
-          {isSkippingHandover ? 'Đang xử lý...' : '⏭ Bỏ qua — Nhận đơn mới'}
-        </button>
-      )}
-
+      {/* Nút tích hợp V5: Xử lý dựa trên hasNextOrder và isHandoverComplete */}
       <button
-        disabled={logic.isLoading}
+        disabled={logic.isLoading || isSkippingHandover}
         onClick={() => {
             if (!isHandoverComplete) {
-                if (!window.confirm("Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị phạt. Nếu bạn đã bàn giao có thể bỏ qua.")) {
-                    return;
+                if (hasNextOrder) {
+                    // Nếu có đơn mới và chưa chụp ảnh -> Cho nợ ảnh và qua đơn luôn
+                    handleSkipHandover();
+                } else {
+                    // Nếu không có đơn mới mà chưa chụp ảnh -> Hỏi cảnh báo phạt
+                    if (!window.confirm("Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị phạt. Nếu bạn đã bàn giao có thể bỏ qua.")) {
+                        return;
+                    }
+                    handleFinishHandover();
                 }
+            } else {
+                handleFinishHandover();
             }
-            handleFinishHandover();
         }}
         className={`w-full py-5 rounded-[24px] font-black text-sm uppercase tracking-widest shadow-xl transition-all
-        ${isHandoverComplete ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-rose-500 text-white shadow-rose-200'}`}
+        ${isHandoverComplete 
+            ? 'bg-blue-600 text-white shadow-blue-200' 
+            : (hasNextOrder ? 'bg-amber-500 text-white shadow-amber-200' : 'bg-rose-500 text-white shadow-rose-200')}`}
       >
-        {logic.isLoading ? 'Đang xử lý...' : (isHandoverComplete ? 'Xong & Sẵn sàng đón khách' : 'Bỏ qua')}
+        {logic.isLoading || isSkippingHandover 
+          ? 'Đang xử lý...' 
+          : (isHandoverComplete 
+              ? (hasNextOrder ? 'Xong & Nhận đơn mới' : 'Xong & Sẵn sàng đón khách') 
+              : (hasNextOrder ? '⏭ Bỏ qua — Nhận đơn mới' : 'Bỏ qua')
+            )
+        }
       </button>
 
     </div>

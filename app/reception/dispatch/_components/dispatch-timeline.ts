@@ -89,6 +89,11 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         
         order.services.forEach(svc => {
             if ((svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')) return; // Legacy fallback
+            
+            // 🔥 Skip merged child services so they don't create empty SubOrders
+            const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
+            if (opts.mergedIntoId) return;
+            
             if (!svc.staffList) return;
             
             svc.staffList.forEach(st => {
@@ -156,6 +161,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         order.services.forEach(svc => {
             if ((svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')) return; // Legacy fallback
             
+            // 🔥 Skip merged child services so they don't create empty SubOrders
+            const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
+            if (opts.mergedIntoId) return;
+
             if (svc.staffList && svc.staffList.length > 0) {
                 const timeGroups = new Map<string, { calculatedStart: string, staffs: any[] }>();
                 

@@ -178,7 +178,7 @@ export async function GET(request: Request) {
             id: i.id, bookingId: i.bookingId, technicianCodes: i.technicianCodes, tip: i.tip
         }))));
 
-        const result = bookings.map((b: any) => {
+        const result = bookings.flatMap((b: any) => {
             const allItems = (items || []).filter((i: any) => i.bookingId === b.id);
             
             // Re-construct booking with nested items to use service methods
@@ -190,8 +190,6 @@ export async function GET(request: Request) {
                 Array.isArray(i.technicianCodes) &&
                 i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(techCode.toLowerCase()))
             );
-
-            // Fallback: first item if no techCode match (single-KTV booking)
             
             const relevantItemsOriginal = myItems.length > 0 ? myItems : allItems;
             let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
@@ -201,111 +199,117 @@ export async function GET(request: Request) {
                 relevantItems = relevantItemsOriginal;
             }
 
-
             console.log(`🔍 [DEBUG] Booking ${b.billCode}: myItems=${myItems.length}, relevant=${relevantItems.length}, tips=${relevantItems.map((i: any) => i.tip)}`);
 
-            let totalDuration = 0;
-            let commission = 0;
-            let passedCount = 0;
+            // 🔥 TÁCH GROUP THEO MERGED_INTO_ID ĐỂ LỊCH SỬ HIỂN THỊ ĐÚNG TÁCH/GỘP
+            const itemGroups = new Map<string, any[]>();
             for (const item of relevantItems) {
-                const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
-                let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                if (itemDuration <= 0) itemDuration = 60;
-                totalDuration += itemDuration;
+                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                // Nếu item bị gộp vào 1 item khác, nó thuộc group của item đó. Nếu không, nó tự là 1 group.
+                const groupId = opts.mergedIntoId || item.id;
+                if (!itemGroups.has(groupId)) itemGroups.set(groupId, []);
+                itemGroups.get(groupId)!.push(item);
+            }
+
+            // Mỗi group sẽ tạo ra 1 dòng lịch sử riêng rẽ
+            return Array.from(itemGroups.values()).map((groupItems: any[]) => {
+                let totalDuration = 0;
+                let commission = 0;
+                let passedCount = 0;
+                for (const item of groupItems) {
+                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
+                    let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
+                    if (itemDuration <= 0) itemDuration = 60;
+                    totalDuration += itemDuration;
+                    
+                    const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
+                    if (isPassed) {
+                        passedCount++;
+                        commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                    }
+                }
+                if (commission === 0 && passedCount > 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+
+                const serviceNames = groupItems
+                    .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
+                    .filter(Boolean);
+                const serviceName = serviceNames.length > 1
+                    ? serviceNames.join(' + ')
+                    : (serviceNames[0] || '—');
+
+                // ─── Rating: lấy từ BookingItems (item-level) ────
+                const itemRating = groupItems.reduce((best: number, i: any) => {
+                    const r = Number(i.itemRating) || 0;
+                    return r > best ? r : best;
+                }, 0) || null;
+
+                // ─── Bonus points ─────────────
+                const dbDate = parseDbDate(b.bookingDate || b.createdAt);
+                const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+                const bDateStr = formatter.format(dbDate);
+                const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
                 
-                const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
-                if (isPassed) {
-                    passedCount++;
-                    commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                const dynamicShiftsData = [{
+                    employeeId: techCode,
+                    shiftType: shiftType,
+                    effectiveFrom: bDateStr
+                }];
+                
+                let bonusPoints = 0;
+                if (passedCount > 0) {
+                    const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
+                    const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+                    // 🔥 Truyền đúng groupItems vào để tính bonus. Nếu tách lẻ thì = 45p (ko bonus), nếu gộp thì = 90p (có bonus).
+                    const bForBonus = { ...fullBooking, BookingItems: groupItems };
+                    bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
                 }
-            }
-            if (commission === 0 && passedCount > 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
 
-            const serviceNames = relevantItems
-                .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
-                .filter(Boolean);
-            const serviceName = serviceNames.length > 1
-                ? serviceNames.join(' + ')
-                : (serviceNames[0] || '—');
+                // ─── Tip: sum from this group's items ────────────────────────
+                const ktvTip = groupItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
 
-            // ─── Rating: lấy từ BookingItems (item-level) thay vì Bookings ────
-            const itemRating = relevantItems.reduce((best: number, i: any) => {
-                const r = Number(i.itemRating) || 0;
-                return r > best ? r : best;
-            }, 0) || null;
+                // ─── Lấy handover status ──────────────────────────────
+                const handoverItem = groupItems.find((i: any) => i.handover_status) || groupItems[0];
+                const handover_status = handoverItem?.handover_status || 'PENDING';
+                const handover_comment = handoverItem?.handover_comment || null;
 
-            // ─── Bonus points ─────────────
-            const dbDate = parseDbDate(b.bookingDate || b.createdAt);
-            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
-            const bDateStr = formatter.format(dbDate);
-            const shiftType = shiftMap.get(bDateStr) || 'SHIFT_1';
-            
-            // Build pseudo shiftsData for calculateBookingBonus
-            const dynamicShiftsData = [{
-                employeeId: techCode,
-                shiftType: shiftType,
-                effectiveFrom: bDateStr
-            }];
-            
-            let bonusPoints = 0;
-            if (passedCount > 0) {
-                const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
-                const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
-                let bForBonus = fullBooking;
-                if (!isNewRule) {
-                    const filteredItemsForBonus = (fullBooking.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
-                    bForBonus = { ...fullBooking, BookingItems: filteredItemsForBonus };
-                }
-                bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
-            }
+                // Tìm KTV làm cùng trong CÙNG group này
+                const allKTVsInBooking = new Set<string>();
+                (groupItems || []).forEach((i: any) => {
+                    if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
+                        i.technicianCodes.forEach((tc: string) => {
+                            if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
+                        });
+                    }
+                });
+                const coWorkers = Array.from(allKTVsInBooking).filter(tc => tc.toLowerCase() !== techCode.toLowerCase());
 
-            // ─── Tip: sum from this KTV's items ────────────────────────
-            const ktvTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
+                // 🧠 STATUS: Xét theo BookingItems của group này
+                const myItemStatuses = groupItems.map((i: any) => i.status || 'NEW');
+                const { recomputeBookingStatus } = require('@/lib/dispatch-status');
+                const itemBasedStatus = myItemStatuses.length > 0
+                    ? recomputeBookingStatus(myItemStatuses)
+                    : b.status;
 
-            // ─── Lấy handover status ──────────────────────────────
-            // Vì handover là chung cho KTV làm đơn, nếu có nhiều dịch vụ gộp thì lấy cái nào có status
-            const handoverItem = relevantItems.find((i: any) => i.handover_status) || relevantItems[0];
-            const handover_status = handoverItem?.handover_status || 'PENDING';
-            const handover_comment = handoverItem?.handover_comment || null;
-
-            // Tìm KTV làm cùng
-            const allKTVsInBooking = new Set<string>();
-            (fullBooking.BookingItems || []).forEach((i: any) => {
-                if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
-                    i.technicianCodes.forEach((tc: string) => {
-                        if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
-                    });
-                }
+                return {
+                    id: `${b.id}_${groupItems[0].id}`, // Đảm bảo ID duy nhất cho mỗi dòng lịch sử (BookingID + ItemID)
+                    billCode: b.billCode,
+                    createdAt: b.createdAt,
+                    bookingDate: b.bookingDate,
+                    status: itemBasedStatus,
+                    rating: itemRating,
+                    tip: ktvTip,
+                    commission,
+                    serviceName,
+                    duration: totalDuration,
+                    bonusPoints,
+                    handover_status,
+                    handover_comment,
+                    ktv_comment: b.notes,
+                    guestCount: b.guestCount || 1,
+                    coWorkers,
+                    isHeld: passedCount === 0
+                };
             });
-            const coWorkers = Array.from(allKTVsInBooking).filter(tc => tc.toLowerCase() !== techCode.toLowerCase());
-
-            // 🧠 STATUS: Xét theo BookingItems (item-level) thay vì Booking cha
-            // Nếu tất cả items của KTV này đều DONE → hiện DONE, không phụ thuộc Booking cha
-            const myItemStatuses = relevantItems.map((i: any) => i.status || 'NEW');
-            const { recomputeBookingStatus } = require('@/lib/dispatch-status');
-            const itemBasedStatus = myItemStatuses.length > 0
-                ? recomputeBookingStatus(myItemStatuses)
-                : b.status;
-
-            return {
-                id: b.id,
-                billCode: b.billCode,
-                createdAt: b.createdAt,
-                bookingDate: b.bookingDate,
-                status: itemBasedStatus,
-                rating: itemRating,
-                tip: ktvTip,
-                commission,
-                serviceName,
-                duration: totalDuration,
-                bonusPoints,
-                handover_status,
-                handover_comment,
-                ktv_comment: b.notes,
-                guestCount: b.guestCount || 1,
-                coWorkers,
-                isHeld: passedCount === 0
-            };
         });
 
         // ─── Fetch KTV Discipline Data ─────────────────────────────────────

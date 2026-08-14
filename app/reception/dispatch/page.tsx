@@ -449,10 +449,10 @@ if (!hasPermission('dispatch_board')) {
               mergedIntoId: sourceSvcId,
               staffList: s.staffList.map((r, i) => (r.id === rowId || (rowId === '' && i === 0)) ? {
                 ...r,
-                ktvId,
+                ktvId: '',
                 segments: r.segments.map((cSeg, cIdx) => {
                   const pSeg = sourceSegments?.[cIdx] || sourceSegments?.[0];
-                  return { ...cSeg, roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
+                  return { ...cSeg, ktvId: '', roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
                 })
               } : r)
             };

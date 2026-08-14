@@ -378,12 +378,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         let activeSegmentIndex = 0;
         let statusSource = 'none';
 
-        const ktvItems = itemsWithService.filter((i: any) => 
-            i.technicianCodes && 
-            Array.isArray(i.technicianCodes) && 
-            technicianCode && 
-            i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase())
-        );
+        const ktvItems = itemsWithService.filter((i: any) => {
+            // 🔥 Bỏ qua các dịch vụ đã gộp để KTV Dashboard không nhận nhầm item con (sửa lỗi cho dữ liệu cũ)
+            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
+            if (opts.mergedIntoId) return false;
+
+            return i.technicianCodes && 
+                   Array.isArray(i.technicianCodes) && 
+                   technicianCode && 
+                   i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase());
+        });
 
         if (ktvItems.length > 0) {
             for (const item of ktvItems) {
@@ -460,6 +464,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         const mySegments: { origStart: string; duration: number; actualStartTime?: string; actualEndTime?: string }[] = [];
         itemsWithService.forEach((item: any) => {
             if (item.is_utility === true || item.serviceId === 'NHS0900' || item.service_name?.toLowerCase().includes('phòng riêng') || item.service_name?.toLowerCase().includes('phong rieng')) return;
+            
+            // 🔥 GUARD: Nếu dịch vụ này đã bị gộp (có mergedIntoId), KTV không cần quan tâm chặng ảo của nó
+            const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+            if (opts.mergedIntoId) return;
+
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
             segs.forEach((s: any) => {
