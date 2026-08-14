@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2 } from 'lucide-react';
+import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2, Droplets } from 'lucide-react';
 import { motion } from 'motion/react';
 import { StaffData } from './TurnQueueBoard.types';
 import { useTurnQueueBoard } from './TurnQueueBoard.logic';
@@ -8,7 +8,7 @@ import { getVnTimeStr } from '@/lib/time-helper';
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
 
-export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSelectedDate, onDateChange }: { staffs: StaffData[], ktvDisplayNames?: Record<string, string>, selectedDate?: string, onDateChange?: (date: string) => void }) => {
+export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSelectedDate, onDateChange, allowEditTurns = false }: { staffs: StaffData[], ktvDisplayNames?: Record<string, string>, selectedDate?: string, onDateChange?: (date: string) => void, allowEditTurns?: boolean }) => {
     const {
         selectedDate,
         setSelectedDate,
@@ -281,7 +281,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 </div>
                             </div>
                             <div className="flex items-center gap-3 shrink-0">
-                                {turn && turn.employee_id === firstWaitingExternalKtvId && (
+                                {turn && turn.employee_id === actualWaterRefillerId && (
                                     <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
                                         <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
                                         Tua đầu: Kiểm tra châm nước
