@@ -10,7 +10,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         { name: 'Quản Lý Tính Năng', href: '/admin/settings/features', icon: <Zap size={18} /> },
         { name: 'Cài Đặt Thông Báo', href: '/admin/settings/notifications', icon: <Bell size={18} /> },
         { name: 'Cấu Hình Tài Chính', href: '/admin/settings/system', icon: <Settings size={18} /> },
-        { name: 'Cấu Hình Nâng Cao', href: '/admin/settings/advanced', icon: <Database size={18} /> }
+        { name: 'Cấu Hình Nâng Cao', href: '/admin/settings/advanced', icon: <Database size={18} /> },
+        { name: 'Cấu Hình Hóa Đơn', href: '/admin/settings/invoice', icon: <Settings size={18} /> }
     ];
 
     return (
