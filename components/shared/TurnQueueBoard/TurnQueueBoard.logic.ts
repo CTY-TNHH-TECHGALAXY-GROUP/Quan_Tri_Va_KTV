@@ -287,6 +287,65 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         if (!isOffA && isOffB) return -1;
         return 0;
     });
+    const [waterRefillerId, setWaterRefillerId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchWaterRefiller = async () => {
+            const { data } = await supabase.from('SystemConfigs').select('value').eq('key', 'daily_water_refiller').single();
+            if (data?.value) {
+                setWaterRefillerId(data.value);
+            }
+        };
+        fetchWaterRefiller();
+
+        const channel = supabase.channel('system_configs_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'SystemConfigs', filter: "key=eq.daily_water_refiller" }, (payload) => {
+                const newRecord = payload.new as { key: string; value: string | null };
+                if (newRecord && newRecord.key === 'daily_water_refiller') {
+                    setWaterRefillerId(newRecord.value);
+                }
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, []);
+
+    const assignWaterRefiller = async (ktvId: string | null) => {
+        try {
+            const { error } = await supabase.from('SystemConfigs').upsert({ key: 'daily_water_refiller', value: ktvId });
+            if (error) throw error;
+        } catch (err) {
+            console.error('Lỗi khi gán người châm nước:', err);
+            alert('Có lỗi xảy ra khi gán người châm nước!');
+        }
+    };
+
+    const updateKtvStatus = async (turnId: string, status: string, estimated_end_time?: string) => {
+        try {
+            const updatePayload: any = { status };
+            if (status === 'working' && estimated_end_time) {
+                updatePayload.estimated_end_time = estimated_end_time;
+            } else if (status !== 'working') {
+                updatePayload.estimated_end_time = null;
+            }
+            const { error } = await supabase.from('TurnQueue').update(updatePayload).eq('id', turnId);
+            if (error) throw error;
+        } catch (err) {
+            console.error('Lỗi cập nhật trạng thái:', err);
+            alert('Có lỗi xảy ra khi đổi trạng thái KTV!');
+        }
+    };
+
+    const updateTurnsCompleted = async (turnId: string, newTurns: number) => {
+        try {
+            if (newTurns < 0) return;
+            const { error } = await supabase.from('TurnQueue').update({ turns_completed: newTurns }).eq('id', turnId);
+            if (error) throw error;
+        } catch (err) {
+            console.error('Lỗi cập nhật số tua:', err);
+            alert('Có lỗi xảy ra khi đổi số tua KTV!');
+        }
+    };
 
     return {
         selectedDate,
@@ -310,6 +369,10 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         externalTurns,
         allExternalStaffs: sortedExternalStaffs,
         toggleExternalStaff,
-        deleteExternalStaff
+        deleteExternalStaff,
+        waterRefillerId,
+        assignWaterRefiller,
+        updateKtvStatus,
+        updateTurnsCompleted
     };
 };
