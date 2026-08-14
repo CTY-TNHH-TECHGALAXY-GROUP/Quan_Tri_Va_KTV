@@ -302,6 +302,40 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
         return () => clearInterval(interval);
     }, [subOrders, onUpdateStatus]);
 
+    const handleBulkUpdate = (columnId: string, currentSubOrders: any[]) => {
+        if (currentSubOrders.length === 0) return;
+        
+        if (columnId === 'CLEANING') {
+            const confirmMsg = confirm(`Xác nhận hoàn tất dọn phòng cho ${currentSubOrders.length} ca?`);
+            if (!confirmMsg) return;
+            
+            currentSubOrders.forEach(subOrder => {
+                const itemIds = subOrder.services.map((s: any) => s.id);
+                let targetKtvIds = undefined;
+                if (subOrder.ktvIds && subOrder.ktvIds.length > 0) {
+                    targetKtvIds = subOrder.ktvIds;
+                }
+                if (subOrder.originalOrder?.rating) {
+                    onUpdateStatus(subOrder.bookingId, 'DONE', itemIds, true, targetKtvIds);
+                } else {
+                    onUpdateStatus(subOrder.bookingId, 'FEEDBACK', itemIds, true, targetKtvIds);
+                }
+            });
+        } else if (columnId === 'FEEDBACK') {
+            const confirmMsg = confirm(`Xác nhận hoàn tất đánh giá cho ${currentSubOrders.length} ca?`);
+            if (!confirmMsg) return;
+            
+            currentSubOrders.forEach(subOrder => {
+                const itemIds = subOrder.services.map((s: any) => s.id);
+                let targetKtvIds = undefined;
+                if (subOrder.ktvIds && subOrder.ktvIds.length > 0) {
+                    targetKtvIds = subOrder.ktvIds;
+                }
+                onUpdateStatus(subOrder.bookingId, 'DONE', itemIds, true, targetKtvIds);
+            });
+        }
+    };
+
     const getStatusConfig = (id: string) => STATUS_CONFIG.find(s => s.id === id) || STATUS_CONFIG[0];
 
     return (
@@ -375,6 +409,24 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     {columnSubOrders.length}
                                 </span>
                             </div>
+                            
+                            {/* Nút hành động nhanh */}
+                            {column.id === 'CLEANING' && columnSubOrders.length > 0 && (
+                                <button 
+                                    onClick={() => handleBulkUpdate(column.id, columnSubOrders)} 
+                                    className="text-[10px] font-bold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2 py-1 rounded-md transition-colors whitespace-nowrap active:scale-95 shadow-sm"
+                                >
+                                    Dọn tất cả
+                                </button>
+                            )}
+                            {column.id === 'FEEDBACK' && columnSubOrders.length > 0 && (
+                                <button 
+                                    onClick={() => handleBulkUpdate(column.id, columnSubOrders)} 
+                                    className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-md transition-colors whitespace-nowrap active:scale-95 shadow-sm"
+                                >
+                                    Đánh giá tất cả
+                                </button>
+                            )}
                         </div>
 
                         {/* Order Cards */}
