@@ -212,7 +212,8 @@ export async function GET(request: Request) {
             }
 
             // Mỗi group sẽ tạo ra 1 dòng lịch sử riêng rẽ
-            return Array.from(itemGroups.values()).map((groupItems: any[]) => {
+            const groupsArray = Array.from(itemGroups.values());
+            return groupsArray.map((groupItems: any[]) => {
                 let totalDuration = 0;
                 let commission = 0;
                 let passedCount = 0;
@@ -256,10 +257,11 @@ export async function GET(request: Request) {
                 }];
                 
                 let bonusPoints = 0;
-                if (passedCount > 0) {
+                const isFirstGroup = (groupItems === groupsArray[0]);
+                if (passedCount > 0 && isFirstGroup) {
                     const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
                     const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
-                    // 🔥 Truyền đúng fullBooking vào để tính bonus. Không truyền groupItems vì sẽ làm sai totalUniqueKTVs (lỗi chia điểm).
+                    // TÍNH BONUS CHO CẢ BOOKING
                     const bForBonus = fullBooking;
                     bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
                 }
