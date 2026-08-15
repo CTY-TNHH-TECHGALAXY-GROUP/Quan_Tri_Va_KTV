@@ -57,6 +57,8 @@ export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRE
 
 export interface PendingOrder {
   id: string; // Booking ID
+  parentBookingId?: string | null;
+  subSuffix?: string | null;
   billCode: string;
   customerName: string;
   customerId?: string | null;

@@ -59,11 +59,12 @@ export async function getDispatchData(date: string) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
             .neq('status', 'CANCELLED')
+            .neq('status', 'SPLIT')
             .order('createdAt', { ascending: true });
 
         if (bError) throw bError;

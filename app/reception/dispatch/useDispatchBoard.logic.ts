@@ -160,6 +160,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
                     return {
                         id: b.id,
+                        parentBookingId: b.parent_booking_id || null,
+                        subSuffix: b.sub_suffix || null,
                         billCode: b.billCode || 'N/A',
                         customerName: b.customerName || 'Khách vãng lai',
                         customerId: b.customerId || null,
@@ -227,7 +229,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             }
 
                             const forcedStartTime = parsedOptions?.timeSlot || parsedNotes?.timeSlot;
-                            const techCodes: string[] = Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : []);
+                            const techCodes: string[] = (Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : [])).filter(Boolean);
                             let staffList: any[] = [];
 
                             if (techCodes.length > 0) {

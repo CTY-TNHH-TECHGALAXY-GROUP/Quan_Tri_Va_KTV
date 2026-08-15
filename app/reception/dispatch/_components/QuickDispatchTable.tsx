@@ -9,6 +9,7 @@ import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } fro
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
 
 const FOURHAND_SERVICES = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'];
+const SUB_SUFFIXES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
 interface Room { id: string; name: string; type: string; default_reminders?: string[]; }
 interface Bed { id: string; roomId: string; }
@@ -43,6 +44,7 @@ interface QuickDispatchTableProps {
   onDispatchGroup?: (group: ServiceGroup, specificSvcId?: string) => void;
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
+  subOrderCodeProp?: string;
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -71,7 +73,7 @@ const genId = () => Math.random().toString(36).substring(2, 9);
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc
+  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc, billCode, subOrderCodeProp
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -127,6 +129,86 @@ export const QuickDispatchTable = ({
     isMergedGroup?: boolean;
   };
   const [groupStates, setGroupStates] = useState<Map<string, GroupState>>(new Map());
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
+
+  const handleMergeServices = () => {
+    if (selectedGroupKeys.length < 2) return;
+    const selectedItems = Array.from(initialGroups.entries())
+                               .filter(([k]) => selectedGroupKeys.includes(k))
+                               .flatMap(([k, items]) => items);
+    
+    if (selectedItems.length < 2) return;
+    
+    const parent = selectedItems[0];
+    const children = selectedItems.slice(1);
+    
+    const updatedServices = services.map(svc => {
+        if (svc.id === parent.id) {
+            return {
+                ...svc,
+                mergedServiceIds: [...(svc.mergedServiceIds || []), ...children.map(c => c.id)]
+            };
+        }
+        if (children.some(c => c.id === svc.id)) {
+            return {
+                ...svc,
+                mergedIntoId: parent.id
+            };
+        }
+        return svc;
+    });
+    
+    onUpdateServices(updatedServices);
+    setSelectedGroupKeys([]);
+  };
+
+  const handleSplitServices = () => {
+    if (selectedGroupKeys.length === 0) return;
+    const selectedItems = Array.from(initialGroups.entries())
+                               .filter(([k]) => selectedGroupKeys.includes(k))
+                               .flatMap(([k, items]) => items);
+                               
+    const itemsToSplit = selectedItems.filter(s => s.mergedServiceIds?.length);
+    if (itemsToSplit.length === 0) return;
+    
+    let updatedServices = [...services];
+    
+    itemsToSplit.forEach(parent => {
+        const childrenIds = parent.mergedServiceIds || [];
+        updatedServices = updatedServices.map(svc => {
+            if (svc.id === parent.id) {
+                return { ...svc, mergedServiceIds: [] };
+            }
+            if (childrenIds.includes(svc.id)) {
+                return { ...svc, mergedIntoId: undefined };
+            }
+            return svc;
+        });
+    });
+    
+    onUpdateServices(updatedServices);
+    setSelectedGroupKeys([]);
+  };
+
+  const handleUnmergeSingle = (groupId: string) => {
+    const groupItems = initialGroups.get(groupId) || [];
+    if (groupItems.length === 0) return;
+    const parent = groupItems[0];
+    const childrenIds = parent.mergedServiceIds || [];
+    if (childrenIds.length === 0) return;
+
+    const updatedServices = services.map(svc => {
+        if (svc.id === parent.id) {
+            return { ...svc, mergedServiceIds: [] };
+        }
+        if (childrenIds.includes(svc.id)) {
+            return { ...svc, mergedIntoId: undefined };
+        }
+        return svc;
+    });
+    onUpdateServices(updatedServices);
+    setSelectedGroupKeys(prev => prev.filter(k => k !== groupId));
+  };
 
   // Build fingerprint from current services data
   const buildFingerprint = (svcs: ServiceBlock[]) =>
@@ -353,15 +435,48 @@ export const QuickDispatchTable = ({
     return latestEndTime;
   };
 
+  const isAllSelected = selectedGroupKeys.length > 0 && selectedGroupKeys.length === initialGroups.size;
+  const toggleSelectAll = () => {
+      if (isAllSelected) setSelectedGroupKeys([]);
+      else setSelectedGroupKeys(Array.from(initialGroups.keys()));
+  };
+  const parentPrefix = billCode ? billCode.split('-')[0] : 'XXX';
+
   return (
     <div className="space-y-5">
+      {/* 🚀 TOOLBAR SUB-BOOKING */}
+      <div className="sticky top-0 z-20 px-6 py-4 bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-3xl flex flex-wrap gap-2.5 items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+              <input type="checkbox" id="selectAllCheckbox" checked={isAllSelected} onChange={toggleSelectAll} className="w-5 h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+              <label htmlFor="selectAllCheckbox" className="text-xs font-black text-slate-700 uppercase tracking-wider cursor-pointer mt-0.5">
+                  ĐÃ CHỌN ({selectedGroupKeys.length}/{initialGroups.size})
+              </label>
+          </div>
+          
+          <div className="flex items-center gap-2">
+              <button onClick={handleMergeServices} disabled={selectedGroupKeys.length < 2} className="flex items-center gap-1.5 bg-white border-2 border-indigo-200 text-indigo-700 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Gộp 2 hoặc nhiều dịch vụ thành 1 đơn con chung">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+                  GỘP DỊCH VỤ
+              </button>
+
+              <button onClick={handleSplitServices} disabled={selectedGroupKeys.length < 1} className="flex items-center gap-1.5 bg-white border-2 border-amber-200 text-amber-800 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Rã các dịch vụ đã gộp thành từng đơn con riêng lẻ">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+                  TÁCH LẺ ĐƠN
+              </button>
+          </div>
+      </div>
+
       {/* Service Groups */}
-      {Array.from(initialGroups.entries()).map(([groupKey, items]) => {
+      {Array.from(initialGroups.entries()).map(([groupKey, items], idx) => {
         const state = groupStates.get(groupKey);
         if (!state) return null;
         const count = items.length;
         const duration = items[0]?.duration || 0;
         const displayServiceName = items[0]?.serviceName || groupKey.split('_')[0];
+        
+        const subSuffix = subOrderCodeProp || SUB_SUFFIXES[idx] || String(idx + 1);
+        const subOrderCode = `${parentPrefix}-${subSuffix}`;
+        const isSelected = selectedGroupKeys.includes(groupKey);
 
         // Find matching skill for this service
         const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => displayServiceName.toLowerCase().includes(k.toLowerCase()))
@@ -408,6 +523,11 @@ export const QuickDispatchTable = ({
             onUpdateServices={onUpdateServices}
             onRemoveSvc={onRemoveSvc}
             orderId={orderId}
+            subOrderCode={subOrderCode}
+            isSelected={isSelected}
+            onToggleSelect={() => setSelectedGroupKeys(prev => prev.includes(groupKey) ? prev.filter(k => k !== groupKey) : [...prev, groupKey])}
+            onUnmerge={() => handleUnmergeSingle(groupKey)}
+            billCode={billCode}
           />
         );
       })}
@@ -443,6 +563,11 @@ interface ServiceGroupCardProps {
   onUpdateServices?: (services: ServiceBlock[]) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
   orderId?: string;
+  subOrderCode?: string;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  onUnmerge?: () => void;
+  billCode?: string;
 }
 
 const MAX_KTV_PER_GROUP = 10;
@@ -450,7 +575,7 @@ const MAX_KTV_PER_GROUP = 10;
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state, targetSkill,
   availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc, orderId
+  allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc, orderId, subOrderCode, isSelected, onToggleSelect, onUnmerge, billCode
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const [ktvSearch, setKtvSearch] = useState('');
@@ -691,25 +816,70 @@ const ServiceGroupCard = ({
 
   const dateFormatted = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const getBadgeBg = (i: number) => ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500'][i % 5];
+  
+  const totalMergedCount = count + (groupItems[0]?.mergedServiceIds?.length || 0);
 
   return (<>
-    <div className="border border-gray-100 rounded-3xl overflow-visible bg-white shadow-sm hover:shadow-md transition-all">
-      <div className="bg-gray-50/80 px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2 rounded-t-3xl">
-        <div className="flex items-center gap-2">
-          {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200">[Tiện ích]</span>}
-          <h3 className={`font-black text-sm ${state.isUtility ? 'text-amber-700 italic' : 'text-gray-900'}`}>{serviceName}</h3>
-          <span className="bg-indigo-600 text-white text-[10px] font-black px-2.5 py-1 rounded-xl">x{count}</span>
-          {(!state.isUtility) && <span className="text-xs text-gray-400 font-bold">{duration}p</span>}
-          {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200">+{state.selectedKtvIds.length - count} nối tiếp</span>}
+    <div className={`border rounded-3xl overflow-visible bg-white shadow-sm hover:shadow-md transition-all ${isSelected ? 'border-indigo-400 bg-indigo-50/20' : state.isMergedGroup ? 'border-purple-300 ring-4 ring-purple-50/60 bg-purple-50/10 animate-merge' : 'border-gray-100 hover:border-gray-200'}`}>
+      <div className={`px-4 py-3 border-b flex flex-col gap-2 rounded-t-3xl ${isSelected ? 'bg-indigo-50/50 border-indigo-100' : state.isMergedGroup ? 'bg-purple-50/50 border-purple-100' : 'bg-gray-50/80 border-gray-100'}`}>
+        {/* Header Dòng 1: Mã Đơn + Checkbox */}
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                {onToggleSelect && (
+                   <input type="checkbox" checked={isSelected} onChange={onToggleSelect} className="w-5 h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                )}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                   {subOrderCode && (
+                     <span className="bg-indigo-600 text-white text-[11px] font-black px-2.5 py-0.5 rounded-lg shadow-sm flex items-center gap-1">
+                         📦 Đơn Con: {subOrderCode}
+                     </span>
+                   )}
+                   {billCode && (
+                     <>
+                       <span className="text-xs text-slate-400 font-bold">•</span>
+                       <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode}</span></span>
+                     </>
+                   )}
+                   {state.isMergedGroup && (
+                     <>
+                       <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md ml-2">
+                           🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
+                       </span>
+                       {onUnmerge && (
+                           <button onClick={onUnmerge} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-1">
+                               Hủy gộp
+                           </button>
+                       )}
+                     </>
+                   )}
+                </div>
+            </div>
+            
+            {onRemoveSvc && groupItems.length === 1 && orderId && (
+              <button onClick={() => onRemoveSvc(orderId, groupItems[0].id)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100 bg-white" title="Xóa dịch vụ">
+                  <Trash2 size={14} />
+              </button>
+            )}
         </div>
-        <div className="flex items-center gap-2">
-          <input type="text" value={state.displayName} onChange={e => onUpdate({ displayName: e.target.value })} placeholder={serviceName}
-            className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-bold w-40 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none bg-white" />
-          {onRemoveSvc && groupItems.length === 1 && orderId && (
-            <button onClick={() => onRemoveSvc(orderId, groupItems[0].id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100" title="Xóa dịch vụ">
-                <Trash2 size={14} />
-            </button>
-          )}
+        
+        {/* Header Dòng 2: Tên Dịch vụ & Thời gian */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pl-7">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
+            <input 
+              type="text" 
+              value={state.displayName} 
+              onChange={e => onUpdate({ displayName: e.target.value })} 
+              placeholder={serviceName}
+              className={`font-black text-base bg-transparent border-b border-dashed hover:border-indigo-300 focus:border-indigo-500 outline-none w-full max-w-[200px] sm:max-w-[300px] truncate ${state.isUtility ? 'text-amber-700 italic border-amber-300/50' : 'text-gray-900 border-gray-300/50'}`} 
+            />
+            {(!state.isUtility) && (
+               <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-xl text-xs font-black shrink-0">
+                 {state.duration || duration}p
+               </span>
+            )}
+            {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
+          </div>
         </div>
       </div>
 
@@ -787,17 +957,15 @@ const ServiceGroupCard = ({
                             type="number"
                             min={0.1} max={300} step={0.1}
                             value={ktvDur || ''}
-                            onChange={e => !state.isMergedGroup && updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
-                            onFocus={() => !state.isMergedGroup && setOpenDurationIdx(idx)}
-                            disabled={state.isMergedGroup}
-                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${state.isMergedGroup ? 'border-gray-200 text-gray-500 bg-gray-100 cursor-not-allowed' : 'border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400'}`}
+                            onChange={e => updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
+                            onFocus={() => setOpenDurationIdx(idx)}
+                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400`}
                             placeholder="Phút"
                         />
                         <button 
                             type="button"
-                            onClick={() => !state.isMergedGroup && setOpenDurationIdx(openDurationIdx === idx ? null : idx)}
-                            disabled={state.isMergedGroup}
-                            className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors ${state.isMergedGroup ? 'text-gray-400 cursor-not-allowed' : 'text-amber-500 hover:text-amber-700'}`}
+                            onClick={() => setOpenDurationIdx(openDurationIdx === idx ? null : idx)}
+                            className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors text-amber-500 hover:text-amber-700`}
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${openDurationIdx === idx ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
                         </button>

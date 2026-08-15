@@ -273,8 +273,10 @@
 | `join_date` | date | Ngày vào làm |
 | `height` | integer | Chiều cao (cm) |
 | `weight` | integer | Cân nặng (kg) |
-  | is_active_vip_menu | boolean | Hiển thị lên VIP Menu (true/false) |
-  | is_home_spa | boolean | Đi được Home Spa (true/false) |
+| `is_active_vip_menu` | boolean | Hiển thị lên VIP Menu (true/false) |
+| `is_home_spa` | boolean | Đi được Home Spa (true/false) |
+| `is_active_therapy_menu` | boolean | Hiển thị lên Therapy Menu (true/false) |
+| `certificate_url` | text | Link ảnh bằng cấp của nhân viên |
 | `feature_flags` | jsonb | Cờ bật/tắt tính năng per-staff (VD: `{"laundry_deduction": true, "is_on_call": true, "travel_time_mins": 30}`). Default: `{}` |
 | `skills` | jsonb | Kỹ năng chuyên môn |
 | `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Freelance/Nhập tay). Default: `TYPE_A`. CHECK constraint. |

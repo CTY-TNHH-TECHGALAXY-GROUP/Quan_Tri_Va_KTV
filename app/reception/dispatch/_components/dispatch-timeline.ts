@@ -40,6 +40,7 @@ export interface SubOrder {
     ktvIds: string[]; // Explicit array of KTV IDs for this suborder
     calculatedStart: string; // The dynamically calculated start time
     rating?: number | null;
+    subSuffix?: string | null;
 }
 
 export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
@@ -157,11 +158,12 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         const ktvGroups = new Map<string, ServiceBlock[]>();
         const groupKtvIds = new Map<string, string[]>();
         const groupCalculatedStarts = new Map<string, string>();
+        const parentSignatures = new Map<string, string>();
 
         order.services.forEach(svc => {
             if ((svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')) return; // Legacy fallback
             
-            // 🔥 Skip merged child services so they don't create empty SubOrders
+            // 🔥 Skip merged child services in Pass 1 so they don't create empty independent SubOrders
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
             if (opts.mergedIntoId) return;
 
@@ -187,6 +189,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                         groupCalculatedStarts.set(ktvSignature, groupInfo.calculatedStart);
                     }
                     
+                    // Lưu lại ktvSignature của dịch vụ gốc để nhét dịch vụ con vào chung thẻ bài (SubOrder)
+                    parentSignatures.set(svc.id, ktvSignature);
+
                     let isAllCompleted = true;
                     let isAnyStarted = false;
                     let isAllFeedback = true;
@@ -219,7 +224,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvGroups.get(ktvSignature)!.push(svcClone);
                 });
             } else {
-                const ktvSignature = `${svc.id}_unassigned`;
+                const ktvSignature = `unassigned`;
+                parentSignatures.set(svc.id, ktvSignature);
                 if (!ktvGroups.has(ktvSignature)) {
                     ktvGroups.set(ktvSignature, []);
                     groupKtvIds.set(ktvSignature, []);
@@ -229,17 +235,36 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             }
         });
 
+        // 🔥 Gắn lại các child services đã gộp vào chung SubOrder của parent (để cộng tổng tiền)
+        order.services.forEach(svc => {
+            const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
+            if (opts.mergedIntoId) {
+                const parentSig = parentSignatures.get(opts.mergedIntoId);
+                if (parentSig && ktvGroups.has(parentSig)) {
+                    ktvGroups.get(parentSig)!.push(svc);
+                }
+            }
+        });
+
+        let groupIndex = 0;
         const resultForOrder: SubOrder[] = [];
         ktvGroups.forEach((services, ktvSignature) => {
             const statuses = services.map(s => s.status || 'NEW');
+            const subKtvIds = groupKtvIds.get(ktvSignature) || [];
+
             let dispatchStatus = 'PREPARING';
             if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dispatchStatus = 'IN_PROGRESS';
-            else if (statuses.includes('PREPARING') || statuses.includes('NEW') || statuses.includes('WAITING')) dispatchStatus = 'PREPARING';
+            else if (statuses.includes('PREPARING')) dispatchStatus = 'PREPARING';
             else if (statuses.includes('CLEANING')) dispatchStatus = 'CLEANING';
             else if (statuses.includes('FEEDBACK')) dispatchStatus = 'FEEDBACK';
-            else dispatchStatus = 'DONE';
+            else if (statuses.includes('DONE')) dispatchStatus = 'DONE';
+            else dispatchStatus = 'pending';
 
-            const subKtvIds = groupKtvIds.get(ktvSignature) || [];
+            // ⚠️ FIX: Nếu không có KTV nào được gán, BẮT BUỘC trả về 'pending' để ở lại cột "Chờ điều phối"
+            if (subKtvIds.length === 0) {
+                dispatchStatus = 'pending';
+            }
+
             let subOrderRating: number | null = null;
             if (subKtvIds.length > 0) {
                 let maxRating: number | null = null;
@@ -292,8 +317,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 ktvSignature, // Legacy
                 ktvIds: subKtvIds,
                 calculatedStart: groupCalculatedStarts.get(ktvSignature) || '',
-                rating: subOrderRating
+                rating: subOrderRating,
+                subSuffix: order.subSuffix || String.fromCharCode(65 + groupIndex)
             });
+            groupIndex++;
         });
 
         // 🌟 Inject Utilities (Phòng Riêng) back into UI 🌟

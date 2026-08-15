@@ -1143,7 +1143,55 @@ if (!hasPermission('dispatch_board')) {
       const isPending = !clonedOrder.rawStatus || ['NEW', 'pending', 'WAITING'].includes(clonedOrder.rawStatus);
       const bookingStatus = isPartial ? null : (isPending ? 'PREPARING' : clonedOrder.rawStatus);
       
-      const res = await processDispatch(clonedOrder.id, {
+      let targetBookingId = clonedOrder.id;
+
+      // 🚀 THỰC THI BƯỚC 2: TÁCH ĐƠN VẬT LÝ VÀO DATABASE
+      const parentOrderSubOrders = subOrders.filter(so => so.bookingId === clonedOrder.id);
+      const isUiSplit = parentOrderSubOrders.length > 1;
+      
+      if ((isPartial || isUiSplit) && !clonedOrder.parentBookingId) {
+          let splitPlan: any[] = [];
+          
+          if (isUiSplit) {
+              // Ưu tiên dùng cách chia của UI (Detail Mode hoặc đã phân rã)
+              splitPlan = parentOrderSubOrders.map((so, idx) => {
+                  const suffix = so.subSuffix || String.fromCharCode(65 + idx); // A, B, C
+                  return { suffix, itemIds: so.services.map((s: any) => s.id) };
+              });
+          } else if (isPartial && specificSvcIds) {
+              // Quick Mode từ một đơn gộp: Tách cái đang thao tác ra A, phần còn lại ra B
+              const targetSvcIds = specificSvcIds;
+              const otherSvcIds = clonedOrder.services.filter(s => !targetSvcIds.includes(s.id)).map(s => s.id);
+              
+              splitPlan.push({ suffix: 'A', itemIds: targetSvcIds });
+              if (otherSvcIds.length > 0) {
+                  splitPlan.push({ suffix: 'B', itemIds: otherSvcIds });
+              }
+          }
+
+          if (splitPlan.length > 1) {
+              const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
+                  p_booking_id: clonedOrder.id,
+                  p_split_plan: splitPlan
+              });
+
+              if (splitErr || (splitRes && !splitRes.success)) {
+                  console.error('Lỗi khi tách đơn:', splitErr || splitRes?.error);
+                  throw new Error('Lỗi hệ thống khi tách đơn vật lý: ' + (splitErr?.message || splitRes?.error));
+              }
+
+              const targetSvcIds = specificSvcIds && specificSvcIds.length > 0 
+                  ? specificSvcIds 
+                  : selectedSubOrder.services.map((s: any) => s.id);
+                  
+              const currentPlan = splitPlan.find(p => targetSvcIds.some(id => p.itemIds.includes(id)));
+              if (currentPlan) {
+                  targetBookingId = `${clonedOrder.id}-${currentPlan.suffix}`;
+              }
+          }
+      }
+
+      const res = await processDispatch(targetBookingId, {
         status: bookingStatus as any,
         bedId: isPartial ? undefined : (primarySeg?.bedId || null),
         roomName: isPartial ? undefined : (primarySeg?.roomId || null),
@@ -1764,7 +1812,17 @@ if (!hasPermission('dispatch_board')) {
                     <div className="mt-2.5 flex items-center justify-between gap-4">
                       <p className="text-[10px] text-gray-500 font-medium truncate flex-1 leading-tight">
                         {subOrder.services.length > 0 
-                          ? `${subOrder.services.map(s => s.serviceName || 'Dịch vụ').join(', ')} · ${subOrder.services.reduce((acc, s) => acc + (s.duration || 0), 0)}p`
+                          ? (() => {
+                              const parentServices = subOrder.services.filter(s => {
+                                const opts = typeof s.options === 'string' ? JSON.parse(s.options) : (s.options || {});
+                                return !opts.mergedIntoId;
+                              });
+                              const displayServices = parentServices.length > 0 ? parentServices : subOrder.services;
+                              return `${displayServices.map(s => {
+                                const opts = typeof s.options === 'string' ? JSON.parse(s.options) : (s.options || {});
+                                return opts.displayName || s.serviceName || 'Dịch vụ';
+                              }).join(', ')} · ${displayServices.reduce((acc, s) => acc + (s.duration || 0), 0)}p`;
+                            })()
                           : 'Chưa có dịch vụ'
                         }
                       </p>
@@ -1862,10 +1920,11 @@ if (!hasPermission('dispatch_board')) {
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
+                        const autoGuestCount = selectedSubOrder.services.filter((s: any) => !s.mergedIntoId).length || 1;
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
-                        const currentGuestCount = editingGuestInfo ? editingGuestInfo.guestCount : (selectedSubOrder.originalOrder.guestCount || 1);
+                        const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
-                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGuestCount !== (selectedSubOrder.originalOrder.guestCount || 1) || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male'));
+                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male'));
                         
                         return (
                             <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:border-l border-gray-200 sm:pl-4 mt-2 sm:mt-0 w-full sm:w-auto">
@@ -1896,13 +1955,9 @@ if (!hasPermission('dispatch_board')) {
                                 </select>
                                 <div className="w-px h-4 bg-gray-200 mx-2" />
                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số lượng</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={currentGuestCount}
-                                  onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: parseInt(e.target.value || '1', 10), customerGender: currentGender })}
-                                  className="w-16 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-center"
-                                />
+                                <div className="px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
+                                    {currentGuestCount} KHÁCH
+                                </div>
                                 <button
                                   onClick={async () => {
                                     setIsFetchingCustomer(true);
@@ -2067,6 +2122,7 @@ if (!hasPermission('dispatch_board')) {
                     reminders={reminders}
                     billCode={selectedSubOrder.originalOrder.billCode}
                     customerName={selectedSubOrder.originalOrder.customerName}
+                    subOrderCodeProp={selectedSubOrder.subSuffix || undefined}
                     onRemoveSvc={removeServiceBlock}
                   />
                 ) : (
@@ -2223,34 +2279,10 @@ if (!hasPermission('dispatch_board')) {
                       <button
                         onClick={() => {
                           setShowDispatchConfirmModal(true);
+                          // TỰ ĐỘNG NỘI SUY SỐ KHÁCH THEO ĐƠN CON
+                          const finalGuestCount = selectedSubOrder.services.filter((s: any) => !s.mergedIntoId).length || 1;
                           
-                          // TỰ ĐỘNG NỘI SUY SỐ KHÁCH: Phân loại Dịch vụ Chính và Phụ từ DB (service_group)
-                          let mainCount = 0;
-                          let addonCounts: Record<string, number> = {};
-                          
-                          (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
-                              const sId = svc.serviceId || svc.id;
-                              const group = svc.service_group || 'MAIN'; // Fallback nếu chưa cấu hình
-                              
-                              if (group === 'MAIN' || group === 'COMBO') {
-                                  mainCount++;
-                              } else {
-                                  addonCounts[sId] = (addonCounts[sId] || 0) + 1;
-                              }
-                          });
-
-                          let guessedCount = 1;
-                          if (mainCount > 0) {
-                              // Nhóm Dịch vụ Chính / Combo: Cứ có 1 dịch vụ = 1 Khách
-                              guessedCount = mainCount;
-                          } else if (Object.keys(addonCounts).length > 0) {
-                              // Nhóm Dịch vụ Phụ (không có DV chính): Lấy Max số lần lặp
-                              guessedCount = Math.max(1, ...Object.values(addonCounts));
-                          }
-                          
-                          // Ưu tiên số đã nhập (nếu > 1), nếu chưa nhập hoặc = 1 thì lấy số đoán tự động
-                          const currentGuestCount = selectedSubOrder.originalOrder.guestCount || 1;
-                          updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: Math.max(currentGuestCount, guessedCount) }));
+                          updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: finalGuestCount }));
                         }}
                         disabled={!ready}
                         title={hasStartedService ? "Đã có dịch vụ bắt đầu, vui lòng điều phối lẻ từng dịch vụ!" : ""}
@@ -2456,8 +2488,8 @@ if (!hasPermission('dispatch_board')) {
 
       {/* Dispatch Confirmation Modal */}
       <AnimatePresence>
-        {showDispatchConfirmModal && selectedOrder && (() => {
-          const isMissingKTVs = selectedOrder.services.some((svc: any) => {
+        {showDispatchConfirmModal && selectedOrder && selectedSubOrder && (() => {
+          const isMissingKTVs = selectedSubOrder.services.some((svc: any) => {
             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
             const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
               const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
@@ -2500,8 +2532,8 @@ if (!hasPermission('dispatch_board')) {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({selectedOrder.services.length})</h4>
-                  {selectedOrder.services.map((svc, sIdx) => (
+                  <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({selectedSubOrder.services.length})</h4>
+                  {selectedSubOrder.services.map((svc: any, sIdx: number) => (
                     <div key={svc.id || sIdx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                       <div className="mb-3 pb-2 border-b border-gray-100">
                         <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.serviceName}</p>
