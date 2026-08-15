@@ -13,7 +13,7 @@ import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
   ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
-  Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope
+  Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope, RotateCcw
 } from 'lucide-react';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
 import { DispatchOnlineKtvTable } from './_components/DispatchOnlineKtvTable';
@@ -962,7 +962,37 @@ if (!hasPermission('dispatch_board')) {
       });
 
       if (res.success) {
-        alert('✅ Đã lưu tạm thông tin thành công!');
+        // 🔥 Thực hiện tách đơn luôn nếu người dùng đã gộp/tách trên giao diện
+        if (!clonedOrder.parentBookingId) {
+           const groups = new Map<string, string[]>();
+           clonedOrder.services.forEach(svc => {
+               if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
+               const groupId = svc.customerGroupId || svc.id;
+               if (!groups.has(groupId)) groups.set(groupId, []);
+               
+               const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
+               groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
+           });
+
+           if (groups.size > 1) {
+               const splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
+                   const suffix = String.fromCharCode(65 + idx); // A, B, C
+                   return { suffix, itemIds };
+               });
+               
+               const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
+                   p_booking_id: clonedOrder.id,
+                   p_split_plan: splitPlan
+               });
+               
+               if (splitErr || (splitRes && !splitRes.success)) {
+                   console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
+                   alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
+               }
+           }
+        }
+
+        alert('✅ Đã lưu thông tin và tách đơn (nếu có) thành công!');
         fetchData();
       } else {
         alert('Lỗi khi lưu tạm: ' + res.error);
@@ -972,6 +1002,35 @@ if (!hasPermission('dispatch_board')) {
       console.error(err);
     }
   };
+
+  const handleUndoSplit = async () => {
+    const targetBookingId = selectedOrder?.parentBookingId || (selectedOrder?.status === 'SPLIT' ? selectedOrder.id : null);
+    if (!selectedOrder || !targetBookingId) return;
+
+    if (!confirm('Bạn có chắc chắn muốn HỦY GỘP/TÁCH và đưa tất cả các dịch vụ về lại đơn gốc ban đầu?')) {
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('undo_split_booking', {
+            p_booking_id: targetBookingId
+        });
+
+        if (error || (data && !data.success)) {
+            console.error('Lỗi khi hủy tách đơn:', error, data);
+            alert('Lỗi khi hủy tách đơn: ' + JSON.stringify(error || data?.error));
+            return;
+        }
+
+        alert('✅ Đã gộp đơn thành công!');
+        fetchData();
+        setSelectedOrderId(null);
+    } catch (err) {
+        console.error(err);
+        alert('Đã có lỗi bất ngờ xảy ra khi hủy tách đơn.');
+    }
+  };
+
   const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string) => {
     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
     if (!orderToDispatch) return;
@@ -1147,16 +1206,25 @@ if (!hasPermission('dispatch_board')) {
 
       // 🚀 THỰC THI BƯỚC 2: TÁCH ĐƠN VẬT LÝ VÀO DATABASE
       const parentOrderSubOrders = subOrders.filter(so => so.bookingId === clonedOrder.id);
-      const isUiSplit = parentOrderSubOrders.length > 1;
+      const groups = new Map<string, string[]>();
+      clonedOrder.services.forEach(svc => {
+          if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
+          const groupId = svc.customerGroupId || svc.id;
+          if (!groups.has(groupId)) groups.set(groupId, []);
+          
+          const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
+          groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
+      });
+      const isUiSplit = groups.size > 1;
       
       if ((isPartial || isUiSplit) && !clonedOrder.parentBookingId) {
           let splitPlan: any[] = [];
           
           if (isUiSplit) {
-              // Ưu tiên dùng cách chia của UI (Detail Mode hoặc đã phân rã)
-              splitPlan = parentOrderSubOrders.map((so, idx) => {
-                  const suffix = so.subSuffix || String.fromCharCode(65 + idx); // A, B, C
-                  return { suffix, itemIds: so.services.map((s: any) => s.id) };
+              // Ưu tiên dùng cách chia của UI (dựa trên nhóm dịch vụ thực tế, bất kể KTV)
+              splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
+                  const suffix = String.fromCharCode(65 + idx); // A, B, C
+                  return { suffix, itemIds };
               });
           } else if (isPartial && specificSvcIds) {
               // Quick Mode từ một đơn gộp: Tách cái đang thao tác ra A, phần còn lại ra B
@@ -1726,8 +1794,10 @@ if (!hasPermission('dispatch_board')) {
                     layout
                     key={subOrder.id}
                     onClick={() => {
-                        setSelectedOrderId(order.id);
-                        setSelectedSubOrderId(subOrder.id);
+                        const targetId = order.parentBookingId || order.id;
+                        setSelectedOrderId(targetId);
+                        const firstSubOrder = subOrders.find(so => so.bookingId === targetId);
+                        setSelectedSubOrderId(firstSubOrder ? firstSubOrder.id : subOrder.id);
                     }}
                     onContextMenu={(e: React.MouseEvent) => {
                       e.preventDefault();
@@ -1749,7 +1819,7 @@ if (!hasPermission('dispatch_board')) {
                       if (longPressTimer.current) clearTimeout(longPressTimer.current);
                     }}
                     style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                    className={`bg-white p-5 rounded-3xl border-2 cursor-pointer transition-all active:scale-[0.98] relative ${selectedSubOrderId === subOrder.id ? 'border-indigo-600 shadow-2xl shadow-indigo-100 ring-4 ring-indigo-50/50' : 'border-transparent shadow-sm hover:border-indigo-100 hover:shadow-lg'}`}
+                    className={`bg-white p-5 rounded-3xl border-2 cursor-pointer transition-all active:scale-[0.98] relative ${(selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId)) ? 'border-indigo-600 shadow-2xl shadow-indigo-100 ring-4 ring-indigo-50/50' : 'border-transparent shadow-sm hover:border-indigo-100 hover:shadow-lg'}`}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1826,7 +1896,7 @@ if (!hasPermission('dispatch_board')) {
                           : 'Chưa có dịch vụ'
                         }
                       </p>
-                      {selectedSubOrderId === subOrder.id && <span className="shrink-0 text-[10px] font-black text-indigo-600 uppercase tracking-tighter">Đang chọn →</span>}
+                      {(selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId)) && <span className="shrink-0 text-[10px] font-black text-indigo-600 uppercase tracking-tighter">Đang chọn →</span>}
                     </div>
                   </motion.div>
                 )})
@@ -1920,8 +1990,22 @@ if (!hasPermission('dispatch_board')) {
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
-                        const validSubBookings = subOrders.filter(so => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
-                        const autoGuestCount = Math.max(1, validSubBookings.length);
+                        let guestCount = 0;
+                        const uniqueCustomerGroups = new Set<string>();
+                        
+                        (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
+                             const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+                             const isChild = !!(svc.options?.mergedIntoId || svc.mergedIntoId);
+                             
+                             if (!isUtility && !isChild) {
+                                 if (svc.customerGroupId) {
+                                     uniqueCustomerGroups.add(svc.customerGroupId);
+                                 } else {
+                                     guestCount++;
+                                 }
+                             }
+                        });
+                        const autoGuestCount = Math.max(1, guestCount + uniqueCustomerGroups.size);
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
@@ -2236,6 +2320,14 @@ if (!hasPermission('dispatch_board')) {
                 </button>
 
                 <div className="pt-4 sticky bottom-0 bg-gradient-to-t from-white via-white/90 to-transparent pb-2 mt-auto flex gap-3">
+                  {( (selectedSubOrder?.originalOrder?.parentBookingId && ['NEW', 'pending'].includes(selectedSubOrder.dispatchStatus)) || selectedSubOrder?.originalOrder?.status === 'SPLIT' ) && (
+                      <button
+                        onClick={handleUndoSplit}
+                        className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-2 border-red-200 active:scale-95"
+                      >
+                        <RotateCcw size={20} strokeWidth={3} /> HỦY GỘP/TÁCH
+                      </button>
+                  )}
                   <button
                     onClick={handleSaveDraft}
                     className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border-2 border-emerald-200 active:scale-95"
@@ -2338,12 +2430,17 @@ if (!hasPermission('dispatch_board')) {
               onOpenDetail={(orderId, subOrderId, status) => {
                 setLeftPanelTab((status || 'pending') as DispatchStatus);
                 setSelectedOrderId(orderId);
-                setSelectedSubOrderId(subOrderId || null);
+                const firstSubOrder = subOrders.find(so => so.bookingId === orderId);
+                setSelectedSubOrderId(firstSubOrder ? firstSubOrder.id : (subOrderId || null));
                 setActiveMode('DISPATCH');
               }}
               onConfirmAddonPayment={handleConfirmAddonPayment}
               selectedOrderId={selectedOrderId}
-              onSelectOrder={(orderId) => setSelectedOrderId(orderId)}
+              onSelectOrder={(orderId) => {
+                  setSelectedOrderId(orderId);
+                  const firstSubOrder = subOrders.find(so => so.bookingId === orderId);
+                  if (firstSubOrder) setSelectedSubOrderId(firstSubOrder.id);
+              }}
               onContextMenu={(e: any, orderId: string) => {
                 let x = 0, y = 0;
                 if (e.type && e.type.startsWith('touch')) {
@@ -2535,12 +2632,23 @@ if (!hasPermission('dispatch_board')) {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({selectedSubOrder.services.length})</h4>
-                  {selectedSubOrder.services.map((svc: any, sIdx: number) => (
-                    <div key={svc.id || sIdx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                      <div className="mb-3 pb-2 border-b border-gray-100">
-                        <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.serviceName}</p>
-                        {(() => {
+                  {(() => {
+                    const groupedServices = selectedSubOrder.services.filter((svc: any) => !svc.options?.mergedIntoId && !svc.mergedIntoId).map((svc: any) => {
+                      const childIds = svc.options?.mergedServiceIds || svc.mergedServiceIds || [];
+                      const children = selectedSubOrder.services.filter((child: any) => childIds.includes(child.id));
+                      const childNames = children.map((c: any) => c.serviceName).join(' + ');
+                      const displayName = childNames ? `${svc.serviceName} + ${childNames}` : svc.serviceName;
+                      return { ...svc, displayName };
+                    });
+                    
+                    return (
+                      <>
+                        <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({groupedServices.length})</h4>
+                        {groupedServices.map((svc: any, sIdx: number) => (
+                          <div key={svc.id || sIdx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                            <div className="mb-3 pb-2 border-b border-gray-100">
+                              <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.displayName}</p>
+                              {(() => {
                             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
                             const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
                               const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
@@ -2581,6 +2689,9 @@ if (!hasPermission('dispatch_board')) {
                       </div>
                     </div>
                   ))}
+                  </>
+                );
+              })()}
                 </div>
               </div>
 

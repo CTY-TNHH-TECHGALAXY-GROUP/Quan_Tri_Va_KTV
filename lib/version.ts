@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.5.9'; // Tăng version khi có cập nhật mới
-export const LAST_UPDATE = 'Fix logic tính số lượng khách khi tách đơn: lấy chính xác số lượng SubOrder tạo ra trên Kanban (loại trừ Tiện ích)'; // Mô tả ngắn gọn thay đổi gần nhất
+export const APP_VERSION = '1.6.17'; // Tăng version khi có cập nhật mới
+export const LAST_UPDATE = 'Cập nhật UI Kanban và Left panel để highlight toàn bộ các đơn con khi bấm vào một đơn con (xem theo đơn cha)'; // Mô tả ngắn gọn thay đổi gần nhất

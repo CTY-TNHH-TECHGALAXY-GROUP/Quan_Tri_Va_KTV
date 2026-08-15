@@ -437,7 +437,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     const { originalOrder: order, services } = subOrder;
                                     const cfg = getStatusConfig(subOrder.dispatchStatus || 'PREPARING');
                                     const currentCfg = STATUS_CONFIG.find(c => c.dispatchModeId.includes(subOrder.dispatchStatus)) || cfg;
-                                    const isSelected = selectedOrderId === subOrder.bookingId;
+                                    const isSelected = selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId);
 
                                     return (
                                         <motion.div
@@ -449,9 +449,14 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                             draggable
                                             onDragStart={() => setDraggedSubOrderId(subOrder.id)}
                                             onDragEnd={() => setDraggedSubOrderId(null)}
-                                            onClick={() => onSelectOrder?.(subOrder.bookingId)}
-                                            onDoubleClick={() => onOpenDetail(subOrder.bookingId, subOrder.id, subOrder.dispatchStatus)}
-
+                                            onClick={() => {
+                                                const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
+                                                onSelectOrder?.(targetId);
+                                            }}
+                                            onDoubleClick={() => {
+                                                const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
+                                                onOpenDetail(targetId, subOrder.id, subOrder.dispatchStatus);
+                                            }}
                                             onContextMenu={(e: React.MouseEvent) => {
                                                 if (onContextMenu) {
                                                     e.preventDefault();

@@ -53,8 +53,10 @@ BEGIN
                 "parent_booking_id", "sub_suffix"
             ) VALUES (
                 v_new_booking_id, v_new_bill_code, v_parent_booking."branchName", v_parent_booking."bookingDate", v_parent_booking."timeBooking", v_parent_booking."timeStart", v_parent_booking."timeEnd",
-                v_parent_booking."customerId", v_parent_booking."customerName", v_parent_booking."customerPhone", v_parent_booking."customerEmail", v_parent_booking."customerLang", v_parent_booking."nationality",
-                v_parent_booking."focusAreaNote", v_parent_booking."notes", v_parent_booking."guestCount", v_parent_booking."customerGender", v_parent_booking."reception_feedback",
+                v_parent_booking."customerId", 
+                v_parent_booking."customerName" || ' - Khách ' || v_suffix, 
+                v_parent_booking."customerPhone", v_parent_booking."customerEmail", v_parent_booking."customerLang", v_parent_booking."nationality",
+                v_parent_booking."focusAreaNote", v_parent_booking."notes", 1, v_parent_booking."customerGender", v_parent_booking."reception_feedback",
                 0, v_parent_booking."paymentMethod", 'NEW', v_parent_booking."source", v_parent_booking."rating", v_parent_booking."tipAmount", v_parent_booking."violations",
                 v_parent_booking."feedbackNote", v_parent_booking."tip", v_parent_booking."createdAt", now(), v_parent_booking."idLegacy",
                 p_booking_id, v_suffix
@@ -72,9 +74,11 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 3. Cập nhật trạng thái đơn cha thành SPLIT
+    -- 3. Cập nhật trạng thái và số lượng khách của đơn cha
     UPDATE "Bookings"
-    SET "status" = 'SPLIT', "updatedAt" = now()
+    SET "status" = 'SPLIT', 
+        "updatedAt" = now(),
+        "guestCount" = GREATEST(1, jsonb_array_length(p_split_plan))
     WHERE "id" = p_booking_id;
 
     RETURN jsonb_build_object('success', true);
