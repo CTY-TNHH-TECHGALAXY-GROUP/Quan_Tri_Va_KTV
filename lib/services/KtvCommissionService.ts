@@ -226,6 +226,24 @@ export class KtvCommissionService {
     }
 
     /**
+     * Parse segments to find the expected total duration for a specific KTV in a booking item
+     * This prevents KTVs from exploiting actual working time (realMins) to get bonus.
+     */
+    static calculateItemExpectedDuration(item: any, techCode: string, fallbackDuration: number): number {
+        let segs: any[] = [];
+        try { 
+            segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); 
+        } catch { }
+
+        const mySegs = segs.filter((seg: any) => seg.ktvId && seg.ktvId.toLowerCase().includes(techCode.toLowerCase()));
+
+        if (mySegs.length > 0) {
+            return mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || fallbackDuration), 0);
+        }
+        return fallbackDuration;
+    }
+
+    /**
      * Parse segments to find the total working time for a specific KTV in a booking item
      */
     static calculateItemDuration(item: any, techCode: string, fallbackDuration: number): number {
@@ -296,7 +314,7 @@ export class KtvCommissionService {
         
         let validUniqueKTVs = 0;
         allKtvCodes.forEach(code => {
-            const wt = staffWorkTypeMap[code] || 'TYPE_C'; // Fallback to TYPE_C (invisible) for unknown staff
+            const wt = staffWorkTypeMap[code.toLowerCase()] || 'TYPE_C'; // Fallback to TYPE_C (invisible) for unknown staff
             
             if (isNewRule) {
                 // TỪ 06/08: Loại C và tự do không được chia tiền => loại khỏi mẫu số
@@ -359,9 +377,9 @@ export class KtvCommissionService {
             if (!isTechInvolved) continue;
 
             // Tính tổng thời lượng của KTV này
-            const fallbackMins = Number(item.duration) || 60;
-            const itemDuration = this.calculateItemDuration(item, techCode, fallbackMins);
-            totalDurationForBonus += itemDuration;
+            const fallbackMins = Number(item.options?.duration) || Number(item.duration) || 60;
+            const itemExpectedDuration = this.calculateItemExpectedDuration(item, techCode, fallbackMins);
+            totalDurationForBonus += itemExpectedDuration;
         }
 
         // ĐIỀU LUẬT TÍNH ĐIỂM:
