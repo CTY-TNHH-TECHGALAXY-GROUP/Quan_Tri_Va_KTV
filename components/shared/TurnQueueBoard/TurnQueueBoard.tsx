@@ -159,7 +159,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                             layout
                             transition={{ duration: ANIMATION_DURATION }}
                             key={turn.employee_id}
-                            className={`flex items-center gap-3 px-4 py-3 transition-colors ${suddenOffs.has(turn.employee_id) || turn.status === 'off' ? 'opacity-40 bg-gray-50/80' : 'hover:bg-gray-50/50'}`}
+                            className={`group flex items-center gap-3 px-4 py-3 transition-colors ${suddenOffs.has(turn.employee_id) || turn.status === 'off' ? 'opacity-40 bg-gray-50/80' : 'hover:bg-gray-50/50'}`}
                         >
                             {/* Position badge - Editable */}
                             {editingKtvId === turn.employee_id ? (
@@ -268,7 +268,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         const isWorking = turn && (turn.status === 'working' || turn.status === 'assigned');
 
                         return (
-                        <div key={staff.id} className={`flex items-center gap-3 px-4 py-3 transition-colors ${isOff ? 'opacity-60 bg-gray-50/50' : 'hover:bg-amber-50/30'}`}>
+                        <div key={staff.id} className={`group flex items-center gap-3 px-4 py-3 transition-colors ${isOff ? 'opacity-60 bg-gray-50/50' : 'hover:bg-amber-50/30'}`}>
                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 border ${isOff ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
                                 {idx + 1}
                             </div>
@@ -286,11 +286,32 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 </div>
                             </div>
                             <div className="flex items-center gap-3 shrink-0">
-                                {turn && turn.employee_id === actualWaterRefillerId && (
-                                    <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                                        Tua đầu: Kiểm tra châm nước
-                                    </span>
+                                {turn && turn.employee_id === actualWaterRefillerId ? (
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                                            Tua đầu: Kiểm tra châm nước
+                                        </span>
+                                        {allowEditTurns && assignWaterRefiller && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
+                                                className="w-6 h-6 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center border border-blue-200 transition-colors shrink-0"
+                                                title="Đổi người châm nước"
+                                            >
+                                                <Droplets size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    allowEditTurns && assignWaterRefiller && turn?.status === 'waiting' && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
+                                            className="w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-blue-500 flex items-center justify-center border border-gray-200 hover:border-blue-200 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                                            title="Gán người này châm nước"
+                                        >
+                                            <Droplets size={12} />
+                                        </button>
+                                    )
                                 )}
                                 <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
                                     isOff ? 'bg-gray-100 text-gray-500' :
