@@ -1,45 +1,49 @@
-const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: '.env.local' });
 
-const envContent = fs.readFileSync('.env.local', 'utf8');
-const env = {};
-envContent.split('\n').forEach(line => {
-    const match = line.match(/^([^=]+)=(.*)$/);
-    if (match) env[match[1].trim()] = match[2].trim();
-});
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-const supabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL'];
-const supabaseKey = env['SUPABASE_SERVICE_ROLE_KEY'];
+async function checkDB() {
+  const today = new Date();
+  today.setHours(today.getHours() + 7); // VN Time
+  const todayStr = today.toISOString().split('T')[0];
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+  console.log(`\n=== 🔎 TÌM KIẾM CÁC ĐƠN HÀNG HÔM NAY (${todayStr}) ===\n`);
 
-async function checkData() {
-    const today = new Date().toISOString().split('T')[0];
-    const { data: queues, error } = await supabase
-        .from('TurnQueue')
-        .select('*')
-        .in('employee_id', ['NH011', 'NH027'])
-        .eq('date', today);
+  const { data: bookings, error: bErr } = await supabase
+    .from('Bookings')
+    .select(`
+      id, billCode, status, timeBooking, parent_booking_id, sub_suffix,
+      BookingItems!fk_bookingitems_booking (
+        id, serviceId, status, roomName, bedId, technicianCodes, options
+      )
+    `)
+    .order('createdAt', { ascending: false })
+    .limit(15);
 
-    if (error) {
-        console.error("Error:", error);
-        return;
-    }
-    console.log("TurnQueue:");
-    console.log(JSON.stringify(queues, null, 2));
-    
-    if (queues && queues.length > 0) {
-        const orderIds = queues.map(q => q.current_order_id).filter(Boolean);
-        if (orderIds.length > 0) {
-             const { data: bookings } = await supabase.from('Bookings').select('id, status, billCode').in('id', orderIds);
-             console.log("Bookings:");
-             console.log(JSON.stringify(bookings, null, 2));
-             
-             const { data: items } = await supabase.from('BookingItems').select('id, status, technicianCodes').in('bookingId', orderIds);
-             console.log("Items:");
-             console.log(JSON.stringify(items, null, 2));
+  if (bErr) {
+    console.error("❌ Lỗi lấy Bookings:", bErr);
+    return;
+  }
+
+  for (const b of bookings) {
+    console.log(`\n📦 BOOKING: ${b.billCode} | ID: ${b.id} | Status: ${b.status} | Parent: ${b.parent_booking_id} | Suffix: ${b.sub_suffix}`);
+    for (const item of b.BookingItems) {
+      console.log(`   - 🛠 ITEM: ${item.serviceId} | Status: ${item.status} | KTVs: ${item.technicianCodes} | Room: ${item.roomName} - Bed: ${item.bedId}`);
+      if (item.options) {
+        let opts = item.options;
+        if (typeof opts === 'string') {
+           try { opts = JSON.parse(opts); } catch (e) {}
         }
+        if (opts.mergedIntoId) {
+          console.log(`     👉 MERGED INTO: ${opts.mergedIntoId}`);
+        }
+      }
     }
+  }
 }
 
-checkData();
+checkDB();

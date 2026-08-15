@@ -1754,7 +1754,7 @@ if (!hasPermission('dispatch_board')) {
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg tracking-wider">
-                          #{order.billCode} {subOrder.services.length < order.services.length && '(Tách)'}
+                          #{order.billCode}{subOrder.services.length < order.services.length ? `-${subOrder.subSuffix || 'A'}` : ''}
                         </span>
                         {order.hasVat && <span className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>}
                         {(() => {
@@ -1920,8 +1920,8 @@ if (!hasPermission('dispatch_board')) {
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
-                        const validSubBookings = selectedSubOrder.originalOrder.services ? new Set(selectedSubOrder.originalOrder.services.filter((s: any) => !s.isUtility && s.subBookingId).map((s: any) => s.subBookingId)) : new Set();
-                        const autoGuestCount = Math.max(1, validSubBookings.size);
+                        const validSubBookings = subOrders.filter(so => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
+                        const autoGuestCount = Math.max(1, validSubBookings.length);
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
@@ -2281,8 +2281,8 @@ if (!hasPermission('dispatch_board')) {
                         onClick={() => {
                           setShowDispatchConfirmModal(true);
                           // TỰ ĐỘNG NỘI SUY SỐ KHÁCH THEO ĐƠN CON
-                          const validSubBookings = selectedSubOrder.originalOrder.services ? new Set(selectedSubOrder.originalOrder.services.filter((s: any) => !s.isUtility && s.subBookingId).map((s: any) => s.subBookingId)) : new Set();
-                          const finalGuestCount = Math.max(1, validSubBookings.size);
+                          const validSubBookings = subOrders.filter(so => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
+                          const finalGuestCount = Math.max(1, validSubBookings.length);
                           
                           updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: finalGuestCount }));
                         }}
