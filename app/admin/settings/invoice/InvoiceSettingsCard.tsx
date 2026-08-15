@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Image as ImageIcon, Loader2, CheckCircle2 } from 'lucide-react';
+import { Save, Image as ImageIcon, Loader2, CheckCircle2, Printer } from 'lucide-react';
 import { PrintableInvoice, InvoiceConfig } from '@/components/invoice/PrintableInvoice';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { useSearchParams } from 'next/navigation';
 
 export const InvoiceSettingsCard = () => {
     const [config, setConfig] = useState<InvoiceConfig>({
@@ -16,13 +17,37 @@ export const InvoiceSettingsCard = () => {
         logoUrl: ''
     });
 
+    const searchParams = useSearchParams();
+    const orderId = searchParams?.get('orderId');
+
+    const [bookingData, setBookingData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     useEffect(() => {
-        fetchInvoiceConfig();
-    }, []);
+        const init = async () => {
+            setIsLoading(true);
+            await fetchInvoiceConfig();
+            if (orderId) {
+                await fetchBooking(orderId);
+            }
+            setIsLoading(false);
+        };
+        init();
+    }, [orderId]);
+
+    const fetchBooking = async (id: string) => {
+        try {
+            const res = await fetch(`/api/finance/invoice/${id}`);
+            const data = await res.json();
+            if (data.success && data.data) {
+                setBookingData(data.data);
+            }
+        } catch (error) {
+            console.error('Error fetching booking invoice data', error);
+        }
+    };
 
     const fetchInvoiceConfig = async () => {
         try {
@@ -68,6 +93,31 @@ export const InvoiceSettingsCard = () => {
         return (
             <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 flex justify-center items-center h-64">
                 <Loader2 className="animate-spin text-indigo-500" />
+            </div>
+        );
+    }
+
+    if (orderId && bookingData) {
+        return (
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 mt-6">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                            <Printer size={20} className="text-indigo-500" />
+                        </div>
+                        <h2 className="text-lg font-black text-gray-900">Chi tiết Hoá đơn</h2>
+                    </div>
+                    <button
+                        onClick={() => window.print()}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                        <Printer size={14} />
+                        IN HOÁ ĐƠN
+                    </button>
+                </div>
+                <div className="bg-gray-100 rounded-2xl p-4 overflow-x-auto border border-gray-200 flex justify-center w-full">
+                    <PrintableInvoice config={config} bookingData={bookingData} />
+                </div>
             </div>
         );
     }

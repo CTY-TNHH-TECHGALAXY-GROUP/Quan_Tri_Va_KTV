@@ -14,13 +14,31 @@ export interface InvoiceConfig {
 
 interface PrintableInvoiceProps {
     config: InvoiceConfig;
+    bookingData?: any;
 }
 
-export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
+export const PrintableInvoice = ({ config, bookingData }: PrintableInvoiceProps) => {
     // Current date/time formatted
-    const now = new Date();
+    const now = bookingData?.createdAt ? new Date(bookingData.createdAt) : new Date();
     const formattedDate = now.toLocaleDateString('vi-VN');
     const formattedTime = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    // Customer
+    const cName = bookingData?.customerName || 'Khách vãng lai';
+    const cPhone = bookingData?.customerPhone || 'N/A';
+    const cEmail = bookingData?.customerEmail || 'N/A';
+
+    // Financial
+    const bCode = bookingData?.billCode || bookingData?.id?.substring(0, 8).toUpperCase() || 'HD-MẪU';
+    const method = bookingData?.paymentMethod || 'Chưa thanh toán';
+    const items = bookingData?.items || [];
+    
+    // Calculate total from items if needed, or use bookingData.totalAmount
+    const subTotal = items.reduce((sum: number, item: any) => sum + (item.price || 0) * (item.quantity || 1), 0);
+    const discount = bookingData?.discountAmount || 0;
+    const totalAmount = bookingData?.totalAmount || Math.max(0, subTotal - discount);
+
+    const formatVND = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
     return (
         <div className={styles.invoiceContainer}>
@@ -61,7 +79,7 @@ export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
                             <h3>Thông tin hóa đơn</h3>
                             <div className={styles.row}>
                                 <div className={styles.label}>Mã hóa đơn</div>
-                                <div>HD-000123</div>
+                                <div>{bCode}</div>
                             </div>
                             <div className={styles.row}>
                                 <div className={styles.label}>Ngày</div>
@@ -69,7 +87,7 @@ export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
                             </div>
                             <div className={styles.row}>
                                 <div className={styles.label}>Thanh toán</div>
-                                <div>Thẻ / Chuyển khoản</div>
+                                <div>{method}</div>
                             </div>
                         </div>
                     </div>
@@ -78,15 +96,15 @@ export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
                     <div className={styles.box}>
                         <div className={styles.row}>
                             <div className={styles.label}>Họ và tên</div>
-                            <div>Nguyễn Minh Anh</div>
+                            <div>{cName}</div>
                         </div>
                         <div className={styles.row}>
                             <div className={styles.label}>Số điện thoại</div>
-                            <div>0987 654 321</div>
+                            <div>{cPhone}</div>
                         </div>
                         <div className={styles.row}>
                             <div className={styles.label}>Email</div>
-                            <div>minhanh@example.com</div>
+                            <div>{cEmail}</div>
                         </div>
                     </div>
                     <div className={styles.customerDivider}></div>
@@ -103,26 +121,33 @@ export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>1</td>
-                                <td>
-                                    <div className={styles.serviceName}>Massage Body 90 phút</div>
-                                    <div className={styles.serviceNote}>Giá đã bao gồm VAT</div>
-                                </td>
-                                <td>1</td>
-                                <td>1.080.000 ₫</td>
-                                <td>1.080.000 ₫</td>
-                            </tr>
-                            <tr>
-                                <td>2</td>
-                                <td>
-                                    <div className={styles.serviceName}>Chăm sóc da mặt 45 phút</div>
-                                    <div className={styles.serviceNote}>Giá đã bao gồm VAT</div>
-                                </td>
-                                <td>1</td>
-                                <td>420.000 ₫</td>
-                                <td>420.000 ₫</td>
-                            </tr>
+                            {items.length > 0 ? items.map((item: any, idx: number) => {
+                                const qty = item.quantity || 1;
+                                const pr = item.price || 0;
+                                const t = pr * qty;
+                                return (
+                                    <tr key={item.id || idx}>
+                                        <td>{idx + 1}</td>
+                                        <td>
+                                            <div className={styles.serviceName}>{item.serviceName || 'Dịch vụ'}</div>
+                                            <div className={styles.serviceNote}>Giá đã bao gồm VAT</div>
+                                        </td>
+                                        <td>{qty}</td>
+                                        <td>{formatVND(pr)}</td>
+                                        <td>{formatVND(t)}</td>
+                                    </tr>
+                                )
+                            }) : (
+                                <tr>
+                                    <td>1</td>
+                                    <td>
+                                        <div className={styles.serviceName}>Chưa có dịch vụ</div>
+                                    </td>
+                                    <td>0</td>
+                                    <td>0 ₫</td>
+                                    <td>0 ₫</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
 
@@ -130,15 +155,15 @@ export const PrintableInvoice = ({ config }: PrintableInvoiceProps) => {
                         <div className={styles.totalsCard}>
                             <div className={styles.totalLine}>
                                 <span>Tạm tính</span>
-                                <strong>1.500.000 ₫</strong>
+                                <strong>{formatVND(subTotal)}</strong>
                             </div>
                             <div className={styles.totalLine}>
                                 <span>Giảm giá</span>
-                                <strong>0 ₫</strong>
+                                <strong>{formatVND(discount)}</strong>
                             </div>
                             <div className={`${styles.totalLine} ${styles.grand}`}>
                                 <span>Tổng thanh toán</span>
-                                <span>1.500.000 ₫</span>
+                                <span>{formatVND(totalAmount)}</span>
                             </div>
                             <div className={styles.vatNote}>
                                 Giá dịch vụ và tổng thanh toán đã bao gồm VAT.
