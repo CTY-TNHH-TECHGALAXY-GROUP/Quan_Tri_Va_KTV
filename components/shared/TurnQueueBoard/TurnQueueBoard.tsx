@@ -201,7 +201,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
-                                                        updateTurnsCompleted(turn.id!, Number(newTurns));
+                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
                                                     }
                                                 }
                                             }}
@@ -260,10 +260,13 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                 if (newStatus === 'working') {
                                                     const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
                                                     if (minutes && !isNaN(Number(minutes))) {
-                                                        updateKtvStatus(turn.id!, newStatus, Number(minutes));
+                                                        const now = new Date();
+                                                        now.setMinutes(now.getMinutes() + Number(minutes));
+                                                        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                                                        updateKtvStatus(turn.employee_id, newStatus, timeStr);
                                                     }
                                                 } else {
-                                                    updateKtvStatus(turn.id!, newStatus);
+                                                    updateKtvStatus(turn.employee_id, newStatus);
                                                 }
                                             }}
                                             onClick={(e) => e.stopPropagation()}
@@ -347,7 +350,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
-                                                        updateTurnsCompleted(turn.id!, Number(newTurns));
+                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
                                                     }
                                                 }
                                             }}
@@ -396,10 +399,13 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                             if (newStatus === 'working') {
                                                 const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
                                                 if (minutes && !isNaN(Number(minutes))) {
-                                                    updateKtvStatus(turn.id!, newStatus, Number(minutes));
+                                                    const now = new Date();
+                                                    now.setMinutes(now.getMinutes() + Number(minutes));
+                                                    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                                                    updateKtvStatus(turn.employee_id, newStatus, timeStr);
                                                 }
                                             } else {
-                                                updateKtvStatus(turn.id!, newStatus);
+                                                updateKtvStatus(turn.employee_id, newStatus);
                                             }
                                         }}
                                         onClick={(e) => e.stopPropagation()}
