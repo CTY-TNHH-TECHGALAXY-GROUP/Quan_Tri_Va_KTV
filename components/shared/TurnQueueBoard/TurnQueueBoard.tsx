@@ -201,7 +201,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
-                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
+                                                        updateTurnsCompleted(turn.id!, Number(newTurns));
                                                     }
                                                 }
                                             }}
@@ -260,10 +260,10 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                 if (newStatus === 'working') {
                                                     const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
                                                     if (minutes && !isNaN(Number(minutes))) {
-                                                        updateKtvStatus(turn.employee_id, newStatus, Number(minutes));
+                                                        updateKtvStatus(turn.id!, newStatus, Number(minutes));
                                                     }
                                                 } else {
-                                                    updateKtvStatus(turn.employee_id, newStatus);
+                                                    updateKtvStatus(turn.id!, newStatus);
                                                 }
                                             }}
                                             onClick={(e) => e.stopPropagation()}
@@ -347,7 +347,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
-                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
+                                                        updateTurnsCompleted(turn.id!, Number(newTurns));
                                                     }
                                                 }
                                             }}
@@ -396,10 +396,10 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                             if (newStatus === 'working') {
                                                 const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
                                                 if (minutes && !isNaN(Number(minutes))) {
-                                                    updateKtvStatus(turn.employee_id, newStatus, Number(minutes));
+                                                    updateKtvStatus(turn.id!, newStatus, Number(minutes));
                                                 }
                                             } else {
-                                                updateKtvStatus(turn.employee_id, newStatus);
+                                                updateKtvStatus(turn.id!, newStatus);
                                             }
                                         }}
                                         onClick={(e) => e.stopPropagation()}

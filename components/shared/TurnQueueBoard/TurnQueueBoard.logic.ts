@@ -312,7 +312,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
 
     const assignWaterRefiller = async (ktvId: string | null) => {
         try {
-            const { error } = await supabase.from('SystemConfigs').upsert({ key: 'daily_water_refiller', value: ktvId });
+            const { error } = await supabase.from('SystemConfigs').update({ value: ktvId }).eq('key', 'daily_water_refiller');
             if (error) throw error;
         } catch (err) {
             console.error('Lỗi khi gán người châm nước:', err);
