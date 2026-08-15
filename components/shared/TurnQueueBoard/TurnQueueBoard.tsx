@@ -251,7 +251,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 {/* Status badge */}
                                 {(() => {
                                     const isOverdue = turn.status === 'working' && turn.estimated_end_time && turn.estimated_end_time < currentTime;
-                                    return (
+                                    return allowEditTurns ? (
                                         <select
                                             value={turn.status}
                                             onChange={(e) => {
@@ -390,7 +390,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     )
                                 )}
                                 
-                                {turn ? (
+                                {allowEditTurns && turn ? (
                                     <select
                                         value={isOff ? 'off' : turn.status}
                                         onChange={(e) => {
