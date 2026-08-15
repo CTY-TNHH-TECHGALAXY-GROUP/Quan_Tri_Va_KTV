@@ -1920,7 +1920,8 @@ if (!hasPermission('dispatch_board')) {
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
-                        const autoGuestCount = selectedSubOrder.services.filter((s: any) => !s.mergedIntoId).length || 1;
+                        const validSubBookings = selectedSubOrder.originalOrder.services ? new Set(selectedSubOrder.originalOrder.services.filter((s: any) => !s.isUtility && s.subBookingId).map((s: any) => s.subBookingId)) : new Set();
+                        const autoGuestCount = Math.max(1, validSubBookings.size);
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
@@ -2280,7 +2281,8 @@ if (!hasPermission('dispatch_board')) {
                         onClick={() => {
                           setShowDispatchConfirmModal(true);
                           // TỰ ĐỘNG NỘI SUY SỐ KHÁCH THEO ĐƠN CON
-                          const finalGuestCount = selectedSubOrder.services.filter((s: any) => !s.mergedIntoId).length || 1;
+                          const validSubBookings = selectedSubOrder.originalOrder.services ? new Set(selectedSubOrder.originalOrder.services.filter((s: any) => !s.isUtility && s.subBookingId).map((s: any) => s.subBookingId)) : new Set();
+                          const finalGuestCount = Math.max(1, validSubBookings.size);
                           
                           updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: finalGuestCount }));
                         }}
