@@ -197,7 +197,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     {turn.turns_completed > 0 && (
                                         <span 
                                             onClick={(e) => {
-                                                if (allowEditTurns && updateTurnsCompleted) {
+                                                if (allowEditTurns) {
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
@@ -251,7 +251,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 {/* Status badge */}
                                 {(() => {
                                     const isOverdue = turn.status === 'working' && turn.estimated_end_time && turn.estimated_end_time < currentTime;
-                                    return updateKtvStatus ? (
+                                    return (
                                         <select
                                             value={turn.status}
                                             onChange={(e) => {
@@ -346,7 +346,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     {turn && turn.turns_completed > 0 && (
                                         <span 
                                             onClick={(e) => {
-                                                if (allowEditTurns && updateTurnsCompleted) {
+                                                if (allowEditTurns) {
                                                     e.stopPropagation();
                                                     const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
                                                     if (newTurns !== null && !isNaN(Number(newTurns))) {
@@ -390,7 +390,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     )
                                 )}
                                 
-                                {updateKtvStatus && turn ? (
+                                {turn ? (
                                     <select
                                         value={isOff ? 'off' : turn.status}
                                         onChange={(e) => {
