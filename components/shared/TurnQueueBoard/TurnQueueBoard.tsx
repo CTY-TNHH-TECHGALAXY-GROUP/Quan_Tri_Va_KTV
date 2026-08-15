@@ -292,7 +292,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                             <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
                                             Tua đầu: Kiểm tra châm nước
                                         </span>
-                                        {allowEditTurns && assignWaterRefiller && (
+                                        {assignWaterRefiller && (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
                                                 className="w-6 h-6 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center border border-blue-200 transition-colors shrink-0"
@@ -303,7 +303,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                         )}
                                     </div>
                                 ) : (
-                                    allowEditTurns && assignWaterRefiller && turn?.status === 'waiting' && (
+                                    assignWaterRefiller && turn?.status === 'waiting' && (
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
                                             className="w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-blue-500 flex items-center justify-center border border-gray-200 hover:border-blue-200 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
