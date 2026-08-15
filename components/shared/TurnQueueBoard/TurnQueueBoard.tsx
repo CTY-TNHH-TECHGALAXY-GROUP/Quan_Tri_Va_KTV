@@ -195,7 +195,18 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{turn.staff?.full_name || 'Không rõ'}</span>
                                     {turn.turns_completed > 0 && (
-                                        <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-bold border border-indigo-100">
+                                        <span 
+                                            onClick={(e) => {
+                                                if (allowEditTurns && updateTurnsCompleted) {
+                                                    e.stopPropagation();
+                                                    const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
+                                                    if (newTurns !== null && !isNaN(Number(newTurns))) {
+                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
+                                                    }
+                                                }
+                                            }}
+                                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-indigo-100' : ''} bg-indigo-50 text-indigo-600 border-indigo-100`}
+                                        >
                                             Đã làm {turn.turns_completed} tua
                                         </span>
                                     )}
@@ -209,16 +220,67 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
 
                             {/* Status badges container */}
                             <div className="flex items-center gap-2 shrink-0">
-                                {turn.employee_id === firstWaitingInternalKtvId && (
-                                    <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                                        Tua đầu: Kiểm tra châm nước
-                                    </span>
+                                {turn.employee_id === actualWaterRefillerId ? (
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 animate-pulse flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                                            Tua đầu: Kiểm tra châm nước
+                                        </span>
+                                        {assignWaterRefiller && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
+                                                className="w-6 h-6 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center border border-blue-200 transition-colors shrink-0"
+                                                title="Đổi người châm nước"
+                                            >
+                                                <Droplets size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    assignWaterRefiller && turn.status === 'waiting' && !suddenOffs.has(turn.employee_id) && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); assignWaterRefiller(turn.employee_id); }}
+                                            className="w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-blue-500 flex items-center justify-center border border-gray-200 hover:border-blue-200 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                                            title="Gán người này châm nước"
+                                        >
+                                            <Droplets size={12} />
+                                        </button>
+                                    )
                                 )}
+                                
                                 {/* Status badge */}
                                 {(() => {
                                     const isOverdue = turn.status === 'working' && turn.estimated_end_time && turn.estimated_end_time < currentTime;
-                                    return (
+                                    return updateKtvStatus ? (
+                                        <select
+                                            value={turn.status}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                const newStatus = e.target.value as 'waiting' | 'working' | 'assigned' | 'off';
+                                                if (newStatus === 'working') {
+                                                    const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
+                                                    if (minutes && !isNaN(Number(minutes))) {
+                                                        updateKtvStatus(turn.employee_id, newStatus, Number(minutes));
+                                                    }
+                                                } else {
+                                                    updateKtvStatus(turn.employee_id, newStatus);
+                                                }
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 outline-none cursor-pointer border-r-4 border-transparent ${
+                                                turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                                isOverdue ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
+                                                turn.status === 'working' ? 'bg-rose-100 text-rose-700' :
+                                                turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
+                                                    'bg-gray-100 text-gray-500'
+                                            }`}
+                                        >
+                                            <option value="waiting">Sẵn sàng</option>
+                                            <option value="working">{isOverdue ? 'Quá giờ - Chờ dọn' : 'Đang làm'}</option>
+                                            <option value="assigned">Đã xếp lịch</option>
+                                            <option value="off">Tắt</option>
+                                        </select>
+                                    ) : (
                                         <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
                                             turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
                                             isOverdue ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
@@ -279,7 +341,18 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{staff.id}</span>
                                     {turn && turn.turns_completed > 0 && (
-                                        <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-bold border border-amber-100">
+                                        <span 
+                                            onClick={(e) => {
+                                                if (allowEditTurns && updateTurnsCompleted) {
+                                                    e.stopPropagation();
+                                                    const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
+                                                    if (newTurns !== null && !isNaN(Number(newTurns))) {
+                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
+                                                    }
+                                                }
+                                            }}
+                                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-amber-100' : ''} bg-amber-50 text-amber-600 border-amber-100`}
+                                        >
                                             Đã làm {turn.turns_completed} tua
                                         </span>
                                     )}
@@ -313,27 +386,61 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                         </button>
                                     )
                                 )}
-                                <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
-                                    isOff ? 'bg-gray-100 text-gray-500' :
-                                    turn?.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
-                                    (isWorking && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
-                                    turn?.status === 'working' ? 'bg-rose-100 text-rose-700' :
-                                    turn?.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
-                                    'bg-gray-100 text-gray-500'
-                                }`}>
-                                    {isOff ? <Moon size={10} /> :
-                                        turn?.status === 'waiting' ? <CheckCircle2 size={10} /> :
-                                        turn?.status === 'working' ? <Timer size={10} className={!(turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? "animate-spin" : ""} /> :
-                                        turn?.status === 'assigned' ? <Clock size={10} /> :
-                                        <Moon size={10} />}
-                                    <span>
-                                        {isOff ? 'Tắt' : 
-                                         turn?.status === 'waiting' ? 'Sẵn sàng' : 
-                                         (turn?.status === 'working' && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'Quá giờ - Chờ dọn' :
-                                         turn?.status === 'working' ? ('Đang làm' + (turn?.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : 
-                                         turn?.status === 'assigned' ? 'Đã xếp lịch' : 'Tắt'}
-                                    </span>
-                                </div>
+                                
+                                {updateKtvStatus && turn ? (
+                                    <select
+                                        value={isOff ? 'off' : turn.status}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            const newStatus = e.target.value as 'waiting' | 'working' | 'assigned' | 'off';
+                                            if (newStatus === 'working') {
+                                                const minutes = window.prompt("Nhập thời gian làm việc (phút):", "60");
+                                                if (minutes && !isNaN(Number(minutes))) {
+                                                    updateKtvStatus(turn.employee_id, newStatus, Number(minutes));
+                                                }
+                                            } else {
+                                                updateKtvStatus(turn.employee_id, newStatus);
+                                            }
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 outline-none cursor-pointer border-r-4 border-transparent ${
+                                            isOff ? 'bg-gray-100 text-gray-500' :
+                                            turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                            (isWorking && turn.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
+                                            turn.status === 'working' ? 'bg-rose-100 text-rose-700' :
+                                            turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
+                                            'bg-gray-100 text-gray-500'
+                                        }`}
+                                    >
+                                        <option value="waiting">Sẵn sàng</option>
+                                        <option value="working">{(isWorking && turn.estimated_end_time && turn.estimated_end_time < currentTime) ? 'Quá giờ - Chờ dọn' : 'Đang làm'}</option>
+                                        <option value="assigned">Đã xếp lịch</option>
+                                        <option value="off">Tắt</option>
+                                    </select>
+                                ) : (
+                                    <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 ${
+                                        isOff ? 'bg-gray-100 text-gray-500' :
+                                        turn?.status === 'waiting' ? 'bg-emerald-100 text-emerald-700' :
+                                        (isWorking && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-700 ring-1 ring-orange-400 shadow-sm animate-pulse' :
+                                        turn?.status === 'working' ? 'bg-rose-100 text-rose-700' :
+                                        turn?.status === 'assigned' ? 'bg-indigo-100 text-indigo-700' :
+                                        'bg-gray-100 text-gray-500'
+                                    }`}>
+                                        {isOff ? <Moon size={10} /> :
+                                            turn?.status === 'waiting' ? <CheckCircle2 size={10} /> :
+                                            turn?.status === 'working' ? <Timer size={10} className={!(turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? "animate-spin" : ""} /> :
+                                            turn?.status === 'assigned' ? <Clock size={10} /> :
+                                            <Moon size={10} />}
+                                        <span>
+                                            {isOff ? 'Tắt' : 
+                                             turn?.status === 'waiting' ? 'Sẵn sàng' : 
+                                             (turn?.status === 'working' && turn?.estimated_end_time && turn.estimated_end_time < currentTime) ? 'Quá giờ - Chờ dọn' :
+                                             turn?.status === 'working' ? ('Đang làm' + (turn?.estimated_end_time ? ` (xong lúc ${turn.estimated_end_time.substring(0, 5)})` : '')) : 
+                                             turn?.status === 'assigned' ? 'Đã xếp lịch' : 'Tắt'}
+                                        </span>
+                                    </div>
+                                )}
+                                
                                 <button 
                                     onClick={() => toggleExternalStaff(staff.id, turn)}
                                     title={'Bật/Tắt KTV'}
