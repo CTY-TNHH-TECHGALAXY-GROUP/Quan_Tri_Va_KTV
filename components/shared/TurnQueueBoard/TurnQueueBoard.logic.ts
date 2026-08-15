@@ -320,7 +320,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const updateKtvStatus = async (turnId: string, status: string, estimated_end_time?: string) => {
+    const updateKtvStatus = async (employeeId: string, status: string, estimated_end_time?: string) => {
         try {
             const updatePayload: any = { status };
             if (status === 'working' && estimated_end_time) {
@@ -328,7 +328,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             } else if (status !== 'working') {
                 updatePayload.estimated_end_time = null;
             }
-            const { error } = await supabase.from('TurnQueue').update(updatePayload).eq('id', turnId);
+            const { error } = await supabase.from('TurnQueue').update(updatePayload).eq('employee_id', employeeId).eq('date', selectedDate);
             if (error) throw error;
         } catch (err) {
             console.error('Lỗi cập nhật trạng thái:', err);
@@ -336,10 +336,10 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const updateTurnsCompleted = async (turnId: string, newTurns: number) => {
+    const updateTurnsCompleted = async (employeeId: string, newTurns: number) => {
         try {
             if (newTurns < 0) return;
-            const { error } = await supabase.from('TurnQueue').update({ turns_completed: newTurns }).eq('id', turnId);
+            const { error } = await supabase.from('TurnQueue').update({ turns_completed: newTurns }).eq('employee_id', employeeId).eq('date', selectedDate);
             if (error) throw error;
         } catch (err) {
             console.error('Lỗi cập nhật số tua:', err);
