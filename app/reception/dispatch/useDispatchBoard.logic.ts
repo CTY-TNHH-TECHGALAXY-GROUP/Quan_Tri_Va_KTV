@@ -146,7 +146,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             if (bData) {
                 const mappedOrders: PendingOrder[] = (bData as any[]).filter(b => b.status !== 'CANCELLED').map(b => {
                     const assignedTurns = tData?.filter((t: any) => t.current_order_id === b.id) || [];
-                    const hasAssignedKtv = assignedTurns.length > 0;
+                    const hasAssignedKtv = assignedTurns.length > 0 || (b.BookingItems || []).some((bi: any) => {
+                        const tc = bi.technicianCodes;
+                        return Array.isArray(tc) ? tc.filter(Boolean).length > 0 : !!tc;
+                    });
 
                     let dStatus: DispatchStatus = 'pending';
                     if (b.status === 'PREPARING') dStatus = 'PREPARING';

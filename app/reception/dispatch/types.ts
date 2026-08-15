@@ -48,6 +48,7 @@ export interface ServiceBlock {
   pauseStart?: string | null; // Thời điểm bắt đầu tạm dừng
   mergedIntoId?: string; // Dịch vụ này đã bị gộp vào dịch vụ khác
   mergedServiceIds?: string[]; // Danh sách các dịch vụ con đã gộp vào dịch vụ này
+  customerGroupId?: string; // ID nhóm khách hàng (để gộp đơn con nhưng khác KTV)
   handover_status?: string;
   handover_comment?: string | null;
   handover_images?: string; // JSON string chứa Record<string, string>

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Phone, Sparkles, Loader2, Plus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
+import { X, User, Phone, Sparkles, Loader2, Plus, Minus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
 import { searchCustomers } from '../actions';
 
 interface ServiceOption {
@@ -432,34 +432,37 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {filteredServices.length > 0 ? (
-                      filteredServices.map(svc => (
-                        <button
+                      filteredServices.map(svc => {
+                        const qty = serviceIds.filter(id => id === svc.id).length;
+                        return (
+                        <div
                           key={svc.id}
-                          type="button"
                           onClick={() => {
-                            setServiceIds(prev => 
-                              prev.includes(svc.id) ? prev.filter(id => id !== svc.id) : [...prev, svc.id]
-                            );
+                            if (qty === 0) {
+                              setServiceIds(prev => [...prev, svc.id]);
+                            }
                           }}
-                          className={`flex items-center gap-3 p-3 rounded-[20px] text-left transition-all border-2 group relative overflow-hidden ${
-                            serviceIds.includes(svc.id) 
+                          className={`flex items-center gap-3 p-3 rounded-[20px] text-left transition-all border-2 group relative overflow-hidden cursor-pointer ${
+                            qty > 0 
                               ? 'bg-rose-50 border-rose-500' 
                               : 'bg-white border-transparent hover:border-gray-100'
                           }`}
+                          role="button"
+                          tabIndex={0}
                         >
                           {/* Image Placeholder or Image */}
-                          <div className={`w-14 h-14 rounded-2xl shrink-0 flex items-center justify-center overflow-hidden border ${serviceIds.includes(svc.id) ? 'border-rose-200' : 'border-gray-100'}`}>
+                          <div className={`w-14 h-14 rounded-2xl shrink-0 flex items-center justify-center overflow-hidden border ${qty > 0 ? 'border-rose-200' : 'border-gray-100'}`}>
                             {(svc.image_url || svc.imageUrl) ? (
                               <img src={svc.image_url || svc.imageUrl} alt={svc.nameVN} className="w-full h-full object-cover" />
                             ) : (
-                              <div className={`w-full h-full flex items-center justify-center ${serviceIds.includes(svc.id) ? 'bg-rose-100 text-rose-500' : 'bg-gray-50 text-gray-300'}`}>
+                              <div className={`w-full h-full flex items-center justify-center ${qty > 0 ? 'bg-rose-100 text-rose-500' : 'bg-gray-50 text-gray-300'}`}>
                                 <ImageIcon size={20} />
                               </div>
                             )}
                           </div>
                           
                           <div className="flex-1 min-w-0">
-                            <h4 className={`text-sm font-black truncate ${serviceIds.includes(svc.id) ? 'text-rose-700' : 'text-gray-900 group-hover:text-rose-500 transition-colors'}`}>
+                            <h4 className={`text-sm font-black truncate ${qty > 0 ? 'text-rose-700' : 'text-gray-900 group-hover:text-rose-500 transition-colors'}`}>
                               {svc.nameVN || svc.nameEN || svc.name}
                             </h4>
                             <div className="flex items-center gap-3 mt-1 text-[11px] font-black uppercase tracking-tight">
@@ -470,20 +473,44 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                             </div>
                             {svc.category && (
                               <div className="mt-1.5">
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${serviceIds.includes(svc.id) ? 'bg-rose-100 text-rose-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${qty > 0 ? 'bg-rose-100 text-rose-600' : 'bg-gray-100 text-gray-400'}`}>
                                   {svc.category}
                                 </span>
                               </div>
                             )}
                           </div>
 
-                          {serviceIds.includes(svc.id) && (
-                            <div className="absolute top-1 right-1">
-                              <Plus size={14} className="text-rose-500 rotate-45" />
+                          {qty > 0 && (
+                            <div className="absolute top-2 right-2 flex items-center bg-rose-100 rounded-lg p-0.5 shadow-sm border border-rose-200" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setServiceIds(prev => {
+                                    const idx = prev.indexOf(svc.id);
+                                    if (idx > -1) {
+                                      const newIds = [...prev];
+                                      newIds.splice(idx, 1);
+                                      return newIds;
+                                    }
+                                    return prev;
+                                  });
+                                }}
+                                className="p-1 hover:bg-rose-200 rounded-md text-rose-600 transition-colors"
+                              >
+                                <Minus size={14} strokeWidth={3} />
+                              </button>
+                              <span className="text-xs font-black text-rose-600 px-2 min-w-[20px] text-center">{qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => setServiceIds(prev => [...prev, svc.id])}
+                                className="p-1 hover:bg-rose-200 rounded-md text-rose-600 transition-colors"
+                              >
+                                <Plus size={14} strokeWidth={3} />
+                              </button>
                             </div>
                           )}
-                        </button>
-                      ))
+                        </div>
+                      )})
                     ) : (
                       <div className="col-span-full py-12 text-center">
                         <p className="text-sm font-bold text-gray-400">Không tìm thấy dịch vụ phù hợp</p>
