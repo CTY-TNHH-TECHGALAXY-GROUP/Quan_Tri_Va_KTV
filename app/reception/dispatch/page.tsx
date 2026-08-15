@@ -1182,7 +1182,7 @@ if (!hasPermission('dispatch_board')) {
 
               const targetSvcIds = specificSvcIds && specificSvcIds.length > 0 
                   ? specificSvcIds 
-                  : selectedSubOrder.services.map((s: any) => s.id);
+                  : selectedSubOrder?.services.map((s: any) => s.id) || [];
                   
               const currentPlan = splitPlan.find(p => targetSvcIds.some(id => p.itemIds.includes(id)));
               if (currentPlan) {
@@ -2341,6 +2341,7 @@ if (!hasPermission('dispatch_board')) {
               }}
               onConfirmAddonPayment={handleConfirmAddonPayment}
               selectedOrderId={selectedOrderId}
+              onSelectOrder={(orderId) => setSelectedOrderId(orderId)}
               onContextMenu={(e: any, orderId: string) => {
                 let x = 0, y = 0;
                 if (e.type && e.type.startsWith('touch')) {
@@ -2552,14 +2553,14 @@ if (!hasPermission('dispatch_board')) {
                         })()}
                       </div>
                       <div className="space-y-3">
-                        {svc.staffList.map((st, stIdx) => (
+                        {svc.staffList.map((st: any, stIdx: number) => (
                           <div key={st.ktvId ? `${svc.id}-${st.ktvId}` : `${svc.id}-st-${stIdx}`} className="pl-2 border-l-2 border-indigo-200 flex flex-col gap-1.5">
                             <div className="flex items-center gap-2">
                               <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold">KTV</span>
                               <span className="text-sm font-black text-gray-800">{st.ktvName || 'Chưa gán'} {st.ktvId ? `[${st.ktvId}]` : ''}</span>
                             </div>
                             <div className="text-xs text-gray-600 flex flex-col gap-1">
-                              {st.segments.map((seg, segIdx) => {
+                              {st.segments.map((seg: any, segIdx: number) => {
                                 const roomName = rooms.find(r => r.id === seg.roomId)?.name || seg.roomId || 'Chưa xếp phòng';
                                 const bedName = beds.find(b => b.id === seg.bedId)?.name || seg.bedId || 'Chưa xếp giường';
                                 return (

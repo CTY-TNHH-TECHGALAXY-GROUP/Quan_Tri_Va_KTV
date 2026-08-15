@@ -95,6 +95,7 @@ interface KanbanBoardProps {
     onReviewClick?: (service: ServiceBlock) => void;
     staffWorkTypeMap?: Record<string, string>;
     staffs?: any[];
+    onSelectOrder?: (orderId: string) => void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
@@ -178,7 +179,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder }: KanbanBoardProps) {
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
@@ -448,7 +449,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                             draggable
                                             onDragStart={() => setDraggedSubOrderId(subOrder.id)}
                                             onDragEnd={() => setDraggedSubOrderId(null)}
-                                            onClick={() => onOpenDetail(subOrder.bookingId, subOrder.id, subOrder.dispatchStatus)}
+                                            onClick={() => onSelectOrder?.(subOrder.bookingId)}
+                                            onDoubleClick={() => onOpenDetail(subOrder.bookingId, subOrder.id, subOrder.dispatchStatus)}
 
                                             onContextMenu={(e: React.MouseEvent) => {
                                                 if (onContextMenu) {
