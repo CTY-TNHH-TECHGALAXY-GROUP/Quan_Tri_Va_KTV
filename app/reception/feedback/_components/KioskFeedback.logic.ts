@@ -211,7 +211,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             serviceLbl: 'Dịch vụ',
             notePlaceholder: 'Góp ý thêm (không bắt buộc)...',
             btnSubmit: 'Gửi Đánh Giá',
-            btnCancel: 'Bỏ qua'
+            btnCancel: 'Bỏ qua',
+            rateBad: 'Tệ',
+            rateOk: 'Bình thường',
+            rateGood: 'Tốt',
+            rateExcellent: 'Tuyệt vời',
+            violationsSectionTitle: 'Góp ý dịch vụ (nếu có)'
         },
         EN: {
             forgotTitle: 'Please check your personal belongings',
@@ -226,7 +231,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             serviceLbl: 'Services',
             notePlaceholder: 'Additional comments (optional)...',
             btnSubmit: 'Submit Feedback',
-            btnCancel: 'Skip'
+            btnCancel: 'Skip',
+            rateBad: 'Bad',
+            rateOk: 'Ok',
+            rateGood: 'Good',
+            rateExcellent: 'Excellent',
+            violationsSectionTitle: 'Service feedback (if any)'
         },
         KR: {
             forgotTitle: '소지품을 다시 한 번 확인해 주세요',
@@ -241,7 +251,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             serviceLbl: '서비스',
             notePlaceholder: '추가 의견 (선택 사항)...',
             btnSubmit: '제출하기',
-            btnCancel: '건너뛰기'
+            btnCancel: '건너뛰기',
+            rateBad: '나쁨',
+            rateOk: '보통',
+            rateGood: '좋음',
+            rateExcellent: '매우 좋음',
+            violationsSectionTitle: '서비스 피드백 (선택)'
         },
         JP: {
             forgotTitle: 'お忘れ物がないかご確認ください',
@@ -256,7 +271,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             serviceLbl: 'サービス',
             notePlaceholder: '追加コメント（任意）...',
             btnSubmit: '送信する',
-            btnCancel: 'スキップ'
+            btnCancel: 'スキップ',
+            rateBad: '悪い',
+            rateOk: '普通',
+            rateGood: '良い',
+            rateExcellent: '素晴らしい',
+            violationsSectionTitle: 'サービスのフィードバック (任意)'
         },
         ZH: {
             forgotTitle: '请再次检查您的随身物品',
@@ -271,7 +291,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             serviceLbl: '服务',
             notePlaceholder: '补充意见（选填）...',
             btnSubmit: '提交评价',
-            btnCancel: '跳过'
+            btnCancel: '跳过',
+            rateBad: '差',
+            rateOk: '一般',
+            rateGood: '好',
+            rateExcellent: '极好',
+            violationsSectionTitle: '服务反馈 (选填)'
         }
     };
 
