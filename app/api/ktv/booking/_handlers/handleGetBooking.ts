@@ -636,12 +636,44 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
-        // ─── 8. RESPONSE ───
+        // ─── 8. CALC SUB-SUFFIX FOR BILL CODE ───
+        let finalBillCode = booking.billCode;
+        if (itemsWithService && itemsWithService.length > 0) {
+            const allItemGroups = new Map<string, any[]>();
+            const nonUtilityAllItems = itemsWithService.filter((i: any) => !i.is_utility);
+            const itemsToGroup = nonUtilityAllItems.length > 0 ? nonUtilityAllItems : itemsWithService;
+            
+            for (const item of itemsToGroup) {
+                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                const groupId = opts.mergedIntoId || item.id;
+                if (!allItemGroups.has(groupId)) allItemGroups.set(groupId, []);
+                allItemGroups.get(groupId)!.push(item);
+            }
+
+            const groupIdList = Array.from(allItemGroups.keys());
+            if (groupIdList.length > 1) {
+                // Find which group the KTV's active item belongs to
+                let myGroupId = null;
+                const activeItem = itemsWithService.find((i: any) => i.id === activeItemId) || ktvItems[0];
+                if (activeItem) {
+                    const opts = typeof activeItem.options === 'string' ? JSON.parse(activeItem.options) : (activeItem.options || {});
+                    myGroupId = opts.mergedIntoId || activeItem.id;
+                }
+                
+                const myIdx = groupIdList.indexOf(myGroupId);
+                if (myIdx !== -1) {
+                    finalBillCode = `${booking.billCode}-${String.fromCharCode(65 + myIdx)}`;
+                }
+            }
+        }
+
+        // ─── 9. RESPONSE ───
         return NextResponse.json({
             success: true,
             _perf: { resolve: T_RESOLVE, fetch: T_PARALLEL_FETCH, enrich: T_ENRICH_FETCH, total: T_TOTAL },
             data: {
                 ...booking,
+                billCode: finalBillCode,
                 prefetchedDynamicChecklist,
                 dispatcherNote: booking.notes || '',
                 BookingItems: itemsWithService,

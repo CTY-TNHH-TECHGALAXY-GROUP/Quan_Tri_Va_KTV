@@ -201,11 +201,29 @@ export async function GET(request: Request) {
 
             console.log(`🔍 [DEBUG] Booking ${b.billCode}: myItems=${myItems.length}, relevant=${relevantItems.length}, tips=${relevantItems.map((i: any) => i.tip)}`);
 
-            // 🔥 TÁCH GROUP THEO MERGED_INTO_ID ĐỂ LỊCH SỬ HIỂN THỊ ĐÚNG TÁCH/GỘP
+            // 🔥 TÁCH GROUP TỪ ALL_ITEMS ĐỂ LẤY SUFFIX ĐÚNG
+            const allItemGroups = new Map<string, any[]>();
+            const nonUtilityAllItems = allItems.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+            const itemsToGroup = nonUtilityAllItems.length > 0 ? nonUtilityAllItems : allItems;
+            
+            for (const item of itemsToGroup) {
+                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                const groupId = opts.mergedIntoId || item.id;
+                if (!allItemGroups.has(groupId)) allItemGroups.set(groupId, []);
+                allItemGroups.get(groupId)!.push(item);
+            }
+
+            // Map groupId -> Suffix (A, B, C)
+            const groupIdList = Array.from(allItemGroups.keys());
+            const suffixMap = new Map<string, string>();
+            groupIdList.forEach((groupId, idx) => {
+                suffixMap.set(groupId, allItemGroups.size > 1 ? `-${String.fromCharCode(65 + idx)}` : '');
+            });
+
+            // Group cho KTV hiện tại (chỉ lấy các item KTV có làm)
             const itemGroups = new Map<string, any[]>();
             for (const item of relevantItems) {
                 const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
-                // Nếu item bị gộp vào 1 item khác, nó thuộc group của item đó. Nếu không, nó tự là 1 group.
                 const groupId = opts.mergedIntoId || item.id;
                 if (!itemGroups.has(groupId)) itemGroups.set(groupId, []);
                 itemGroups.get(groupId)!.push(item);
@@ -276,7 +294,7 @@ export async function GET(request: Request) {
 
                 // Tìm KTV làm cùng trong CÙNG booking này (đơn con)
                 const allKTVsInBooking = new Set<string>();
-                (allItems || []).forEach((i: any) => {
+                groupItems.forEach((i: any) => {
                     if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
                         i.technicianCodes.forEach((tc: string) => {
                             if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
@@ -292,9 +310,13 @@ export async function GET(request: Request) {
                     ? recomputeBookingStatus(myItemStatuses)
                     : b.status;
 
+                const opts0 = typeof groupItems[0].options === 'string' ? JSON.parse(groupItems[0].options) : (groupItems[0].options || {});
+                const groupId0 = opts0.mergedIntoId || groupItems[0].id;
+                const billSuffix = suffixMap.get(groupId0) || '';
+
                 return {
                     id: `${b.id}_${groupItems[0].id}`, // Đảm bảo ID duy nhất cho mỗi dòng lịch sử (BookingID + ItemID)
-                    billCode: b.billCode,
+                    billCode: `${b.billCode}${billSuffix}`,
                     createdAt: b.createdAt,
                     bookingDate: b.bookingDate,
                     status: itemBasedStatus,
@@ -307,7 +329,7 @@ export async function GET(request: Request) {
                     handover_status,
                     handover_comment,
                     ktv_comment: b.notes,
-                    guestCount: b.guestCount || 1,
+                    guestCount: allItemGroups.size > 1 ? 1 : (b.guestCount || 1),
                     coWorkers,
                     isHeld: passedCount === 0
                 };
