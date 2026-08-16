@@ -965,9 +965,22 @@ if (!hasPermission('dispatch_board')) {
         // 🔥 Thực hiện tách đơn luôn nếu người dùng đã gộp/tách trên giao diện
         if (!clonedOrder.parentBookingId) {
            const groups = new Map<string, string[]>();
+           
+           // Tìm service đầu tiên không phải phòng riêng để làm anchor
+           const firstMainSvc = clonedOrder.services.find(s => {
+               const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || s.serviceName?.toLowerCase().includes('phòng riêng') || s.serviceName?.toLowerCase().includes('phong rieng');
+               return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
+           });
+           const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
+
            clonedOrder.services.forEach(svc => {
                if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-               const groupId = svc.customerGroupId || svc.id;
+               
+               const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng');
+               
+               // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
+               const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
+               
                if (!groups.has(groupId)) groups.set(groupId, []);
                
                const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
@@ -1207,9 +1220,22 @@ if (!hasPermission('dispatch_board')) {
       // 🚀 THỰC THI BƯỚC 2: TÁCH ĐƠN VẬT LÝ VÀO DATABASE
       const parentOrderSubOrders = subOrders.filter(so => so.bookingId === clonedOrder.id);
       const groups = new Map<string, string[]>();
+      
+      // Tìm service đầu tiên không phải phòng riêng để làm anchor
+      const firstMainSvc = clonedOrder.services.find(s => {
+          const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || s.serviceName?.toLowerCase().includes('phòng riêng') || s.serviceName?.toLowerCase().includes('phong rieng');
+          return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
+      });
+      const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
+
       clonedOrder.services.forEach(svc => {
           if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-          const groupId = svc.customerGroupId || svc.id;
+          
+          const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng');
+          
+          // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
+          const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
+
           if (!groups.has(groupId)) groups.set(groupId, []);
           
           const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
