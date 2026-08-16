@@ -76,9 +76,11 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         booking.ktvList.forEach(ktv => {
             if (groupsMap.has(ktv.ktvId)) {
                 const existing = groupsMap.get(ktv.ktvId)!;
-                if (!existing.serviceNames.includes(ktv.serviceName)) {
-                    existing.serviceNames.push(ktv.serviceName);
-                }
+                ktv.serviceNames.forEach(sn => {
+                    if (!existing.serviceNames.includes(sn)) {
+                        existing.serviceNames.push(sn);
+                    }
+                });
                 if (!existing.itemIds.includes(ktv.itemId)) {
                     existing.itemIds.push(ktv.itemId);
                 }
@@ -86,7 +88,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                 groupsMap.set(ktv.ktvId, {
                     ktvId: ktv.ktvId,
                     ktvName: ktv.ktvName,
-                    serviceNames: [ktv.serviceName],
+                    serviceNames: [...ktv.serviceNames],
                     itemIds: [ktv.itemId]
                 });
             }
