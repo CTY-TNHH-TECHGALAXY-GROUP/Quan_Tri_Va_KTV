@@ -6,7 +6,9 @@ import { useKioskFeedback } from './KioskFeedback.logic';
 import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export function KioskFeedbackModal({ booking, onClose }: { booking: ChildBookingForFeedback, onClose: () => void }) {
+export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
+    const [currentBooking, setCurrentBooking] = useState(initialBooking);
+
     const {
         step, setStep,
         language, setLanguage,
@@ -15,34 +17,71 @@ export function KioskFeedbackModal({ booking, onClose }: { booking: ChildBooking
         comments, handleCommentChange,
         isSubmitting, handleSubmit,
         t
-    } = useKioskFeedback(booking, onClose);
+    } = useKioskFeedback(currentBooking, onClose);
 
     return (
         <div className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden">
-            <button 
-                onClick={onClose} 
-                className="absolute top-6 left-6 p-2 text-gray-300 hover:text-gray-500 rounded-full hover:bg-gray-100 transition-colors z-50"
-            >
-                <X className="w-8 h-8" />
-            </button>
+            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-50 pointer-events-none">
+                <div className="pointer-events-auto">
+                    <button 
+                        onClick={onClose} 
+                        className="p-3 text-gray-300 hover:text-gray-500 rounded-full hover:bg-gray-100 transition-colors shadow-sm bg-white/50 backdrop-blur-sm"
+                    >
+                        <X className="w-8 h-8" />
+                    </button>
+                </div>
+                
+                <div className="pointer-events-auto flex flex-col items-end gap-4">
+                    {/* Language Selector */}
+                    <div className="flex gap-3 bg-gray-50/80 p-2 rounded-full shadow-sm border border-gray-100">
+                        {(['VN', 'EN', 'KR', 'JP'] as const).map(lang => (
+                            <button
+                                key={lang}
+                                onClick={() => setLanguage(lang)}
+                                className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
+                                    language === lang 
+                                        ? 'bg-[#5A00FF] text-white shadow-md' 
+                                        : 'text-gray-500 hover:bg-gray-200'
+                                }`}
+                            >
+                                {lang}
+                            </button>
+                        ))}
+                    </div>
 
-            {/* Language Selector */}
-            <div className="absolute top-0 right-0 p-6 flex gap-4 z-50">
-
-                <div className="flex gap-3 bg-gray-50/80 p-2 rounded-full shadow-sm border border-gray-100">
-                    {(['VN', 'EN', 'KR', 'JP'] as const).map(lang => (
-                        <button
-                            key={lang}
-                            onClick={() => setLanguage(lang)}
-                            className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
-                                language === lang 
-                                    ? 'bg-indigo-600 text-white shadow-md' 
-                                    : 'text-gray-500 hover:bg-gray-200'
-                            }`}
-                        >
-                            {lang}
-                        </button>
-                    ))}
+                    {/* Booking Tabs (Chỉ hiện khi đoàn có nhiều hơn 1 khách) */}
+                    {group.childBookings.length > 1 && (
+                        <div className="flex gap-2 bg-white/90 p-2 rounded-2xl shadow-sm border border-gray-100 max-w-md overflow-x-auto">
+                            {group.childBookings.map((child: any) => {
+                                const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
+                                const hasFeedback = child.status === 'FEEDBACK';
+                                const isActive = currentBooking.id === child.id;
+                                
+                                return (
+                                    <button
+                                        key={child.id}
+                                        onClick={() => {
+                                            if (isCompleted && !isActive) setCurrentBooking(child);
+                                        }}
+                                        disabled={!isCompleted || isActive}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
+                                            isActive ? 'bg-[#7C3AED] text-white shadow-md' 
+                                            : hasFeedback ? 'bg-green-50 text-green-600 opacity-70 border border-green-100'
+                                            : isCompleted ? 'bg-gray-50 text-gray-600 hover:bg-gray-200 cursor-pointer border border-gray-200'
+                                            : 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100'
+                                        }`}
+                                        title={
+                                            hasFeedback ? 'Đã đánh giá' : 
+                                            !isCompleted ? 'Chưa hoàn thành dịch vụ' : 
+                                            'Chuyển sang đánh giá cho khách này'
+                                        }
+                                    >
+                                        {child.customerName} {hasFeedback && '✓'}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 

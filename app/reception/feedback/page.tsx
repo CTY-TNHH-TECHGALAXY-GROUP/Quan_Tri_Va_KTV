@@ -89,6 +89,7 @@ export default function FeedbackDashboardPage() {
     const [selectedDate, setSelectedDate] = useState(getTodayStr());
     const { groups, loading } = useFeedbackDashboard(selectedDate);
     
+    const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
     const [selectedChildBooking, setSelectedChildBooking] = useState<ChildBookingForFeedback | null>(null);
 
     if (loading) {
@@ -154,7 +155,10 @@ export default function FeedbackDashboardPage() {
                     <FeedbackGroupBlock 
                         key={group.parentBookingId} 
                         group={group} 
-                        onSelectChild={setSelectedChildBooking} 
+                        onSelectChild={(child) => {
+                            setSelectedGroup(group);
+                            setSelectedChildBooking(child);
+                        }} 
                     />
                 ))}
 
@@ -166,10 +170,14 @@ export default function FeedbackDashboardPage() {
             </div>
 
             {/* Modal Kiosk Fullscreen */}
-            {selectedChildBooking && (
+            {selectedChildBooking && selectedGroup && (
                 <KioskFeedbackModal 
-                    booking={selectedChildBooking} 
-                    onClose={() => setSelectedChildBooking(null)} 
+                    group={selectedGroup}
+                    initialBooking={selectedChildBooking} 
+                    onClose={() => {
+                        setSelectedChildBooking(null);
+                        setSelectedGroup(null);
+                    }} 
                 />
             )}
         </div>

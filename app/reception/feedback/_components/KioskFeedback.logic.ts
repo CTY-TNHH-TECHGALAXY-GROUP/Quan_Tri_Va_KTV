@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChildBookingForFeedback, FeedbackKtvInfo } from '../FeedbackDashboard.logic';
 
@@ -20,6 +20,13 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     // State lưu ghi chú nếu khách muốn gõ thêm
     const [comments, setComments] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Reset state khi đổi khách (chuyển tab)
+    useEffect(() => {
+        setStep(1);
+        setRatings({});
+        setComments({});
+    }, [booking.id]);
 
     // Xử lý logic gộp KTV:
     // User Yêu cầu: "nếu chung 1 KTV thì hiện 1 dịch vụ gộp + tên ktv luôn. nếu 1 đơn lẻ gộp khác ktv thì sẽ hiển thị 2 ktv tương ứng vs dịch vụ"
