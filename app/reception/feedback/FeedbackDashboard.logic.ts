@@ -73,28 +73,32 @@ export function useFeedbackDashboard(selectedDate: string) {
                     const items = b.BookingItems || [];
                     
                     items.forEach((item: any) => {
-                        if (item.ktvIds && item.ktvIds.length > 0) {
-                            item.ktvIds.forEach((ktvId: string) => {
+                        // Tìm KTV từ technicianCodes hoặc TurnQueue
+                        let techCodes = item.technicianCodes || [];
+                        if (typeof techCodes === 'string') techCodes = [techCodes];
+                        
+                        if (techCodes.length > 0) {
+                            techCodes.forEach((code: string) => {
                                 let rating: number | undefined = undefined;
                                 if (item.ktvRatings && typeof item.ktvRatings === 'object') {
-                                    const key = Object.keys(item.ktvRatings).find(k => k.toLowerCase() === ktvId.toLowerCase());
+                                    const key = Object.keys(item.ktvRatings).find(k => k.toLowerCase() === code.toLowerCase());
                                     if (key) {
                                         rating = Number((item.ktvRatings as any)[key]) || undefined;
                                     }
                                 }
 
-                                const staffInfo = staffs.find(s => s.id === ktvId);
+                                const staffInfo = staffs.find(s => s.id === code);
                                 ktvList.push({
                                     itemId: item.id,
-                                    ktvId: ktvId,
-                                    ktvName: staffInfo?.full_name || ktvId,
-                                    serviceNames: item.serviceNames || [],
+                                    ktvId: code,
+                                    ktvName: staffInfo?.full_name || code,
+                                    serviceNames: [item.serviceName || item.service_name || 'Dịch vụ'],
                                     rating
                                 });
                             });
                         } else {
-                            // Nếu mảng rỗng thì check TurnQueue
-                            const assignedTurns = turns.filter(t => t.booking_id === b.id && t.status !== 'CANCELLED');
+                            // Cố tìm trong TurnQueue
+                            const assignedTurns = turns.filter(t => t.current_order_id === b.id && t.booking_item_id?.includes(item.id));
                             assignedTurns.forEach(t => {
                                 const staffInfo = staffs.find(s => s.id === t.employee_id);
                                 ktvList.push({
