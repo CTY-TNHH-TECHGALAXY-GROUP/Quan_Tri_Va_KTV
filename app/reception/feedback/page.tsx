@@ -3,7 +3,78 @@
 import React, { useState } from 'react';
 import { useFeedbackDashboard, ChildBookingForFeedback } from './FeedbackDashboard.logic';
 import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
-import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star } from 'lucide-react';
+import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star, ChevronDown, ChevronUp } from 'lucide-react';
+
+function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChild: (child: any) => void }) {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div 
+                className="p-4 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-800">{group.customerName}</h2>
+                    <p className="text-sm text-gray-500">Mã: {group.billCode} • {group.childBookings.length} đơn</p>
+                </div>
+                <button className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-200/50 transition-all">
+                    {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+            </div>
+
+            {isExpanded && (
+                <div className="p-5 space-y-3">
+                    {group.childBookings.map((child: any) => {
+                        const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
+                        const hasFeedback = child.status === 'FEEDBACK';
+                        
+                        return (
+                            <div 
+                                key={child.id}
+                                onClick={() => {
+                                    if (isCompleted) {
+                                        onSelectChild(child);
+                                    } else if (hasFeedback) {
+                                        alert('Đơn này đã được đánh giá!');
+                                    } else {
+                                        alert('Đơn này chưa hoàn thành, chưa thể đánh giá!');
+                                    }
+                                }}
+                                className={`relative p-3 rounded-lg border ${
+                                    isCompleted 
+                                        ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors' 
+                                        : hasFeedback 
+                                            ? 'bg-green-50 border-green-200 cursor-not-allowed opacity-70'
+                                            : 'bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
+                                }`}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-sm font-medium text-gray-700">{child.customerName}</span>
+                                    {isCompleted && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
+                                    {hasFeedback && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Đã Đánh Giá</span>}
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    {child.ktvList.map((ktv: any, idx: number) => (
+                                        <div key={idx} className="flex items-center gap-2 bg-white/60 p-2 rounded-md text-sm">
+                                            <UserCircle2 className="w-4 h-4 text-gray-400" />
+                                            <span className="font-medium text-gray-800">{ktv.ktvId} - {ktv.ktvName}</span>
+                                            <span className="text-gray-500 text-xs ml-auto truncate max-w-[100px]">{ktv.serviceName}</span>
+                                        </div>
+                                    ))}
+                                    {child.ktvList.length === 0 && (
+                                        <div className="text-xs text-gray-400 italic">Chưa có KTV</div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function FeedbackDashboardPage() {
     // Lấy ngày hiện tại theo giờ Việt Nam
@@ -80,60 +151,11 @@ export default function FeedbackDashboardPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {groups.map(group => (
-                    <div key={group.parentBookingId} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                        <div className="mb-4 pb-3 border-b border-gray-50">
-                            <h2 className="text-lg font-semibold text-gray-800">{group.customerName}</h2>
-                            <p className="text-sm text-gray-500">Mã: {group.billCode}</p>
-                        </div>
-
-                        <div className="space-y-3">
-                            {group.childBookings.map(child => {
-                                const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
-                                const hasFeedback = child.status === 'FEEDBACK';
-                                
-                                return (
-                                    <div 
-                                        key={child.id}
-                                        onClick={() => {
-                                            if (isCompleted) {
-                                                setSelectedChildBooking(child);
-                                            } else if (hasFeedback) {
-                                                alert('Đơn này đã được đánh giá!');
-                                            } else {
-                                                alert('Đơn này chưa hoàn thành, chưa thể đánh giá!');
-                                            }
-                                        }}
-                                        className={`relative p-3 rounded-lg border ${
-                                            isCompleted 
-                                                ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors' 
-                                                : hasFeedback 
-                                                    ? 'bg-green-50 border-green-200 cursor-not-allowed opacity-70'
-                                                    : 'bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
-                                        }`}
-                                    >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-sm font-medium text-gray-700">{child.customerName}</span>
-                                            {isCompleted && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
-                                            {hasFeedback && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Đã Đánh Giá</span>}
-                                        </div>
-                                        
-                                        <div className="space-y-2">
-                                            {child.ktvList.map((ktv, idx) => (
-                                                <div key={idx} className="flex items-center gap-2 bg-white/60 p-2 rounded-md text-sm">
-                                                    <UserCircle2 className="w-4 h-4 text-gray-400" />
-                                                    <span className="font-medium text-gray-800">{ktv.ktvId} - {ktv.ktvName}</span>
-                                                    <span className="text-gray-500 text-xs ml-auto truncate max-w-[100px]">{ktv.serviceName}</span>
-                                                </div>
-                                            ))}
-                                            {child.ktvList.length === 0 && (
-                                                <div className="text-xs text-gray-400 italic">Chưa có KTV</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    <FeedbackGroupBlock 
+                        key={group.parentBookingId} 
+                        group={group} 
+                        onSelectChild={setSelectedChildBooking} 
+                    />
                 ))}
 
                 {groups.length === 0 && (
