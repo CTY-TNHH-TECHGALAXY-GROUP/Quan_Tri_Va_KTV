@@ -61,8 +61,8 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate rounded-full"
                             >
                                 {group.childBookings.map((child: any) => {
-                                    const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
-                                    const hasFeedback = child.status === 'FEEDBACK';
+                                    const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
+                                    const isReady = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
                                     const ktvNames = child.ktvList.map((k: any) => k.ktvName).join(', ');
                                     const label = `${child.customerName} - KTV: ${ktvNames}`;
                                     
@@ -70,9 +70,9 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                         <option 
                                             key={child.id} 
                                             value={child.id}
-                                            disabled={(!isCompleted && currentBooking.id !== child.id) || hasFeedback}
+                                            disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}
                                         >
-                                            {label} {hasFeedback ? ' ✓ (Đã đánh giá)' : !isCompleted ? ' (Đang phục vụ)' : ''}
+                                            {label} {isEvaluated ? ' ✓ (Đã đánh giá)' : isReady ? ' (Chờ đánh giá)' : ' (Đang phục vụ)'}
                                         </option>
                                     );
                                 })}

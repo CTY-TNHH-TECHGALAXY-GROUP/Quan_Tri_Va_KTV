@@ -26,33 +26,33 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
             {isExpanded && (
                 <div className="p-5 space-y-3">
                     {group.childBookings.map((child: any) => {
-                        const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
-                        const hasFeedback = child.status === 'FEEDBACK';
+                        const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
+                        const isReadyToEvaluate = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
                         
                         return (
                             <div 
                                 key={child.id}
                                 onClick={() => {
-                                    if (isCompleted) {
+                                    if (isReadyToEvaluate && !isEvaluated) {
                                         onSelectChild(child);
-                                    } else if (hasFeedback) {
+                                    } else if (isEvaluated) {
                                         alert('Đơn này đã được đánh giá!');
                                     } else {
                                         alert('Đơn này chưa hoàn thành, chưa thể đánh giá!');
                                     }
                                 }}
                                 className={`relative p-3 rounded-lg border ${
-                                    isCompleted 
+                                    (isReadyToEvaluate && !isEvaluated)
                                         ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors' 
-                                        : hasFeedback 
+                                        : isEvaluated 
                                             ? 'bg-green-50 border-green-200 cursor-not-allowed opacity-70'
                                             : 'bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
                                 }`}
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="text-sm font-medium text-gray-700">{child.customerName}</span>
-                                    {isCompleted && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
-                                    {hasFeedback && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Đã Đánh Giá</span>}
+                                    {(isReadyToEvaluate && !isEvaluated) && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Chờ Đánh Giá</span>}
+                                    {isEvaluated && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Đã Đánh Giá</span>}
                                 </div>
                                 
                                 <div className="space-y-2">
