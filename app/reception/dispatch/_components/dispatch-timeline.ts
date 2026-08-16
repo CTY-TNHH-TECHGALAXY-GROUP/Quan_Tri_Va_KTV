@@ -51,9 +51,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         if (order.dispatchStatus === 'pending') {
             // Giữ lại phòng riêng để Lễ tân kiểm tra, đánh dấu isUtility để ẩn KTV picker
             const pendingServices = order.services.map(svc => {
+                const name = svc.serviceName?.toLowerCase() || '';
                 const isPrivateRoom = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' ||
-                    svc.serviceName?.toLowerCase().includes('phòng riêng') ||
-                    svc.serviceName?.toLowerCase().includes('phong rieng'); // Legacy fallback
+                    (name.includes('phòng riêng') && !name.includes('+')) ||
+                    (name.includes('phong rieng') && !name.includes('+')); // Bỏ qua nếu đã bị gộp (tên có dấu +)
                 return isPrivateRoom ? { ...svc, isUtility: true } : svc;
             });
             
@@ -89,7 +90,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         const allStaffs: Array<{ st: any, svcId: string, svcDuration: number, svcTimeStart: string, origStart: string }> = [];
         
         order.services.forEach(svc => {
-            if ((svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')) return; // Legacy fallback
+            const name = svc.serviceName?.toLowerCase() || '';
+            const isPrivateRoom = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
+            if (isPrivateRoom) return; // Legacy fallback
             
             // 🔥 Skip merged child services so they don't create empty SubOrders
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
@@ -161,7 +164,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         const parentSignatures = new Map<string, string>();
 
         order.services.forEach(svc => {
-            if ((svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')) return; // Legacy fallback
+            const name = svc.serviceName?.toLowerCase() || '';
+            const isPrivateRoom = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
+            if (isPrivateRoom) return; // Legacy fallback
             
             // 🔥 Skip merged child services in Pass 1 so they don't create empty independent SubOrders
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
@@ -324,7 +329,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         });
 
         // 🌟 Inject Utilities (Phòng Riêng) back into UI 🌟
-        const privateRooms = order.services.filter(svc => (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng')); // Legacy fallback
+        const privateRooms = order.services.filter(svc => {
+            const name = svc.serviceName?.toLowerCase() || '';
+            return (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
+        }); // Legacy fallback
         if (privateRooms.length > 0) {
             const utilityServices = privateRooms.map(pr => ({ ...pr, isUtility: true }));
             if (resultForOrder.length > 0) {

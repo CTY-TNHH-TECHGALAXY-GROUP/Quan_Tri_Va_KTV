@@ -968,7 +968,8 @@ if (!hasPermission('dispatch_board')) {
            
            // Tìm service đầu tiên không phải phòng riêng để làm anchor
            const firstMainSvc = clonedOrder.services.find(s => {
-               const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || s.serviceName?.toLowerCase().includes('phòng riêng') || s.serviceName?.toLowerCase().includes('phong rieng');
+               const name = s.serviceName?.toLowerCase() || '';
+               const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
                return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
            });
            const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
@@ -976,7 +977,8 @@ if (!hasPermission('dispatch_board')) {
            clonedOrder.services.forEach(svc => {
                if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
                
-               const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng');
+               const name = svc.serviceName?.toLowerCase() || '';
+               const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
                
                // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
                const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
@@ -1223,7 +1225,8 @@ if (!hasPermission('dispatch_board')) {
       
       // Tìm service đầu tiên không phải phòng riêng để làm anchor
       const firstMainSvc = clonedOrder.services.find(s => {
-          const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || s.serviceName?.toLowerCase().includes('phòng riêng') || s.serviceName?.toLowerCase().includes('phong rieng');
+          const name = s.serviceName?.toLowerCase() || '';
+          const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
           return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
       });
       const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
@@ -1231,7 +1234,8 @@ if (!hasPermission('dispatch_board')) {
       clonedOrder.services.forEach(svc => {
           if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
           
-          const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || svc.serviceName?.toLowerCase().includes('phòng riêng') || svc.serviceName?.toLowerCase().includes('phong rieng');
+          const name = svc.serviceName?.toLowerCase() || '';
+          const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
           
           // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
           const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
@@ -2026,7 +2030,8 @@ if (!hasPermission('dispatch_board')) {
                         const uniqueCustomerGroups = new Set<string>();
                         
                         (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
-                             const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+                             const name = String(svc.serviceName || '').toLowerCase();
+                             const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
                              const isChild = !!(svc.options?.mergedIntoId || svc.mergedIntoId);
                              
                              if (!isUtility && !isChild) {
@@ -2586,7 +2591,7 @@ if (!hasPermission('dispatch_board')) {
                     const name = (typeof svc.nameVN === 'object' && svc.nameVN !== null) ? (svc.nameVN.vn || svc.nameVN.en || svc.nameVN) : (svc.nameVN || svc.nameEN || `Dịch vụ ${svc.code || svc.id}`);
                     const dur = svc.duration ?? 60;
                     const price = svc.priceVND || 0;
-                    const isUtilitySvc = svc.is_utility === true || svc.id === 'NHS0900' || String(name).toLowerCase().includes('phòng riêng') || String(name).toLowerCase().includes('phong rieng'); // Legacy fallback
+                    const isUtilitySvc = svc.is_utility === true || svc.id === 'NHS0900' || (String(name).toLowerCase().includes('phòng riêng') && !String(name).includes('+')) || (String(name).toLowerCase().includes('phong rieng') && !String(name).includes('+')); // Legacy fallback
                     return (
                       <button 
                         key={svc.id} 
@@ -2624,7 +2629,8 @@ if (!hasPermission('dispatch_board')) {
           const isMissingKTVs = selectedSubOrder.services.some((svc: any) => {
             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
             const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
-              const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+              const nameStr = String(svc.serviceName || '').toLowerCase();
+              const isUtility = svc.is_utility || svc.isUtility || svc.serviceId === 'NHS0900' || (nameStr.includes('phòng riêng') && !nameStr.includes('+')) || (nameStr.includes('phong rieng') && !nameStr.includes('+'));
               return assignedKTVs < minKtv && !isUtility;
           });
 
@@ -2683,7 +2689,8 @@ if (!hasPermission('dispatch_board')) {
                               {(() => {
                             const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
                             const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
-                              const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || String(svc.serviceName || '').toLowerCase().includes('phòng riêng') || String(svc.serviceName || '').toLowerCase().includes('phong rieng');
+                              const nameStr = String(svc.serviceName || '').toLowerCase();
+                              const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || (nameStr.includes('phòng riêng') && !nameStr.includes('+')) || (nameStr.includes('phong rieng') && !nameStr.includes('+'));
                               if (assignedKTVs < minKtv && !isUtility) {
                                 return (
                                     <p className="text-xs text-rose-500 font-bold mt-1">
