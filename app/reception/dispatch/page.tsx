@@ -1022,6 +1022,14 @@ if (!hasPermission('dispatch_board')) {
     const targetBookingId = selectedOrder?.parentBookingId || (selectedOrder?.rawStatus === 'SPLIT' ? selectedOrder.id : null);
     if (!selectedOrder || !targetBookingId) return;
 
+    // KIỂM TRA: Không cho phép Hủy nếu có Đơn Con đã bắt đầu làm
+    const siblings = orders.filter((o: any) => o.parentBookingId === targetBookingId);
+    const hasStarted = siblings.some((o: any) => o.rawStatus !== 'PREPARING' && o.rawStatus !== 'CANCELLED');
+    if (hasStarted) {
+        alert('❌ LỖI: Không thể Hủy Gộp/Tách! Có ít nhất 1 đơn con đang được KTV thực hiện hoặc đã hoàn thành. Chỉ có thể hủy khi tất cả đơn con đều ở trạng thái Chờ (PREPARING).');
+        return;
+    }
+
     if (!confirm('Bạn có chắc chắn muốn HỦY GỘP/TÁCH và đưa tất cả các dịch vụ về lại đơn gốc ban đầu?')) {
         return;
     }
@@ -2357,14 +2365,24 @@ if (!hasPermission('dispatch_board')) {
                 </button>
 
                 <div className="pt-4 sticky bottom-0 bg-gradient-to-t from-white via-white/90 to-transparent pb-2 mt-auto flex gap-3">
-                  {( !!selectedSubOrder?.originalOrder?.parentBookingId || selectedSubOrder?.originalOrder?.rawStatus === 'SPLIT' ) && (
-                      <button
-                        onClick={handleUndoSplit}
-                        className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-2 border-red-200 active:scale-95"
-                      >
-                        <RotateCcw size={20} strokeWidth={3} /> HỦY GỘP/TÁCH
-                      </button>
-                  )}
+                  {(() => {
+                      const targetUndoId = selectedSubOrder?.originalOrder?.parentBookingId || (selectedSubOrder?.originalOrder?.rawStatus === 'SPLIT' ? selectedSubOrder.originalOrder.id : null);
+                      if (!targetUndoId) return null;
+                      
+                      const siblingsUndo = orders.filter((o: any) => o.parentBookingId === targetUndoId);
+                      const isUndoDisabled = siblingsUndo.some((o: any) => o.rawStatus !== 'PREPARING' && o.rawStatus !== 'CANCELLED');
+                      
+                      return (
+                          <button
+                            onClick={handleUndoSplit}
+                            disabled={isUndoDisabled}
+                            title={isUndoDisabled ? 'Không thể hủy vì có đơn con đang thực hiện' : ''}
+                            className={`flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg border-2 ${isUndoDisabled ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-70' : 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200 active:scale-95'}`}
+                          >
+                            <RotateCcw size={20} strokeWidth={3} /> HỦY GỘP/TÁCH
+                          </button>
+                      );
+                  })()}
                   <button
                     onClick={handleSaveDraft}
                     className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border-2 border-emerald-200 active:scale-95"
