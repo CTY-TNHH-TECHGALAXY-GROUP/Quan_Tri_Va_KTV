@@ -11,7 +11,9 @@ export type MergedFeedbackGroup = {
 
 export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () => void) {
     const [step, setStep] = useState<1 | 2>(1);
-    const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP'>('VN');
+    const langCode = booking.customerLang?.toUpperCase() || 'VN';
+    const initialLang = (['VN', 'EN', 'KR', 'JP'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP') : 'VN';
+    const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP'>(initialLang);
     
     // State lưu điểm (từ 1 đến 5 sao) cho từng KTV (key = ktvId)
     const [ratings, setRatings] = useState<Record<string, number>>({});
