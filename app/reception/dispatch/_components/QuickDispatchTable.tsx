@@ -592,7 +592,6 @@ export const QuickDispatchTable = ({
                      <div className={`px-4 py-3 border-b flex flex-col gap-2 rounded-t-3xl ${isSelected ? 'bg-indigo-50/50 border-indigo-100' : hasMergedItems ? 'bg-purple-50/50 border-purple-100' : 'bg-gray-50/80 border-gray-100'}`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                {onToggleSelect && (
                                    <input type="checkbox" checked={isSelected} onChange={() => {
                                        const keys = block.items.map(([gk]) => gk);
                                        if (isSelected) {
@@ -601,7 +600,6 @@ export const QuickDispatchTable = ({
                                            setSelectedGroupKeys(prev => [...prev, ...keys.filter(k => !prev.includes(k))]);
                                        }
                                    }} className="w-5 h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
-                                )}
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                    <span className="bg-indigo-600 text-white text-[11px] font-black px-2.5 py-0.5 rounded-lg shadow-sm flex items-center gap-1">
                                        📦 Đơn Con: {subOrderCode}
@@ -617,17 +615,15 @@ export const QuickDispatchTable = ({
                                        <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md ml-2">
                                            🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
                                        </span>
-                                       {onUnmerge && (
                                            <button onClick={() => {
                                                 const firstGk = block.items[0][0];
                                                 handleUnmergeSingle(firstGk);
                                            }} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-1">
                                                Hủy gộp
                                            </button>
-                                       )}
                                      </>
                                    )}
-                                   {!hasMergedItems && isMultiItemBlock && onUnmerge && (
+                                   {!hasMergedItems && isMultiItemBlock && (
                                       <button onClick={() => {
                                           const cId = block.items[0][1][0]?.customerGroupId;
                                           if (cId) handleUnmergeCustomerGroup(cId);

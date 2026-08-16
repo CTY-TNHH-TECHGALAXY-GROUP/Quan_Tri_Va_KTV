@@ -13,7 +13,7 @@ import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone,
   ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
-  Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope, RotateCcw
+  Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope, RotateCcw, Star
 } from 'lucide-react';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
 import { DispatchOnlineKtvTable } from './_components/DispatchOnlineKtvTable';
@@ -1004,7 +1004,7 @@ if (!hasPermission('dispatch_board')) {
   };
 
   const handleUndoSplit = async () => {
-    const targetBookingId = selectedOrder?.parentBookingId || (selectedOrder?.status === 'SPLIT' ? selectedOrder.id : null);
+    const targetBookingId = selectedOrder?.parentBookingId || (selectedOrder?.rawStatus === 'SPLIT' ? selectedOrder.id : null);
     if (!selectedOrder || !targetBookingId) return;
 
     if (!confirm('Bạn có chắc chắn muốn HỦY GỘP/TÁCH và đưa tất cả các dịch vụ về lại đơn gốc ban đầu?')) {
@@ -1650,6 +1650,12 @@ if (!hasPermission('dispatch_board')) {
                     }`}
                   >
                     <CalendarClock size={14} /> Lịch Biểu Diễn
+                  </button>
+                  <button
+                    onClick={() => window.location.href = '/reception/feedback'}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                  >
+                    <Star size={14} /> Đánh Giá
                   </button>
                 </div>
               </h1>
@@ -2320,7 +2326,7 @@ if (!hasPermission('dispatch_board')) {
                 </button>
 
                 <div className="pt-4 sticky bottom-0 bg-gradient-to-t from-white via-white/90 to-transparent pb-2 mt-auto flex gap-3">
-                  {( (selectedSubOrder?.originalOrder?.parentBookingId && ['NEW', 'pending'].includes(selectedSubOrder.dispatchStatus)) || selectedSubOrder?.originalOrder?.status === 'SPLIT' ) && (
+                  {( !!selectedSubOrder?.originalOrder?.parentBookingId || selectedSubOrder?.originalOrder?.rawStatus === 'SPLIT' ) && (
                       <button
                         onClick={handleUndoSplit}
                         className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-2 border-red-200 active:scale-95"

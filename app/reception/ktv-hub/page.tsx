@@ -441,7 +441,7 @@ const TurnTab = ({ staffs }: { staffs: StaffData[] }) => {
             {/* Attendance Pending - Duyệt điểm danh */}
             <AttendancePendingSection />
             
-            <TurnQueueBoard staffs={staffs as any} selectedDate={selectedDate} onDateChange={setSelectedDate} />
+            <TurnQueueBoard staffs={staffs as any} selectedDate={selectedDate} onDateChange={setSelectedDate} allowEditTurns={true} />
 
             {/* Attendance History - Collapsible */}
             <AttendanceHistorySection selectedDate={selectedDate} />

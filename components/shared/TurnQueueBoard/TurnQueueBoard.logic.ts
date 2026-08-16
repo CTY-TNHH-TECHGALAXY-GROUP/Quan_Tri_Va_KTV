@@ -6,9 +6,10 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
     // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
     const getVietnamDateString = () => {
         const d = new Date();
-        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-        const vnTime = new Date(utc + (3600000 * 7));
-        return vnTime.toISOString().split('T')[0];
+        const vnTime = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+        return vnTime.getFullYear() + '-' + 
+               String(vnTime.getMonth() + 1).padStart(2, '0') + '-' + 
+               String(vnTime.getDate()).padStart(2, '0');
     };
     
     const [selectedDate, setSelectedDate] = useState<string>(getVietnamDateString());
@@ -312,8 +313,13 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
 
     const assignWaterRefiller = async (ktvId: string | null) => {
         try {
-            const { error } = await supabase.from('SystemConfigs').update({ value: ktvId }).eq('key', 'daily_water_refiller');
-            if (error) throw error;
+            const res = await fetch('/api/system/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'daily_water_refiller', value: ktvId })
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Failed to update system config');
         } catch (err) {
             console.error('Lỗi khi gán người châm nước:', err);
             alert('Có lỗi xảy ra khi gán người châm nước!');

@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+        let date = searchParams.get('date');
+        if (!date) {
+            const d = new Date();
+            const vnTime = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+            date = vnTime.getFullYear() + '-' + String(vnTime.getMonth() + 1).padStart(2, '0') + '-' + String(vnTime.getDate()).padStart(2, '0');
+        }
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {

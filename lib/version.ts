@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.6.17'; // Tăng version khi có cập nhật mới
-export const LAST_UPDATE = 'Cập nhật UI Kanban và Left panel để highlight toàn bộ các đơn con khi bấm vào một đơn con (xem theo đơn cha)'; // Mô tả ngắn gọn thay đổi gần nhất
+export const APP_VERSION = '1.6.21'; // Tăng version khi có cập nhật mới
+export const LAST_UPDATE = 'Luôn hiển thị nút Hủy Gộp/Tách (bỏ điều kiện trạng thái NEW)'; // Mô tả ngắn gọn thay đổi gần nhất
