@@ -1082,156 +1082,8 @@ if (!hasPermission('dispatch_board')) {
     try {
       const clonedOrder = JSON.parse(JSON.stringify(orderToDispatch)) as PendingOrder;
 
-      const allStaffAssignments: Array<{ ktvId: string; bookingItemId: string; roomId: string | null; bedId: string | null; turnsCompleted: number; queuePos: number; startTime: string; endTime: string }> = [];
-      const techCodesSet = new Set<string>();
-
-      const targetServices = specificSvcIds && specificSvcIds.length > 0 
-        ? clonedOrder.services.filter(s => specificSvcIds.includes(s.id)) 
-        : clonedOrder.services;
-
-      for (const svc of targetServices) {
-        if (svc.mergedIntoId) continue; // 🔥 DO NOT CREATE assignments for merged child services
-        
-        for (const row of svc.staffList) {
-          if (!row.ktvId) continue;
-          
-          const ktvId = row.ktvId;
-          techCodesSet.add(ktvId); 
-
-          const currentTurn = turns.find(t => t.employee_id === ktvId);
-          
-          // 🔥 FIX: KTV ngoài (tên nhập tự do) không có trong TurnQueue
-          // Thay vì skip, tạo assignment với default values để server xử lý mapping EXT
-          let turnsCompleted = currentTurn?.turns_completed || 0;
-          let queuePos = currentTurn?.queue_position || 0;
-
-          if (!currentTurn || currentTurn.current_order_id !== clonedOrder.id) {
-            const currentMax = Math.max(...turns.map(t => t.queue_position), 0);
-            
-            // Fix: Check if this KTV is already added in a previous service of the same order
-            const existingAssignment = allStaffAssignments.find(a => a.ktvId === ktvId);
-            if (existingAssignment) {
-              queuePos = existingAssignment.queuePos;
-            } else {
-              const uniqueAddedKtvs = new Set(allStaffAssignments.map(a => a.ktvId));
-              const addedCount = uniqueAddedKtvs.size; 
-              queuePos = currentMax + addedCount + 1;
-            }
-          }
-          
-          // Với đa chặng, TurnQueue theo chặng đầu tiên
-          const firstSeg = row.segments[0];
-          const lastSeg = row.segments[row.segments.length - 1];
-
-          allStaffAssignments.push({
-            ktvId,
-            bookingItemId: svc.id,
-            roomId: firstSeg.roomId,
-            bedId: firstSeg.bedId,
-            turnsCompleted,
-            queuePos,
-            startTime: firstSeg.startTime,
-            endTime: lastSeg.endTime 
-          });
-        }
-      }
-
-      // ⚠️ DO NOT REMOVE — Fix 16/05/2026: Dispatch lẻ bảo vệ KTV đang làm
-      // Khi dispatch lẻ DV3, RPC cleanup step 0.5 sẽ XÓA KTV1/KTV2 đang ACTIVE cho DV1/DV2
-      // vì họ không nằm trong p_staff_assignments. Fix: thêm "keepalive" entries cho KTV các DV khác.
-      if (specificSvcIds && specificSvcIds.length > 0) {
-        const otherServices = clonedOrder.services.filter(s => !specificSvcIds.includes(s.id));
-        for (const svc of otherServices) {
-          for (const row of svc.staffList) {
-            if (!row.ktvId) continue;
-            // Chỉ thêm nếu KTV này chưa có trong danh sách (tránh trùng)
-            if (allStaffAssignments.some(a => a.ktvId === row.ktvId && a.bookingItemId === svc.id)) continue;
-            const firstSeg = row.segments[0];
-            const lastSeg = row.segments[row.segments.length - 1];
-            allStaffAssignments.push({
-              ktvId: row.ktvId,
-              bookingItemId: svc.id,
-              roomId: firstSeg?.roomId || null,
-              bedId: firstSeg?.bedId || null,
-              turnsCompleted: 0,
-              queuePos: 0,
-              startTime: firstSeg?.startTime || '',
-              endTime: lastSeg?.endTime || ''
-            });
-          }
-        }
-      }
-
-      // ✅ KHÔNG GỘP assignments cùng KTV nữa. Giữ nguyên 1 item = 1 row để tuân thủ kiến trúc chuẩn!
-      const mergedAssignments = allStaffAssignments;
-
-
-      const combinedTechCodes = Array.from(techCodesSet).join(', ');
-      
-      const primaryService = clonedOrder.services[0];
-      const primaryStaff = primaryService?.staffList[0];
-      const primarySeg = primaryStaff?.segments[0];
-      
-      const itemUpdates = targetServices.map(svc => {
-          const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
-          // Lưu toàn bộ lộ trình của tất cả KTV trong dịch vụ này
-          const allSegments = svc.staffList.flatMap(r => 
-            r.segments.map(seg => ({ ...seg, ktvId: r.ktvId }))
-          );
-
-          return {
-              id: svc.id,
-              // Lấy room/bed riêng cho service này từ segment đầu tiên của nó
-              roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
-              bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-              technicianCodes: svc.mergedIntoId ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
-              status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
-              segments: allSegments,
-              options: {
-                  ...(svc.options || {}),
-                  displayName: svc.options?.displayName || svc.serviceName,
-                  mergedIntoId: svc.mergedIntoId,
-                  mergedServiceIds: svc.mergedServiceIds,
-                  order: originalIndex !== -1 ? originalIndex : 999,
-                  note: svc.customerNote?.split(' | ')[0] || '', 
-                  therapist: svc.genderReq,
-                  strength: svc.strength,
-                  focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
-                  avoid: svc.avoid.split(',').map(a => a.trim()).filter(Boolean),
-                  noteForKtv: svc.staffList?.[0]?.noteForKtv || '',
-                  notesForKtvs: Object.fromEntries(
-                      svc.staffList
-                          .filter(r => r.ktvId && r.noteForKtv)
-                          .map(r => [r.ktvId, r.noteForKtv])
-                  )
-              }
-          };
-      });
-
-      let finalNotesToSave = primaryService?.adminNote || '';
-      if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
-          try {
-              const parsed = JSON.parse(clonedOrder.rawNotes);
-              parsed.receptionNote = primaryService?.adminNote;
-              finalNotesToSave = JSON.stringify(parsed);
-          } catch {
-              finalNotesToSave = primaryService?.adminNote || '';
-          }
-      }
-
-      const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
-      // ⚠️ Khi dispatch: KHÔNG gửi status để tránh lỗi backward transition nếu đang IN_PROGRESS/CLEANING
-      // Chỉ gửi PREPARING nếu trạng thái thực sự là NEW, pending, hoặc WAITING (chưa điều phối)
-      const isPending = !clonedOrder.rawStatus || ['NEW', 'pending', 'WAITING'].includes(clonedOrder.rawStatus);
-      const bookingStatus = isPartial ? null : (isPending ? 'PREPARING' : clonedOrder.rawStatus);
-      
-      let targetBookingId = clonedOrder.id;
-
-      // 🚀 THỰC THI BƯỚC 2: TÁCH ĐƠN VẬT LÝ VÀO DATABASE
-      const parentOrderSubOrders = subOrders.filter(so => so.bookingId === clonedOrder.id);
+      // 🚀 BƯỚC 1: XÁC ĐỊNH TÁCH ĐƠN (NẾU CÓ)
       const groups = new Map<string, string[]>();
-      
-      // Tìm service đầu tiên không phải phòng riêng để làm anchor
       const firstMainSvc = clonedOrder.services.find(s => {
           const name = s.serviceName?.toLowerCase() || '';
           const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
@@ -1241,11 +1093,8 @@ if (!hasPermission('dispatch_board')) {
 
       clonedOrder.services.forEach(svc => {
           if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-          
           const name = svc.serviceName?.toLowerCase() || '';
           const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-          
-          // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
           const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
 
           if (!groups.has(groupId)) groups.set(groupId, []);
@@ -1253,19 +1102,18 @@ if (!hasPermission('dispatch_board')) {
           const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
           groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
       });
+      
       const isUiSplit = groups.size > 1;
+      const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
+      let splitPlan: any[] = [];
       
       if ((isPartial || isUiSplit) && !clonedOrder.parentBookingId) {
-          let splitPlan: any[] = [];
-          
           if (isUiSplit) {
-              // Ưu tiên dùng cách chia của UI (dựa trên nhóm dịch vụ thực tế, bất kể KTV)
               splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
                   const suffix = String.fromCharCode(65 + idx); // A, B, C
                   return { suffix, itemIds };
               });
           } else if (isPartial && specificSvcIds) {
-              // Quick Mode từ một đơn gộp: Tách cái đang thao tác ra A, phần còn lại ra B
               const targetSvcIds = specificSvcIds;
               const otherSvcIds = clonedOrder.services.filter(s => !targetSvcIds.includes(s.id)).map(s => s.id);
               
@@ -1285,53 +1133,192 @@ if (!hasPermission('dispatch_board')) {
                   console.error('Lỗi khi tách đơn:', splitErr || splitRes?.error);
                   throw new Error('Lỗi hệ thống khi tách đơn vật lý: ' + (splitErr?.message || splitRes?.error));
               }
-
-              const targetSvcIds = specificSvcIds && specificSvcIds.length > 0 
-                  ? specificSvcIds 
-                  : selectedSubOrder?.services.map((s: any) => s.id) || [];
-                  
-              const currentPlan = splitPlan.find(p => targetSvcIds.some(id => p.itemIds.includes(id)));
-              if (currentPlan) {
-                  targetBookingId = `${clonedOrder.id}-${currentPlan.suffix}`;
-              }
           }
       }
 
-      const res = await processDispatch(targetBookingId, {
-        status: bookingStatus as any,
-        bedId: isPartial ? undefined : (primarySeg?.bedId || null),
-        roomName: isPartial ? undefined : (primarySeg?.roomId || null),
-        staffAssignments: mergedAssignments,
-        date: selectedDate,
-        notes: isPartial ? undefined : finalNotesToSave,
-        itemUpdates: itemUpdates
-      });
+      // 🚀 BƯỚC 2: CHUẨN BỊ PAYLOADS ĐIỀU PHỐI
+      // Determine what services we actually want to dispatch
+      const targetSvcIds = isPartial ? specificSvcIds! : (selectedSubOrder ? selectedSubOrder.services.map((s: any) => s.id) : clonedOrder.services.map((s:any) => s.id));
+      
+      const dispatchPayloads: Array<{
+          bookingId: string;
+          itemUpdates: any[];
+          mergedAssignments: any[];
+          bedId?: string | null;
+          roomName?: string | null;
+      }> = [];
 
-      if (res.success) {
-        if (!isPartial || targetServices.length === clonedOrder.services.length) {
-            setOrders(prev => prev.map(o =>
-            o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
-            ));
-            setSelectedOrderId(null);
-            setLeftPanelTab('dispatched');
-        } else {
-            // Update local state for just the specific service
-            setOrders(prev => prev.map(o => {
-                if (o.id !== clonedOrder.id) return o;
-                return {
-                    ...o,
-                    services: o.services.map(s => {
-                        if (!specificSvcIds?.includes(s.id)) return s;
-                        return { ...s, options: { ...s.options }, status: (s.status && !['NEW', 'WAITING'].includes(s.status)) ? s.status : 'PREPARING' }; 
-                    })
-                };
-            }));
-            alert(`✅ Đã điều phối riêng dịch vụ thành công!`);
-        }
-        fetchData();
+      let bookingGroups: Array<{ bookingId: string, svcIds: string[] }> = [];
+      if (splitPlan.length > 1) {
+          bookingGroups = splitPlan.map(plan => ({
+              bookingId: `${clonedOrder.id}-${plan.suffix}`,
+              svcIds: plan.itemIds
+          }));
       } else {
-        alert('Lỗi khi điều phối: ' + res.error);
+          bookingGroups = [{
+              bookingId: clonedOrder.id,
+              svcIds: clonedOrder.services.map(s => s.id)
+          }];
       }
+
+      // ⚠️ Cấu hình chung
+      let finalNotesToSave = clonedOrder.services[0]?.adminNote || '';
+      if (clonedOrder.rawNotes && typeof clonedOrder.rawNotes === 'string' && clonedOrder.rawNotes.trim().startsWith('{')) {
+          try {
+              const parsed = JSON.parse(clonedOrder.rawNotes);
+              parsed.receptionNote = clonedOrder.services[0]?.adminNote;
+              finalNotesToSave = JSON.stringify(parsed);
+          } catch {
+              finalNotesToSave = clonedOrder.services[0]?.adminNote || '';
+          }
+      }
+      const isPending = !clonedOrder.rawStatus || ['NEW', 'pending', 'WAITING'].includes(clonedOrder.rawStatus);
+      const bookingStatus = isPartial ? null : (isPending ? 'PREPARING' : clonedOrder.rawStatus);
+
+      for (const group of bookingGroups) {
+          const groupTargetSvcIds = group.svcIds.filter(id => targetSvcIds.includes(id));
+          if (groupTargetSvcIds.length === 0) continue; 
+
+          const allStaffAssignments: any[] = [];
+          const techCodesSet = new Set<string>();
+          const targetServicesInGroup = clonedOrder.services.filter(s => groupTargetSvcIds.includes(s.id));
+          
+          for (const svc of targetServicesInGroup) {
+              if (svc.mergedIntoId) continue;
+              for (const row of svc.staffList) {
+                  if (!row.ktvId) continue;
+                  techCodesSet.add(row.ktvId);
+                  
+                  const currentTurn = turns.find(t => t.employee_id === row.ktvId);
+                  let turnsCompleted = currentTurn?.turns_completed || 0;
+                  let queuePos = currentTurn?.queue_position || 0;
+                  
+                  if (!currentTurn || currentTurn.current_order_id !== group.bookingId) {
+                      const currentMax = Math.max(...turns.map(t => t.queue_position), 0);
+                      const existingAssignment = allStaffAssignments.find(a => a.ktvId === row.ktvId);
+                      if (existingAssignment) {
+                          queuePos = existingAssignment.queuePos;
+                      } else {
+                          const uniqueAddedKtvs = new Set(allStaffAssignments.map(a => a.ktvId));
+                          queuePos = currentMax + uniqueAddedKtvs.size + 1;
+                      }
+                  }
+                  
+                  const firstSeg = row.segments[0];
+                  const lastSeg = row.segments[row.segments.length - 1];
+                  allStaffAssignments.push({
+                      ktvId: row.ktvId,
+                      bookingItemId: svc.id,
+                      roomId: firstSeg.roomId,
+                      bedId: firstSeg.bedId,
+                      turnsCompleted,
+                      queuePos,
+                      startTime: firstSeg.startTime,
+                      endTime: lastSeg.endTime 
+                  });
+              }
+          }
+
+          // ⚠️ "keepalive" entries
+          const otherServicesInGroup = clonedOrder.services.filter(s => group.svcIds.includes(s.id) && !groupTargetSvcIds.includes(s.id));
+          for (const svc of otherServicesInGroup) {
+              for (const row of svc.staffList) {
+                  if (!row.ktvId) continue;
+                  if (allStaffAssignments.some(a => a.ktvId === row.ktvId && a.bookingItemId === svc.id)) continue;
+                  const firstSeg = row.segments[0];
+                  const lastSeg = row.segments[row.segments.length - 1];
+                  allStaffAssignments.push({
+                      ktvId: row.ktvId,
+                      bookingItemId: svc.id,
+                      roomId: firstSeg?.roomId || null,
+                      bedId: firstSeg?.bedId || null,
+                      turnsCompleted: 0,
+                      queuePos: 0,
+                      startTime: firstSeg?.startTime || '',
+                      endTime: lastSeg?.endTime || ''
+                  });
+              }
+          }
+
+          const primaryService = targetServicesInGroup[0];
+          const primarySeg = primaryService?.staffList[0]?.segments[0];
+
+          const itemUpdates = targetServicesInGroup.map(svc => {
+              const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
+              const allSegments = svc.staffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
+              return {
+                  id: svc.id,
+                  roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
+                  bedId: allSegments[0]?.bedId || primarySeg?.bedId,
+                  technicianCodes: svc.mergedIntoId ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
+                  status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
+                  segments: allSegments,
+                  options: {
+                      ...(svc.options || {}),
+                      displayName: svc.options?.displayName || svc.serviceName,
+                      mergedIntoId: svc.mergedIntoId,
+                      mergedServiceIds: svc.mergedServiceIds,
+                      order: originalIndex !== -1 ? originalIndex : 999,
+                      note: svc.customerNote?.split(' | ')[0] || '', 
+                      therapist: svc.genderReq,
+                      strength: svc.strength,
+                      focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
+                      avoid: svc.avoid.split(',').map(a => a.trim()).filter(Boolean),
+                      noteForKtv: svc.staffList?.[0]?.noteForKtv || '',
+                      notesForKtvs: Object.fromEntries(
+                          svc.staffList.filter(r => r.ktvId && r.noteForKtv).map(r => [r.ktvId, r.noteForKtv])
+                      )
+                  }
+              };
+          });
+
+          dispatchPayloads.push({
+              bookingId: group.bookingId,
+              itemUpdates,
+              mergedAssignments: allStaffAssignments,
+              bedId: isPartial ? undefined : (primarySeg?.bedId || null),
+              roomName: isPartial ? undefined : (primarySeg?.roomId || null),
+          });
+      }
+
+      // 🚀 BƯỚC 3: GỌI API CHO TỪNG PAYLOAD
+      for (const payload of dispatchPayloads) {
+          const res = await processDispatch(payload.bookingId, {
+              status: bookingStatus as any,
+              bedId: payload.bedId,
+              roomName: payload.roomName,
+              staffAssignments: payload.mergedAssignments,
+              date: selectedDate,
+              notes: isPartial ? undefined : finalNotesToSave,
+              itemUpdates: payload.itemUpdates
+          });
+          if (!res.success) {
+              alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
+              return; 
+          }
+      }
+
+      if (!isPartial || targetSvcIds.length === clonedOrder.services.length) {
+          setOrders(prev => prev.map(o =>
+          o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
+          ));
+          setSelectedOrderId(null);
+          setLeftPanelTab('dispatched');
+      } else {
+          setOrders(prev => prev.map(o => {
+              if (o.id !== clonedOrder.id) return o;
+              return {
+                  ...o,
+                  services: o.services.map(s => {
+                      if (!targetSvcIds.includes(s.id)) return s;
+                      return { ...s, options: { ...s.options }, status: (s.status && !['NEW', 'WAITING'].includes(s.status)) ? s.status : 'PREPARING' }; 
+                  })
+              };
+          }));
+          alert(`✅ Đã điều phối riêng dịch vụ thành công!`);
+      }
+      fetchData();
+
     } catch (err) {
       alert('Đã có lỗi bất ngờ xảy ra.');
       console.error(err);
@@ -2210,6 +2197,10 @@ if (!hasPermission('dispatch_board')) {
                               return found ? found : origSvc;
                           });
                           
+                          // Thêm các dịch vụ mới (ví dụ khi tách KTV)
+                          const newServices = updatedServices.filter(u => !o.services.some(orig => orig.id === u.id));
+                          mergedServices = [...mergedServices, ...newServices];
+                          
                           // Now, sync any target services to match their source service
                           mergedServices = mergedServices.map(svc => {
                              if (svc.mergedIntoId) {
@@ -2855,7 +2846,7 @@ if (!hasPermission('dispatch_board')) {
               onClick={() => {
                 const order = orders.find(o => o.id === contextMenu.orderId);
                 const invoiceId = order?.parentBookingId || contextMenu.orderId;
-                window.open(`/admin/settings/invoice?orderId=${invoiceId}`, '_blank');
+                window.open(`/invoice/${invoiceId}`, '_blank');
                 setContextMenu(null);
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sky-600 hover:bg-sky-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"

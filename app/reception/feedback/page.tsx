@@ -27,7 +27,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
                 <div className="p-5 space-y-3">
                     {group.childBookings.map((child: any) => {
                         const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
-                        const isReadyToEvaluate = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
+                        const isReadyToEvaluate = child.status === 'COMPLETED' || child.status === 'FEEDBACK' || child.status === 'CLEANING';
                         
                         return (
                             <div 

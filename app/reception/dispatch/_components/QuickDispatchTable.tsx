@@ -127,6 +127,7 @@ export const QuickDispatchTable = ({
     note: string; duration: number;
     isUtility?: boolean;
     isMergedGroup?: boolean;
+    workMode?: 'parallel' | 'sequential';
   };
   const [groupStates, setGroupStates] = useState<Map<string, GroupState>>(new Map());
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
@@ -261,83 +262,82 @@ export const QuickDispatchTable = ({
     servicesFingerprintRef.current = fp;
 
     const defaultTime = getCurrentTime();
-    const newStates = new Map<string, GroupState>();
-    initialGroups.forEach((items, groupKey) => {
-      const duration = items[0]?.duration || 0;
-      const isMergedGroup = !!(items[0]?.mergedServiceIds?.length);
-      
-      // Collect all KTVs across all items (including multi-staff per item)
-      const ktvIds: string[] = [];
-      const roomIds: string[] = [];
-      const startTimes: string[] = [];
-      const endTimes: string[] = [];
-      const ktvDurationsList: number[] = [];
-      const ktvNotesList: string[] = [];
-      const bedIdsList: string[] = [];
-      const ktvDisplayNames: Record<string, string> = {};
-      items.forEach(item => {
-        if (item.staffList.length > 0) {
-          item.staffList.forEach(staff => {
-            if (staff.ktvId) {
-              ktvIds.push(staff.ktvId);
-              // 🔥 Lưu tên hiển thị: ưu tiên ktvName (chứa external name hoặc full_name)
-              if (staff.ktvName && staff.ktvName !== staff.ktvId) {
-                ktvDisplayNames[staff.ktvId] = staff.ktvName;
+    setGroupStates((prevStates) => {
+      const newStates = new Map<string, GroupState>();
+      initialGroups.forEach((items, groupKey) => {
+        const duration = items[0]?.duration || 0;
+        const isMergedGroup = !!(items[0]?.mergedServiceIds?.length);
+        
+        // Collect all KTVs across all items (including multi-staff per item)
+        const ktvIds: string[] = [];
+        const roomIds: string[] = [];
+        const startTimes: string[] = [];
+        const endTimes: string[] = [];
+        const ktvDurationsList: number[] = [];
+        const ktvNotesList: string[] = [];
+        const bedIdsList: string[] = [];
+        const ktvDisplayNames: Record<string, string> = {};
+        items.forEach(item => {
+          if (item.staffList.length > 0) {
+            item.staffList.forEach(staff => {
+              if (staff.ktvId) {
+                ktvIds.push(staff.ktvId);
+                if (staff.ktvName && staff.ktvName !== staff.ktvId) {
+                  ktvDisplayNames[staff.ktvId] = staff.ktvName;
+                }
+                roomIds.push(staff.segments?.[0]?.roomId || '');
+                startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
+                
+                let totalStaffDur = staff.segments?.[0]?.duration || duration;
+                let finalEndTime = staff.segments?.[0]?.endTime;
+                
+                if (item.mergedServiceIds?.length) {
+                   const mergedSvcs = services.filter(s => item.mergedServiceIds?.includes(s.id));
+                   mergedSvcs.forEach(ms => {
+                      const mStaff = ms.staffList.find(r => r.ktvId === staff.ktvId);
+                      if (mStaff) {
+                         totalStaffDur += mStaff.segments?.[0]?.duration || ms.duration;
+                         if (mStaff.segments?.[0]?.endTime) {
+                            finalEndTime = mStaff.segments[0].endTime;
+                         }
+                      }
+                   });
+                }
+                if (!finalEndTime) {
+                   finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
+                }
+                
+                endTimes.push(finalEndTime);
+                ktvDurationsList.push(totalStaffDur);
+                ktvNotesList.push(staff.noteForKtv || '');
+                bedIdsList.push(staff.segments?.[0]?.bedId || '');
               }
-              roomIds.push(staff.segments?.[0]?.roomId || '');
-              startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
-              
-              let totalStaffDur = staff.segments?.[0]?.duration || duration;
-              let finalEndTime = staff.segments?.[0]?.endTime;
-              
-              if (item.mergedServiceIds?.length) {
-                 const mergedSvcs = services.filter(s => item.mergedServiceIds?.includes(s.id));
-                 mergedSvcs.forEach(ms => {
-                    const mStaff = ms.staffList.find(r => r.ktvId === staff.ktvId);
-                    if (mStaff) {
-                       totalStaffDur += mStaff.segments?.[0]?.duration || ms.duration;
-                       if (mStaff.segments?.[0]?.endTime) {
-                          finalEndTime = mStaff.segments[0].endTime;
-                       }
-                    }
-                 });
-              }
-              if (!finalEndTime) {
-                 finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
-              }
-              
-              endTimes.push(finalEndTime);
-              ktvDurationsList.push(totalStaffDur);
-              ktvNotesList.push(staff.noteForKtv || '');
-              bedIdsList.push(staff.segments?.[0]?.bedId || '');
-            }
-          });
+            });
+          }
+        });
+        if (ktvIds.length === 0) {
+          startTimes.push(defaultTime);
+          endTimes.push(calcEndTime(defaultTime, duration));
         }
+        newStates.set(groupKey, {
+          displayName: items[0]?.options?.displayName || '',
+          selectedKtvIds: ktvIds,
+          selectedRoomIds: roomIds,
+          ktvStartTimes: startTimes,
+          ktvEndTimes: endTimes,
+          ktvDurations: ktvDurationsList.length > 0 ? ktvDurationsList : [duration],
+          ktvNotes: ktvNotesList,
+          ktvBedIds: bedIdsList,
+          ktvDisplayNames: Object.keys(ktvDisplayNames).length > 0 ? ktvDisplayNames : undefined,
+          note: items[0]?.staffList?.[0]?.noteForKtv || '',
+          duration,
+          isUtility: !!(items[0] as any).isUtility,
+          isMergedGroup,
+          workMode: prevStates.get(groupKey)?.workMode || 'parallel'
+        });
       });
-      if (ktvIds.length === 0) {
-        startTimes.push(defaultTime);
-        endTimes.push(calcEndTime(defaultTime, duration));
-      }
-      newStates.set(groupKey, {
-        displayName: items[0]?.options?.displayName || '',
-        selectedKtvIds: ktvIds,
-        selectedRoomIds: roomIds,
-        ktvStartTimes: startTimes,
-        ktvEndTimes: endTimes,
-        ktvDurations: ktvDurationsList.length > 0 ? ktvDurationsList : [duration],
-        ktvNotes: ktvNotesList,
-        ktvBedIds: bedIdsList,
-        ktvDisplayNames: Object.keys(ktvDisplayNames).length > 0 ? ktvDisplayNames : undefined,
-        note: items[0]?.staffList?.[0]?.noteForKtv || '',
-        duration,
-        isUtility: !!(items[0] as any).isUtility,
-        isMergedGroup
-      });
+      return newStates.size > 0 ? newStates : prevStates;
     });
-    if (newStates.size > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setGroupStates(newStates);
-    }
   }, [initialGroups, services]);
 
   // All selected KTV IDs across all groups
@@ -722,7 +722,7 @@ interface ServiceGroupCardProps {
   serviceDescription?: string;
   count: number;
   duration: number;
-  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; ktvDisplayNames?: Record<string, string>; note: string; duration: number; isUtility?: boolean; isMergedGroup?: boolean; };
+  state: { displayName: string; selectedKtvIds: string[]; selectedRoomIds?: string[]; ktvStartTimes?: string[]; ktvEndTimes?: string[]; ktvDurations?: number[]; ktvNotes?: string[]; ktvBedIds?: string[]; ktvDisplayNames?: Record<string, string>; note: string; duration: number; isUtility?: boolean; isMergedGroup?: boolean; workMode?: 'parallel' | 'sequential'; };
   targetSkill: string | null;
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
   allSelectedKtvIds: string[];
@@ -805,12 +805,28 @@ const ServiceGroupCard = ({
       [copy[fromIdx], copy[toIdx]] = [copy[toIdx], copy[fromIdx]];
       return copy;
     };
+
+    let newStarts = swap(state.ktvStartTimes);
+    let newEnds = swap(state.ktvEndTimes);
+    const newDurations = swap(state.ktvDurations as number[]);
+
+    if (state.workMode === 'sequential') {
+        newStarts = [...(state.ktvStartTimes || [])];
+        newEnds = [...(state.ktvEndTimes || [])];
+        let currentStart = newStarts[0] || getCurrentTime();
+        for (let i = 0; i < state.selectedKtvIds.length; i++) {
+            newStarts[i] = currentStart;
+            newEnds[i] = calcEndTime(currentStart, newDurations[i] || duration);
+            currentStart = newEnds[i];
+        }
+    }
+
     onUpdate({
       selectedKtvIds: swap(state.selectedKtvIds),
       selectedRoomIds: swap(state.selectedRoomIds),
-      ktvStartTimes: swap(state.ktvStartTimes),
-      ktvEndTimes: swap(state.ktvEndTimes),
-      ktvDurations: swap(state.ktvDurations as number[]),
+      ktvStartTimes: newStarts,
+      ktvEndTimes: newEnds,
+      ktvDurations: newDurations,
       ktvNotes: swap(state.ktvNotes),
       ktvBedIds: swap(state.ktvBedIds),
     });
@@ -823,43 +839,26 @@ const ServiceGroupCard = ({
       // Tính thời gian kết thúc trễ nhất của KTV này ở các dịch vụ khác trong cùng đơn
       const latestEndTime = getLatestEndTime(ktvId);
 
-      const defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
-      const defaultEnd = calcEndTime(defaultStart, duration);
-      const defaultRoom = (state.selectedRoomIds || [])[0] || '';
-      
       const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
 
-      // Nếu không phải 4 tay và đã có KTV -> Tách đơn luôn thành dòng mới trên UI
-      if (!isFourhand && state.selectedKtvIds.length >= 1) {
-          const originalItem = groupItems[0];
-          const st = (state.ktvStartTimes || [])[0] || getCurrentTime();
-          const kd = duration;
-          const ed = calcEndTime(st, kd);
-          const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-          const ktvName = ktvTurn?.staff?.full_name || ktvId;
+      let defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
+      let defaultDur = duration;
 
-          const newItem: ServiceBlock = {
-              ...originalItem,
-              id: genId(), // ID giả tạm thời để tách row UI
-              staffList: [{
-                  id: `st-${genId()}`,
-                  ktvId,
-                  ktvName,
-                  segments: [{ id: `seg-${genId()}`, roomId: null, bedId: null, startTime: st, duration: kd, endTime: ed }],
-                  noteForKtv: ''
-              }]
-          };
-          if (onUpdateServices) onUpdateServices([...allServices, newItem]);
-          setKtvSearch('');
-          window.alert(`✅ Đã tách đơn thành công thành dòng mới cho KTV ${ktvName}!`);
-          return;
+      if (state.workMode === 'sequential' && state.selectedKtvIds.length > 0) {
+          const lastIdx = state.selectedKtvIds.length - 1;
+          defaultStart = state.ktvEndTimes?.[lastIdx] || defaultStart;
+      } else if (state.workMode === 'parallel' && state.selectedKtvIds.length > 0) {
+          defaultStart = (state.ktvStartTimes || [])[0] || defaultStart;
       }
+
+      const defaultEnd = calcEndTime(defaultStart, defaultDur);
+      const defaultRoom = (state.selectedRoomIds || [])[0] || '';
 
       onUpdate({ 
         selectedKtvIds: [...state.selectedKtvIds, ktvId], 
         ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], 
         ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], 
-        ktvDurations: [...(state.ktvDurations || []), duration], 
+        ktvDurations: [...(state.ktvDurations || []), defaultDur], 
         ktvNotes: [...(state.ktvNotes || []), ''], 
         ktvBedIds: [...(state.ktvBedIds || []), ''],
         selectedRoomIds: [...(state.selectedRoomIds || []), defaultRoom]
@@ -957,12 +956,17 @@ const ServiceGroupCard = ({
     durations[idx] = newDur;
     ends[idx] = calcEndTime(starts[idx], newDur);
 
-    // Chain subsequent KTVs: each starts where previous ends (giữ nguyên duration riêng)
+    // Update subsequent KTVs based on workMode
     for (let i = idx + 1; i < state.selectedKtvIds.length; i++) {
       while (durations.length <= i) durations.push(duration);
       while (starts.length <= i) starts.push('');
       while (ends.length <= i) ends.push('');
-      starts[i] = ends[i - 1];
+      
+      if (state.workMode === 'sequential') {
+          starts[i] = ends[i - 1];
+      } else {
+          starts[i] = starts[0];
+      }
       ends[i] = calcEndTime(starts[i], durations[i]);
     }
     onUpdate({ ktvDurations: durations, ktvStartTimes: starts, ktvEndTimes: ends });
@@ -975,11 +979,16 @@ const ServiceGroupCard = ({
       while (s.length <= idx) s.push(getCurrentTime()); while (e.length <= idx) e.push('');
       while (d.length <= idx) d.push(duration);
       s[idx] = value; e[idx] = calcEndTime(value, d[idx]);
-      // Chain next KTVs
+      
+      // Update next KTVs based on workMode
       for (let i = idx + 1; i < state.selectedKtvIds.length; i++) {
         while (s.length <= i) s.push(''); while (e.length <= i) e.push('');
         while (d.length <= i) d.push(duration);
-        s[i] = e[i - 1];
+        if (state.workMode === 'sequential') {
+            s[i] = e[i - 1];
+        } else {
+            s[i] = s[0];
+        }
         e[i] = calcEndTime(s[i], d[i]);
       }
       onUpdate({ ktvStartTimes: s, ktvEndTimes: e, ktvDurations: d });
@@ -1069,7 +1078,7 @@ const ServiceGroupCard = ({
       )}
       
       {/* Container nội dung */}
-      <div className={`${!showHeader ? 'pt-4' : 'pt-2'} pb-6 px-4`}>
+      <div className={`${!showHeader ? 'pt-4' : 'pt-2'} pb-8 px-4`}>
         {/* Dòng 2: Tên Dịch vụ & Thời gian */}
         <div className="flex items-center justify-between flex-wrap gap-2 pl-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1094,17 +1103,59 @@ const ServiceGroupCard = ({
         <div className="space-y-4 mt-4 pl-2">
         {!state.isUtility && (
         <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nhân viên ({state.selectedKtvIds.length})</label>
-          <div className="relative" ref={dropdownRef}>
-            <div className="min-h-[44px] w-full px-3 py-2 border-2 border-gray-100 rounded-2xl bg-gray-50/30 flex flex-wrap gap-1.5 items-center cursor-text" onClick={() => setIsKtvDropdownOpen(true)}>
+          <div className="flex items-center justify-between px-1">
+             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                 Nhân viên ({state.selectedKtvIds.length}{count > 1 ? `/${count}` : ''})
+             </label>
+             {state.selectedKtvIds.length > 1 && (
+                 <select 
+                     className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                     value={state.workMode || 'parallel'}
+                     onChange={(e) => {
+                         const mode = e.target.value as 'parallel' | 'sequential';
+                         const numKtvs = state.selectedKtvIds.length;
+                         
+                         const newDurs: number[] = [];
+                         const newStarts: string[] = [];
+                         const newEnds: string[] = [];
+                         
+                         let currentStart = (state.ktvStartTimes || [])[0] || getCurrentTime();
+                         
+                         for (let i = 0; i < numKtvs; i++) {
+                             const partDur = mode === 'sequential' ? Math.round(duration / numKtvs) : duration;
+                             newDurs.push(partDur);
+                             newStarts.push(currentStart);
+                             const eT = calcEndTime(currentStart, partDur);
+                             newEnds.push(eT);
+                             if (mode === 'sequential') {
+                                 currentStart = eT; // next KTV starts when this one ends
+                             }
+                         }
+                         
+                         onUpdate({ workMode: mode, ktvDurations: newDurs, ktvStartTimes: newStarts, ktvEndTimes: newEnds });
+                     }}
+                 >
+                     <option value="parallel">Song song (Cùng làm)</option>
+                     <option value="sequential">Nối tiếp (Xoay tua)</option>
+                 </select>
+             )}
+          </div>
+          <div className="relative mb-2" ref={dropdownRef}>
+            <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
               {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
-                <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border`}>
+                <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
-                  <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-0.5 hover:opacity-60"><X size={12} /></button>
+                  {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">Ca {idx + 1}</span>}
+                  <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
                 </span>); })}
               <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const m = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term); if (m) addKtv(m.employee_id); else addKtv(ktvSearch.trim()); setKtvSearch(''); } }}
-                placeholder={state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : '+ Thêm...'} className="flex-1 min-w-[80px] bg-transparent border-none outline-none text-xs font-bold placeholder:text-gray-400" />
+                placeholder={(() => {
+                    const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
+                    if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
+                    return state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : '+ Thêm (Ghép sô/Nối tiếp)...';
+                })()} 
+                className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-sm font-bold placeholder:text-gray-400 placeholder:italic py-1" />
             </div>
             {isKtvDropdownOpen && (
               <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden">
@@ -1141,16 +1192,18 @@ const ServiceGroupCard = ({
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
                 return (
-                <div key={`${ktvId}-${idx}`} className="bg-gray-50/50 rounded-xl px-3 py-2.5 border border-gray-100 space-y-1.5">
+                <div key={`${ktvId}-${idx}`} 
+                  draggable={true}
+                  onDragStart={(e) => { e.dataTransfer.setData('text/plain', idx.toString()); e.dataTransfer.effectAllowed = 'move'; }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDrop={(e) => {
+                    const src = parseInt(e.dataTransfer.getData('text/plain'));
+                    if (!isNaN(src) && src !== idx) moveKtv(src, idx);
+                  }}
+                  className="bg-gray-50/50 rounded-xl px-3 py-2.5 border border-gray-100 space-y-1.5 cursor-grab active:cursor-grabbing hover:border-indigo-200 transition-colors">
                   {/* Row 1: Name | Room | Bed | Duration | Time | Print */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{idx + 1}</span>
-                    {state.selectedKtvIds.length >= 2 && (
-                      <div className="flex flex-col gap-0.5 shrink-0">
-                        <button onClick={() => moveKtv(idx, idx - 1)} disabled={idx === 0} className={`p-0.5 rounded leading-none ${idx === 0 ? 'text-gray-200' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-90'} transition-all`}><ChevronUp size={16} strokeWidth={2.5} /></button>
-                        <button onClick={() => moveKtv(idx, idx + 1)} disabled={idx === state.selectedKtvIds.length - 1} className={`p-0.5 rounded leading-none ${idx === state.selectedKtvIds.length - 1 ? 'text-gray-200' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-90'} transition-all`}><ChevronDown size={16} strokeWidth={2.5} /></button>
-                      </div>
-                    )}
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     <select value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
                       <option value="">P.</option>
