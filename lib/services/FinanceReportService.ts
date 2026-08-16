@@ -68,6 +68,7 @@ export class FinanceReportService {
             .lte('bookingDate', `${dateTo} 23:59:59`)
             .not('billCode', 'like', 'TEST-%')
             .neq('status', 'CANCELLED')
+            .neq('status', 'SPLIT')
             .order('bookingDate', { ascending: true });
 
         if (bErr) throw bErr;

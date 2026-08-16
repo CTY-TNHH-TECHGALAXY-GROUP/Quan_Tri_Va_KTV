@@ -126,6 +126,7 @@ export async function GET(request: Request) {
             .lte('bookingDate', utcTo)
             .not('billCode', 'like', 'TEST-%')
             .neq('status', 'CANCELLED')
+            .neq('status', 'SPLIT')
             .order('bookingDate', { ascending: true });
 
         if (bErr) throw bErr;
