@@ -12,8 +12,8 @@ export type MergedFeedbackGroup = {
 export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () => void) {
     const [step, setStep] = useState<1 | 2>(1);
     const langCode = booking.customerLang?.toUpperCase() || 'VN';
-    const initialLang = (['VN', 'EN', 'KR', 'JP'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP') : 'VN';
-    const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP'>(initialLang);
+    const initialLang = (['VN', 'EN', 'KR', 'JP', 'ZH'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP' | 'ZH') : 'VN';
+    const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP' | 'ZH'>(initialLang);
     
     // State lưu điểm (từ 1 đến 5 sao) cho từng KTV (key = ktvId)
     const [ratings, setRatings] = useState<Record<string, number>>({});
@@ -70,6 +70,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             alert(
                 language === 'VN' ? 'Vui lòng đánh giá cho tất cả nhân viên!' :
                 language === 'EN' ? 'Please rate all staff members!' :
+                language === 'ZH' ? '请为所有员工评分！' :
                 'Please rate all staff members!'
             );
             return;
@@ -141,7 +142,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             alert(
                 language === 'VN' ? 'Cảm ơn quý khách đã đánh giá!' :
                 language === 'EN' ? 'Thank you for your feedback!' :
-                'Cảm ơn quý khách đã đánh giá!'
+                language === 'ZH' ? '感谢您的评价！' :
+                'Thank you for your feedback!'
             );
             
             onClose();
@@ -198,6 +200,17 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             notePlaceholder: '追加コメント（任意）...',
             btnSubmit: '送信する',
             btnCancel: 'スキップ'
+        },
+        ZH: {
+            forgotTitle: '请再次检查您的随身物品',
+            forgotDesc: '水疗中心对任何遗失物品概不负责。',
+            btnCheckDone: '我已检查',
+            rateTitle: '评价我们的服务质量',
+            rateDesc: '您的反馈将帮助我们改进服务。',
+            serviceLbl: '服务',
+            notePlaceholder: '补充意见（选填）...',
+            btnSubmit: '提交评价',
+            btnCancel: '跳过'
         }
     };
 

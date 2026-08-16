@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ChildBookingForFeedback } from '../FeedbackDashboard.logic';
 import { useKioskFeedback } from './KioskFeedback.logic';
 import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
@@ -33,8 +33,8 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                 
                 <div className="pointer-events-auto flex flex-col items-end gap-4">
                     {/* Language Selector */}
-                    <div className="flex gap-3 bg-gray-50/80 p-2 rounded-full shadow-sm border border-gray-100">
-                        {(['VN', 'EN', 'KR', 'JP'] as const).map(lang => (
+                    <div className="flex gap-3 bg-gray-50/80 p-2 rounded-full shadow-sm border border-gray-100 pointer-events-auto">
+                        {(['VN', 'EN', 'KR', 'JP', 'ZH'] as const).map(lang => (
                             <button
                                 key={lang}
                                 onClick={() => setLanguage(lang)}
@@ -49,37 +49,34 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                         ))}
                     </div>
 
-                    {/* Booking Tabs (Chỉ hiện khi đoàn có nhiều hơn 1 khách) */}
+                    {/* Booking Dropdown (Chỉ hiện khi đoàn có nhiều hơn 1 khách) */}
                     {group.childBookings.length > 1 && (
-                        <div className="flex gap-2 bg-white/90 p-2 rounded-2xl shadow-sm border border-gray-100 max-w-md overflow-x-auto">
-                            {group.childBookings.map((child: any) => {
-                                const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
-                                const hasFeedback = child.status === 'FEEDBACK';
-                                const isActive = currentBooking.id === child.id;
-                                
-                                return (
-                                    <button
-                                        key={child.id}
-                                        onClick={() => {
-                                            if (isCompleted && !isActive) setCurrentBooking(child);
-                                        }}
-                                        disabled={!isCompleted || isActive}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
-                                            isActive ? 'bg-[#7C3AED] text-white shadow-md' 
-                                            : hasFeedback ? 'bg-green-50 text-green-600 opacity-70 border border-green-100'
-                                            : isCompleted ? 'bg-gray-50 text-gray-600 hover:bg-gray-200 cursor-pointer border border-gray-200'
-                                            : 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100'
-                                        }`}
-                                        title={
-                                            hasFeedback ? 'Đã đánh giá' : 
-                                            !isCompleted ? 'Chưa hoàn thành dịch vụ' : 
-                                            'Chuyển sang đánh giá cho khách này'
-                                        }
-                                    >
-                                        {child.customerName} {hasFeedback && '✓'}
-                                    </button>
-                                );
-                            })}
+                        <div className="pointer-events-auto bg-white/90 p-1.5 rounded-2xl shadow-sm border border-gray-100 max-w-md w-full">
+                            <select
+                                value={currentBooking.id}
+                                onChange={(e) => {
+                                    const child = group.childBookings.find((c: any) => c.id === e.target.value);
+                                    if (child) setCurrentBooking(child);
+                                }}
+                                className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate"
+                            >
+                                {group.childBookings.map((child: any) => {
+                                    const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
+                                    const hasFeedback = child.status === 'FEEDBACK';
+                                    const ktvNames = child.ktvList.map((k: any) => k.ktvName).join(', ');
+                                    const label = `${child.customerName} - KTV: ${ktvNames}`;
+                                    
+                                    return (
+                                        <option 
+                                            key={child.id} 
+                                            value={child.id}
+                                            disabled={(!isCompleted && currentBooking.id !== child.id) || hasFeedback}
+                                        >
+                                            {label} {hasFeedback ? ' ✓ (Đã đánh giá)' : !isCompleted ? ' (Đang phục vụ)' : ''}
+                                        </option>
+                                    );
+                                })}
+                            </select>
                         </div>
                     )}
                 </div>
