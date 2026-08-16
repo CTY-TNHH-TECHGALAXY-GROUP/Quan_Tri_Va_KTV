@@ -57,10 +57,24 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
                                 
                                 <div className="space-y-2">
                                     {child.ktvList.map((ktv: any, idx: number) => (
-                                        <div key={idx} className="flex items-center gap-2 bg-white/60 p-2 rounded-md text-sm">
-                                            <UserCircle2 className="w-4 h-4 text-gray-400" />
-                                            <span className="font-medium text-gray-800">{ktv.ktvId} - {ktv.ktvName}</span>
-                                            <span className="text-gray-500 text-xs ml-auto truncate max-w-[100px]">{ktv.serviceName}</span>
+                                        <div key={idx} className="flex items-center justify-between gap-2 bg-white/60 p-2 rounded-md text-sm border border-transparent hover:border-gray-100 transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <UserCircle2 className="w-4 h-4 text-gray-400" />
+                                                <span className="font-medium text-gray-800">{ktv.ktvId} - {ktv.ktvName}</span>
+                                                <span className="text-gray-400 text-xs">-</span>
+                                                <span className="text-gray-500 text-xs uppercase tracking-tight line-clamp-1">{ktv.serviceNames?.join(' + ')}</span>
+                                            </div>
+                                            {ktv.rating !== undefined && ktv.rating > 0 && (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {[...Array(4)].map((_, i) => (
+                                                        <Star 
+                                                            key={i} 
+                                                            size={12} 
+                                                            className={i < (ktv.rating || 0) ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-200'} 
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                     {child.ktvList.length === 0 && (

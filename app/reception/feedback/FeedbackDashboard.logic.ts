@@ -3,10 +3,11 @@ import { supabase } from '@/lib/supabase';
 import { getDispatchData } from '../dispatch/actions';
 
 export type FeedbackKtvInfo = {
+    itemId: string;
     ktvId: string;
     ktvName: string;
-    serviceName: string;
-    itemId: string;
+    serviceNames: string[];
+    rating?: number;
 };
 
 export type ChildBookingForFeedback = {
@@ -72,30 +73,35 @@ export function useFeedbackDashboard(selectedDate: string) {
                     const items = b.BookingItems || [];
                     
                     items.forEach((item: any) => {
-                        // Tìm KTV từ technicianCodes hoặc TurnQueue
-                        let techCodes = item.technicianCodes || [];
-                        if (typeof techCodes === 'string') techCodes = [techCodes];
-                        
-                        if (techCodes.length > 0) {
-                            techCodes.forEach((code: string) => {
-                                const staffInfo = staffs.find(s => s.id === code);
+                        if (item.ktvIds && item.ktvIds.length > 0) {
+                            item.ktvIds.forEach((ktvId: string) => {
+                                let rating: number | undefined = undefined;
+                                if (item.ktvRatings && typeof item.ktvRatings === 'object') {
+                                    const key = Object.keys(item.ktvRatings).find(k => k.toLowerCase() === ktvId.toLowerCase());
+                                    if (key) {
+                                        rating = Number((item.ktvRatings as any)[key]) || undefined;
+                                    }
+                                }
+
+                                const staffInfo = staffs.find(s => s.id === ktvId);
                                 ktvList.push({
-                                    ktvId: code,
-                                    ktvName: staffInfo?.full_name || code,
-                                    serviceName: item.serviceName || item.service_name || 'Dịch vụ',
-                                    itemId: item.id
+                                    itemId: item.id,
+                                    ktvId: ktvId,
+                                    ktvName: staffInfo?.full_name || ktvId,
+                                    serviceNames: item.serviceNames || [],
+                                    rating
                                 });
                             });
                         } else {
-                            // Cố tìm trong TurnQueue
-                            const assignedTurns = turns.filter(t => t.current_order_id === b.id && t.booking_item_id?.includes(item.id));
+                            // Nếu mảng rỗng thì check TurnQueue
+                            const assignedTurns = turns.filter(t => t.booking_id === b.id && t.status !== 'CANCELLED');
                             assignedTurns.forEach(t => {
                                 const staffInfo = staffs.find(s => s.id === t.employee_id);
                                 ktvList.push({
+                                    itemId: item.id,
                                     ktvId: t.employee_id,
                                     ktvName: staffInfo?.full_name || t.employee_id,
-                                    serviceName: item.serviceName || item.service_name || 'Dịch vụ',
-                                    itemId: item.id
+                                    serviceNames: [item.serviceName || item.service_name || 'Dịch vụ']
                                 });
                             });
                         }
