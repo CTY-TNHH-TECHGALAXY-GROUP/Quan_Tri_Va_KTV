@@ -96,14 +96,38 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 <AlertTriangle className="w-12 h-12" />
                             </div>
                             <h2 className="text-4xl font-bold text-gray-900 mb-4">{t.forgotTitle}</h2>
-                            <p className="text-xl text-gray-500 mb-12">{t.forgotDesc}</p>
+                            <p className="text-xl text-gray-500 mb-8">{t.forgotDesc}</p>
                             
-                            <button 
+                            <div className="flex flex-col gap-4 mb-12 max-w-md mx-auto text-left">
+                                <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100">
+                                    <span className="text-3xl">📱</span>
+                                    <span className="text-gray-800 text-xl font-bold">{t.itemPhone}</span>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100">
+                                    <span className="text-3xl">👛</span>
+                                    <span className="text-gray-800 text-xl font-bold">{t.itemWallet}</span>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100">
+                                    <span className="text-3xl">⌚</span>
+                                    <span className="text-gray-800 text-xl font-bold">{t.itemJewelry}</span>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100">
+                                    <span className="text-3xl">🔑</span>
+                                    <span className="text-gray-800 text-xl font-bold">{t.itemKeys}</span>
+                                </div>
+                            </div>
+                            
+                            <motion.button 
                                 onClick={() => setStep(2)}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-2xl font-bold py-6 px-12 rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
+                                animate={{ 
+                                    scale: [1, 1.03, 1], 
+                                    boxShadow: ["0px 0px 0px rgba(124, 58, 237, 0)", "0px 0px 20px rgba(124, 58, 237, 0.4)", "0px 0px 0px rgba(124, 58, 237, 0)"] 
+                                }}
+                                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                                className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-2xl font-bold py-6 px-12 rounded-full shadow-xl"
                             >
                                 {t.btnCheckDone}
-                            </button>
+                            </motion.button>
                         </motion.div>
                     )}
 
