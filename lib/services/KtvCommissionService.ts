@@ -396,8 +396,9 @@ export class KtvCommissionService {
             const ratio = Math.min(guestCount / totalUniqueKTVs, 1);
             calculatedPoints = adjustedBasePoints * ratio;
             
-            // LUẬT MỚI: Dưới 60 phút thì mất trắng (0 điểm)
-            if (totalDurationForBonus < 60) {
+            // LUẬT MỚI: Dưới 60 phút / 1 khách thì mất trắng (0 điểm)
+            // Tính trung bình thời gian mỗi khách để đánh giá
+            if ((totalDurationForBonus / guestCount) < 60) {
                 return 0;
             }
         } else {
