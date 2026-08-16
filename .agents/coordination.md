@@ -68,3 +68,9 @@
 
 ### Conversation Antigravity - Tri?n khai KtvAssignments Architecture
 - **Ðang s?a**: supabase/migrations/*, pp/reception/dispatch/actions.ts, pp/api/ktv/booking/route.ts`n- **Tr?ng thái**: ?? Ðang làm
+
+### Tách Ðon Hàng & X? lý Doanh Thu
+- **Conversation**: d1b17d04-5506-463b-b2d0-3aa096c66d76
+- **Ðã s?a**: pp/reception/dispatch/page.tsx, lib/services/FinanceReportService.ts, pp/api/finance/reports/route.ts
+- **Tr?ng thái**: ?? Xong
+

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "clean": "rm -rf .next"
+    "clean": "rm -rf .next",
+    "pack-context": "npx repomix --style markdown",
+    "gen-map": "npx codebase-context map"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
@@ -56,6 +58,7 @@
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "@types/web-push": "^3.6.4",
+    "codebase-context": "^2.2.0",
     "eslint": "9.39.1",
     "eslint-config-next": "16.0.8",
     "firebase-tools": "^15.0.0",
