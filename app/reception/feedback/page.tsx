@@ -6,7 +6,7 @@ import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
 import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star, ChevronDown, ChevronUp } from 'lucide-react';
 
 function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChild: (child: any) => void }) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -149,7 +149,7 @@ export default function FeedbackDashboardPage() {
                 </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
                 {groups.map(group => (
                     <FeedbackGroupBlock 
                         key={group.parentBookingId} 
