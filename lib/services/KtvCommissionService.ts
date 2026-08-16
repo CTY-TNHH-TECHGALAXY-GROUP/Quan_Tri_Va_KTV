@@ -312,20 +312,7 @@ export class KtvCommissionService {
             });
         }
         
-        let validUniqueKTVs = 0;
-        allKtvCodes.forEach(code => {
-            const wt = staffWorkTypeMap[code.toLowerCase()] || 'TYPE_C'; // Fallback to TYPE_C (invisible) for unknown staff
-            
-            if (isNewRule) {
-                // TỪ 06/08: Loại C và tự do không được chia tiền => loại khỏi mẫu số
-                if (wt !== 'TYPE_C') {
-                    validUniqueKTVs++;
-                }
-            } else {
-                // TRƯỚC 06/08: Loại nào cũng bị tính vào mẫu số để chia
-                validUniqueKTVs++;
-            }
-        });
+        let validUniqueKTVs = allKtvCodes.size;
 
         // 1. Determine Max Rating for this KTV
         let maxKtvRating = 0;
