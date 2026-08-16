@@ -15,17 +15,57 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const initialLang = (['VN', 'EN', 'KR', 'JP', 'ZH'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP' | 'ZH') : 'VN';
     const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP' | 'ZH'>(initialLang);
     
-    // State lưu điểm (từ 1 đến 5 sao) cho từng KTV (key = ktvId)
+    // State lưu điểm (từ 1 đến 4) cho từng KTV (key = ktvId)
     const [ratings, setRatings] = useState<Record<string, number>>({});
     // State lưu ghi chú nếu khách muốn gõ thêm
     const [comments, setComments] = useState<Record<string, string>>({});
+    
+    // State lưu danh sách câu hỏi vi phạm từ DB
+    const [reminders, setReminders] = useState<any[]>([]);
+    // State lưu mảng ID các lỗi khách chọn
+    const [violations, setViolations] = useState<string[]>([]);
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Fetch câu hỏi từ DB
+    useEffect(() => {
+        const fetchReminders = async () => {
+            const { data } = await supabase
+                .from('Reminders_Customer')
+                .select('*')
+                .eq('is_active', true)
+                .order('order_index', { ascending: true });
+            if (data) {
+                setReminders(data);
+            }
+        };
+        fetchReminders();
+    }, []);
+
+    // Lấy câu hỏi theo ngôn ngữ hiện tại
+    const getReminderText = (reminder: any) => {
+        switch (language) {
+            case 'EN': return reminder.contentEN || reminder.contentVN;
+            case 'KR': return reminder.contentKR || reminder.contentVN;
+            case 'JP': return reminder.contentJP || reminder.contentVN;
+            case 'ZH': return reminder.contentCN || reminder.contentVN;
+            default: return reminder.contentVN;
+        }
+    };
+
+    // Toggle chọn lỗi
+    const toggleViolation = (reminderId: string) => {
+        setViolations(prev => 
+            prev.includes(reminderId) ? prev.filter(id => id !== reminderId) : [...prev, reminderId]
+        );
+    };
 
     // Reset state khi đổi khách (chuyển tab)
     useEffect(() => {
         setStep(1);
         setRatings({});
         setComments({});
+        setViolations([]);
     }, [booking.id]);
 
     // Xử lý logic gộp KTV:
@@ -130,6 +170,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                 .from('Bookings')
                 .update({ 
                     status: 'FEEDBACK', 
+                    violations: violations,
                     updatedAt: new Date().toISOString() 
                 })
                 .eq('id', booking.id)
@@ -242,6 +283,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         mergedKtvGroups,
         ratings, handleRatingChange,
         comments, handleCommentChange,
+        reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
         t
     };

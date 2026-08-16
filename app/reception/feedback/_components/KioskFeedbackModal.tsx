@@ -15,6 +15,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         mergedKtvGroups,
         ratings, handleRatingChange,
         comments, handleCommentChange,
+        reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
         t
     } = useKioskFeedback(currentBooking, onClose);
@@ -160,22 +161,31 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                             </div>
                                         </div>
 
-                                        <div className="flex justify-center gap-4 mb-8">
-                                            {[1, 2, 3, 4].map(star => (
-                                                <button
-                                                    key={star}
-                                                    onClick={() => handleRatingChange(group.ktvId, star)}
-                                                    className="focus:outline-none transform hover:scale-110 transition-transform"
-                                                >
-                                                    <Star 
-                                                        className={`w-12 h-12 ${
-                                                            (ratings[group.ktvId] || 0) >= star 
-                                                                ? 'fill-amber-400 text-amber-400' 
-                                                                : 'text-gray-200 hover:text-gray-300'
-                                                        }`} 
-                                                    />
-                                                </button>
-                                            ))}
+                                        <div className="grid grid-cols-4 gap-2 mb-8">
+                                            {[
+                                                { score: 1, emoji: '😡', label: t.rateBad || 'Tệ' },
+                                                { score: 2, emoji: '😐', label: t.rateOk || 'Bình thường' },
+                                                { score: 3, emoji: '🙂', label: t.rateGood || 'Tốt' },
+                                                { score: 4, emoji: '🤩', label: t.rateExcellent || 'Tuyệt vời' }
+                                            ].map((r) => {
+                                                const isSelected = (ratings[group.ktvId] || 0) === r.score;
+                                                return (
+                                                    <button
+                                                        key={r.score}
+                                                        onClick={() => handleRatingChange(group.ktvId, r.score)}
+                                                        className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all ${
+                                                            isSelected 
+                                                                ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
+                                                                : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                                                        }`}
+                                                    >
+                                                        <span className="text-3xl">{r.emoji}</span>
+                                                        <span className={`text-xs font-bold text-center ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
+                                                            {r.label}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
 
                                         <textarea 
@@ -192,6 +202,40 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                     </div>
                                 )}
                             </div>
+
+                            {/* Khối Service Feedback (Violations) */}
+                            {reminders.length > 0 && (
+                                <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-12">
+                                    <h3 className="text-gray-800 font-bold text-xl mb-4 flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${violations.length > 0 ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        </div>
+                                        {t.violationsSectionTitle || 'Service feedback (if any)'}
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {reminders.map((reminder) => {
+                                            const rId = reminder.id.toString();
+                                            const isSelected = violations.includes(rId);
+                                            return (
+                                                <div 
+                                                    key={rId}
+                                                    onClick={() => toggleViolation(rId)}
+                                                    className={`flex items-start gap-4 p-4 bg-white rounded-2xl cursor-pointer transition-all border ${isSelected ? 'border-amber-200 shadow-sm ring-1 ring-amber-100' : 'border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.01)]'}`}
+                                                >
+                                                    <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
+                                                        {isSelected && (
+                                                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                                        )}
+                                                    </div>
+                                                    <span className={`text-lg leading-snug font-medium ${isSelected ? 'text-amber-900' : 'text-gray-500'}`}>
+                                                        {getReminderText(reminder)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex justify-center gap-8 items-center">
                                 <button 
