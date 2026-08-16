@@ -254,7 +254,11 @@ export class HandoverService {
             .eq('id', itemId)
             .single();
 
-        if (fetchErr || !item) return { success: false, error: 'Item not found' };
+        if (fetchErr) {
+            console.error('[HandoverService] fetchErr:', fetchErr);
+            return { success: false, error: `Lỗi DB: ${fetchErr.message}` };
+        }
+        if (!item) return { success: false, error: 'Item not found' };
 
         const currentCount = item.handover_reject_count || 0;
         const oldRejectImages = Array.isArray(item.handover_reject_images) ? item.handover_reject_images : [];
