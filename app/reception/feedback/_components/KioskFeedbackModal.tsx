@@ -31,9 +31,9 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                     </button>
                 </div>
                 
-                <div className="pointer-events-auto flex flex-col items-end gap-4">
+                <div className="pointer-events-auto flex items-center gap-4">
                     {/* Language Selector */}
-                    <div className="flex gap-3 bg-gray-50/80 p-2 rounded-full shadow-sm border border-gray-100 pointer-events-auto">
+                    <div className="flex gap-2 bg-gray-50/80 p-1.5 rounded-full shadow-sm border border-gray-100 pointer-events-auto">
                         {(['VN', 'EN', 'KR', 'JP', 'ZH'] as const).map(lang => (
                             <button
                                 key={lang}
@@ -51,14 +51,14 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
 
                     {/* Booking Dropdown (Chỉ hiện khi đoàn có nhiều hơn 1 khách) */}
                     {group.childBookings.length > 1 && (
-                        <div className="pointer-events-auto bg-white/90 p-1.5 rounded-2xl shadow-sm border border-gray-100 max-w-md w-full">
+                        <div className="pointer-events-auto bg-white/90 p-1.5 rounded-full shadow-sm border border-gray-100 min-w-[280px]">
                             <select
                                 value={currentBooking.id}
                                 onChange={(e) => {
                                     const child = group.childBookings.find((c: any) => c.id === e.target.value);
                                     if (child) setCurrentBooking(child);
                                 }}
-                                className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate"
+                                className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate rounded-full"
                             >
                                 {group.childBookings.map((child: any) => {
                                     const isCompleted = child.status === 'COMPLETED' || child.status === 'DONE';
