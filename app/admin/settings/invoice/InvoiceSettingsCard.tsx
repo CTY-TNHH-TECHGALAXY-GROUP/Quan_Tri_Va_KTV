@@ -108,7 +108,7 @@ export const InvoiceSettingsCard = () => {
                         <h2 className="text-lg font-black text-gray-900">Chi tiết Hoá đơn</h2>
                     </div>
                     <button
-                        onClick={() => window.print()}
+                        onClick={() => window.open(`/invoice/${orderId}`, '_blank')}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
                     >
                         <Printer size={14} />

@@ -49,7 +49,7 @@ export async function GET(
             const serviceIds = enrichedItems.map(i => i.serviceId).filter(Boolean);
             const { data: svcs, error: svError } = await supabase
                 .from('Services')
-                .select('id, code, nameVN, nameEN, price, duration')
+                .select('id, code, nameVN, nameEN, priceVND, duration')
                 .in('id', serviceIds);
 
             if (!svError && svcs) {
@@ -60,7 +60,7 @@ export async function GET(
                     return {
                         ...i,
                         serviceName: svc?.nameVN || svc?.nameEN || `Dịch vụ ${i.serviceId}`,
-                        originalPrice: svc?.price || i.price,
+                        originalPrice: svc?.priceVND || i.price,
                         duration: i.duration || svc?.duration || 60
                     };
                 });

@@ -25,8 +25,8 @@ export const PrintableInvoice = ({ config, bookingData }: PrintableInvoiceProps)
 
     // Customer
     const cName = bookingData?.customerName || 'Khách vãng lai';
-    const cPhone = bookingData?.customerPhone || 'N/A';
-    const cEmail = bookingData?.customerEmail || 'N/A';
+    const cPhone = bookingData?.customerPhone || '';
+    const cEmail = bookingData?.customerEmail || '';
 
     // Financial
     const bCode = bookingData?.billCode || bookingData?.id?.substring(0, 8).toUpperCase() || 'HD-MẪU';
@@ -94,18 +94,24 @@ export const PrintableInvoice = ({ config, bookingData }: PrintableInvoiceProps)
 
                     <div className={styles.sectionTitle}>Thông tin khách hàng</div>
                     <div className={styles.box}>
-                        <div className={styles.row}>
-                            <div className={styles.label}>Họ và tên</div>
-                            <div>{cName}</div>
-                        </div>
-                        <div className={styles.row}>
-                            <div className={styles.label}>Số điện thoại</div>
-                            <div>{cPhone}</div>
-                        </div>
-                        <div className={styles.row}>
-                            <div className={styles.label}>Email</div>
-                            <div>{cEmail}</div>
-                        </div>
+                        {cName && (
+                            <div className={styles.row}>
+                                <div className={styles.label}>Họ và tên</div>
+                                <div>{cName}</div>
+                            </div>
+                        )}
+                        {cPhone && (
+                            <div className={styles.row}>
+                                <div className={styles.label}>Số điện thoại</div>
+                                <div>{cPhone}</div>
+                            </div>
+                        )}
+                        {cEmail && (
+                            <div className={styles.row}>
+                                <div className={styles.label}>Email</div>
+                                <div>{cEmail}</div>
+                            </div>
+                        )}
                     </div>
                     <div className={styles.customerDivider}></div>
 
