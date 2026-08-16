@@ -196,14 +196,8 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
               {/* KTV làm cùng */}
               {order.coWorkers && order.coWorkers.length > 0 && (
                 <div className="flex justify-between items-start">
-                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">KTV làm cùng</span>
-                  <div className="flex gap-1 flex-wrap justify-end">
-                    {order.coWorkers.map(cw => (
-                      <span key={cw} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[11px] font-bold rounded-md">
-                        {cw}
-                      </span>
-                    ))}
-                  </div>
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Số lượng KTV</span>
+                  <span className="text-sm text-gray-600">{order.coWorkers.length + 1} KTV</span>
                 </div>
               )}
 

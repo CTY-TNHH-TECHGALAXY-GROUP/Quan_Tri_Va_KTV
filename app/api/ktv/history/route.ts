@@ -274,9 +274,9 @@ export async function GET(request: Request) {
                 const handover_status = handoverItem?.handover_status || 'PENDING';
                 const handover_comment = handoverItem?.handover_comment || null;
 
-                // Tìm KTV làm cùng trong CÙNG group này
+                // Tìm KTV làm cùng trong CÙNG booking này (đơn con)
                 const allKTVsInBooking = new Set<string>();
-                (groupItems || []).forEach((i: any) => {
+                (allItems || []).forEach((i: any) => {
                     if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
                         i.technicianCodes.forEach((tc: string) => {
                             if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
