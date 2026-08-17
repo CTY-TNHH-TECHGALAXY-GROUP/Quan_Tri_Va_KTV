@@ -52,7 +52,9 @@ export const DispatchServiceBlock = ({
     const isUtility = !!(svc as any).isUtility;
     const isVip = (svc.serviceId && (svc.serviceId.toUpperCase().startsWith('NHP') || svc.serviceId.toUpperCase().startsWith('VIP_'))) || orderSource === 'VIP_WALK_IN' || orderSource === 'VIP_MENU';
 
-    const actualDuration = svc.staffList?.[0]?.segments?.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0) || svc.duration;
+    const segmentDuration = svc.staffList?.[0]?.segments?.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0) || 0;
+    // For merged services, svc.duration is pre-calculated (includes children); prefer it over raw segment duration
+    const actualDuration = svc.duration && svc.duration > segmentDuration ? svc.duration : (segmentDuration || svc.duration);
 
     return (
         <div className={`
@@ -310,6 +312,7 @@ export const DispatchServiceBlock = ({
                                         serviceName={svc.serviceName}
                                         displayName={svc.options?.displayName}
                                         svcDuration={actualDuration}
+                                        svcStatus={svc.status}
                                         availableTurns={availableTurns}
                                         rooms={rooms}
                                         beds={beds}
