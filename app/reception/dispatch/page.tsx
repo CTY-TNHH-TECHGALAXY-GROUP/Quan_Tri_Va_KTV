@@ -1946,7 +1946,15 @@ if (!hasPermission('dispatch_board')) {
                               return `${displayServices.map(s => {
                                 const opts = typeof s.options === 'string' ? JSON.parse(s.options) : (s.options || {});
                                 return opts.displayName || s.serviceName || 'Dịch vụ';
-                              }).join(', ')} · ${displayServices.reduce((acc, s) => acc + (s.duration || 0), 0)}p`;
+                              }).join(', ')} · ${displayServices.reduce((acc, s) => {
+                                const opts = typeof s.options === 'string' ? JSON.parse(s.options) : (s.options || {});
+                                const childIds: string[] = opts.mergedServiceIds || s.mergedServiceIds || [];
+                                const childDur = childIds.reduce((sum: number, cId: string) => {
+                                  const child = subOrder.services.find(cs => cs.id === cId);
+                                  return sum + (child?.duration || 0);
+                                }, 0);
+                                return acc + (s.duration || 0) + childDur;
+                              }, 0)}p`;
                             })()
                           : 'Chưa có dịch vụ'
                         }
