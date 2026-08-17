@@ -20,7 +20,7 @@ export default function InvoicePrintPage() {
         address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
         phone: '0964090277',
         email: 'cskhoria@techgalaxygroup.com',
-        hotline: '0900 000 000',
+        hotline: '0964090277',
         note1: 'Cảm ơn Quý khách đã sử dụng dịch vụ tại ORIA SPA.',
         note2: 'Vui lòng giữ hóa đơn để thuận tiện đối chiếu khi cần hỗ trợ.',
         logoUrl: ''
@@ -48,6 +48,7 @@ export default function InvoicePrintPage() {
                         ...prev, 
                         ...loaded,
                         phone: loaded.phone === '0900 000 000' ? '0964090277' : (loaded.phone || prev.phone),
+                        hotline: loaded.hotline === '0900 000 000' ? '0964090277' : (loaded.hotline || prev.hotline),
                         email: loaded.email || prev.email,
                     }));
                 }
