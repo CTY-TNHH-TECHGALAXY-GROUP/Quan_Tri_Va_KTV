@@ -250,7 +250,7 @@ export class HandoverService {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings!fk_bookingitems_booking(billCode)')
+            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings!fk_bookingitems_booking(billCode, parent_booking_id, sub_suffix)')
             .eq('id', itemId)
             .single();
 
@@ -259,6 +259,22 @@ export class HandoverService {
             return { success: false, error: `Lỗi DB: ${fetchErr.message}` };
         }
         if (!item) return { success: false, error: 'Item not found' };
+
+        // Xử lý billCode cho đơn đã tách (Sub-booking)
+        let displayBillCode = (item as any).Bookings?.billCode || '';
+        let subSuffix = (item as any).Bookings?.sub_suffix || '';
+        
+        if ((item as any).Bookings?.parent_booking_id && !displayBillCode) {
+            const { data: parentBooking } = await supabase
+                .from('Bookings')
+                .select('billCode')
+                .eq('id', (item as any).Bookings.parent_booking_id)
+                .single();
+            if (parentBooking?.billCode) {
+                displayBillCode = parentBooking.billCode;
+            }
+        }
+        const fullBillCode = displayBillCode ? `${displayBillCode}${subSuffix ? `-${subSuffix}` : ''}` : '';
 
         const currentCount = item.handover_reject_count || 0;
         const oldRejectImages = Array.isArray(item.handover_reject_images) ? item.handover_reject_images : [];
@@ -307,7 +323,7 @@ export class HandoverService {
                     await createNotification({
                         type: 'HANDOVER_REJECTED',
                         employeeId: tc,
-                        message: `⚠️ Hình bàn giao đơn #${(item as any).Bookings?.billCode || ''} bị từ chối: ${reason}. Vui lòng dọn lại. (Lần ${currentCount + 1}/${maxReject})`,
+                        message: `⚠️ Hình bàn giao đơn #${fullBillCode} bị từ chối: ${reason}. Vui lòng dọn lại. (Lần ${currentCount + 1}/${maxReject})`,
                         bookingId: item.bookingId,
                     });
                     
@@ -352,7 +368,7 @@ export class HandoverService {
                         amount: -deductAmount,
                         type: 'PENALTY',
                         wallet_type: 'MAIN',
-                        reason: `Phạt bàn giao: ${reason} (Đơn #${(item as any).Bookings?.billCode || ''})`,
+                        reason: `Phạt bàn giao: ${reason} (Đơn #${fullBillCode})`,
                         created_by: 'System'
                     });
 
@@ -394,7 +410,7 @@ export class HandoverService {
                     await createNotification({
                         type: 'HANDOVER_CONFISCATE',
                         employeeId: tc,
-                        message: `🚫 Bạn đã bị tước toàn bộ tiền tua đơn #${(item as any).Bookings?.billCode || ''}. Lý do: ${reason}`,
+                        message: `🚫 Bạn đã bị tước toàn bộ tiền tua đơn #${fullBillCode}. Lý do: ${reason}`,
                         bookingId: item.bookingId,
                     });
                     
