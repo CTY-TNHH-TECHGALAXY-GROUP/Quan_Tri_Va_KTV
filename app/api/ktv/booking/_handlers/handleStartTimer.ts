@@ -194,6 +194,29 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
             await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
         }
     }
+    
+    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
+    if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
+        const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+        if (bookingItemsToSync) {
+            const updates = [];
+            for (const item of bookingItemsToSync) {
+                let opts: any = {};
+                try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
+                if (opts.mergedIntoId) {
+                    const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
+                    if (parent && parent.status && parent.status !== item.status) {
+                        updates.push({ id: item.id, status: parent.status });
+                    }
+                }
+            }
+            if (updates.length > 0) {
+                for (const upd of updates) {
+                    await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+                }
+            }
+        }
+    }
 
     // ─── 4. TURNQUEUE RECALCULATION ───
     // 🔥 CRITICAL: Recalculate TurnQueue.estimated_end_time when KTV actually starts

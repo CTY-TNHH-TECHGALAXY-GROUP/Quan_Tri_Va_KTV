@@ -229,16 +229,44 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
     }
     
+    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
+    // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
+    const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+    if (bookingItemsToSync) {
+        const updates = [];
+        for (const item of bookingItemsToSync) {
+            let opts: any = {};
+            try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
+            if (opts.mergedIntoId) {
+                const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
+                if (parent && parent.status && parent.status !== item.status) {
+                    updates.push({ id: item.id, status: parent.status });
+                    item.status = parent.status; // Update local state
+                }
+            }
+        }
+        if (updates.length > 0) {
+            for (const upd of updates) {
+                await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+            }
+        }
+    }
+
     // ─── 4. 🔄 RECOMPUTE BOOKING STATUS ───
-    const { data: allItems } = await supabase
-        .from('BookingItems')
-        .select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
-        .eq('bookingId', bookingId);
+    // Dùng bookingItemsToSync thay vì fetch lại để giảm thiểu query và sử dụng state đã sync
+    const allItems = bookingItemsToSync;
     if (allItems && allItems.length > 0) {
+        // Cần fetch lại Services info cho phần kiểm tra is_utility
+        const { data: itemsWithServices } = await supabase
+            .from('BookingItems')
+            .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
+            .eq('bookingId', bookingId);
+            
         const validItems = allItems.filter((i: any) => {
-            const name = i.Services?.nameVN || '';
-            return i.Services?.is_utility !== true 
-                && i.serviceId !== 'NHS0900'  // Legacy fallback
+            const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
+            const name = svcInfo?.Services?.nameVN || '';
+            return svcInfo?.Services?.is_utility !== true 
+                && svcInfo?.serviceId !== 'NHS0900'  // Legacy fallback
                 && !name.toLowerCase().includes('phòng riêng')
                 && !name.toLowerCase().includes('phong rieng');
         });
@@ -248,6 +276,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         const bStatus = recomputeBookingStatus(statuses);
         bookingUpdatePayload.status = bStatus;
     }
+
 
     return { bookingUpdatePayload };
 }
