@@ -21,7 +21,7 @@ import { RoomBoard } from '@/components/shared/RoomBoard';
 import { ScheduleBoard } from '@/components/shared/ScheduleBoard';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { supabase } from '@/lib/supabase';
-import { DispatchServiceBlock } from './_components/DispatchServiceBlock';
+
 import { KanbanBoard } from './_components/KanbanBoard';
 import { TimeEditorModal } from './_components/TimeEditorModal';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
@@ -413,9 +413,11 @@ if (!hasPermission('dispatch_board')) {
        if (order) {
            const ktvId = patch.ktvId;
            // Check if this ktvId is assigned to another unmerged service in this order
+           const targetSvc = order.services.find(s => s.id === svcId);
            const otherService = order.services.find(s => 
                s.id !== svcId && 
                !s.mergedIntoId &&
+               s.guestId === targetSvc?.guestId &&
                s.staffList.some(r => r.ktvId === ktvId)
            );
            
@@ -472,8 +474,12 @@ if (!hasPermission('dispatch_board')) {
         ...updatedOrder,
         services: updatedOrder.services.map(s => {
           if (s.id === sourceSvcId) {
+            const childName = targetSvc?.serviceName || 'Dịch vụ con';
+            const parentName = s.displayName || s.serviceName || 'Dịch vụ gốc';
+            
             return {
               ...s,
+              displayName: `${parentName} + ${childName}`,
               mergedServiceIds: [...(s.mergedServiceIds || []), targetSvcId],
               // Cộng duration DV con vào segment đầu tiên của DV cha
               staffList: s.staffList.map(r => ({
@@ -635,8 +641,14 @@ if (!hasPermission('dispatch_board')) {
       if (s.duration === 0) return true;
       // Skip merged children — they're managed by the parent service
       if (s.mergedIntoId || s.options?.mergedIntoId) return true;
-      return s.staffList.length > 0 &&
-      s.staffList.every(r => 
+      
+      // BẢO VỆ: Nếu đơn đã từng dispatch, cho phép submit với staffList rỗng (để gỡ KTV)
+      const isAlreadyDispatched = order.dispatchStatus !== 'pending';
+      if (s.staffList.length === 0) {
+        return isAlreadyDispatched;
+      }
+
+      return s.staffList.every(r => 
         r.ktvId !== '' && 
         r.segments.length > 0 &&
         r.segments.every(seg => seg.roomId !== null && seg.bedId !== null && seg.startTime !== '')
@@ -667,7 +679,8 @@ if (!hasPermission('dispatch_board')) {
     try {
         const { addAddonServices } = await import('./actions');
         // Thêm dịch vụ vào DB ngay lập tức để lấy ID chuẩn, nhưng KHÔNG fetchData để tránh mất dữ liệu đang sửa dở
-        const res = await addAddonServices(selectedOrderId, [{ serviceId: svcId, qty: 1 }], 'ADMIN');
+        const guestIdToUse = (selectedSubOrder as any)?.guest?.id || undefined;
+        const res = await addAddonServices(selectedOrderId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
         
         if (res.success && res.newItems && res.newItems.length > 0) {
             const newItem = res.newItems[0];
@@ -711,6 +724,12 @@ if (!hasPermission('dispatch_board')) {
                   : o
             ));
             setShowAddSvcModal(false);
+            setTimeout(() => {
+                const dispatchContainer = document.getElementById('dispatch-container');
+                if (dispatchContainer) {
+                    dispatchContainer.scrollTo({ top: dispatchContainer.scrollHeight, behavior: 'smooth' });
+                }
+            }, 100);
         } else {
             alert('Lỗi thêm dịch vụ: ' + (res.error || 'Unknown error'));
         }
@@ -807,7 +826,8 @@ if (!hasPermission('dispatch_board')) {
       if (!isConfirm) return;
 
       try {
-          const res = await addAddonServices(selectedOrderId, [{ serviceId: svcDef.id, qty: 1 }], 'ADMIN');
+          const guestIdToUse = (selectedSubOrder as any)?.guest?.id || undefined;
+          const res = await addAddonServices(selectedOrderId, [{ serviceId: svcDef.id, qty: 1, guestId: guestIdToUse }], 'ADMIN');
           if (res.success) {
               alert(`✅ Thêm "${svcName}" thành công! Tổng tiền mới: ${(res.newTotalAmount || 0).toLocaleString()}đ`);
               setShowAddSvcModal(false);
@@ -928,7 +948,7 @@ if (!hasPermission('dispatch_board')) {
               segments: allSegments,
               options: {
                   ...(svc.options || {}),
-                  displayName: svc.options?.displayName || svc.serviceName,
+                  displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                   mergedIntoId: svc.mergedIntoId,
                   mergedServiceIds: svc.mergedServiceIds,
                   order: index,
@@ -1251,27 +1271,8 @@ if (!hasPermission('dispatch_board')) {
           const itemUpdates = targetServicesInGroup.map(svc => {
               const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
               
-              // 🛡️ SAFETY NET: Recalculate merged parent segment duration
-              let correctedStaffList = svc.staffList;
-              if (svc.mergedServiceIds?.length) {
-                  const childDurations = svc.mergedServiceIds.reduce((sum: number, childId: string) => {
-                      const child = clonedOrder.services.find(s => s.id === childId);
-                      return sum + (child?.staffList?.[0]?.segments?.[0]?.duration || child?.duration || 0);
-                  }, 0);
-                  correctedStaffList = svc.staffList.map(r => ({
-                      ...r,
-                      segments: r.segments.map((seg, segIdx) => {
-                          if (segIdx === 0) {
-                              const baseDur = svc.duration || 0;
-                              const totalDur = baseDur + childDurations;
-                              // Only correct if segment duration seems too low (wasn't updated properly)
-                              const segDur = seg.duration && seg.duration >= totalDur ? seg.duration : totalDur;
-                              return { ...seg, duration: segDur, endTime: seg.startTime ? calcEndTime(seg.startTime, segDur) : seg.endTime };
-                          }
-                          return seg;
-                      })
-                  }));
-              }
+              // Segment duration from updateGroup already contains the correct TOTAL merged duration
+              const correctedStaffList = svc.staffList;
               
               const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
               return {
@@ -1283,7 +1284,7 @@ if (!hasPermission('dispatch_board')) {
                   segments: allSegments,
                   options: {
                       ...(svc.options || {}),
-                      displayName: svc.options?.displayName || svc.serviceName,
+                      displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                       mergedIntoId: svc.mergedIntoId,
                       mergedServiceIds: svc.mergedServiceIds,
                       order: originalIndex !== -1 ? originalIndex : 999,
@@ -2035,25 +2036,7 @@ if (!hasPermission('dispatch_board')) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-2 sm:ml-4">
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Đang điều phối</p>
-                    {/* Toggle Quick/Detail */}
-                    {(() => {
-                      return (
-                        <div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
-                          <button
-                            onClick={() => setDispatchMode('quick')}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 ${dispatchMode === 'quick' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                          >
-                            <Zap size={10} /> Nhanh
-                          </button>
-                          <button
-                            onClick={() => setDispatchMode('detail')}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 ${dispatchMode === 'detail' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                          >
-                                                        <LayoutList size={10} /> Chi tiết
-                          </button>
-                        </div>
-                      );
-                    })()}
+
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
@@ -2201,9 +2184,7 @@ if (!hasPermission('dispatch_board')) {
             </div>
 
             {selectedSubOrder ? (
-              <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 bg-slate-50/30">
-                {/* Quick Dispatch Mode */}
-                {dispatchMode === 'quick' ? (
+              <div id="dispatch-container" className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 bg-slate-50/30">
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
@@ -2279,110 +2260,10 @@ if (!hasPermission('dispatch_board')) {
                     reminders={reminders}
                     billCode={selectedSubOrder.originalOrder.billCode}
                     customerName={selectedSubOrder.originalOrder.customerName}
-                    subOrderCodeProp={selectedSubOrder.subSuffix || undefined}
+                    subOrderCodeProp={(selectedSubOrder as any).subSuffix || undefined}
                     onRemoveSvc={removeServiceBlock}
                   />
-                ) : (
-                  /* Detail Dispatch Mode */
-                  <Reorder.Group
-                    axis="y"
-                    values={selectedSubOrder.services.filter(svc => !svc.mergedIntoId)}
-                    onReorder={(newServices) => {
-                      const recalculated = recalculateAllTimes({ ...selectedSubOrder.originalOrder, services: newServices }, roomTransitionTime);
-                      updateOrder(selectedSubOrder.bookingId, o => {
-                          const nonSubOrderServices = o.services.filter(s => !newServices.some(ns => ns.id === s.id));
-                          return { ...o, services: [...nonSubOrderServices, ...recalculated.services.filter(s => newServices.some(ns => ns.id === s.id))] };
-                      });
-                    }}
-                    className="space-y-6"
-                  >
-                    {selectedSubOrder.services.filter(svc => !svc.mergedIntoId).map((svc, idx) => {
-                      let displaySvc = { ...svc };
-                      if (svc.mergedServiceIds && svc.mergedServiceIds.length > 0) {
-                          const mergedSvcs = selectedSubOrder.originalOrder.services.filter(s => svc.mergedServiceIds?.includes(s.id));
-                          if (mergedSvcs.length > 0) {
-                              displaySvc.serviceName = `${svc.serviceName} + ${mergedSvcs.map(s => s.serviceName).join(' + ')}`;
-                              displaySvc.duration = svc.duration + mergedSvcs.reduce((acc, s) => acc + (s.duration || 0), 0);
-                          }
-                      }
-                      const busyInOtherOrders = orders
-                        .filter(o => o.id !== selectedSubOrder.bookingId && (o.dispatchStatus === 'IN_PROGRESS' || o.dispatchStatus === 'PREPARING'))
-                        .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
-                        .filter(Boolean) as string[];
-                      const currentSvcKtvIds = svc.staffList.map(r => r.ktvId).filter(Boolean);
-                      const busyInCurrentOrder = selectedSubOrder.originalOrder.services.filter(s => {
-                          const isRelated = s.id === svc.id || 
-                                            s.options?.parentItemId === svc.id || 
-                                            svc.options?.parentItemId === s.id || 
-                                            (s.options?.parentItemId && s.options?.parentItemId === svc.options?.parentItemId);
-                          return !isRelated;
-                      })
-                        .flatMap(s => s.staffList
-                          .filter(r => !currentSvcKtvIds.includes(r.ktvId))
-                          .flatMap(r => r.segments.map(seg => seg.bedId)))
-                        .filter(Boolean) as string[];
-                      const allBusyBedIds = [...new Set([...busyInOtherOrders, ...busyInCurrentOrder])];
 
-                      return (
-                        <Reorder.Item key={svc.id} value={svc} dragListener={!expandedSvcIds.includes(svc.id)}>
-                          <DispatchServiceBlock
-                            svc={displaySvc}
-                            svcIndex={idx}
-                            orderId={selectedSubOrder.bookingId}
-                            rooms={rooms}
-                            beds={beds}
-                            busyBedIds={allBusyBedIds}
-                            usedKtvIds={[]}
-                            availableTurns={turns}
-                            reminders={reminders}
-                            onUpdateSvc={updateSvcField}
-                            onUpdateStaff={updateStaffRow}
-                            onAddStaff={addStaffRow}
-                            onRemoveStaff={removeStaffRow}
-                            onRemoveSvc={removeServiceBlock}
-                            onUnmergeSvc={handleUnmergeService}
-                            onEditSvc={(orderId, svcId) => setEditingSvc({ orderId, svcId, oldSvcName: svc.serviceName })}
-                            selectedDate={selectedDate}
-                            isExpanded={expandedSvcIds.includes(svc.id)}
-                            onViewPhoto={setSelectedPhoto}
-                            now={now}
-                            onToggleExpand={() => {
-                              const isOpening = !expandedSvcIds.includes(svc.id);
-                              setExpandedSvcIds(prev => 
-                                  isOpening ? [...prev, svc.id] : prev.filter(id => id !== svc.id)
-                              );
-                              if (isOpening && selectedSubOrder?.dispatchStatus === 'pending') {
-                                const now = new Date();
-                                const nowStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                                setOrders(prev => prev.map(o => 
-                                  o.id === selectedOrderId ? {
-                                    ...o,
-                                    services: o.services.map(s => s.id === svc.id ? {
-                                      ...s,
-                                      staffList: s.staffList.map(r => ({
-                                        ...r,
-                                        segments: r.segments.map((seg, segIdx) => {
-                                          if (segIdx === 0) {
-                                            return { ...seg, startTime: nowStr, endTime: calcEndTime(nowStr, seg.duration) };
-                                          }
-                                          const prevEnd = r.segments[segIdx - 1] 
-                                            ? calcEndTime(segIdx === 1 ? nowStr : r.segments[segIdx - 1].startTime, r.segments[segIdx - 1].duration)
-                                            : nowStr;
-                                          return { ...seg, startTime: prevEnd, endTime: calcEndTime(prevEnd, seg.duration) };
-                                        })
-                                      }))
-                                    } : s)
-                                  } : o
-                                ));
-                              }
-                            }}
-                            onDispatchSvc={(oId, svcId) => handleDispatch(false, [svcId, ...(displaySvc.mergedServiceIds || [])])}
-                          />
-                        </Reorder.Item>
-                      );
-                    })}
-                  </Reorder.Group>
-                )}
 
                 <button
                   onClick={() => setShowAddSvcModal(true)}
@@ -2413,7 +2294,7 @@ if (!hasPermission('dispatch_board')) {
                   <button
                     onClick={() => {
                         const hasKtvAssigned = selectedSubOrder?.services?.some((s: any) => s.staffList?.length > 0);
-                        const isDispatched = selectedSubOrder?.dispatchStatus === 'dispatched';
+                        const isDispatched = selectedSubOrder?.dispatchStatus !== 'pending';
                         
                         if (hasKtvAssigned && !isDispatched) {
                             if (window.confirm('Bạn đã chọn KTV nhưng BẤM LƯU NHÁP sẽ CHƯA GỬI ĐƠN cho KTV.\n\nBấm [OK] để GỬI ĐƠN CHO KTV ngay.\nBấm [Cancel] nếu chỉ muốn lưu nháp trên máy chủ.')) {
@@ -2435,7 +2316,7 @@ if (!hasPermission('dispatch_board')) {
                     }}
                     className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border-2 border-emerald-200 active:scale-95"
                   >
-                    <Save size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus === 'dispatched' ? 'LƯU THÔNG TIN' : 'LƯU NHÁP'}
+                    <Save size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus !== 'pending' ? 'LƯU THÔNG TIN' : 'LƯU NHÁP'}
                   </button>
                   {(() => {
                     const isFeedbackOrDone = ['FEEDBACK', 'DONE', 'CLEANING'].includes(selectedSubOrder.dispatchStatus);
@@ -2444,7 +2325,7 @@ if (!hasPermission('dispatch_board')) {
                       return (
                         <div className="flex gap-2 w-full col-span-2">
                            <button
-                             onClick={() => setCommentModalData({ subOrder: selectedSubOrder, order: selectedSubOrder.originalOrder })}
+                             onClick={() => setCommentModalData({ subOrder: selectedSubOrder as any, order: selectedSubOrder.originalOrder })}
                              className="flex-1 py-3 rounded-2xl font-black text-amber-700 bg-amber-100 border border-amber-300 hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all uppercase text-sm flex items-center justify-center gap-2 shadow-sm"
                            >
                               <AlertTriangle size={18} strokeWidth={3} /> Nhận xét KTV
@@ -2491,7 +2372,7 @@ if (!hasPermission('dispatch_board')) {
                           }`}
                       >
                         <div className="flex items-center gap-3">
-                           <Send size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus === 'dispatched' ? 'CẬP NHẬT KTV & GỬI LẠI' : 'GỬI ĐƠN CHO KTV'}
+                           <Send size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus !== 'pending' ? 'CẬP NHẬT KTV & GỬI LẠI' : 'GỬI ĐƠN CHO KTV'}
                         </div>
                         {hasStartedService && (
                           <span className="text-[10px] text-rose-500 font-bold normal-case tracking-normal">(Vui lòng điều phối lẻ vì đã có DV chạy)</span>

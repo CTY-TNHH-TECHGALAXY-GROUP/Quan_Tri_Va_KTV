@@ -21,10 +21,26 @@ export interface StaffAssignment {
   noteForKtv: string;
 }
 
+export interface GuestBlock {
+  id: string;
+  bookingId: string;
+  guestIndex: number;
+  guestLabel: string;
+  customerName?: string | null;
+  gender?: string | null;
+  nationality?: string | null;
+  bedId?: string | null;
+  roomId?: string | null;
+  notes?: string | null;
+  focusArea?: string | null;
+  status: string;
+}
+
 export interface ServiceBlock {
   id: string; // BookingItem ID
   serviceId?: string;
   serviceName: string;
+  displayName?: string; // Tên hiển thị (đặc biệt khi gộp)
   serviceDescription?: string;
   is_utility?: boolean;
   min_ktv_required?: number;
@@ -52,6 +68,7 @@ export interface ServiceBlock {
   handover_status?: string;
   handover_comment?: string | null;
   handover_images?: string; // JSON string chứa Record<string, string>
+  guestId?: string; // ID của Guest đang sử dụng dịch vụ này
 }
 
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE';
@@ -92,6 +109,7 @@ export interface PendingOrder {
   rating?: number | null;
   feedbackNote?: string | null;
   rawNotes?: any;
+  guests?: GuestBlock[]; // Danh sách khách hàng trong đơn
 }
 
 export interface StaffData {

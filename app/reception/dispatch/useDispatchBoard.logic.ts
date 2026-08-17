@@ -446,6 +446,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 }
                 debouncedFetchData();
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingGuests' }, (payload) => {
+                if (selectedOrderIdRef.current) {
+                    needsRefreshRef.current = true;
+                    return;
+                }
+                debouncedFetchData();
+            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
                 const newItem = payload.new as any;
                 if (newItem?.bookingId && newItem?.status) {
