@@ -57,6 +57,7 @@ interface DispatchStaffRowProps {
     customerName?: string;
     onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
     now?: Date; // Auto-refreshed from parent hook every 60s
+    svcStatus?: string;
 }
 
 const SERVICE_TO_SKILL: Record<string, string> = {
@@ -105,7 +106,7 @@ const calcEndTime = (start: string, duration: number): string => {
 export const DispatchStaffRow = ({
     row, svcId, orderId, serviceName, svcDuration, availableTurns, rooms, beds, busyBedIds = [], usedKtvIds = [], onUpdate, onRemove, canRemove,
     displayName, serviceDescription, strength, adminNote, customerNote, selectedDate, focus, avoid, realSvcId, reminders = [],
-    billCode, genderReq, customerName, onViewPhoto, now: nowProp
+    billCode, genderReq, customerName, onViewPhoto, now: nowProp, svcStatus
 }: DispatchStaffRowProps) => {
 
     const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => serviceName.toLowerCase().includes(k.toLowerCase()))
@@ -136,9 +137,24 @@ export const DispatchStaffRow = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isDropdownOpen, showReminders]);
 
+    const [hasWarned, setHasWarned] = React.useState(false);
+
+    const confirmEdit = (): boolean => {
+        if (!['DONE', 'COMPLETED', 'FEEDBACK', 'CLEANING'].includes(svcStatus || '')) return true;
+        if (hasWarned) return true;
+        
+        const ok = window.confirm('Đơn này đã hoàn tất. Bạn có chắc chắn muốn sửa KTV hoặc thời gian không? Việc sửa có thể làm lệch báo cáo nếu Sổ cái đã chốt.');
+        if (ok) {
+            setHasWarned(true);
+            return true;
+        }
+        return false;
+    };
+
     // Local setNow interval removed. We use `now` prop passed down from useDispatchBoard.
 
     const handleChange = (patch: Partial<StaffAssignment>) => {
+        if (!confirmEdit()) return;
         onUpdate(orderId, svcId, row.id, patch);
     };
 
@@ -449,9 +465,12 @@ export const DispatchStaffRow = ({
                     })()}
 
                     {canRemove && (
-                        <button
-                            onClick={() => onRemove(orderId, svcId, row.id)}
+                        <button 
+                            onClick={() => {
+                                if (confirmEdit()) onRemove(orderId, svcId, row.id);
+                            }}
                             className="p-3 bg-rose-50 text-rose-500 hover:bg-rose-100 border border-rose-100 rounded-2xl transition-all active:scale-90"
+                            title="Xóa KTV"
                         >
                             <Trash2 size={18} strokeWidth={2.5} />
                         </button>

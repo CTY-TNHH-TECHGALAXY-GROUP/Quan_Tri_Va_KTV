@@ -52,7 +52,7 @@ export async function GET() {
         try {
             allBookings = await fetchAll('Bookings', `
                 id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender, parent_booking_id,
-                BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
+                BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options, ktvRatings )
             `, q => q.neq('status', 'CANCELLED'));
         } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
@@ -138,6 +138,7 @@ export async function GET() {
             const timeFrames: Record<string, number> = {};
             const serviceCounts: Record<string, number> = {};
             const ktvCounts: Record<string, number> = {};
+            const ktvRatingsHistory: Record<string, number[]> = {}; // Lịch sử sao đánh giá của từng KTV
             const strengthCounts: Record<string, number> = {};
             const langCounts: Record<string, number> = {};
             const genderReqCounts: Record<string, number> = {};
@@ -198,6 +199,9 @@ export async function GET() {
                 }
             });
 
+            // Sắp xếp combinedBookings theo thời gian để lấy lịch sử KTV chính xác
+            combinedBookings.sort((a, b) => new Date(a.bookingDate || a.createdAt || 0).getTime() - new Date(b.bookingDate || b.createdAt || 0).getTime());
+
             // 2. Chỉ số cấp độ Chi tiết Dịch vụ (tính trên tất cả đơn bao gồm đơn con)
             combinedBookings.forEach(b => {
                 // Dịch vụ và KTV thường làm (từ BookingItems)
@@ -210,6 +214,14 @@ export async function GET() {
                         if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
                             item.technicianCodes.forEach((code: string) => {
                                 ktvCounts[code] = (ktvCounts[code] || 0) + 1;
+                                
+                                // Thu thập lịch sử đánh giá sao cho KTV này
+                                if (!ktvRatingsHistory[code]) ktvRatingsHistory[code] = [];
+                                let rating = 0;
+                                if (item.ktvRatings && typeof item.ktvRatings === 'object') {
+                                    rating = item.ktvRatings[code] || 0;
+                                }
+                                ktvRatingsHistory[code].push(rating);
                             });
                         }
                         // Lực massage ưa thích
@@ -269,12 +281,14 @@ export async function GET() {
             const topKtv = topKtvCode ? staffMap.get(topKtvCode) : 'N/A';
             const allKtvsStr = [...new Set(allKtvs)].join(', ');
 
-            // KTV thường làm - (Không giới hạn >= 2 lần, nếu > 1 lần thì thêm số lần)
+            // KTV thường làm - hiển thị kèm lịch sử sao đánh giá
             const frequentKtvs = Object.entries(ktvCounts)
                 .sort(([, a], [, b]) => b - a)
                 .map(([code, count]) => {
                     const name = staffMap.get(code) || code;
-                    return count > 1 ? `${name} (${count} lần)` : name;
+                    const history = ktvRatingsHistory[code] || [];
+                    const historyStr = history.map(r => r > 0 ? `${r}⭐` : '-').join(', ');
+                    return count > 1 ? `${name} (${historyStr})` : (history[0] > 0 ? `${name} (${history[0]}⭐)` : name);
                 }); // Returns array
 
             // Lực massage ưa thích (mode)

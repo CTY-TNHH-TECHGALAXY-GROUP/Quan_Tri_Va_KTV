@@ -4,13 +4,13 @@ import { HandoverService, RejectOption } from '@/lib/services/HandoverService';
 
 /**
  * POST /api/reception/handover/review
- * Reception approves or rejects handover with 3 options.
- * Body: { bookingItemId: string, action: 'APPROVE' | 'REJECT', rejectOption?: 'REDO' | 'DEDUCT' | 'CONFISCATE', reason?: string, ktvCode?: string }
+ * Reception approves or rejects handover.
+ * Body: { bookingItemId: string, action: 'APPROVE' | 'REJECT', rejectOption?: 'REDO' | 'PENALIZE_ONLY', reason?: string, ktvCode?: string, deductPoints?: boolean, rejectImages?: string[] }
  */
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { bookingItemId, action, rejectOption, reason, ktvCode, rejectImages } = body;
+        const { bookingItemId, action, rejectOption, reason, ktvCode, rejectImages, deductPoints } = body;
 
         if (!bookingItemId || !action) {
             return NextResponse.json(
@@ -28,34 +28,14 @@ export async function POST(request: Request) {
             if (!result.success) {
                 return NextResponse.json({ success: false, error: result.error }, { status: 400 });
             }
-
-            // Remove deductPoints because KTVDisciplinePoints table does not exist
-            // if (body.deductPoints) {
-            //     const KtvDisciplineService = (await import('@/lib/services/KtvDisciplineService')).KtvDisciplineService;
-            //     const { data: item } = await supabase.from('BookingItems').select('technicianCodes').eq('id', bookingItemId).single();
-            //     if (item?.technicianCodes?.length) {
-            //         for (const staffId of item.technicianCodes) {
-            //             await KtvDisciplineService.deductPoints(supabase, staffId, 'BAD_HANDOVER', `Vi phạm quy chuẩn bàn giao phòng (Đơn #${bookingItemId})`);
-            //         }
-            //     }
-            // }
-
             return NextResponse.json({ success: true, message: 'Đã duyệt bàn giao.' });
         }
 
-        // REJECT with 3 options
+        // REJECT
         if (action === 'REJECT') {
-            if (!rejectOption || !['REDO', 'DEDUCT', 'CONFISCATE'].includes(rejectOption)) {
+            if (!rejectOption || !['REDO', 'PENALIZE_ONLY'].includes(rejectOption)) {
                 return NextResponse.json(
-                    { success: false, error: 'rejectOption must be REDO, DEDUCT, or CONFISCATE' },
-                    { status: 400 }
-                );
-            }
-
-            // Option 2 & 3 require reason (2-step confirmation)
-            if ((rejectOption === 'DEDUCT' || rejectOption === 'CONFISCATE') && !reason) {
-                return NextResponse.json(
-                    { success: false, error: 'Vui lòng nhập lý do cho hành động này.' },
+                    { success: false, error: 'rejectOption must be REDO or PENALIZE_ONLY' },
                     { status: 400 }
                 );
             }
@@ -95,7 +75,7 @@ export async function POST(request: Request) {
                 reason || 'Không đạt yêu cầu',
                 ktvCode,
                 newRejectUrls,
-                body.deductPoints
+                deductPoints
             );
 
             if (!result.success) {

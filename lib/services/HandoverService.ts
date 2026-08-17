@@ -24,7 +24,7 @@ export interface HandoverMappingConfig {
     [key: string]: ServiceMapping;
 }
 
-export type RejectOption = 'REDO' | 'DEDUCT' | 'CONFISCATE';
+export type RejectOption = 'REDO' | 'PENALIZE_ONLY';
 
 // =====================================================
 // MAIN SERVICE CLASS
@@ -350,52 +350,29 @@ export class HandoverService {
                 break;
             }
 
-            case 'DEDUCT': {
-                // Get deduction amount
-                const { data: deductConfig } = await supabase
-                    .from('SystemConfigs')
-                    .select('value')
-                    .eq('key', 'handover_deduction_amount')
-                    .single();
-                const deductAmount = parseInt(deductConfig?.value || '50000', 10);
-
-                // Approve handover but create wallet deduction
+            case 'PENALIZE_ONLY': {
+                // Duyệt bàn giao (để tiếp tục flow) nhưng lưu lỗi vi phạm
                 const { error: updateErr } = await supabase
                     .from('BookingItems')
                     .update({
                         handover_status: 'APPROVED',
-                        handover_reject_action: 'DEDUCT',
+                        handover_reject_action: 'PENALIZE_ONLY',
                         handover_comment: reason,
+                        handover_reject_images: newRejectImages, // có thể lưu ảnh minh chứng
                     })
                     .eq('id', itemId);
 
                 if (updateErr) return { success: false, error: updateErr.message };
 
-                // Create WalletAdjustment record (negative amount = deduction)
+                // Tạo kỷ luật (phạt điểm) nếu deductPoints
                 const techCodes: string[] = item.technicianCodes || [];
                 for (const tc of techCodes) {
-                    await supabase.from('WalletAdjustments').insert({
-                        staff_id: tc,
-                        amount: -deductAmount,
-                        type: 'PENALTY',
-                        wallet_type: 'MAIN',
-                        reason: `Phạt bàn giao: ${reason} (Đơn #${fullBillCode})`,
-                        created_by: 'System'
-                    });
-
-                    await createNotification({
-                        type: 'HANDOVER_DEDUCTION',
-                        employeeId: tc,
-                        message: `💸 Bạn bị trừ ${deductAmount.toLocaleString()}đ do bàn giao không đạt: ${reason}`,
-                        bookingId: item.bookingId,
-                    });
-                    
                     if (deductPoints) {
                         await KtvDisciplineService.deductPoints(
                             supabase,
                             tc,
                             'HANDOVER_REJECT',
-                            `Phạt không đạt: Bị trừ ${deductAmount.toLocaleString()}đ tiền tua. ${reason} (Đơn #${fullBillCode})`,
+                            `Lỗi bàn giao phòng: ${reason} (Đơn #${fullBillCode})`,
                             false,
                             item.bookingId,
                             newRejectImages
@@ -407,49 +384,13 @@ export class HandoverService {
                             message: `⚠️ Bạn bị gắn cờ vi phạm: Trừ 5đ chuyên cần. Lý do: ${reason}`,
                             bookingId: item.bookingId,
                         });
-                    }
-                }
-                break;
-            }
-
-            case 'CONFISCATE': {
-                // Lock commission entirely
-                const { error: updateErr } = await supabase
-                    .from('BookingItems')
-                    .update({
-                        handover_status: 'REJECTED',
-                        handover_reject_action: 'CONFISCATE',
-                        handover_comment: reason,
-                        commission_locked: true,
-                    })
-                    .eq('id', itemId);
-
-                if (updateErr) return { success: false, error: updateErr.message };
-
-                const techCodes: string[] = item.technicianCodes || [];
-                for (const tc of techCodes) {
-                    await createNotification({
-                        type: 'HANDOVER_CONFISCATE',
-                        employeeId: tc,
-                        message: `🚫 Bạn đã bị tước toàn bộ tiền tua đơn #${fullBillCode}. Lý do: ${reason}`,
-                        bookingId: item.bookingId,
-                    });
-                    
-                    if (deductPoints) {
-                        await KtvDisciplineService.deductPoints(
-                            supabase,
-                            tc,
-                            'HANDOVER_REJECT',
-                            `Tước tiền tua: ${reason} (Đơn #${fullBillCode})`,
-                            false,
-                            item.bookingId,
-                            newRejectImages
-                        );
-                        
+                    } else {
+                        // Nếu lễ tân chọn PENALIZE_ONLY nhưng KHÔNG tick deductPoints? 
+                        // (Trên UI đã chặn việc này, nhưng để chắc chắn ta push 1 thông báo thường)
                         await createNotification({
-                            type: 'DISCIPLINE',
+                            type: 'SYSTEM',
                             employeeId: tc,
-                            message: `⚠️ Bạn bị gắn cờ vi phạm: Trừ 5đ chuyên cần. Lý do: ${reason}`,
+                            message: `Cảnh cáo bàn giao đơn #${fullBillCode}: ${reason}`,
                             bookingId: item.bookingId,
                         });
                     }

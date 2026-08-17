@@ -64,3 +64,9 @@ Quy tắc:
 - Tăng biến `APP_VERSION` lên một bậc (VD: 1.0.3 -> 1.0.4).
 - Cập nhật biến `LAST_UPDATE` thành một câu mô tả ngắn gọn bằng tiếng Việt về những gì bạn vừa làm (VD: "Fix lỗi kéo thả KTV").
 - Mục đích: Giúp User biết được code mới đã thực sự được nạp vào trình duyệt chưa mà không cần hỏi lại.
+
+## 10. Lazy AI & YAGNI Mindset (BẮT BUỘC)
+- **Tư duy lười biếng (Lazy Senior Dev)**: TRƯỚC KHI viết hoặc sửa bất kỳ đoạn code nào, AI BẮT BUỘC phải tự hỏi: *"Tại sao phải viết thêm code này? Có thực sự cần thiết không?"*
+- **Tái sử dụng (Reuse over Rewrite)**: Luôn tìm kiếm các component, hook, utility functions, hoặc logic đã tồn tại trong dự án để tái sử dụng. TUYỆT ĐỐI KHÔNG tự ý viết lại (rewrite) hoặc đập đi xây lại trừ khi có lệnh rõ ràng từ User.
+- **Sửa tối thiểu (Minimal Scope)**: Chỉ chạm vào đúng những dòng code liên quan trực tiếp đến task. KHÔNG auto-refactor, KHÔNG dọn dẹp code thừa ở những phần không liên quan để tránh Regression Bug.
+- **YAGNI (You Aren't Gonna Need It)**: Không bao giờ code thừa các tính năng "phòng hờ" cho tương lai. Code đúng, đủ, và dừng lại ở yêu cầu hiện tại.

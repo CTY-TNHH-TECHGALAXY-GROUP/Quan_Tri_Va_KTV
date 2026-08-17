@@ -22,24 +22,50 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
 
     return (
         <div className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden">
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-50 pointer-events-none">
-                <div className="pointer-events-auto">
+            {/* HEADER: Chuyển sang relative và sắp xếp flex-col trên mobile để không đè nội dung */}
+            <div className="relative w-full p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-50 bg-white/90 backdrop-blur-md shadow-sm border-b border-gray-100 shrink-0">
+                <div className="flex justify-between items-center w-full sm:w-auto">
                     <button 
                         onClick={onClose} 
-                        className="p-3 text-gray-300 hover:text-gray-500 rounded-full hover:bg-gray-100 transition-colors shadow-sm bg-white/50 backdrop-blur-sm"
+                        className="p-2 sm:p-3 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors shadow-sm bg-white"
                     >
-                        <X className="w-8 h-8" />
+                        <X className="w-6 h-6 sm:w-8 sm:h-8" />
                     </button>
+                    {/* Booking Dropdown trên mobile sẽ hiện cạnh nút X */}
+                    <div className="sm:hidden block w-full max-w-[200px] ml-2">
+                        {group.childBookings.length > 1 && (
+                            <div className="bg-gray-50 p-1.5 rounded-2xl shadow-inner border border-gray-100">
+                                <select
+                                    value={currentBooking.id}
+                                    onChange={(e) => {
+                                        const child = group.childBookings.find((c: any) => c.id === e.target.value);
+                                        if (child) setCurrentBooking(child);
+                                    }}
+                                    className="w-full bg-transparent outline-none text-gray-700 font-bold cursor-pointer text-xs truncate"
+                                >
+                                    {group.childBookings.map((child: any) => {
+                                        const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
+                                        const isReady = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
+                                        return (
+                                            <option key={child.id} value={child.id} disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}>
+                                                {child.customerName} {isEvaluated ? '✓' : isReady ? '(!)' : '(Đang làm)'}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 
-                <div className="pointer-events-auto flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                     {/* Language Selector */}
-                    <div className="flex gap-2 bg-gray-50/80 p-1.5 rounded-full shadow-sm border border-gray-100 pointer-events-auto">
+                    <div className="flex flex-wrap gap-1 sm:gap-2 bg-gray-50 p-1.5 rounded-2xl shadow-inner border border-gray-100 justify-center">
                         {(['VN', 'EN', 'KR', 'JP', 'ZH'] as const).map(lang => (
                             <button
                                 key={lang}
                                 onClick={() => setLanguage(lang)}
-                                className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
+                                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex-1 sm:flex-none ${
                                     language === lang 
                                         ? 'bg-[#5A00FF] text-white shadow-md' 
                                         : 'text-gray-500 hover:bg-gray-200'
@@ -50,16 +76,16 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                         ))}
                     </div>
 
-                    {/* Booking Dropdown (Chỉ hiện khi đoàn có nhiều hơn 1 khách) */}
+                    {/* Booking Dropdown trên Desktop */}
                     {group.childBookings.length > 1 && (
-                        <div className="pointer-events-auto bg-white/90 p-1.5 rounded-full shadow-sm border border-gray-100 min-w-[280px]">
+                        <div className="hidden sm:block bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 min-w-[280px]">
                             <select
                                 value={currentBooking.id}
                                 onChange={(e) => {
                                     const child = group.childBookings.find((c: any) => c.id === e.target.value);
                                     if (child) setCurrentBooking(child);
                                 }}
-                                className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate rounded-full"
+                                className="w-full bg-transparent p-2 outline-none text-gray-700 font-medium cursor-pointer text-sm truncate"
                             >
                                 {group.childBookings.map((child: any) => {
                                     const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
@@ -68,11 +94,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                     const label = `${child.customerName} - KTV: ${ktvNames}`;
                                     
                                     return (
-                                        <option 
-                                            key={child.id} 
-                                            value={child.id}
-                                            disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}
-                                        >
+                                        <option key={child.id} value={child.id} disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}>
                                             {label} {isEvaluated ? ' ✓ (Đã đánh giá)' : isReady ? ' (Chờ đánh giá)' : ' (Đang phục vụ)'}
                                         </option>
                                     );
@@ -83,7 +105,9 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                 </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50">
+            {/* CONTENT AREA: Sửa lại để cuộn được nếu dài quá màn hình */}
+            <div className="flex-1 overflow-y-auto bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50 p-4 sm:p-8">
+                <div className="min-h-full flex flex-col justify-start max-w-4xl w-full mx-auto pb-12 pt-4 sm:justify-center sm:pt-0">
                 <AnimatePresence mode="wait">
                     {step === 1 && (
                         <motion.div 
@@ -145,6 +169,40 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 <p className="text-xl text-gray-500">{t.rateDesc}</p>
                             </div>
 
+                            {/* Khối Service Feedback (Violations) */}
+                            {reminders.length > 0 && (
+                                <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-12">
+                                    <h3 className="text-gray-800 font-bold text-xl mb-4 flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${violations.length > 0 ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        </div>
+                                        {t.violationsSectionTitle || 'Service feedback (if any)'}
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {reminders.map((reminder) => {
+                                            const rId = reminder.id.toString();
+                                            const isSelected = violations.includes(rId);
+                                            return (
+                                                <div 
+                                                    key={rId}
+                                                    onClick={() => toggleViolation(rId)}
+                                                    className={`flex items-start gap-4 p-4 bg-white rounded-2xl cursor-pointer transition-all border ${isSelected ? 'border-amber-200 shadow-sm ring-1 ring-amber-100' : 'border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.01)]'}`}
+                                                >
+                                                    <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
+                                                        {isSelected && (
+                                                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                                        )}
+                                                    </div>
+                                                    <span className={`text-lg leading-snug font-medium ${isSelected ? 'text-amber-900' : 'text-gray-500'}`}>
+                                                        {getReminderText(reminder)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
                                 {mergedKtvGroups.map((group) => (
                                     <div key={group.ktvId} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
@@ -203,40 +261,6 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 )}
                             </div>
 
-                            {/* Khối Service Feedback (Violations) */}
-                            {reminders.length > 0 && (
-                                <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-12">
-                                    <h3 className="text-gray-800 font-bold text-xl mb-4 flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${violations.length > 0 ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                        </div>
-                                        {t.violationsSectionTitle || 'Service feedback (if any)'}
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {reminders.map((reminder) => {
-                                            const rId = reminder.id.toString();
-                                            const isSelected = violations.includes(rId);
-                                            return (
-                                                <div 
-                                                    key={rId}
-                                                    onClick={() => toggleViolation(rId)}
-                                                    className={`flex items-start gap-4 p-4 bg-white rounded-2xl cursor-pointer transition-all border ${isSelected ? 'border-amber-200 shadow-sm ring-1 ring-amber-100' : 'border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.01)]'}`}
-                                                >
-                                                    <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
-                                                        {isSelected && (
-                                                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                                                        )}
-                                                    </div>
-                                                    <span className={`text-lg leading-snug font-medium ${isSelected ? 'text-amber-900' : 'text-gray-500'}`}>
-                                                        {getReminderText(reminder)}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
                             <div className="flex justify-center gap-8 items-center">
                                 <button 
                                     onClick={onClose}
@@ -255,6 +279,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                         </motion.div>
                     )}
                 </AnimatePresence>
+                </div>
             </div>
         </div>
     );

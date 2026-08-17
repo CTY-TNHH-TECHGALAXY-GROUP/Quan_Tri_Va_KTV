@@ -559,6 +559,15 @@ export async function processDispatch(bookingId: string, dispatchData: {
             await supabase.from('Bookings').update({ guestCount: dispatchData.guestCount }).eq('id', bookingId);
         }
 
+        // 3.5 Fetch existing items BEFORE RPC to accurately detect NEW KTVs for notifications
+        const { data: existingItemsBefore } = await supabase.from('BookingItems').select('id, segments').eq('bookingId', bookingId);
+        const oldKtvIds = new Set<string>();
+        (existingItemsBefore || []).forEach(item => {
+            let segs = [];
+            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+            segs.forEach((s: any) => { if (s.ktvId) oldKtvIds.add(s.ktvId); });
+        });
+
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION
         const { data, error } = await supabase.rpc('dispatch_confirm_booking', {
             p_booking_id: bookingId,
@@ -584,15 +593,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
         // 4. Send background push and realtime notification to KTVs
         if (dispatchData.staffAssignments && dispatchData.staffAssignments.length > 0) {
-            // Lấy thông tin hiện tại của các item để so sánh, tránh spam thông báo
-            const { data: existingItems } = await supabase.from('BookingItems').select('id, segments').eq('bookingId', bookingId);
-            const oldKtvIds = new Set<string>();
-            (existingItems || []).forEach(item => {
-                let segs = [];
-                try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
-                segs.forEach((s: any) => { if (s.ktvId) oldKtvIds.add(s.ktvId); });
-            });
-
             const staffIds = dispatchData.staffAssignments.map(a => a.ktvId).filter(Boolean);
             const uniqueStaffIds = Array.from(new Set(staffIds));
             

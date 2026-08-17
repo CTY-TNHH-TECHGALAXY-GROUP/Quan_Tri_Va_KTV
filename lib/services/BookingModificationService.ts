@@ -242,7 +242,7 @@ export class BookingModificationService {
                     || String(item.name || '').toLowerCase().includes('phòng riêng')
                     || String(item.name || '').toLowerCase().includes('phong rieng');
 
-                let itemStatus = 'NEW'; // Mặc định là NEW chờ điều phối
+                let itemStatus = 'WAITING'; // Mặc định là WAITING chờ điều phối
                 let itemTechCodes: string[] = [];
                 let newSegments: any[] = [];
                 

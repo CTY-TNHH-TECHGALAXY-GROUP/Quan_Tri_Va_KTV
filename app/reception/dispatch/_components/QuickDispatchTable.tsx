@@ -866,6 +866,7 @@ const ServiceGroupCard = ({
       setKtvSearch('');
     };
 
+    /*
     const conflictSvc = allServices.find(s => 
       !groupItems.some(i => i.id === s.id) && 
       !s.mergedIntoId && 
@@ -878,16 +879,15 @@ const ServiceGroupCard = ({
           groupItems[0].id,
           ktvId,
           () => {
-             // onConfirm
              setKtvSearch('');
           },
           () => {
-             // onCancel
              proceedAdd();
           }
        );
        return;
     }
+    */
 
     proceedAdd();
   };
@@ -1080,24 +1080,31 @@ const ServiceGroupCard = ({
       {/* Container nội dung */}
       <div className={`${!showHeader ? 'pt-4' : 'pt-2'} pb-8 px-4`}>
         {/* Dòng 2: Tên Dịch vụ & Thời gian */}
-        <div className="flex items-center justify-between flex-wrap gap-2 pl-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
-            <input 
-              type="text" 
-              value={state.displayName} 
-              onChange={e => onUpdate({ displayName: e.target.value })} 
-              placeholder={serviceName}
-              className={`font-black text-base bg-transparent border-b border-dashed hover:border-indigo-300 focus:border-indigo-500 outline-none w-full max-w-[200px] sm:max-w-[300px] truncate ${state.isUtility ? 'text-amber-700 italic border-amber-300/50' : 'text-gray-900 border-gray-300/50'}`} 
-            />
-            {(!state.isUtility) && (
-               <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-xl text-xs font-black shrink-0">
-                 {state.duration || duration}p
-               </span>
+        <div className="flex items-start justify-between flex-wrap gap-2 pl-2">
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
+            <div className="flex items-center gap-2 w-full">
+              {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
+              <input 
+                type="text" 
+                value={state.displayName} 
+                onChange={e => onUpdate({ displayName: e.target.value })} 
+                placeholder={serviceName}
+                className={`font-black text-base bg-transparent border-b border-dashed hover:border-indigo-300 focus:border-indigo-500 outline-none w-full truncate ${state.isUtility ? 'text-amber-700 italic border-amber-300/50' : 'text-gray-900 border-gray-300/50'}`} 
+              />
+              {(!state.isUtility) && (
+                 <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-xl text-xs font-black shrink-0">
+                   {state.duration || duration}p
+                 </span>
+              )}
+              {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
+            </div>
+            {state.isMergedGroup && groupItems.length > 0 && (
+                <span className="text-[10px] text-indigo-500/90 font-medium italic truncate w-full">
+                    Gồm: {groupItems.map(g => g.serviceName).join(' + ')}
+                </span>
             )}
-            {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
           </div>
-          </div>
+        </div>
         </div>
         
         <div className="space-y-4 mt-4 pl-2">

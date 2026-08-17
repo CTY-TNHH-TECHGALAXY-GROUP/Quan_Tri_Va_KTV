@@ -173,7 +173,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                         ...(itemFeedback !== null && { itemFeedback })
                     })
                     .eq('id', item.id)
-                    .then(res => res);
+                    .then(res => {
+                        if (res.error) throw res.error;
+                        return res;
+                    });
                 updatePromises.push(p);
             }
 
@@ -186,7 +189,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                     updatedAt: new Date().toISOString() 
                 })
                 .eq('id', booking.id)
-                .then(res => res);
+                .then(res => {
+                    if (res.error) throw res.error;
+                    return res;
+                });
             
             updatePromises.push(pBooking);
 
@@ -200,9 +206,9 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             );
             
             onClose();
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error submitting feedback:", e);
-            alert("Đã có lỗi xảy ra. Vui lòng thử lại.");
+            alert(`Đã có lỗi xảy ra. Vui lòng thử lại. (${e?.message || ''})`);
         } finally {
             setIsSubmitting(false);
         }
