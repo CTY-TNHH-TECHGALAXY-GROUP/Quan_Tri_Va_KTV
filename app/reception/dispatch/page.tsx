@@ -2376,10 +2376,31 @@ if (!hasPermission('dispatch_board')) {
                       );
                   })()}
                   <button
-                    onClick={handleSaveDraft}
+                    onClick={() => {
+                        const hasKtvAssigned = selectedSubOrder?.services?.some((s: any) => s.staffList?.length > 0);
+                        const isDispatched = selectedSubOrder?.dispatchStatus === 'dispatched';
+                        
+                        if (hasKtvAssigned && !isDispatched) {
+                            if (window.confirm('Bạn đã chọn KTV nhưng BẤM LƯU NHÁP sẽ CHƯA GỬI ĐƠN cho KTV.\n\nBấm [OK] để GỬI ĐƠN CHO KTV ngay.\nBấm [Cancel] nếu chỉ muốn lưu nháp trên máy chủ.')) {
+                                setShowDispatchConfirmModal(true);
+                                const validSubBookings = subOrders.filter((so: any) => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
+                                updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: Math.max(1, validSubBookings.length) }));
+                                return;
+                            }
+                        }
+                        
+                        if (isDispatched) {
+                            if (window.confirm('LƯU Ý: Nút này chỉ lưu ghi chú/phòng. Nếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
+                                handleSaveDraft();
+                            }
+                            return;
+                        }
+
+                        handleSaveDraft();
+                    }}
                     className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border-2 border-emerald-200 active:scale-95"
                   >
-                    <Save size={20} strokeWidth={3} /> LƯU
+                    <Save size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus === 'dispatched' ? 'LƯU THÔNG TIN' : 'LƯU NHÁP'}
                   </button>
                   {(() => {
                     const isFeedbackOrDone = ['FEEDBACK', 'DONE', 'CLEANING'].includes(selectedSubOrder.dispatchStatus);
@@ -2433,7 +2454,7 @@ if (!hasPermission('dispatch_board')) {
                           }`}
                       >
                         <div className="flex items-center gap-3">
-                           <Send size={20} strokeWidth={3} /> XÁC NHẬN ĐIỀU PHỐI
+                           <Send size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus === 'dispatched' ? 'CẬP NHẬT KTV & GỬI LẠI' : 'GỬI ĐƠN CHO KTV'}
                         </div>
                         {hasStartedService && (
                           <span className="text-[10px] text-rose-500 font-bold normal-case tracking-normal">(Vui lòng điều phối lẻ vì đã có DV chạy)</span>
