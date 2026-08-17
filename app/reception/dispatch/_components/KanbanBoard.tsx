@@ -732,13 +732,20 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                             return (
                                                         <div key={s.id} className="flex flex-col gap-1.5">
-                                                            <div className="flex items-center justify-between text-[11px]">
-                                                                <span className={`font-black truncate pr-2 ${s.isUtility ? 'text-amber-600/80 italic' : 'text-gray-700'}`}>
-                                                                    {s.isUtility && <span className="text-amber-500 font-bold mr-1">[Tiện ích]</span>}
-                                                                    {s.options?.displayName || s.serviceName}
-                                                                </span>
+                                                            <div className="flex items-start justify-between text-[11px] w-full">
+                                                                <div className="flex flex-col min-w-0 pr-2 flex-1">
+                                                                    <span className={`font-black line-clamp-2 leading-tight ${s.isUtility ? 'text-amber-600/80 italic' : 'text-gray-700'}`}>
+                                                                        {s.isUtility && <span className="text-amber-500 font-bold mr-1">[Tiện ích]</span>}
+                                                                        {s.options?.displayName || s.serviceName}
+                                                                    </span>
+                                                                    {s.mergedServiceIds && s.mergedServiceIds.length > 0 && (
+                                                                        <span className="text-[9px] text-indigo-500/90 mt-0.5 leading-tight italic font-medium">
+                                                                            Gộp: {s.serviceName} + {subOrder.services.filter(child => s.mergedServiceIds!.includes(child.id)).map(child => child.serviceName).join(' + ')}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 {!s.isUtility && (
-                                                                    <div className="flex flex-col items-end gap-1.5">
+                                                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                                                                         <div className="flex items-center gap-1">
                                                                             <span className="text-[10px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-lg shadow-sm border border-indigo-50 shrink-0">P.{s.selectedRoomId || '—'}</span>
                                                                             
