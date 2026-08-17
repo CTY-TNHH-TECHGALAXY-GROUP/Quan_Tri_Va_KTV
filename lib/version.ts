@@ -1,2 +1,3 @@
-export const APP_VERSION = '2.1.22'; // Tăng version khi có cập nhật mới
-export const LAST_UPDATE = 'Fix lỗi góp ý khách hàng không được lưu vào DB + chặn lễ tân bấm nhầm Lưu Nháp thay vì Gửi Đơn'; // Mô tả ngắn gọn thay đổi gần nhất
+export const APP_VERSION = '1.0.4'; // Change this manually or via build script
+export const LAST_UPDATE = 'Fix l?i hi?n th? t�n d?ch v? R�y/Nail v� g?p d?m t?ng �on KTV'; // Mô tả ngắn gọn thay đổi gần nhất
+

@@ -250,7 +250,7 @@ export async function GET(request: Request) {
                 if (commission === 0 && passedCount > 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
 
                 const serviceNames = groupItems
-                    .map((i: any) => svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase())
+                    .map((i: any) => (i.options && i.options.displayName) ? i.options.displayName : (svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase()))
                     .filter(Boolean);
                 const serviceName = serviceNames.length > 1
                     ? serviceNames.join(' + ')

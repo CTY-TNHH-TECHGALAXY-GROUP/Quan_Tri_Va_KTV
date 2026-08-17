@@ -84,7 +84,10 @@ export const useKTVHistory = () => {
       const totalCommission = bkList.reduce((s: number, r: any) => s + (r.commission || 0), 0);
       const totalTip        = bkList.reduce((s: number, r: any) => s + (r.tip || 0), 0);
       const totalBonus      = bkList.reduce((s: number, r: any) => s + (r.bonusPoints || 0), 0);
-      const uniqueBookings  = new Set(bkList.map((b: any) => b.billCode));
+      const uniqueBookings  = new Set(bkList.map((b: any) => {
+        const parts = (b.billCode || '').split('-');
+        return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : b.billCode;
+      }));
       setSummary({ totalCommission, totalTip, totalOrders: uniqueBookings.size, totalBonus, disciplinePoints });
     } catch (err: any) {
       console.error('[KTVHistory]', err.message || err);
