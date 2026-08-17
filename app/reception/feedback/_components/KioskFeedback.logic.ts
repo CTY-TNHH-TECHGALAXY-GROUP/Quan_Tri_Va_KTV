@@ -156,11 +156,21 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                     ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
                     : null;
 
+                // Gom góp ý từ khách cho các KTV thuộc item này
+                const feedbackParts: string[] = [];
+                booking.ktvList.forEach(k => {
+                    if (k.itemId === item.id && comments[k.ktvId]?.trim()) {
+                        feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
+                    }
+                });
+                const itemFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
+
                 const p = supabase
                     .from('BookingItems')
                     .update({ 
                         ktvRatings: currentRatings,
-                        itemRating: avgRating
+                        itemRating: avgRating,
+                        ...(itemFeedback !== null && { itemFeedback })
                     })
                     .eq('id', item.id)
                     .then(res => res);
