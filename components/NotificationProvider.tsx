@@ -403,7 +403,18 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 && newNotif.employeeId
                 && newNotif.employeeId === user.id;
 
-            // Must pass at least one condition
+            // 🛡️ TARGETED NOTIFICATION GUARD:
+            // If notification has an employeeId (targeted to specific person),
+            // KTV must match that employeeId — role alone is NOT sufficient.
+            // Admin/Reception can still see targeted notifs via roleAllowed.
+            if (rule && newNotif.employeeId && isKtv && !isTargetEmployee) {
+                console.log('⏭️ [NotificationProvider] KTV filtered: not target employee:', {
+                    notifType, targetEmployee: newNotif.employeeId, currentUser: user.id
+                });
+                return;
+            }
+
+            // Must pass at least one condition (for non-targeted / non-KTV)
             if (rule && !roleAllowed && !isTargetEmployee) {
                 console.log('⏭️ [NotificationProvider] Filtered out by rules:', {
                     notifType, roleId, roleAllowed, isTargetEmployee
