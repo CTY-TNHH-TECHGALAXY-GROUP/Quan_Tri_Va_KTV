@@ -631,6 +631,8 @@ if (!hasPermission('dispatch_board')) {
   const isDispatchReady = (order: PendingOrder): boolean =>
     order.services.every(s => {
       if (s.duration === 0) return true;
+      // Skip merged children — they're managed by the parent service
+      if (s.mergedIntoId || s.options?.mergedIntoId) return true;
       return s.staffList.length > 0 &&
       s.staffList.every(r => 
         r.ktvId !== '' && 
