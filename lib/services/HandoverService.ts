@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createNotification } from '@/lib/notification-helper';
+import { KtvDisciplineService } from './KtvDisciplineService';
 
 // =====================================================
 // HandoverService — S.O.L.I.D Service Layer
@@ -328,6 +329,16 @@ export class HandoverService {
                     });
                     
                     if (deductPoints) {
+                        await KtvDisciplineService.deductPoints(
+                            supabase,
+                            tc,
+                            'HANDOVER_REJECT',
+                            `Phạt dọn lại: ${reason} (Đơn #${fullBillCode})`,
+                            false,
+                            item.bookingId,
+                            newRejectImages
+                        );
+                        
                         await createNotification({
                             type: 'DISCIPLINE',
                             employeeId: tc,
@@ -380,6 +391,16 @@ export class HandoverService {
                     });
                     
                     if (deductPoints) {
+                        await KtvDisciplineService.deductPoints(
+                            supabase,
+                            tc,
+                            'HANDOVER_REJECT',
+                            `Phạt không đạt: Bị trừ ${deductAmount.toLocaleString()}đ tiền tua. ${reason} (Đơn #${fullBillCode})`,
+                            false,
+                            item.bookingId,
+                            newRejectImages
+                        );
+                        
                         await createNotification({
                             type: 'DISCIPLINE',
                             employeeId: tc,
@@ -415,6 +436,16 @@ export class HandoverService {
                     });
                     
                     if (deductPoints) {
+                        await KtvDisciplineService.deductPoints(
+                            supabase,
+                            tc,
+                            'HANDOVER_REJECT',
+                            `Tước tiền tua: ${reason} (Đơn #${fullBillCode})`,
+                            false,
+                            item.bookingId,
+                            newRejectImages
+                        );
+                        
                         await createNotification({
                             type: 'DISCIPLINE',
                             employeeId: tc,

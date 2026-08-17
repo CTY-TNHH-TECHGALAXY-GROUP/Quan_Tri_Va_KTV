@@ -161,7 +161,15 @@ export class KtvDisciplineService {
     /**
      * Thực hiện phạt điểm KTV, ghi lịch sử và kiểm tra điều kiện giáng chức
      */
-    static async deductPoints(supabase: SupabaseClient, staffId: string, ruleCode: string, note?: string, isExempted: boolean = false) {
+    static async deductPoints(
+        supabase: SupabaseClient,
+        staffId: string,
+        ruleCode: string,
+        note?: string,
+        isExempted: boolean = false,
+        bookingId?: string,
+        images?: string[]
+    ) {
         const date = new Date();
         const month = date.getMonth() + 1;
         const year = date.getFullYear();
@@ -197,7 +205,9 @@ export class KtvDisciplineService {
                 rule_code: ruleCode,
                 points_deducted: penaltyPoints,
                 reason: note || (rule ? rule.name : ruleCode),
-                is_exempted: isExempted
+                is_exempted: isExempted,
+                booking_id: bookingId || null,
+                images: images || []
             });
 
         if (ledgerError) {
