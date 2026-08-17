@@ -26,6 +26,7 @@ export const recalculateAllTimes = (order: PendingOrder, roomTransitionTime: num
   let ktvEndTimes: Record<string, { time: string, roomId: string }> = {};
   
   cloned.services.forEach(svc => {
+    if (svc.mergedIntoId) return; // Skip merged child services - their time is included in parent
     svc.staffList.forEach(r => {
       if (!r.ktvId || r.segments.length === 0) return;
       

@@ -209,10 +209,38 @@ export async function getDispatchData(date: string) {
                 console.error('❌ [Server] Error fetching BookingItems:', iError.message);
             }
 
-            // Attach BookingItems (with service info) to each booking
-            bookings = bookings.map(b => ({
-                ...b,
-                BookingItems: (items || [])
+            // Fetch BookingGuests
+            const { data: guests, error: gError } = await supabase
+                .from('BookingGuests')
+                .select('*')
+                .in('booking_id', bookingIds)
+                .order('guest_index', { ascending: true });
+
+            if (gError) {
+                console.error('❌ [Server] Error fetching BookingGuests:', gError.message);
+            }
+
+            // Attach BookingItems (with service info) and BookingGuests to each booking
+            bookings = bookings.map(b => {
+                const bGuests = (guests || []).filter(g => g.booking_id === b.id).map(g => ({
+                    id: g.id,
+                    bookingId: g.booking_id,
+                    guestIndex: g.guest_index,
+                    guestLabel: g.guest_label,
+                    customerName: g.customer_name,
+                    gender: g.gender,
+                    nationality: g.nationality,
+                    bedId: g.bed_id,
+                    roomId: g.room_id,
+                    notes: g.notes,
+                    focusArea: g.focus_area,
+                    status: g.status,
+                }));
+
+                return {
+                    ...b,
+                    guests: bGuests,
+                    BookingItems: (items || [])
                     .filter(i => i.bookingId === b.id)
                     .sort((a, b) => {
                         const orderA = a.options?.order;
@@ -271,8 +299,9 @@ export async function getDispatchData(date: string) {
                         return {
                             ...i,
                             options: parsedOptions,
-                            service_name: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`,
-                            serviceName: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`, // Thêm camelCase cho đồng bộ
+                            service_name: svcInfo?.name || `DV ${sId.toUpperCase()}`,
+                            serviceName: svcInfo?.name || `DV ${sId.toUpperCase()}`, // Thêm camelCase cho đồng bộ
+                            displayName: parsedOptions?.displayName || svcInfo?.name || `DV ${sId.toUpperCase()}`,
                             service_description: (b.source === 'VIP_MENU' || parsedOptions?.vipDuration || parsedOptions?.selectedSkills) ? '' : (svcInfo?.description || ''),
                             duration: finalDuration,
                             is_utility: svcInfo?.is_utility ?? (sId === 'nhs0900'), // ✅ is_utility, fallback legacy
@@ -281,9 +310,11 @@ export async function getDispatchData(date: string) {
                             timeStart: i.timeStart || null,
                             timeEnd: i.timeEnd || null,
                             status: i.status || 'NEW',
+                            guestId: i.guest_id || null,
                         };
                     })
-            }));
+                };
+            });
         }
 
         console.log(`📡 [Server] Fetched: ${bookings.length} bookings for ${date}`);
@@ -341,6 +372,14 @@ export async function processDispatch(bookingId: string, dispatchData: {
         status?: string,
         segments?: any[],
         options: any 
+    }[];
+    guestUpdates?: {
+        id: string;
+        bedId?: string | null;
+        roomId?: string | null;
+        status?: string;
+        notes?: string | null;
+        focusArea?: string | null;
     }[];
     guestCount?: number;
 }) {
@@ -591,6 +630,22 @@ export async function processDispatch(bookingId: string, dispatchData: {
             throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
         }
 
+        // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
+        if (dispatchData.guestUpdates && dispatchData.guestUpdates.length > 0) {
+            for (const gu of dispatchData.guestUpdates) {
+                const updateData: any = {};
+                if (gu.bedId !== undefined) updateData.bed_id = gu.bedId;
+                if (gu.roomId !== undefined) updateData.room_id = gu.roomId;
+                if (gu.status !== undefined) updateData.status = gu.status;
+                if (gu.notes !== undefined) updateData.notes = gu.notes;
+                if (gu.focusArea !== undefined) updateData.focus_area = gu.focusArea;
+                
+                if (Object.keys(updateData).length > 0) {
+                    await supabase.from('BookingGuests').update(updateData).eq('id', gu.id);
+                }
+            }
+        }
+
         // 4. Send background push and realtime notification to KTVs
         if (dispatchData.staffAssignments && dispatchData.staffAssignments.length > 0) {
             const staffIds = dispatchData.staffAssignments.map(a => a.ktvId).filter(Boolean);
@@ -790,6 +845,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
         // 2. Update BookingItems (Dữ liệu chi tiết từng dịch vụ, không đổi status)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
             for (const item of dispatchData.itemUpdates) {
+                const itemOpts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                if (itemOpts.mergedIntoId) continue; // Skip child items - parent already handles TurnQueue
                 const technicianCodes = Array.isArray(item.technicianCodes) 
                     ? item.technicianCodes 
                     : (typeof item.technicianCodes === 'string' ? item.technicianCodes.split(',').map(c => c.trim()).filter(Boolean) : []);
@@ -1259,6 +1316,24 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             }
         }
 
+        // 🔥 SYNC CHILD ITEMS: Khi parent merged service đổi status, child phải đổi theo
+        // Nếu không, recomputeBookingStatus sẽ kéo booking status lùi vì child vẫn ở WAITING
+        const { data: allBookingItems } = await supabase.from('BookingItems').select('id, options').eq('bookingId', bookingId);
+        if (allBookingItems) {
+            const childIdsToSync: string[] = [];
+            for (const bi of allBookingItems) {
+                let opts: any = {};
+                try { opts = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {}); } catch {}
+                // If this item is a child merged into one of the items we just updated
+                if (opts.mergedIntoId && itemIds.includes(opts.mergedIntoId)) {
+                    childIdsToSync.push(bi.id);
+                }
+            }
+            if (childIdsToSync.length > 0) {
+                await supabase.from('BookingItems').update({ status: newStatus }).in('id', childIdsToSync);
+            }
+        }
+
         if (newStatus === 'IN_PROGRESS') {
             const now = customStartTime || new Date().toISOString();
             
@@ -1443,7 +1518,7 @@ export async function updateBookingMeta(bookingId: string, data: { guestCount?: 
     }
 }
 
-export async function addAddonServices(bookingId: string, items: { serviceId: string; qty: number }[], adminId: string = 'ADMIN') {
+export async function addAddonServices(bookingId: string, items: { serviceId: string; qty: number; guestId?: string }[], adminId: string = 'ADMIN') {
     return await BookingModificationService.addAddonServices(bookingId, items, adminId);
 }
 

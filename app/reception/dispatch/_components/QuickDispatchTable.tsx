@@ -105,11 +105,11 @@ export const QuickDispatchTable = ({
 
       const svcForUI = {
          ...svc,
-         customerNote: combinedNote || undefined,
-         genderReq: combinedGender || undefined,
-         strength: combinedStrength || undefined,
-         focus: combinedFocus || undefined,
-         avoid: combinedAvoid || undefined,
+         customerNote: combinedNote || '',
+         genderReq: combinedGender || '',
+         strength: combinedStrength || '',
+         focus: combinedFocus || '',
+         avoid: combinedAvoid || '',
          options: {
             ...svc.options,
             _generatedDisplayName: combinedName,
@@ -302,18 +302,8 @@ export const QuickDispatchTable = ({
                 let totalStaffDur = staff.segments?.[0]?.duration || duration;
                 let finalEndTime = staff.segments?.[0]?.endTime;
                 
-                if (item.mergedServiceIds?.length) {
-                   const mergedSvcs = services.filter(s => item.mergedServiceIds?.includes(s.id));
-                   mergedSvcs.forEach(ms => {
-                      const mStaff = ms.staffList.find(r => r.ktvId === staff.ktvId);
-                      if (mStaff) {
-                         totalStaffDur += mStaff.segments?.[0]?.duration || ms.duration;
-                         if (mStaff.segments?.[0]?.endTime) {
-                            finalEndTime = mStaff.segments[0].endTime;
-                         }
-                      }
-                   });
-                }
+                // Parent segment duration already contains the TOTAL merged duration
+                // Do NOT add child durations here — it would double-count
                 if (!finalEndTime) {
                    finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
                 }
@@ -392,9 +382,8 @@ export const QuickDispatchTable = ({
           if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
           const st = state.ktvStartTimes?.[idx] || getCurrentTime();
           
-          const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
           const originalDur = updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
-          // For merged services, prefer state.ktvDurations (already includes child duration)
+          // For merged services, ktvDurations already contains the TOTAL merged duration from the UI
           const ktvDur = state.ktvDurations?.[idx] || originalDur;
           
           const segment: WorkSegment = {
@@ -425,8 +414,8 @@ export const QuickDispatchTable = ({
             let bedId: string | null = null;
             if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
             const st = state.ktvStartTimes?.[ki] || getCurrentTime();
-            const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
             const originalDur = updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
+            // For merged services, ktvDurations already contains the TOTAL merged duration from the UI
             const kd = state.ktvDurations?.[ki] || originalDur;
             
             const finalEndTime = state.ktvEndTimes?.[ki] || calcEndTime(st, kd);
