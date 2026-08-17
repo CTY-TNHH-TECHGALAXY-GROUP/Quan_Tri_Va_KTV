@@ -24,6 +24,13 @@ export async function POST(request: Request) {
             );
         }
 
+        // Verify if staff exists first to avoid FK constraint error
+        const { data: staffData } = await supabase.from('Staff').select('id').eq('id', staffId).single();
+        if (!staffData) {
+            console.log(`⏭️ [Push Sync API] Bỏ qua đăng ký Push cho ${staffId} vì không phải là KTV hợp lệ trong bảng Staff.`);
+            return NextResponse.json({ success: true, ignored: true });
+        }
+
         // Upsert subscription (replace if same staff + same endpoint)
         const { error } = await supabase
             .from('StaffPushSubscriptions')

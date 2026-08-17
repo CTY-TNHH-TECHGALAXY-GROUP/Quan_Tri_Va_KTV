@@ -167,7 +167,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
     // 📲 Auto-register Push Notifications (runs once per session on first user tap)
     const registerPushIfNeeded = async () => {
-        if (pushRegisteredRef.current || !user?.id) return;
+        if (pushRegisteredRef.current || !user?.id || role !== 'TECHNICIAN') return;
         if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
             console.log('⏭️ [Push] Not supported in this browser');
             return;
