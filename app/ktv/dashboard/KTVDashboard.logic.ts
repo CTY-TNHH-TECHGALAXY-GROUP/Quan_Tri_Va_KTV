@@ -492,6 +492,28 @@ export function useKTVDashboard(config?: DashboardConfig) {
             allMySegsForStatus.push(...mySegs);
         }
 
+        // 🛡️ BẢO VỆ CHỐNG KẸT APP KHI BỊ GỠ ĐƠN & LỖI LOCAL STORAGE:
+        // Nếu KTV không có bất kỳ segment nào trong đơn hàng này 
+        // (tức là Lễ tân đã xóa họ ra khỏi đơn, hoặc TurnQueue đã clear)
+        // và họ KHÔNG ở trong luồng Hậu kỳ -> Xóa toàn bộ dấu vết và văng ra Dashboard!
+        if (allMySegsForStatus.length === 0) {
+            const isPostService = ['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current);
+            if (!isPostService) {
+                console.log("🚫 [ScreenEngine] KTV không còn segment nào trong đơn -> Kích về DASHBOARD và dọn dẹp bộ nhớ!");
+                setBooking(null);
+                setScreen('DASHBOARD');
+                setIsTimerRunning(false);
+                setIsPrepping(false);
+                postServiceBookingIdRef.current = null;
+                try {
+                    localStorage.removeItem('ktv_active_screen');
+                    localStorage.removeItem('ktv_active_booking_id');
+                    localStorage.removeItem(POST_SERVICE_BOOKING_KEY);
+                } catch(e) {}
+                return;
+            }
+        }
+
         if (allMySegsForStatus.length > 0) {
             let allDone = true;
             let allFeedback = true;
