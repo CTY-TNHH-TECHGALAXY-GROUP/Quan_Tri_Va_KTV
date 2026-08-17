@@ -250,7 +250,7 @@ export class HandoverService {
         // 1. Fetch current item state
         const { data: item, error: fetchErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings(billCode)')
+            .select('id, bookingId, handover_reject_count, technicianCodes, handover_reject_images, Bookings!fk_bookingitems_booking(billCode)')
             .eq('id', itemId)
             .single();
 
