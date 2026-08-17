@@ -846,7 +846,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
             for (const item of dispatchData.itemUpdates) {
                 const itemOpts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
-                if (itemOpts.mergedIntoId) continue; // Skip child items - parent already handles TurnQueue
+                const isChild = !!itemOpts.mergedIntoId;
+                
                 const technicianCodes = Array.isArray(item.technicianCodes) 
                     ? item.technicianCodes 
                     : (typeof item.technicianCodes === 'string' ? item.technicianCodes.split(',').map(c => c.trim()).filter(Boolean) : []);
@@ -868,6 +869,9 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 }
                 
                 console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
+
+                // NẾU LÀ CHILD ITEM THÌ DỪNG LẠI TẠI ĐÂY (không đồng bộ TurnQueue)
+                if (isChild) continue;
 
                 // 3. Đồng bộ lại start_time cho TurnQueue (quan trọng để KTV không bị chặn khi Lễ tân đổi giờ)
                 if (item.segments && Array.isArray(item.segments)) {
