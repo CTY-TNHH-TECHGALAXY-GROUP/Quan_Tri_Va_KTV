@@ -72,6 +72,13 @@
 | `notes` | text | Ghi chú riêng cho khách |
 | `focus_area` | text | Vùng tập trung (VD: Đau vai) |
 | `status` | text | WAITING → IN_PROGRESS → CLEANING → FEEDBACK → DONE |
+| `total_amount` | numeric | **[NEW]** Tổng tiền dịch vụ của khách này |
+| `payment_method` | text | **[NEW]** Khách thanh toán bằng gì (Tiền mặt, Thẻ...) |
+| `tip_amount` | numeric | **[NEW]** Tiền tip riêng của khách này |
+| `customer_phone` | text | **[NEW]** SĐT của khách |
+| `reception_feedback` | text | **[NEW]** Đánh giá / Phản hồi của khách này |
+| `checkout_status` | text | **[NEW]** Trạng thái thanh toán (PENDING, PAID) |
+| `checkout_time` | timestamptz | **[NEW]** Thời điểm thanh toán |
 | `created_at` | timestamptz | Thời gian tạo |
 | `updated_at` | timestamptz | Thời gian cập nhật |
 

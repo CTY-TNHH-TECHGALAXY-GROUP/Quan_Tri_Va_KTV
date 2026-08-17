@@ -13,6 +13,7 @@ export class BookingModificationService {
         customerLang?: string; // Language code: vi, en, kr, jp, cn
         guestCount?: number;
         nationality?: string;
+        customerGender?: string;
         isTestOrder?: boolean;
     }) {
         try {
@@ -166,16 +167,33 @@ export class BookingModificationService {
 
             if (bError) throw bError;
 
+            // 3.5 Create BookingGuests
+            const guestCount = data.guestCount || 1;
+            const guestsToInsert = Array.from({ length: guestCount }).map((_, i) => ({
+                id: crypto.randomUUID(),
+                booking_id: booking.id,
+                guest_index: i + 1,
+                guest_label: `Khách ${i + 1}`,
+                status: 'PENDING',
+                gender: data.customerGender || null,
+            }));
+
+            const { error: gError } = await supabase.from('BookingGuests').insert(guestsToInsert);
+            if (gError) throw gError;
+
             // Insert multiple items
-            const itemsToInsert = data.serviceIds.map(sid => {
+            const itemsToInsert = data.serviceIds.map((sid, idx) => {
                 const svc = svcs.find(s => s.id === sid);
+                // Phân bổ dịch vụ tuần tự cho từng khách
+                const targetGuest = guestsToInsert[idx % guestCount];
                 return {
                     id: crypto.randomUUID(),
                     bookingId: booking.id,
                     serviceId: sid,
                     quantity: 1,
                     price: svc?.priceVND || 0,
-                    status: 'NEW'
+                    status: 'NEW',
+                    guest_id: targetGuest.id
                 };
             });
 
@@ -197,7 +215,7 @@ export class BookingModificationService {
         }
     }
 
-    static async addAddonServices(bookingId: string, items: { serviceId: string; qty: number }[], adminId: string = 'ADMIN') {
+    static async addAddonServices(bookingId: string, items: { serviceId: string; qty: number; guestId?: string }[], adminId: string = 'ADMIN') {
         try {
             await requirePermission('dispatch_board');
             const supabase = getSupabaseAdmin();
@@ -212,6 +230,10 @@ export class BookingModificationService {
             const { data: allServices, error: sError } = await supabase.from('Services').select('*').in('id', serviceIds);
             if (sError) throw sError;
 
+            // Lấy danh sách Guest của Booking này để fallback
+            const { data: existingGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+            const defaultGuestId = (existingGuests && existingGuests.length > 0) ? existingGuests[0].id : null;
+
             let totalVND = 0;
             let addedDuration = 0;
             const detailedItems = items.map(item => {
@@ -221,7 +243,7 @@ export class BookingModificationService {
                 const name = (typeof serviceDef?.nameVN === 'object' && serviceDef?.nameVN !== null) ? (serviceDef?.nameVN.vn || serviceDef?.nameVN.en || serviceDef?.nameVN) : (serviceDef?.nameVN || serviceDef?.nameEN || `Dịch vụ ${item.serviceId}`);
                 totalVND += price * item.qty;
                 addedDuration += duration * item.qty;
-                return { ...item, priceOriginal: price, duration, name };
+                return { ...item, priceOriginal: price, duration, name, targetGuestId: item.guestId || defaultGuestId };
             });
 
             const { data: existingItems } = await supabase
@@ -262,7 +284,8 @@ export class BookingModificationService {
                     roomName: sourceItem?.roomName || null,
                     bedId: sourceItem?.bedId || null,
                     segments: JSON.stringify(newSegments),
-                    options: { isAddon: true, isPaid: false }
+                    options: { isAddon: true, isPaid: false },
+                    guest_id: item.targetGuestId
                 };
             });
 

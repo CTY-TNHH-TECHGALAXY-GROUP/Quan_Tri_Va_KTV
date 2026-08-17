@@ -234,10 +234,12 @@ export async function confirmWebBooking(bookingId: string) {
       .from('Bookings')
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone, customerId,
-        bookingDate, timeBooking, totalAmount, id,
+        bookingDate, timeBooking, totalAmount, id, guestCount, customerGender,
         BookingItems!BookingItems_bookingId_fkey (
+          id,
           quantity,
           serviceId,
+          guest_id,
           Services!BookingItems_serviceId_fkey (
             nameVN, nameEN, nameKR, nameJP, nameCN, duration
           )
@@ -304,6 +306,38 @@ export async function confirmWebBooking(bookingId: string) {
             await supabase.from('Customers').update({ email: bData.customerEmail }).eq('id', bData.customerId);
         }
     }
+
+    // --- MỚI: Đảm bảo có BookingGuests (vì web ngoài có thể không tự sinh) ---
+    const { data: existingGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+    let guestIds = existingGuests?.map((g: any) => g.id) || [];
+    
+    if (guestIds.length === 0) {
+        // Tự sinh guest
+        const guestCount = bData?.guestCount || 1;
+        const crypto = require('crypto');
+        const guestsToInsert = Array.from({ length: guestCount }).map((_, i) => ({
+            id: crypto.randomUUID(),
+            booking_id: bookingId,
+            guest_index: i + 1,
+            guest_label: `Khách ${i + 1}`,
+            status: 'PENDING',
+            gender: bData?.customerGender || null,
+        }));
+        await supabase.from('BookingGuests').insert(guestsToInsert);
+        guestIds = guestsToInsert.map(g => g.id);
+        
+        // Cập nhật lại guest_id cho BookingItems nếu chưa có
+        if (bData?.BookingItems && bData.BookingItems.length > 0) {
+            for (let i = 0; i < bData.BookingItems.length; i++) {
+                const item = bData.BookingItems[i] as any;
+                if (!item.guest_id) {
+                    const targetGuestId = guestIds[i % guestCount];
+                    await supabase.from('BookingItems').update({ guest_id: targetGuestId }).eq('id', item.id);
+                }
+            }
+        }
+    }
+    // -------------------------------------------------------------------------
 
     const msg = `Đơn ${bookingId} đã được xác nhận. Vui lòng vào Điều Phối để phân công KTV.`;
     
