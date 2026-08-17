@@ -266,7 +266,7 @@ function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, 
 
           return (
             <motion.div 
-              key={seg.id} 
+              key={`${seg.id}-${idx}`} 
               animate={{ 
                 scale: isActive ? 1.02 : 1,
                 opacity: isPast ? 0.6 : 1
