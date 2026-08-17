@@ -97,8 +97,19 @@ export const QuickDispatchTable = ({
       const combinedName = [svc.serviceName, ...mergedSvcs.map(s => s.serviceName)].join(' + ');
 
       // Hack to inject combined data for UI rendering without altering the real object
+      const combinedNote = Array.from(new Set([svc.customerNote, ...mergedSvcs.map(s => s.customerNote)].filter(Boolean))).join(' | ');
+      const combinedGender = Array.from(new Set([svc.genderReq, ...mergedSvcs.map(s => s.genderReq)].filter(Boolean))).join(' | ');
+      const combinedStrength = Array.from(new Set([svc.strength, ...mergedSvcs.map(s => s.strength)].filter(Boolean))).join(' | ');
+      const combinedFocus = Array.from(new Set([svc.focus, ...mergedSvcs.map(s => s.focus)].filter(Boolean))).join(' | ');
+      const combinedAvoid = Array.from(new Set([svc.avoid, ...mergedSvcs.map(s => s.avoid)].filter(Boolean))).join(' | ');
+
       const svcForUI = {
          ...svc,
+         customerNote: combinedNote || undefined,
+         genderReq: combinedGender || undefined,
+         strength: combinedStrength || undefined,
+         focus: combinedFocus || undefined,
+         avoid: combinedAvoid || undefined,
          options: {
             ...svc.options,
             _generatedDisplayName: combinedName,
@@ -320,7 +331,7 @@ export const QuickDispatchTable = ({
           endTimes.push(calcEndTime(defaultTime, duration));
         }
         newStates.set(groupKey, {
-          displayName: items[0]?.options?.displayName || '',
+          displayName: items[0]?.options?.displayName || items[0]?.options?._generatedDisplayName || items[0]?.serviceName || '',
           selectedKtvIds: ktvIds,
           selectedRoomIds: roomIds,
           ktvStartTimes: startTimes,
@@ -1027,9 +1038,11 @@ const ServiceGroupCard = ({
   const headerRoundedClass = isFirstInGroup ? 'rounded-t-3xl' : 'rounded-none';
   const showHeader = !isChildOfBlock && isFirstInGroup;
 
+  const hasGenderConflict = customerReqs?.genderReq?.toLowerCase().includes('nam') && customerReqs?.genderReq?.toLowerCase().includes('nữ');
+
   const wrapperClass = isChildOfBlock
     ? `overflow-visible bg-white transition-all ${!isLastInGroup ? 'border-b border-gray-100' : ''}`
-    : `border-2 overflow-visible bg-white shadow-sm hover:shadow-md transition-all ${roundedClass} ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md scale-[1.01] z-10 relative' : state.isMergedGroup ? 'border-purple-300 ring-4 ring-purple-50/60 bg-purple-50/10 animate-merge' : (borderColorClass || 'border-gray-100')}`;
+    : `border-2 overflow-visible bg-white shadow-sm hover:shadow-md transition-all ${roundedClass} ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md scale-[1.01] z-10 relative' : hasGenderConflict ? 'border-rose-400 ring-4 ring-rose-50/60 bg-rose-50/10' : state.isMergedGroup ? 'border-purple-300 ring-4 ring-purple-50/60 bg-purple-50/10 animate-merge' : (borderColorClass || 'border-gray-100')}`;
 
   return (<>
     <div className={wrapperClass}>
@@ -1098,10 +1111,51 @@ const ServiceGroupCard = ({
               )}
               {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
             </div>
-            {state.isMergedGroup && groupItems.length > 0 && (
-                <span className="text-[10px] text-indigo-500/90 font-medium italic truncate w-full">
-                    Gồm: {groupItems.map(g => g.serviceName).join(' + ')}
+            {state.isMergedGroup && groupItems.length > 0 && groupItems[0]?.options?._generatedDisplayName && (
+                <span className="text-[11.5px] text-indigo-600 font-semibold truncate w-full mt-0.5">
+                    Gồm: {groupItems[0].options._generatedDisplayName}
                 </span>
+            )}
+            
+            {/* KHỐI HIỂN THỊ YÊU CẦU & GHI CHÚ KHÁCH HÀNG */}
+            {(customerReqs?.customerNote || customerReqs?.genderReq || customerReqs?.strength || customerReqs?.focus || customerReqs?.avoid) && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    {hasGenderConflict && (
+                        <span className="bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded flex items-center gap-1 text-[10px] font-black shrink-0" title="Yêu cầu giới tính KTV mâu thuẫn giữa các dịch vụ gộp!">
+                            <AlertCircle size={10} /> Xung đột yêu cầu KTV
+                        </span>
+                    )}
+                    
+                    {customerReqs?.genderReq && !hasGenderConflict && (
+                        <span className="bg-pink-50 text-pink-700 border border-pink-100 px-2 py-0.5 rounded text-[10px] font-black shrink-0">
+                            👤 {customerReqs.genderReq}
+                        </span>
+                    )}
+                    {customerReqs?.strength && (
+                        <span className="bg-orange-50 text-orange-700 border border-orange-100 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            💪 Lực: {customerReqs.strength}
+                        </span>
+                    )}
+                    {(customerReqs?.focus || customerReqs?.avoid) && (
+                        <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px] font-bold shrink-0 truncate max-w-[150px]">
+                            🎯 {customerReqs.focus || ''} {customerReqs.avoid ? `(Tránh ${customerReqs.avoid})` : ''}
+                        </span>
+                    )}
+                    {customerReqs?.customerNote && (
+                        <div className="group relative shrink-0">
+                            <span className="bg-yellow-100 text-yellow-800 border border-yellow-200 px-2 py-0.5 rounded flex items-center gap-1 text-[10px] font-black cursor-help">
+                                📝 {customerReqs.customerNote.split('|').length} Ghi chú
+                            </span>
+                            <div className="absolute hidden group-hover:block z-50 left-0 top-full mt-1 bg-gray-900 text-white text-xs rounded shadow-lg p-2 min-w-[200px] whitespace-pre-wrap">
+                                {customerReqs.customerNote.split('|').map((note, nIdx) => (
+                                    <div key={nIdx} className="mb-1 last:mb-0 text-yellow-300">
+                                        • {note.trim()}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
             )}
           </div>
         </div>

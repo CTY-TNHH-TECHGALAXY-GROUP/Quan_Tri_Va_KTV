@@ -1026,7 +1026,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     
                     // 🛡️ RACE CONDITION GUARD: Khi screen vẫn là TIMER nhưng booking đã kết thúc
                     // → Screen Engine chưa kịp chuyển sang REVIEW → KHÔNG được đá về DASHBOARD
-                    const isTimerWithActiveBooking = screenRef.current === 'TIMER' && bookingRef.current?.id;
+                    // ⚠️ FIX TREO ĐƠN: Chỉ bật Guard nếu KTV THỰC SỰ ĐÃ LÀM (Timer đang chạy). 
+                    // Nếu đang ở TIMER mà Timer chưa chạy (đang PREPARING/READY) thì đây là Lễ tân gỡ đơn → bỏ Guard để văng về DASHBOARD!
+                    const hasActuallyStarted = isTimerRunningRef.current;
+                    const isTimerWithActiveBooking = screenRef.current === 'TIMER' && bookingRef.current?.id && hasActuallyStarted;
                     
                     if (!isPostService && !isTimerWithActiveBooking) {
                         if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
