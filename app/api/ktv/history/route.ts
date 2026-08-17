@@ -256,7 +256,7 @@ export async function GET(request: Request) {
                     ? serviceNames.join(' + ')
                     : (serviceNames[0] || '—');
 
-                // ─── Rating: lấy từ BookingItems (item-level) ────
+                // ─── Rating: lấy từ BookingItems!fk_bookingitems_booking (item-level) ────
                 const itemRating = groupItems.reduce((best: number, i: any) => {
                     const r = Number(i.itemRating) || 0;
                     return r > best ? r : best;

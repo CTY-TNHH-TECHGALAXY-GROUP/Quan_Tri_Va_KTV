@@ -157,6 +157,8 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                             if (i !== startIdx && !itemSeg.seg.actualStartTime) {
                                 itemSeg.seg.actualStartTime = sharedTimeStart;
                             }
+                            // BẮT BUỘC lưu lại vào originalItemsData
+                            originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
                         });
                     }
                 }
@@ -166,6 +168,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                     allGlobalSegs.forEach((itemSeg: any) => {
                         if (itemSeg.seg.ktvId === technicianCode) {
                             itemSeg.seg.startPhotoUrl = startPhotoUrl;
+                            originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
                         }
                     });
                 }
