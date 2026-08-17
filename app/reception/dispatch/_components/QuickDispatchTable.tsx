@@ -383,12 +383,13 @@ export const QuickDispatchTable = ({
           
           const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
           const originalDur = updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
-          const ktvDur = isMerged ? originalDur : (state.ktvDurations?.[idx] || originalDur);
+          // For merged services, prefer state.ktvDurations (already includes child duration)
+          const ktvDur = state.ktvDurations?.[idx] || originalDur;
           
           const segment: WorkSegment = {
             id: updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
-            endTime: isMerged ? (updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.endTime || calcEndTime(st, ktvDur)) : (state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur)),
+            endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
           };
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
@@ -415,10 +416,9 @@ export const QuickDispatchTable = ({
             const st = state.ktvStartTimes?.[ki] || getCurrentTime();
             const isMerged = !!(updatedServices[svcIdx].mergedServiceIds?.length);
             const originalDur = updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration || updatedServices[svcIdx].duration;
-            const kd = isMerged ? originalDur : (state.ktvDurations?.[ki] || originalDur);
+            const kd = state.ktvDurations?.[ki] || originalDur;
             
-            const originalEndTime = updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.endTime;
-            const finalEndTime = isMerged ? (originalEndTime || calcEndTime(st, kd)) : (state.ktvEndTimes?.[ki] || calcEndTime(st, kd));
+            const finalEndTime = state.ktvEndTimes?.[ki] || calcEndTime(st, kd);
             
             staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: finalEndTime, duration: kd });
           }
