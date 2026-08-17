@@ -234,6 +234,7 @@ export default function DispatchBoardPage() {
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
   const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' } | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [timeEditorModal, setTimeEditorModal] = useState<{ isOpen: boolean, orderId: string, itemId: string } | null>(null);
   // 🔧 QR CONFIGURATION
   const JOURNEY_BASE_URL = 'https://nganha.vercel.app';
   const QR_SIZE = 250;
