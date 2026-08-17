@@ -1334,14 +1334,8 @@ const ServiceGroupCard = ({
                         </AnimatePresence>
                     </div>
 
-                    {onDispatch && (
-                        <button 
-                            onClick={() => onDispatch(idx)} 
-                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-xl transition-all active:scale-95 shadow-sm shadow-indigo-200 uppercase tracking-wider flex items-center gap-1.5 ml-auto shrink-0"
-                        >
-                            <Send size={12} strokeWidth={3} /> ĐIỀU PHỐI LẺ
-                        </button>
-                    )}
+
+
                   </div>
                 </div>
               ); })}
