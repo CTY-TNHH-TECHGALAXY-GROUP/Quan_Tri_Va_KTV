@@ -23,6 +23,7 @@ import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { DispatchServiceBlock } from './_components/DispatchServiceBlock';
 import { KanbanBoard } from './_components/KanbanBoard';
+import { TimeEditorModal } from './_components/TimeEditorModal';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
 import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -2941,13 +2942,25 @@ if (!hasPermission('dispatch_board')) {
             </button>
 
             {contextMenu.itemId && (
-              <button
-                onClick={() => handleCancelBookingItem(contextMenu.orderId, contextMenu.itemId!)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 hover:bg-orange-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-              >
-                <Trash2 size={18} />
-                Hủy dịch vụ này
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    setTimeEditorModal({ isOpen: true, orderId: contextMenu.orderId, itemId: contextMenu.itemId! });
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
+                >
+                  <Clock size={18} />
+                  Sửa thời gian dịch vụ
+                </button>
+                <button
+                  onClick={() => handleCancelBookingItem(contextMenu.orderId, contextMenu.itemId!)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 hover:bg-orange-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
+                >
+                  <Trash2 size={18} />
+                  Hủy dịch vụ này
+                </button>
+              </>
             )}
 
             <button
@@ -3459,6 +3472,18 @@ if (!hasPermission('dispatch_board')) {
           onSuccess={() => {
             setCommentModalData(null);
             fetchData();
+          }}
+        />
+      )}
+
+      {timeEditorModal && (
+        <TimeEditorModal
+          isOpen={timeEditorModal.isOpen}
+          orderId={timeEditorModal.orderId}
+          itemId={timeEditorModal.itemId}
+          onClose={() => setTimeEditorModal(null)}
+          onSuccess={() => {
+              fetchData();
           }}
         />
       )}
