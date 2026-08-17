@@ -70,7 +70,13 @@ const SOUND_MAP: Record<string, string> = {
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
     const { user, role } = useAuth();
     const [toastQueue, setToastQueue] = useState<Notification[]>([]);
-    const [soundEnabled, setSoundEnabled] = useState(true);
+    const [soundEnabled, _setSoundEnabled] = useState(true);
+    const soundEnabledRef = useRef(true);
+
+    const setSoundEnabled = (enabled: boolean) => {
+        soundEnabledRef.current = enabled;
+        _setSoundEnabled(enabled);
+    };
     const [ktvScreen, setKtvScreen] = useState<string>('DASHBOARD');
     const [notifRules, setNotifRules] = useState<Record<string, any>>({});
     const [isOnShift, setIsOnShift] = useState<boolean>(false);
@@ -181,7 +187,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 console.log('✅ [Push] Already subscribed, syncing to DB...');
                 // Sync existing subscription to DB (in case it was lost)
                 await apiClient.post<any>(API.KTV.PUSH_SYNC, {
-                    staffId: user.id,
+                    staffId: user.code || user.id,
                     subscription: existingSub.toJSON(),
                     userAgent: navigator.userAgent
                 }).catch(err => {
@@ -208,7 +214,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
 
             // Save subscription via API route (bypasses RLS)
             const result = await apiClient.post<any>(API.KTV.PUSH_SYNC, {
-                staffId: user.id,
+                staffId: user.code || user.id,
                 subscription: sub.toJSON(),
                 userAgent: navigator.userAgent
             }).catch(err => {
@@ -286,7 +292,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     }, [user]);
 
     const playSound = (type: string) => {
-        if (!soundEnabled || !audioInstanceRef.current) return;
+        if (!soundEnabledRef.current || !audioInstanceRef.current) return;
         const normalizedType = (type || 'default').toUpperCase().trim();
         const now = Date.now();
         
@@ -398,10 +404,10 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 roleAllowed = true;
             }
 
-            // Check 2: Is target employee? (employeeId matches current user)
+            // Check 2: Is target employee? (employeeId matches current user or user code)
             const isTargetEmployee = rule?.include_target_employee !== false
                 && newNotif.employeeId
-                && newNotif.employeeId === user.id;
+                && (newNotif.employeeId === user.id || newNotif.employeeId === user.code);
 
             // 🛡️ TARGETED NOTIFICATION GUARD:
             // If notification has an employeeId (targeted to specific person),
@@ -437,11 +443,12 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             if (!rule) {
                 // Hardcode safety for KTV specific notifications
                 if (notifType === 'KTV_NEW_ORDER' || notifType === 'REWARD') {
-                    if (!isKtv || newNotif.employeeId !== user.id) return;
+                    // Early exit rule for KTV: must match employeeId if it's a personal notification
+                    if (!isKtv || (newNotif.employeeId !== user.id && newNotif.employeeId !== user.code)) return;
                 }
 
                 const isGlobal = !newNotif.employeeId;
-                const isPersonal = newNotif.employeeId === user.id;
+                const isPersonal = newNotif.employeeId === user.id || newNotif.employeeId === user.code;
 
                 if (isGlobal) {
                     // Global notifications: Chỉ những người có role quản lý hoặc module quản lý mới được xem
