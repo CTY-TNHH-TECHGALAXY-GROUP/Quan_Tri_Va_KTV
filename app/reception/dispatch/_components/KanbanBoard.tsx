@@ -740,7 +740,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     </span>
                                                                     {s.mergedServiceIds && s.mergedServiceIds.length > 0 && (
                                                                         <span className="text-[9px] text-indigo-500/90 mt-0.5 leading-tight italic font-medium">
-                                                                            Gộp: {s.serviceName} + {subOrder.services.filter(child => s.mergedServiceIds!.includes(child.id)).map(child => child.serviceName).join(' + ')}
+                                                                            Gộp: {s.serviceName} + {subOrder.services.filter((child: any) => s.mergedServiceIds!.includes(child.id)).map((child: any) => child.serviceName).join(' + ')}
                                                                         </span>
                                                                     )}
                                                                 </div>
