@@ -54,6 +54,31 @@
 
 ---
 
+### 1.5. BookingGuests ✅ CHỦ LỰC (Cấp 2)
+**Nhiệm vụ**: Bảng trung gian chia đơn hàng thành các "Guest" (Khách). Hỗ trợ tách bill, đánh giá riêng, và một khách mua nhiều dịch vụ.
+**Realtime**: ✅ (Dispatch Board, KTV page cập nhật live)
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | text PK | Mã guest duy nhất (VD: BK003_G1) |
+| `booking_id` | text FK → Bookings | Thuộc đơn hàng nào |
+| `guest_index` | integer | Thứ tự khách trong đơn (1, 2, 3...) |
+| `guest_label` | text | Tên hiển thị (VD: "Khách A") |
+| `customer_name` | text | Tên khách thật (nếu có) |
+| `gender` | text | Giới tính (male/female) |
+| `nationality` | text | Quốc tịch |
+| `bed_id` | text FK → Beds | Giường phục vụ khách này |
+| `room_id` | text | Phòng phục vụ |
+| `notes` | text | Ghi chú riêng cho khách |
+| `focus_area` | text | Vùng tập trung (VD: Đau vai) |
+| `status` | text | WAITING → IN_PROGRESS → CLEANING → FEEDBACK → DONE |
+| `created_at` | timestamptz | Thời gian tạo |
+| `updated_at` | timestamptz | Thời gian cập nhật |
+
+**Constraint**: `UNIQUE(booking_id, guest_index)`
+
+---
+
 ### 2. BookingItems ✅ CHỦ LỰC
 **Nhiệm vụ**: Chi tiết từng dịch vụ trong một đơn. Theo dõi trạng thái riêng, hỗ trợ nhiều KTV cùng làm (co-working).
 **Realtime**: ✅ (đồng bộ màn hình KTV real-time)
@@ -62,6 +87,7 @@
 |-----|------|-----------------|
 | `id` | text PK | Mã item duy nhất |
 | `bookingId` | text FK → Bookings | Thuộc đơn hàng nào |
+| `guest_id` | text FK → BookingGuests | **[NEW]** Cấp 2: Thuộc Guest nào (VD: BK003_G1) |
 | `serviceId` | text FK → Services | Dịch vụ nào |
 | `quantity` | integer | Số lượng (thường = 1) |
 | `price` | numeric | Giá dịch vụ |
