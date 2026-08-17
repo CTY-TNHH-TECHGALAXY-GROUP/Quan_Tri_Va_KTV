@@ -14,20 +14,29 @@ export const BRANCH_CODE = '11NDK'; // Ngân Hà - 11 Nguyễn Đình Kiên
 // 🛠 SHARED UTILITIES
 // =============================================
 
-/**
- * Tạo mã Bill (vd: "001-19072026")
- * @param supabase Supabase admin client
- * @param dateCode Chuỗi ngày định dạng DDMMYYYY (vd: "19072026")
- */
 export const generateBillCode = async (supabase: SupabaseClient, dateCode: string): Promise<string> => {
     try {
-        const { count } = await supabase
+        // Lấy tất cả mã bill trong ngày để tìm số lớn nhất (tránh lỗi khi có đơn bị xoá)
+        const { data } = await supabase
             .from('Bookings')
-            .select('id', { count: 'exact', head: true })
+            .select('billCode')
             .like('billCode', `%-${dateCode}`);
+            
+        let maxNumber = 0;
         
-        const countValue = count || 0;
-        return `${String(countValue + 1).padStart(3, '0')}-${dateCode}`;
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                if (item.billCode) {
+                    const codePart = item.billCode.split('-')[0];
+                    const num = parseInt(codePart, 10);
+                    if (!isNaN(num) && num > maxNumber) {
+                        maxNumber = num;
+                    }
+                }
+            });
+        }
+        
+        return `${String(maxNumber + 1).padStart(3, '0')}-${dateCode}`;
     } catch (e) {
         console.error("❌ [generateBillCode] Error:", e);
         return `999-${dateCode}`;
