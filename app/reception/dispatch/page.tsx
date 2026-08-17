@@ -2431,10 +2431,12 @@ if (!hasPermission('dispatch_board')) {
                       );
                     }
 
-                    const hasStartedService = selectedSubOrder.originalOrder.services.some(
+                    const hasStartedService = selectedSubOrder.services.some(
                       (s: any) => s.status && ['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(s.status)
                     );
-                    const ready = isDispatchReady(selectedSubOrder.originalOrder) && !hasStartedService;
+                    // Check readiness only for the services in the current sub-order, not the entire parent
+                    const subOrderAsOrder = { ...selectedSubOrder.originalOrder, services: selectedSubOrder.services };
+                    const ready = isDispatchReady(subOrderAsOrder) && !hasStartedService;
                     
                     return (
                       <button
