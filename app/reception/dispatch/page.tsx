@@ -1246,7 +1246,30 @@ if (!hasPermission('dispatch_board')) {
 
           const itemUpdates = targetServicesInGroup.map(svc => {
               const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
-              const allSegments = svc.staffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
+              
+              // 🛡️ SAFETY NET: Recalculate merged parent segment duration
+              let correctedStaffList = svc.staffList;
+              if (svc.mergedServiceIds?.length) {
+                  const childDurations = svc.mergedServiceIds.reduce((sum: number, childId: string) => {
+                      const child = clonedOrder.services.find(s => s.id === childId);
+                      return sum + (child?.staffList?.[0]?.segments?.[0]?.duration || child?.duration || 0);
+                  }, 0);
+                  correctedStaffList = svc.staffList.map(r => ({
+                      ...r,
+                      segments: r.segments.map((seg, segIdx) => {
+                          if (segIdx === 0) {
+                              const baseDur = svc.duration || 0;
+                              const totalDur = baseDur + childDurations;
+                              // Only correct if segment duration seems too low (wasn't updated properly)
+                              const segDur = seg.duration && seg.duration >= totalDur ? seg.duration : totalDur;
+                              return { ...seg, duration: segDur, endTime: seg.startTime ? calcEndTime(seg.startTime, segDur) : seg.endTime };
+                          }
+                          return seg;
+                      })
+                  }));
+              }
+              
+              const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
               return {
                   id: svc.id,
                   roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
