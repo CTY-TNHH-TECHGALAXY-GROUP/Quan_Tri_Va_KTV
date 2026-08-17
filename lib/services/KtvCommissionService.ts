@@ -1,3 +1,17 @@
+/* 
+=============================================================================================
+🤖 AI AGENT WARNING (ZERO-TOUCH OLD DATA POLICY) - DO NOT REMOVE
+=============================================================================================
+1. BACKWARD COMPATIBILITY: The 'calculateBookingBonus' method uses a DUAL-LOGIC architecture.
+   - For NEW bookings (with BookingGuests), it counts actual guests: `booking.BookingGuests.length`.
+   - For OLD bookings (without BookingGuests), it falls back to `booking.guestCount`.
+2. DO NOT modify this fallback logic. It is a protective fence to ensure historical financial 
+   reports and KTV bonuses prior to August 18, 2026 are not corrupted or set to zero.
+3. If you add new parameters or modify the scoring logic, ALWAYS ensure it works for both 
+   data structures.
+=============================================================================================
+*/
+
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export interface CommissionConfig {
@@ -240,7 +254,7 @@ export class KtvCommissionService {
         if (mySegs.length > 0) {
             return mySegs.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || fallbackDuration), 0);
         }
-        return fallbackDuration;
+        return 0; // Trả về 0 nếu KTV không có chặng nào trong dịch vụ này (Fix Duration Inflation)
     }
 
     /**
@@ -356,10 +370,8 @@ export class KtvCommissionService {
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
                 isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
-            } else {
-                const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
-                isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
             }
+            // Loại bỏ logic fallback đọc booking.technicianCode ở đây để tránh KTV bị gán oan vào dịch vụ chưa phân ca.
 
             if (!isTechInvolved) continue;
 
@@ -386,13 +398,25 @@ export class KtvCommissionService {
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
 
         const totalUniqueKTVs = validUniqueKTVs > 0 ? validUniqueKTVs : 1;
-        const guestCount = booking.guestCount || 1;
+        
+        // 🚀 DUAL-LOGIC HÀNG RÀO BẢO VỆ (Zero-Touch Old Data)
+        // Nếu booking có BookingGuests (Đơn mới), đếm số lượng khách thực tế.
+        // Nếu booking không có (Đơn cũ), fallback về cột guestCount mặc định để không làm lệch số liệu quá khứ.
+        let actualGuestCount = booking.guestCount || 1;
+        if (booking.BookingGuests && Array.isArray(booking.BookingGuests) && booking.BookingGuests.length > 0) {
+            // Lọc bỏ các khách đã bị hủy để không tính điểm khống cho KTV
+            const activeGuests = booking.BookingGuests.filter((g: any) => g.status !== 'CANCELLED');
+            actualGuestCount = activeGuests.length > 0 ? activeGuests.length : 1;
+        }
+        const guestCount = actualGuestCount;
         
         let calculatedPoints = 0;
 
         if (isNewRule) {
             // TỪ NGÀY 06/08 TRỞ ĐI: Công thức mới (Tính theo số Khách)
-            // Khống chế tỷ lệ tối đa = 1 để KTV không nhận vượt quá BasePoints khi có KTV loại C bị loại.
+            // ⚠️ BUSINESS POLICY NOTE: Điểm thưởng (Bonus) được cấp dựa trên SỐ KHÁCH.
+            // Nếu 2 KTV phục vụ chung 1 khách (Dù là gộp dịch vụ hay nối tiếp nhau), tổng Bonus của booking đó vẫn chỉ là 1 suất.
+            // Cả 2 KTV sẽ bị chia điểm (0.5). Đây là chính sách công ty (Company Policy) - tuyệt đối không thay đổi.
             const ratio = Math.min(guestCount / totalUniqueKTVs, 1);
             calculatedPoints = adjustedBasePoints * ratio;
             
