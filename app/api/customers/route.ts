@@ -51,7 +51,7 @@ export async function GET() {
         let allBookings: any[];
         try {
             allBookings = await fetchAll('Bookings', `
-                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender,
+                id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender, parent_booking_id,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options )
             `, q => q.neq('status', 'CANCELLED'));
         } catch (bError) {
@@ -123,7 +123,10 @@ export async function GET() {
                 }
             });
             
-            const visitCount = combinedBookings.length;
+            // Parent bookings only for visit metrics
+            const parentBookings = combinedBookings.filter(b => !b.parent_booking_id);
+            
+            const visitCount = parentBookings.length;
             const totalSpent = combinedBookings.reduce((sum, b) => {
                 const isCompleted = ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING'].includes(b.status);
                 return sum + (isCompleted ? (Number(b.totalAmount) || 0) : 0);
@@ -146,7 +149,8 @@ export async function GET() {
 
             const ktvReviews: string[] = [];
 
-            combinedBookings.forEach(b => {
+            // 1. Chỉ số cấp độ Đơn hàng (chỉ tính đơn cha hoặc đơn không bị tách để không bị nhân đôi)
+            parentBookings.forEach(b => {
                 // Đánh giá KTV (từ notes)
                 if (b.notes && b.notes.includes('[Đánh giá KTV:')) {
                     const matches = b.notes.match(/\[Đánh giá KTV: (.*?)\]/g);
@@ -192,7 +196,10 @@ export async function GET() {
                         if (bTime >= sevenDaysAgo) unique7Days.add(dateStr);
                     }
                 }
+            });
 
+            // 2. Chỉ số cấp độ Chi tiết Dịch vụ (tính trên tất cả đơn bao gồm đơn con)
+            combinedBookings.forEach(b => {
                 // Dịch vụ và KTV thường làm (từ BookingItems)
                 if (b.BookingItems && Array.isArray(b.BookingItems)) {
                     b.BookingItems.forEach((item: any) => {
@@ -401,14 +408,28 @@ export async function PATCH(request: Request) {
 
         if (error) throw error;
 
-        // If preferredLang is updated, sync it to Bookings customerLang
-        if (preferredLang !== undefined && preferredLang !== null) {
-            const { error: bError } = await supabase
+        // ------------------------------------------------------------------
+        // ĐỒNG BỘ DỮ LIỆU SANG BẢNG BOOKINGS (Chỉ các đơn hàng Đang Hoạt Động)
+        // ------------------------------------------------------------------
+        const activeBookingStatuses = ['NEW', 'PREPARING', 'READY', 'IN_PROGRESS', 'WAITING'];
+        const syncPayload: Record<string, any> = {};
+
+        if (fullName !== undefined) syncPayload.customerName = updatePayload.fullName;
+        if (phone !== undefined) syncPayload.customerPhone = updatePayload.phone;
+        if (email !== undefined) syncPayload.customerEmail = updatePayload.email;
+        if (gender !== undefined) syncPayload.customerGender = updatePayload.gender;
+        if (nationality !== undefined) syncPayload.nationality = updatePayload.nationality;
+        if (preferredLang !== undefined && preferredLang !== null) syncPayload.customerLang = preferredLang;
+
+        if (Object.keys(syncPayload).length > 0) {
+            const { error: syncError } = await supabase
                 .from('Bookings')
-                .update({ customerLang: preferredLang })
-                .eq('customerId', id);
-            if (bError) {
-                console.error('Error updating customerLang in Bookings:', bError);
+                .update(syncPayload)
+                .eq('customerId', id)
+                .in('status', activeBookingStatuses);
+
+            if (syncError) {
+                console.error('Error syncing customer info to active Bookings:', syncError);
             }
         }
 
