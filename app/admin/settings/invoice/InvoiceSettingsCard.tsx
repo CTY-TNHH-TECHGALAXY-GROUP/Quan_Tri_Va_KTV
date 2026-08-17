@@ -10,7 +10,8 @@ export const InvoiceSettingsCard = () => {
         spaName: 'ORIA SPA',
         slogan: 'Wellness • Beauty • Therapy',
         address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
-        phone: '0900 000 000',
+        phone: '0964090277',
+        email: 'cskhoria@techgalaxygroup.com',
         hotline: '0900 000 000',
         note1: 'Cảm ơn Quý khách đã sử dụng dịch vụ tại ORIA SPA.',
         note2: 'Vui lòng giữ hóa đơn để thuận tiện đối chiếu khi cần hỗ trợ.',
@@ -55,7 +56,13 @@ export const InvoiceSettingsCard = () => {
             // but the general endpoint returns a map. We use the same endpoint as page.tsx.
             const { data } = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
             if (data && data.invoice_config) {
-                setConfig({ ...config, ...data.invoice_config });
+                const loaded = data.invoice_config;
+                setConfig(prev => ({ 
+                    ...prev, 
+                    ...loaded,
+                    phone: loaded.phone === '0900 000 000' ? '0964090277' : (loaded.phone || prev.phone),
+                    email: loaded.email || prev.email,
+                }));
             }
         } catch (error) {
             console.error('Failed to fetch invoice config', error);
@@ -210,6 +217,16 @@ export const InvoiceSettingsCard = () => {
                                 className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all"
                             />
                         </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-400 uppercase">Email</label>
+                        <input
+                            type="text"
+                            value={config.email || ''}
+                            onChange={(e) => handleChange('email', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all"
+                        />
                     </div>
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-gray-400 uppercase">Ghi chú chân trang 1</label>

@@ -5,17 +5,21 @@ import { PrintableInvoice, InvoiceConfig } from '@/components/invoice/PrintableI
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { Loader2 } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 
 export default function InvoicePrintPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
+    
     const orderId = params?.id as string;
+    const lang = searchParams.get('lang') || 'vi';
 
     const [config, setConfig] = useState<InvoiceConfig>({
         spaName: 'ORIA SPA',
         slogan: 'Wellness • Beauty • Therapy',
         address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
-        phone: '0900 000 000',
+        phone: '0964090277',
+        email: 'cskhoria@techgalaxygroup.com',
         hotline: '0900 000 000',
         note1: 'Cảm ơn Quý khách đã sử dụng dịch vụ tại ORIA SPA.',
         note2: 'Vui lòng giữ hóa đơn để thuận tiện đối chiếu khi cần hỗ trợ.',
@@ -39,13 +43,18 @@ export default function InvoicePrintPage() {
                 // Fetch config
                 const { data: configData } = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
                 if (configData && configData.invoice_config) {
-                    setConfig(prev => ({ ...prev, ...configData.invoice_config }));
+                    const loaded = configData.invoice_config;
+                    setConfig(prev => ({ 
+                        ...prev, 
+                        ...loaded,
+                        phone: loaded.phone === '0900 000 000' ? '0964090277' : (loaded.phone || prev.phone),
+                        email: loaded.email || prev.email,
+                    }));
                 }
 
                 // Fetch booking
-                const res = await fetch(`/api/finance/invoice/${orderId}`);
-                const bData = await res.json();
-                if (bData.success && bData.data) {
+                const bData = await apiClient.get<any>(`/api/finance/invoice/${orderId}`);
+                if (bData && bData.data) {
                     setBookingData(bData.data);
                 } else {
                     setError("Không tìm thấy đơn hàng");
@@ -88,7 +97,7 @@ export default function InvoicePrintPage() {
 
     return (
         <div className="bg-white min-h-screen">
-            <PrintableInvoice config={config} bookingData={bookingData} />
+            <PrintableInvoice config={config} bookingData={bookingData} lang={lang} />
         </div>
     );
 }

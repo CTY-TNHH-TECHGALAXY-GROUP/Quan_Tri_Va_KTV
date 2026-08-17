@@ -228,6 +228,7 @@ export default function DispatchBoardPage() {
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
+  const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
   const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' } | null>(null);
@@ -2846,7 +2847,7 @@ if (!hasPermission('dispatch_board')) {
               onClick={() => {
                 const order = orders.find(o => o.id === contextMenu.orderId);
                 const invoiceId = order?.parentBookingId || contextMenu.orderId;
-                window.open(`/invoice/${invoiceId}`, '_blank');
+                setInvoiceLangModal({ invoiceId });
                 setContextMenu(null);
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sky-600 hover:bg-sky-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
@@ -3348,6 +3349,50 @@ if (!hasPermission('dispatch_board')) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Invoice Language Modal */}
+      {invoiceLangModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-6 text-center border-b border-gray-100 relative">
+              <div className="w-16 h-16 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              </div>
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">Chọn ngôn ngữ in</h3>
+              <p className="text-sm text-gray-500 mt-1">Hóa đơn sẽ được in bằng ngôn ngữ này</p>
+              
+              <button
+                onClick={() => setInvoiceLangModal(null)}
+                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-4 flex flex-col gap-2">
+              {[
+                { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
+                { code: 'en', label: 'English', flag: '🇬🇧' },
+                { code: 'cn', label: '中文 (Chinese)', flag: '🇨🇳' },
+                { code: 'jp', label: '日本語 (Japanese)', flag: '🇯🇵' },
+                { code: 'kr', label: '한국어 (Korean)', flag: '🇰🇷' },
+              ].map(lang => (
+                <button
+                  key={lang.code}
+                  onClick={() => {
+                    window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${lang.code}`, '_blank');
+                    setInvoiceLangModal(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-4 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100 hover:border-sky-200 text-left"
+                >
+                  <span className="text-2xl">{lang.flag}</span>
+                  <span className="font-bold text-gray-700">{lang.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {commentModalData && (
         <KtvCommentModal 

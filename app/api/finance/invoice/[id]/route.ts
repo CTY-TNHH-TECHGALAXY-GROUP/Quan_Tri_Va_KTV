@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { requireApiUser } from '@/lib/auth-server';
+import { requirePermission } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +15,9 @@ export async function GET(
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
 
-        const user = await requireApiUser();
-        if (!user) {
+        try {
+            await requirePermission('dashboard');
+        } catch (e) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -35,11 +36,19 @@ export async function GET(
             return NextResponse.json({ success: false, error: 'Booking not found' }, { status: 404 });
         }
 
+        // Fetch child bookings if this is a parent booking
+        const { data: childBookings } = await supabase
+            .from('Bookings')
+            .select('id')
+            .eq('parent_booking_id', bookingId);
+            
+        const allBookingIds = [bookingId, ...(childBookings || []).map(b => b.id)];
+
         // Fetch Items
         const { data: items, error: iError } = await supabase
             .from('BookingItems')
             .select('*')
-            .eq('bookingId', bookingId);
+            .in('bookingId', allBookingIds);
 
         if (iError) throw iError;
 
@@ -49,17 +58,33 @@ export async function GET(
             const serviceIds = enrichedItems.map(i => i.serviceId).filter(Boolean);
             const { data: svcs, error: svError } = await supabase
                 .from('Services')
-                .select('id, code, nameVN, nameEN, priceVND, duration')
+                .select('id, code, nameVN, nameEN, nameCN, nameJP, nameKR, priceVND, duration')
                 .in('id', serviceIds);
 
             if (!svError && svcs) {
                 const svcMap = new Map();
-                svcs.forEach(s => svcMap.set(s.id, s));
+                svcs.forEach((s: any) => {
+                    if (s.id) svcMap.set(String(s.id).trim().toLowerCase(), s);
+                    if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
+                });
+                
                 enrichedItems = enrichedItems.map(i => {
-                    const svc = svcMap.get(i.serviceId);
+                    const sId = String(i.serviceId || '').trim().toLowerCase();
+                    const svc = svcMap.get(sId);
+                    
+                    const getName = () => {
+                        const n = svc?.nameVN || svc?.nameEN || svc?.name;
+                        if (typeof n === 'object' && n !== null) return n.vn || n.en || String(n);
+                        return n || `Dịch vụ ${i.serviceId || 'Chưa rõ'}`;
+                    };
+
                     return {
                         ...i,
-                        serviceName: svc?.nameVN || svc?.nameEN || `Dịch vụ ${i.serviceId}`,
+                        serviceName: getName(),
+                        serviceNameEN: svc?.nameEN || '',
+                        serviceNameCN: svc?.nameCN || '',
+                        serviceNameJP: svc?.nameJP || '',
+                        serviceNameKR: svc?.nameKR || '',
                         originalPrice: svc?.priceVND || i.price,
                         duration: i.duration || svc?.duration || 60
                     };
