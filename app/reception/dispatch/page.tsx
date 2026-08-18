@@ -1287,6 +1287,7 @@ if (!hasPermission('dispatch_board')) {
                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                       mergedIntoId: svc.mergedIntoId,
                       mergedServiceIds: svc.mergedServiceIds,
+                      customerGroupId: svc.customerGroupId,
                       order: originalIndex !== -1 ? originalIndex : 999,
                       note: svc.customerNote?.split(' | ')[0] || '', 
                       therapist: svc.genderReq,
@@ -1328,11 +1329,15 @@ if (!hasPermission('dispatch_board')) {
       }
 
       if (!isPartial || targetSvcIds.length === clonedOrder.services.length) {
-          setOrders(prev => prev.map(o =>
-          o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
-          ));
-          setSelectedOrderId(null);
-          setLeftPanelTab('dispatched');
+          if (clonedOrder.dispatchStatus === 'pending' || clonedOrder.dispatchStatus === 'NEW') {
+              setOrders(prev => prev.map(o =>
+                  o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
+              ));
+              setSelectedOrderId(null);
+              setLeftPanelTab('dispatched');
+          } else {
+              alert(`✅ Cập nhật thành công!`);
+          }
       } else {
           setOrders(prev => prev.map(o => {
               if (o.id !== clonedOrder.id) return o;
@@ -2357,12 +2362,16 @@ if (!hasPermission('dispatch_board')) {
                     return (
                       <button
                         onClick={() => {
-                          setShowDispatchConfirmModal(true);
                           // TỰ ĐỘNG NỘI SUY SỐ KHÁCH THEO ĐƠN CON
                           const validSubBookings = subOrders.filter(so => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
                           const finalGuestCount = Math.max(1, validSubBookings.length);
-                          
                           updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: finalGuestCount }));
+                          
+                          if (selectedSubOrder?.dispatchStatus !== 'pending') {
+                            handleDispatch(false, selectedSubOrder?.services.map((s:any) => s.id), selectedSubOrder?.originalOrder.id);
+                          } else {
+                            setShowDispatchConfirmModal(true);
+                          }
                         }}
                         disabled={!ready}
                         title={hasStartedService ? "Đã có dịch vụ bắt đầu, vui lòng điều phối lẻ từng dịch vụ!" : ""}
@@ -2603,7 +2612,7 @@ if (!hasPermission('dispatch_board')) {
               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
                 <div>
                   <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
-                  <p className="text-sm text-indigo-600 font-bold mt-1">Đơn {orderForModal.billCode} - {orderForModal.customerName}</p>
+                  <p className="text-sm text-indigo-600 font-bold mt-1">Đơn {orderForModal.billCode} - {editCustomerName || orderForModal.customerName}</p>
                 </div>
                 <button 
                   onClick={() => setShowDispatchConfirmModal(false)}

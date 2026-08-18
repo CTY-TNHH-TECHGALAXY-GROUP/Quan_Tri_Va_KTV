@@ -376,7 +376,7 @@ export const QuickDispatchTable = ({
           if (svcIdx === -1) return;
           const ktvId = state.selectedKtvIds[idx] || '';
           const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-          const ktvName = ktvTurn?.staff?.full_name || ktvId;
+          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
           const roomId = state.selectedRoomIds?.[idx] || null;
           let bedId: string | null = null;
           if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
@@ -409,7 +409,7 @@ export const QuickDispatchTable = ({
             if (ki % itemCount !== itemIdx) continue;
             const ktvId = state.selectedKtvIds[ki] || '';
             const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-            const ktvName = ktvTurn?.staff?.full_name || ktvId;
+            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
             const roomId = state.selectedRoomIds?.[ki] || null;
             let bedId: string | null = null;
             if (roomId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
