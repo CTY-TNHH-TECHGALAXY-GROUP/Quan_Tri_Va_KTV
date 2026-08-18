@@ -82,12 +82,30 @@ export async function PATCH(request: Request) {
 
         const updatePayload: any = { updatedAt: new Date().toISOString() };
         
-        let targetBookingItemId = turnForSync?.booking_item_id;
+        // Lấy targetBookingItemId từ TurnQueue hoặc từ body do client gửi lên
+        let targetBookingItemId = turnForSync?.booking_item_id || body?.targetBookingItemId || body?.assignedItemId;
         let allItemIdsForThisKTV: string[] = [];
 
         if (technicianCode) {
-            const { data: ktvItems } = await supabase.from('BookingItems').select('id, "technicianCodes"').eq('bookingId', bookingId);
-            allItemIdsForThisKTV = (ktvItems || []).filter((item: any) => Array.isArray(item.technicianCodes) && item.technicianCodes.includes(technicianCode)).map((item: any) => item.id);
+            const { data: ktvItems } = await supabase.from('BookingItems').select('id, "technicianCodes", guest_id').eq('bookingId', bookingId);
+            
+            const targetItem = targetBookingItemId ? (ktvItems || []).find((i: any) => i.id === targetBookingItemId) : null;
+            
+            if (targetItem && targetItem.guest_id) {
+                // CHỈ lọc các items CỦA KTV NÀY và THUỘC CÙNG GUEST ID
+                allItemIdsForThisKTV = (ktvItems || [])
+                    .filter((item: any) => 
+                        Array.isArray(item.technicianCodes) && 
+                        item.technicianCodes.includes(technicianCode) &&
+                        item.guest_id === targetItem.guest_id
+                    )
+                    .map((item: any) => item.id);
+            } else {
+                // Fallback nếu không có guest_id
+                allItemIdsForThisKTV = (ktvItems || [])
+                    .filter((item: any) => Array.isArray(item.technicianCodes) && item.technicianCodes.includes(technicianCode))
+                    .map((item: any) => item.id);
+            }
         }
 
         if (allItemIdsForThisKTV.length === 0 && targetBookingItemId) allItemIdsForThisKTV = [targetBookingItemId];

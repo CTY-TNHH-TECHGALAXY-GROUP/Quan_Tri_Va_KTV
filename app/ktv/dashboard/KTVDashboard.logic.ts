@@ -870,7 +870,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                                                 ktvMatchesSeg(seg.ktvId, ktvId)
                             );
                             
-                            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
+                            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
                             allMySegs.push(...mySegsWithId);
                         }
 
@@ -882,7 +882,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                         // Kiểm tra Rule Merge Timer: CÙNG PHÒNG → merge 1 timer tổng
                         // (khác phòng → chia chặng riêng)
-                        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
+                        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
                         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
                         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
                         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
@@ -1289,7 +1289,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                 } catch { segs = []; }
                 const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
-                const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
+                const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
                 allMySegs.push(...mySegsWithId);
             }
 
@@ -1603,7 +1603,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 } catch { segs = []; }
                 const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
                 
-                mySegs.forEach((seg: any) => seg._itemId = ai.id); // 🔥 Explicitly inject _itemId
+                mySegs.forEach((seg: any) => { seg._itemId = ai.id; seg._guestId = ai.guest_id; }); // 🔥 Explicitly inject _itemId and _guestId
                 allMySegs.push(...mySegs);
             }
 
@@ -1615,7 +1615,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             // Tính shouldMerge để set timer đúng tổng nếu cần
             const segItemIds = new Set(allMySegs.map((s: any) => s._itemId).filter(Boolean));
-            const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
+            const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
             const uniqueItemIdsForPrep = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
             const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
             const isMerge = allMySegs.length > 1 && uniqueItemIdsForPrep.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
@@ -1656,7 +1656,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
             const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
-            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
+            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
             allMySegs.push(...mySegsWithId);
         }
         
@@ -1667,7 +1667,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         });
         
         // Merge: gộp tất cả các dịch vụ riêng biệt (cùng phòng) thành 1 chặng liên tục
-        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
@@ -1742,13 +1742,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
             const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
-            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id }));
+            const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
             allMySegs.push(...mySegsWithId);
         }
         allMySegs.sort((a, b) => (a.startTime || '23:59').localeCompare(b.startTime || '23:59'));
 
         // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
-        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || 'unknown'));
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
