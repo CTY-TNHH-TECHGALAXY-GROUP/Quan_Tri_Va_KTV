@@ -46,9 +46,10 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                     {group.childBookings.map((child: any) => {
                                         const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
                                         const isReady = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
+                                        const ktvNames = child.ktvList.map((k: any) => k.ktvName).join(', ') || 'Chưa có KTV';
                                         return (
                                             <option key={child.id} value={child.id} disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}>
-                                                {child.customerName} {isEvaluated ? '✓' : isReady ? '(!)' : '(Đang làm)'}
+                                                KTV: {ktvNames} {isEvaluated ? '✓' : isReady ? '(!)' : '(Đang làm)'}
                                             </option>
                                         );
                                     })}
@@ -90,12 +91,11 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 {group.childBookings.map((child: any) => {
                                     const isEvaluated = child.status === 'DONE' || (child.ktvList && child.ktvList.length > 0 && child.ktvList.every((k: any) => k.rating && k.rating > 0));
                                     const isReady = child.status === 'COMPLETED' || child.status === 'FEEDBACK';
-                                    const ktvNames = child.ktvList.map((k: any) => k.ktvName).join(', ');
-                                    const label = `${child.customerName} - KTV: ${ktvNames}`;
+                                    const ktvNames = child.ktvList.map((k: any) => k.ktvName).join(', ') || 'Chưa có KTV';
                                     
                                     return (
                                         <option key={child.id} value={child.id} disabled={(!isReady && currentBooking.id !== child.id) || isEvaluated}>
-                                            {label} {isEvaluated ? ' ✓ (Đã đánh giá)' : isReady ? ' (Chờ đánh giá)' : ' (Đang phục vụ)'}
+                                            Nhân viên: {ktvNames} {isEvaluated ? ' ✓ (Đã đánh giá)' : isReady ? ' (Chờ đánh giá)' : ' (Đang phục vụ)'}
                                         </option>
                                     );
                                 })}
