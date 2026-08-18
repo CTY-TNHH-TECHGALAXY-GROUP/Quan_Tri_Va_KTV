@@ -211,8 +211,14 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 }
             });
 
-            const updatedServices = group.services.map(svc => {
+            const updatedServicesTemp = group.services.map(svc => {
                 let dStatus = svc.status || 'NEW';
+                const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
+                
+                if (opts.mergedIntoId) {
+                    return { ...svc, status: dStatus, _isChild: true, _parentId: opts.mergedIntoId };
+                }
+
                 if (dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {
                     let svcAllComp = true, svcAnyStart = false, svcAllFb = true;
                     if (!svc.staffList || svc.staffList.length === 0) {
@@ -232,17 +238,32 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     else if (svcAnyStart) dStatus = 'IN_PROGRESS';
                     else dStatus = 'PREPARING';
                 }
-                return { ...svc, status: dStatus };
+                return { ...svc, status: dStatus, _isChild: false };
             });
+
+            const updatedServices = updatedServicesTemp.map(svc => {
+                if (svc._isChild && svc._parentId) {
+                    const parent = updatedServicesTemp.find(p => p.id === svc._parentId);
+                    if (parent && parent.status) {
+                        return { ...svc, status: parent.status };
+                    }
+                }
+                return svc;
+            });
+
 
             const statuses = updatedServices.map(s => s.status || 'NEW');
             let dispatchStatus = 'PREPARING';
+            const hasWaitingItems = statuses.some(s => ['PREPARING', 'WAITING', 'NEW'].includes(s));
+            const hasProgressedItems = statuses.some(s => ['IN_PROGRESS', 'COMPLETED', 'DONE', 'CANCELLED', 'FEEDBACK', 'CLEANING'].includes(s));
+
             if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dispatchStatus = 'IN_PROGRESS';
-            else if (statuses.includes('PREPARING')) dispatchStatus = 'PREPARING';
-            else if (statuses.includes('CLEANING')) dispatchStatus = 'CLEANING';
+            else if (hasWaitingItems && hasProgressedItems) dispatchStatus = 'IN_PROGRESS';
+            else if (statuses.some(s => ['CLEANING', 'COMPLETED'].includes(s))) dispatchStatus = 'CLEANING';
             else if (statuses.includes('FEEDBACK')) dispatchStatus = 'FEEDBACK';
-            else if (statuses.includes('DONE')) dispatchStatus = 'DONE';
-            else dispatchStatus = 'pending';
+            else if (statuses.every(s => ['DONE', 'CANCELLED'].includes(s))) dispatchStatus = 'DONE';
+            else if (statuses.includes('PREPARING')) dispatchStatus = 'PREPARING';
+            else dispatchStatus = 'PREPARING';
 
             if (subKtvIds.size === 0) {
                 dispatchStatus = 'pending';
