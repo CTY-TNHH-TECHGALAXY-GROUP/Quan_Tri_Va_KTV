@@ -17,7 +17,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         globalComment, handleCommentChange,
         reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
-        t
+        t, isSuccess
     } = useKioskFeedback(currentBooking, onClose);
 
     return (
@@ -109,7 +109,42 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
             <div className="flex-1 overflow-y-auto bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50 p-4 sm:p-8">
                 <div className="min-h-full flex flex-col justify-start max-w-4xl w-full mx-auto pb-12 pt-4 sm:justify-center sm:pt-0">
                 <AnimatePresence mode="wait">
-                    {step === 1 && (
+                    {isSuccess && (
+                        <motion.div
+                            key="success"
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ duration: 0.4, type: 'spring' }}
+                            className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-12 text-center flex flex-col items-center justify-center min-h-[400px]"
+                        >
+                            <div className="w-32 h-32 bg-green-100 rounded-full flex items-center justify-center mb-8 mx-auto">
+                                <motion.div 
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+                                >
+                                    <svg className="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </motion.div>
+                            </div>
+                            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                                {language === 'VN' ? 'Cảm ơn quý khách!' :
+                                 language === 'EN' ? 'Thank You!' :
+                                 language === 'ZH' ? '谢谢您！' :
+                                 'Thank You!'}
+                            </h2>
+                            <p className="text-xl text-gray-500 max-w-md mx-auto">
+                                {language === 'VN' ? 'Đánh giá của quý khách đã được ghi nhận.' :
+                                 language === 'EN' ? 'Your feedback has been recorded.' :
+                                 language === 'ZH' ? '您的评价已记录。' :
+                                 'Your feedback has been recorded.'}
+                            </p>
+                        </motion.div>
+                    )}
+
+                    {!isSuccess && step === 1 && (
                         <motion.div 
                             key="step1"
                             initial={{ opacity: 0, y: 20 }}
@@ -156,7 +191,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                         </motion.div>
                     )}
 
-                    {step === 2 && (
+                    {!isSuccess && step === 2 && (
                         <motion.div 
                             key="step2"
                             initial={{ opacity: 0, y: 20 }}

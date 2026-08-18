@@ -26,6 +26,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const [violations, setViolations] = useState<string[]>([]);
     
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
 
     // Fetch câu hỏi từ DB
     useEffect(() => {
@@ -66,6 +67,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         setGlobalRating(0);
         setGlobalComment('');
         setViolations([]);
+        setIsSuccess(false);
     }, [booking.id]);
 
     // Xử lý logic gộp KTV:
@@ -108,12 +110,6 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const handleSubmit = async () => {
         // Validation: Bắt buộc rate mới cho qua
         if (!globalRating) {
-            alert(
-                language === 'VN' ? 'Vui lòng đánh giá trải nghiệm của bạn!' :
-                language === 'EN' ? 'Please rate your experience!' :
-                language === 'ZH' ? '请评价您的体验！' :
-                'Please rate your experience!'
-            );
             return;
         }
 
@@ -251,14 +247,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
 
             await Promise.all(updatePromises);
             
-            alert(
-                language === 'VN' ? 'Cảm ơn quý khách đã đánh giá!' :
-                language === 'EN' ? 'Thank you for your feedback!' :
-                language === 'ZH' ? '感谢您的评价！' :
-                'Thank you for your feedback!'
-            );
-            
-            onClose();
+            setIsSuccess(true);
+            setTimeout(() => {
+                onClose();
+            }, 3000);
         } catch (e: any) {
             console.error("Error submitting feedback:", e);
             alert(`Đã có lỗi xảy ra. Vui lòng thử lại. (${e?.message || ''})`);
