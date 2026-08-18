@@ -270,7 +270,7 @@ export default function DispatchBoardPage() {
                 if (!staff.segments) continue;
                 for (const seg of staff.segments) {
                     const start = seg.actualStartTime || svc.timeStart || seg.startTime;
-                    const duration = Number(seg.duration) || Number(svc.duration) || 60;
+                    const duration = (seg.duration !== undefined && seg.duration !== null) ? Number(seg.duration) : (Number(svc.duration) || 60);
                     const finalEnd = seg.actualEndTime ? seg.actualEndTime : (seg.actualStartTime || svc.timeStart ? getDynamicEndTime(start, duration) : (svc.timeEnd || seg.endTime));
                     
                     if (finalEnd && finalEnd !== '--:--') {
@@ -936,8 +936,9 @@ if (!hasPermission('dispatch_board')) {
       const primarySeg = primaryStaff?.segments[0];
       
       const itemUpdates = clonedOrder.services.map((svc, index) => {
+          const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
           const allSegments = svc.staffList.flatMap(r => 
-            r.segments.map(seg => ({ ...seg, ktvId: r.ktvId }))
+            r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration }))
           );
 
           return {
@@ -1270,11 +1271,12 @@ if (!hasPermission('dispatch_board')) {
 
           const itemUpdates = targetServicesInGroup.map(svc => {
               const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
+              const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
               
               // Segment duration from updateGroup already contains the correct TOTAL merged duration
               const correctedStaffList = svc.staffList;
               
-              const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
+              const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration })));
               return {
                   id: svc.id,
                   roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
@@ -2612,7 +2614,7 @@ if (!hasPermission('dispatch_board')) {
               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
                 <div>
                   <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
-                  <p className="text-sm text-indigo-600 font-bold mt-1">Đơn {orderForModal.billCode} - {editCustomerName || orderForModal.customerName}</p>
+                  <p className="text-sm text-indigo-600 font-bold mt-1">Đơn {orderForModal.billCode} - {orderForModal.customerName}</p>
                 </div>
                 <button 
                   onClick={() => setShowDispatchConfirmModal(false)}
