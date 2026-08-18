@@ -342,7 +342,26 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 handover_comment: bi.handover_comment,
                                 handover_images: bi.handover_images,
                                 itemRating: bi.itemRating || null,
-                                ktvRatings: bi.ktvRatings || {}
+                                ktvRatings: bi.ktvRatings || {},
+                                customerGroupId: bi.guest_id || parsedOptions?.customerGroupId,
+                                guestId: bi.guest_id
+                            };
+                        }),
+                        guests: (b.BookingGuests || []).map((g: any) => {
+                            return {
+                                id: g.id,
+                                bookingId: g.booking_id,
+                                guestIndex: g.guest_index,
+                                guestLabel: g.guest_label,
+                                customerName: g.customer_name,
+                                gender: g.gender,
+                                nationality: g.nationality,
+                                bedId: g.bed_id,
+                                roomId: g.room_id,
+                                notes: g.notes,
+                                focusArea: g.focus_area,
+                                status: g.status,
+                                items: (b.BookingItems || []).filter((bi: any) => bi.guest_id === g.id)
                             };
                         })
                     };

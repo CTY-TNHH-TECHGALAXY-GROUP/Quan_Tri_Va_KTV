@@ -132,52 +132,145 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             
             const itemIdsToUpdate = Array.from(new Set(booking.ktvList.map(k => k.itemId)));
             
-            const { data: currentItems, error: fetchErr } = await supabase
-                .from('BookingItems')
-                .select('id, ktvRatings')
-                .in('id', itemIdsToUpdate);
-                
-            if (fetchErr) throw fetchErr;
+            const guestIdsToUpdate = itemIdsToUpdate.filter(id => id.startsWith('GUEST-'));
+            const normalItemIds = itemIdsToUpdate.filter(id => !id.startsWith('GUEST-'));
 
-            for (const item of currentItems || []) {
-                // Tái cấu trúc lại ktvRatings
-                let currentRatings = item.ktvRatings || {};
-                
-                // Tìm các ktv thuộc item này và khách có rate
-                booking.ktvList.forEach(k => {
-                    if (k.itemId === item.id && ratings[k.ktvId]) {
-                        currentRatings[k.ktvId] = ratings[k.ktvId];
-                    }
-                });
-                
-                // Tính trung bình rating cho item (itemRating) để đảm bảo trigger chạy chuẩn
-                const ratingValues = Object.values(currentRatings) as number[];
-                const avgRating = ratingValues.length > 0 
-                    ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
-                    : null;
+            // 1. UPDATE BookingGuests (Flow mới)
+            if (guestIdsToUpdate.length > 0) {
+                const { data: currentGuests, error: fetchErr } = await supabase
+                    .from('BookingGuests')
+                    .select('id, ktv_ratings')
+                    .in('id', guestIdsToUpdate);
+                    
+                if (fetchErr) throw fetchErr;
 
-                // Gom góp ý từ khách cho các KTV thuộc item này
-                const feedbackParts: string[] = [];
-                booking.ktvList.forEach(k => {
-                    if (k.itemId === item.id && comments[k.ktvId]?.trim()) {
-                        feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
-                    }
-                });
-                const itemFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
-
-                const p = supabase
-                    .from('BookingItems')
-                    .update({ 
-                        ktvRatings: currentRatings,
-                        itemRating: avgRating,
-                        ...(itemFeedback !== null && { itemFeedback })
-                    })
-                    .eq('id', item.id)
-                    .then(res => {
-                        if (res.error) throw res.error;
-                        return res;
+                for (const guest of currentGuests || []) {
+                    let currentRatings = guest.ktv_ratings || {};
+                    
+                    booking.ktvList.forEach(k => {
+                        if (k.itemId === guest.id && ratings[k.ktvId]) {
+                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                        }
                     });
-                updatePromises.push(p);
+                    
+                    const ratingValues = Object.values(currentRatings) as number[];
+                    const avgRating = ratingValues.length > 0 
+                        ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
+                        : null;
+
+                    const feedbackParts: string[] = [];
+                    booking.ktvList.forEach(k => {
+                        if (k.itemId === guest.id && comments[k.ktvId]?.trim()) {
+                            feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
+                        }
+                    });
+                    const guestFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
+
+                    const p = supabase
+                        .from('BookingGuests')
+                        .update({ 
+                            ktv_ratings: currentRatings,
+                            rating: avgRating,
+                            ...(guestFeedback !== null && { guest_feedback: guestFeedback }),
+                            status: 'DONE',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', guest.id)
+                        .then(res => {
+                            if (res.error) throw res.error;
+                            return res;
+                        });
+                    updatePromises.push(p);
+                }
+
+                // 1.5 ĐỒNG BỘ KÉP SANG BookingItems (Sync to BookingItems to trigger KTV bonuses)
+                const { data: guestItems, error: itemsErr } = await supabase
+                    .from('BookingItems')
+                    .select('id, guest_id, technicianCodes, ktvRatings')
+                    .in('guest_id', guestIdsToUpdate);
+                
+                if (itemsErr) throw itemsErr;
+
+                for (const item of guestItems || []) {
+                    const guestId = item.guest_id;
+                    let currentRatings = item.ktvRatings || {};
+                    let hasChanges = false;
+                    
+                    booking.ktvList.forEach(k => {
+                        // Nếu khách rate cho KTV trong lượt của guest này VÀ KTV đó có làm item này
+                        if (k.itemId === guestId && ratings[k.ktvId] && item.technicianCodes?.includes(k.ktvId)) {
+                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                            hasChanges = true;
+                        }
+                    });
+
+                    if (hasChanges) {
+                        const ratingValues = Object.values(currentRatings) as number[];
+                        const avgRating = ratingValues.length > 0 
+                            ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
+                            : null;
+
+                        const pSync = supabase
+                            .from('BookingItems')
+                            .update({
+                                ktvRatings: currentRatings,
+                                itemRating: avgRating
+                            })
+                            .eq('id', item.id)
+                            .then(res => {
+                                if (res.error) throw res.error;
+                                return res;
+                            });
+                        updatePromises.push(pSync);
+                    }
+                }
+            }
+
+            // 2. UPDATE BookingItems (Flow cũ)
+            if (normalItemIds.length > 0) {
+                const { data: currentItems, error: fetchErr } = await supabase
+                    .from('BookingItems')
+                    .select('id, ktvRatings')
+                    .in('id', normalItemIds);
+                    
+                if (fetchErr) throw fetchErr;
+
+                for (const item of currentItems || []) {
+                    let currentRatings = item.ktvRatings || {};
+                    
+                    booking.ktvList.forEach(k => {
+                        if (k.itemId === item.id && ratings[k.ktvId]) {
+                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                        }
+                    });
+                    
+                    const ratingValues = Object.values(currentRatings) as number[];
+                    const avgRating = ratingValues.length > 0 
+                        ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
+                        : null;
+
+                    const feedbackParts: string[] = [];
+                    booking.ktvList.forEach(k => {
+                        if (k.itemId === item.id && comments[k.ktvId]?.trim()) {
+                            feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
+                        }
+                    });
+                    const itemFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
+
+                    const p = supabase
+                        .from('BookingItems')
+                        .update({ 
+                            ktvRatings: currentRatings,
+                            itemRating: avgRating,
+                            ...(itemFeedback !== null && { itemFeedback })
+                        })
+                        .eq('id', item.id)
+                        .then(res => {
+                            if (res.error) throw res.error;
+                            return res;
+                        });
+                    updatePromises.push(p);
+                }
             }
 
             // Đồng thời update trạng thái Bookings -> FEEDBACK

@@ -76,9 +76,12 @@
 | `payment_method` | text | **[NEW]** Khách thanh toán bằng gì (Tiền mặt, Thẻ...) |
 | `tip_amount` | numeric | **[NEW]** Tiền tip riêng của khách này |
 | `customer_phone` | text | **[NEW]** SĐT của khách |
-| `reception_feedback` | text | **[NEW]** Đánh giá / Phản hồi của khách này |
+| `reception_feedback` | text | **[NEW]** Đánh giá / Phản hồi của Lễ tân về khách này |
 | `checkout_status` | text | **[NEW]** Trạng thái thanh toán (PENDING, PAID) |
 | `checkout_time` | timestamptz | **[NEW]** Thời điểm thanh toán |
+| `ktv_ratings` | jsonb | **[NEW]** Đánh giá chi tiết cho từng KTV phục vụ khách này (vd: `{"NH016": 4}`) |
+| `rating` | numeric | **[NEW]** Điểm trung bình đánh giá của khách này (1-5) |
+| `guest_feedback` | text | **[NEW]** Lời nhận xét / phản hồi từ khách này |
 | `created_at` | timestamptz | Thời gian tạo |
 | `updated_at` | timestamptz | Thời gian cập nhật |
 
