@@ -408,8 +408,8 @@ function ScreenDashboard({ logic }: { logic: any }) {
     : allItemsRaw;
   const item = allItems[0] || {};
   
-  // Tên: item cha đã chứa displayName gộp đầy đủ
-  const allServiceNames = allItems.map((i: any) => i.service_name).filter(Boolean);
+  // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI biết có bao nhiêu dịch vụ
+  const allServiceNames = allItemsRaw.map((i: any) => i.service_name).filter(Boolean);
   // Tổng thời gian: dùng allItemsRaw (bao gồm cả child) để tính tổng duration chính xác
   const allKtvSegments = allItemsRaw.flatMap((i: any) => {
     let segs = [];
@@ -726,8 +726,13 @@ function ScreenDashboard({ logic }: { logic: any }) {
           <div className={`${THEME.bgCard} ${THEME.border} ${THEME.radius} overflow-hidden border shadow-sm p-6 pb-0`}>
               <div className="mb-4">
                    <div className="flex flex-col">
-                      <h3 className="font-black text-3xl text-emerald-700 leading-tight tracking-tight">
-                        {allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}
+                      <h3 className="font-black text-3xl text-emerald-700 leading-tight tracking-tight flex items-center gap-2 flex-wrap">
+                        {item.guest_label && (
+                           <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
+                             👨 {item.guest_label}
+                           </span>
+                        )}
+                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
@@ -934,8 +939,8 @@ function ScreenTimer({ logic }: { logic: any }) {
     ? allTimerItemsRaw.filter((i: any) => !i.options?.mergedIntoId)
     : allTimerItemsRaw;
   const item = allTimerItems[0] || {};
-  // Tên: item cha đã chứa displayName gộp
-  const allTimerServiceNames = allTimerItems.map((i: any) => i.service_name).filter(Boolean);
+  // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI Timer biết có bao nhiêu dịch vụ
+  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => i.service_name).filter(Boolean);
   
   // Segments: dùng allTimerItemsRaw để tính tổng duration chính xác
   const allTimerKtvSegments = allTimerItemsRaw.flatMap((i: any) => {
@@ -1016,8 +1021,13 @@ function ScreenTimer({ logic }: { logic: any }) {
       {/* Header Info */}
       <div className="flex justify-between items-start mb-6 px-2">
         <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-black text-emerald-700 leading-tight tracking-tight">
-            {allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}
+          <h1 className="text-3xl font-black text-emerald-700 leading-tight tracking-tight flex items-center gap-2 flex-wrap">
+            {item.guest_label && (
+               <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
+                 👨 {item.guest_label}
+               </span>
+            )}
+            <span>{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
           </h1>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-slate-800 font-black">

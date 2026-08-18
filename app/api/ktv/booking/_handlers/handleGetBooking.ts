@@ -188,7 +188,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         // ═══════════════════════════════════════════════════════════════
         const today = getBusinessDate();
         
-        const [bookingRes, turnInfoRes, itemsRes, rewardConfigRes, nextAssignsRes] = await Promise.all([
+        const [bookingRes, turnInfoRes, itemsRes, rewardConfigRes, nextAssignsRes, guestsRes] = await Promise.all([
             // Q1: Fetch booking data
             supabase
                 .from('Bookings')
@@ -235,6 +235,14 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .order('created_at', { ascending: true })
                     .limit(5)
                 : Promise.resolve({ data: null, error: null }),
+
+            // Q6: Fetch BookingGuests
+            bookingId
+                ? supabase
+                    .from('BookingGuests')
+                    .select('id, guest_label')
+                    .eq('booking_id', bookingId)
+                : Promise.resolve({ data: null, error: null }),
         ]);
 
         const T_PARALLEL_FETCH = Date.now() - API_START;
@@ -245,6 +253,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         const iError = itemsRes.error;
         const rewardConfig = rewardConfigRes.data;
         const nextAssignsRaw = nextAssignsRes.data;
+        const guests = guestsRes.data;
 
         if (bError) throw bError;
         if (!booking) {
@@ -301,6 +310,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 });
             }
 
+            const guestMap = new Map();
+            if (guests) {
+                guests.forEach((g: any) => guestMap.set(g.id, g.guest_label));
+            }
+
             itemsWithService = items.map((i: any) => {
                 const rawSId = String(i.serviceId || '').trim();
                 const sId = rawSId.toLowerCase();
@@ -337,8 +351,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     return val || fallback;
                 };
 
+                const guest_label = guestMap.get(i.guest_id) || '';
+
                 return {
                     ...i,
+                    guest_label: guest_label,
                     service_name: opts.displayName || getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
                     procedure: svc?.procedure || null,
@@ -379,10 +396,6 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         let statusSource = 'none';
 
         const ktvItems = itemsWithService.filter((i: any) => {
-            // 🔥 Bỏ qua các dịch vụ đã gộp để KTV Dashboard không nhận nhầm item con (sửa lỗi cho dữ liệu cũ)
-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
-            if (opts.mergedIntoId) return false;
-
             return i.technicianCodes && 
                    Array.isArray(i.technicianCodes) && 
                    technicianCode && 

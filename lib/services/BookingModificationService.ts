@@ -50,7 +50,7 @@ export class BookingModificationService {
             // 2. Lấy thông tin dịch vụ
             const { data: svcs, error: sError } = await supabase
                 .from('Services')
-                .select('id, priceVND, duration')
+                .select('id, priceVND, duration, nameVN, nameEN')
                 .in('id', data.serviceIds);
             
             if (sError) throw new Error(`Lỗi khi lấy dịch vụ: ${sError.message}`);
@@ -186,6 +186,12 @@ export class BookingModificationService {
                 const svc = svcs.find(s => s.id === sid);
                 // Phân bổ dịch vụ tuần tự cho từng khách
                 const targetGuest = guestsToInsert[idx % guestCount];
+                
+                const getI18nStr = (val: any, fallback: string = '') => {
+                    if (typeof val === 'object' && val !== null) return val.vn || val.en || String(val);
+                    return val || fallback;
+                };
+                
                 return {
                     id: crypto.randomUUID(),
                     bookingId: booking.id,
@@ -193,7 +199,11 @@ export class BookingModificationService {
                     quantity: 1,
                     price: svc?.priceVND || 0,
                     status: 'NEW',
-                    guest_id: targetGuest.id
+                    guest_id: targetGuest.id,
+                    options: {
+                        duration: svc?.duration || 60,
+                        displayName: getI18nStr(svc?.nameVN || svc?.nameEN, `Dịch vụ ${sid}`)
+                    }
                 };
             });
 
@@ -284,7 +294,12 @@ export class BookingModificationService {
                     roomName: sourceItem?.roomName || null,
                     bedId: sourceItem?.bedId || null,
                     segments: JSON.stringify(newSegments),
-                    options: { isAddon: true, isPaid: false },
+                    options: { 
+                        isAddon: true, 
+                        isPaid: false,
+                        displayName: item.name,
+                        duration: item.duration
+                    },
                     guest_id: item.targetGuestId
                 };
             });
