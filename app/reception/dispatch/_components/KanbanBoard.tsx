@@ -912,6 +912,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 : 'bg-blue-50 text-blue-600 border-blue-200'
                                                         }`}>
                                                             {subOrder.rating ? (
+                                                                <>
                                                                     <Check size={12} /> Đánh giá: {subOrder.rating >= 5 ? 'Tuyệt vời' : subOrder.rating >= 4 ? 'Tốt' : subOrder.rating >= 3 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 5)}/5)
                                                                 </>
                                                             ) : (
