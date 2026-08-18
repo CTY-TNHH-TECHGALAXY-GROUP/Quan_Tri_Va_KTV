@@ -1329,7 +1329,7 @@ if (!hasPermission('dispatch_board')) {
       }
 
       if (!isPartial || targetSvcIds.length === clonedOrder.services.length) {
-          if (clonedOrder.dispatchStatus === 'pending' || clonedOrder.dispatchStatus === 'NEW') {
+          if ((clonedOrder.dispatchStatus as string) === 'pending' || (clonedOrder.dispatchStatus as string) === 'NEW') {
               setOrders(prev => prev.map(o =>
                   o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
               ));
