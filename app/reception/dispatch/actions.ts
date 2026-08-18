@@ -925,7 +925,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
             if (currentItems) {
                 dispatchData.itemUpdates = dispatchData.itemUpdates.map(updateItem => {
-                    const dbItem = currentItems.find(i => i.id === updateItem.id);
+                    const dbItem = (currentItems || []).find(i => i.id === updateItem.id);
                     if (!dbItem) return updateItem;
                     
                     // 1. NGĂN LÙI TRẠNG THÁI CA ĐANG LÀM / ĐÃ XONG
