@@ -242,8 +242,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             });
 
             const updatedServices = updatedServicesTemp.map(svc => {
-                if (svc._isChild && svc._parentId) {
-                    const parent = updatedServicesTemp.find(p => p.id === svc._parentId);
+                if (svc._isChild && (svc as any)._parentId) {
+                    const parent = updatedServicesTemp.find(p => p.id === (svc as any)._parentId);
                     if (parent && parent.status) {
                         return { ...svc, status: parent.status };
                     }
