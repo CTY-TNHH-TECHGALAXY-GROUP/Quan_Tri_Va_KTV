@@ -913,7 +913,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         }`}>
                                                             {subOrder.rating ? (
                                                                 <>
-                                                                    <Check size={12} /> Đánh giá: {subOrder.rating >= 5 ? 'Tuyệt vời' : subOrder.rating >= 4 ? 'Tốt' : subOrder.rating >= 3 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 5)}/5)
+                                                                    <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
                                                                 </>
                                                             ) : (
                                                                 <><Star size={12} /> Đánh giá: Chờ khách...</>
@@ -937,7 +937,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     </button>
                                                                 </div>
                                                                 <div className="flex items-center gap-1 w-full justify-center">
-                                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                                    {[1, 2, 3, 4].map((star) => (
                                                                         <button
                                                                             key={star}
                                                                             onClick={(e) => {
@@ -961,14 +961,14 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                 {/* ✅ RATING RESULT: Chỉ hiện ở cột "Hoàn tất" */}
                                                 {subOrder.dispatchStatus === 'DONE' && subOrder.rating && (() => {
-                                                    const currentRating = Math.min(subOrder.rating, 5);
-                                                    const ratingLabel = currentRating >= 5 ? 'Tuyệt vời' : currentRating >= 4 ? 'Tốt' : currentRating >= 3 ? 'Khá' : 'Tệ';
-                                                    const ratingColor = currentRating >= 5 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 4 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 3 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                    const currentRating = Math.min(subOrder.rating, 4);
+                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
+                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
                                                     return (
                                                         <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${ratingColor}`}>
                                                             <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
                                                             <div className="flex items-center gap-1">
-                                                                {[1, 2, 3, 4, 5].map((s) => (
+                                                                {[1, 2, 3, 4].map((s) => (
                                                                     <Star key={s} size={16} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
                                                                 ))}
                                                                 <span className="ml-1.5 text-[12px] font-black">{ratingLabel}</span>
