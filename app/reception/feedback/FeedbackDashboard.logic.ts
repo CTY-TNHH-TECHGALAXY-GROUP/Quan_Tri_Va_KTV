@@ -17,6 +17,7 @@ export type ChildBookingForFeedback = {
     customerName: string;
     customerLang: string;
     ktvList: FeedbackKtvInfo[];
+    isGuestFlow?: boolean;
 };
 
 export type ParentBookingGroup = {
@@ -138,7 +139,8 @@ export function useFeedbackDashboard(selectedDate: string) {
                             status: guest.status || b.status,
                             customerName: guest.guest_label || guest.customer_name || 'Khách',
                             customerLang: b.customerLang || 'VN',
-                            ktvList
+                            ktvList,
+                            isGuestFlow: true
                         });
                     });
                 } 
@@ -189,12 +191,13 @@ export function useFeedbackDashboard(selectedDate: string) {
                     });
 
                     group.childBookings.push({
-                        id: b.id,
+                        id: b.id, // Fallback dùng Booking ID
                         billCode: b.billCode || 'N/A',
                         status: b.status,
                         customerName: b.customerName || 'Khách',
                         customerLang: b.customerLang || 'VN',
-                        ktvList
+                        ktvList,
+                        isGuestFlow: false
                     });
                 }
             });

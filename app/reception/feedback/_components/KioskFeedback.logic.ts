@@ -121,11 +121,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         try {
             const updatePromises: any[] = [];
             const itemIdsToUpdate = Array.from(new Set(booking.ktvList.map(k => k.itemId)));
-            const guestIdsToUpdate = itemIdsToUpdate.filter(id => id.startsWith('GUEST-'));
-            const normalItemIds = itemIdsToUpdate.filter(id => !id.startsWith('GUEST-'));
 
-            // 1. UPDATE BookingGuests (Flow mới)
-            if (guestIdsToUpdate.length > 0) {
+            if (booking.isGuestFlow) {
+                const guestIdsToUpdate = itemIdsToUpdate;
+                // 1. UPDATE BookingGuests (Flow mới)
                 const { data: currentGuests, error: fetchErr } = await supabase
                     .from('BookingGuests')
                     .select('id, ktv_ratings')
@@ -197,10 +196,9 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                         updatePromises.push(pSync);
                     }
                 }
-            }
-
-            // 2. UPDATE BookingItems (Flow cũ - fallback)
-            if (normalItemIds.length > 0) {
+            } else {
+                // 2. UPDATE BookingItems (Dành cho những item lẻ, KHÔNG qua Guest Flow)
+                const normalItemIds = itemIdsToUpdate;
                 const { data: currentItems, error: fetchErr } = await supabase
                     .from('BookingItems')
                     .select('id, ktvRatings')
