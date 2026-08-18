@@ -690,7 +690,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     const childSvc = services.find((cs: any) => cs.id === childId);
                                                                     if (childSvc) {
                                                                         const childSeg = childSvc.staffList?.[0]?.segments?.[0];
-                                                                        duration += Number(childSeg?.duration) || Number(childSvc.duration) || 0;
+                                                                        // 🔥 FIX: Không cộng dồn duration của child nữa vì segment cha đã chứa tổng thời gian từ UI
+                                                                        // duration += Number(childSeg?.duration) || Number(childSvc.duration) || 0;
                                                                         if (childSeg?.actualEndTime && (!maxActualEndTime || childSeg.actualEndTime > maxActualEndTime)) {
                                                                             maxActualEndTime = childSeg.actualEndTime;
                                                                         }
