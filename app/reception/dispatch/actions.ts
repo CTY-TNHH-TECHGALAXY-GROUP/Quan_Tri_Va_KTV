@@ -832,10 +832,15 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             });
         }
 
+        let currentItems: any[] | null = null;
+        let currentGuests: any[] | null = null;
+
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
-            const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, guest_id').eq('bookingId', bookingId);
-            const { data: currentGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+            const { data: cItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, guest_id').eq('bookingId', bookingId);
+            const { data: cGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+            currentItems = cItems;
+            currentGuests = cGuests;
             
             // 🔥 ĐỒNG BỘ GUEST_ID TỪ UI GỘP DỊCH VỤ CŨ
             try {
