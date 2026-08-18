@@ -478,7 +478,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     setOrders(prev => prev.map(o => {
                         if (o.id === newItem.bookingId) {
                             const updatedServices = o.services.map((svc: any) =>
-                                svc.id === newItem.id ? { ...svc, status: newItem.status } : svc
+                                svc.id === newItem.id ? { 
+                                    ...svc, 
+                                    status: newItem.status,
+                                    itemRating: newItem.itemRating,
+                                    ktvRatings: newItem.ktvRatings 
+                                } : svc
                             );
                             return { ...o, services: updatedServices };
                         }
@@ -496,7 +501,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     setOrders(prev => {
                         const order = prev.find(o => o.id === newItem.bookingId);
                         const svc = order?.services.find((s: any) => s.id === newItem.id);
-                        if (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') {
+                        if (
+                            (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') ||
+                            (newItem.itemRating !== svc?.itemRating)
+                        ) {
                             debouncedFetchData();
                         }
                         return prev;
