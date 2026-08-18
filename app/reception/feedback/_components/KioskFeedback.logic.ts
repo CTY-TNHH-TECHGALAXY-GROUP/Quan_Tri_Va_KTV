@@ -15,10 +15,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const initialLang = (['VN', 'EN', 'KR', 'JP', 'ZH'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP' | 'ZH') : 'VN';
     const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP' | 'ZH'>(initialLang);
     
-    // State lưu điểm (từ 1 đến 4) cho từng KTV (key = ktvId)
-    const [ratings, setRatings] = useState<Record<string, number>>({});
-    // State lưu ghi chú nếu khách muốn gõ thêm
-    const [comments, setComments] = useState<Record<string, string>>({});
+    // State lưu điểm (từ 1 đến 4) dùng chung cho tất cả KTV của khách này
+    const [globalRating, setGlobalRating] = useState<number>(0);
+    // State lưu ghi chú chung
+    const [globalComment, setGlobalComment] = useState<string>('');
     
     // State lưu danh sách câu hỏi vi phạm từ DB
     const [reminders, setReminders] = useState<any[]>([]);
@@ -63,8 +63,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     // Reset state khi đổi khách (chuyển tab)
     useEffect(() => {
         setStep(1);
-        setRatings({});
-        setComments({});
+        setGlobalRating(0);
+        setGlobalComment('');
         setViolations([]);
     }, [booking.id]);
 
@@ -97,41 +97,30 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         return Array.from(groupsMap.values());
     }, [booking.ktvList]);
 
-    const handleRatingChange = (ktvId: string, rating: number) => {
-        setRatings(prev => ({ ...prev, [ktvId]: rating }));
+    const handleRatingChange = (rating: number) => {
+        setGlobalRating(rating);
     };
 
-    const handleCommentChange = (ktvId: string, text: string) => {
-        setComments(prev => ({ ...prev, [ktvId]: text }));
+    const handleCommentChange = (text: string) => {
+        setGlobalComment(text);
     };
 
     const handleSubmit = async () => {
-        // Validation: Bắt buộc rate hết tất cả KTV mới cho qua
-        const unratedKtvs = mergedKtvGroups.filter(g => !ratings[g.ktvId]);
-        if (unratedKtvs.length > 0) {
+        // Validation: Bắt buộc rate mới cho qua
+        if (!globalRating) {
             alert(
-                language === 'VN' ? 'Vui lòng đánh giá cho tất cả nhân viên!' :
-                language === 'EN' ? 'Please rate all staff members!' :
-                language === 'ZH' ? '请为所有员工评分！' :
-                'Please rate all staff members!'
+                language === 'VN' ? 'Vui lòng đánh giá trải nghiệm của bạn!' :
+                language === 'EN' ? 'Please rate your experience!' :
+                language === 'ZH' ? '请评价您的体验！' :
+                'Please rate your experience!'
             );
             return;
         }
 
         setIsSubmitting(true);
         try {
-            // Update BookingItems.ktvRatings cho từng item
-            // Do 1 KTV có thể làm nhiều item, ta lặp qua groups
             const updatePromises: any[] = [];
-            
-            // Để gom nhóm các update theo item ID (vì 1 item có thể có 2 KTV)
-            // Cần query item hiện tại ra trước để merge JSONB, hoặc dùng RPC. 
-            // Tuy nhiên, có thể viết RPC nhỏ hoặc gọi update thẳng nếu cấu trúc đơn giản.
-            // Để đơn giản và an toàn, ta dùng Supabase update.
-            // Nhưng để tránh ghi đè ktvRatings của KTV khác trong cùng 1 item, tốt nhất là query item đó trước.
-            
             const itemIdsToUpdate = Array.from(new Set(booking.ktvList.map(k => k.itemId)));
-            
             const guestIdsToUpdate = itemIdsToUpdate.filter(id => id.startsWith('GUEST-'));
             const normalItemIds = itemIdsToUpdate.filter(id => !id.startsWith('GUEST-'));
 
@@ -148,29 +137,18 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                     let currentRatings = guest.ktv_ratings || {};
                     
                     booking.ktvList.forEach(k => {
-                        if (k.itemId === guest.id && ratings[k.ktvId]) {
-                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                        if (k.itemId === guest.id) {
+                            currentRatings[k.ktvId] = globalRating;
                         }
                     });
                     
-                    const ratingValues = Object.values(currentRatings) as number[];
-                    const avgRating = ratingValues.length > 0 
-                        ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
-                        : null;
-
-                    const feedbackParts: string[] = [];
-                    booking.ktvList.forEach(k => {
-                        if (k.itemId === guest.id && comments[k.ktvId]?.trim()) {
-                            feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
-                        }
-                    });
-                    const guestFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
+                    const guestFeedback = globalComment.trim() || null;
 
                     const p = supabase
                         .from('BookingGuests')
                         .update({ 
                             ktv_ratings: currentRatings,
-                            rating: avgRating,
+                            rating: globalRating,
                             ...(guestFeedback !== null && { guest_feedback: guestFeedback }),
                             status: 'DONE',
                             updated_at: new Date().toISOString()
@@ -197,24 +175,19 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                     let hasChanges = false;
                     
                     booking.ktvList.forEach(k => {
-                        // Nếu khách rate cho KTV trong lượt của guest này VÀ KTV đó có làm item này
-                        if (k.itemId === guestId && ratings[k.ktvId] && item.technicianCodes?.includes(k.ktvId)) {
-                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                        // Nếu KTV đó có làm item này
+                        if (k.itemId === guestId && item.technicianCodes?.includes(k.ktvId)) {
+                            currentRatings[k.ktvId] = globalRating;
                             hasChanges = true;
                         }
                     });
 
                     if (hasChanges) {
-                        const ratingValues = Object.values(currentRatings) as number[];
-                        const avgRating = ratingValues.length > 0 
-                            ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
-                            : null;
-
                         const pSync = supabase
                             .from('BookingItems')
                             .update({
                                 ktvRatings: currentRatings,
-                                itemRating: avgRating
+                                itemRating: globalRating
                             })
                             .eq('id', item.id)
                             .then(res => {
@@ -226,7 +199,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                 }
             }
 
-            // 2. UPDATE BookingItems (Flow cũ)
+            // 2. UPDATE BookingItems (Flow cũ - fallback)
             if (normalItemIds.length > 0) {
                 const { data: currentItems, error: fetchErr } = await supabase
                     .from('BookingItems')
@@ -239,29 +212,18 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                     let currentRatings = item.ktvRatings || {};
                     
                     booking.ktvList.forEach(k => {
-                        if (k.itemId === item.id && ratings[k.ktvId]) {
-                            currentRatings[k.ktvId] = ratings[k.ktvId];
+                        if (k.itemId === item.id) {
+                            currentRatings[k.ktvId] = globalRating;
                         }
                     });
                     
-                    const ratingValues = Object.values(currentRatings) as number[];
-                    const avgRating = ratingValues.length > 0 
-                        ? Math.round(ratingValues.reduce((a,b) => a+b, 0) / ratingValues.length) 
-                        : null;
-
-                    const feedbackParts: string[] = [];
-                    booking.ktvList.forEach(k => {
-                        if (k.itemId === item.id && comments[k.ktvId]?.trim()) {
-                            feedbackParts.push(`${k.ktvName || k.ktvId}: ${comments[k.ktvId].trim()}`);
-                        }
-                    });
-                    const itemFeedback = feedbackParts.length > 0 ? feedbackParts.join(' | ') : null;
+                    const itemFeedback = globalComment.trim() || null;
 
                     const p = supabase
                         .from('BookingItems')
                         .update({ 
                             ktvRatings: currentRatings,
-                            itemRating: avgRating,
+                            itemRating: globalRating,
                             ...(itemFeedback !== null && { itemFeedback })
                         })
                         .eq('id', item.id)
@@ -417,8 +379,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         step, setStep,
         language, setLanguage,
         mergedKtvGroups,
-        ratings, handleRatingChange,
-        comments, handleCommentChange,
+        globalRating, handleRatingChange,
+        globalComment, handleCommentChange,
         reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
         t

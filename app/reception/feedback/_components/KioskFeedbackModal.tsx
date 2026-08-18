@@ -13,8 +13,8 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         step, setStep,
         language, setLanguage,
         mergedKtvGroups,
-        ratings, handleRatingChange,
-        comments, handleCommentChange,
+        globalRating, handleRatingChange,
+        globalComment, handleCommentChange,
         reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
         t
@@ -203,59 +203,56 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-                                {mergedKtvGroups.map((group) => (
-                                    <div key={group.ktvId} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                                        <div className="flex items-start gap-4 mb-8">
-                                            <div className="w-14 h-14 bg-[#F3E8FF] rounded-full flex items-center justify-center text-[#7C3AED] shrink-0 mt-1">
-                                                <UserCircle2 className="w-8 h-8" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-xl font-bold text-gray-900 leading-tight">{group.ktvName}</h3>
-                                                <p className="text-sm text-gray-500 font-medium mb-1">{group.ktvId}</p>
-                                                <p className="text-sm text-[#7C3AED] bg-[#F3E8FF] inline-block px-3 py-1 rounded-md">
-                                                    {group.serviceNames.join(' + ')}
-                                                </p>
-                                            </div>
+                            <div className="max-w-2xl mx-auto mb-12">
+                                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+                                        <div className="w-16 h-16 bg-[#F3E8FF] rounded-full flex items-center justify-center text-[#7C3AED] shrink-0">
+                                            <UserCircle2 className="w-10 h-10" />
                                         </div>
-
-                                        <div className="grid grid-cols-4 gap-2 mb-8">
-                                            {[
-                                                { score: 1, emoji: '😡', label: t.rateBad || 'Tệ' },
-                                                { score: 2, emoji: '😐', label: t.rateOk || 'Bình thường' },
-                                                { score: 3, emoji: '🙂', label: t.rateGood || 'Tốt' },
-                                                { score: 4, emoji: '🤩', label: t.rateExcellent || 'Tuyệt vời' }
-                                            ].map((r) => {
-                                                const isSelected = (ratings[group.ktvId] || 0) === r.score;
-                                                return (
-                                                    <button
-                                                        key={r.score}
-                                                        onClick={() => handleRatingChange(group.ktvId, r.score)}
-                                                        className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all ${
-                                                            isSelected 
-                                                                ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
-                                                                : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                                        }`}
-                                                    >
-                                                        <span className="text-3xl">{r.emoji}</span>
-                                                        <span className={`text-xs font-bold text-center ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
-                                                            {r.label}
-                                                        </span>
-                                                    </button>
-                                                );
-                                            })}
+                                        <div className="text-center sm:text-left">
+                                            <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-2">Trải nghiệm của bạn</h3>
+                                            <p className="text-sm text-[#7C3AED] bg-[#F3E8FF] inline-block px-3 py-1 rounded-md font-medium">
+                                                Nhân viên phục vụ: {mergedKtvGroups.map(g => g.ktvName).join(', ')}
+                                            </p>
                                         </div>
-
-                                        <textarea 
-                                            placeholder={t.notePlaceholder}
-                                            value={comments[group.ktvId] || ''}
-                                            onChange={(e) => handleCommentChange(group.ktvId, e.target.value)}
-                                            className="w-full bg-gray-50 border-none rounded-2xl p-5 text-gray-700 focus:ring-2 focus:ring-[#7C3AED]/20 resize-none h-28"
-                                        />
                                     </div>
-                                ))}
+
+                                    <div className="grid grid-cols-4 gap-2 sm:gap-4 mb-8">
+                                        {[
+                                            { score: 1, emoji: '😡', label: t.rateBad || 'Tệ' },
+                                            { score: 2, emoji: '😐', label: t.rateOk || 'Bình thường' },
+                                            { score: 3, emoji: '🙂', label: t.rateGood || 'Tốt' },
+                                            { score: 4, emoji: '🤩', label: t.rateExcellent || 'Tuyệt vời' }
+                                        ].map((r) => {
+                                            const isSelected = globalRating === r.score;
+                                            return (
+                                                <button
+                                                    key={r.score}
+                                                    onClick={() => handleRatingChange(r.score)}
+                                                    className={`p-3 sm:p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${
+                                                        isSelected 
+                                                            ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
+                                                            : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    <span className="text-3xl sm:text-5xl">{r.emoji}</span>
+                                                    <span className={`text-xs sm:text-sm font-bold text-center mt-1 ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
+                                                        {r.label}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <textarea 
+                                        placeholder={t.notePlaceholder}
+                                        value={globalComment}
+                                        onChange={(e) => handleCommentChange(e.target.value)}
+                                        className="w-full bg-gray-50 border-none rounded-2xl p-5 text-gray-700 focus:ring-2 focus:ring-[#7C3AED]/20 resize-none h-32 text-base sm:text-lg"
+                                    />
+                                </div>
                                 {mergedKtvGroups.length === 0 && (
-                                    <div className="col-span-full text-center p-10 bg-white rounded-3xl border border-gray-100 text-gray-500 text-xl">
+                                    <div className="text-center p-10 mt-6 bg-white rounded-3xl border border-gray-100 text-gray-500 text-xl">
                                         Không có nhân viên nào trong hệ thống cho đơn này.
                                     </div>
                                 )}
