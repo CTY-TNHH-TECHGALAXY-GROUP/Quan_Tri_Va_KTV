@@ -235,6 +235,9 @@ export async function getDispatchData(date: string) {
                     notes: g.notes,
                     focusArea: g.focus_area,
                     status: g.status,
+                    rating: g.rating,
+                    ktv_ratings: g.ktv_ratings,
+                    guest_feedback: g.guest_feedback
                 }));
 
                 return {

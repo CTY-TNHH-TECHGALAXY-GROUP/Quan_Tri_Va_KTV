@@ -219,6 +219,9 @@ export function useFeedbackDashboard(selectedDate: string) {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, () => {
                 fetchData();
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingGuests' }, () => {
+                fetchData();
+            })
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
