@@ -384,10 +384,12 @@ export const PrintableInvoice = ({ config, bookingData, lang = 'vi' }: Printable
                                 <span>{t.subtotal}</span>
                                 <strong>{formatVND(subTotal)}</strong>
                             </div>
-                            <div className={styles.totalLine}>
-                                <span>{t.discount}</span>
-                                <strong>{formatVND(discount)}</strong>
-                            </div>
+                            {discount > 0 && (
+                                <div className={styles.totalLine}>
+                                    <span>{t.discount}</span>
+                                    <strong>{formatVND(discount)}</strong>
+                                </div>
+                            )}
                             <div className={`${styles.totalLine} ${styles.grand}`}>
                                 <span>{t.total}</span>
                                 <span>{formatVND(totalAmount)}</span>
