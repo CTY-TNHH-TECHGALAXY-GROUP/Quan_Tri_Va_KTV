@@ -595,13 +595,13 @@ export const QuickDispatchTable = ({
               const hasMergedItems = block.items.some(([gk]) => groupStates.get(gk)?.isMergedGroup);
 
               const wrapperClass = isMultiItemBlock 
-                  ? `border-2 overflow-hidden bg-white shadow-sm hover:shadow-md transition-all rounded-3xl flex flex-col ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md scale-[1.01] z-10 relative' : hasMergedItems ? 'border-purple-300 ring-4 ring-purple-50/60 bg-purple-50/10 animate-merge' : borderColorClass}`
+                  ? `border-2 overflow-visible bg-white shadow-sm hover:shadow-md transition-all rounded-3xl flex flex-col ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md scale-[1.01] z-10 relative' : borderColorClass}`
                   : "flex flex-col";
 
               return (
                 <div key={block.key} className={wrapperClass}>
                   {isMultiItemBlock && (
-                     <div className={`px-4 py-3 border-b flex flex-col gap-2 rounded-t-3xl ${isSelected ? 'bg-indigo-50/50 border-indigo-100' : hasMergedItems ? 'bg-purple-50/50 border-purple-100' : 'bg-gray-50/80 border-gray-100'}`}>
+                     <div className={`px-4 py-3 border-b flex flex-col gap-2 rounded-t-3xl ${isSelected ? 'bg-indigo-50/50 border-indigo-100' : 'bg-gray-50/80 border-gray-100'}`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                    <input type="checkbox" checked={isSelected} onChange={() => {
@@ -622,20 +622,8 @@ export const QuickDispatchTable = ({
                                        <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode}</span></span>
                                      </>
                                    )}
-                                   {hasMergedItems && (
-                                     <>
-                                       <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md ml-2">
-                                           🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
-                                       </span>
-                                           <button onClick={() => {
-                                                const firstGk = block.items[0][0];
-                                                handleUnmergeSingle(firstGk);
-                                           }} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-1">
-                                               Hủy gộp
-                                           </button>
-                                     </>
-                                   )}
-                                   {!hasMergedItems && isMultiItemBlock && (
+                                   
+                                   {isMultiItemBlock && (
                                       <button onClick={() => {
                                           const cId = block.items[0][1][0]?.customerGroupId;
                                           if (cId) handleUnmergeCustomerGroup(cId);
@@ -1042,7 +1030,7 @@ const ServiceGroupCard = ({
   const hasGenderConflict = customerReqs?.genderReq?.toLowerCase().includes('nam') && customerReqs?.genderReq?.toLowerCase().includes('nữ');
 
   const wrapperClass = isChildOfBlock
-    ? `overflow-visible bg-white transition-all ${!isLastInGroup ? 'border-b border-gray-100' : ''}`
+    ? `overflow-visible transition-all ${state.isMergedGroup ? 'bg-purple-50/30' : 'bg-white'} ${!isLastInGroup ? 'border-b border-gray-100' : ''}`
     : `border-2 overflow-visible bg-white shadow-sm hover:shadow-md transition-all ${roundedClass} ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md scale-[1.01] z-10 relative' : hasGenderConflict ? 'border-rose-400 ring-4 ring-rose-50/60 bg-rose-50/10' : state.isMergedGroup ? 'border-purple-300 ring-4 ring-purple-50/60 bg-purple-50/10 animate-merge' : (borderColorClass || 'border-gray-100')}`;
 
   return (<>
@@ -1067,18 +1055,7 @@ const ServiceGroupCard = ({
                        <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode}</span></span>
                      </>
                    )}
-                   {state.isMergedGroup && (
-                     <>
-                       <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md ml-2">
-                           🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
-                       </span>
-                       {onUnmerge && (
-                           <button onClick={onUnmerge} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-1">
-                               Hủy gộp
-                           </button>
-                       )}
-                     </>
-                   )}
+                   
                 </div>
             </div>
             
@@ -1112,10 +1089,22 @@ const ServiceGroupCard = ({
               )}
               {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
             </div>
-            {state.isMergedGroup && groupItems.length > 0 && groupItems[0]?.options?._generatedDisplayName && (
-                <span className="text-[11.5px] text-indigo-600 font-semibold truncate w-full mt-0.5">
-                    Gồm: {groupItems[0].options._generatedDisplayName}
-                </span>
+            {state.isMergedGroup && groupItems.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                    <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md">
+                        🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
+                    </span>
+                    {onUnmerge && (
+                        <button onClick={onUnmerge} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline">
+                            Hủy gộp
+                        </button>
+                    )}
+                    {groupItems[0]?.options?._generatedDisplayName && (
+                        <span className="text-[11.5px] text-indigo-600 font-semibold truncate flex-1">
+                            Gồm: {groupItems[0].options._generatedDisplayName}
+                        </span>
+                    )}
+                </div>
             )}
             
             {/* KHỐI HIỂN THỊ YÊU CẦU & GHI CHÚ KHÁCH HÀNG */}

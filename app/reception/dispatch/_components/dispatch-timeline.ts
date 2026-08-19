@@ -139,7 +139,20 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             }
 
             let targetGroup = guestGroups.get(svc.guestId || '');
-            if (!targetGroup) {
+            
+            // 🔧 Tách các dịch vụ chưa có KTV và đang ở trạng thái pending thành các SubOrder riêng biệt
+            // Điều này giúp Lễ Tân dễ dàng thấy và điều phối từng dịch vụ một trong cột "Chờ xếp ca"
+            const hasKtv = svc.staffList && svc.staffList.length > 0;
+            const isWaiting = svc.status === 'NEW' || svc.status === 'WAITING' || !svc.status;
+            
+            // 🔥 SỬA LỖI: Chỉ tách riêng nếu dịch vụ CHƯA CÓ GUEST ID (đơn cũ/walk-in không chia khách).
+            // Nếu đã thuộc về một Khách cụ thể (vd Khách A, Khách B), thì PHẢI gộp chung vào Khách đó
+            // để không bị "ẩn" khỏi UI khi ấn Thêm Dịch Vụ từ trong modal của khách đó.
+            if (!hasKtv && isWaiting && !svc.guestId) {
+                const uniqueGroupId = `split-${svc.id}`;
+                guestGroups.set(uniqueGroupId, { guest: targetGroup?.guest || null, services: [] });
+                targetGroup = guestGroups.get(uniqueGroupId);
+            } else if (!targetGroup) {
                 const firstGroupId = Array.from(guestGroups.keys())[0];
                 if (firstGroupId) {
                     targetGroup = guestGroups.get(firstGroupId);
@@ -252,68 +265,106 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             });
 
 
-            const statuses = updatedServices.map(s => s.status || 'NEW');
-            let dispatchStatus = 'PREPARING';
-            const hasWaitingItems = statuses.some(s => ['PREPARING', 'WAITING', 'NEW'].includes(s));
-            const hasProgressedItems = statuses.some(s => ['IN_PROGRESS', 'COMPLETED', 'DONE', 'CANCELLED', 'FEEDBACK', 'CLEANING'].includes(s));
+            // Helper function to map individual service status to a Kanban Phase
+            const getServicePhase = (st: string) => {
+                if (['IN_PROGRESS', 'PAUSED'].includes(st)) return 'IN_PROGRESS';
+                if (['CLEANING', 'COMPLETED'].includes(st)) return 'CLEANING';
+                if (['FEEDBACK', 'DONE', 'CANCELLED'].includes(st)) return 'FEEDBACK';
+                return 'PREPARING';
+            };
 
-            if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dispatchStatus = 'IN_PROGRESS';
-            else if (hasWaitingItems && hasProgressedItems) dispatchStatus = 'IN_PROGRESS';
-            else if (statuses.some(s => ['CLEANING', 'COMPLETED'].includes(s))) dispatchStatus = 'CLEANING';
-            else if (statuses.includes('FEEDBACK')) dispatchStatus = 'FEEDBACK';
-            else if (statuses.every(s => ['DONE', 'CANCELLED'].includes(s))) dispatchStatus = 'DONE';
-            else if (statuses.includes('PREPARING')) dispatchStatus = 'PREPARING';
-            else dispatchStatus = 'PREPARING';
-
-            if (subKtvIds.size === 0) {
-                dispatchStatus = 'pending';
-            }
-            if (order.dispatchStatus === 'pending') {
-                dispatchStatus = 'pending';
-            }
-
-            let subOrderRating: number | null = null;
-            let maxRating: number | null = null;
+            const servicesByPhase = new Map<string, ServiceBlock[]>();
+            
             updatedServices.forEach(svc => {
-                const subKtvIdsArray = Array.from(subKtvIds);
-                if (subKtvIdsArray.length > 0) {
-                    subKtvIdsArray.forEach(ktvId => {
-                        let r = 0;
-                        const ktvRatings = (svc as any).ktvRatings || {};
-                        const key = Object.keys(ktvRatings).find(k => k.toLowerCase() === ktvId.toLowerCase());
-                        if (key) r = Number(ktvRatings[key]) || 0;
-                        if (r === 0) r = Number((svc as any).itemRating) || 0;
-                        if (r > 0 && (maxRating === null || r > maxRating)) maxRating = r;
-                    });
-                } else {
-                    const r = Number((svc as any).itemRating) || 0;
-                    if (r > 0 && (maxRating === null || r > maxRating)) maxRating = r;
+                let phase = getServicePhase(svc.status || 'NEW');
+                
+                // Keep child services grouped with their parent's phase
+                if (svc._isChild && (svc as any)._parentId) {
+                    const parent = updatedServices.find(p => p.id === (svc as any)._parentId);
+                    if (parent) {
+                        phase = getServicePhase(parent.status || 'NEW');
+                    }
                 }
+
+                // If subOrder is completely pending (no KTV assigned to anything)
+                if (subKtvIds.size === 0 || order.dispatchStatus === 'pending') {
+                    phase = 'pending';
+                }
+
+                if (!servicesByPhase.has(phase)) servicesByPhase.set(phase, []);
+                servicesByPhase.get(phase)!.push(svc);
             });
-            subOrderRating = maxRating;
 
-            if (subOrderRating === null) {
-                const hasDetailedRating = order.services.some((svc: any) => 
-                    svc.itemRating != null || 
-                    (svc.ktvRatings && Object.keys(svc.ktvRatings).length > 0)
-                );
-                if (!hasDetailedRating) subOrderRating = order.rating ?? null;
-            }
+            // Nếu tất cả các services cuối cùng đều thuộc FEEDBACK/DONE, chúng sẽ tự động gom vào 1 phase 'FEEDBACK'.
+            // Nếu có cái CLEANING, có cái IN_PROGRESS, chúng sẽ chia thành 2 phase (2 thẻ trên Kanban).
 
-            if (!calculatedStart) calculatedStart = order.timeStart || order.time || '';
+            servicesByPhase.forEach((phaseServices, phase) => {
+                let phaseDispatchStatus = phase;
+                if (phaseDispatchStatus === 'pending') phaseDispatchStatus = order.dispatchStatus === 'pending' ? 'pending' : 'PREPARING';
 
-            resultForOrder.push({
-                id: guestId !== 'default' ? guestId : `${order.id}_guest${groupIndex}`,
-                bookingId: order.id,
-                originalOrder: order,
-                services: updatedServices,
-                dispatchStatus,
-                guest: group.guest,
-                ktvSignature: guestId, // Legacy
-                ktvIds: Array.from(subKtvIds),
-                calculatedStart,
-                rating: subOrderRating,
-                subSuffix: group.guest?.guestLabel || String.fromCharCode(65 + groupIndex)
+                const phaseSubKtvIds = new Set<string>();
+                let phaseCalculatedStart = '';
+
+                phaseServices.forEach(svc => {
+                    if (svc.staffList) {
+                        svc.staffList.forEach((st: any) => {
+                            phaseSubKtvIds.add(st.ktvId);
+                            if (!phaseCalculatedStart && st._calculatedStartTime) {
+                                phaseCalculatedStart = st._calculatedStartTime;
+                            } else if (st._calculatedStartTime && st._calculatedStartTime < phaseCalculatedStart) {
+                                phaseCalculatedStart = st._calculatedStartTime;
+                            }
+                        });
+                    }
+                });
+
+                let subOrderRating: number | null = null;
+                let maxRating: number | null = null;
+                phaseServices.forEach(svc => {
+                    const subKtvIdsArray = Array.from(phaseSubKtvIds);
+                    if (subKtvIdsArray.length > 0) {
+                        subKtvIdsArray.forEach(ktvId => {
+                            let r = 0;
+                            const ktvRatings = (svc as any).ktvRatings || {};
+                            const key = Object.keys(ktvRatings).find(k => k.toLowerCase() === ktvId.toLowerCase());
+                            if (key) r = Number(ktvRatings[key]) || 0;
+                            if (r === 0) r = Number((svc as any).itemRating) || 0;
+                            if (r > 0 && (maxRating === null || r > maxRating)) maxRating = r;
+                        });
+                    } else {
+                        const r = Number((svc as any).itemRating) || 0;
+                        if (r > 0 && (maxRating === null || r > maxRating)) maxRating = r;
+                    }
+                });
+                subOrderRating = maxRating;
+
+                if (subOrderRating === null) {
+                    const hasDetailedRating = order.services.some((svc: any) => 
+                        svc.itemRating != null || 
+                        (svc.ktvRatings && Object.keys(svc.ktvRatings).length > 0)
+                    );
+                    if (!hasDetailedRating) subOrderRating = order.rating ?? null;
+                }
+
+                if (!phaseCalculatedStart) phaseCalculatedStart = order.timeStart || order.time || '';
+
+                // Create a unique ID for this SubOrder split by Phase, so they render as distinct cards
+                const splitIdSuffix = servicesByPhase.size > 1 ? `_${phase}` : '';
+                const baseId = guestId !== 'default' ? guestId : `${order.id}_guest${groupIndex}`;
+
+                resultForOrder.push({
+                    id: `${baseId}${splitIdSuffix}`,
+                    bookingId: order.id,
+                    originalOrder: order,
+                    services: phaseServices,
+                    dispatchStatus: phaseDispatchStatus,
+                    guest: group.guest,
+                    ktvSignature: guestId, // Legacy
+                    ktvIds: Array.from(phaseSubKtvIds),
+                    calculatedStart: phaseCalculatedStart,
+                    rating: subOrderRating,
+                    subSuffix: group.guest?.guestLabel || String.fromCharCode(65 + groupIndex)
+                });
             });
             groupIndex++;
         });
