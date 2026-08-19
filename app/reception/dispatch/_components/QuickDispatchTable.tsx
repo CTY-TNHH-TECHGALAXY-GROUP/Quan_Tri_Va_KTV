@@ -94,7 +94,7 @@ export const QuickDispatchTable = ({
       // Calculate display name and duration by including any merged services
       const mergedSvcs = services.filter(s => svc.mergedServiceIds?.includes(s.id));
       const combinedDuration = svc.duration + mergedSvcs.reduce((acc, curr) => acc + curr.duration, 0);
-      const combinedName = [svc.serviceName, ...mergedSvcs.map(s => s.serviceName)].join(' + ');
+      const combinedName = [`${svc.serviceName} (${svc.duration}p)`, ...mergedSvcs.map(s => `${s.serviceName} (${s.duration}p)`)].join(' + ');
 
       // Hack to inject combined data for UI rendering without altering the real object
       const combinedNote = Array.from(new Set([svc.customerNote, ...mergedSvcs.map(s => s.customerNote)].filter(Boolean))).join(' | ');
