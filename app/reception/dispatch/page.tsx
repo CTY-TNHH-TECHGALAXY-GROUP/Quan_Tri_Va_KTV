@@ -2667,7 +2667,9 @@ if (!hasPermission('dispatch_board')) {
               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
                 <div>
                   <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
-                  <p className="text-sm text-indigo-600 font-bold mt-1">Đơn {orderForModal.billCode} - {orderForModal.customerName}</p>
+                  <p className="text-sm text-indigo-600 font-bold mt-1">
+                      Đơn #{selectedSubOrder?.services.length < orderForModal.services.length ? `${orderForModal.billCode.replace(/-[A-Z]$/i, '')}-${selectedSubOrder.subSuffix || 'A'}` : orderForModal.billCode} - {getDisplayCustomerName(selectedSubOrder || { originalOrder: orderForModal, services: orderForModal.services, subSuffix: 'A' })}
+                  </p>
                 </div>
                 <button 
                   onClick={() => setShowDispatchConfirmModal(false)}
@@ -2680,7 +2682,9 @@ if (!hasPermission('dispatch_board')) {
               <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-4">
                 <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
                   <span className="text-gray-500 font-bold">Tổng tiền thu:</span>
-                  <span className="text-xl font-black text-emerald-600">{(orderForModal.totalAmount || 0).toLocaleString()}đ</span>
+                  <span className="text-xl font-black text-emerald-600">
+                    {((selectedSubOrder?.services.reduce((acc: number, svc: any) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0)) || orderForModal.totalAmount || 0).toLocaleString()}đ
+                  </span>
                 </div>
 
                 <div className="space-y-3">
