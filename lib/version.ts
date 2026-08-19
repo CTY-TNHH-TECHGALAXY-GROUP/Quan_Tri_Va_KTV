@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.21'; // Automatically incremented
-export const LAST_UPDATE = 'Hiển thị QR Code xem hóa đơn trên điện thoại cho khách'; // Update description
+export const APP_VERSION = '1.0.22'; // Automatically incremented
+export const LAST_UPDATE = 'Fix lỗi API hóa đơn không load được dịch vụ do sai DB Schema'; // Update description
