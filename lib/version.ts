@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.19'; // Automatically incremented
-export const LAST_UPDATE = 'Hiển thị chính xác tên Khách theo mã đơn sau khi tách (VD: Khách D thay vì giữ nguyên Khách A)'; // Update description
+export const APP_VERSION = '1.0.21'; // Automatically incremented
+export const LAST_UPDATE = 'Hiển thị QR Code xem hóa đơn trên điện thoại cho khách'; // Update description
