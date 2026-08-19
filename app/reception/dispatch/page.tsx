@@ -703,11 +703,16 @@ if (!hasPermission('dispatch_board')) {
             
             const now = new Date();
             const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            
+            const existingSvcForGuest = selectedSubOrder?.services?.find((s: any) => guestIdToUse && (s.guestId === guestIdToUse || s.customerGroupId === guestIdToUse));
+            const targetGroupId = existingSvcForGuest ? (existingSvcForGuest.customerGroupId || existingSvcForGuest.id) : (selectedSubOrder?.services?.[0]?.customerGroupId || selectedSubOrder?.services?.[0]?.id);
+
             const newBlock: ServiceBlock = {
               id: realId, // Dùng ID thật từ DB
               serviceId: svcId,
               serviceName: svcName,
               duration,
+              customerGroupId: targetGroupId,
               selectedRoomId: null,
               bedId: null,
               staffList: [{ 
@@ -969,10 +974,11 @@ if (!hasPermission('dispatch_board')) {
               technicianCodes: svc.staffList.map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
               options: {
-                  ...(svc.options || {}),
+                  ...(typeof svc.options === 'string' ? JSON.parse(svc.options) : (svc.options || {})),
                   displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                   mergedIntoId: svc.mergedIntoId,
                   mergedServiceIds: svc.mergedServiceIds,
+                  customerGroupId: svc.customerGroupId || svc.id,
                   order: index,
                   note: svc.customerNote?.split(' | ')[0] || '', 
                   therapist: svc.genderReq,
@@ -1148,14 +1154,6 @@ if (!hasPermission('dispatch_board')) {
                   const suffix = String.fromCharCode(65 + idx); // A, B, C
                   return { suffix, itemIds };
               });
-          } else if (isPartial && specificSvcIds) {
-              const targetSvcIds = specificSvcIds;
-              const otherSvcIds = clonedOrder.services.filter(s => !targetSvcIds.includes(s.id)).map(s => s.id);
-              
-              splitPlan.push({ suffix: 'A', itemIds: targetSvcIds });
-              if (otherSvcIds.length > 0) {
-                  splitPlan.push({ suffix: 'B', itemIds: otherSvcIds });
-              }
           }
 
           if (splitPlan.length > 1) {
@@ -1294,7 +1292,7 @@ if (!hasPermission('dispatch_board')) {
                   status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
                   segments: allSegments,
                   options: {
-                      ...(svc.options || {}),
+                      ...(typeof svc.options === 'string' ? JSON.parse(svc.options) : (svc.options || {})),
                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                       mergedIntoId: svc.mergedIntoId,
                       mergedServiceIds: svc.mergedServiceIds,
@@ -1872,8 +1870,7 @@ if (!hasPermission('dispatch_board')) {
                     onClick={() => {
                         const targetId = order.parentBookingId || order.id;
                         setSelectedOrderId(targetId);
-                        const firstSubOrder = subOrders.find(so => so.bookingId === targetId);
-                        setSelectedSubOrderId(firstSubOrder ? firstSubOrder.id : subOrder.id);
+                        setSelectedSubOrderId(subOrder.id);
                     }}
                     onContextMenu={(e: React.MouseEvent) => {
                       e.preventDefault();
@@ -1895,7 +1892,7 @@ if (!hasPermission('dispatch_board')) {
                       if (longPressTimer.current) clearTimeout(longPressTimer.current);
                     }}
                     style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                    className={`bg-white p-5 rounded-3xl border-2 cursor-pointer transition-all active:scale-[0.98] relative ${(selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId)) ? 'border-indigo-600 shadow-2xl shadow-indigo-100 ring-4 ring-indigo-50/50' : 'border-transparent shadow-sm hover:border-indigo-100 hover:shadow-lg'}`}
+                    className={`bg-white p-5 rounded-3xl border-2 cursor-pointer transition-all active:scale-[0.98] relative ${(selectedSubOrderId === subOrder.id) ? 'border-indigo-600 shadow-2xl shadow-indigo-100 ring-4 ring-indigo-50/50' : 'border-transparent shadow-sm hover:border-indigo-100 hover:shadow-lg'}`}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1980,7 +1977,7 @@ if (!hasPermission('dispatch_board')) {
                           : 'Chưa có dịch vụ'
                         }
                       </p>
-                      {(selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId)) && <span className="shrink-0 text-[10px] font-black text-indigo-600 uppercase tracking-tighter">Đang chọn →</span>}
+                      {(selectedSubOrderId === subOrder.id) && <span className="shrink-0 text-[10px] font-black text-indigo-600 uppercase tracking-tighter">Đang chọn →</span>}
                     </div>
                   </motion.div>
                 )})
@@ -2056,23 +2053,33 @@ if (!hasPermission('dispatch_board')) {
 
                     {/* NEW INPUTS ON THE SAME ROW */}
                     {(() => {
-                        let guestCount = 0;
-                        const uniqueCustomerGroups = new Set<string>();
-                        
-                        (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
-                             const name = String(svc.serviceName || '').toLowerCase();
-                             const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-                             const isChild = !!(svc.options?.mergedIntoId || svc.mergedIntoId);
-                             
-                             if (!isUtility && !isChild) {
-                                 if (svc.customerGroupId) {
-                                     uniqueCustomerGroups.add(svc.customerGroupId);
-                                 } else {
-                                     guestCount++;
+                        let autoGuestCount = 1;
+                        if (selectedSubOrder.originalOrder.parentBookingId) {
+                            // SubBookings always represent exactly 1 guest
+                            autoGuestCount = 1;
+                        } else {
+                            let guestCount = 0;
+                            const uniqueCustomerGroups = new Set<string>();
+                            const uniqueGuestIds = new Set<string>();
+                            
+                            (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
+                                 const name = String(svc.serviceName || '').toLowerCase();
+                                 const isUtility = svc.is_utility || (svc as any).isUtility || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
+                                 const isChild = !!(svc.options?.mergedIntoId || svc.mergedIntoId);
+                                 
+                                 if (!isUtility && !isChild) {
+                                     if (svc.guestId) {
+                                         uniqueGuestIds.add(svc.guestId);
+                                     } else if (svc.customerGroupId) {
+                                         uniqueCustomerGroups.add(svc.customerGroupId);
+                                     } else {
+                                         guestCount++;
+                                     }
                                  }
-                             }
-                        });
-                        const autoGuestCount = Math.max(1, guestCount + uniqueCustomerGroups.size);
+                            });
+                            autoGuestCount = Math.max(1, guestCount + uniqueCustomerGroups.size + uniqueGuestIds.size);
+                        }
+
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
@@ -2322,7 +2329,7 @@ if (!hasPermission('dispatch_board')) {
                         }
                         
                         if (isDispatched) {
-                            if (window.confirm('LƯU Ý: Nút này chỉ lưu ghi chú/phòng. Nếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
+                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nNếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
                                 handleSaveDraft();
                             }
                             return;
