@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.29'; // Automatically incremented
-export const LAST_UPDATE = 'Cập nhật UI: Đổi tên nhãn thành "GỘP CHUNG KTV" và thêm nhãn "GỘP KHÁC KTV" để phân biệt rõ ràng ý định gộp dịch vụ của lễ tân'; // Update description
+export const APP_VERSION = '1.0.30'; // Automatically incremented
+export const LAST_UPDATE = 'Fix lỗi Lưu Nháp/Gửi Đơn bị chặn do dữ liệu trống; Sửa lại tên nút thành TÁCH KHÁCH (HỦY GỘP) đúng nghiệp vụ'; // Update description
