@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.14'; // Automatically incremented
-export const LAST_UPDATE = 'Sửa lỗi hiển thị chữ A, B, C không nhảy khi tách khách'; // Update description
+export const APP_VERSION = '1.0.19'; // Automatically incremented
+export const LAST_UPDATE = 'Hiển thị chính xác tên Khách theo mã đơn sau khi tách (VD: Khách D thay vì giữ nguyên Khách A)'; // Update description

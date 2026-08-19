@@ -46,6 +46,24 @@ export interface SubOrder {
 export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
     const result: SubOrder[] = [];
     
+    // Track globally used suffixes per parent booking to avoid conflicts when splitting
+    const usedSuffixesByParent = new Map<string, Set<string>>();
+    orders.forEach(o => {
+        const pId = o.parentBookingId || o.id;
+        if (!usedSuffixesByParent.has(pId)) usedSuffixesByParent.set(pId, new Set());
+        const set = usedSuffixesByParent.get(pId)!;
+        if (o.guests) {
+            o.guests.forEach(g => {
+                if (g.guestLabel) set.add(g.guestLabel.toUpperCase());
+            });
+        }
+        // Also extract from billCode (e.g. DK4F-B means B is used)
+        if (o.billCode) {
+            const match = o.billCode.match(/-([A-Z])$/i);
+            if (match) set.add(match[1].toUpperCase());
+        }
+    });
+
     orders.forEach(order => {
         const dynamicStartTimes = new Map<string, string>();
         const allStaffs: Array<{ st: any, svcId: string, svcDuration: number, svcTimeStart: string, origStart: string }> = [];
@@ -138,7 +156,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 });
             }
 
-            let targetGroup = guestGroups.get(svc.guestId || '');
+            let targetGroup = guestGroups.get(svc.customerGroupId || svc.guestId || '');
             
             // 🔧 Tách các dịch vụ chưa có KTV và đang ở trạng thái pending thành các SubOrder riêng biệt
             // Điều này giúp Lễ Tân dễ dàng thấy và điều phối từng dịch vụ một trong cột "Chờ xếp ca"
@@ -148,14 +166,23 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             // 🔥 SỬA LỖI: Chỉ tách riêng nếu dịch vụ CHƯA CÓ GUEST ID (đơn cũ/walk-in không chia khách).
             // Nếu đã thuộc về một Khách cụ thể (vd Khách A, Khách B), thì PHẢI gộp chung vào Khách đó
             // để không bị "ẩn" khỏi UI khi ấn Thêm Dịch Vụ từ trong modal của khách đó.
-            if (!hasKtv && isWaiting && !svc.guestId) {
+            if (!hasKtv && isWaiting && !svc.guestId && !svc.customerGroupId) {
                 const uniqueGroupId = `split-${svc.id}`;
                 guestGroups.set(uniqueGroupId, { guest: targetGroup?.guest || null, services: [] });
                 targetGroup = guestGroups.get(uniqueGroupId);
             } else if (!targetGroup) {
-                const firstGroupId = Array.from(guestGroups.keys())[0];
-                if (firstGroupId) {
-                    targetGroup = guestGroups.get(firstGroupId);
+                // Nếu dịch vụ CÓ customerGroupId hoặc guestId rõ ràng nhưng không nằm trong order.guests
+                // (ví dụ: khi user bấm "Tách Khách"), ta tạo một group mới để tách nó thành SubOrder riêng biệt.
+                if (svc.customerGroupId || svc.guestId) {
+                    const newGroupId = svc.customerGroupId || svc.guestId || `split-${svc.id}`;
+                    guestGroups.set(newGroupId, { guest: null, services: [] });
+                    targetGroup = guestGroups.get(newGroupId);
+                } else {
+                    // Nếu không có cả customerGroupId và guestId, gom chung vào group mặc định đầu tiên
+                    const firstGroupId = Array.from(guestGroups.keys())[0];
+                    if (firstGroupId) {
+                        targetGroup = guestGroups.get(firstGroupId);
+                    }
                 }
             }
 
@@ -187,10 +214,29 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             }
         });
 
+        const pId = order.parentBookingId || order.id;
+        const usedSet = usedSuffixesByParent.get(pId)!;
+        
         let groupIndex = 0;
 
         guestGroups.forEach((group, guestId) => {
             if (group.services.length === 0 && order.dispatchStatus !== 'pending') return;
+            
+            let calculatedSuffix = group.guest?.guestLabel || '';
+            if (!calculatedSuffix) {
+                // Find next available letter A-Z
+                for (let i = 0; i < 26; i++) {
+                    const char = String.fromCharCode(65 + i);
+                    if (!usedSet.has(char)) {
+                        calculatedSuffix = char;
+                        usedSet.add(char);
+                        break;
+                    }
+                }
+                if (!calculatedSuffix) calculatedSuffix = `G${groupIndex}`; // fallback
+            } else {
+                usedSet.add(calculatedSuffix.toUpperCase());
+            }
 
             let isAllCompleted = true;
             let isAnyStarted = false;
@@ -350,7 +396,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
 
                 // Create a unique ID for this SubOrder split by Phase, so they render as distinct cards
                 const splitIdSuffix = servicesByPhase.size > 1 ? `_${phase}` : '';
-                const baseId = guestId !== 'default' ? guestId : `${order.id}_guest${groupIndex}`;
+                const baseId = guestId !== 'default' ? `${order.id}_${guestId}` : `${order.id}_guest${groupIndex}`;
 
                 resultForOrder.push({
                     id: `${baseId}${splitIdSuffix}`,
@@ -363,7 +409,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvIds: Array.from(phaseSubKtvIds),
                     calculatedStart: phaseCalculatedStart,
                     rating: subOrderRating,
-                    subSuffix: group.guest?.guestLabel || String.fromCharCode(65 + groupIndex)
+                    subSuffix: calculatedSuffix
                 });
             });
             groupIndex++;
