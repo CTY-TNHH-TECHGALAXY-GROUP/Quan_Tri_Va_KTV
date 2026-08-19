@@ -243,7 +243,7 @@ export default function DispatchBoardPage() {
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
-  const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string } | null>(null);
+  const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string; showQrForLang?: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
   const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' } | null>(null);
@@ -3349,10 +3349,18 @@ if (!hasPermission('dispatch_board')) {
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col">
             <div className="p-6 text-center border-b border-gray-100 relative">
               <div className="w-16 h-16 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                {invoiceLangModal.showQrForLang ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                )}
               </div>
-              <h3 className="text-xl font-black text-gray-900 tracking-tight">Chọn ngôn ngữ in</h3>
-              <p className="text-sm text-gray-500 mt-1">Hóa đơn sẽ được in bằng ngôn ngữ này</p>
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                {invoiceLangModal.showQrForLang ? 'Quét mã để xem hóa đơn' : 'Chọn ngôn ngữ hóa đơn'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {invoiceLangModal.showQrForLang ? 'Khách hàng có thể quét mã này' : 'Chọn in hoặc hiển thị mã QR'}
+              </p>
               
               <button
                 onClick={() => setInvoiceLangModal(null)}
@@ -3362,27 +3370,70 @@ if (!hasPermission('dispatch_board')) {
               </button>
             </div>
             
-            <div className="p-4 flex flex-col gap-2">
-              {[
-                { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
-                { code: 'en', label: 'English', flag: '🇬🇧' },
-                { code: 'cn', label: '中文 (Chinese)', flag: '🇨🇳' },
-                { code: 'jp', label: '日本語 (Japanese)', flag: '🇯🇵' },
-                { code: 'kr', label: '한국어 (Korean)', flag: '🇰🇷' },
-              ].map(lang => (
-                <button
-                  key={lang.code}
-                  onClick={() => {
-                    window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${lang.code}`, '_blank');
-                    setInvoiceLangModal(null);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-4 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100 hover:border-sky-200 text-left"
-                >
-                  <span className="text-2xl">{lang.flag}</span>
-                  <span className="font-bold text-gray-700">{lang.label}</span>
-                </button>
-              ))}
-            </div>
+            {invoiceLangModal.showQrForLang ? (
+              <div className="p-6 flex flex-col items-center">
+                <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${window.location.origin}/invoice/${invoiceLangModal.invoiceId}?lang=${invoiceLangModal.showQrForLang}`)}`}
+                    alt="Invoice QR Code"
+                    className="w-[200px] h-[200px] object-contain"
+                  />
+                </div>
+                <div className="flex w-full gap-3">
+                  <button
+                    onClick={() => setInvoiceLangModal({ invoiceId: invoiceLangModal.invoiceId })}
+                    className="flex-1 py-3 text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                  >
+                    Quay lại
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${invoiceLangModal.showQrForLang}`, '_blank');
+                      setInvoiceLangModal(null);
+                    }}
+                    className="flex-1 py-3 text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-colors"
+                  >
+                    Mở tab In
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 flex flex-col gap-2">
+                {[
+                  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
+                  { code: 'en', label: 'English', flag: '🇬🇧' },
+                  { code: 'cn', label: '中文 (Chinese)', flag: '🇨🇳' },
+                  { code: 'jp', label: '日本語 (Japanese)', flag: '🇯🇵' },
+                  { code: 'kr', label: '한국어 (Korean)', flag: '🇰🇷' },
+                ].map(lang => (
+                  <div key={lang.code} className="flex items-center gap-2 w-full p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
+                    <div className="flex items-center gap-3 flex-1 pl-2">
+                      <span className="text-2xl">{lang.flag}</span>
+                      <span className="font-bold text-gray-700">{lang.label}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setInvoiceLangModal({ invoiceId: invoiceLangModal.invoiceId, showQrForLang: lang.code })}
+                        className="px-3 py-2 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
+                        Mã QR
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${lang.code}`, '_blank');
+                          setInvoiceLangModal(null);
+                        }}
+                        className="px-3 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        In
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
