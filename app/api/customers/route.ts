@@ -37,7 +37,7 @@ export async function GET() {
         // 1. Fetch all customers
         let customers: any[];
         try {
-            customers = await fetchAll('Customers', '*', q => q.order('fullName', { ascending: true }));
+            customers = await fetchAll('Customers', '*', q => q.order('fullName', { ascending: true }).order('id', { ascending: true }));
         } catch (cError) {
             console.error('Error fetching customers:', cError);
             return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 });
@@ -53,7 +53,7 @@ export async function GET() {
             allBookings = await fetchAll('Bookings', `
                 id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender, parent_booking_id,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options, ktvRatings )
-            `, q => q.neq('status', 'CANCELLED'));
+            `, q => q.neq('status', 'CANCELLED').order('id', { ascending: true }));
         } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
             return NextResponse.json({ success: true, data: customers }); // Return without stats gracefully
