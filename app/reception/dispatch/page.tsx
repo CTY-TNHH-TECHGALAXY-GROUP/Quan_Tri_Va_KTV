@@ -146,6 +146,22 @@ const getDisplayCustomerName = (subOrder: any) => {
 };
 
 export default function DispatchBoardPage() {
+    
+    // 🔧 THÊM HÀM SAFE PARSE JSON ĐỂ TRÁNH CRASH TRÌNH DUYỆT
+    const safeParseOptions = (options: any) => {
+        if (!options) return {};
+        if (typeof options === 'object') return options;
+        if (typeof options === 'string') {
+            if (!options.trim()) return {};
+            try {
+                return JSON.parse(options);
+            } catch (e) {
+                console.error('Failed to parse options string:', options);
+                return {};
+            }
+        }
+        return {};
+    };
   const { hasPermission } = useAuth();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
@@ -974,7 +990,7 @@ if (!hasPermission('dispatch_board')) {
               technicianCodes: svc.staffList.map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
               options: {
-                  ...(typeof svc.options === 'string' ? JSON.parse(svc.options) : (svc.options || {})),
+                  ...safeParseOptions(svc.options),
                   displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                   mergedIntoId: svc.mergedIntoId,
                   mergedServiceIds: svc.mergedServiceIds,
@@ -1292,7 +1308,7 @@ if (!hasPermission('dispatch_board')) {
                   status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
                   segments: allSegments,
                   options: {
-                      ...(typeof svc.options === 'string' ? JSON.parse(svc.options) : (svc.options || {})),
+                      ...safeParseOptions(svc.options),
                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                       mergedIntoId: svc.mergedIntoId,
                       mergedServiceIds: svc.mergedServiceIds,
