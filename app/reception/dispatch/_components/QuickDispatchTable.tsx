@@ -500,22 +500,33 @@ export const QuickDispatchTable = ({
   const parentPrefix = billCode ? billCode.split('-')[0] : 'XXX';
 
   // Assign subSuffix based on customerGroupId (or groupKey if no customerGroupId)
+  const persistentSuffixesRef = useRef(new Map<string, string>());
+
   const groupKeyToSuffix = useMemo(() => {
      const map = new Map<string, string>();
-     let currentIdx = 0;
-     const seenCustomerGroups = new Map<string, string>(); // customerGroupId -> suffix
+     let maxIdx = -1;
+     
+     persistentSuffixesRef.current.forEach(suffix => {
+         const idx = SUB_SUFFIXES.indexOf(suffix);
+         if (idx > maxIdx) maxIdx = idx;
+     });
+     
+     let currentIdx = maxIdx + 1;
 
      Array.from(initialGroups.entries()).forEach(([groupKey, items]) => {
          const customerGroupId = items[0]?.customerGroupId;
          if (customerGroupId) {
-             if (!seenCustomerGroups.has(customerGroupId)) {
-                 seenCustomerGroups.set(customerGroupId, SUB_SUFFIXES[currentIdx] || String(currentIdx + 1));
+             if (!persistentSuffixesRef.current.has(customerGroupId)) {
+                 persistentSuffixesRef.current.set(customerGroupId, SUB_SUFFIXES[currentIdx] || String(currentIdx + 1));
                  currentIdx++;
              }
-             map.set(groupKey, seenCustomerGroups.get(customerGroupId)!);
+             map.set(groupKey, persistentSuffixesRef.current.get(customerGroupId)!);
          } else {
-             map.set(groupKey, SUB_SUFFIXES[currentIdx] || String(currentIdx + 1));
-             currentIdx++;
+             if (!persistentSuffixesRef.current.has(groupKey)) {
+                 persistentSuffixesRef.current.set(groupKey, SUB_SUFFIXES[currentIdx] || String(currentIdx + 1));
+                 currentIdx++;
+             }
+             map.set(groupKey, persistentSuffixesRef.current.get(groupKey)!);
          }
      });
      return map;
