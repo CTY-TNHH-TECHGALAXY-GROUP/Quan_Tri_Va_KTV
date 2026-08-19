@@ -1079,6 +1079,9 @@ const ServiceGroupCard = ({
         <div className="flex items-start justify-between flex-wrap gap-2 pl-2">
           <div className="flex flex-col gap-1 flex-1 min-w-0">
             <div className="flex items-center gap-2 w-full">
+              {!showHeader && onToggleSelect && (
+                 <input type="checkbox" checked={isSelected} onChange={onToggleSelect} className="w-5 h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0" />
+              )}
               {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
               <input 
                 type="text" 
