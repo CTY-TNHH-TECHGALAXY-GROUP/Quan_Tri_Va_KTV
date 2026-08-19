@@ -159,7 +159,17 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     else if (b.status === 'DONE' || b.status === 'CANCELLED') dStatus = 'DONE';
                     else if (hasAssignedKtv) dStatus = 'PREPARING';
 
-                    const calculatedRating = b.rating || (b.BookingItems || []).find((i: any) => i.itemRating != null)?.itemRating || null;
+                    let calculatedRating = b.rating || null;
+                    const guestListForRating = b.guests || b.BookingGuests || [];
+                    if (!calculatedRating && guestListForRating.length > 0) {
+                        const guestRatings = guestListForRating.map((g: any) => g.rating).filter((r: any) => r != null);
+                        if (guestRatings.length > 0) {
+                            calculatedRating = Math.round(guestRatings.reduce((sum: number, r: number) => sum + r, 0) / guestRatings.length);
+                        }
+                    }
+                    if (!calculatedRating) {
+                        calculatedRating = (b.BookingItems || []).find((i: any) => i.itemRating != null)?.itemRating || null;
+                    }
 
                     return {
                         id: b.id,
@@ -343,11 +353,11 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 handover_images: bi.handover_images,
                                 itemRating: bi.itemRating || null,
                                 ktvRatings: bi.ktvRatings || {},
-                                customerGroupId: bi.guest_id || parsedOptions?.customerGroupId,
+                                customerGroupId: dStatus === 'pending' ? undefined : (bi.guest_id || parsedOptions?.customerGroupId),
                                 guestId: bi.guest_id
                             };
                         }),
-                        guests: (b.BookingGuests || []).map((g: any) => {
+                        guests: (b.guests || b.BookingGuests || []).map((g: any) => {
                             return {
                                 id: g.id,
                                 bookingId: g.booking_id,
@@ -361,6 +371,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 notes: g.notes,
                                 focusArea: g.focus_area,
                                 status: g.status,
+                                rating: g.rating,
                                 items: (b.BookingItems || []).filter((bi: any) => bi.guest_id === g.id)
                             };
                         })

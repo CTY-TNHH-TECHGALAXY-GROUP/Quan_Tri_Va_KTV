@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.11'; // Automatically incremented
-export const LAST_UPDATE = 'Nâng cấp chức năng Tách Khách trên Kanban'; // Update description
+export const APP_VERSION = '1.0.12'; // Automatically incremented
+export const LAST_UPDATE = 'Bỏ gộp tự động, mỗi DV 1 khách'; // Update description

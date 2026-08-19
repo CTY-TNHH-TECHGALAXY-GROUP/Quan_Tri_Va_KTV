@@ -170,6 +170,7 @@ export default function DispatchBoardPage() {
   const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE'>('DISPATCH');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddSvcModal, setShowAddSvcModal] = useState(false);
+  const [selectedGuestForAddon, setSelectedGuestForAddon] = useState<string>('');
   const [commentModalData, setCommentModalData] = useState<{subOrder: SubOrder, order: any} | null>(null);
   const [editingSvc, setEditingSvc] = useState<{ orderId: string, svcId: string, oldSvcName: string } | null>(null);
   const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
@@ -677,9 +678,10 @@ if (!hasPermission('dispatch_board')) {
     if (!selectedOrderId) return;
 
     try {
+        const svcDef = allServices.find((s: any) => s.id === svcId);
         const { addAddonServices } = await import('./actions');
         // Thêm dịch vụ vào DB ngay lập tức để lấy ID chuẩn, nhưng KHÔNG fetchData để tránh mất dữ liệu đang sửa dở
-        const guestIdToUse = (selectedSubOrder as any)?.guest?.id || undefined;
+        const guestIdToUse = selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || undefined;
         const res = await addAddonServices(selectedOrderId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
         
         if (res.success && res.newItems && res.newItems.length > 0) {
@@ -710,11 +712,17 @@ if (!hasPermission('dispatch_board')) {
                 noteForKtv: '' 
               }],
               adminNote: '',
-              genderReq: '',
-              strength: '',
+              genderReq: 'ANY',
+              strength: 'NORMAL',
               focus: '',
               avoid: '',
               customerNote: '',
+              timeStart: null,
+              timeEnd: null,
+              status: 'WAITING',
+              is_utility: (svcDef as any)?.is_utility || svcId === 'NHS0900',
+              guestId: guestIdToUse,
+              customerGroupId: guestIdToUse,
               options: { isAddon: true, isPaid: false }
             };
             
@@ -992,22 +1000,15 @@ if (!hasPermission('dispatch_board')) {
         if (!clonedOrder.parentBookingId) {
            const groups = new Map<string, string[]>();
            
-           // Tìm service đầu tiên không phải phòng riêng để làm anchor
-           const firstMainSvc = clonedOrder.services.find(s => {
-               const name = s.serviceName?.toLowerCase() || '';
-               const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-               return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
-           });
-           const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
-
            clonedOrder.services.forEach(svc => {
                if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
                
                const name = svc.serviceName?.toLowerCase() || '';
                const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
                
-               // Nếu là utility, chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
-               const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
+               // Mọi dịch vụ chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
+               // Tránh tình trạng tự động sinh ra Khách B, Khách C (ghost guests) khi ấn Lưu Nháp đối với dịch vụ Addon hoặc đa dịch vụ.
+               const groupId = svc.customerGroupId || svc.id;
                
                if (!groups.has(groupId)) groups.set(groupId, []);
                
@@ -1110,18 +1111,13 @@ if (!hasPermission('dispatch_board')) {
 
       // 🚀 BƯỚC 1: XÁC ĐỊNH TÁCH ĐƠN (NẾU CÓ)
       const groups = new Map<string, string[]>();
-      const firstMainSvc = clonedOrder.services.find(s => {
-          const name = s.serviceName?.toLowerCase() || '';
-          const isUtility = (s as any).is_utility === true || s.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-          return !isUtility && !s.mergedIntoId && !s.options?.mergedIntoId;
-      });
-      const defaultGroupId = firstMainSvc ? (firstMainSvc.customerGroupId || firstMainSvc.id) : null;
+      
 
       clonedOrder.services.forEach(svc => {
           if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
           const name = svc.serviceName?.toLowerCase() || '';
           const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-          const groupId = (isUtility && !svc.customerGroupId && defaultGroupId) ? defaultGroupId : (svc.customerGroupId || svc.id);
+          const groupId = svc.customerGroupId || svc.id;
 
           if (!groups.has(groupId)) groups.set(groupId, []);
           
@@ -2524,13 +2520,34 @@ if (!hasPermission('dispatch_board')) {
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{editingSvc ? `Đang đổi cho: ${editingSvc.oldSvcName}` : 'Chọn từ danh mục phổ biến'}</p>
                 </div>
                 <button 
-                  onClick={() => { setShowAddSvcModal(false); setEditingSvc(null); }}
+                  onClick={() => { setShowAddSvcModal(false); setEditingSvc(null); setSelectedGuestForAddon(''); }} 
                   className="p-3 hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors"
                 >
                   <Plus className="rotate-45" size={24} />
                 </button>
               </div>
-              {/* Search bar */}
+              {/* Guest Selector */}
+                {!editingSvc && selectedOrder && (
+                  <div className="px-6 pt-4 pb-0">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Thêm cho khách:</label>
+                    <select
+                      value={selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || ''}
+                      onChange={(e) => setSelectedGuestForAddon(e.target.value)}
+                      className="w-full bg-indigo-50/50 px-3 py-2.5 rounded-xl border-2 border-indigo-100 text-sm font-bold text-indigo-900 outline-none focus:border-indigo-300"
+                    >
+                      {selectedOrder.guests?.map((g: any, idx: number) => (
+                         <option key={g.id} value={g.id}>
+                           {g.guestLabel || `Khách ${idx + 1}`} {(selectedSubOrder as any)?.guest?.id === g.id ? '(Khách hiện tại)' : ''}
+                         </option>
+                      ))}
+                      {(!selectedOrder.guests || selectedOrder.guests.length === 0) && (
+                         <option value={(selectedSubOrder as any)?.guest?.id || 'default'}>Khách hiện tại</option>
+                      )}
+                      <option value="NEW">+ Thêm khách mới</option>
+                    </select>
+                  </div>
+                )}
+                {/* Search bar */}
               <div className="px-6 pt-4 pb-2">
                 <input
                   type="text"
