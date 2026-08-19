@@ -39,10 +39,20 @@ export async function GET(
         // Fetch child bookings if this is a parent booking
         const { data: childBookings } = await supabase
             .from('Bookings')
-            .select('id')
+            .select('id, discountAmount, totalAmount')
             .eq('parent_booking_id', bookingId);
             
         const allBookingIds = [bookingId, ...(childBookings || []).map(b => b.id)];
+        
+        let aggregatedDiscount = booking.discountAmount || 0;
+        let aggregatedTotal = booking.totalAmount || 0;
+        
+        if (childBookings && childBookings.length > 0) {
+            childBookings.forEach(cb => {
+                aggregatedDiscount += (cb.discountAmount || 0);
+                aggregatedTotal += (cb.totalAmount || 0);
+            });
+        }
 
         // Fetch Items
         const { data: items, error: iError } = await supabase
@@ -96,6 +106,8 @@ export async function GET(
             success: true,
             data: {
                 ...booking,
+                discountAmount: aggregatedDiscount,
+                totalAmount: aggregatedTotal,
                 items: enrichedItems
             }
         });

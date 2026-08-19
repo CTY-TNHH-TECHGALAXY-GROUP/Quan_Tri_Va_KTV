@@ -242,7 +242,8 @@ export const PrintableInvoice = ({ config, bookingData, lang = 'vi' }: Printable
     // Calculate total from items if needed, or use bookingData.totalAmount
     const subTotal = items.reduce((sum: number, item: any) => sum + (item.price || 0) * (item.quantity || 1), 0);
     const discount = bookingData?.discountAmount || 0;
-    const totalAmount = bookingData?.totalAmount || Math.max(0, subTotal - discount);
+    // Luôn tính toán lại totalAmount từ items để đảm bảo hóa đơn không bao giờ bị sai lệch toán học
+    const totalAmount = Math.max(0, subTotal - discount);
 
     const formatVND = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
