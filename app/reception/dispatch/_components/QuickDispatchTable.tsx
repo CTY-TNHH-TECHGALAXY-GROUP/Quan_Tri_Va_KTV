@@ -566,7 +566,7 @@ export const QuickDispatchTable = ({
 
               <button onClick={handleSplitServices} disabled={selectedGroupKeys.length < 1} className="flex items-center gap-1.5 bg-white border-2 border-amber-200 text-amber-800 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Xé lẻ các dịch vụ đã gộp thành từng khách riêng biệt">
                   <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
-                  ✂ TÁCH KHÁCH / HỦY GỘP
+                  ✂ TÁCH NHÓM DV / HỦY GỘP
               </button>
           </div>
       </div>
@@ -640,12 +640,17 @@ export const QuickDispatchTable = ({
                                    )}
                                    
                                    {isMultiItemBlock && (
-                                      <button onClick={() => {
-                                          const cId = block.items[0][1][0]?.customerGroupId;
-                                          if (cId) handleUnmergeCustomerGroup(cId);
-                                      }} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-1">
-                                          Hủy nhóm
-                                      </button>
+                                      <>
+                                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-md ml-1 shadow-sm flex items-center gap-1">
+                                              🔗 GỘP KHÁC KTV ({block.items.reduce((sum, [gk, items]) => sum + items.length, 0)} DỊCH VỤ)
+                                          </span>
+                                          <button onClick={() => {
+                                              const cId = block.items[0][1][0]?.customerGroupId;
+                                              if (cId) handleUnmergeCustomerGroup(cId);
+                                          }} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-2">
+                                              Hủy nhóm
+                                          </button>
+                                      </>
                                    )}
                                 </div>
                             </div>
@@ -1111,7 +1116,7 @@ const ServiceGroupCard = ({
             {state.isMergedGroup && groupItems.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 mt-0.5">
                     <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-md">
-                        🔗 ĐÃ GỘP ({totalMergedCount} DỊCH VỤ)
+                        🔗 GỘP CHUNG KTV ({totalMergedCount} DỊCH VỤ)
                     </span>
                     {onUnmerge && (
                         <button onClick={onUnmerge} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline">
