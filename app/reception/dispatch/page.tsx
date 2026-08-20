@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { parseDbDate } from "@/lib/utils";
 
 // 🔧 UI CONFIGURATION
@@ -756,7 +756,7 @@ if (!hasPermission('dispatch_board')) {
               status: 'WAITING',
               is_utility: (svcDef as any)?.is_utility || svcId === 'NHS0900',
               guestId: guestIdToUse,
-              customerGroupId: guestIdToUse,
+
               options: { isAddon: true, isPaid: false }
             };
             
