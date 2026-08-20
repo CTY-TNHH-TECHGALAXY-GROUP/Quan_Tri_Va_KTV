@@ -275,13 +275,13 @@ export async function GET(request: Request) {
                 }];
                 
                 let bonusPoints = 0;
-                const isFirstGroup = (groupItems === groupsArray[0]);
-                if (passedCount > 0 && isFirstGroup) {
+                if (passedCount > 0) {
                     const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
                     const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
-                    // TÍNH BONUS CHO CẢ BOOKING
+                    // TÍNH BONUS CHO TỪNG ĐƠN CON (GROUP)
                     const bForBonus = fullBooking;
-                    bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
+                    const targetGuestId = groupItems[0]?.guest_id;
+                    bonusPoints = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, bDateStr, dynamicShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule, targetGuestId);
                 }
 
                 // ─── Tip: sum from this group's items ────────────────────────

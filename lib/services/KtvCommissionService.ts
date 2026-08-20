@@ -307,7 +307,8 @@ export class KtvCommissionService {
         bonusConfig: BonusConfig,
         staffWorkTypeMap: Record<string, string> = {},
         staffBonusMap: Record<string, boolean> = {},
-        isNewRule: boolean = true
+        isNewRule: boolean = true,
+        targetGuestId?: string // <--- NEW PARAMETER
     ): number {
         if (!bonusConfig.enableBonus) return 0;
         // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
@@ -374,6 +375,9 @@ export class KtvCommissionService {
             }
 
             if (!isTechInvolved) continue;
+            
+            // Nếu có targetGuestId, BỎ QUA các item không thuộc guest này
+            if (targetGuestId && item.guest_id !== targetGuestId) continue;
 
             if (item.guest_id) ktvGuestIds.add(item.guest_id);
 
