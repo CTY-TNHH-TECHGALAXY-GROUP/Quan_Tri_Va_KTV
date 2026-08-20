@@ -620,7 +620,7 @@ function ScreenDashboard({ logic }: { logic: any }) {
               <div className="space-y-2">
                 {logic.pendingHandovers.map((item: any) => (
                   <div key={item.id} onClick={() => logic.handleSelectDebt(item.bookingId)} className="bg-white p-2.5 rounded-2xl flex items-center justify-between border border-amber-100 cursor-pointer hover:bg-amber-100/50">
-                    <span className="text-xs font-bold text-slate-700">#{item.Bookings?.billCode || '---'} <span className="text-[10px] text-slate-400 font-normal ml-1">P.{item.roomId}</span></span>
+                    <span className="text-xs font-bold text-slate-700">#{item.guest_index ? `${item.Bookings?.billCode?.replace(/-[A-Z]$/i, '') || ''}-${String.fromCharCode(64 + item.guest_index)}` : (item.Bookings?.billCode || '---')} <span className="text-[10px] text-slate-400 font-normal ml-1">P.{item.roomId}</span></span>
                     <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-lg">Chưa nộp</span>
                   </div>
                 ))}
@@ -738,7 +738,10 @@ function ScreenDashboard({ logic }: { logic: any }) {
                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
                         {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
                         <ServiceTypeLabel serviceId={item.serviceId} />
-                        <span className="text-sm font-black text-slate-800">#{booking.billCode}</span>
+                        <span className="text-base font-black text-slate-800 truncate block mt-0.5">
+                          {item.guest_index ? `[Khách ${String.fromCharCode(64 + item.guest_index)}] ` : ''}{item.guest_customer_name || booking.customerName || booking.customerEmail || 'Khách vãng lai'}
+                        </span>
+                        <span className="text-sm font-black text-slate-800">#{item.guest_index ? `${booking.billCode?.replace(/-[A-Z]$/i, '') || ''}-${String.fromCharCode(64 + item.guest_index)}` : booking.billCode}</span>
                       </div>
                       {coWorkers.length > 0 && (
                         <p className="mt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {coWorkers.join(', ')}</p>

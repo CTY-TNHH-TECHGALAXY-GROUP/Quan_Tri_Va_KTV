@@ -487,7 +487,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2 py-0.5 rounded-lg tracking-wider">
-                                                            #{order.billCode}
+                                                            #{subOrder.services.length < order.services.length ? `${order.billCode.replace(/-[A-Z]$/i, '')}-${subOrder.subSuffix || 'A'}` : order.billCode}
                                                         </span>
                                                         {order.hasVat && (
                                                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>
@@ -542,7 +542,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                       {(() => {
                                                                          const customNames = services[0]?.options?.customNames;
                                                                          const ktvId = subOrder.ktvIds?.[0];
-                                                                         return (customNames && ktvId && customNames[ktvId]) ? customNames[ktvId] : order.customerName;
+                                                                         let dName = (customNames && ktvId && customNames[ktvId]) ? customNames[ktvId] : (order.customerName || order.customerEmail || 'Khách vãng lai');
+                                                                         if (subOrder.services.length < order.services.length && !dName.match(/\[Khách/i)) {
+                                                                           if (dName.match(/Khách [A-Z]$/i)) dName = dName.replace(/Khách ([A-Z])$/i, '[Khách $1]');
+                                                                           else dName = `[Khách ${subOrder.subSuffix || 'A'}] ${dName}`;
+                                                                         }
+                                                                         return dName;
                                                                       })()}
                                                                       <button 
                                                                         onClick={(e) => {
@@ -972,7 +977,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             <button 
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
-                                                                                    const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                                    const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
+                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
                                                                                     window.open(ratingUrl, '_blank');
                                                                                 }}
                                                                                 className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
@@ -1121,7 +1127,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         <button 
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
+                                                                const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
                                                                 window.open(ratingUrl, '_blank');
                                                             }}
                                                             className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"

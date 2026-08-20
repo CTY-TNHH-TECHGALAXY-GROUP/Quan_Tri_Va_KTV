@@ -134,12 +134,12 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 
 const getDisplayCustomerName = (subOrder: any) => {
     const order = subOrder.originalOrder;
-    let name = order.customerName || 'Khách Vãng Lai';
+    let name = order.customerName || order.customerEmail || 'Khách Vãng Lai';
     if (subOrder.services.length < order.services.length) {
         if (name.match(/Khách [A-Z]$/i)) {
-            name = name.replace(/Khách [A-Z]$/i, `Khách ${subOrder.subSuffix || 'A'}`);
+            name = name.replace(/Khách ([A-Z])$/i, '[Khách $1]'); // Đưa thành [Khách A] Tên...
         } else {
-            name = `${name} - Khách ${subOrder.subSuffix || 'A'}`;
+            name = `[Khách ${subOrder.subSuffix || 'A'}] ${name}`;
         }
     }
     return name.toUpperCase();
