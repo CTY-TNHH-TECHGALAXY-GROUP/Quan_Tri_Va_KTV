@@ -2876,7 +2876,12 @@ if (!hasPermission('dispatch_board')) {
               onClick={() => {
                 const order = orders.find(o => o.id === contextMenu.orderId);
                 if (order) {
-                  setQrModal({ orderId: order.id, billCode: order.billCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
+                  let finalBillCode = order.billCode;
+                  if (contextMenu.guestId) {
+                     const so = subOrders.find(s => s.id === contextMenu.guestId || (s.services && s.services.some((x: any) => x.guestId === contextMenu.guestId || x.customerGroupId === contextMenu.guestId)));
+                     if (so) finalBillCode = so.billCode;
+                  }
+                  setQrModal({ orderId: order.id, billCode: finalBillCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
                 }
                 setContextMenu(null);
               }}
