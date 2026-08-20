@@ -312,7 +312,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
 
             const guestMap = new Map();
             if (guests) {
-                guests.forEach((g: any) => guestMap.set(g.id, g.guest_label));
+                guests.forEach((g: any) => guestMap.set(g.id, g));
             }
 
             itemsWithService = items.map((i: any) => {
@@ -351,11 +351,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     return val || fallback;
                 };
 
-                const guest_label = guestMap.get(i.guest_id) || '';
+                const guestObj = guestMap.get(i.guest_id);
+                const guest_label = guestObj?.guest_label || '';
+                const guest_index = guestObj?.guest_index || 0;
+                const guest_customer_name = guestObj?.customer_name || '';
 
                 return {
                     ...i,
                     guest_label: guest_label,
+                    guest_index: guest_index,
+                    guest_customer_name: guest_customer_name,
                     service_name: opts._generatedDisplayName || opts.displayName || getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
                     procedure: svc?.procedure || null,

@@ -254,11 +254,11 @@ export default function DispatchBoardPage() {
   const { user } = useAuth();
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string, guestId?: string } | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
-  const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string } | null>(null);
+  const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string, guestId?: string } | null>(null);
   const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string; showQrForLang?: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
@@ -1859,6 +1859,10 @@ if (!hasPermission('dispatch_board')) {
                     <motion.div
                       initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                       className="absolute top-full mt-2 left-0 right-0 z-30 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-y-auto max-h-64"
+                      onContextMenu={(e: React.MouseEvent, orderId: string, itemId?: string, guestId?: string) => {
+                        e.preventDefault();
+                        setContextMenu({ x: e.clientX, y: e.clientY, orderId, itemId, guestId });
+                      }}
                     >
                       {LEFT_TABS.map((tab) => (
                         <button
@@ -2474,7 +2478,7 @@ if (!hasPermission('dispatch_board')) {
                   const firstSubOrder = subOrders.find(so => so.bookingId === orderId);
                   if (firstSubOrder) setSelectedSubOrderId(firstSubOrder.id);
               }}
-              onContextMenu={(e: any, orderId: string) => {
+              onContextMenu={(e: any, orderId: string, itemId?: string, guestId?: string) => {
                 let x = 0, y = 0;
                 if (e.type && e.type.startsWith('touch')) {
                   const touch = e.touches[0];
@@ -2484,7 +2488,7 @@ if (!hasPermission('dispatch_board')) {
                   x = e.clientX;
                   y = e.clientY;
                 }
-                setContextMenu({ x, y, orderId });
+                setContextMenu({ x, y, orderId, itemId, guestId });
               }}
               onPauseClick={(orderId, subOrder) => {
                 const o = orders.find(x => x.id === orderId);
@@ -2872,7 +2876,7 @@ if (!hasPermission('dispatch_board')) {
               onClick={() => {
                 const order = orders.find(o => o.id === contextMenu.orderId);
                 if (order) {
-                  setQrModal({ orderId: order.id, billCode: order.billCode, accessToken: order.accessToken, customerLang: order.customerLang });
+                  setQrModal({ orderId: order.id, billCode: order.billCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
                 }
                 setContextMenu(null);
               }}
@@ -2953,7 +2957,7 @@ if (!hasPermission('dispatch_board')) {
               
               <div className="bg-gray-50 rounded-2xl p-6 mb-6 inline-block border border-gray-100">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(`${JOURNEY_BASE_URL}/${qrModal.customerLang || 'vi'}/journey/${qrModal.accessToken || qrModal.orderId}`)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(`${JOURNEY_BASE_URL}/${qrModal.customerLang || 'vi'}/journey/${qrModal.accessToken || qrModal.orderId}${qrModal.guestId ? '?guestId=' + qrModal.guestId : ''}`)}`}
                   alt="QR Journey"
                   width={QR_SIZE}
                   height={QR_SIZE}

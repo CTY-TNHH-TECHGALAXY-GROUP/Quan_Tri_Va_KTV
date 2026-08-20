@@ -88,7 +88,7 @@ interface KanbanBoardProps {
     onOpenDetail: (orderId: string, subOrderId?: string, status?: string) => void;
     onConfirmAddonPayment?: (orderId: string) => void;
     selectedOrderId?: string | null;
-    onContextMenu?: (e: React.MouseEvent, orderId: string, itemId?: string) => void;
+    onContextMenu?: (e: React.MouseEvent, orderId: string, itemId?: string, guestId?: string) => void;
     onPauseClick?: (orderId: string, itemIds: string[]) => void;
     roomTransitionTime?: number;
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
@@ -461,7 +461,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                 if (onContextMenu) {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    onContextMenu(e, subOrder.bookingId, services[0]?.id);
+                                                    const sGuestId = services[0]?.guestId || services[0]?.customerGroupId;
+                                                    onContextMenu(e, subOrder.bookingId, services[0]?.id, sGuestId);
                                                 }
                                             }}
                                             onTouchStart={(e) => {
@@ -471,7 +472,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
                                                         window.navigator.vibrate(50);
                                                     }
-                                                    onContextMenu(e as any, subOrder.bookingId, services[0]?.id);
+                                                    const sGuestId = services[0]?.guestId || services[0]?.customerGroupId;
+                                                    onContextMenu(e as any, subOrder.bookingId, services[0]?.id, sGuestId);
                                                 }, 500);
                                             }}
                                             onTouchMove={() => {
