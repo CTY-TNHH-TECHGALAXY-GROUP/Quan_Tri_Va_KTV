@@ -905,77 +905,151 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             }
                                                         </div>
 
-                                                        {/* TAG 2: Đánh giá */}
-                                                        <div className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border ${
-                                                            subOrder.rating
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                : 'bg-blue-50 text-blue-600 border-blue-200'
-                                                        }`}>
-                                                            {subOrder.rating ? (
-                                                                <>
-                                                                    <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
-                                                                </>
-                                                            ) : (
-                                                                <><Star size={12} /> Đánh giá: Chờ khách...</>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Ngôi sao để chấm điểm hộ khách (chỉ khi chưa đánh giá) */}
-                                                        {!subOrder.rating && (
-                                                            <div className="flex flex-col items-center justify-center gap-1 mt-3 pb-1">
-                                                                <div className="flex items-center justify-between w-full">
-                                                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center flex-1">Đánh giá chất lượng phục vụ</span>
-                                                                    <button 
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
-                                                                            window.open(ratingUrl, '_blank');
-                                                                        }}
-                                                                        className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
-                                                                    >
-                                                                        <QrCode size={10} />
-                                                                    </button>
-                                                                </div>
-                                                                <div className="flex items-center gap-1 w-full justify-center">
-                                                                    {[1, 2, 3, 4].map((star) => (
-                                                                        <button
-                                                                            key={star}
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
-                                                                                    import('../actions').then(m => {
-                                                                                        m.submitCustomerRating(subOrder.bookingId, star);
-                                                                                    });
-                                                                                }
-                                                                            }}
-                                                                            className="p-0.5 text-gray-300 hover:text-amber-400 transition-all cursor-pointer hover:scale-110"
-                                                                        >
-                                                                            <Star size={16} fill="none" strokeWidth={2.5} />
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
+                                                        {/* TAG 2: Đánh giá (Tính theo từng Guest) */}
+                                                        {subOrder.guests && subOrder.guests.length > 0 ? (
+                                                            <div className="flex flex-col gap-1.5">
+                                                                {subOrder.guests.map((g: any, index: number) => (
+                                                                    <div key={g.id} className="flex flex-col gap-1.5 border rounded-lg px-2.5 py-1.5 bg-white shadow-sm">
+                                                                        <div className={`flex items-center gap-2 text-[11px] font-bold ${g.rating ? 'text-emerald-700' : 'text-blue-600'}`}>
+                                                                            {g.rating ? (
+                                                                                <>
+                                                                                    <Check size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: {g.rating >= 4 ? 'Xuất sắc' : g.rating >= 3 ? 'Tốt' : g.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(g.rating, 4)}/4)
+                                                                                </>
+                                                                            ) : (
+                                                                                <><Star size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: Chờ đánh giá...</>
+                                                                            )}
+                                                                        </div>
+                                                                        {!g.rating && (
+                                                                            <div className="flex items-center gap-1 w-full justify-between mt-1 pt-1 border-t border-dashed border-gray-200">
+                                                                                <span className="text-[9px] text-gray-500 font-medium">Chấm điểm hộ khách:</span>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {[1, 2, 3, 4].map((star) => (
+                                                                                        <button
+                                                                                            key={star}
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                if (confirm(`Xác nhận đánh giá ${star} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
+                                                                                                    import('../actions').then(m => {
+                                                                                                        if (m.submitGuestRating) {
+                                                                                                            m.submitGuestRating(g.id, star);
+                                                                                                        } else {
+                                                                                                            m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            }}
+                                                                                            className="p-0.5 text-gray-400 hover:text-amber-400 transition-all cursor-pointer hover:scale-110"
+                                                                                        >
+                                                                                            <Star size={12} fill="none" strokeWidth={2.5} />
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
                                                             </div>
+                                                        ) : (
+                                                            // Legacy logic cho đơn không có guests
+                                                            <>
+                                                                <div className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border ${
+                                                                    subOrder.rating
+                                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                        : 'bg-blue-50 text-blue-600 border-blue-200'
+                                                                }`}>
+                                                                    {subOrder.rating ? (
+                                                                        <>
+                                                                            <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
+                                                                        </>
+                                                                    ) : (
+                                                                        <><Star size={12} /> Đánh giá: Chờ khách...</>
+                                                                    )}
+                                                                </div>
+                                                                {!subOrder.rating && (
+                                                                    <div className="flex flex-col items-center justify-center gap-1 mt-3 pb-1">
+                                                                        <div className="flex items-center justify-between w-full">
+                                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center flex-1">Đánh giá chất lượng phục vụ</span>
+                                                                            <button 
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}`;
+                                                                                    window.open(ratingUrl, '_blank');
+                                                                                }}
+                                                                                className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
+                                                                            >
+                                                                                <QrCode size={10} />
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1 w-full justify-center">
+                                                                            {[1, 2, 3, 4].map((star) => (
+                                                                                <button
+                                                                                    key={star}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
+                                                                                            import('../actions').then(m => {
+                                                                                                m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                            });
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-0.5 text-gray-300 hover:text-amber-400 transition-all cursor-pointer hover:scale-110"
+                                                                                >
+                                                                                    <Star size={16} fill="none" strokeWidth={2.5} />
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 )}
 
                                                 {/* ✅ RATING RESULT: Chỉ hiện ở cột "Hoàn tất" */}
-                                                {subOrder.dispatchStatus === 'DONE' && subOrder.rating && (() => {
-                                                    const currentRating = Math.min(subOrder.rating, 4);
-                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
-                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
-                                                    return (
-                                                        <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${ratingColor}`}>
-                                                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
-                                                            <div className="flex items-center gap-1">
-                                                                {[1, 2, 3, 4].map((s) => (
-                                                                    <Star key={s} size={16} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
-                                                                ))}
-                                                                <span className="ml-1.5 text-[12px] font-black">{ratingLabel}</span>
+                                                {subOrder.dispatchStatus === 'DONE' && (
+                                                    subOrder.guests && subOrder.guests.length > 0 ? (
+                                                        <div className="mb-3 space-y-1.5">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex justify-center text-center">Đánh giá chất lượng phục vụ</span>
+                                                            <div className="flex flex-col gap-1.5">
+                                                                {subOrder.guests.map((g: any, index: number) => {
+                                                                    const currentRating = Math.min(g.rating || 0, 4);
+                                                                    if (!currentRating) return null;
+                                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
+                                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                                    
+                                                                    return (
+                                                                        <div key={g.id} className={`rounded-lg px-2 py-1.5 border flex items-center justify-between ${ratingColor}`}>
+                                                                            <span className="text-[11px] font-bold opacity-80">{g.customerName || g.guestLabel || `Khách ${index + 1}`}</span>
+                                                                            <div className="flex items-center gap-1">
+                                                                                {[1, 2, 3, 4].map((s) => (
+                                                                                    <Star key={s} size={12} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
+                                                                                ))}
+                                                                                <span className="ml-1 text-[11px] font-black">{ratingLabel}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
-                                                    );
-                                                })()}
+                                                    ) : (
+                                                        subOrder.rating && (() => {
+                                                            const currentRating = Math.min(subOrder.rating, 4);
+                                                            const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
+                                                            const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                            return (
+                                                                <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${ratingColor}`}>
+                                                                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {[1, 2, 3, 4].map((s) => (
+                                                                            <Star key={s} size={16} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
+                                                                        ))}
+                                                                        <span className="ml-1.5 text-[12px] font-black">{ratingLabel}</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()
+                                                    )
+                                                )}
 
                                                 <div className="flex items-center gap-2">
                                                     {(() => {

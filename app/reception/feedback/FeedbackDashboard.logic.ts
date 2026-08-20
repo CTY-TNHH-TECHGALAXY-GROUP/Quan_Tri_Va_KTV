@@ -18,6 +18,7 @@ export type ChildBookingForFeedback = {
     customerLang: string;
     ktvList: FeedbackKtvInfo[];
     isGuestFlow?: boolean;
+    parentBookingId?: string;
 };
 
 export type ParentBookingGroup = {
@@ -31,10 +32,14 @@ export function useFeedbackDashboard(selectedDate: string) {
     const [groups, setGroups] = useState<ParentBookingGroup[]>([]);
     const [loading, setLoading] = useState(true);
 
-    async function fetchData() {
+    async function fetchData(triggerSource?: string) {
+        if (triggerSource) {
+            console.log(`🔄 [FeedbackDashboard] Đang tải lại dữ liệu (Trigger: ${triggerSource})...`);
+        }
         setLoading(true);
         try {
-            const res = await getDispatchData(selectedDate);
+            // Thêm Date.now() để bypass triệt để cache của Next.js fetch
+            const res = await getDispatchData(selectedDate, Date.now());
             if (!res.success || !res.data) {
                 setLoading(false);
                 return;
@@ -58,19 +63,33 @@ export function useFeedbackDashboard(selectedDate: string) {
                 if (!parentMap.has(parentId)) {
                     // Nếu chưa có trong map, thử tìm xem có bản ghi cha thực sự trong mảng không
                     const realParent = bookings.find(x => x.id === parentId);
+                    
+                    let displayBillCode = realParent?.billCode || b.billCode || 'N/A';
+                    let displayCustomerName = realParent?.customerName || b.customerName || 'Khách vãng lai';
+
+                    // Nếu không có realParent (vì đơn cha có status = SPLIT bị query bỏ qua)
+                    // và đây là một đơn con (old split flow), thì cắt bỏ đuôi để hiển thị đúng thông tin của đơn cha.
+                    if (!realParent && b.parent_booking_id) {
+                        // Cắt đuôi dạng "-A", "-B" hoặc ".A"
+                        displayBillCode = displayBillCode.replace(/[-.][A-Z0-9]$/, '');
+                        // Cắt chữ " - Khách A", " - Khách B"
+                        displayCustomerName = displayCustomerName.replace(/\s*-\s*Khách\s+[A-Z0-9]+$/i, '');
+                    }
+
                     parentMap.set(parentId, {
                         parentBookingId: parentId,
-                        billCode: realParent?.billCode || b.billCode || 'N/A',
-                        customerName: realParent?.customerName || b.customerName || 'Khách vãng lai',
+                        billCode: displayBillCode,
+                        customerName: displayCustomerName,
                         childBookings: []
                     });
                 }
 
                 // Nếu có BookingGuests (Flow mới)
-                if (b.BookingGuests && b.BookingGuests.length > 0) {
+                const guestListForFeedback = b.guests || b.BookingGuests || [];
+                if (guestListForFeedback.length > 0) {
                     const group = parentMap.get(parentId)!;
                     
-                    b.BookingGuests.forEach((guest: any) => {
+                    guestListForFeedback.forEach((guest: any, guestIndex: number) => {
                         const ktvList: FeedbackKtvInfo[] = [];
                         const items = (b.BookingItems || []).filter((i: any) => i.guest_id === guest.id);
                         
@@ -133,14 +152,32 @@ export function useFeedbackDashboard(selectedDate: string) {
                             }
                         });
                         
+                        let derivedStatus = guest.status || b.status;
+                        if (items.length > 0) {
+                            const allDone = items.every((i: any) => ['DONE', 'FEEDBACK', 'COMPLETED', 'CLEANING'].includes(i.status));
+                            const anyStarted = items.some((i: any) => ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING', 'COMPLETED'].includes(i.status));
+                            if (allDone) {
+                                derivedStatus = 'FEEDBACK';
+                            } else if (anyStarted) {
+                                derivedStatus = 'IN_PROGRESS';
+                            } else {
+                                derivedStatus = 'PREPARING';
+                            }
+                        }
+                        
+                        // Tự động gán Khách A, Khách B nếu bị trống
+                        const autoGuestName = `Khách ${String.fromCharCode(65 + guestIndex)}`;
+                        const finalCustomerName = guest.guest_label || guest.customer_name || autoGuestName;
+
                         group.childBookings.push({
                             id: guest.id,
                             billCode: b.billCode || 'N/A',
-                            status: guest.status || b.status,
-                            customerName: guest.guest_label || guest.customer_name || 'Khách',
+                            status: derivedStatus,
+                            customerName: finalCustomerName,
                             customerLang: b.customerLang || 'VN',
                             ktvList,
-                            isGuestFlow: true
+                            isGuestFlow: true,
+                            parentBookingId: b.id
                         });
                     });
                 } 
@@ -190,14 +227,40 @@ export function useFeedbackDashboard(selectedDate: string) {
                         }
                     });
 
+                    let derivedStatus = b.status;
+                    if (items.length > 0) {
+                        const allDone = items.every((i: any) => ['DONE', 'FEEDBACK', 'COMPLETED', 'CLEANING'].includes(i.status));
+                        const anyStarted = items.some((i: any) => ['IN_PROGRESS', 'DONE', 'FEEDBACK', 'CLEANING', 'COMPLETED'].includes(i.status));
+                        if (allDone) {
+                            derivedStatus = 'FEEDBACK';
+                        } else if (anyStarted) {
+                            derivedStatus = 'IN_PROGRESS';
+                        } else {
+                            derivedStatus = 'PREPARING';
+                        }
+                    }
+
+                    const childIndex = group.childBookings.length;
+                    
+                    let finalCustomerName = b.customerName || `Khách ${String.fromCharCode(65 + childIndex)}`;
+                    // Nếu là old split flow, customerName thường dính tiền tố của Group, ví dụ "SEAH C L - Khách B"
+                    // Mình sẽ lọc bớt tiền tố đi cho sạch sẽ, chỉ giữ lại "Khách B"
+                    if (finalCustomerName.includes(' - Khách')) {
+                        const match = finalCustomerName.match(/Khách\s+[A-Z0-9]+/i);
+                        if (match) {
+                            finalCustomerName = match[0];
+                        }
+                    }
+
                     group.childBookings.push({
                         id: b.id, // Fallback dùng Booking ID
                         billCode: b.billCode || 'N/A',
-                        status: b.status,
-                        customerName: b.customerName || 'Khách',
+                        status: derivedStatus,
+                        customerName: finalCustomerName,
                         customerLang: b.customerLang || 'VN',
                         ktvList,
-                        isGuestFlow: false
+                        isGuestFlow: false,
+                        parentBookingId: b.id
                     });
                 }
             });
@@ -216,16 +279,20 @@ export function useFeedbackDashboard(selectedDate: string) {
 
         const channel = supabase
             .channel('feedback_board_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'Bookings' }, () => {
-                fetchData();
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'Bookings' }, (payload) => {
+                console.log('⚡ [Realtime] Bookings update detected:', payload);
+                fetchData('Bookings Update');
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, () => {
-                fetchData();
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
+                console.log('⚡ [Realtime] BookingItems update detected:', payload);
+                fetchData('BookingItems Update');
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingGuests' }, () => {
-                fetchData();
+                fetchData('BookingGuests Update');
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log(`📡 [FeedbackDashboard] Realtime Channel Status:`, status);
+            });
 
         return () => { supabase.removeChannel(channel); };
     }, [selectedDate]);

@@ -34,6 +34,7 @@ export interface GuestBlock {
   notes?: string | null;
   focusArea?: string | null;
   status: string;
+  items?: ServiceBlock[];
 }
 
 export interface ServiceBlock {
@@ -57,6 +58,7 @@ export interface ServiceBlock {
   focus: string;
   avoid: string;
   customerNote: string;
+  itemRating?: any;
   timeStart?: string | null;
   timeEnd?: string | null;
   options?: any;

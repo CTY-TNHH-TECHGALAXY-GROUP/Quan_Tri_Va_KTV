@@ -10,7 +10,7 @@ import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, is
 
 
 
-export async function getDispatchData(date: string) {
+export async function getDispatchData(date: string, _timestamp?: number) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
@@ -588,12 +588,16 @@ export async function processDispatch(bookingId: string, dispatchData: {
         
         // 🚀 BẢO VỆ TRẠNG THÁI BOOKING: Nếu DB đang ở trạng thái cao hơn, không cho lùi
         const { data: currentBooking } = await supabase.from('Bookings').select('status').eq('id', bookingId).single();
-        if (currentBooking && currentBooking.status && dispatchData.status) {
-            const STATUS_WEIGHT: Record<string, number> = { 'NEW': 0, 'WAITING': 1, 'PREPARING': 2, 'READY': 3, 'IN_PROGRESS': 4, 'CLEANING': 5, 'FEEDBACK': 6, 'DONE': 7 };
-            const dbWeight = STATUS_WEIGHT[currentBooking.status] || 0;
-            const incomingWeight = STATUS_WEIGHT[dispatchData.status] || 0;
-            if (dbWeight > incomingWeight) {
+        if (currentBooking && currentBooking.status) {
+            if (!dispatchData.status) {
                 dispatchData.status = currentBooking.status;
+            } else {
+                const STATUS_WEIGHT: Record<string, number> = { 'NEW': 0, 'WAITING': 1, 'PREPARING': 2, 'READY': 3, 'IN_PROGRESS': 4, 'CLEANING': 5, 'FEEDBACK': 6, 'DONE': 7 };
+                const dbWeight = STATUS_WEIGHT[currentBooking.status] || 0;
+                const incomingWeight = STATUS_WEIGHT[dispatchData.status] || 0;
+                if (dbWeight > incomingWeight) {
+                    dispatchData.status = currentBooking.status;
+                }
             }
         }
 
@@ -646,7 +650,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
                 
                 for (const [groupId, itemIds] of groups.entries()) {
                     // Try to find an existing guest_id among these items (Ưu tiên kế thừa guest_id của chính các item trong nhóm, không bị ảnh hưởng bởi lock)
-                    let targetGuestId = itemIds.map(id => dbItemsMap.get(id)).find(id => id);
+                    let targetGuestId = itemIds.map(id => dbItemsMap.get(id)).find(id => id && !usedGuestIds.has(id));
                     
                     if (!targetGuestId) {
                         // Find an unused available guest
@@ -655,21 +659,16 @@ export async function processDispatch(bookingId: string, dispatchData: {
                         if (targetGuestId) {
                             availableGuests = availableGuests.filter(id => id !== targetGuestId);
                         } else {
-                            if (guestIdsDb.length === 1) {
-                                // 🔥 ĐƠN 1 KHÁCH: DỊCH VỤ MUA THÊM TỰ ĐỘNG THUỘC VỀ KHÁCH DUY NHẤT ĐÓ
-                                targetGuestId = guestIdsDb[0];
-                            } else {
-                                targetGuestId = crypto.randomUUID();
-                                const nextIndex = guestIdsDb.length + 1;
-                                await supabase.from('BookingGuests').insert({
-                                    id: targetGuestId,
-                                    booking_id: bookingId,
-                                    guest_index: nextIndex,
-                                    guest_label: `Khách ${nextIndex}`,
-                                    status: 'PENDING'
-                                });
-                                guestIdsDb.push(targetGuestId);
-                            }
+                            targetGuestId = crypto.randomUUID();
+                            const nextIndex = guestIdsDb.length + 1;
+                            await supabase.from('BookingGuests').insert({
+                                id: targetGuestId,
+                                booking_id: bookingId,
+                                guest_index: nextIndex,
+                                guest_label: `Khách ${nextIndex}`,
+                                status: 'PENDING'
+                            });
+                            guestIdsDb.push(targetGuestId);
                         }
                     }
                     
@@ -1039,11 +1038,41 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                     ? item.technicianCodes 
                     : (typeof item.technicianCodes === 'string' ? item.technicianCodes.split(',').map(c => c.trim()).filter(Boolean) : []);
                 
+                // 🔥 SỬA LỖI: Merge segments thông minh để KHÔNG overwrite actualStartTime từ UI bị stale
+                let finalSegments = item.segments || [];
+                if (currentItems) {
+                    const dbItem = currentItems.find(i => i.id === item.id);
+                    if (dbItem && dbItem.segments) {
+                        let dbSegments: any[] = [];
+                        try {
+                            dbSegments = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : dbItem.segments;
+                        } catch (e) {}
+
+                        if (Array.isArray(dbSegments) && dbSegments.length > 0) {
+                            finalSegments = finalSegments.map((incomingSeg: any) => {
+                                const existingSeg = dbSegments.find((s: any) => s.ktvId === incomingSeg.ktvId);
+                                if (existingSeg) {
+                                    return {
+                                        ...incomingSeg,
+                                        actualStartTime: existingSeg.actualStartTime || incomingSeg.actualStartTime,
+                                        actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
+                                        feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
+                                        startPhotoUrl: existingSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                        handoverPhotoUrl: existingSeg.handoverPhotoUrl || incomingSeg.handoverPhotoUrl,
+                                        handoverPhotoUrls: existingSeg.handoverPhotoUrls || incomingSeg.handoverPhotoUrls
+                                    };
+                                }
+                                return incomingSeg;
+                            });
+                        }
+                    }
+                }
+
                 const updatePayload: any = { 
                     roomName: item.roomName,
                     bedId: item.bedId,
                     technicianCodes: technicianCodes,
-                    segments: item.segments || [],
+                    segments: finalSegments,
                     options: item.options 
                 };
                 if (targetGuestId) {
@@ -2066,5 +2095,59 @@ export async function unmergeServicesAction(
     } catch (error: any) {
         console.error('❌ [Server] unmergeServicesAction error:', error);
         return { success: false, error: error.message };
+    }
+}
+
+export async function submitGuestRating(guestId: string, rating: number, feedbackNote?: string) {
+    try {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // Update BookingGuests
+        const { error: guestErr } = await supabase
+            .from('BookingGuests')
+            .update({
+                rating,
+                guest_feedback: feedbackNote || null,
+                status: 'DONE',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', guestId);
+        
+        if (guestErr) throw guestErr;
+
+        // Also update the associated BookingItems to trigger Commission/Bonus flow
+        const { data: items } = await supabase
+            .from('BookingItems')
+            .select('id, ktvRatings, technicianCodes')
+            .eq('guest_id', guestId);
+
+        if (items && items.length > 0) {
+            for (const item of items) {
+                let currentRatings = item.ktvRatings || {};
+                const ktvs = item.technicianCodes || [];
+                let hasChanges = false;
+                for (const ktvId of ktvs) {
+                    if (ktvId) {
+                        currentRatings[ktvId] = rating;
+                        hasChanges = true;
+                    }
+                }
+                if (hasChanges) {
+                    await supabase
+                        .from('BookingItems')
+                        .update({
+                            itemRating: rating,
+                            ktvRatings: currentRatings
+                        })
+                        .eq('id', item.id);
+                }
+            }
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("❌ [Server] submitGuestRating error:", error);
+        return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
 }

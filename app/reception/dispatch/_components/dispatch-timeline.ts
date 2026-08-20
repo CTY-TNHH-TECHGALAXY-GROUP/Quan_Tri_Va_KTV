@@ -215,28 +215,42 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         });
 
         const pId = order.parentBookingId || order.id;
-        const usedSet = usedSuffixesByParent.get(pId)!;
+        const globalUsedSet = usedSuffixesByParent.get(pId)!;
+        const localUsedSet = new Set<string>();
         
         let groupIndex = 0;
+        let hasUsedOrderSubSuffix = false;
 
         guestGroups.forEach((group, guestId) => {
             if (group.services.length === 0 && order.dispatchStatus !== 'pending') return;
             
             let calculatedSuffix = group.guest?.guestLabel || '';
+            
+            // Allocate the original booking's suffix to the first group that needs it
+            if (!calculatedSuffix && !hasUsedOrderSubSuffix && order.subSuffix) {
+                calculatedSuffix = order.subSuffix;
+                hasUsedOrderSubSuffix = true;
+            }
+
+            // If we have a suffix but it's ALREADY USED LOCALLY (conflict within this order), we must clear it and invent a new one.
+            if (calculatedSuffix && localUsedSet.has(calculatedSuffix.toUpperCase())) {
+                calculatedSuffix = '';
+            }
+
+            // If we don't have a suffix, invent a new one using the GLOBAL and LOCAL sets
             if (!calculatedSuffix) {
-                // Find next available letter A-Z
                 for (let i = 0; i < 26; i++) {
                     const char = String.fromCharCode(65 + i);
-                    if (!usedSet.has(char)) {
+                    if (!globalUsedSet.has(char) && !localUsedSet.has(char)) {
                         calculatedSuffix = char;
-                        usedSet.add(char);
                         break;
                     }
                 }
                 if (!calculatedSuffix) calculatedSuffix = `G${groupIndex}`; // fallback
-            } else {
-                usedSet.add(calculatedSuffix.toUpperCase());
             }
+            
+            localUsedSet.add(calculatedSuffix.toUpperCase());
+            globalUsedSet.add(calculatedSuffix.toUpperCase());
 
             let isAllCompleted = true;
             let isAnyStarted = false;

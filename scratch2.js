@@ -1,46 +1,69 @@
-const fs = require('fs');
+require('dotenv').config({ path: '.env.local' });
+const { createClient } = require('@supabase/supabase-js');
 
-function processFile(file) {
-  let content = fs.readFileSync(file, 'utf8');
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function check() {
+  const bookingId = '11NDK-012-16082026';
+  const { data: booking } = await supabase.from('Bookings').select('*').eq('id', bookingId).single();
   
-  // Add to formData state initialization
-  content = content.replace(
-    /weight: '',/g,
-    "weight: '',\n        isActiveVipMenu: false,\n        isHomeSpa: false,"
-  );
+  // Try to find items for this booking OR any of its sub-bookings
+  const { data: childBookings } = await supabase.from('Bookings').select('id').eq('parent_booking_id', bookingId);
+  const childBookingIds = (childBookings || []).map(b => b.id);
+  const allBookingIds = [bookingId, ...childBookingIds];
+  
+  const { data: items } = await supabase.from('BookingItems').select('*').in('bookingId', allBookingIds);
+  console.log('Found items from child bookings:', items?.length);
+  
+  let enrichedItems = items || [];
+  if (enrichedItems.length > 0) {
+      const serviceIds = enrichedItems.map(i => i.serviceId).filter(Boolean);
+      const { data: svcs, error: svError } = await supabase
+          .from('Services')
+          .select('id, code, nameVN, nameEN, priceVND, duration')
+          .in('id', serviceIds);
 
-  // For EmployeeDetailModal, we also need to initialize state from the passed 'employee' prop
-  if (file.includes('EmployeeDetailModal')) {
-    content = content.replace(
-      /weight: employee\.weight \|\| '',/g,
-      "weight: employee.weight || '',\n        isActiveVipMenu: employee.isActiveVipMenu || false,\n        isHomeSpa: employee.isHomeSpa || false,"
-    );
+      if (!svError && svcs) {
+          const svcMap = new Map();
+          svcs.forEach((s) => {
+              if (s.id) svcMap.set(String(s.id).trim().toLowerCase(), s);
+              if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
+          });
+          
+          enrichedItems = enrichedItems.map(i => {
+              const sId = String(i.serviceId || '').trim().toLowerCase();
+              const svc = svcMap.get(sId);
+              
+              const getName = () => {
+                  const n = svc?.nameVN || svc?.nameEN || svc?.name;
+                  if (typeof n === 'object' && n !== null) return n.vn || n.en || String(n);
+                  return n || `Dịch vụ ${i.serviceId || 'Chưa rõ'}`;
+              };
+
+              return {
+                  ...i,
+                  serviceName: getName(),
+                  originalPrice: svc?.priceVND || i.price,
+                  duration: i.duration || svc?.duration || 60
+              };
+          });
+      }
   }
 
-  // Add checkbox UI after weight
-  const checkboxHtml = `
-                                  <div className="flex flex-col justify-end space-y-2">
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                          <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-4 h-4 text-indigo-600 rounded" />
-                                          <span className="text-sm font-medium text-gray-700">VIP Menu</span>
-                                      </label>
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                          <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-4 h-4 text-indigo-600 rounded" />
-                                          <span className="text-sm font-medium text-gray-700">Home Spa</span>
-                                      </label>
-                                  </div>`;
-  
-  // Find weight input and append our checkboxes
-  const parts = content.split('name="weight"');
-  if (parts.length > 1) {
-    const afterWeight = parts[1].split('</div>');
-    content = parts[0] + 'name="weight"' + afterWeight[0] + '</div>' + checkboxHtml + afterWeight.slice(1).join('</div>');
-    fs.writeFileSync(file, content, 'utf8');
-    console.log('Success for ' + file);
-  } else {
-    console.log('Failed to find weight input in ' + file);
-  }
+  const result = {
+      ...booking,
+      items: enrichedItems
+  };
+  console.log('Result items length:', result.items.length);
+  console.log('Booking details:', { 
+      totalAmount: booking.totalAmount, 
+      source: booking.source, 
+      status: booking.status,
+      parent_booking_id: booking.parent_booking_id
+  });
+  console.log('billCode:', result.billCode);
 }
-
-processFile('components/AddEmployeeModal.tsx');
-processFile('components/EmployeeDetailModal.tsx');
+check();

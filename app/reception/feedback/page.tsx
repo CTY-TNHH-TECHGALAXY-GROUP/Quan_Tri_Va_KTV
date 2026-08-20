@@ -15,8 +15,8 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-800">{group.customerName}</h2>
-                    <p className="text-sm text-gray-500">Mã: {group.billCode} • {group.childBookings.length} đơn</p>
+                    <h2 className="text-lg font-bold text-indigo-700">Mã đơn: {group.billCode}</h2>
+                    <p className="text-sm font-medium text-gray-600">Khách đặt: {group.customerName} • {group.childBookings.length} khách</p>
                 </div>
                 <button className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-200/50 transition-all">
                     {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}

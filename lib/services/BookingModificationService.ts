@@ -241,8 +241,29 @@ export class BookingModificationService {
             if (sError) throw sError;
 
             // Lấy danh sách Guest của Booking này để fallback
-            const { data: existingGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+            const { data: existingGuests } = await supabase.from('BookingGuests').select('id, guest_index').eq('booking_id', bookingId);
             const defaultGuestId = (existingGuests && existingGuests.length > 0) ? existingGuests[0].id : null;
+
+            // Handle NEW guests
+            let maxGuestIndex = existingGuests ? Math.max(...existingGuests.map(g => g.guest_index || 0), 0) : 0;
+            const newGuestIds = new Map<string, string>(); // Map to store fake IDs to real IDs
+
+            for (const item of items) {
+                if (item.guestId === 'NEW' || (item.guestId && item.guestId.startsWith('NEW_'))) {
+                    if (!newGuestIds.has(item.guestId)) {
+                        maxGuestIndex++;
+                        const newGuestId = `BK_${bookingId.substring(0,8)}_G${maxGuestIndex}_${Date.now().toString().slice(-4)}`;
+                        await supabase.from('BookingGuests').insert({
+                            id: newGuestId,
+                            booking_id: bookingId,
+                            guest_index: maxGuestIndex,
+                            guest_label: `Khách ${String.fromCharCode(64 + maxGuestIndex)}`
+                        });
+                        newGuestIds.set(item.guestId, newGuestId);
+                    }
+                    item.guestId = newGuestIds.get(item.guestId);
+                }
+            }
 
             let totalVND = 0;
             let addedDuration = 0;

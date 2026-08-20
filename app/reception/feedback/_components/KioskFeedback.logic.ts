@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChildBookingForFeedback, FeedbackKtvInfo } from '../FeedbackDashboard.logic';
+import { submitFeedbackAction } from './actions';
 
 export type MergedFeedbackGroup = {
     ktvId: string;
@@ -114,145 +115,37 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         }
 
         setIsSubmitting(true);
+        console.log('[Feedback Submit] Bắt đầu submit feedback. booking:', booking);
+        console.log('[Feedback Submit] globalRating:', globalRating, 'globalComment:', globalComment);
+        console.log('[Feedback Submit] isGuestFlow:', booking.isGuestFlow);
+
         try {
-            const updatePromises: any[] = [];
-            const itemIdsToUpdate = Array.from(new Set(booking.ktvList.map(k => k.itemId)));
+            console.log('[Feedback Submit] Calling Server Action with payload...', booking);
 
-            if (booking.isGuestFlow) {
-                const guestIdsToUpdate = itemIdsToUpdate;
-                // 1. UPDATE BookingGuests (Flow mới)
-                const { data: currentGuests, error: fetchErr } = await supabase
-                    .from('BookingGuests')
-                    .select('id, ktv_ratings')
-                    .in('id', guestIdsToUpdate);
-                    
-                if (fetchErr) throw fetchErr;
+            const payload = {
+                bookingId: booking.parentBookingId || booking.id,
+                isGuestFlow: !!booking.isGuestFlow,
+                ktvList: booking.ktvList,
+                globalRating,
+                globalComment,
+                violations
+            };
 
-                for (const guest of currentGuests || []) {
-                    let currentRatings = guest.ktv_ratings || {};
-                    
-                    booking.ktvList.forEach(k => {
-                        if (k.itemId === guest.id) {
-                            currentRatings[k.ktvId] = globalRating;
-                        }
-                    });
-                    
-                    const guestFeedback = globalComment.trim() || null;
-
-                    const p = supabase
-                        .from('BookingGuests')
-                        .update({ 
-                            ktv_ratings: currentRatings,
-                            rating: globalRating,
-                            ...(guestFeedback !== null && { guest_feedback: guestFeedback }),
-                            status: 'DONE',
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', guest.id)
-                        .then(res => {
-                            if (res.error) throw res.error;
-                            return res;
-                        });
-                    updatePromises.push(p);
-                }
-
-                // 1.5 ĐỒNG BỘ KÉP SANG BookingItems (Sync to BookingItems to trigger KTV bonuses)
-                const { data: guestItems, error: itemsErr } = await supabase
-                    .from('BookingItems')
-                    .select('id, guest_id, technicianCodes, ktvRatings')
-                    .in('guest_id', guestIdsToUpdate);
-                
-                if (itemsErr) throw itemsErr;
-
-                for (const item of guestItems || []) {
-                    const guestId = item.guest_id;
-                    let currentRatings = item.ktvRatings || {};
-                    let hasChanges = false;
-                    
-                    booking.ktvList.forEach(k => {
-                        // Nếu KTV đó có làm item này
-                        if (k.itemId === guestId && item.technicianCodes?.includes(k.ktvId)) {
-                            currentRatings[k.ktvId] = globalRating;
-                            hasChanges = true;
-                        }
-                    });
-
-                    if (hasChanges) {
-                        const pSync = supabase
-                            .from('BookingItems')
-                            .update({
-                                ktvRatings: currentRatings,
-                                itemRating: globalRating
-                            })
-                            .eq('id', item.id)
-                            .then(res => {
-                                if (res.error) throw res.error;
-                                return res;
-                            });
-                        updatePromises.push(pSync);
-                    }
-                }
-            } else {
-                // 2. UPDATE BookingItems (Dành cho những item lẻ, KHÔNG qua Guest Flow)
-                const normalItemIds = itemIdsToUpdate;
-                const { data: currentItems, error: fetchErr } = await supabase
-                    .from('BookingItems')
-                    .select('id, ktvRatings')
-                    .in('id', normalItemIds);
-                    
-                if (fetchErr) throw fetchErr;
-
-                for (const item of currentItems || []) {
-                    let currentRatings = item.ktvRatings || {};
-                    
-                    booking.ktvList.forEach(k => {
-                        if (k.itemId === item.id) {
-                            currentRatings[k.ktvId] = globalRating;
-                        }
-                    });
-                    
-                    const itemFeedback = globalComment.trim() || null;
-
-                    const p = supabase
-                        .from('BookingItems')
-                        .update({ 
-                            ktvRatings: currentRatings,
-                            itemRating: globalRating,
-                            ...(itemFeedback !== null && { itemFeedback })
-                        })
-                        .eq('id', item.id)
-                        .then(res => {
-                            if (res.error) throw res.error;
-                            return res;
-                        });
-                    updatePromises.push(p);
-                }
+            const result = await submitFeedbackAction(payload);
+            
+            if (!result.success) {
+                throw new Error(result.error);
             }
 
-            // Đồng thời update trạng thái Bookings -> FEEDBACK
-            const pBooking = supabase
-                .from('Bookings')
-                .update({ 
-                    status: 'FEEDBACK', 
-                    violations: violations,
-                    updatedAt: new Date().toISOString() 
-                })
-                .eq('id', booking.id)
-                .then(res => {
-                    if (res.error) throw res.error;
-                    return res;
-                });
-            
-            updatePromises.push(pBooking);
+            console.log('[Feedback Submit] Server Action success!');
 
-            await Promise.all(updatePromises);
             
             setIsSuccess(true);
             setTimeout(() => {
                 onClose();
             }, 3000);
         } catch (e: any) {
-            console.error("Error submitting feedback:", e);
+            console.error("[Feedback Submit] Error submitting feedback:", e);
             alert(`Đã có lỗi xảy ra. Vui lòng thử lại. (${e?.message || ''})`);
         } finally {
             setIsSubmitting(false);
@@ -373,6 +266,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         globalComment, handleCommentChange,
         reminders, violations, getReminderText, toggleViolation,
         isSubmitting, handleSubmit,
+        isSuccess, setIsSuccess,
         t
     };
 }
