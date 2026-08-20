@@ -155,10 +155,20 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-indigo-600 font-bold text-sm tracking-wider">{editedEmployee.code}</span>
                   <span className="text-gray-300">•</span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${editedEmployee.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                    {editedEmployee.status === 'active' ? 'Đang hoạt động' : 'Đã nghỉ'}
-                  </span>
+                  {isEditing ? (
+                    <select
+                      value={editedEmployee.status || 'active'}
+                      onChange={(e) => updateField('status', e.target.value)}
+                      className={`text-[10px] font-bold uppercase rounded-full px-2 py-0.5 outline-none cursor-pointer ${editedEmployee.status === 'active' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
+                    >
+                      <option value="active" className="bg-white text-gray-900">Đang hoạt động</option>
+                      <option value="inactive" className="bg-white text-gray-900">Đã nghỉ</option>
+                    </select>
+                  ) : (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${editedEmployee.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {editedEmployee.status === 'active' ? 'Đang hoạt động' : 'Đã nghỉ'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">

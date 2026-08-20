@@ -163,7 +163,23 @@ export async function updateStaffMember(id: string, updates: any) {
         // The modal might pass Employee type (camelCase)
         const staffPayload: any = {};
         if (updates.name !== undefined) staffPayload.full_name = updates.name;
-        if (updates.status !== undefined) staffPayload.status = updates.status === 'active' ? 'ĐANG LÀM' : 'ĐÃ NGHỈ';
+        if (updates.status !== undefined) {
+            staffPayload.status = updates.status === 'active' ? 'ĐANG LÀM' : 'ĐÃ NGHỈ';
+            if (staffPayload.status === 'ĐÃ NGHỈ') {
+                staffPayload.is_active_vip_menu = false;
+                staffPayload.is_home_spa = false;
+                
+                // Remove from TurnQueue
+                const { error: turnQueueError } = await supabase
+                    .from('TurnQueue')
+                    .delete()
+                    .eq('employeeId', id);
+                    
+                if (turnQueueError) {
+                    console.warn(`[Employees] Could not remove staff ${id} from TurnQueue:`, turnQueueError);
+                }
+            }
+        }
         if (updates.dob !== undefined) staffPayload.birthday = updates.dob || null;
         if (updates.gender !== undefined) staffPayload.gender = updates.gender || null;
         if (updates.idCard !== undefined) staffPayload.id_card = updates.idCard || null;

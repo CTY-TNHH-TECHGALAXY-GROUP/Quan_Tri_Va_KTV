@@ -497,8 +497,7 @@ export const QuickDispatchTable = ({
       if (isAllSelected) setSelectedGroupKeys([]);
       else setSelectedGroupKeys(Array.from(initialGroups.keys()));
   };
-  const parentPrefix = billCode ? billCode.split('-')[0] : 'XXX';
-
+  const parentPrefix = billCode ? billCode.replace(/-[A-Z]$/i, '') : 'XXX';
   // Assign subSuffix based on customerGroupId (or groupKey if no customerGroupId)
   const persistentSuffixesRef = useRef(new Map<string, string>());
 

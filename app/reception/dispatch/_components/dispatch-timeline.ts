@@ -60,7 +60,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
         // Also extract from billCode (e.g. DK4F-B means B is used)
         if (o.billCode) {
             const match = o.billCode.match(/-([A-Z])$/i);
-            if (match) set.add(match[1].toUpperCase());
+            if (match) { set.add(match[1].toUpperCase()); o.subSuffix = match[1].toUpperCase(); }
         }
     });
 

@@ -533,14 +533,9 @@ export async function GET(request: Request) {
                 const code = tc.trim();
                 if (!code) return;
                 
-                let myTotalMins = 0;
-                
                 const fallbackDuration = svcDurationMap[String(i.serviceId)] || 60;
-                myTotalMins = KtvCommissionService.calculateItemDuration(i, code, fallbackDuration);
-                
-                if (myTotalMins === 0) {
-                    myTotalMins = fallbackDuration / techs.length; // Fallback: divide duration by num KTVs
-                }
+                let actualMins = KtvCommissionService.calculateItemDuration(i, code, fallbackDuration);
+                let myTotalMins = actualMins > 0 ? actualMins : (fallbackDuration / techs.length);
                 
                 const workType = staffWorkTypeMap[code] || 'TYPE_A';
                 const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
@@ -551,7 +546,7 @@ export async function GET(request: Request) {
                 if (!ktvMap[code]) ktvMap[code] = { code, orders: 0, revenue: 0, commission: 0, totalTip: 0, ratingSum: 0, ratingCount: 0, workingMinutes: 0 };
                 ktvMap[code].commission += perKtvCommission;
                 ktvMap[code].totalTip += perKtvTip;
-                ktvMap[code].workingMinutes += myTotalMins;
+                ktvMap[code].workingMinutes += actualMins;
                 if (hasRating) {
                     ktvMap[code].ratingSum += Number(i.itemRating);
                     ktvMap[code].ratingCount += 1;

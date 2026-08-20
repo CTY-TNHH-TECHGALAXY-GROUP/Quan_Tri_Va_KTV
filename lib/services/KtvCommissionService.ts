@@ -292,7 +292,7 @@ export class KtvCommissionService {
                 return sum + baseMins;
             }, 0);
         } else {
-            return fallbackDuration;
+            return 0; // Trả về 0 để các hàm gọi (như Admin hay KPI) tự quyết định việc có Fallback chia đều hay không!
         }
     }
 

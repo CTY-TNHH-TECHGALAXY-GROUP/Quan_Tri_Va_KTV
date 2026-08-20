@@ -126,9 +126,9 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                 bookingId: booking.parentBookingId || booking.id,
                 isGuestFlow: !!booking.isGuestFlow,
                 ktvList: booking.ktvList,
-                globalRating,
-                globalComment,
-                violations
+                globalRating: globalRating,
+                globalComment: globalComment,
+                violations: violations
             };
 
             const result = await submitFeedbackAction(payload);

@@ -1,76 +1,82 @@
-# 🔒 Multi-Conversation Coordination Log
+﻿# ðŸ”’ Multi-Conversation Coordination Log
 
-> **Mục đích**: Giúp nhiều conversation Antigravity phối hợp, tránh conflict khi edit cùng file.
-> **Quy tắc**: Mỗi conversation PHẢI đọc file này trước khi edit, và ghi lại file mình đang sửa.
+> **Má»¥c Ä‘Ã­ch**: GiÃºp nhiá»u conversation Antigravity phá»‘i há»£p, trÃ¡nh conflict khi edit cÃ¹ng file.
+> **Quy táº¯c**: Má»—i conversation PHáº¢I Ä‘á»c file nÃ y trÆ°á»›c khi edit, vÃ  ghi láº¡i file mÃ¬nh Ä‘ang sá»­a.
 
 ---
 
-## 📡 Active Conversations
+## ðŸ“¡ Active Conversations
 
-### Trang Nhận Đơn Web Booking (/reception/web-booking)
+### Trang Nháº­n ÄÆ¡n Web Booking (/reception/web-booking)
 - **Conversation**: `d66424b4-0a58-404c-8df6-2992511cbcb8`
-- **Đang sửa**:
+- **Äang sá»­a**:
   - `app/reception/dispatch/actions.ts` (fix filter NEW)
-  - `app/reception/web-booking/page.tsx` [MỚI]
-  - `app/reception/web-booking/WebBookingCalendar.tsx` [MỚI]
-  - `app/reception/web-booking/WebBookingCard.tsx` [MỚI]
-  - `app/reception/web-booking/WebBookingDetailPanel.tsx` [MỚI]
-  - `app/reception/web-booking/actions.ts` [MỚI]
+  - `app/reception/web-booking/page.tsx` [Má»šI]
+  - `app/reception/web-booking/WebBookingCalendar.tsx` [Má»šI]
+  - `app/reception/web-booking/WebBookingCard.tsx` [Má»šI]
+  - `app/reception/web-booking/WebBookingDetailPanel.tsx` [Má»šI]
+  - `app/reception/web-booking/actions.ts` [Má»šI]
   - `app/admin/web-booking/page.tsx` (redirect)
-  - `components/layout/Sidebar.tsx` (thêm menu item)
-- **Trạng thái**: 🔴 Xong
+  - `components/layout/Sidebar.tsx` (thÃªm menu item)
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
-### Báo cáo tiến độ trang báo cáo
+### BÃ¡o cÃ¡o tiáº¿n Ä‘á»™ trang bÃ¡o cÃ¡o
 - **Conversation**: `9a73d883-85c4-4884-b88a-a14163ae7980`
-- **Đang sửa**: _Không sửa file, chỉ đọc để báo cáo tiến độ_
-- **Trạng thái**: 🔴 Xong
+- **Äang sá»­a**: _KhÃ´ng sá»­a file, chá»‰ Ä‘á»c Ä‘á»ƒ bÃ¡o cÃ¡o tiáº¿n Ä‘á»™_
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
-### Triển khai Xuất Excel Báo cáo
+### Triá»ƒn khai Xuáº¥t Excel BÃ¡o cÃ¡o
 - **Conversation**: `9a73d883-85c4-4884-b88a-a14163ae7980`
-- **Đang sửa**: `app/finance/revenue/RevenueReport.logic.ts`, `app/finance/revenue/page.tsx`
-- **Trạng thái**: 🔴 Xong
+- **Äang sá»­a**: `app/finance/revenue/RevenueReport.logic.ts`, `app/finance/revenue/page.tsx`
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
-### Nâng cấp Service Menu Edit Drawer
+### NÃ¢ng cáº¥p Service Menu Edit Drawer
 - **Conversation**: `597dce05-8df1-43dd-a0fa-9e1cdc08f91f`
-- **Đang sửa**: `lib/types.ts`, `app/admin/service-menu/actions.ts`, `app/admin/service-menu/page.tsx`, `EditServiceDrawer.tsx`
-- **Trạng thái**: 🔴 Xong
+- **Äang sá»­a**: `lib/types.ts`, `app/admin/service-menu/actions.ts`, `app/admin/service-menu/page.tsx`, `EditServiceDrawer.tsx`
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
-### Thêm nút chọn tất cả trên KTV Dashboard
+### ThÃªm nÃºt chá»n táº¥t cáº£ trÃªn KTV Dashboard
 - **Conversation**: `98dc5a4b-0dad-4500-9138-c17fecbc6e4a`
-- **Đang sửa**: `app/ktv/dashboard/page.tsx`, `app/ktv/dashboard/KTVDashboard.logic.ts`
-- **Trạng thái**: 🔴 Xong
+- **Äang sá»­a**: `app/ktv/dashboard/page.tsx`, `app/ktv/dashboard/KTVDashboard.logic.ts`
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
-### Nâng Cấp Set Ca & Chấm Công KTV
+### NÃ¢ng Cáº¥p Set Ca & Cháº¥m CÃ´ng KTV
 - **Conversation**: `de9356f5-e495-4e93-8bb0-392015b29fc0`
-- **Đang sửa**: (xem danh sách bên dưới)
-- **Trạng thái**: 🔴 Xong
+- **Äang sá»­a**: (xem danh sÃ¡ch bÃªn dÆ°á»›i)
+- **Tráº¡ng thÃ¡i**: ðŸ”´ Xong
 
 
 ---
 
-## 📜 Quy tắc phối hợp
+## ðŸ“œ Quy táº¯c phá»‘i há»£p
 
-1. **CHECK TRƯỚC**: Trước khi edit file, kiểm tra xem file đó có đang được conversation khác sửa không.
-2. **GHI LẠI**: Khi bắt đầu sửa file, thêm entry vào mục Active Conversations.
-3. **DỌN DẸP**: Khi xong việc, xóa hoặc đánh dấu 🔴 entry của mình.
-4. **KHÔNG TRANH CHẤP**: Nếu file đã bị "khóa" bởi conversation khác → thông báo cho user và đợi.
+1. **CHECK TRÆ¯á»šC**: TrÆ°á»›c khi edit file, kiá»ƒm tra xem file Ä‘Ã³ cÃ³ Ä‘ang Ä‘Æ°á»£c conversation khÃ¡c sá»­a khÃ´ng.
+2. **GHI Láº I**: Khi báº¯t Ä‘áº§u sá»­a file, thÃªm entry vÃ o má»¥c Active Conversations.
+3. **Dá»ŒN Dáº¸P**: Khi xong viá»‡c, xÃ³a hoáº·c Ä‘Ã¡nh dáº¥u ðŸ”´ entry cá»§a mÃ¬nh.
+4. **KHÃ”NG TRANH CHáº¤P**: Náº¿u file Ä‘Ã£ bá»‹ "khÃ³a" bá»Ÿi conversation khÃ¡c â†’ thÃ´ng bÃ¡o cho user vÃ  Ä‘á»£i.
 
 ---
 
-## 📋 Lịch sử (Log)
+## ðŸ“‹ Lá»‹ch sá»­ (Log)
 
-| Thời gian | Conversation | Hành động | File |
+| Thá»i gian | Conversation | HÃ nh Ä‘á»™ng | File |
 |-----------|-------------|-----------|------|
-| 2026-03-23 | `9a73d883` | Kiểm tra tiến độ | `RevenueReport.logic.ts`, `page.tsx`, `api/finance/reports/route.ts` |
-| 2026-03-27 | `98dc5a4b` | Thêm nút chọn tất cả | `page.tsx`, `KTVDashboard.logic.ts` |
-| 2026-03-27 | `98dc5a4b` | Hotfix hiển thị "Toàn thân" | `page.tsx` |
-| 2026-04-08 | `de9356f5` | Dropdown set ca KTV, bỏ bắt buộc ảnh tan ca, giới hạn đúng giờ tan ca, danh sách KTV chưa có ca | `leave-management/*`, `attendance/*`, `api/staff/list` |
+| 2026-03-23 | `9a73d883` | Kiá»ƒm tra tiáº¿n Ä‘á»™ | `RevenueReport.logic.ts`, `page.tsx`, `api/finance/reports/route.ts` |
+| 2026-03-27 | `98dc5a4b` | ThÃªm nÃºt chá»n táº¥t cáº£ | `page.tsx`, `KTVDashboard.logic.ts` |
+| 2026-03-27 | `98dc5a4b` | Hotfix hiá»ƒn thá»‹ "ToÃ n thÃ¢n" | `page.tsx` |
+| 2026-04-08 | `de9356f5` | Dropdown set ca KTV, bá» báº¯t buá»™c áº£nh tan ca, giá»›i háº¡n Ä‘Ãºng giá» tan ca, danh sÃ¡ch KTV chÆ°a cÃ³ ca | `leave-management/*`, `attendance/*`, `api/staff/list` |
 
 ### Conversation Antigravity - Tri?n khai KtvAssignments Architecture
-- **�ang s?a**: supabase/migrations/*, pp/reception/dispatch/actions.ts, pp/api/ktv/booking/route.ts`n- **Tr?ng th�i**: ?? �ang l�m
+- **Ðang s?a**: supabase/migrations/*, pp/reception/dispatch/actions.ts, pp/api/ktv/booking/route.ts`n- **Tr?ng thái**: ?? Ðang làm
 
-### T�ch �on H�ng & X? l� Doanh Thu
+### Tách Ðon Hàng & X? lý Doanh Thu
 - **Conversation**: d1b17d04-5506-463b-b2d0-3aa096c66d76
-- **�� s?a**: pp/reception/dispatch/page.tsx, lib/services/FinanceReportService.ts, pp/api/finance/reports/route.ts
-- **Tr?ng th�i**: ?? Xong
+- **Ðã s?a**: pp/reception/dispatch/page.tsx, lib/services/FinanceReportService.ts, pp/api/finance/reports/route.ts
+- **Tr?ng thái**: ?? Xong
+
+
+### Tích h?p Popup Preview Tách Ðon và Luu & G?i (Dispatch)
+- **Conversation**: 67f0b22a-5615-4b4f-b34b-5126c762a233
+- **Ðang s?a**: pp/reception/dispatch/page.tsx, pp/reception/dispatch/_components/SplitPreviewModal.tsx
+- **Tr?ng thái**: ?? Ðang làm
 

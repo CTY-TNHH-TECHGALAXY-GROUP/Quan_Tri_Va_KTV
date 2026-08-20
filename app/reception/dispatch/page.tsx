@@ -35,6 +35,7 @@ import { MergePromptModal } from '@/app/reception/dispatch/_components/MergeProm
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
 import { Customer } from '@/lib/types';
+import { SplitPreviewModal } from './_components/SplitPreviewModal';
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 import { 
   StaffAssignment, 
@@ -239,6 +240,14 @@ export default function DispatchBoardPage() {
     ktv1Dur: number;
     ktv2Dur: number;
     isSaving: boolean;
+  } | null>(null);
+
+  const [splitPreviewState, setSplitPreviewState] = useState<{
+    isOpen: boolean;
+    intent: 'DRAFT' | 'DISPATCH';
+    splitPlan: { suffix: string, itemIds: string[] }[];
+    order: PendingOrder;
+    dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string };
   } | null>(null);
 
   const [mergePromptConfig, setMergePromptConfig] = useState<{
@@ -958,11 +967,68 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleSaveDraft = async () => {
-    if (!selectedOrder) return;
+  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }) => {
+    if (typeof skipPreview !== 'boolean') skipPreview = false;
+    
+    // When dispatching a specific sub-order, use that order instead of selectedOrder
+    const effectiveOrder = dispatchArgs?.overrideOrderId 
+        ? orders.find(o => o.id === dispatchArgs.overrideOrderId) 
+        : selectedOrder;
+    if (!effectiveOrder) return;
     
     try {
-      const clonedOrder = JSON.parse(JSON.stringify(selectedOrder)) as PendingOrder;
+      const clonedOrder = JSON.parse(JSON.stringify(effectiveOrder)) as PendingOrder;
+      
+      let splitPlan: any[] = [];
+      if (!clonedOrder.parentBookingId) {
+          const groups = new Map<string, string[]>();
+          const firstPrimary = clonedOrder.services.find((s: any) => !s.mergedIntoId && !s.options?.mergedIntoId);
+          const defaultGroupId = firstPrimary?.customerGroupId || firstPrimary?.id || 'default';
+
+          clonedOrder.services.forEach(svc => {
+              if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
+              
+              // Mọi dịch vụ chưa được lễ tân gán group (kéo thả tay) sẽ được gom chung vào defaultGroup
+              // Tránh tình trạng tự động sinh ra Khách B, Khách C (ghost guests) đối với dịch vụ Addon hoặc đa dịch vụ
+              const groupId = svc.customerGroupId || svc.id;
+              
+              if (!groups.has(groupId)) groups.set(groupId, []);
+              
+              const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
+              groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
+          });
+
+          if (groups.size > 1) {
+                const usedSuffixes = new Set<string>();
+                splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
+                    const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
+                    let suffix = subOrd?.subSuffix;
+                    if (!suffix || usedSuffixes.has(suffix)) {
+                        for (let i = 0; i < 26; i++) {
+                            const char = String.fromCharCode(65 + i);
+                            if (!usedSuffixes.has(char)) {
+                                suffix = char;
+                                break;
+                            }
+                        }
+                    }
+                    usedSuffixes.add(suffix!);
+                    return { suffix: suffix!, itemIds };
+                });
+            }
+      }
+
+      if (splitPlan.length > 1 && !skipPreview) {
+          setSplitPreviewState({
+              isOpen: true,
+              intent,
+              splitPlan,
+              order: clonedOrder,
+              dispatchArgs
+          });
+          return; // Stop here, modal will continue the flow
+      }
+
       const techCodesSet = new Set<string>();
 
       for (const svc of clonedOrder.services) {
@@ -1031,47 +1097,24 @@ if (!hasPermission('dispatch_board')) {
       });
 
       if (res.success) {
-        // 🔥 Thực hiện tách đơn luôn nếu người dùng đã gộp/tách trên giao diện
-        if (!clonedOrder.parentBookingId) {
-           const groups = new Map<string, string[]>();
-           
-           clonedOrder.services.forEach(svc => {
-               if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-               
-               const name = svc.serviceName?.toLowerCase() || '';
-               const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-               
-               // Mọi dịch vụ chưa được lễ tân gán group (kéo thả tay) và có defaultGroup -> Gộp tự động vào defaultGroup (Khách đầu tiên)
-               // Tránh tình trạng tự động sinh ra Khách B, Khách C (ghost guests) khi ấn Lưu Nháp đối với dịch vụ Addon hoặc đa dịch vụ.
-               const groupId = svc.customerGroupId || svc.id;
-               
-               if (!groups.has(groupId)) groups.set(groupId, []);
-               
-               const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
-               groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
-           });
-
-           if (groups.size > 1) {
-               const splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
-                   const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
-                   const suffix = subOrd?.subSuffix || String.fromCharCode(65 + idx);
-                   return { suffix, itemIds };
-               });
-               
-               const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
-                   p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
-                   p_split_plan: splitPlan
-               });
-               
-               if (splitErr || (splitRes && !splitRes.success)) {
-                   console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
-                   alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
-               }
-           }
+        if (splitPlan.length > 1) {
+            const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
+                p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
+                p_split_plan: splitPlan
+            });
+            
+            if (splitErr || (splitRes && !splitRes.success)) {
+                console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
+                alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
+            }
         }
 
-        alert('✅ Đã lưu thông tin và tách đơn (nếu có) thành công!');
-        fetchData();
+        if (intent === 'DISPATCH') {
+            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan);
+        } else {
+            alert('✅ Đã lưu thông tin' + (splitPlan.length > 1 ? ' và tách đơn' : '') + ' thành công!');
+            fetchData();
+        }
       } else {
         alert('Lỗi khi lưu tạm: ' + res.error);
       }
@@ -1119,7 +1162,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string) => {
+  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[]) => {
     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
     if (!orderToDispatch) return;
     if (!skipValidation) {
@@ -1144,49 +1187,45 @@ if (!hasPermission('dispatch_board')) {
       }
     }
 
+    if (!skipSave) {
+        await handleSaveDraft(false, 'DISPATCH', { skipValidation, specificSvcIds, overrideOrderId });
+        return;
+    }
+
     try {
       const clonedOrder = JSON.parse(JSON.stringify(orderToDispatch)) as PendingOrder;
-
-      // 🚀 BƯỚC 1: XÁC ĐỊNH TÁCH ĐƠN (NẾU CÓ)
-      const groups = new Map<string, string[]>();
-      
-
-      clonedOrder.services.forEach(svc => {
-          if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-          const name = svc.serviceName?.toLowerCase() || '';
-          const isUtility = (svc as any).is_utility === true || svc.serviceId === 'NHS0900' || (name.includes('phòng riêng') && !name.includes('+')) || (name.includes('phong rieng') && !name.includes('+'));
-          const groupId = svc.customerGroupId || svc.id;
-
-          if (!groups.has(groupId)) groups.set(groupId, []);
-          
-          const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
-          groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
-      });
-      
-      const isUiSplit = groups.size > 1;
       const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
-      let splitPlan: any[] = [];
       
-      if ((isPartial || isUiSplit)) {
-          if (isUiSplit) {
-              splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
-                  const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
-                  const suffix = subOrd?.subSuffix || String.fromCharCode(65 + idx);
-                  return { suffix, itemIds };
-              });
-          }
-
-          if (splitPlan.length > 1) {
-              const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
-                  p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
-                  p_split_plan: splitPlan
-              });
-
-              if (splitErr || (splitRes && !splitRes.success)) {
-                  console.error('Lỗi khi tách đơn:', splitErr || splitRes?.error);
-                  throw new Error('Lỗi hệ thống khi tách đơn vật lý: ' + (splitErr?.message || splitRes?.error));
-              }
-          }
+      let splitPlan = precomputedSplitPlan || [];
+      if (!precomputedSplitPlan && !clonedOrder.parentBookingId) {
+          const groups = new Map<string, string[]>();
+          const firstPrimary = clonedOrder.services.find((s: any) => !s.mergedIntoId && !s.options?.mergedIntoId);
+          const defaultGroupId = firstPrimary?.customerGroupId || firstPrimary?.id || 'default';
+          clonedOrder.services.forEach(svc => {
+              if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
+              const groupId = svc.customerGroupId || svc.id;
+              if (!groups.has(groupId)) groups.set(groupId, []);
+              const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
+              groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
+          });
+          if (groups.size > 1) {
+                const usedSuffixes = new Set<string>();
+                splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
+                    const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
+                    let suffix = subOrd?.subSuffix;
+                    if (!suffix || usedSuffixes.has(suffix)) {
+                        for (let i = 0; i < 26; i++) {
+                            const char = String.fromCharCode(65 + i);
+                            if (!usedSuffixes.has(char)) {
+                                suffix = char;
+                                break;
+                            }
+                        }
+                    }
+                    usedSuffixes.add(suffix!);
+                    return { suffix: suffix!, itemIds };
+                });
+            }
       }
 
       // 🚀 BƯỚC 2: CHUẨN BỊ PAYLOADS ĐIỀU PHỐI
@@ -1365,7 +1404,7 @@ if (!hasPermission('dispatch_board')) {
               setSelectedOrderId(null);
               setLeftPanelTab('dispatched');
           } else {
-              alert(`✅ Cập nhật thành công!`);
+              alert(`✅ Cập nhật và điều phối thành công!`);
           }
       } else {
           setOrders(prev => prev.map(o => {
@@ -1387,6 +1426,7 @@ if (!hasPermission('dispatch_board')) {
       console.error(err);
     }
   };
+
 
 
   const handleCancelBooking = async (orderId: string) => {
@@ -2339,14 +2379,7 @@ if (!hasPermission('dispatch_board')) {
                         const hasKtvAssigned = selectedSubOrder?.services?.some((s: any) => s.staffList?.length > 0);
                         const isDispatched = selectedSubOrder?.dispatchStatus !== 'pending';
                         
-                        if (hasKtvAssigned && !isDispatched) {
-                            if (window.confirm('Bạn đã chọn KTV nhưng BẤM LƯU NHÁP sẽ CHƯA GỬI ĐƠN cho KTV.\n\nBấm [OK] để GỬI ĐƠN CHO KTV ngay.\nBấm [Cancel] nếu chỉ muốn lưu nháp trên máy chủ.')) {
-                                setShowDispatchConfirmModal(true);
-                                const validSubBookings = subOrders.filter((so: any) => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
-                                updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: Math.max(1, validSubBookings.length) }));
-                                return;
-                            }
-                        }
+                        // Removed native confirm for hasKtvAssigned because SplitPreviewModal will handle it
                         
                         if (isDispatched) {
                             if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nNếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
@@ -2767,7 +2800,7 @@ if (!hasPermission('dispatch_board')) {
                   disabled={isMissingKTVs}
                   onClick={() => {
                     setShowDispatchConfirmModal(false);
-                    handleDispatch();
+                    handleDispatch(false, selectedSubOrder?.services.map((s:any) => s.id), selectedSubOrder?.originalOrder.id);
                   }}
                   className={`w-full py-4 rounded-2xl font-black text-white transition-colors uppercase text-sm flex items-center justify-center gap-2 shadow-lg ${
                     isMissingKTVs 
@@ -2775,7 +2808,7 @@ if (!hasPermission('dispatch_board')) {
                       : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
                   }`}
                 >
-                  <Send size={18} strokeWidth={3} /> Gửi & Dọn Phòng
+                  <Send size={18} strokeWidth={3} /> XÁC NHẬN GỬI KTV
                 </button>
               </div>
             </motion.div>
@@ -3486,6 +3519,27 @@ if (!hasPermission('dispatch_board')) {
         />
       )}
 
+      {splitPreviewState && (
+        <SplitPreviewModal
+          isOpen={splitPreviewState.isOpen}
+          order={splitPreviewState.order}
+          allServices={allServices}
+          splitPlan={splitPreviewState.splitPlan}
+          onClose={() => setSplitPreviewState(null)}
+          onSaveDraftOnly={() => {
+            const intent = splitPreviewState.intent;
+            const dispatchArgs = splitPreviewState.dispatchArgs;
+            setSplitPreviewState(null);
+            handleSaveDraft(true, intent, dispatchArgs);
+          }}
+          onSaveAndDispatch={() => {
+            const dispatchArgs = splitPreviewState.dispatchArgs;
+            setSplitPreviewState(null);
+            handleSaveDraft(true, 'DISPATCH', dispatchArgs);
+          }}
+        />
+      )}
+
       {timeEditorModal && (
         <TimeEditorModal
           isOpen={timeEditorModal.isOpen}
@@ -3500,5 +3554,6 @@ if (!hasPermission('dispatch_board')) {
     </AppLayout>
   );
 }
+
 
 

@@ -55,7 +55,7 @@ export class KtvKpiService {
                     .select('segments, Bookings!fk_bookingitems_booking!inner(bookingDate)')
                     .gte('Bookings.bookingDate', startOfMonth)
                     .lte('Bookings.bookingDate', endOfMonth)
-                    .in('status', ['COMPLETED', 'DONE'])
+                    .in('status', ['COMPLETED', 'DONE', 'CLEANING', 'FEEDBACK'])
                     .contains('technicianCodes', [input.staffId]);
 
                 if (!monthErr && monthBookings) {

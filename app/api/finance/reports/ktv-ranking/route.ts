@@ -321,17 +321,20 @@ export async function GET(request: Request) {
                // Lấy thời gian làm việc để cộng dồn (Không phụ thuộc realtime, miễn là hoàn thành)
                if (isValidStatus) {
                    let fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
-                   let myTotalMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
-                   if (myTotalMins === 0) myTotalMins = fallbackDuration / ktvs.length;
+                   let actualMins = KtvCommissionService.calculateItemDuration(item, code, fallbackDuration);
                    
-                   rankingMap[code].totalWorkingMins += myTotalMins;
+                   // 1. CỘNG GIỜ LÀM KPI: Chỉ lấy giờ thực tế để khớp 100% với App KTV (nếu 0 thì cộng 0)
+                   rankingMap[code].totalWorkingMins += actualMins;
+
+                   // 2. TÍNH TIỀN TUA: Nếu không có giờ thực tế (Gán nhanh/Lỗi) -> Tự động Fallback chia đều để không mất tiền tua
+                   let commissionMins = actualMins > 0 ? actualMins : (fallbackDuration / ktvs.length);
 
                    // Tính tiền tua & Tip Realtime
                    if (shouldCountRealtime) {
                        rankingMap[code].totalTip += tipPerKtv;
                        const workType = ktvWorkTypeMap[code] || 'TYPE_A';
                        const config = commConfigs[workType] || commConfigs['TYPE_A'];
-                       const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, item.serviceId) * qty;
+                       const perKtvCommission = KtvCommissionService.calcCommission(commissionMins, commConfigs, workType, item.serviceId) * qty;
                        rankingMap[code].tuaMoney += perKtvCommission;
                    }
                }

@@ -1384,8 +1384,9 @@ export default function KTVHubPage() {
         try {
             const res = await getStaffList();
             if (res.success && res.data) {
-                setStaffs(res.data);
-                console.log(`✅ [KTVHub] Fetched ${res.data.length} staff members`);
+                const activeStaffs = res.data.filter((s: any) => s.status === 'ĐANG LÀM');
+                setStaffs(activeStaffs);
+                console.log(`✅ [KTVHub] Fetched ${activeStaffs.length} active staff members`);
             } else if (res.error) {
                 console.error("❌ [KTVHub] Error fetching staff:", res.error);
             }
