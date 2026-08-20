@@ -70,7 +70,12 @@ export default function FinanceKTVPage() {
                                         </div>
                                         <div>
                                             <p className="text-sm font-black text-slate-800">{req.staff_id} - {req.Staff?.full_name}</p>
-                                            <p className="text-[10px] text-amber-700 font-medium">Muốn rút tiền mặt (Chưa báo số tiền)</p>
+                                            <p className="text-[10px] text-amber-700 font-medium leading-tight mt-0.5">
+                                                Muốn rút tiền mặt (Chưa báo số tiền)
+                                                <span className="text-amber-600 font-bold opacity-75 inline-block mt-0.5 md:ml-1 md:mt-0">
+                                                    • {format(new Date(req.request_date), 'HH:mm - dd/MM')}
+                                                </span>
+                                            </p>
                                         </div>
                                     </div>
                                     <button 
