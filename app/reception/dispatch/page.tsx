@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { parseDbDate } from "@/lib/utils";
 
 // 🔧 UI CONFIGURATION
@@ -1859,10 +1859,6 @@ if (!hasPermission('dispatch_board')) {
                     <motion.div
                       initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                       className="absolute top-full mt-2 left-0 right-0 z-30 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-y-auto max-h-64"
-                      onContextMenu={(e: React.MouseEvent, orderId: string, itemId?: string, guestId?: string) => {
-                        e.preventDefault();
-                        setContextMenu({ x: e.clientX, y: e.clientY, orderId, itemId, guestId });
-                      }}
                     >
                       {LEFT_TABS.map((tab) => (
                         <button
@@ -2676,7 +2672,7 @@ if (!hasPermission('dispatch_board')) {
                 <div>
                   <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
                   <p className="text-sm text-indigo-600 font-bold mt-1">
-                      Đơn #{selectedSubOrder?.services.length < orderForModal.services.length ? `${orderForModal.billCode.replace(/-[A-Z]$/i, '')}-${selectedSubOrder.subSuffix || 'A'}` : orderForModal.billCode} - {getDisplayCustomerName(selectedSubOrder || { originalOrder: orderForModal, services: orderForModal.services, subSuffix: 'A' })}
+                      Đơn #{selectedSubOrder?.services.length < orderForModal.services.length ? `${orderForModal.billCode.replace(/-[A-Z]$/i, '')}-${(selectedSubOrder as any).subSuffix || 'A'}` : orderForModal.billCode} - {getDisplayCustomerName(selectedSubOrder || { originalOrder: orderForModal, services: orderForModal.services, subSuffix: 'A' })}
                   </p>
                 </div>
                 <button 
@@ -2879,7 +2875,7 @@ if (!hasPermission('dispatch_board')) {
                   let finalBillCode = order.billCode;
                   if (contextMenu.guestId) {
                      const so = subOrders.find(s => s.id === contextMenu.guestId || (s.services && s.services.some((x: any) => x.guestId === contextMenu.guestId || x.customerGroupId === contextMenu.guestId)));
-                     if (so) finalBillCode = so.billCode;
+                     if (so) finalBillCode = (so as any).billCode || so.originalOrder?.billCode || order.billCode;
                   }
                   setQrModal({ orderId: order.id, billCode: finalBillCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
                 }

@@ -1,2 +1,2 @@
-﻿export const APP_VERSION = '1.0.12';
-export const LAST_UPDATE = 'Sửa lỗi chia đôi điểm thưởng KTV khi lễ tân gộp sai khách';
+﻿export const APP_VERSION = '1.0.13';
+export const LAST_UPDATE = 'Fix các lỗi Type Error (onContextMenu, subSuffix, billCode) trang Dispatch';
