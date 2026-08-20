@@ -364,6 +364,7 @@ export class KtvCommissionService {
 
         // 2 & 3. Calculate points per item and sum them up
         let totalDurationForBonus = 0;
+        let ktvGuestIds = new Set<string>();
         
         for (const item of (booking.BookingItems || [])) {
             // Kiểm tra KTV có tham gia item này không
@@ -371,9 +372,10 @@ export class KtvCommissionService {
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
                 isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
             }
-            // Loại bỏ logic fallback đọc booking.technicianCode ở đây để tránh KTV bị gán oan vào dịch vụ chưa phân ca.
 
             if (!isTechInvolved) continue;
+
+            if (item.guest_id) ktvGuestIds.add(item.guest_id);
 
             // Tính tổng thời lượng của KTV này
             const fallbackMins = Number(item.options?.duration) || Number(item.duration) || 60;
@@ -396,17 +398,20 @@ export class KtvCommissionService {
         let adjustedBasePoints = bonusConfig.s1Bonus;
         if (currentShift === 'SHIFT_2') adjustedBasePoints = bonusConfig.s2Bonus;
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
-
-        const totalUniqueKTVs = validUniqueKTVs > 0 ? validUniqueKTVs : 1;
         
         // 🚀 DUAL-LOGIC HÀNG RÀO BẢO VỆ (Zero-Touch Old Data)
-        // Nếu booking có BookingGuests (Đơn mới), đếm số lượng khách thực tế.
-        // Nếu booking không có (Đơn cũ), fallback về cột guestCount mặc định để không làm lệch số liệu quá khứ.
         let actualGuestCount = booking.guestCount || 1;
         if (booking.BookingGuests && Array.isArray(booking.BookingGuests) && booking.BookingGuests.length > 0) {
-            // Lọc bỏ các khách đã bị hủy để không tính điểm khống cho KTV
             const activeGuests = booking.BookingGuests.filter((g: any) => g.status !== 'CANCELLED');
             actualGuestCount = activeGuests.length > 0 ? activeGuests.length : 1;
+        } else if (booking.BookingItems && Array.isArray(booking.BookingItems) && booking.BookingItems.length > 0) {
+            const uniqueGuestIds = new Set<string>();
+            booking.BookingItems.forEach((i: any) => {
+                if (i.guest_id) uniqueGuestIds.add(i.guest_id);
+            });
+            if (uniqueGuestIds.size > 0) {
+                actualGuestCount = Math.max(actualGuestCount, uniqueGuestIds.size);
+            }
         }
         const guestCount = actualGuestCount;
         
@@ -415,16 +420,44 @@ export class KtvCommissionService {
         if (isNewRule) {
             // TỪ NGÀY 06/08 TRỞ ĐI: Công thức mới (Tính theo số Khách)
             // ⚠️ BUSINESS POLICY NOTE: Điểm thưởng (Bonus) được cấp dựa trên SỐ KHÁCH.
-            // Nếu 2 KTV phục vụ chung 1 khách (Dù là gộp dịch vụ hay nối tiếp nhau), tổng Bonus của booking đó vẫn chỉ là 1 suất.
+            // Nếu 2 KTV phục vụ chung 1 khách (Dù là gộp dịch vụ hay nối tiếp nhau), tổng Bonus CỦA KHÁCH ĐÓ vẫn chỉ là 1 suất.
             // Cả 2 KTV sẽ bị chia điểm (0.5). Đây là chính sách công ty (Company Policy) - tuyệt đối không thay đổi.
-            const ratio = Math.min(guestCount / totalUniqueKTVs, 1);
-            calculatedPoints = adjustedBasePoints * ratio;
+            
+            // Tìm số khách mà KTV này thực tế có phục vụ
+            const servedGuestCount = ktvGuestIds.size > 0 ? ktvGuestIds.size : 1;
             
             // LUẬT MỚI: Dưới 60 phút / 1 khách thì mất trắng (0 điểm)
-            // Tính trung bình thời gian mỗi khách để đánh giá
-            if ((totalDurationForBonus / guestCount) < 60) {
+            // Tính trung bình thời gian KTV phục vụ mỗi khách (chỉ tính những khách KTV NÀY CÓ LÀM)
+            if ((totalDurationForBonus / servedGuestCount) < 60) {
                 return 0;
             }
+
+            // XÉT Ở ĐƠN CẤP 2 (SUB-ORDER): Tính tỷ lệ điểm cho từng khách riêng biệt
+            let ratio = 0;
+            const uniqueGuestIds = Array.from(ktvGuestIds);
+
+            if (uniqueGuestIds.length === 0) {
+                // Fallback nếu không có guest_id (Dữ liệu cũ - xét cấp 1)
+                ratio = Math.min(guestCount / totalUniqueKTVs, 1);
+            } else {
+                // Xét theo từng ĐƠN CẤP 2 (Sub-order)
+                for (const gId of uniqueGuestIds) {
+                    const ktvsForThisGuest = new Set<string>();
+                    for (const item of (booking.BookingItems || [])) {
+                        if (item.guest_id === gId && item.technicianCodes && Array.isArray(item.technicianCodes)) {
+                            item.technicianCodes.forEach((tc: string) => ktvsForThisGuest.add(tc.toLowerCase()));
+                        }
+                    }
+                    const ktvsCount = ktvsForThisGuest.size || 1;
+                    
+                    // Áp dụng đúng quy tắc Company Policy nhưng ở level đơn cấp 2:
+                    // Số suất của 1 khách = 1 (guestCount của khách này là 1)
+                    // Tỷ lệ = 1 khách / Số KTV phục vụ khách đó
+                    ratio += Math.min(1 / ktvsCount, 1);
+                }
+            }
+
+            calculatedPoints = adjustedBasePoints * ratio;
         } else {
             // TRƯỚC NGÀY 06/08: Công thức cũ (1 đơn chỉ có BasePoints, chia cho KTV)
             calculatedPoints = adjustedBasePoints / totalUniqueKTVs;
