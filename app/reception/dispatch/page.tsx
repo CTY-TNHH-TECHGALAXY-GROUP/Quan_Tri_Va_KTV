@@ -1053,12 +1053,13 @@ if (!hasPermission('dispatch_board')) {
 
            if (groups.size > 1) {
                const splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
-                   const suffix = String.fromCharCode(65 + idx); // A, B, C
+                   const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
+                   const suffix = subOrd?.subSuffix || String.fromCharCode(65 + idx);
                    return { suffix, itemIds };
                });
                
                const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
-                   p_booking_id: clonedOrder.id,
+                   p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
                    p_split_plan: splitPlan
                });
                
@@ -1081,14 +1082,15 @@ if (!hasPermission('dispatch_board')) {
   };
 
   const handleUndoSplit = async () => {
-    const targetBookingId = selectedOrder?.parentBookingId || (selectedOrder?.rawStatus === 'SPLIT' ? selectedOrder.id : null);
-    if (!selectedOrder || !targetBookingId) return;
+    const orderForUndo = selectedSubOrder?.originalOrder || selectedOrder;
+    const targetBookingId = orderForUndo?.parentBookingId || (orderForUndo?.rawStatus === 'SPLIT' ? orderForUndo.id : null);
+    if (!orderForUndo || !targetBookingId) return;
 
     // KIỂM TRA: Không cho phép Hủy nếu có Đơn Con đã bắt đầu làm
     const siblings = orders.filter((o: any) => o.parentBookingId === targetBookingId);
-    const hasStarted = siblings.some((o: any) => o.rawStatus !== 'PREPARING' && o.rawStatus !== 'CANCELLED');
+    const hasStarted = siblings.some((o: any) => o.rawStatus !== 'NEW' && o.rawStatus !== 'CANCELLED');
     if (hasStarted) {
-        alert('❌ LỖI: Không thể Hủy Gộp/Tách! Có ít nhất 1 đơn con đang được KTV thực hiện hoặc đã hoàn thành. Chỉ có thể hủy khi tất cả đơn con đều ở trạng thái Chờ (PREPARING).');
+        alert('❌ LỖI: Không thể Hủy Gộp/Tách! Có ít nhất 1 đơn con đã được KTV thực hiện hoặc đã điều phối. Chỉ có thể hủy khi tất cả đơn con đều ở trạng thái Chờ (NEW).');
         return;
     }
 
@@ -1110,6 +1112,7 @@ if (!hasPermission('dispatch_board')) {
         alert('✅ Đã gộp đơn thành công!');
         fetchData();
         setSelectedOrderId(null);
+        setSelectedSubOrderId(null);
     } catch (err) {
         console.error(err);
         alert('Đã có lỗi bất ngờ xảy ra khi hủy tách đơn.');
@@ -1164,17 +1167,18 @@ if (!hasPermission('dispatch_board')) {
       const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
       let splitPlan: any[] = [];
       
-      if ((isPartial || isUiSplit) && !clonedOrder.parentBookingId) {
+      if ((isPartial || isUiSplit)) {
           if (isUiSplit) {
               splitPlan = Array.from(groups.values()).map((itemIds, idx) => {
-                  const suffix = String.fromCharCode(65 + idx); // A, B, C
+                  const subOrd = subOrders.find(s => s.originalOrder.id === clonedOrder.id && s.services.some(svc => itemIds.includes(svc.id)));
+                  const suffix = subOrd?.subSuffix || String.fromCharCode(65 + idx);
                   return { suffix, itemIds };
               });
           }
 
           if (splitPlan.length > 1) {
               const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
-                  p_booking_id: clonedOrder.id,
+                  p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
                   p_split_plan: splitPlan
               });
 
@@ -1200,7 +1204,7 @@ if (!hasPermission('dispatch_board')) {
       let bookingGroups: Array<{ bookingId: string, svcIds: string[] }> = [];
       if (splitPlan.length > 1) {
           bookingGroups = splitPlan.map(plan => ({
-              bookingId: `${clonedOrder.id}-${plan.suffix}`,
+              bookingId: `${clonedOrder.parentBookingId || clonedOrder.id}-${plan.suffix}`,
               svcIds: plan.itemIds
           }));
       } else {
@@ -2317,7 +2321,7 @@ if (!hasPermission('dispatch_board')) {
                       if (!targetUndoId) return null;
                       
                       const siblingsUndo = orders.filter((o: any) => o.parentBookingId === targetUndoId);
-                      const isUndoDisabled = siblingsUndo.some((o: any) => o.rawStatus !== 'PREPARING' && o.rawStatus !== 'CANCELLED');
+                      const isUndoDisabled = siblingsUndo.some((o: any) => o.rawStatus !== 'NEW' && o.rawStatus !== 'CANCELLED');
                       
                       return (
                           <button

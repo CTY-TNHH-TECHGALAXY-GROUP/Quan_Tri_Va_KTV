@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.31'; // Automatically incremented
-export const LAST_UPDATE = 'Fix lỗi Popup Xác nhận Điều phối hiển thị nhầm Tổng tiền & Tên khách hàng của Đơn gốc thay vì Đơn con (sau khi Tách khách)'; // Update description
+export const APP_VERSION = '1.0.35';
+export const LAST_UPDATE = 'Fix lỗi tách đơn lồng nhau (Khách C) bị gộp tiền vào Khách A và sửa generate suffix bị trùng lặp'; // Update description
