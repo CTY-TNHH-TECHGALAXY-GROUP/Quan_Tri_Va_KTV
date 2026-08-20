@@ -399,6 +399,8 @@ export class KtvCommissionService {
         if (currentShift === 'SHIFT_2') adjustedBasePoints = bonusConfig.s2Bonus;
         else if (currentShift === 'SHIFT_3') adjustedBasePoints = bonusConfig.s3Bonus;
         
+        const totalUniqueKTVs = validUniqueKTVs > 0 ? validUniqueKTVs : 1;
+
         // 🚀 DUAL-LOGIC HÀNG RÀO BẢO VỆ (Zero-Touch Old Data)
         let actualGuestCount = booking.guestCount || 1;
         if (booking.BookingGuests && Array.isArray(booking.BookingGuests) && booking.BookingGuests.length > 0) {
