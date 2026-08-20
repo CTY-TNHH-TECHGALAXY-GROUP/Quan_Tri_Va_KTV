@@ -39,7 +39,7 @@ export async function GET(
         // Fetch child bookings if this is a parent booking
         const { data: childBookings } = await supabase
             .from('Bookings')
-            .select('id, totalAmount')
+            .select('id, totalAmount, discountAmount')
             .eq('parent_booking_id', bookingId);
             
         const allBookingIds = [bookingId, ...(childBookings || []).map(b => b.id)];
