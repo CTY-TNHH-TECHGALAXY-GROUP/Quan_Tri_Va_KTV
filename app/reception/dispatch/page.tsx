@@ -2301,7 +2301,7 @@ if (!hasPermission('dispatch_board')) {
                       alert(`🖨️ In phiếu: ${group.displayName || group.serviceName} x${group.items.length}\nKTV: ${group.selectedKtvIds.join(', ')}\n${(group.ktvStartTimes || [])[0] || '--:--'} → ${(group.ktvEndTimes || [])[0] || '--:--'}`);
                     }}
                     reminders={reminders}
-                    billCode={selectedSubOrder.originalOrder.billCode}
+                    billCode={selectedSubOrder.originalOrder.billCode.replace(/-[A-Z]$/i, '')}
                     customerName={getDisplayCustomerName(selectedSubOrder)}
                     subOrderCodeProp={(selectedSubOrder as any).subSuffix || undefined}
                     onRemoveSvc={removeServiceBlock}
