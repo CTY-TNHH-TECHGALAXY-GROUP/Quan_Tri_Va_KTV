@@ -614,7 +614,7 @@ export const QuickDispatchTable = ({
                   : "flex flex-col";
 
               return (
-                <div key={block.key} className={wrapperClass}>
+                <div key={`${block.key}-${bIdx}`} className={wrapperClass}>
                   {isMultiItemBlock && (
                      <div className={`px-4 py-3 border-b flex flex-col gap-2 rounded-t-3xl ${isSelected ? 'bg-indigo-50/50 border-indigo-100' : 'bg-gray-50/80 border-gray-100'}`}>
                         <div className="flex items-center justify-between">
