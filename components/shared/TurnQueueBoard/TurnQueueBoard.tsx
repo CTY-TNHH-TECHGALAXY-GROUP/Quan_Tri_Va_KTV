@@ -35,7 +35,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,
-        updateTurnsCompleted
+        updateManualAdjustment
     } = useTurnQueueBoard(staffs);
 
     useEffect(() => {
@@ -46,6 +46,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
 
     const [activeTab, setActiveTab] = useState<'internal' | 'external'>('internal');
     const [currentTime, setCurrentTime] = useState(getVnTimeStr());
+    const [editingTurnKtvId, setEditingTurnKtvId] = useState<string | null>(null);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -194,21 +195,36 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 </p>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{turn.staff?.full_name || 'Không rõ'}</span>
-                                    {turn.turns_completed > 0 && (
-                                        <span 
-                                            onClick={(e) => {
-                                                if (allowEditTurns) {
-                                                    e.stopPropagation();
-                                                    const newTurns = window.prompt(`Nhập số tua mới cho ${turn.employee_id}:`, turn.turns_completed.toString());
-                                                    if (newTurns !== null && !isNaN(Number(newTurns))) {
-                                                        updateTurnsCompleted(turn.employee_id, Number(newTurns));
+                                    {(turn.turns_completed > 0 || allowEditTurns) && (
+                                        editingTurnKtvId === turn.employee_id && allowEditTurns ? (
+                                            <div className="flex items-center gap-1 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200" onClick={(e) => e.stopPropagation()}>
+                                                <button 
+                                                    onClick={() => updateManualAdjustment(turn.employee_id, -1, turn.manual_adjustment)}
+                                                    className="w-5 h-5 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black"
+                                                >-</button>
+                                                <span className="text-[10px] font-bold text-indigo-700 min-w-[30px] text-center">{turn.turns_completed} tua</span>
+                                                <button 
+                                                    onClick={() => updateManualAdjustment(turn.employee_id, 1, turn.manual_adjustment)}
+                                                    className="w-5 h-5 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black"
+                                                >+</button>
+                                                <button 
+                                                    onClick={() => setEditingTurnKtvId(null)}
+                                                    className="w-5 h-5 flex items-center justify-center rounded-sm text-gray-400 hover:text-gray-600 transition-colors ml-1"
+                                                ><X size={12} /></button>
+                                            </div>
+                                        ) : (
+                                            <span 
+                                                onClick={(e) => {
+                                                    if (allowEditTurns) {
+                                                        e.stopPropagation();
+                                                        setEditingTurnKtvId(turn.employee_id);
                                                     }
-                                                }
-                                            }}
-                                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-indigo-100' : ''} bg-indigo-50 text-indigo-600 border-indigo-100`}
-                                        >
-                                            Đã làm {turn.turns_completed} tua
-                                        </span>
+                                                }}
+                                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-indigo-100' : ''} ${turn.turns_completed > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-gray-50 text-gray-500 border-gray-200 hover:text-indigo-600'}`}
+                                            >
+                                                {turn.turns_completed > 0 ? `Đã làm ${turn.turns_completed} tua` : '+ Sửa tua'}
+                                            </span>
+                                        )
                                     )}
                                     {shifts[turn.employee_id]?.type === 'FREE' && shifts[turn.employee_id]?.end && (
                                         <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold border border-orange-100 flex items-center gap-1">

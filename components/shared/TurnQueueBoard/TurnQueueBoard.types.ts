@@ -18,6 +18,7 @@ export type TurnQueueData = {
     check_in_order: number;
     status: 'waiting' | 'working' | 'assigned' | 'done_turn' | 'off';
     turns_completed: number;
+    manual_adjustment?: number;
     current_order_id?: string | null;
     estimated_end_time?: string | null;
     last_served_at?: string | null;

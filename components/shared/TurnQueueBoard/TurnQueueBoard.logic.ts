@@ -73,7 +73,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         const { data } = await supabase
             .from('TurnQueue')
             // 🔧 EGRESS FIX: Select only needed columns
-            .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, current_order_id, estimated_end_time')
+            .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, manual_adjustment, current_order_id, estimated_end_time')
             .eq('date', today)
             .order('turns_completed', { ascending: true })
             .order('check_in_order', { ascending: true });
@@ -342,14 +342,23 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const updateTurnsCompleted = async (employeeId: string, newTurns: number) => {
+    const updateManualAdjustment = async (employeeId: string, delta: number, currentManualAdj: number = 0) => {
         try {
-            if (newTurns < 0) return;
-            const { error } = await supabase.from('TurnQueue').update({ turns_completed: newTurns }).eq('employee_id', employeeId).eq('date', selectedDate);
+            const newManualAdj = currentManualAdj + delta;
+            
+            const { error } = await supabase
+                .from('TurnQueue')
+                .update({ manual_adjustment: newManualAdj })
+                .eq('employee_id', employeeId)
+                .eq('date', selectedDate);
+                
             if (error) throw error;
+            
+            // Re-fetch after adjusting so syncTurnsForDate runs and updates turns_completed
+            fetchTurns();
         } catch (err) {
             console.error('Lỗi cập nhật số tua:', err);
-            alert('Có lỗi xảy ra khi đổi số tua KTV!');
+            alert('Có lỗi xảy ra khi điều chỉnh số tua!');
         }
     };
 
@@ -379,6 +388,6 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,
-        updateTurnsCompleted
+        updateManualAdjustment
     };
 };

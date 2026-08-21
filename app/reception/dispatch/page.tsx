@@ -720,7 +720,8 @@ if (!hasPermission('dispatch_board')) {
         const { addAddonServices } = await import('./actions');
         // Thêm dịch vụ vào DB ngay lập tức để lấy ID chuẩn, nhưng KHÔNG fetchData để tránh mất dữ liệu đang sửa dở
         const guestIdToUse = selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || undefined;
-        const targetBookingId = selectedSubOrderId || selectedOrderId;
+        const targetBookingId = selectedSubOrder?.bookingId || selectedOrderId;
+        if (!targetBookingId) return;
         const res = await addAddonServices(targetBookingId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
         
         if (res.success && res.newItems && res.newItems.length > 0) {
@@ -2535,7 +2536,7 @@ if (!hasPermission('dispatch_board')) {
             <div className="flex-1 overflow-auto w-full h-full flex flex-col md:flex-row gap-4">
               <div className="flex-[2] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
                 {(() => {
-                  return <TurnQueueBoard staffs={staffs} />;
+                  return <TurnQueueBoard staffs={staffs} allowEditTurns={true} />;
                 })()}
               </div>
               <div className="flex-[1] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">

@@ -27,7 +27,7 @@ export async function syncTurnsForDate(date: string) {
         // 2. Lấy tất cả KTV đang có mặt trong TurnQueue ngày hôm nay
         const { data: queues, error: queueError } = await supabase
             .from('TurnQueue')
-            .select('id, employee_id, turns_completed')
+            .select('id, employee_id, turns_completed, manual_adjustment')
             .eq('date', date);
 
         if (queueError) throw queueError;
@@ -46,10 +46,11 @@ export async function syncTurnsForDate(date: string) {
                 const existingQueue = (queues || []).find(q => q.employee_id === empId);
                 
                 if (existingQueue) {
-                    if (existingQueue.turns_completed !== actualCount) {
+                    const finalCount = Math.max(0, actualCount + (existingQueue.manual_adjustment || 0));
+                    if (existingQueue.turns_completed !== finalCount) {
                         await supabase
                             .from('TurnQueue')
-                            .update({ turns_completed: actualCount })
+                            .update({ turns_completed: finalCount })
                             .eq('id', existingQueue.id);
                     }
                 } else {

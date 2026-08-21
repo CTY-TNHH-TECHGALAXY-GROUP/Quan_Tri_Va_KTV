@@ -170,6 +170,7 @@
 | `check_in_order` | integer | Thứ tự điểm danh |
 | `status` | text | Trạng thái: `waiting` (chờ) → `assigned` (đã điều phối) → `working` (đang làm) → `off` (tan ca) |
 | `turns_completed` | integer | Số tua đã hoàn thành trong ngày |
+| `manual_adjustment` | integer | Số tua điều chỉnh thủ công (Default: 0) |
 | `current_order_id` | text | ID đơn hàng đang phục vụ |
 | `estimated_end_time` | time | Giờ kết thúc dự kiến đơn hiện tại |
 | `last_served_at` | timestamptz | Thời điểm phục vụ lần cuối |
