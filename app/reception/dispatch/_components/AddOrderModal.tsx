@@ -22,7 +22,7 @@ interface AddOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   services: ServiceOption[];
-  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; }) => Promise<void>;
+  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; vatRequested?: boolean; }) => Promise<void>;
   selectedDate: string;
 }
 
@@ -50,6 +50,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
   const [customerLang, setCustomerLang] = useState('vi');
   const [guestCount, setGuestCount] = useState<number>(1);
   const [nationality, setNationality] = useState<string>('');
+  const [vatRequested, setVatRequested] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
@@ -144,9 +145,10 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
         customerLang,
         guestCount,
         nationality,
-        isTestOrder
+        isTestOrder,
+        vatRequested
       });
-      // Reset form
+      // Reset after success
       setCustomerName('');
       setContactType('phone');
       setContactValue('');
@@ -425,6 +427,21 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <label className="relative inline-flex items-center cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={vatRequested}
+                        onChange={(e) => setVatRequested(e.target.checked)}
+                      />
+                      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 shadow-sm border border-gray-100 group-hover:shadow-md transition-all"></div>
+                    </label>
+                    <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                      Yêu cầu xuất Hóa đơn VAT
+                    </span>
                   </div>
                 </div>
 

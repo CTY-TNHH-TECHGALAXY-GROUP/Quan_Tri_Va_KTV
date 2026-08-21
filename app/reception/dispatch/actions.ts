@@ -7,10 +7,12 @@ import { createNotification } from '@/lib/notification-helper';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
+import { unstable_noStore as noStore } from 'next/cache';
 
 
 
 export async function getDispatchData(date: string, _timestamp?: number) {
+    noStore();
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
@@ -59,7 +61,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix, vatRequested')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -81,7 +83,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
 
         bookings = bookings.map(b => ({
             ...b,
-            hasVat: !!taxCodeMap[b.customerId]
+            hasVat: !!taxCodeMap[b.customerId] || !!b.vatRequested
         }));
 
         // Fetch historical visits for returning customer tag (using shared library)
@@ -1708,7 +1710,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
     }
 }
 
-export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean }) {
+export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean; vatRequested?: boolean; }) {
     return await BookingModificationService.createQuickBooking(data);
 }
 

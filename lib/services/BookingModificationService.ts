@@ -15,6 +15,7 @@ export class BookingModificationService {
         nationality?: string;
         customerGender?: string;
         isTestOrder?: boolean;
+        vatRequested?: boolean;
     }) {
         try {
             await requirePermission('dispatch_board');
@@ -132,6 +133,7 @@ export class BookingModificationService {
                     phone: guestPhone,
                     email: guestEmail,
                     nationality: data.nationality || null,
+                    vatRequested: data.vatRequested || false,
                     createdAt: now,
                     updatedAt: now,
                 });

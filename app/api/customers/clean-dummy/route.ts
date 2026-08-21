@@ -11,7 +11,7 @@ export async function POST(req: Request) {
         // 1. Tìm tất cả các Customer bị dính lỗi "Aa" hoặc email rỗng nhưng có phone GUEST
         const { data: dummyCustomers, error: fetchErr } = await supabase
             .from('Customers')
-            .select('id, email, phone, fullName')
+            .select('*')
             .or('email.eq.aa,email.eq.a,fullName.eq.aa,fullName.eq.a');
 
         if (fetchErr) {
@@ -43,10 +43,11 @@ export async function POST(req: Request) {
                 const randomPart = Math.floor(Math.random() * 1000);
                 const newCustomerId = `CUS-${ts}-${randomPart}`;
                 
-                // 2.1 Tạo khách hàng mới tinh cho booking này
+                // 2.1 Tạo khách hàng mới tinh cho booking này, COPY toàn bộ data từ khách gốc
                 const { error: insErr } = await supabase.from('Customers').insert({
-                    id: newCustomerId,
-                    fullName: bk.customerName || 'Khách Vãng Lai',
+                    ...c, // Copy toàn bộ field của khách gốc (taxCode, companyName, notes...)
+                    id: newCustomerId, // Đè ID mới
+                    fullName: bk.customerName || c.fullName || 'Khách Vãng Lai',
                     email: `guest${ts}_${randomPart}@guest.com`,
                     phone: `GUEST-${ts}${randomPart}`,
                     createdAt: new Date().toISOString(),
@@ -72,8 +73,10 @@ export async function POST(req: Request) {
                 totalSeparated++;
             }
 
-            // 3. Sau khi đã chuyển hết booking sang ID mới, xóa cái ID rác gốc đi
-            await supabase.from('Customers').delete().eq('id', c.id);
+            // 3. KHÔNG ĐƯỢC XUẤT LỆNH DELETE KHÁCH GỐC NỮA ĐỂ TRÁNH MẤT DATA VAT/GHI CHÚ.
+            // Vì các bookings đã được move hết sang ID mới, nên lần chạy sau khách gốc này 
+            // sẽ có bookings.length === 0 và bị bỏ qua ở lệnh if (!bookings || bookings.length <= 1)
+            // await supabase.from('Customers').delete().eq('id', c.id);
         }
 
         return NextResponse.json({ message: `Đã tách thành công ${totalSeparated} đơn hàng dính chùm vào các mã khách hàng ảo riêng biệt!` });
