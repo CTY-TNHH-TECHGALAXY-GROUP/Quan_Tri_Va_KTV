@@ -720,7 +720,8 @@ if (!hasPermission('dispatch_board')) {
         const { addAddonServices } = await import('./actions');
         // Thêm dịch vụ vào DB ngay lập tức để lấy ID chuẩn, nhưng KHÔNG fetchData để tránh mất dữ liệu đang sửa dở
         const guestIdToUse = selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || undefined;
-        const res = await addAddonServices(selectedOrderId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
+        const targetBookingId = selectedSubOrderId || selectedOrderId;
+        const res = await addAddonServices(targetBookingId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
         
         if (res.success && res.newItems && res.newItems.length > 0) {
             const newItem = res.newItems[0];
