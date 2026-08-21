@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.17';
-export const LAST_UPDATE = 'Thêm tính năng điều chỉnh số tua (manual_adjustment) trực tiếp cho KTV';
+export const APP_VERSION = '1.0.18';
+export const LAST_UPDATE = 'Fix lỗi thêm dịch vụ báo Không tìm thấy đơn hàng khi ở đơn đã tách';

@@ -772,7 +772,7 @@ if (!hasPermission('dispatch_board')) {
             };
             
             setOrders(prev => prev.map(o =>
-              o.id === selectedOrderId 
+              o.id === targetBookingId 
                   ? { ...o, services: [...o.services, newBlock], totalAmount: res.newTotalAmount } 
                   : o
             ));
@@ -880,7 +880,8 @@ if (!hasPermission('dispatch_board')) {
 
       try {
           const guestIdToUse = (selectedSubOrder as any)?.guest?.id || undefined;
-          const res = await addAddonServices(selectedOrderId, [{ serviceId: svcDef.id, qty: 1, guestId: guestIdToUse }], 'ADMIN');
+          const targetBookingId = selectedSubOrder?.bookingId || selectedOrderId;
+          const res = await addAddonServices(targetBookingId, [{ serviceId: svcDef.id, qty: 1, guestId: guestIdToUse }], 'ADMIN');
           if (res.success) {
               alert(`✅ Thêm "${svcName}" thành công! Tổng tiền mới: ${(res.newTotalAmount || 0).toLocaleString()}đ`);
               setShowAddSvcModal(false);
