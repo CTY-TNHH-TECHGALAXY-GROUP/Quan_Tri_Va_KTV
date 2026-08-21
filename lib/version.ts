@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.0.18';
-export const LAST_UPDATE = 'Fix lỗi thêm dịch vụ báo Không tìm thấy đơn hàng khi ở đơn đã tách';
+export const APP_VERSION = '1.0.19';
+export const LAST_UPDATE = 'Fix lỗi thêm dịch vụ bị tách thành đơn khách mới do ưu tiên customerGroupId hơn guestId';
