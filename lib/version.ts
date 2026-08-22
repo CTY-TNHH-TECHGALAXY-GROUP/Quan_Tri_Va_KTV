@@ -1,2 +1,2 @@
-export const APP_VERSION = '2.1.23';
-export const LAST_UPDATE = 'Sửa lỗi mất data VAT khi dùng nút Clean Dummy, chặn lệnh xóa khách hàng gốc';
+export const APP_VERSION = '2.1.24';
+export const LAST_UPDATE = 'Đồng bộ chính xác số giờ làm KPI giữa Admin và KTV App';
