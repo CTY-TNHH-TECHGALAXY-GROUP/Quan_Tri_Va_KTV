@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = "force-no-store";
 
 export async function GET(
     request: Request,
@@ -29,7 +30,7 @@ export async function GET(
         const { data: booking, error: bError } = await supabase
             .from('Bookings')
             .select('*')
-            .eq('id', bookingId)
+            .or(`id.eq.${bookingId},accessToken.eq.${bookingId}`)
             .single();
 
         if (bError || !booking) {
@@ -39,17 +40,15 @@ export async function GET(
         // Fetch child bookings if this is a parent booking
         const { data: childBookings } = await supabase
             .from('Bookings')
-            .select('id, totalAmount, discountAmount')
-            .eq('parent_booking_id', bookingId);
+            .select('id, totalAmount')
+            .eq('parent_booking_id', booking.id);
             
-        const allBookingIds = [bookingId, ...(childBookings || []).map(b => b.id)];
+        const allBookingIds = [booking.id, ...(childBookings || []).map(b => b.id)];
         
-        let aggregatedDiscount = booking.discountAmount || 0;
         let aggregatedTotal = booking.totalAmount || 0;
         
         if (childBookings && childBookings.length > 0) {
             childBookings.forEach(cb => {
-                aggregatedDiscount += (cb.discountAmount || 0);
                 aggregatedTotal += (cb.totalAmount || 0);
             });
         }
@@ -106,7 +105,7 @@ export async function GET(
             success: true,
             data: {
                 ...booking,
-                discountAmount: aggregatedDiscount,
+                discountAmount: booking.discountAmount || 0,
                 totalAmount: aggregatedTotal,
                 items: enrichedItems
             }

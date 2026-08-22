@@ -271,7 +271,7 @@ export class KtvCommissionService {
         if (mySegs.length > 0) {
             return mySegs.reduce((sum: number, seg: any) => {
                 if (seg.customCommissionDuration) return sum + Number(seg.customCommissionDuration);
-                const baseMins = Number(seg.duration) || fallbackDuration || 60;
+                const baseMins = Number(seg.duration) || 0;
                 
                 let realMins = 0;
                 if (seg.actualStartTime && seg.actualEndTime) {

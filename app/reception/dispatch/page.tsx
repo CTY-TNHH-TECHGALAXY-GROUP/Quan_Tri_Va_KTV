@@ -2271,6 +2271,15 @@ if (!hasPermission('dispatch_board')) {
 
             {selectedSubOrder ? (
               <div id="dispatch-container" className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 bg-slate-50/30">
+                  {selectedSubOrder.originalOrder?.parentBookingId && (
+                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-indigo-800">Đơn đã được tách</p>
+                        <p className="text-[10px] text-indigo-600">Thuộc nhóm gốc: #{selectedSubOrder.originalOrder.billCode?.split('-')[0]}</p>
+                      </div>
+                      <button onClick={() => setInvoiceLangModal({ invoiceId: selectedSubOrder.originalOrder.parentBookingId as string })} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow hover:bg-indigo-700">Xem Hóa Đơn Nhóm</button>
+                    </div>
+                  )}
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
@@ -2913,7 +2922,8 @@ if (!hasPermission('dispatch_board')) {
                      const so = subOrders.find(s => s.id === contextMenu.guestId || (s.services && s.services.some((x: any) => x.guestId === contextMenu.guestId || x.customerGroupId === contextMenu.guestId)));
                      if (so) finalBillCode = (so as any).billCode || so.originalOrder?.billCode || order.billCode;
                   }
-                  setQrModal({ orderId: order.id, billCode: finalBillCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
+                  const invoiceId = order.parentBookingId || contextMenu.orderId;
+                  setQrModal({ orderId: invoiceId, billCode: finalBillCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
                 }
                 setContextMenu(null);
               }}

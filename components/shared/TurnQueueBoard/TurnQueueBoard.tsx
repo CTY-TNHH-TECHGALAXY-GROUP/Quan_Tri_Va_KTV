@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2, Droplets } from 'lucide-react';
+import { CheckCircle2, Timer, Clock, RotateCcw, Save, X, Moon, Loader2, Droplets, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { StaffData } from './TurnQueueBoard.types';
 import { useTurnQueueBoard } from './TurnQueueBoard.logic';
@@ -35,7 +35,8 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,
-        updateManualAdjustment
+        updateManualAdjustment,
+        updateTurnsCompleted
     } = useTurnQueueBoard(staffs);
 
     useEffect(() => {
@@ -213,17 +214,21 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                                 ><X size={12} /></button>
                                             </div>
                                         ) : (
-                                            <span 
+                                            <button 
                                                 onClick={(e) => {
                                                     if (allowEditTurns) {
                                                         e.stopPropagation();
                                                         setEditingTurnKtvId(turn.employee_id);
                                                     }
                                                 }}
-                                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-indigo-100' : ''} ${turn.turns_completed > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-gray-50 text-gray-500 border-gray-200 hover:text-indigo-600'}`}
+                                                className={turn.turns_completed > 0 
+                                                    ? `text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-indigo-100' : ''} bg-indigo-50 text-indigo-600 border-indigo-100`
+                                                    : `text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100`
+                                                }
+                                                title="Chỉnh sửa số tua"
                                             >
-                                                {turn.turns_completed > 0 ? `Đã làm ${turn.turns_completed} tua` : '+ Sửa tua'}
-                                            </span>
+                                                {turn.turns_completed > 0 ? `Đã làm ${turn.turns_completed} tua` : <Plus size={14} strokeWidth={3} />}
+                                            </button>
                                         )
                                     )}
                                     {shifts[turn.employee_id]?.type === 'FREE' && shifts[turn.employee_id]?.end && (

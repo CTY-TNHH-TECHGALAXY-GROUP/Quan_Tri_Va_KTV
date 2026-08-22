@@ -141,9 +141,10 @@
 }
 
 .invoiceTable th:nth-child(1), .invoiceTable td:nth-child(1) { width: 42px; text-align: center; }
-.invoiceTable th:nth-child(3), .invoiceTable td:nth-child(3) { width: 92px; text-align: center; }
-.invoiceTable th:nth-child(4), .invoiceTable td:nth-child(4),
-.invoiceTable th:nth-child(5), .invoiceTable td:nth-child(5) { width: 150px; text-align: right; }
+.invoiceTable th:nth-child(3), .invoiceTable td:nth-child(3) { width: 80px; text-align: center; }
+.invoiceTable th:nth-child(4), .invoiceTable td:nth-child(4) { width: 60px; text-align: center; }
+.invoiceTable th:nth-child(5), .invoiceTable td:nth-child(5),
+.invoiceTable th:nth-child(6), .invoiceTable td:nth-child(6) { width: 120px; text-align: right; }
 
 .serviceName { font-weight: 650; }
 .serviceNote { font-size: 12px; color: var(--muted); margin-top: 4px; }
@@ -242,7 +243,7 @@
   .invoiceTitle { text-align: left; }
   .grid, .payment { grid-template-columns: 1fr; }
   .row { grid-template-columns: 105px 1fr; }
-  .invoiceTable th:nth-child(4), .invoiceTable td:nth-child(4) { display: none; }
+  .invoiceTable th:nth-child(5), .invoiceTable td:nth-child(5) { display: none; }
   .page { width: min(100% - 16px, 920px); border-radius: 0; }
   .footer { flex-direction: column; }
 }

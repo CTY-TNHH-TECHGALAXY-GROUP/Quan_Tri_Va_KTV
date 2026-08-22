@@ -362,6 +362,22 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
+    const updateTurnsCompleted = async (employeeId: string, newTurns: number) => {
+        try {
+            const { error } = await supabase
+                .from('TurnQueue')
+                .update({ turns_completed: newTurns })
+                .eq('employee_id', employeeId)
+                .eq('date', selectedDate);
+                
+            if (error) throw error;
+            fetchTurns();
+        } catch (err) {
+            console.error('Lỗi cập nhật số tua trực tiếp:', err);
+            alert('Có lỗi xảy ra khi điều chỉnh số tua!');
+        }
+    };
+
     return {
         selectedDate,
         setSelectedDate,
@@ -388,6 +404,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,
-        updateManualAdjustment
+        updateManualAdjustment,
+        updateTurnsCompleted
     };
 };

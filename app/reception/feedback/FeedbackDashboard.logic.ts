@@ -8,6 +8,7 @@ export type FeedbackKtvInfo = {
     ktvName: string;
     serviceNames: string[];
     rating?: number;
+    timeEnd?: string;
 };
 
 export type ChildBookingForFeedback = {
@@ -80,6 +81,7 @@ export function useFeedbackDashboard(selectedDate: string) {
                         parentBookingId: parentId,
                         billCode: displayBillCode,
                         customerName: displayCustomerName,
+                        bookingDate: b.bookingDate, // Added for UI formatting
                         childBookings: []
                     });
                 }
@@ -121,11 +123,15 @@ export function useFeedbackDashboard(selectedDate: string) {
                                             ktvId: code,
                                             ktvName: staffInfo?.full_name || code,
                                             serviceNames: [svcName],
-                                            rating
+                                            rating,
+                                            timeEnd: item.timeEnd
                                         });
                                     } else {
                                         if (!existingKtv.serviceNames.includes(svcName)) {
                                             existingKtv.serviceNames.push(svcName);
+                                        }
+                                        if (item.timeEnd && (!existingKtv.timeEnd || new Date(item.timeEnd) > new Date(existingKtv.timeEnd))) {
+                                            existingKtv.timeEnd = item.timeEnd;
                                         }
                                     }
                                 });
@@ -141,11 +147,15 @@ export function useFeedbackDashboard(selectedDate: string) {
                                             itemId: guest.id,
                                             ktvId: t.employee_id,
                                             ktvName: staffInfo?.full_name || t.employee_id,
-                                            serviceNames: [svcName]
+                                            serviceNames: [svcName],
+                                            timeEnd: item.timeEnd
                                         });
                                     } else {
                                         if (!existingKtv.serviceNames.includes(svcName)) {
                                             existingKtv.serviceNames.push(svcName);
+                                        }
+                                        if (item.timeEnd && (!existingKtv.timeEnd || new Date(item.timeEnd) > new Date(existingKtv.timeEnd))) {
+                                            existingKtv.timeEnd = item.timeEnd;
                                         }
                                     }
                                 });
@@ -209,7 +219,8 @@ export function useFeedbackDashboard(selectedDate: string) {
                                     ktvId: code,
                                     ktvName: staffInfo?.full_name || code,
                                     serviceNames: [item.serviceName || item.service_name || 'Dịch vụ'],
-                                    rating
+                                    rating,
+                                    timeEnd: item.timeEnd
                                 });
                             });
                         } else {
@@ -221,7 +232,8 @@ export function useFeedbackDashboard(selectedDate: string) {
                                     itemId: item.id,
                                     ktvId: t.employee_id,
                                     ktvName: staffInfo?.full_name || t.employee_id,
-                                    serviceNames: [item.serviceName || item.service_name || 'Dịch vụ']
+                                    serviceNames: [item.serviceName || item.service_name || 'Dịch vụ'],
+                                    timeEnd: item.timeEnd
                                 });
                             });
                         }
