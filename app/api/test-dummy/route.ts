@@ -1,0 +1,1 @@
+import { NextResponse } from 'next/server'; import { isDummyEmail } from '@/lib/customer.logic'; export async function GET() { return NextResponse.json({ test1: isDummyEmail('Aa'), test2: isDummyEmail('aa') }); }

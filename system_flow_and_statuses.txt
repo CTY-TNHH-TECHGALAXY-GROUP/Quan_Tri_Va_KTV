@@ -1,0 +1,51 @@
+================================================================================
+BẢN CẤU TRÚC TRẠNG THÁI VÀ LUỒNG HOẠT ĐỘNG HỆ THỐNG
+================================================================================
+
+1. CÁC TRẠNG THÁI ĐƠN HÀNG (Booking Status - Bảng Bookings)
+--------------------------------------------------------------------------------
+- NEW         : Khách hàng vừa đặt đơn, chưa có người xử lý.
+- PREPARING   : Đơn hàng đã được xác nhận điều phối xong (Chờ KTV bắt đầu).
+- IN_PROGRESS : KTV đã bấm "Bắt đầu" (Start), dịch vụ đang thực hiện.
+- COMPLETED   : KTV đã bấm "Kết thúc" (Finish), chờ khách hàng phản hồi.
+- FEEDBACK    : Khách hàng đang thực hiện đánh giá (Journey page).
+- DONE        : Khách hàng đã hoàn tất toàn bộ quy trình và thanh toán.
+- CANCELLED   : Đơn hàng đã bị hủy.
+
+2. CÁC TRẠNG THÁI KỸ THUẬT VIÊN (Staff Status - Bảng TurnQueue)
+--------------------------------------------------------------------------------
+- waiting     : KTV đang trống lịch, sẵn sàng nhận đơn mới (nằm trong hàng đợi).
+- working     : KTV đang bận thực hiện ca làm hoặc đang dọn phòng.
+
+3. CÁC MÀN HÌNH TRÊN APP KTV (Screen States)
+--------------------------------------------------------------------------------
+- DASHBOARD   : Trang chủ, chờ nhận thông báo đơn hàng mới.
+- TIMER       : Màn hình đếm ngược thời gian làm cho khách.
+- REVIEW      : Màn hình đánh giá đặc điểm khách (Personality).
+- HANDOVER    : Màn hình kiểm tra dọn dẹp phòng (Checklist dọn dẹp).
+- REWARD      : Màn hình hiển thị tiền tua (Commission) và điểm thưởng.
+
+4. LUỒNG HOẠT ĐỘNG ĐỘC LẬP (Independent Workflow)
+--------------------------------------------------------------------------------
+Hệ thống được thiết kế để luồng của KTV và Khách hàng không bị ngắt quãng lẫn nhau:
+
+A. Luồng Khách hàng:
+   IN_PROGRESS -> COMPLETED -> FEEDBACK -> DONE (Hoàn tất & Về).
+
+B. Luồng Kỹ thuật viên (Hoạt động song song):
+   - Khi đơn là IN_PROGRESS: KTV hiển thị màn hình TIMER.
+   - Khi đơn chuyển sang COMPLETED/FEEDBACK/DONE: App KTV tự động chuyển sang màn REVIEW -> HANDOVER.
+   - QUAN TRỌNG: Ngay cả khi Khách hàng đã ở trạng thái DONE (đã về), App KTV vẫn giữ đơn hàng đó để KTV làm nốt bước dọn phòng.
+   - KTV CHỈ được giải phóng (về trạng thái 'waiting') khi đích thân bấm "Xác nhận đã dọn xong" ở màn HANDOVER.
+
+5. CƠ CHẾ THÔNG BÁO (Notification Trigger)
+--------------------------------------------------------------------------------
+- NEW_ORDER (Quầy) : Bắn khi có bản ghi mới trong bảng Bookings.
+- NEW_ORDER (KTV)  : Bắn khi Lễ tân cập nhật 'technicianCode' (Gán KTV cho đơn).
+- REWARD (KTV)     : Bắn khi Khách hàng đánh giá >= 4 sao.
+- COMPLAINT (Admin): Bắn khi Khách hàng đánh giá 1 sao.
+- EMERGENCY (Quầy) : Bắn khi KTV bấm nút SOS/Báo động trong phòng.
+
+================================================================================
+Cập nhật lần cuối: 2026-03-13
+Ghi chú: Luồng này đã được tối ưu cho giao diện iPhone/Mobile.
