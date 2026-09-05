@@ -38,6 +38,9 @@ const nextConfig: NextConfig = {
     ],
   },
   transpilePackages: ['motion'],
+  // nodemailer require() cac module con luc chay; de webpack bundle se sinh loi
+  // "Cannot find module" khi goi sendMail. Danh dau external de Next require native.
+  serverExternalPackages: ['nodemailer'],
 };
 
 export default nextConfig;
