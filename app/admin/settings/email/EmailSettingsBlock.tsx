@@ -283,10 +283,17 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                         />
                                         <TextField
                                             label="Tên chi nhánh"
-                                            hint="Hiện ở dòng &quot;Chi nhánh&quot; trong bảng chi tiết lịch hẹn."
+                                            hint="Chỉ dùng làm dự phòng cho dòng &quot;Địa chỉ&quot; khi ô địa chỉ bên dưới bỏ trống."
                                             value={config.email_branch_name}
                                             onChange={(v: string) => change('email_branch_name', v)}
                                             placeholder="ORIA SPA"
+                                        />
+                                        <TextField
+                                            label="Địa chỉ spa"
+                                            hint="Hiện ở dòng &quot;Địa chỉ&quot; trong bảng chi tiết lịch hẹn. Bỏ trống thì ẩn dòng này."
+                                            value={config.email_branch_address}
+                                            onChange={(v: string) => change('email_branch_address', v)}
+                                            placeholder="11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh"
                                         />
                                         <TextField
                                             label="Link logo"
@@ -309,6 +316,20 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                             onChange={(v: string) => change('email_hotline', v)}
                                             placeholder="+84 964 090 277"
                                         />
+                                        <TextField
+                                            label="Tên pháp nhân (chân thư)"
+                                            hint="Hiện ở chân email: © (năm hiện tại) TÊN • ALL RIGHTS RESERVED."
+                                            value={config.email_company_name}
+                                            onChange={(v: string) => change('email_company_name', v)}
+                                            placeholder="TECHGALAXY GROUP"
+                                        />
+                                        <TextField
+                                            label="Link quản lý lịch hẹn"
+                                            hint="Trang cho khách tự xem/đổi lịch. Bỏ trống thì email chỉ mời khách phản hồi thư hoặc gọi hotline."
+                                            value={config.email_manage_booking_url}
+                                            onChange={(v: string) => change('email_manage_booking_url', v)}
+                                            placeholder="(chưa có — để trống)"
+                                        />
                                     </div>
                                 </div>
 
@@ -319,7 +340,7 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                     <h3 className="text-xs font-black uppercase tracking-wider text-gray-400 mb-4 flex items-center gap-2">
                                         <Clock size={14} className="text-indigo-400" /> Mốc thời gian nhắc khách
                                     </h3>
-                                    <div className={`grid grid-cols-1 ${SHOW_DEPOSIT_FIELDS ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-5`}>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                                         <TextField
                                             label="Đến sớm trước"
                                             type="number" suffix="phút"
@@ -333,6 +354,13 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                             hint="Thời hạn khách cần báo khi đổi/hủy lịch."
                                             value={config.email_cancel_notice_hours}
                                             onChange={(v: number) => change('email_cancel_notice_hours', v)}
+                                        />
+                                        <TextField
+                                            label="Giữ chỗ thêm"
+                                            type="number" suffix="phút"
+                                            hint="Spa giữ chỗ thêm bao lâu sau giờ hẹn nếu khách đến trễ."
+                                            value={config.email_grace_minutes}
+                                            onChange={(v: number) => change('email_grace_minutes', v)}
                                         />
                                         {SHOW_DEPOSIT_FIELDS && (
                                             <TextField

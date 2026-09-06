@@ -21,8 +21,16 @@ export interface EmailConfig {
     email_logo_url: string;
     email_website_url: string;
     email_hotline: string;
-    /** Tên chi nhánh hiển thị trong khối "Chi nhánh" */
+    /** Tên chi nhánh — dùng làm dự phòng cho dòng "Địa chỉ" khi chưa nhập địa chỉ */
     email_branch_name: string;
+    /** Địa chỉ spa hiển thị ở dòng "Địa chỉ" trong bảng chi tiết lịch hẹn */
+    email_branch_address: string;
+    /** Link để khách tự xem/đổi lịch. Bỏ trống = chỉ mời khách phản hồi email. */
+    email_manage_booking_url: string;
+    /** Số phút spa giữ chỗ sau giờ hẹn trước khi coi là khách không đến */
+    email_grace_minutes: number;
+    /** Tên pháp nhân hiện ở chân thư (© <năm> <tên> • ALL RIGHTS RESERVED) */
+    email_company_name: string;
 
     // --- Nội dung ---
     /** Khách vui lòng đến trước N phút */
@@ -42,10 +50,14 @@ export const EMAIL_CONFIG_DEFAULTS: EmailConfig = {
     enable_web_advance_booking_email: false,
 
     email_brand_name: 'ORIA SPA',
-    email_logo_url: '', // Bỏ trống = hiện tên thương hiệu dạng chữ thay cho ảnh logo
-    email_website_url: 'https://nganha.vercel.app',
+    email_logo_url: 'https://oria-spa.vercel.app/images/oria-logo-email.png', // Bỏ trống = hiện tên thương hiệu dạng chữ
+    email_website_url: 'https://oria-spa.vercel.app',
     email_hotline: '+84 964 090 277',
     email_branch_name: 'ORIA SPA',
+    email_branch_address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+    email_manage_booking_url: '', // Chưa có trang cho khách tự đổi lịch
+    email_grace_minutes: 5,
+    email_company_name: 'TECHGALAXY GROUP',
 
     email_arrive_early_mins: 10,
     email_cancel_notice_hours: 24,
