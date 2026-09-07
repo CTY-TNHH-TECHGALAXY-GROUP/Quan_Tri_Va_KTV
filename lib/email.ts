@@ -187,7 +187,7 @@ const STRINGS: Record<string, Strings> = {
     lBookingId: 'Booking ref.', lTotal: 'Estimated total', lDeposit: 'Deposit',
     lPreferences: 'Treatment preferences & notes', lFocus: 'Focus on', lAvoid: 'Avoid',
     lStrength: 'Pressure', lNote: 'Additional notes',
-    randomTherapist: 'Assigned by the spa',
+    randomTherapist: 'Random',
     minsUnit: (n) => `${n} mins`,
     guestsUnit: (n) => `${n} guest(s)`,
     beforeTitle: 'Before you arrive',
@@ -228,7 +228,7 @@ const STRINGS: Record<string, Strings> = {
     lBookingId: '예약 번호', lTotal: '예상 결제 금액', lDeposit: '예약금',
     lPreferences: '관리 요청 및 참고 사항', lFocus: '집중 부위', lAvoid: '제외 부위',
     lStrength: '강도', lNote: '추가 요청 사항',
-    randomTherapist: '스파에서 배정',
+    randomTherapist: '랜덤 배정',
     minsUnit: (n) => `${n}분`,
     guestsUnit: (n) => `${n}명`,
     beforeTitle: '방문 전 안내',
@@ -269,7 +269,7 @@ const STRINGS: Record<string, Strings> = {
     lBookingId: '予約番号', lTotal: 'お支払い予定額', lDeposit: '事前決済金',
     lPreferences: '施術のご要望・注意事項', lFocus: '重点部位', lAvoid: '避ける部位',
     lStrength: '強さ', lNote: 'その他ご要望',
-    randomTherapist: '当店にてお選びします',
+    randomTherapist: 'ランダム',
     minsUnit: (n) => `${n} 分`,
     guestsUnit: (n) => `${n} 名様`,
     beforeTitle: 'ご来店前のご案内',
@@ -310,7 +310,7 @@ const STRINGS: Record<string, Strings> = {
     lBookingId: '预约编号', lTotal: '预计支付金额', lDeposit: '定金',
     lPreferences: '护理要求与备注', lFocus: '重点部位', lAvoid: '避开部位',
     lStrength: '力度', lNote: '其他备注',
-    randomTherapist: '由门店安排',
+    randomTherapist: '随机',
     minsUnit: (n) => `${n} 分钟`,
     guestsUnit: (n) => `${n} 人`,
     beforeTitle: '到店前须知',
@@ -701,8 +701,22 @@ export async function sendBookingConfirmationEmail(
       attachments,
     });
 
-    console.log('[EmailService] Confirmation email sent successfully to', toEmail, 'Message ID:', info.messageId);
-    return { success: true, messageId: info.messageId };
+    // Ghi lại phản hồi của máy chủ SMTP: khi khách báo "không thấy mail", đây là
+    // bằng chứng phân biệt "chưa gửi được" với "đã gửi nhưng rơi vào Spam".
+    console.log(
+      '[EmailService] Đã gửi tới', toEmail,
+      '| messageId:', info.messageId,
+      '| accepted:', JSON.stringify(info.accepted),
+      '| rejected:', JSON.stringify(info.rejected),
+      '| response:', info.response
+    );
+    return {
+      success: true,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    };
   } catch (error) {
     console.error('[EmailService] Error sending confirmation email:', error);
     return { success: false, error };
