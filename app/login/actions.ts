@@ -102,18 +102,56 @@ export async function authenticateUser(username: string, password?: string) {
         // 4. Fetch avatar and feature_flags from Staff table (for profile display and permissions)
         let staffAvatarUrl = null;
         let featureFlags = undefined;
+        let staffStatus: string | null = null;
+        let staffLookupFailed = false;
         try {
-            const { data: staffData } = await supabaseAdmin
+            const { data: staffData, error: staffErr } = await supabaseAdmin
                 .from('Staff')
-                .select('avatar_url, feature_flags')
+                .select('avatar_url, feature_flags, status')
                 .eq('id', user.code || user.id)
                 .maybeSingle();
+            if (staffErr) staffLookupFailed = true;
             if (staffData) {
                 staffAvatarUrl = staffData.avatar_url;
                 featureFlags = staffData.feature_flags;
+                staffStatus = staffData.status;
             }
         } catch (e) {
-            // Non-critical: staff avatar lookup failed
+            staffLookupFailed = true;
+        }
+
+        // 4b. Tài khoản bị khoá thì CHẶN NGAY TỪ ĐÂY.
+        //
+        // Trước đây màn "Tài khoản bị khoá" chỉ là một lớp che phía client, dựng lên
+        // sau khi đã đăng nhập xong. Đăng xuất rồi đăng nhập lại là vào được như
+        // thường — khoá tài khoản gần như không có tác dụng.
+        //
+        // Tra hỏng (mất mạng, DB lỗi) thì KHÔNG chặn: thà cho vào rồi lớp che phía
+        // trong bắt lại, còn hơn khoá nhầm cả tiệm vì một lỗi mạng.
+        if (!staffLookupFailed && staffStatus === 'KHÓA_TÀI_KHOẢN') {
+            let lockReason: string | null = null;
+            let lockDate: string | null = null;
+            try {
+                const { data: lockRow } = await supabaseAdmin
+                    .from('KTVDPenaltyLedger')
+                    .select('work_date, note')
+                    .eq('staff_id', user.code || user.id)
+                    .eq('penalty_type', 'ACCOUNT_LOCK')
+                    .order('work_date', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                lockReason = (lockRow as any)?.note ?? null;
+                lockDate = (lockRow as any)?.work_date ?? null;
+            } catch { /* không có ghi chú thì thôi, vẫn chặn */ }
+
+            return {
+                success: false,
+                error: 'ACCOUNT_LOCKED',
+                message: lockReason
+                    ? `Tài khoản của bạn đang bị khoá: ${lockReason}. Liên hệ quản lý để mở lại.`
+                    : 'Tài khoản của bạn đang bị khoá kỷ luật. Liên hệ quản lý để mở lại.',
+                lockDate,
+            };
         }
 
         return { success: true, user: { ...user, staffAvatarUrl, featureFlags } };
