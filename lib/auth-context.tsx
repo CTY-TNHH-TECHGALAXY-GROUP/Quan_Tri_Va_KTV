@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import { User, Role, ModuleId } from './types';
 import { MODULES } from './constants';
 import { createClient } from './supabase';
@@ -12,6 +12,8 @@ interface AuthContextType {
   user: User | null;
   role: Role | null;
   lockedInfo: any;
+  /** Lý do lần đăng nhập gần nhất thất bại — để trang login nói đúng chuyện. */
+  getLoginError: () => string | null;
   login: (userId: string, password?: string) => Promise<boolean>;
   logout: () => void;
   changePassword: (newPassword: string) => Promise<void>;
@@ -25,6 +27,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [lockedInfo, setLockedInfo] = useState<any>(null);
+  // Dùng ref chứ không dùng state: trang login đọc ngay sau `await login()`,
+  // mà state lúc đó chưa kịp về tới closure của hàm xử lý submit.
+  const loginErrorRef = useRef<string | null>(null);
+  const getLoginError = useCallback(() => loginErrorRef.current, []);
 
   useEffect(() => {
     // 🔄 Restore session: sessionStorage (per-tab, ưu tiên) → localStorage (backup khi app bị kill)
@@ -130,6 +136,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Use the Server Action to query public."Users" table
       const response = await authenticateUser(userId, password);
+
+      // Bị khoá thì báo đúng lý do, đừng để trang login đổ tại sai mật khẩu.
+      loginErrorRef.current = (
+        !response.success && (response as any).error === 'ACCOUNT_LOCKED'
+          ? ((response as any).message || 'Tài khoản của bạn đang bị khoá kỷ luật.')
+          : null
+      );
 
       if (response.success && response.user) {
         const dbUser = response.user;
@@ -279,7 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [role, user?.featureFlags]);
 
   return (
-    <AuthContext.Provider value={{ user, role, lockedInfo, login, logout, changePassword, updateProfile, hasPermission }}>
+    <AuthContext.Provider value={{ user, role, lockedInfo, getLoginError, login, logout, changePassword, updateProfile, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

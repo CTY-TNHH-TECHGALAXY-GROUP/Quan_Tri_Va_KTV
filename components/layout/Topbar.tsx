@@ -8,7 +8,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Avatar from '@radix-ui/react-avatar';
 
 export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-  const { user, role, login, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const [staffAvatar, setStaffAvatar] = useState(user?.avatarUrl || '');
 
   // Fetch latest avatar from Staff table (not cached session)

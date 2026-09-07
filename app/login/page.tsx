@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { Lock, User, Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, getLoginError } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState('u1');
   const [password, setPassword] = useState('');
@@ -23,6 +23,10 @@ export default function LoginPage() {
     if (reason === 'session_expired') {
       setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
+    // Đang dùng dở mà quản lý khoá tài khoản → auth-context đá về đây kèm cờ này.
+    if (reason === 'account_locked') {
+      setError('Tài khoản của bạn vừa bị khoá kỷ luật. Liên hệ quản lý để mở lại.');
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -34,7 +38,12 @@ export default function LoginPage() {
     if (success) {
       router.push('/');
     } else {
-      setError('Tài khoản hoặc mật khẩu không chính xác.');
+      // Khoá tài khoản là lý do RIÊNG — đổ tại sai mật khẩu ở đây thì KTV
+      // sẽ gõ lại mãi mà không hiểu vì sao vào không được.
+      //
+      // Đọc qua hàm chứ không qua biến state: biến trong closure này được chốt
+      // từ lượt render TRƯỚC khi login() chạy, nên luôn còn là null.
+      setError(getLoginError() || 'Tài khoản hoặc mật khẩu không chính xác.');
       setIsLoading(false);
     }
   };
