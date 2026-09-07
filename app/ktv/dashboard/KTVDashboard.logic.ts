@@ -871,6 +871,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const isFetchingRef = useRef(false);
     // Có lệnh nạp lại tới trong lúc đang nạp dở → xếp hàng chờ, đừng vứt đi.
     const pendingRefetchRef = useRef(false);
+    // Lời hứa của lượt nạp ĐANG chạy, để chỗ khác `await` được nó.
+    const inFlightRef = useRef<Promise<void> | null>(null);
     const realtimeFetchTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastVisibilityFetchMsRef = useRef(0);
     const isCheckingNextRef = useRef(false);
@@ -902,6 +904,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 return;
             }
             isFetchingRef.current = true;
+            let settleInFlight: () => void = () => {};
+            inFlightRef.current = new Promise<void>(resolve => { settleInFlight = resolve; });
             try {
                 if (!ktvId) return;
 
@@ -1113,8 +1117,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         
                         const isStatusChanged = prev?.currentStatus !== currentStatus;
                         const isRatingChanged = oldRating !== newRating;
-                        
-                        if (isNew || isStatusChanged || isRatingChanged || JSON.stringify(prev?.BookingItems) !== JSON.stringify(res.data.BookingItems)) {
+                        // Mốc "đã nhận đơn" là cờ CẤP BOOKING, không nằm trong bốn thứ
+                        // được so ở dưới. Thiếu nó thì KTV bấm Nhận đơn xong dữ liệu mới
+                        // về tới nơi rồi vẫn bị vứt, màn hình đứng ở thẻ Nhận đơn.
+                        const isAcceptChanged = (prev?.acceptedAt || null) !== (res.data.acceptedAt || null);
+
+                        if (isNew || isStatusChanged || isRatingChanged || isAcceptChanged || JSON.stringify(prev?.BookingItems) !== JSON.stringify(res.data.BookingItems)) {
                             if (res.serverTime) {
                                 const clientNow = new Date().getTime();
                                 const serverNow = new Date(res.serverTime).getTime();
@@ -1223,6 +1231,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } finally {
                 setIsLoading(false);
                 isFetchingRef.current = false;
+                inFlightRef.current = null;
+                settleInFlight();
                 // Có lệnh bị dồn lại lúc nãy → chạy nốt, lần này dữ liệu đã mới.
                 if (pendingRefetchRef.current) {
                     pendingRefetchRef.current = false;
@@ -2540,7 +2550,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
         kpiData,
         disciplineStatus,
         canViewWallet,
+        /**
+         * Nạp lại và ĐỢI dữ liệu mới thật sự về.
+         *
+         * Nếu đang có một lượt nạp chạy dở thì phải đợi nó xong đã rồi mới nạp
+         * tiếp — vì lượt đang chạy nhiều khả năng xuất phát TRƯỚC lúc ghi DB nên
+         * mang về dữ liệu cũ.
+         *
+         * Không đợi thì `await forceRefresh()` trả về ngay lập tức (lượt của mình
+         * chỉ được xếp hàng, chưa chạy), nơi gọi tưởng xong rồi trong khi màn hình
+         * còn nguyên trạng thái cũ — đúng kiểu KTV bấm "Nhận đơn" mà lúc qua được
+         * lúc không.
+         */
         forceRefresh: async () => {
+            if (inFlightRef.current) {
+                try { await inFlightRef.current; } catch { /* lượt kia hỏng thì kệ, mình nạp lại */ }
+            }
             if (fetchBookingRef.current) await fetchBookingRef.current();
             if (recalcTimerRef.current) recalcTimerRef.current();
         },
