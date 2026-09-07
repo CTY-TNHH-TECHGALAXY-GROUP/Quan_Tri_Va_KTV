@@ -92,7 +92,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: true, month, data });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('Lỗi khi lấy summary KTV Office:', error);
         return NextResponse.json({ success: false, error: msg }, { status });
     }

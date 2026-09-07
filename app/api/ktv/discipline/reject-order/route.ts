@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvDisciplineService } from '@/lib/services/KtvDisciplineService';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
+import { requireActiveStaff } from '@/lib/auth-server';
 
 export async function POST(request: Request) {
     try {
+        // Tài khoản bị khoá thì không thao tác được nữa, kể cả khi phiên
+        // đăng nhập đã cấp từ trước lúc khoá.
+        const lockedError = await requireActiveStaff();
+        if (lockedError) return lockedError;
+
         const body = await request.json();
         // `confirmLock`: KTV đã đọc cảnh báo thiếu giờ mà vẫn muốn từ chối,
         // chấp nhận bị khoá tài khoản.

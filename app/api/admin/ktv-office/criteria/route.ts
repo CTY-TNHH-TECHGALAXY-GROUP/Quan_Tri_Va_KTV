@@ -54,7 +54,7 @@ function fail(error: string, status = 400) {
 
 function caught(error: any, where: string) {
     const msg = error?.message || 'Lỗi không xác định';
-    const status = msg === 'Forbidden' ? 403
+    const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403
         : msg === 'Unauthorized' ? 401
         : msg.startsWith('Chỉ Quản lý') ? 403
         : 500;

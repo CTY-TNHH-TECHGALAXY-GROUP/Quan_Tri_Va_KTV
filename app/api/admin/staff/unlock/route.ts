@@ -188,6 +188,11 @@ export async function POST(request: Request) {
       if (feeErr) console.error('[Unlock] Không ghi được phí kích hoạt lại:', feeErr);
     }
 
+    // Xoá bộ nhớ đệm danh sách khoá, nếu không người vừa được mở vẫn bị chặn
+    // thêm tối đa 20 giây nữa.
+    const { invalidateLockedStaffCache } = await import('@/lib/auth-server');
+    invalidateLockedStaffCache();
+
     // 4. Ghi Audit Log
     await supabase.from('SecurityAuditLogs').insert({
       employee_id: staff.id,

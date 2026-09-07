@@ -93,7 +93,7 @@ export async function GET(request: Request) {
         });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('Lỗi khi tra phiếu trừ điểm đã có:', error);
         return NextResponse.json({ success: false, error: msg }, { status });
     }
@@ -273,7 +273,7 @@ export async function POST(request: Request) {
         });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('Lỗi khi trừ điểm Office:', error);
         return NextResponse.json({ success: false, error: msg }, { status });
     }
@@ -455,7 +455,7 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true, logId, photoUrls });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('Lỗi khi sửa phiếu trừ điểm Office:', error);
         return NextResponse.json({ success: false, error: msg }, { status });
     }
@@ -548,7 +548,7 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ success: true, restoredPoints: Number(log.points_deducted) || 0 });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('Lỗi khi thu hồi phiếu trừ điểm Office:', error);
         return NextResponse.json({ success: false, error: msg }, { status });
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
+import { requireActiveStaff } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: Request) {
     try {
+        // Tài khoản bị khoá thì không thao tác được nữa, kể cả khi phiên
+        // đăng nhập đã cấp từ trước lúc khoá.
+        const lockedError = await requireActiveStaff();
+        if (lockedError) return lockedError;
+
         const { staffId, bookingItemId } = await request.json();
         if (!staffId || !bookingItemId) {
             return NextResponse.json(

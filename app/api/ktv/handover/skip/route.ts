@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { HandoverService } from '@/lib/services/HandoverService';
+import { requireActiveStaff } from '@/lib/auth-server';
 
 /**
  * POST /api/ktv/handover/skip
@@ -9,6 +10,11 @@ import { HandoverService } from '@/lib/services/HandoverService';
  */
 export async function POST(request: Request) {
     try {
+        // Tài khoản bị khoá thì không thao tác được nữa, kể cả khi phiên
+        // đăng nhập đã cấp từ trước lúc khoá.
+        const lockedError = await requireActiveStaff();
+        if (lockedError) return lockedError;
+
         const body = await request.json();
         const { bookingItemId, ktvCode } = body;
 

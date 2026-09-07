@@ -124,6 +124,60 @@ export async function requireApiUser() {
     return user;
 }
 
+/**
+ * Danh sách nhân viên đang bị khoá, nhớ tạm 20 giây.
+ *
+ * Không có cache thì mỗi lượt gọi API tốn thêm một vòng tới DB (~90ms đo được
+ * trên máy này) — đắt hơn cả việc mà API đó định làm. Bảng khoá gần như luôn
+ * rỗng và thay đổi rất thưa, nên nhớ tạm 20 giây là đủ nhanh mà vẫn kịp thời:
+ * quản lý khoá xong, chậm nhất 20 giây là mọi API đều chặn.
+ */
+let lockedCache: { at: number; ids: Set<string> } | null = null;
+const LOCK_CACHE_MS = 20_000;
+
+async function fetchLockedStaffIds(): Promise<Set<string> | null> {
+    if (lockedCache && Date.now() - lockedCache.at < LOCK_CACHE_MS) return lockedCache.ids;
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('Staff').select('id').eq('status', 'KHÓA_TÀI_KHOẢN');
+    // Tra hỏng thì trả null = "không biết" → bên gọi CHO QUA. Thà lọt vài request
+    // còn hơn cả tiệm đứng hình vì một lỗi mạng.
+    if (error) {
+        console.error('[AuthServer] Không đọc được danh sách tài khoản bị khoá:', error);
+        return null;
+    }
+    const ids = new Set((data || []).map((r: any) => String(r.id).toUpperCase()));
+    lockedCache = { at: Date.now(), ids };
+    return ids;
+}
+
+/** Gọi sau khi khoá/mở khoá để lần kiểm tra kế tiếp không đọc bản nhớ cũ. */
+export function invalidateLockedStaffCache() {
+    lockedCache = null;
+}
+
+/**
+ * Tài khoản bị khoá thì chặn ở TẦNG XÁC THỰC, không chỉ ở màn hình.
+ *
+ * Trước đây khoá tài khoản chỉ dựng một lớp che phía client: phiên đã cấp trước
+ * lúc khoá vẫn gọi API bình thường cho tới khi người đó tự đăng xuất.
+ *
+ * KHÔNG áp cho admin / dev / lễ tân: họ là người đi mở khoá, tự khoá mình ra
+ * ngoài là hỏng cả đường cứu.
+ */
+async function assertNotLocked(techCode: string | undefined, role: string | undefined) {
+    if (!techCode) return;
+    const roleId = resolveRoleId(role);
+    if (roleId === 'admin' || roleId === 'dev' || roleId === 'reception') return;
+
+    const locked = await fetchLockedStaffIds();
+    if (!locked) return;                       // không tra được → cho qua
+    if (locked.has(String(techCode).toUpperCase())) {
+        throw new Error('ACCOUNT_LOCKED');
+    }
+}
+
 export async function requireBusinessUser() {
     const user = await requireApiUser();
     if (!user) {
@@ -139,6 +193,8 @@ export async function requireBusinessUser() {
     if (!businessUserId) {
         throw new Error('User does not have a mapped business user');
     }
+
+    await assertNotLocked(finalTechCode, finalRole);
 
     return {
         techCode: finalTechCode,

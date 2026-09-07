@@ -184,7 +184,7 @@ export async function POST(req: Request) {
         });
     } catch (e: any) {
         const msg = e?.message || 'Server error';
-        const status = msg === 'Forbidden' ? 403 : msg === 'Unauthorized' ? 401 : 500;
+        const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;
         if (status === 500) console.error('finish-early-paused error:', e);
         return NextResponse.json({ success: false, error: msg }, { status });
     }
