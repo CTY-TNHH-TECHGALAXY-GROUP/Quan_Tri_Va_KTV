@@ -86,6 +86,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
+    /** Lý do KTV không được bỏ qua bàn giao nữa (đã nợ quá số cho phép). */
+    const [skipBlockedMsg, setSkipBlockedMsg] = useState<string | null>(null);
 
     /**
      * Đơn đang mở là đơn TRẢ NỢ bàn giao (đã bấm Bỏ qua hoặc bị quầy trả lại).
@@ -2338,10 +2340,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // Skip successful → go to REWARD or next order
                 handleFinishHandover();
             } else {
-                addToast(res.error || 'Không thể bỏ qua. Bạn đã nợ quá nhiều đơn.', 'error');
+                setSkipBlockedMsg(res.error || 'Bạn đã nợ quá số đơn bàn giao cho phép.');
             }
-        } catch (e) {
+        } catch (e: any) {
+            // Quá giới hạn nợ thì API trả HTTP 400, mà apiClient NÉM LỖI với mọi mã
+            // khác 2xx — nên nhánh `else` ở trên là code chết và trước đây chỗ này
+            // chỉ console.error. KTV bấm "Bỏ qua" xong không thấy gì, tưởng app đơ
+            // rồi bấm tiếp.
             console.error('[Handover V5] Skip error:', e);
+            setSkipBlockedMsg(e?.message || 'Không bỏ qua được. Vui lòng thử lại.');
         } finally {
             setIsSkippingHandover(false);
         }
@@ -2512,6 +2519,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         // Handover V5
         dynamicChecklist,
         isRepayingDebt,
+        skipBlockedMsg, setSkipBlockedMsg,
         isFetchingChecklist,
         pendingHandovers,
         isSkippingHandover,

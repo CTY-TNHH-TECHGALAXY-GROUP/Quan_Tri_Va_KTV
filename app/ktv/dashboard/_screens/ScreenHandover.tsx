@@ -11,7 +11,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
   const { addToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<any>(null);
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
-  const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt } = logic;
+  const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt, skipBlockedMsg, setSkipBlockedMsg } = logic;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -145,6 +145,33 @@ export function ScreenHandover({ logic }: { logic: any }) {
       </div>
 
       {confirmDialog && <ConfirmDialog {...confirmDialog} />}
+
+      {/* Đã nợ quá số đơn cho phép → chặn hẳn, không phải nhắc nhẹ. Dùng hộp thoại
+          chứ không phải toast: toast trôi mất, KTV bấm lại rồi lại tưởng app đơ. */}
+      {skipBlockedMsg && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-5">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSkipBlockedMsg(null)} />
+          <div className="relative bg-white w-full max-w-sm rounded-[28px] shadow-2xl overflow-hidden">
+            <div className="bg-rose-600 p-5 text-white flex items-center gap-3">
+              <AlertTriangle size={22} />
+              <h3 className="font-black text-base uppercase tracking-tight">Không bỏ qua được nữa</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm font-bold text-slate-800 leading-relaxed">{skipBlockedMsg}</p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hãy chụp đủ ảnh bàn giao cho phòng này, hoặc vào mục <b>Nợ bàn giao</b> trên
+                trang chủ để trả nợ các phòng cũ trước.
+              </p>
+            </div>
+            <div className="p-4 pt-0">
+              <button
+                onClick={() => setSkipBlockedMsg(null)}
+                className="w-full h-12 rounded-2xl font-black bg-slate-900 text-white active:scale-[0.98] transition-transform"
+              >Đã hiểu</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Room Issue Report Button */}
       <button
