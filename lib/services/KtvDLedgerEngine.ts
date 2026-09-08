@@ -184,7 +184,19 @@ export function resolveRating(
 
     if (item.itemRating != null) return { rating: Number(item.itemRating), source: 'ITEM' };
 
-    if (booking.rating != null) return { rating: Number(booking.rating), source: 'BOOKING' };
+    // ⚠️ CHỈ lùi về sao CẤP BILL khi đơn KHÔNG có bản ghi khách nào.
+    //
+    // Đơn đã tách khách (`BookingGuests`) mà khách này chưa chấm thì nghĩa là
+    // CHƯA CHẤM — không phải "lấy tạm sao của người bên cạnh".
+    //
+    // Ca thật gặp ngày 08/09: T079 làm 3 khách ở 3 đơn con. Đúng MỘT khách chấm
+    // 4 sao (ghi trên item của đơn -A). Nhưng `Bookings.rating` = 4 lại nằm ở
+    // đơn -C, nên khách của -C — người chưa hề chấm — cũng được gán 4 sao. Một
+    // lần chấm hoá thành hai.
+    //
+    // Đơn cũ chưa có `BookingGuests` thì `guest` là undefined, đường lùi này vẫn
+    // giữ nguyên để dữ liệu cũ không mất sao.
+    if (!guest && booking.rating != null) return { rating: Number(booking.rating), source: 'BOOKING' };
 
     return { rating: 0, source: 'NONE' };
 }
