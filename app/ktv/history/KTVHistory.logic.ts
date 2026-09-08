@@ -30,6 +30,8 @@ export interface HistoryRecord {
   commissionBeforeDeduction?: number; // tiền tua trước khi trừ theo sao
   ratingDeductionRate?: number;       // 0 / 0.25 / 0.5 / 0.75
   ratingDeductionAmount?: number;     // số tiền bị trừ do đánh giá
+  /** Tên hoặc nhãn khách của dòng này — "HIEU", "Khách 1"… */
+  guestLabel?: string | null;
   handover_status?: string;
   /** Đã thực sự nộp ảnh bàn giao chưa — 'PENDING' không nói lên điều đó. */
   handover_submitted?: boolean;

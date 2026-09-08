@@ -219,9 +219,27 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations')
+            .select('id, bookingId, guest_id, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
+
+        // ─── Khách của từng dòng ─────────────────────────────────────────
+        // Một bill tách nhiều khách thì mã đơn của các dòng chỉ khác nhau đúng
+        // chữ cái cuối (-A, -B, -C). Kèm tên/nhãn khách vào cho dễ nhận ra dòng
+        // nào là dòng nào — nhất là lúc đi soi lỗi.
+        const guestIds = [...new Set((items || []).map((i: any) => i.guest_id).filter(Boolean))];
+        const guestMap: Record<string, string> = {};
+        if (guestIds.length > 0) {
+            const { data: guestRows } = await supabase
+                .from('BookingGuests')
+                .select('id, guest_index, guest_label, customer_name')
+                .in('id', guestIds);
+            for (const g of guestRows || []) {
+                guestMap[String(g.id)] = String(
+                    g.customer_name || g.guest_label || (g.guest_index ? `Khách ${g.guest_index}` : '')
+                ).trim();
+            }
+        }
 
         // ─── Fetch Service names ─────────────────────────────────────────
         const allServiceIds = [...new Set((items || []).map((i: any) => i.serviceId).filter(Boolean))];
@@ -494,6 +512,7 @@ export async function GET(request: Request) {
                 else if (isEarlyLeave && itemBasedStatus === 'FEEDBACK') itemBasedStatus = 'DONE';
 
                 const billSuffix = suffixMap.get(groupId0) || '';
+                const guestLabel = guestMap[String(groupItems[0]?.guest_id || '')] || null;
 
                 // ─── Tạm tính hay đã chốt? ──────────────────────────────────────
                 // Đơn chưa được khách FB thì KHÔNG hiện tiền.
@@ -520,6 +539,7 @@ export async function GET(request: Request) {
                 return {
                     id: `${b.id}_${groupItems[0].id}`, // Đảm bảo ID duy nhất cho mỗi dòng lịch sử (BookingID + ItemID)
                     billCode: `${b.billCode}${billSuffix}`,
+                    guestLabel,
                     createdAt: b.createdAt,
                     bookingDate: b.bookingDate,
                     status: itemBasedStatus,

@@ -137,7 +137,13 @@ const OrderCard = ({ order, getStatusLabel }: {
             <Clock size={16} className="text-gray-300 shrink-0" />
           )}
           <div className="min-w-0">
-            <span className="text-sm font-black text-indigo-600">#{(order.billCode || '').split('-')[0]}</span>
+            {/* ⚠️ Trước đây cắt mã bằng split('-')[0] nên "TEST-260908-YNAY-A"
+                chỉ còn "TEST" — ba đơn khác nhau nhìn y hệt nhau, không soi lỗi
+                được. Nay để nguyên mã, kèm luôn tên khách của dòng đó. */}
+            <span className="text-sm font-black text-indigo-600 break-all">#{order.billCode || '—'}</span>
+            {order.guestLabel && (
+              <span className="ml-1.5 text-[11px] font-bold text-gray-500">· {order.guestLabel}</span>
+            )}
             <p className="text-[11px] text-gray-400 mt-0.5">
               {format(parseDbDate(order.createdAt), 'HH:mm — dd/MM/yyyy')}
             </p>
