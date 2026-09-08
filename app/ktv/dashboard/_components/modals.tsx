@@ -11,6 +11,7 @@ import { shiftMonth, currentMonthVn } from '@/lib/hours-format';
 import { ROOM_ISSUE_OPTIONS } from '../KTVDashboard.logic';
 import { useToast } from '@/components/ui/Toast';
 import { roomLabel } from '@/lib/room-label';
+import { fmtHours } from '@/lib/hours-format';
 import { THEME } from '../_shared/ui';
 
 /** Các hộp thoại của KTV Dashboard. Mỗi cái tự quản state riêng, nhận dữ liệu qua props. */
@@ -381,12 +382,13 @@ export function TurnQueueTypeDModal({ isOpen, onClose, turnData, ktvId }: { isOp
                   </div>
                   <div className="text-right">
                     <p className={`font-black text-lg ${isMe ? 'text-blue-600' : 'text-slate-600'}`}>
-                      {(() => {
-                                      const totalHours = ktv.net_hours || 0;
-                                      const h = Math.floor(totalHours);
-                                      const m = Math.round((totalHours - h) * 60);
-                                      return `${h}h ${m.toString().padStart(2, '0')}P`;
-                                  })()}
+                      {/* ⚠️ Phải dùng chung fmtHours với ô "Thứ tự tua" ngoài trang.
+                          Bản viết tay ở đây dùng Math.floor — với số ÂM nó làm tròn
+                          XUỐNG (xa số 0), nên −0.23 giờ (tức −14 phút) ra
+                          Math.floor = −1 và phần dư thành +46 phút → hiện "−1h 46P".
+                          Cùng một người, ngoài trang ghi −0h14P mà mở bảng ra thành
+                          −1h46P. */}
+                      {fmtHours(ktv.net_hours || 0)}
                     </p>
                     <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Giờ làm</p>
                   </div>
