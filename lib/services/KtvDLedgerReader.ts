@@ -185,7 +185,12 @@ export function netHoursByStaff(
     for (const r of rows) out[r.staff_id] = (out[r.staff_id] || 0) + r.actual_minutes / 60;
     for (const p of penalties) out[p.staff_id] = (out[p.staff_id] || 0) - p.hours_penalty;
 
-    for (const k of Object.keys(out)) out[k] = Math.max(0, out[k]);
+    // KHÔNG ép về 0. Giờ tích lũy âm là chuyện có thật: phạt từ chối tua trừ gấp
+    // 3 lần thời lượng gói nên rất dễ vượt quá số giờ đang có. Ép về 0 thì:
+    //   · KTV nhìn dashboard thấy 0h, tưởng mình hoà, trong khi sổ Office ghi −0h14
+    //   · phần phạt vượt quá 0 mất tác dụng với thứ tự nhận tua — người bị phạt
+    //     nặng xếp ngang người chưa làm gì
+    for (const k of Object.keys(out)) out[k] = Math.round(out[k] * 100) / 100;
     return out;
 }
 

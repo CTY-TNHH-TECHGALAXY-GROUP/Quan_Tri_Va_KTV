@@ -133,8 +133,11 @@ export class KtvTypeDTurnService {
             result[p.staff_id] = (result[p.staff_id] || 0) - p.hours_penalty;
         }
 
-        // Không cho giờ tích lũy âm.
-        for (const id of staffIds) result[id] = Math.max(0, result[id] || 0);
+        // Giờ tích lũy ĐƯỢC PHÉP ÂM. Phạt từ chối tua trừ gấp 3 lần thời lượng gói
+        // nên vượt quá số giờ đang có là bình thường. Trước đây ép về 0 khiến phần
+        // phạt vượt ngưỡng bốc hơi: người bị trừ 2 giờ xếp ngang người chưa làm gì,
+        // và dashboard hiện 0h trong khi sổ Office ghi số âm.
+        for (const id of staffIds) result[id] = Math.round((result[id] || 0) * 100) / 100;
 
         return result;
     }

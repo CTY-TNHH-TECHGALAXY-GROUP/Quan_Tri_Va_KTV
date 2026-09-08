@@ -13,6 +13,7 @@ import { notificationKind, NOTIFICATION_TITLE, type NotificationKind } from '@/l
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
+import { fmtHours } from '@/lib/hours-format';
 
 /**
  * Giao diện một dòng trong danh sách chuông, theo NHÓM thông báo.
@@ -467,13 +468,13 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                    </div>
                    <div className="text-right">
                      <h3 className="font-bold text-[10px] uppercase tracking-widest text-blue-100">Thời gian</h3>
-                     <p className="font-black text-xl leading-none mt-1">
-                       {logic.turnData.myRank > 0 ? (
-                         <>
-                           {Math.floor(logic.turnData.myTime)}<span className="text-sm font-medium opacity-80 mx-0.5">h</span>
-                           {String(Math.round((logic.turnData.myTime - Math.floor(logic.turnData.myTime)) * 60)).padStart(2, '0')}<span className="text-sm font-medium opacity-80 ml-0.5">P</span>
-                         </>
-                       ) : '-'}
+                     {/* Dùng fmtHours dùng chung, KHÔNG tự tính tay.
+                         Giờ tích lũy CÓ THỂ ÂM (phạt từ chối tua trừ gấp 3 lần thời
+                         lượng gói). Cách tính tay cũ `Math.floor(-0.23)` ra -1 rồi
+                         phần lẻ thành 0.77 → hiện "-1h 46P" thay vì "−0h 14P".
+                         Đỏ khi âm để KTV thấy ngay mình đang thiếu giờ. */}
+                     <p className={`font-black text-xl leading-none mt-1 ${logic.turnData.myTime < 0 ? 'text-rose-200' : ''}`}>
+                       {logic.turnData.myRank > 0 ? fmtHours(logic.turnData.myTime) : '-'}
                      </p>
                    </div>
                  </div>
