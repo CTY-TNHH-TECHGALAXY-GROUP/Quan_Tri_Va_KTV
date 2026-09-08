@@ -282,7 +282,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (roleId === 'reception') {
             permissions = ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings', 'ktv_office_scoring', 'ktv_office_hours'];
           } else if (roleId === 'ktv') {
-            permissions = ['ktv_dashboard', 'ktv_attendance', 'ktv_schedule', 'ktv_performance', 'ktv_history', 'ktv_hours_ranking', 'service_handbook', 'settings'];
+            // Phải khớp mẫu vai trò 'ktv' trong app/admin/roles/Roles.logic.ts.
+            // ⚠️ Trước đây danh sách này THIẾU `ktv_wallet`, lệch với mẫu đó —
+            // tài khoản rơi vào nhánh mặc định sẽ không có mục Ví nào.
+            permissions = ['ktv_dashboard', 'ktv_wallet', 'ktv_attendance', 'ktv_schedule', 'ktv_performance', 'ktv_history', 'ktv_hours_ranking', 'service_handbook', 'settings'];
           }
         }
 

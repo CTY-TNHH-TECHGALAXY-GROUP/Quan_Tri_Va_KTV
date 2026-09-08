@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Wallet, Loader2, CheckCircle2, AlertTriangle, LogOut } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
-import { WALLET_TYPES, WalletType, walletConfigKey } from '@/lib/featureFlags';
+import { WALLET_TYPES, WalletType, walletConfigKey, walletLabel } from '@/lib/featureFlags';
 
 /** Trùng với FORCE_LOGOUT_ENABLED_KEY trong SessionEpochService. */
 const FORCE_LOGOUT_KEY = 'auth_force_logout_enabled';
@@ -17,21 +17,12 @@ const FORCE_LOGOUT_KEY = 'auth_force_logout_enabled';
  * Kết quả cuối = công tắc loại VÀ cờ cá nhân.
  */
 
-const WALLET_META: Record<WalletType, { label: string; hint: string; labelTypeD?: string }> = {
-    TUA: {
-        label: '💰 Ví Tua',
-        labelTypeD: '💰 Ví Thu Nhập',
-        hint: 'Số dư tua, hoa hồng và lệnh rút tiền',
-    },
-    BONUS: {
-        label: '💎 Ví Bonus',
-        labelTypeD: '💎 Điểm Tích Lũy',
-        hint: 'Điểm thưởng ca / tua và đổi điểm',
-    },
-    SAVINGS: {
-        label: '🐷 Ví Tích Luỹ',
-        hint: 'Khoản tích luỹ dài hạn',
-    },
+const WALLET_ICON: Record<WalletType, string> = { TUA: '💰', BONUS: '💎', SAVINGS: '🐷' };
+
+const WALLET_HINT: Record<WalletType, string> = {
+    TUA: 'Số dư tua, hoa hồng và lệnh rút tiền',
+    BONUS: 'Điểm thưởng ca / tua và đổi điểm',
+    SAVINGS: 'Khoản tích luỹ dài hạn',
 };
 
 export function WalletSwitchesBlock({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' | 'TYPE_D' }) {
@@ -177,7 +168,7 @@ export function WalletSwitchesBlock({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE
                                         {labelOf(w, activeTab)}
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                        {enabled ? WALLET_META[w].hint : 'Đang tắt cho cả loại'}
+                                        {enabled ? WALLET_HINT[w] : 'Đang tắt cho cả loại'}
                                     </p>
                                 </div>
                                 {saving === w ? (
@@ -247,8 +238,7 @@ export function WalletSwitchesBlock({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE
 }
 
 function labelOf(wallet: WalletType, workType: string): string {
-    const meta = WALLET_META[wallet];
-    return workType === 'TYPE_D' && meta.labelTypeD ? meta.labelTypeD : meta.label;
+    return `${WALLET_ICON[wallet]} ${walletLabel(wallet, workType)}`;
 }
 
 function typeLabel(workType: string): string {

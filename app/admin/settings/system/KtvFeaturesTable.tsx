@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import { useStaffFeatures, FEATURE_FLAG_DEFS } from './KtvFeatures.logic';
+import { walletLabel } from '@/lib/featureFlags';
 
 const ANIMATION_DURATION = '200ms';
 const TABLE_ROW_HEIGHT = '52px';
@@ -29,10 +30,10 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
     const typeLabel = TYPE_LABEL[activeTab] || activeTab;
 
     const getLabel = (def: any) => {
-        if (activeTab === 'TYPE_D') {
-            if (def.key === 'tua_wallet') return '💰 VÍ THU NHẬP';
-            if (def.key === 'bonus_wallet') return '💎 ĐIỂM TÍCH LŨY';
-        }
+        // Nhãn ví lấy từ nguồn chung để app KTV và admin không gọi hai tên khác nhau.
+        if (def.key === 'tua_wallet') return `💰 ${walletLabel('TUA', activeTab).toUpperCase()}`;
+        if (def.key === 'bonus_wallet') return `💎 ${walletLabel('BONUS', activeTab).toUpperCase()}`;
+        if (def.key === 'savings_wallet') return `🐷 ${walletLabel('SAVINGS', activeTab).toUpperCase()}`;
         return def.label;
     };
 

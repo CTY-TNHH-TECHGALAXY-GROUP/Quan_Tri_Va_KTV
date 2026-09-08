@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { walletLabel } from '@/lib/featureFlags';
 import { useKTVWallet } from './KTVWallet.logic';
 import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -161,8 +162,8 @@ export default function KTVWalletPage() {
                         }`}
                     >
                         <div className="flex items-center gap-3">
-                            {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">Ví Tua</span></>}
-                            {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">Ví Bonus</span></>}
+                            {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">{walletLabel('TUA', user?.work_type)}</span></>}
+                            {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">{walletLabel('BONUS', user?.work_type)}</span></>}
                             {activeTab === 'TICH_LUY' && <><PiggyBank size={20} /> <span className="text-lg">Heo Đất Tích Lũy</span></>}
                         </div>
                         <ChevronDown size={20} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -176,7 +177,7 @@ export default function KTVWalletPage() {
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TUA' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     <Zap size={20} className={activeTab === 'TUA' ? 'text-emerald-500' : 'text-slate-400'} />
-                                    <span className="font-bold">Ví Tua</span>
+                                    <span className="font-bold">{walletLabel('TUA', user?.work_type)}</span>
                                 </button>
                             )}
                             {canViewBonus && (
@@ -185,7 +186,7 @@ export default function KTVWalletPage() {
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     <Star size={20} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
-                                    <span className="font-bold">Ví Bonus</span>
+                                    <span className="font-bold">{walletLabel('BONUS', user?.work_type)}</span>
                                 </button>
                             )}
                             {canViewPiggyBank && (
@@ -697,7 +698,7 @@ export default function KTVWalletPage() {
                                     <p>• Bạn cần đóng đủ số tuần mục tiêu (Ví dụ: <strong>72 tuần / 18 tháng</strong>) mới được phép rút toàn bộ số tiền tiết kiệm.</p>
                                 </div>
                                 <div className="p-3 bg-slate-50 rounded-xl">
-                                    <p>• Số tiền sẽ được trích tự động từ Ví Tua hàng tuần.</p>
+                                    <p>• Số tiền sẽ được trích tự động từ {walletLabel('TUA', user?.work_type)} hàng tuần.</p>
                                 </div>
                                 <div className="p-3 bg-slate-50 rounded-xl">
                                     <p>• Nếu nghỉ việc giữa chừng hoặc chưa đủ số tuần, vui lòng liên hệ quản lý để được hỗ trợ theo quy định của cơ sở.</p>

@@ -137,8 +137,24 @@ export function isWalletEnabled(
     );
 }
 
-export const WALLET_DISABLED_MESSAGE: Record<WalletType, string> = {
-    TUA: 'Ví tua của bạn hiện đang tắt. Vui lòng liên hệ quản lý.',
-    BONUS: 'Ví bonus của bạn hiện đang tắt. Vui lòng liên hệ quản lý.',
-    SAVINGS: 'Ví tích luỹ của bạn hiện đang tắt. Vui lòng liên hệ quản lý.',
+/**
+ * Tên ví hiển thị. Loại D ăn lương khoán theo giờ chứ không theo tua, nên gọi
+ * "Ví Tua" là sai nghiệp vụ — với họ là "Ví Thu Nhập" và "Điểm Tích Lũy".
+ *
+ * Để chung một chỗ vì tên này xuất hiện ở cả app KTV lẫn hai bảng bên admin;
+ * trước đây bảng admin đã đổi tên còn app KTV thì chưa, đọc hai màn ra hai tên.
+ */
+const WALLET_LABEL: Record<WalletType, { default: string; TYPE_D?: string }> = {
+    TUA: { default: 'Ví Tua', TYPE_D: 'Ví Thu Nhập' },
+    BONUS: { default: 'Ví Bonus', TYPE_D: 'Điểm Tích Lũy' },
+    SAVINGS: { default: 'Ví Tích Luỹ' },
 };
+
+export function walletLabel(wallet: WalletType, workType: string | null | undefined): string {
+    const meta = WALLET_LABEL[wallet];
+    return (workType === 'TYPE_D' && meta.TYPE_D) ? meta.TYPE_D : meta.default;
+}
+
+export function walletDisabledMessage(wallet: WalletType, workType?: string | null): string {
+    return `${walletLabel(wallet, workType)} của bạn hiện đang tắt. Vui lòng liên hệ quản lý.`;
+}

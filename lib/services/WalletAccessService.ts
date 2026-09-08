@@ -4,7 +4,7 @@ import {
     WALLET_TYPES,
     isWalletEnabled,
     walletConfigKey,
-    WALLET_DISABLED_MESSAGE,
+    walletDisabledMessage,
 } from '@/lib/featureFlags';
 
 /**
@@ -40,16 +40,18 @@ export class WalletAccessService {
         supabase: SupabaseClient,
         staffId: string,
         wallet: WalletType,
-    ): Promise<boolean> {
+    ): Promise<{ ok: boolean; workType: string }> {
         const { data: staff } = await supabase
             .from('Staff')
             .select('work_type, feature_flags')
             .eq('id', staffId)
             .maybeSingle();
 
-        if (!staff) return false;
-        const configs = await this.getWalletConfigs(supabase, staff.work_type || 'TYPE_A');
-        return isWalletEnabled(wallet, staff, configs);
+        const workType = staff?.work_type || 'TYPE_A';
+        if (!staff) return { ok: false, workType };
+
+        const configs = await this.getWalletConfigs(supabase, workType);
+        return { ok: isWalletEnabled(wallet, staff, configs), workType };
     }
 
     /**
@@ -61,13 +63,13 @@ export class WalletAccessService {
         staffId: string,
         wallet: WalletType,
     ): Promise<Response | null> {
-        const ok = await this.isEnabled(supabase, staffId, wallet);
+        const { ok, workType } = await this.isEnabled(supabase, staffId, wallet);
         if (ok) return null;
 
         return new Response(
             JSON.stringify({
                 success: false,
-                error: WALLET_DISABLED_MESSAGE[wallet],
+                error: walletDisabledMessage(wallet, workType),
                 code: 'WALLET_DISABLED',
                 wallet,
             }),
