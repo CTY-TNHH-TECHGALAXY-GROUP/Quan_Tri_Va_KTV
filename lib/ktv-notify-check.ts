@@ -78,16 +78,13 @@ export function canhBaoLechKichBan(
     thaoTac: 'FINISH_EARLY' | 'CANCEL',
     tt: KtvNotifyStatus
 ): string | null {
+    // Ngắn gọn — quầy đang vội, đọc một dòng là đủ hiểu.
     if (thaoTac === 'FINISH_EARLY' && !tt.daBao) {
-        return 'KTV CHƯA bấm báo "khách xuống sớm" hay "khẩn cấp" cho đơn này. '
-            + 'Kết thúc sớm vẫn TÍNH TIỀN và GIỜ cho KTV. '
-            + 'Nếu KTV bỏ khách không báo thì phải bấm Huỷ, không phải Kết thúc.';
+        return 'KTV chưa bấm báo. Kết thúc vẫn tính tiền và giờ — bỏ khách thì phải bấm Huỷ.';
     }
     if (thaoTac === 'CANCEL' && tt.daBao) {
-        const nhan = tt.loai === 'EMERGENCY' ? 'BÁO ĐỘNG KHẨN CẤP' : 'khách xuống sớm';
-        return `KTV ĐÃ bấm "${nhan}" cho đơn này. `
-            + 'Huỷ sẽ khiến KTV mất sạch tiền, giờ tích luỹ và lượt tua. '
-            + 'Nếu khách xuống sớm thật thì nên bấm Kết thúc để KTV được tính giờ đã làm.';
+        const nhan = tt.loai === 'EMERGENCY' ? 'khẩn cấp' : 'khách xuống sớm';
+        return `KTV đã bấm "${nhan}". Huỷ là mất sạch tiền, giờ và tua.`;
     }
     return null;
 }
