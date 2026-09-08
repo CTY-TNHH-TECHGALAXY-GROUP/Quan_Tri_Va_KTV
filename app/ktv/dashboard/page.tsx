@@ -41,7 +41,7 @@ function KTVDashboardContent() {
   const searchParams = useSearchParams();
   const action = searchParams.get('action');
   const bookingId = searchParams.get('bookingId');
-  const { setKtvScreen } = useNotifications();
+  const { setKtvScreen, setKtvOrderLocked } = useNotifications();
 
   const logic = useKTVDashboard({ 
     initialAction: action, 
@@ -66,6 +66,21 @@ function KTVDashboardContent() {
   React.useEffect(() => {
     setKtvScreen(screen);
   }, [screen, setKtvScreen]);
+
+  // 🔒 Khoá menu NGAY khi đơn đã được nhận, đừng đợi màn đồng hồ hiện ra.
+  //
+  // `acceptedAt` do server đóng dấu lúc bấm "Nhận đơn". Khoá theo màn hình thì
+  // hở một nhịp: bấm xong màn hình còn ở Dashboard cho tới khi lượt nạp tiếp
+  // theo trả về, đúng lúc đó menu vẫn mở.
+  //
+  // Mở lại ở REWARD — tới đó phòng đã bàn giao xong.
+  const orderLocked = !!booking?.acceptedAt && screen !== 'REWARD';
+  React.useEffect(() => {
+    setKtvOrderLocked(orderLocked);
+  }, [orderLocked, setKtvOrderLocked]);
+
+  // Rời trang thì nhả khoá, không thì kẹt menu ở mọi trang khác.
+  React.useEffect(() => () => setKtvOrderLocked(false), [setKtvOrderLocked]);
 
   // Lấy tất cả dịch vụ mà KTV này được gán (hỗ trợ multi-item)
   const assignedItemIds: string[] = booking?.assignedItemIds?.length > 0

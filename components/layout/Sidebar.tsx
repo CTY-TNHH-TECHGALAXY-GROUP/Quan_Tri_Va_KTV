@@ -153,8 +153,8 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: SidebarProps) {
   // 🔒 KTV đang trong một đơn → khoá điều hướng, không cho rời đi giữa chừng.
-  const { ktvScreen } = useNotifications();
-  const isServingLocked = isServingLockedScreen(ktvScreen);
+  const { ktvScreen, ktvOrderLocked } = useNotifications();
+  const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
   const { hasPermission, user, role, logout } = useAuth();
   const pathname = usePathname();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});

@@ -29,9 +29,9 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
   const [mounted, setMounted] = useState(false);
   const [lockInfo, setLockInfo] = useState<any>(null);
   const { user, lockedInfo: contextLockedInfo } = useAuth();
-  const { unlockAudio, ktvScreen } = useNotifications();
+  const { unlockAudio, ktvScreen, ktvOrderLocked } = useNotifications();
   // 🔒 KTV đang trong một đơn (làm → đánh giá → bàn giao) → không cho mở menu 3 gạch.
-  const isServingLocked = isServingLockedScreen(ktvScreen);
+  const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
 
   const router = useRouter();
 

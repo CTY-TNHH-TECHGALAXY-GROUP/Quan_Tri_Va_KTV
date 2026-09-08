@@ -33,6 +33,15 @@ interface NotificationContextType {
     playSound: (type: string) => void;
     setKtvScreen: (screen: string) => void;
     ktvScreen: string;
+    /**
+     * KTV đã bấm NHẬN ĐƠN và chưa bàn giao xong.
+     *
+     * Tách riêng khỏi `ktvScreen`: sau khi bấm nhận, màn hình còn nằm ở
+     * DASHBOARD một nhịp cho tới khi server trả về `acceptedAt` rồi mới sang
+     * đồng hồ. Khoá theo màn hình thì hở đúng nhịp đó.
+     */
+    setKtvOrderLocked: (locked: boolean) => void;
+    ktvOrderLocked: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -81,6 +90,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
         _setSoundEnabled(enabled);
     };
     const [ktvScreen, setKtvScreen] = useState<string>('DASHBOARD');
+    const [ktvOrderLocked, setKtvOrderLocked] = useState<boolean>(false);
     const [notifRules, setNotifRules] = useState<Record<string, any>>({});
     const [isOnShift, setIsOnShift] = useState<boolean>(false);
 
@@ -550,7 +560,9 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             unlockAudio,
             playSound,
             setKtvScreen,
-            ktvScreen
+            ktvScreen,
+            setKtvOrderLocked,
+            ktvOrderLocked
         }}>
             {children}
             
