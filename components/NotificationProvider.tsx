@@ -9,7 +9,7 @@ import { Bell, ShieldAlert, X, CheckCircle, Info, AlertTriangle, Check, Star, Ar
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
-import { notificationKind, NOTIFICATION_TITLE, type NotificationKind } from '@/lib/notification-kind';
+import { notificationKind, isSilentNotification, NOTIFICATION_TITLE, type NotificationKind } from '@/lib/notification-kind';
 
 // --- TYPES ---
 interface Notification {
@@ -483,14 +483,17 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             }
 
             // 🔊 Sound: use rule-configured sound or fallback to SOUND_MAP
+            // Tin xác nhận thì hiện im lặng — xem `SILENT_TYPES` trong notification-kind.
+            const withSound = !isSilentNotification(notifType);
+
             if (isKtv && notifType === 'NEW_ORDER') {
                 addToast({ 
                     ...newNotif, 
                     type: 'KTV_NEW_ORDER', // to use the right sound
                     message: 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.'
-                });
+                }, withSound);
             } else {
-                addToast(newNotif);
+                addToast(newNotif, withSound);
             }
         };
 

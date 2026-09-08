@@ -94,6 +94,28 @@ export const NOTIFICATION_TITLE: Record<NotificationKind, string> = {
     info: 'Thông báo',
 };
 
+/**
+ * Những loại tin KHÔNG được phát ra tiếng.
+ *
+ * KTV phần lớn thời gian đang ở trong phòng với khách, nên chuông chỉ dành cho
+ * việc cần phản ứng ngay (đơn mới, có khách, khẩn cấp). Mấy tin xác nhận kiểu
+ * "Quầy đã xử lý: OK Em" thì hiện lên là đủ — kêu lên giữa lúc đang làm là bất
+ * tiện cho cả KTV lẫn khách.
+ *
+ * Vẫn hiện toast và vẫn vào lịch sử bình thường, chỉ tắt tiếng và tắt rung.
+ */
+const SILENT_TYPES = new Set<string>([
+    'REQUEST_CONFIRMED',   // quầy phản hồi yêu cầu nước/hỗ trợ/mua thêm
+    'ATTENDANCE_RESPONSE', // xác nhận điểm danh / tan ca
+    'KTV_OFF_CALL',        // KTV tắt nhận đơn — tin nền cho quầy
+    'SYSTEM_LOG',
+]);
+
+export function isSilentNotification(rawType?: string | null): boolean {
+    if (!rawType) return false;
+    return SILENT_TYPES.has(String(rawType).toUpperCase());
+}
+
 export function notificationKind(rawType?: string | null): NotificationKind {
     if (!rawType) return 'info';
     return BY_TYPE[String(rawType).toUpperCase()] || 'info';

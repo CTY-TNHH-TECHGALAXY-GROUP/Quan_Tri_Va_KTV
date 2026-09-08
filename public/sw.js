@@ -94,15 +94,20 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  // Tin xác nhận (vd "Quầy đã xử lý: OK Em") hiện lên nhưng không kêu, không
+  // rung — KTV phần lớn thời gian đang ở trong phòng với khách. Server đánh dấu
+  // qua `silent` trong payload; xem SILENT_TYPES ở lib/notification-kind.ts.
+  const isSilent = data.silent === true;
+
   const options = {
     body: data.body,
     icon: '/icon.png',
     badge: '/icon.png',
-    vibrate: [200, 100, 200],
+    vibrate: isSilent ? [] : [200, 100, 200],
     // 🔧 iOS improvements: tag + renotify ensures each notification is shown separately
     tag: 'ngan-ha-' + Date.now(),
     renotify: true,
-    silent: false,
+    silent: isSilent,
     data: {
       url: data.url || '/',
     },

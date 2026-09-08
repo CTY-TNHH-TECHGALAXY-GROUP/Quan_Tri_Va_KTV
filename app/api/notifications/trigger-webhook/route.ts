@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushNotification } from '@/lib/push-helper';
 import { WebhookRecordSchema } from '@/lib/schemas/notification.schema';
+import { isSilentNotification } from '@/lib/notification-kind';
 
 interface NotifRule {
     allowed_roles: string[];
@@ -77,6 +78,8 @@ export async function POST(request: Request) {
         // "bắn cho tất cả KTV". Trước đây nhánh `else` không biết `employeeId` tồn tại
         // nên rule COMPLAINT (allowed_roles có 'ktv', cờ target tắt) đã đẩy câu
         // "Bạn nhận được đánh giá TỆ" của MỘT người tới máy của MỌI KTV.
+        // Tin xác nhận thì đẩy im lặng — hiện trên máy nhưng không kêu, không rung.
+        const silent = isSilentNotification(record.type);
         const isTargeted = Boolean(record.employeeId);
         const targetRoles: string[] = (rule.allowed_roles || []).map((r: string) => r.toUpperCase());
         const isKtvRole = (r: string) => r === 'KTV' || r === 'TECHNICIAN';
@@ -96,6 +99,7 @@ export async function POST(request: Request) {
                 targetStaffIds: [record.employeeId as string],
                 url: '/',
                 requireOnShift: false, // Explicit target: always deliver
+                silent,
             });
             pushSent = true;
         }
@@ -107,6 +111,7 @@ export async function POST(request: Request) {
                 targetRoles: nonKtvRoles,
                 url: '/',
                 requireOnShift: false, // Admin/Reception luôn nhận — không có trong TurnQueue
+                silent,
             });
             pushSent = true;
         }
@@ -126,6 +131,7 @@ export async function POST(request: Request) {
                 targetRoles: ktvRoles,
                 url: '/',
                 requireOnShift: shouldFilterOnShift,
+                silent,
             });
             pushSent = true;
         }

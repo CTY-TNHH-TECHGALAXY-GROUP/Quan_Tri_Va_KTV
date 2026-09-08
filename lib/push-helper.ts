@@ -33,6 +33,8 @@ export interface PushPayload {
     targetStaffIds?: string[];
     targetRoles?: string[];
     requireOnShift?: boolean; // NEW: Filter only on-shift staff
+    /** Hiện thông báo nhưng không kêu, không rung (tin xác nhận). */
+    silent?: boolean;
 }
 
 /**
@@ -72,7 +74,7 @@ export async function sendPushNotification(payload: PushPayload) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        const { title, message, url, targetStaffIds, targetRoles, requireOnShift } = payload;
+        const { title, message, url, targetStaffIds, targetRoles, requireOnShift, silent } = payload;
         
         let finalStaffIds = new Set<string>(targetStaffIds || []);
         // 🛡️ SAFETY NET: Track non-KTV IDs to exempt from on-shift filter.
@@ -176,7 +178,8 @@ export async function sendPushNotification(payload: PushPayload) {
         const pushPayload = JSON.stringify({
             title: title || 'Ngân Hà Spa',
             body: message || 'Bạn có thông báo mới!',
-            url: url || '/'
+            url: url || '/',
+            silent: silent === true
         });
 
         const pushPromises = uniqueSubs.map(item => 
