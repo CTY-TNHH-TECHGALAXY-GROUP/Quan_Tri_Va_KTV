@@ -2243,13 +2243,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             // 1. Giải phóng KTV khỏi TurnQueue
             const photosToSubmit = Object.values(handoverPhotosBase64);
+            // ⏱️ Hạn chờ RIÊNG cho lượt này. Mặc định của apiClient là 15 giây —
+            // đủ cho một lời gọi thường, nhưng đây là lượt NẶNG nhất trong app:
+            // gửi kèm toàn bộ ảnh bàn giao dưới dạng base64, rồi máy chủ còn phải
+            // đẩy từng tấm lên kho ảnh. Chụp 8-12 tấm trên mạng 4G là quá 15 giây
+            // như chơi — KTV thấy "Kết nối bị quá hạn" dù ảnh vẫn đang bay lên.
             const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
                 bookingId: postServiceBookingIdRef.current || booking.id, 
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
                 action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
                 techCode: ktvId,
                 photosBase64: photosToSubmit
-            });
+            }, { timeout: 120000 });
             
             // Lưu hỏng thì DỪNG LẠI, đừng đi tiếp như không có chuyện gì.
             //

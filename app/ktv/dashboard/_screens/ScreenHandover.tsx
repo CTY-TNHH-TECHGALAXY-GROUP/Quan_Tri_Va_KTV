@@ -65,12 +65,26 @@ export function ScreenHandover({ logic }: { logic: any }) {
               if (err?.message === 'TOO_DARK') {
                   addToast(`⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi đủ ánh sáng.`, 'error');
               } else {
+                  // ⚠️ Đường dự phòng khi KHÔNG nén được (định dạng lạ, ảnh hỏng).
+                  //
+                  // Nó đẩy ảnh GỐC nguyên si vào giỏ. Ảnh điện thoại 4-6MB thành
+                  // base64 là ~8MB — một tấm như vậy đủ làm cả lượt nộp quá hạn,
+                  // và còn vượt luôn giới hạn kích thước gói tin của máy chủ.
+                  // Ảnh nén bình thường chỉ ~40-80KB (rộng 600px, chất lượng 0.5).
+                  //
+                  // Nên vẫn giữ đường dự phòng, nhưng CHẶN tấm quá khổ và nói rõ
+                  // lý do, thay vì để nó âm thầm phá lượt nộp của cả nhóm ảnh.
                   const base64 = await new Promise<string>((resolve) => {
                       const reader = new FileReader();
                       reader.onload = (ev) => resolve(ev.target?.result as string);
                       reader.readAsDataURL(file);
                   });
-                  if (base64) newPhotos.push(base64);
+                  const QUA_KHO = 1_500_000;   // ~1.1MB ảnh thật
+                  if (base64 && base64.length > QUA_KHO) {
+                      addToast('⚠️ Có ảnh quá nặng nên bỏ qua. Hãy chụp lại bằng camera trong app thay vì chọn từ thư viện.', 'error');
+                  } else if (base64) {
+                      newPhotos.push(base64);
+                  }
               }
           }
       }
