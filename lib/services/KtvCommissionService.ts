@@ -332,6 +332,16 @@ export class KtvCommissionService {
         targetGuestId?: string // <--- NEW PARAMETER
     ): number {
         if (!bonusConfig.enableBonus) return 0;
+
+        /**
+         * Item đã huỷ thì KHÔNG sinh thưởng.
+         *
+         * ⚠️ Trước đây hai vòng lặp bên dưới quét thẳng `booking.BookingItems`
+         * không lọc trạng thái, nên đơn quầy đã HUỶ vẫn được cộng "Bonus xuất
+         * sắc". Gặp thật ngày 08/09: đơn TEST-260908-YNAY-B đã huỷ mà vẫn ra
+         * +20đ → 20.000đ, trừ thuế còn 18.000đ thực nhận.
+         */
+        const daHuy = (i: any) => String(i?.status || '').toUpperCase() === 'CANCELLED';
         // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
         if (staffBonusMap[techCode.toLowerCase()] === false) return 0;
 
@@ -366,6 +376,7 @@ export class KtvCommissionService {
             }
                 
             if (!isTechInvolved) continue;
+            if (daHuy(item)) continue;
 
             let ktvRating = 0;
             // Priority 1: ktvRatings map
@@ -379,8 +390,13 @@ export class KtvCommissionService {
             }
             // Priority 2: itemRating
             if (ktvRating === 0) ktvRating = Number(item.itemRating) || 0;
-            // Priority 3: booking rating
-            if (ktvRating === 0) ktvRating = Number(booking.rating) || 0;
+            // Priority 3: sao cấp BILL — CHỈ cho đơn cũ CHƯA tách khách.
+            //
+            // ⚠️ Đơn đã tách khách (item có `guest_id`) mà khách này chưa chấm thì
+            // nghĩa là CHƯA CHẤM. Lùi về `booking.rating` là mượn sao của khách
+            // bên cạnh — một người chấm 4 sao thành cả bill được thưởng.
+            // Cùng một luật với KtvDLedgerEngine.resolveRating().
+            if (ktvRating === 0 && !item.guest_id) ktvRating = Number(booking.rating) || 0;
             
             if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
         }
@@ -400,6 +416,7 @@ export class KtvCommissionService {
             }
 
             if (!isTechInvolved) continue;
+            if (daHuy(item)) continue;
             
             // Nếu có targetGuestId, BỎ QUA các item không thuộc guest này
             if (targetGuestId && item.guest_id !== targetGuestId) continue;
