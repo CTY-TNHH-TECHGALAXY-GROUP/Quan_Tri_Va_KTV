@@ -358,11 +358,67 @@ const OrderCard = ({ order, getStatusLabel }: {
   );
 };
 
+// ─── Nút mở lịch ──────────────────────────────────────────────────────────────
+
+/**
+ * Bản `compact` nằm trên thanh header của điện thoại — màn nhỏ thì mỗi chỗ đều
+ * quý, một ô riêng trong lưới chỉ để chọn ngày là phí. Bản thường vẫn ở trong
+ * trang cho màn lớn, nơi header mobile không tồn tại.
+ */
+/** 'YYYY-MM-DD' -> '08/09'. */
+const dm = (d: string) => {
+  const [, m, day] = String(d).split('-');
+  return day && m ? `${day}/${m}` : d;
+};
+
+/**
+ * Chữ trên nút mở lịch.
+ *
+ * "1 ngày" / "3 ngày" không nói được điều KTV cần biết: đang xem NGÀY NÀO. Phải
+ * mở lịch ra mới thấy, mà mở ra thì che mất bảng.
+ *
+ *   1 ngày            -> "08/09"
+ *   nhiều ngày LIỀN   -> "05/09 → 08/09"
+ *   nhiều ngày RỜI    -> "4 ngày"   (không có cách viết gọn nào cho tập rời rạc)
+ */
+const nhanNgay = (dates: string[]): string => {
+  if (!dates || dates.length === 0) return 'Chọn ngày';
+  const ds = [...dates].sort();
+  if (ds.length === 1) return dm(ds[0]);
+
+  const lienTuc = ds.every((d, i) => {
+    if (i === 0) return true;
+    const truoc = new Date(ds[i - 1] + 'T00:00:00Z').getTime();
+    const nay = new Date(d + 'T00:00:00Z').getTime();
+    return nay - truoc === 86400000;
+  });
+
+  return lienTuc ? `${dm(ds[0])} → ${dm(ds[ds.length - 1])}` : `${ds.length} ngày`;
+};
+
+const CalendarToggle = ({ compact = false, open, dates, onToggle }: {
+  compact?: boolean; open: boolean; dates: string[]; onToggle: () => void;
+}) => (
+  <button
+    onClick={onToggle}
+    aria-label="Chọn ngày"
+    className={`flex items-center gap-1.5 rounded-xl border active:scale-95 transition-all ${
+      compact ? 'h-8 px-2.5' : 'h-10 px-3.5 shadow-sm'
+    } ${open
+      ? 'bg-indigo-600 border-indigo-600 text-white'
+      : 'bg-white border-gray-100 text-indigo-600'}`}
+  >
+    <CalendarDays size={compact ? 15 : 17} />
+    <span className={`font-bold whitespace-nowrap ${compact ? 'text-[11px]' : 'text-xs'}`}>{nhanNgay(dates)}</span>
+  </button>
+);
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function KTVHistoryPage() {
   const [mounted, setMounted] = React.useState(false);
   const [showCalendar, setShowCalendar] = React.useState(false);
+  const [showHours, setShowHours] = React.useState(false);
   const { hasPermission } = useAuth();
   const {
     user,
@@ -388,38 +444,20 @@ export default function KTVHistoryPage() {
   }
 
   return (
-    <AppLayout title="Lịch Sử" disablePullToRefresh>
-      <PullToRefresh onRefresh={async () => { await refetch(); }}>
+    <AppLayout title="Lịch Sử" disablePullToRefresh headerRight={<CalendarToggle compact open={showCalendar} dates={selectedDates} onToggle={() => setShowCalendar(!showCalendar)} />}>
+      <PullToRefresh onRefresh={async () => { await Promise.all([refetch(), hours.refetch()]); }}>
         <div className="space-y-4 max-w-xl mx-auto pb-6">
 
-          {/* Header */}
-          <div>
-              <p className="text-xs text-gray-400">Bấm vào đơn để xem chi tiết</p>
+          {/* Header — nút lịch đã dời lên thanh header, nhưng thanh đó chỉ có ở
+              mobile nên màn lớn vẫn cần một nút ngay trong trang. */}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-400">Bấm vào đơn để xem chi tiết</p>
+            <div className="hidden lg:block">
+              <CalendarToggle open={showCalendar} dates={selectedDates} onToggle={() => setShowCalendar(!showCalendar)} />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div className="bg-indigo-600 text-white rounded-2xl px-2 py-3 shadow-lg shadow-indigo-100 flex flex-col justify-between">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Thu nhập</p>
-              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalGross || 0).toLocaleString('vi-VN')}đ</p>
-            </div>
-            <div className="bg-emerald-500 text-white rounded-2xl px-2 py-3 shadow-lg shadow-emerald-100 flex flex-col justify-between">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-100">Thực nhận</p>
-              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalNet || 0).toLocaleString('vi-VN')}đ</p>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-2xl px-2 py-3 shadow-sm flex flex-col justify-between items-center text-center">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Đơn</p>
-              <p className="text-base font-black text-gray-900 tabular-nums mt-0.5">{summary.totalOrders}</p>
-            </div>
-            <button 
-                onClick={() => setShowCalendar(!showCalendar)} 
-                className={`flex flex-col items-center justify-center rounded-2xl border active:scale-95 transition-all shadow-sm ${showCalendar ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200' : 'bg-white border-gray-100 text-indigo-600'}`}
-            >
-                <CalendarDays size={22} className="mb-1" />
-                <span className="text-[8px] font-bold uppercase tracking-widest opacity-80">Chọn ngày</span>
-            </button>
-          </div>
-
-          {/* Date Picker (Toggled via button) */}
+          {/* Date Picker — mở từ nút lịch trên header */}
           <AnimatePresence>
               {showCalendar && (
                   <motion.div
