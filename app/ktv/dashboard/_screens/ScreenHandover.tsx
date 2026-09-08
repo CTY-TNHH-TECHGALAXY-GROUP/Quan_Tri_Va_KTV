@@ -13,8 +13,15 @@ export function ScreenHandover({ logic }: { logic: any }) {
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
   const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt, skipBlockedMsg, setSkipBlockedMsg, skipQuota } = logic;
 
+  // Bỏ qua chỉ để CHẠY KỊP đơn kế tiếp. Không có đơn nào đang chờ thì không có
+  // lý do gì để nợ phòng — phải bàn giao cho xong.
+  const hasNextOrder = !!booking?.nextBookingId;
+
   // Hết lượt bỏ qua thì KHÓA NÚT luôn, đừng để KTV bấm rồi mới bị từ chối.
   const noSkipLeft = !!skipQuota && skipQuota.remaining <= 0;
+
+  /** Số phòng KTV đang nợ bàn giao — gồm cả phòng bị quầy trả về. */
+  const debtCount = logic.pendingHandovers?.length ?? skipQuota?.used ?? 0;
 
   // Đang TRẢ NỢ mà chưa chụp đủ ảnh: không cho "Bỏ qua" (nợ sẽ không bao giờ
   // trả xong), nhưng cũng KHÔNG nhốt KTV lại. Trước đây nút xám ngắt "Chưa chụp
@@ -22,7 +29,8 @@ export function ScreenHandover({ logic }: { logic: any }) {
   // ngoài việc phải chụp cho xong ngay lúc đó. Nay nút đổi thành TRỞ LẠI: phòng
   // vẫn còn nợ nguyên đó, quay lại nộp sau.
   const isDebtNeedsPhotos = isRepayingDebt && !isHandoverComplete;
-  const skipLocked = noSkipLeft && !isRepayingDebt && !isHandoverComplete;
+  // Khoá nút Bỏ qua khi: hết lượt, HOẶC không có đơn nào đang chờ.
+  const skipLocked = (noSkipLeft || !hasNextOrder) && !isRepayingDebt && !isHandoverComplete;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -33,9 +41,6 @@ export function ScreenHandover({ logic }: { logic: any }) {
   if (checklist.length === 0) {
       checklist = ['Ảnh tổng quan phòng'];
   }
-
-  // V5: Show skip button only if there's a next order
-  const hasNextOrder = !!booking?.nextBookingId;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, itemKey?: string) => {
       const files = Array.from(e.target.files || []);
@@ -208,10 +213,13 @@ export function ScreenHandover({ logic }: { logic: any }) {
           Còn lượt thì không nhắc: dòng "còn 1/2 lượt" hiện thường trực chỉ làm
           nhiễu màn hình, mà số lượt còn lại vẫn được nói đúng lúc cần — trong
           hộp thoại xác nhận ngay trước khi KTV bấm Bỏ qua. */}
-      {!isRepayingDebt && !isHandoverComplete && noSkipLeft && skipQuota && (
+      {skipLocked && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
-          Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua.
-          <br/>Không bỏ qua tiếp được — phải chụp đủ ảnh, hoặc trả nợ phòng cũ trước.
+          {noSkipLeft ? (
+            <>Bạn đang nợ <b>{debtCount}</b> phòng chưa bàn giao — đơn này <b>bắt buộc phải bàn giao</b>, không bỏ qua thêm được.</>
+          ) : (
+            <>Chưa có đơn nào đang chờ bạn — phòng này <b>bắt buộc phải bàn giao</b>, không bỏ qua được.</>
+          )}
         </p>
       )}
 
@@ -223,12 +231,10 @@ export function ScreenHandover({ logic }: { logic: any }) {
             // nộp, không ghi thêm nợ, không tiêu lượt bỏ qua. Đúng nghĩa "để đó".
             if (isDebtNeedsPhotos) { logic.goToDashboard?.(); return; }
             if (!isHandoverComplete) {
-                if (hasNextOrder) {
-                    // Nếu có đơn mới và chưa chụp ảnh -> Cho nợ ảnh và qua đơn luôn
-                    handleSkipHandover();
-                } else {
-                    // Nếu không có đơn mới mà chưa chụp ảnh -> Hỏi cảnh báo phạt
-                    setConfirmDialog({
+                // Tới được đây nghĩa là skipLocked = false, tức CHẮC CHẮN có đơn
+                // kế tiếp đang chờ và còn lượt bỏ qua. Vẫn hỏi lại một nhịp: bỏ qua
+                // là mắc nợ, mà món nợ đó chặn tan ca — đừng để lỡ tay.
+                setConfirmDialog({
                         open: true,
                         title: 'Thiếu Ảnh Bàn Giao',
                         // Không nói số lượt ở đây nữa. Trước đây popup ghi số lượt
@@ -239,8 +245,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
                         message: 'Bạn chưa chụp đủ ảnh bàn giao. Bỏ qua sẽ bị ghi NỢ BÀN GIAO. Còn nợ thì chưa tan ca được.',
                         onConfirm: () => {
                             setConfirmDialog(null);
-                            // PHẢI đi qua handleSkipHandover để ghi nợ, giống hệt nhánh
-                            // "có đơn kế tiếp" ngay trên.
+                            // PHẢI đi qua handleSkipHandover để ghi nợ.
                             //
                             // Trước đây nhánh này gọi thẳng handleFinishHandover: API
                             // /handover/skip không bao giờ được gọi nên handover_status
@@ -255,8 +260,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
                         },
                         onCancel: () => setConfirmDialog(null),
                         variant: 'danger'
-                    });
-                }
+                });
             } else {
                 handleFinishHandover();
             }
@@ -273,7 +277,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
         {logic.isLoading || isSkippingHandover 
           ? 'Đang xử lý...' 
           : skipLocked
-              ? 'Đã hết lượt bỏ qua'
+              ? (noSkipLeft ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
           : isDebtNeedsPhotos
               ? '← Trở lại'
           : (isHandoverComplete
