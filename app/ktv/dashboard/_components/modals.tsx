@@ -467,6 +467,73 @@ function MonthCalendar({ month, byDate, selected, today, onPick }: {
   );
 }
 
+/**
+ * Xem ảnh minh chứng của một phiếu trừ điểm Office.
+ *
+ * Nằm trên modal Office (z cao hơn) và nuốt click nền để bấm ra ngoài chỉ đóng
+ * ảnh, không đóng luôn cả bảng điểm phía sau.
+ */
+function EvidenceViewer({ hit, onClose }: { hit: any, onClose: () => void }) {
+  const urls: string[] = hit?.photoUrls || [];
+  const [idx, setIdx] = useState(0);
+  const i = Math.min(idx, Math.max(0, urls.length - 1));
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-white w-full max-w-md rounded-[28px] overflow-hidden shadow-2xl flex flex-col"
+      >
+        <div className="px-4 py-3 border-b border-slate-100 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-slate-800 truncate">{hit.label}</p>
+            <p className="text-[11px] font-bold text-slate-400">
+              Ảnh minh chứng{urls.length > 1 ? ` ${i + 1}/${urls.length}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="relative bg-slate-900 aspect-[3/4] flex items-center justify-center">
+          {urls.length === 0
+            ? <p className="text-xs font-bold text-slate-400">Không có ảnh</p>
+            : <img src={urls[i]} alt={`Ảnh minh chứng ${i + 1}`} className="w-full h-full object-contain" />}
+
+          {urls.length > 1 && (
+            <>
+              <button
+                onClick={() => setIdx(i > 0 ? i - 1 : urls.length - 1)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                onClick={() => setIdx(i < urls.length - 1 ? i + 1 : 0)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center"
+              >
+                <ChevronRight size={18} />
+              </button>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 rounded-full bg-black/40">
+                {urls.map((_, k) => (
+                  <i key={k} className={`w-1.5 h-1.5 rounded-full ${k === i ? 'bg-white' : 'bg-white/40'}`} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {hit.note && <p className="px-4 py-3 text-[11px] text-slate-500 font-medium border-t border-slate-100">{hit.note}</p>}
+      </motion.div>
+    </div>
+  );
+}
+
 export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => void }) {
   const today = data.today;
   // Tháng và ngày đang xem tự quản trong modal. Dashboard chỉ đưa dữ liệu tháng
@@ -477,6 +544,8 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
   const [selected, setSelected] = useState<string>(today);
   const [showCalendar, setShowCalendar] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Phiếu trừ đang mở ảnh minh chứng. null = không mở.
+  const [evidence, setEvidence] = useState<any>(null);
 
   const thisMonth = currentMonthVn();
 
@@ -624,7 +693,16 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
                       <span className="text-sm font-black text-rose-600 shrink-0">−{h.points}đ</span>
                     </div>
                     {h.note && <p className="text-[11px] text-slate-500 mt-1">{h.note}</p>}
-                    {h.photoCount > 0 && <p className="text-[11px] text-slate-400 font-bold mt-1">📷 {h.photoCount} ảnh minh chứng</p>}
+                    {h.photoCount > 0 && (
+                      (h.photoUrls || []).length > 0
+                        ? (
+                          <button
+                            onClick={() => setEvidence(h)}
+                            className="text-[11px] font-black text-rose-600 underline underline-offset-2 mt-1"
+                          >📷 Xem {h.photoCount} ảnh minh chứng</button>
+                        )
+                        : <p className="text-[11px] text-slate-400 font-bold mt-1">📷 {h.photoCount} ảnh minh chứng</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -648,6 +726,10 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
           </p>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {evidence && <EvidenceViewer hit={evidence} onClose={() => setEvidence(null)} />}
+      </AnimatePresence>
     </div>
   );
 }

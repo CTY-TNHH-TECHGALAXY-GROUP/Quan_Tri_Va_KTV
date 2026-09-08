@@ -99,8 +99,8 @@ export interface OfficeBonusEntry {
     dayScore: number;
     /** Tổng điểm bị trừ trong ngày. Ngày sạch = 0. */
     deducted: number;
-    /** Lỗi bị trừ trong ngày, đã bỏ link ảnh — xem ảnh thì lên gặp quầy. */
-    hits: Array<{ label: string; points: number; note: string | null; photoCount: number; byName: string; at: string }>;
+    /** Lỗi bị trừ trong ngày, kèm link ảnh minh chứng để KTV tự đối chiếu. */
+    hits: Array<{ label: string; points: number; note: string | null; photoCount: number; photoUrls: string[]; byName: string; at: string }>;
 }
 
 /**
@@ -128,6 +128,7 @@ export async function officeBonusTimeline(
             points: h.points,
             note: h.note,
             photoCount: h.photoUrls.length,
+            photoUrls: h.photoUrls,
             byName: h.byName,
             at: h.at,
         })),

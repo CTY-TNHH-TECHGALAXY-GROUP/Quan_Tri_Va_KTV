@@ -327,7 +327,19 @@ export default function KTVWalletPage() {
                                                     <li key={i} className="text-xs text-slate-500 flex justify-between gap-3">
                                                         <span>
                                                             {h.label}
-                                                            {h.photoCount > 0 && <span className="text-slate-400"> · {h.photoCount} ảnh</span>}
+                                                            {/* Mỗi ảnh một link riêng — trang Ví không có khung xem ảnh,
+                                                                mở thẳng ảnh trong tab mới là đủ để KTV đối chiếu. */}
+                                                            {(h.photoUrls || []).length > 0
+                                                                ? h.photoUrls.map((u: string, k: number) => (
+                                                                    <a
+                                                                        key={k}
+                                                                        href={u}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="text-rose-600 font-bold underline underline-offset-2"
+                                                                    > · 📷 Ảnh {k + 1}</a>
+                                                                  ))
+                                                                : h.photoCount > 0 && <span className="text-slate-400"> · {h.photoCount} ảnh</span>}
                                                             {h.note && <span className="text-slate-400"> · {h.note}</span>}
                                                         </span>
                                                         <span className="font-bold text-rose-500 shrink-0">−{h.points}đ</span>

@@ -148,8 +148,11 @@ async function main() {
             const badMath = tl.filter(d => d.dayScore !== Math.max(0, 100 - d.deducted));
             check(badMath.length === 0, 'Diem ngay = 100 - tong diem bi tru',
                 badMath.length ? `lech o ${badMath.map(d => d.date).join(', ')}` : '');
-            const leaks = tl.flatMap(d => d.hits).filter((h: any) => 'photoUrls' in h);
-            check(leaks.length === 0, 'Lich su chi tra SO LUONG anh, khong tra link');
+            // KTV phai tu xem duoc anh minh chung cua chinh minh, khong bat len quay.
+            const withPhotos = tl.flatMap(d => d.hits).filter((h: any) => h.photoCount > 0);
+            const missing = withPhotos.filter((h: any) => (h.photoUrls || []).length !== h.photoCount);
+            check(missing.length === 0, 'Phieu co anh thi tra du link anh minh chung',
+                missing.length ? `${missing.length} phieu thieu link` : '');
             const clean = tl.filter(d => d.hits.length === 0).length;
             console.log(`  Trong do ${clean} ngay sach (van duoc liet ke de doi chieu)`);
         }

@@ -49,13 +49,16 @@ export async function GET(request: Request) {
 
         const todayEntry = m.days.find(d => d.workDate === today);
 
-        // Ảnh minh chứng chỉ trả về SỐ LƯỢNG, không trả link: KTV cần biết quầy có
-        // chụp hình hay không, còn xem ảnh thì lên gặp quầy.
+        // Trả luôn link ảnh minh chứng. Trước đây chỉ trả số lượng và bắt KTV lên
+        // gặp quầy để xem — nhưng đây là ảnh chụp chính họ, bị trừ điểm mà không
+        // được nhìn bằng chứng thì cãi nhau ở quầy còn lâu hơn. Route này chỉ đọc
+        // dữ liệu của người đang đăng nhập nên không lộ sang KTV khác.
         const mapHits = (hits: typeof m.days[number]['hits']) => hits.map(h => ({
             label: h.label,
             points: h.points,
             note: h.note,
             photoCount: h.photoUrls.length,
+            photoUrls: h.photoUrls,
         }));
 
         return NextResponse.json({
