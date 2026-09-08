@@ -50,7 +50,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   const [tempMins, setTempMins] = React.useState(onCallState?.travel_time_mins || 30);
   const [expectedStart, setExpectedStart] = React.useState('');
   const [expectedEnd, setExpectedEnd] = React.useState('');
-  const [isFirstInQueue, setIsFirstInQueue] = React.useState(false);
+  /** Quầy chỉ định người trực nước hôm nay (nếu có) — ghi trong SystemConfigs. */
+  const [waterRefillerId, setWaterRefillerId] = React.useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = React.useState(false);
   // Cảnh báo "không đủ giờ, từ chối là bị khoá" — do API trả về, không tự đoán.
   const [lockWarning, setLockWarning] = React.useState<any>(null);
@@ -182,34 +183,37 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   }, [onCallState]);
 
   React.useEffect(() => {
-    const isIdle = (!booking || !booking.id);
-    if (!isIdle || !logic.ktvId) return;
+    if (!logic.ktvId) return;
 
-    const checkQueue = async () => {
+    const docChiDinh = async () => {
       try {
         const date = new Date().toISOString().split('T')[0];
-        const res = await apiClient.get<any>(`/api/turns?date=${date}`);
-        const configRes = await supabase.from('SystemConfigs').select('value').eq('key', 'daily_water_refiller').maybeSingle();
-        if (res.success && res.data) {
-          const sorted = [...res.data].sort((a: any, b: any) => {
-            if (a.turns_completed !== b.turns_completed) return a.turns_completed - b.turns_completed;
-            return (a.check_in_order || 999) - (b.check_in_order || 999);
-          });
-          const firstWaiting = sorted.find((t: any) => t.status === 'waiting');
-          
-          let waterId = firstWaiting?.employee_id;
-          if (configRes.data?.value && configRes.data.value.date === date && configRes.data.value.employeeId) {
-             waterId = configRes.data.value.employeeId;
-          }
-          setIsFirstInQueue(waterId === logic.ktvId);
-        }
-      } catch (e) {}
+        const { data } = await supabase.from('SystemConfigs').select('value').eq('key', 'daily_water_refiller').maybeSingle();
+        const v: any = data?.value;
+        setWaterRefillerId(v && v.date === date && v.employeeId ? String(v.employeeId) : null);
+      } catch (e) { /* không có chỉ định thì rơi về người đứng tua đầu */ }
     };
-    
-    checkQueue();
-    const interval = setInterval(checkQueue, 15000);
+
+    docChiDinh();
+    const interval = setInterval(docChiDinh, 60000);
     return () => clearInterval(interval);
-  }, [booking, logic.ktvId]);
+  }, [logic.ktvId]);
+
+  /**
+   * Nhắc châm nước chỉ dành cho người ĐỨNG TUA ĐẦU.
+   *
+   * ⚠️ Trước đây chỗ này tự sắp xếp lại một lần nữa: lấy TOÀN BỘ nhân sự trong
+   * `/api/turns`, xếp theo (turns_completed, check_in_order), rồi lấy người
+   * `waiting` đầu tiên. Trong khi ô "Thứ tự tua" ngay bên cạnh lại xếp riêng KTV
+   * Loại D theo GIỜ TÍCH LUỸ. Hai thước đo khác nhau trên cùng một ô — nên màn
+   * hình hiện "Thứ tự tua 2" mà vẫn nhắc "Bạn đang đứng tua đầu".
+   *
+   * Nay dùng đúng con số KTV đang nhìn thấy. Quầy chỉ định tay thì lời chỉ định
+   * đó vẫn thắng.
+   */
+  const isFirstInQueue = waterRefillerId
+    ? waterRefillerId === logic.ktvId
+    : logic.turnData?.myRank === 1;
 
   React.useEffect(() => {
     apiClient.get<any>(API.SYSTEM.CONFIG)
