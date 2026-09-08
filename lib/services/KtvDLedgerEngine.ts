@@ -29,6 +29,9 @@ const SETTLED_STATUSES = ['DONE', 'COMPLETED'];
 // ("Combo King" là NHS0800 → Phổ thông), và Settings cũng chỉ có 2 đơn giá.
 const VIP_PREFIXES = ['NHP', 'NHT', 'VIP'];
 
+/** Từ mốc sao này trở lên thì khách sinh ra một suất thưởng. */
+const BONUS_MIN_RATING = 4;
+
 export type RateCategory = 'VIP' | 'PT';
 export type RatingSource = 'GUEST_KTV' | 'GUEST' | 'ITEM_KTV' | 'ITEM' | 'BOOKING' | 'NONE';
 export type EntryStatus = 'OPEN' | 'FINAL';
@@ -43,6 +46,10 @@ export interface TypeDConfigs {
     taxRate: number;
     /** 'YYYY-MM-DD', hoặc null nếu chưa áp thuế */
     taxEffectiveFrom: string | null;
+    /** Cần gạt `enable_ktv_bonus_TYPE_D`. Tắt thì không dòng nào có thưởng. */
+    bonusEnabled: boolean;
+    /** Tiền thưởng cho MỘT khách chấm 4★, trước khi chia cho số KTV loại D. */
+    bonusPerGuest: number;
 }
 
 export interface EngineGuest {
@@ -108,6 +115,12 @@ export interface TurnRow {
     deduction_rate: number;
     commission_gross: number;
     commission_net: number;
+    /**
+     * Thưởng 4★ cộng vào tiền tua. Một suất mỗi KHÁCH, chia đều cho số KTV
+     * loại D phục vụ khách đó, và chỉ ghi trên ĐÚNG MỘT dòng của khách —
+     * ghi lên mọi dòng là tổng bị nhân lên theo số dịch vụ.
+     */
+    bonus_amount: number;
     tax_amount: number;
     tip: number;
 
@@ -267,6 +280,57 @@ export function computeMinutes(segs: any[]): {
     return { assigned, actual, paid, custom };
 }
 
+/**
+ * Cộng thưởng 4★ vào tiền tua, rồi mới tính thuế TNCN trên tổng.
+ *
+ * Chạy sau khi đã dựng xong mọi dòng của MỘT bill, vì thưởng tính THEO KHÁCH:
+ * một khách chấm 4★ sinh đúng một suất thưởng, chia đều cho số KTV loại D
+ * phục vụ khách đó — không phụ thuộc khách làm mấy dịch vụ.
+ *
+ * Suất thưởng ghi lên ĐÚNG MỘT dòng của mỗi (KTV, khách). Rải lên mọi dòng thì
+ * tổng theo ngày và theo tháng bị nhân lên theo số dịch vụ.
+ *
+ * ⚠️ Giữ nguyên luật loại trừ cũ: bill có bất kỳ KTV KHÔNG thuộc loại D thì cả
+ * bill mất thưởng. Đây là luật sẵn có của phần thưởng, chuyển vào tiền tua
+ * không phải lý do để nới nó ra.
+ */
+export function applyBonusAndTax(
+    bookingRows: TurnRow[],
+    hasOtherType: boolean,
+    workDate: string | null,
+    configs: TypeDConfigs
+): void {
+    const canBonus = configs.bonusEnabled && !hasOtherType && configs.bonusPerGuest > 0;
+
+    if (canBonus) {
+        // Mỗi khách có mấy KTV loại D? Đếm trên chính các dòng của bill này.
+        const staffPerGuest = new Map<string, Set<string>>();
+        for (const r of bookingRows) {
+            if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
+            const set = staffPerGuest.get(r.group_id) || new Set<string>();
+            set.add(r.staff_id);
+            staffPerGuest.set(r.group_id, set);
+        }
+
+        const paid = new Set<string>();
+        for (const r of bookingRows) {
+            if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
+            const key = `${r.staff_id}|${r.group_id}`;
+            if (paid.has(key)) continue;          // suất này đã ghi ở dòng trước
+            const dCount = staffPerGuest.get(r.group_id)?.size || 1;
+            r.bonus_amount = configs.bonusPerGuest / dCount;
+            paid.add(key);
+        }
+    }
+
+    // KHÔNG làm tròn — cùng lý do với commission_net: làm tròn ở một cấp là
+    // tổng theo khách / theo ngày / theo tháng lệch nhau.
+    const isTaxed = !!configs.taxEffectiveFrom && !!workDate && workDate >= configs.taxEffectiveFrom;
+    for (const r of bookingRows) {
+        r.tax_amount = isTaxed ? (r.commission_net + r.bonus_amount) * configs.taxRate : 0;
+    }
+}
+
 // ── Engine ──────────────────────────────────────────────────────────
 
 /**
@@ -289,6 +353,9 @@ export function computeRows(
     const rows: TurnRow[] = [];
 
     for (const booking of bookings) {
+        // Dòng của RIÊNG bill này. Thưởng 4★ tính theo khách nên phải gom đủ
+        // các dòng của bill mới biết mỗi khách có mấy KTV loại D phục vụ.
+        const bookingRows: TurnRow[] = [];
         const allItems = booking.BookingItems || [];
         if (allItems.length === 0) continue;
 
@@ -360,8 +427,6 @@ export function computeRows(
                 // Chính việc làm tròn là thứ đã khiến ví (tính trên tổng ngày) lệch
                 // với lịch sử (làm tròn từng đơn) — lỗi L5. Bỏ làm tròn thì lệch
                 // không còn khả năng xảy ra ở bất kỳ cấp cộng dồn nào.
-                const isTaxed = !!configs.taxEffectiveFrom && workDate >= configs.taxEffectiveFrom;
-                const tax = isTaxed ? net * configs.taxRate : 0;
 
                 const itemStatus = String(item.status);
                 const hasRating = rating > 0;
@@ -375,7 +440,7 @@ export function computeRows(
                 // Chỉ cần trong bill có MỘT KTV khác chế độ là mọi KTV loại D
                 // ở các đơn con đều mất thưởng — kể cả người phục vụ khách khác.
 
-                rows.push({
+                bookingRows.push({
                     staff_id: staffId,
                     booking_item_id: item.id,
                     booking_id: booking.id,
@@ -401,7 +466,9 @@ export function computeRows(
                     deduction_rate: deduction,
                     commission_gross: gross,
                     commission_net: net,
-                    tax_amount: tax,
+                    // Cả hai được điền ở bước hậu kỳ bên dưới.
+                    bonus_amount: 0,
+                    tax_amount: 0,
                     tip: Number(item.tip) || 0,
 
                     item_status: itemStatus,
@@ -418,6 +485,9 @@ export function computeRows(
                 });
             }
         }
+
+        applyBonusAndTax(bookingRows, hasOtherType, workDate, configs);
+        rows.push(...bookingRows);
     }
 
     return rows;

@@ -15,8 +15,9 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
-import { computeRows, TurnRow, TypeDConfigs, EngineService } from '../lib/services/KtvDLedgerEngine';
-import { getDayCutoffHours, businessDayRange } from '../lib/business-date';
+import { computeRows, TurnRow } from '../lib/services/KtvDLedgerEngine';
+import { loadContext } from '../lib/services/KtvDLedgerWriter';
+import { businessDayRange } from '../lib/business-date';
 
 function loadEnv(): Record<string, string> {
     const env: Record<string, string> = {};
@@ -37,40 +38,19 @@ async function main() {
     const env = loadEnv();
     const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
-    const cutoffHours = await getDayCutoffHours(sb as any);
-
-    const { data: cfgRows } = await sb.from('SystemConfigs').select('key, value');
-    const cfg: Record<string, any> = {};
-    (cfgRows || []).forEach((c: any) => {
-        let v = c.value;
-        if (typeof v === 'string') { try { v = JSON.parse(v); } catch { /* giữ nguyên */ } }
-        cfg[c.key] = v;
-    });
-
-    const taxFrom = String(cfg['ktv_type_d_tax_effective_from'] ?? '').replace(/"/g, '').trim();
-    const configs: TypeDConfigs = {
-        rateVIP: Number(cfg['ktv_type_d_vip_rate_per_60m']) || 180000,
-        ratePT: Number(cfg['ktv_type_d_pt_rate_per_60m']) || 100000,
-        ratingDeductions: cfg['ktv_type_d_rating_deduction'] || { '0': 0, '1': 0.75, '2': 0.5, '3': 0.25, '4': 0 },
-        cutoffHours,
-        taxRate: 0.1,
-        taxEffectiveFrom: taxFrom || null,
-    };
+    // Dùng CHUNG bộ nạp cấu hình với cửa ghi thật (KtvDLedgerWriter.loadContext).
+    //
+    // ⚠️ Trước đây file này chép lại y hệt đoạn dựng configs/services/staffIds.
+    // `scripts` bị loại khỏi tsconfig nên TypeScript không bắt được khi
+    // TypeDConfigs mọc thêm trường: backfill lặng lẽ chạy với cấu hình thiếu và
+    // ghi ra số khác hẳn cửa ghi thật. Đúng lúc thêm `bonusEnabled` /
+    // `bonusPerGuest` thì nó đã thiếu thật — backfill sẽ không cộng thưởng nào.
+    const { configs, services, staffIds } = await loadContext(sb as any);
+    const cutoffHours = configs.cutoffHours;
 
     console.log(`${dryRun ? '🔍 XEM TRƯỚC (không ghi)' : '✍️  GHI THẬT'}`);
     console.log(`Kỳ ${from} → ${to} | cutoff ${cutoffHours}h | VIP ${vnd(configs.rateVIP)} · PT ${vnd(configs.ratePT)}`);
     console.log(`Thuế áp từ: ${configs.taxEffectiveFrom || '(chưa áp)'}\n`);
-
-    const { data: staff } = await sb.from('Staff').select('id').eq('work_type', 'TYPE_D');
-    const staffIds = (staff || []).map((s: any) => s.id);
-
-    const { data: svc } = await sb.from('Services').select('id, code, nameVN, is_utility');
-    const services: Record<string, EngineService> = {};
-    (svc || []).forEach((s: any) => {
-        const e = { nameVN: s.nameVN, code: s.code, is_utility: !!s.is_utility };
-        if (s.id) services[String(s.id)] = e;
-        if (s.code) services[String(s.code)] = e;
-    });
 
     // Nới rộng cửa sổ fetch 1 ngày mỗi đầu: tua ca đêm của ngày `from` có
     // timeStart rơi sang ngày lịch kế tiếp.
@@ -119,19 +99,23 @@ async function main() {
     }
 
     // Tổng theo ngày để soi nhanh
-    const byDate: Record<string, { n: number; net: number; hours: number }> = {};
+    const byDate: Record<string, { n: number; net: number; bonus: number; tax: number; hours: number }> = {};
     for (const r of writable) {
-        const d = (byDate[r.work_date] ||= { n: 0, net: 0, hours: 0 });
-        d.n++; d.net += r.commission_net; d.hours += r.actual_minutes / 60;
+        const d = (byDate[r.work_date] ||= { n: 0, net: 0, bonus: 0, tax: 0, hours: 0 });
+        d.n++; d.net += r.commission_net; d.bonus += r.bonus_amount;
+        d.tax += r.tax_amount; d.hours += r.actual_minutes / 60;
     }
-    console.log('ngày          dòng   tiền tua        giờ tích lũy');
-    console.log('─'.repeat(52));
+    console.log('ngày          dòng   tiền tua        thưởng 4★          thuế      thực nhận      giờ');
+    console.log('─'.repeat(88));
     for (const [d, v] of Object.entries(byDate).sort()) {
-        console.log(`${d}   ${String(v.n).padStart(4)}   ${vnd(v.net).padStart(12)}   ${v.hours.toFixed(2).padStart(8)}h`);
+        console.log(`${d}   ${String(v.n).padStart(4)}   ${vnd(v.net).padStart(12)}   ${vnd(v.bonus).padStart(12)}   ${vnd(v.tax).padStart(11)}   ${vnd(v.net + v.bonus - v.tax).padStart(12)}   ${v.hours.toFixed(2).padStart(5)}h`);
     }
-    console.log('─'.repeat(52));
-    const total = writable.reduce((s, r) => s + r.commission_net, 0);
-    console.log(`TỔNG          ${String(writable.length).padStart(4)}   ${vnd(total).padStart(12)}\n`);
+    console.log('─'.repeat(88));
+    const t = writable.reduce((a, r) => ({
+        net: a.net + r.commission_net, bonus: a.bonus + r.bonus_amount, tax: a.tax + r.tax_amount,
+    }), { net: 0, bonus: 0, tax: 0 });
+    console.log(`TỔNG          ${String(writable.length).padStart(4)}   ${vnd(t.net).padStart(12)}   ${vnd(t.bonus).padStart(12)}   ${vnd(t.tax).padStart(11)}   ${vnd(t.net + t.bonus - t.tax).padStart(12)}
+`);
 
     if (dryRun) { console.log('🔍 Chế độ xem trước — chưa ghi gì vào database.'); return; }
 

@@ -54,6 +54,12 @@ export async function loadContext(supabase: SupabaseClient): Promise<LedgerConte
             cutoffHours,
             taxRate: 0.1,
             taxEffectiveFrom: taxFrom || null,
+            // Cùng hai khoá mà ví bonus cũ đang đọc — nay thưởng 4★ đi thẳng
+            // vào tiền tua nên engine phải là nơi duy nhất đọc chúng.
+            bonusEnabled: cfg['enable_ktv_bonus_TYPE_D'] === true
+                || String(cfg['enable_ktv_bonus_TYPE_D']).replace(/"/g, '') === 'true',
+            bonusPerGuest: (Number(cfg['ktv_type_d_bonus_points']) || 0)
+                * (Number(cfg['ktv_bonus_rate_TYPE_D']) || 0),
         },
         services,
         staffIds: (staff || []).map((s: any) => s.id),

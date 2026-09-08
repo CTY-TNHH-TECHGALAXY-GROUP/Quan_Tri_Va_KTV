@@ -244,9 +244,9 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
                     const guest = (b as any).BookingGuests?.find((g: any) => String(g.id) === String(gid));
                     const guestRating = guest?.rating ?? itemsOfGuest[0]?.itemRating ?? b.rating ?? 0;
 
-                    const typeDBonusVND = KtvTypeDBonusService.calculateBonusForTypeD(
-                        ktvWorkTypesInBill, guestRating, basePoints_D, pointRate_D);
-                    total_bonus += (typeDBonusVND / pointRate_D); // Điểm
+                    // ⚠️ KHÔNG ghi điểm thưởng cho loại D nữa. Thưởng 4★ nay là
+                    // một phần của TIỀN TUA (cột bonus_amount của KTVDTurnLedger).
+                    // Ghi thêm điểm ở đây là ví bonus trả lần hai cùng một suất.
                 }
             }
         }

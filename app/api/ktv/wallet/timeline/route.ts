@@ -150,13 +150,24 @@ export async function GET(request: Request) {
                         status: g.is_provisional ? 'PENDING' : 'APPROVED',
                     });
                 }
+                if (g.bonus_amount > 0) {
+                    timeline.push({
+                        id: `${g.key}_bonus`,
+                        type: 'GIFT',
+                        title: `Thưởng ${g.rating}★ đơn ${g.bill}`,
+                        amount: Math.round(g.bonus_amount),
+                        note: 'Cộng vào tiền tua',
+                        created_at: at,
+                        status: 'APPROVED',
+                    });
+                }
                 if (g.tax_amount > 0) {
                     timeline.push({
                         id: `${g.key}_tax`,
                         type: 'ADJUSTMENT',
                         title: `Thuế TNCN đơn ${g.bill}`,
                         amount: -Math.round(g.tax_amount),
-                        note: 'Khấu trừ 10%',
+                        note: 'Khấu trừ 10% trên tiền tua + thưởng',
                         created_at: at,
                         status: 'APPROVED',
                     });

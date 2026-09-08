@@ -24,6 +24,7 @@ npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa
 | `qa_05_skip_limit.ts` | #5 Giới hạn bỏ qua dọn phòng lần thứ 3 | Ghi rồi xoá (đơn `QA-SKIP-05`) |
 | `qa_06_feature_flags.ts` | #6 Bật/tắt riêng từng tính năng, không ảnh hưởng chéo | Chỉ đọc |
 | `qa_07_office_bonus_wallet.ts` | Ví Thu Nhập + Ví Điểm tính theo điểm Office | Chỉ đọc |
+| `qa_10_bonus_in_turn.ts` | Thưởng 4★ nằm trong tiền tua, thuế tính trên (tua + thưởng), không trả hai lần | Chỉ đọc |
 
 Kèm một script cấu hình (không phải kiểm thử):
 

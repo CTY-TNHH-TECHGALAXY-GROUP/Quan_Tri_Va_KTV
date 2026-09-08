@@ -1,6 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { KtvTypeDCommissionService } from './KtvTypeDCommissionService';
-import { KtvTypeDBonusService } from './KtvTypeDBonusService';
 
 /**
  * Dòng KHÔNG phải lệnh rút tiền thật:
@@ -40,150 +39,28 @@ export class KtvTypeDWalletService {
             }
         } catch (e) {}
 
-        const basePoints = Number(configs['ktv_type_d_bonus_points']) || 20;
-        const pointRate = Number(configs['ktv_bonus_rate_TYPE_D']) || 1000;
         const enableBonus = configs['enable_ktv_bonus_TYPE_D'] === true || configs['enable_ktv_bonus_TYPE_D'] === 'true';
         const minDeposit = Number(configs['ktv_deposit_amount_TYPE_D']) || 1000000;
 
         const nowVnDate = new Date(Date.now() + VN_OFFSET_MS);
         const todayStr = nowVnDate.toISOString().split('T')[0];
 
+        // Sổ cái ngày chỉ còn dùng để lấy TIỀN PHẠT.
+        //
+        // ⚠️ Trước đây chỗ này còn quy `total_bonus` (điểm) ra tiền rồi trừ 10%
+        // thuế riêng, đổ vào ví bonus. Nay thưởng 4★ nằm THẲNG trong tiền tua
+        // (KtvDLedgerEngine.applyBonusAndTax) — đọc lại ở đây là trả hai lần.
         const { data: ledgers } = await supabase
             .from('KTVDailyLedger')
-            .select('date, total_commission, total_tip, total_bonus, total_penalty')
+            .select('date, total_penalty')
             .eq('staff_id', staffId)
             .eq('work_type_snapshot', 'TYPE_D')
             .gte('date', GLOBAL_START_DATE_STR);
 
-        let realtimeStartStr = `${GLOBAL_START_DATE_STR}T00:00:00+07:00`;
-        const ledgerSummary = { comm: 0, tip: 0, bonus: 0, penalty: 0 };
-
-        if (ledgers && ledgers.length > 0) {
-            const pastLedgers = ledgers.filter((l: any) => l.date < todayStr);
-            if (pastLedgers.length > 0) {
-                let maxDateStr = pastLedgers[0].date;
-                pastLedgers.forEach((l: any) => {
-                    if (l.date > maxDateStr) maxDateStr = l.date;
-                    
-                    // ⚠️ CHỈ lấy THƯỞNG từ sổ cũ. Tiền tua, tip và thuế phần hoa
-                    // hồng nay đọc từ KTVDTurnLedger (xem bên dưới) — thưởng thì
-                    // chưa, vì thưởng tính theo KHÁCH nên không thuộc tầng đơn.
-                    let dayBonus = Number(l.total_bonus || 0) * pointRate;
-
-                    if (l.date >= taxEffectiveDate) {
-                        const taxBonus = dayBonus * 0.1;
-                        total_tax_deducted += taxBonus;
-                        dayBonus -= taxBonus;
-                    }
-
-                    ledgerSummary.bonus += dayBonus;
-                    ledgerSummary.penalty += Number(l.total_penalty || 0);
-                });
-
-                const lastDateMs = new Date(`${maxDateStr}T00:00:00+07:00`).getTime();
-                const nextDateVn = new Date(lastDateMs + 24 * 60 * 60 * 1000 + VN_OFFSET_MS);
-                const nextDateStr = nextDateVn.toISOString().split('T')[0];
-                realtimeStartStr = `${nextDateStr}T00:00:00+07:00`;
-            }
-        }
-
-        let allBookingItems: any[] = [];
-        let page = 0;
-        const pageSize = 1000;
-        while (true) {
-            const { data, error } = await supabase
-                .from('BookingItems')
-                .select(`
-                    id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment,
-                    Bookings!inner ( id, timeStart, status, billCode, createdAt, rating, BookingGuests(id, rating) )
-                `)
-                .contains('technicianCodes', [staffId])
-                .gte('Bookings.timeStart', realtimeStartStr)
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-                
-            if (error || !data || data.length === 0) break;
-            allBookingItems = allBookingItems.concat(data);
-            page++;
-        }
-
-        const bookingsMap: Record<string, any> = {};
-        allBookingItems.forEach(item => {
-            const b = item.Bookings;
-            if (!bookingsMap[b.id]) {
-                bookingsMap[b.id] = { ...b, BookingItems: [] };
-            }
-            const cleanItem = { ...item };
-            delete cleanItem.Bookings;
-            bookingsMap[b.id].BookingItems.push(cleanItem);
-        });
-        const allBookings = Object.values(bookingsMap);
-
-        const { data: services } = await supabase.from('Services').select('id, is_utility');
-        const svcIsUtilityMap: Record<string, boolean> = {};
-        (services || []).forEach((s: any) => { svcIsUtilityMap[String(s.id)] = !!s.is_utility; });
-
-        const allTechCodes = new Set<string>();
-        allBookings.forEach((b: any) => {
-            (b.BookingItems || []).forEach((i: any) => {
-                if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
-                    i.technicianCodes.forEach((tc: string) => allTechCodes.add(tc));
-                }
-            });
-        });
-        const { data: allTechData } = await supabase.from('Staff').select('id, work_type').in('id', Array.from(allTechCodes));
-        const techWorkTypeMap: Record<string, string> = {};
-        (allTechData || []).forEach((t: any) => { techWorkTypeMap[t.id.toLowerCase()] = t.work_type; });
-
-        let rt_bonus = 0;
-
-        for (const b of allBookings) {
-            const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
-                i.technicianCodes && Array.isArray(i.technicianCodes) &&
-                i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(staffId.toLowerCase())) &&
-                ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'].includes(i.status)
-            );
-
-            let relevantItems = relevantItemsOriginal.filter((i: any) => !svcIsUtilityMap[String(i.serviceId)]);
-            if (relevantItems.length === 0 && relevantItemsOriginal.length > 0) {
-                relevantItems = relevantItemsOriginal;
-            }
-
-            if (relevantItems.length === 0) continue;
-
-            // Vòng lặp này giờ CHỈ tính THƯỞNG. Tiền tua và tip đọc từ
-            // KTVDTurnLedger để khớp tuyệt đối với lịch sử.
-            // Thưởng tính THEO KHÁCH, không theo bill.
-            // ⚠️ Trước đây gom work_type của TẤT CẢ KTV trong bill, nên một KTV
-            // loại khác phục vụ KHÁCH KHÁC trong cùng bill cũng làm KTV loại D
-            // mất thưởng dù hai người không làm chung khách.
-            if (enableBonus) {
-                // ⚠️ Điều kiện LOẠI TRỪ xét trên TOÀN ĐƠN CHA.
-                const ktvWorkTypesInBill: string[] = [];
-                (b.BookingItems || []).forEach((i: any) => {
-                    (i.technicianCodes || []).forEach((tc: string) => {
-                        ktvWorkTypesInBill.push(techWorkTypeMap[tc.toLowerCase()] || 'TYPE_A');
-                    });
-                });
-
-                // SAO vẫn theo từng KHÁCH — mỗi khách một suất thưởng.
-                const guestIds = [...new Set(relevantItems.map((i: any) => i.guest_id ?? null))];
-                for (const gid of guestIds) {
-                    const itemsOfGuest = (b.BookingItems || []).filter((i: any) =>
-                        gid === null ? true : String(i.guest_id) === String(gid));
-                    const guest = (b as any).BookingGuests?.find((g: any) => String(g.id) === String(gid));
-                    const guestRating = guest?.rating ?? itemsOfGuest[0]?.itemRating ?? b.rating ?? 0;
-
-                    rt_bonus += KtvTypeDBonusService.calculateBonusForTypeD(
-                        ktvWorkTypesInBill, guestRating, basePoints, pointRate);
-                }
-            }
-        }
-
-        if (todayStr >= taxEffectiveDate) {
-            const rtTaxBonus = rt_bonus * 0.1;
-            total_tax_deducted += rtTaxBonus;
-            rt_bonus -= rtTaxBonus;
-        }
+        const ledgerSummary = { penalty: 0 };
+        (ledgers || [])
+            .filter((l: any) => l.date < todayStr)
+            .forEach((l: any) => { ledgerSummary.penalty += Number(l.total_penalty || 0); });
 
         const { data: adjustments } = await supabase
             .from('WalletAdjustments')
@@ -237,9 +114,12 @@ export class KtvTypeDWalletService {
 
         total_tax_deducted += turnTotals.tax_amount;
 
-        const total_commission = turnTotals.take_home;   // đã trừ thuế
+        const total_commission = turnTotals.take_home;   // = tua + thưởng 4★ − thuế
         const total_tip = turnTotals.tip;
-        const total_bonus = ledgerSummary.bonus + rt_bonus;
+        // Thưởng 4★ nay nằm trong `turnTotals.take_home` (cột bonus_amount của
+        // sổ cái tua), không còn là ví riêng. Giữ trường này để giao diện cũ
+        // không vỡ, nhưng nó luôn bằng 0 với loại D.
+        const total_bonus = 0;
         const total_penalty = 0; 
 
         const gross_income = total_commission + total_adjustment;

@@ -61,6 +61,7 @@ function normalize(r: any): TurnRowDb {
         deduction_rate: num(r.deduction_rate),
         commission_gross: num(r.commission_gross),
         commission_net: num(r.commission_net),
+        bonus_amount: num(r.bonus_amount),
         tax_amount: num(r.tax_amount),
         tip: num(r.tip),
         co_workers: r.co_workers || [],
@@ -126,10 +127,12 @@ export async function getPenalties(
 export interface StaffTotals {
     /** Tiền tua sau trừ sao, TRƯỚC thuế. */
     commission_net: number;
+    /** Thưởng 4★ đã cộng vào tiền tua (xem KtvDLedgerEngine.applyBonusAndTax). */
+    bonus_amount: number;
     /** Thuế TNCN — cộng từ cột tax_amount của từng dòng, nên ví và lịch sử
      *  không bao giờ lệch nhau vì làm tròn (lỗi L5 cũ). */
     tax_amount: number;
-    /** Thực nhận = commission_net − tax_amount. */
+    /** Thực nhận = commission_net + bonus_amount − tax_amount. */
     take_home: number;
     tip: number;
     /** Giờ tích lũy (dùng actual_minutes, đã chặn tại giờ gán). */
@@ -138,13 +141,14 @@ export interface StaffTotals {
 }
 
 const emptyTotals = (): StaffTotals => ({
-    commission_net: 0, tax_amount: 0, take_home: 0, tip: 0, hours: 0, turns: 0,
+    commission_net: 0, bonus_amount: 0, tax_amount: 0, take_home: 0, tip: 0, hours: 0, turns: 0,
 });
 
 function add(t: StaffTotals, r: TurnRow): void {
     t.commission_net += r.commission_net;
+    t.bonus_amount += r.bonus_amount;
     t.tax_amount += r.tax_amount;
-    t.take_home += r.commission_net - r.tax_amount;
+    t.take_home += r.commission_net + r.bonus_amount - r.tax_amount;
     t.tip += r.tip;
     t.hours += r.actual_minutes / 60;
     t.turns += 1;
@@ -214,6 +218,7 @@ export interface HistoryGroup {
     deduction_rate: number;
     commission_gross: number;
     commission_net: number;
+    bonus_amount: number;
     tax_amount: number;
     take_home: number;
     tip: number;
@@ -240,7 +245,7 @@ export function groupForHistory(rows: TurnRow[]): HistoryGroup[] {
                 assigned_minutes: 0, actual_minutes: 0, paid_minutes: 0,
                 rating: r.rating_used,
                 deduction_rate: r.deduction_rate,
-                commission_gross: 0, commission_net: 0, tax_amount: 0, take_home: 0, tip: 0,
+                commission_gross: 0, commission_net: 0, bonus_amount: 0, tax_amount: 0, take_home: 0, tip: 0,
                 is_provisional: false,
                 handover_status: r.handover_status,
                 co_workers: [],
@@ -254,8 +259,9 @@ export function groupForHistory(rows: TurnRow[]): HistoryGroup[] {
         g.paid_minutes += r.paid_minutes;
         g.commission_gross += r.commission_gross;
         g.commission_net += r.commission_net;
+        g.bonus_amount += r.bonus_amount;
         g.tax_amount += r.tax_amount;
-        g.take_home += r.commission_net - r.tax_amount;
+        g.take_home += r.commission_net + r.bonus_amount - r.tax_amount;
         g.tip += r.tip;
         // Cả nhóm chỉ cần một dòng chưa chốt là cả nhóm tạm tính.
         g.is_provisional = g.is_provisional || r.is_provisional;
