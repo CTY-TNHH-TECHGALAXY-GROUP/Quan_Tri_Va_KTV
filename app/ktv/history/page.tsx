@@ -7,16 +7,24 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, History, Clock, Star, TrendingUp,
   Gift, CalendarDays, ChevronRight, ChevronDown,
-  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X
+  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X, ListTree
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { useKTVHistory, HistoryRecord } from './KTVHistory.logic';
+import { useKTVHistory, useKtvHoursLedger, HistoryRecord } from './KTVHistory.logic';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
 import { HistoryCalendar } from './_components/HistoryCalendar';
+import { HoursLedgerSheet } from '@/components/shared/HoursLedgerSheet';
+import { fmtHours } from '@/lib/hours-format';
+
+/** 'YYYY-MM' -> '09/2026'. */
+const fmtMonthLabel = (m: string) => {
+  const [y, mm] = m.split('-');
+  return y && mm ? `${mm}/${y}` : m;
+};
 
 // 🔧 UI CONFIGURATION
 const RATING_CONFIG: Record<number, { label: string; color: string; bg: string }> = {
@@ -429,6 +437,11 @@ export default function KTVHistoryPage() {
     refetch,
   } = useKTVHistory();
 
+  // Sổ giờ tích luỹ — chỉ KTV Loại D mới có, và quản lý có thể tắt.
+  const hours = useKtvHoursLedger(selectedDates);
+  const showHoursTile = hours.applicable && hours.enabled;
+  const monthLabel = hours.months.map(fmtMonthLabel).join(' · ');
+
   React.useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
 
@@ -476,6 +489,35 @@ export default function KTVHistoryPage() {
               )}
           </AnimatePresence>
 
+          <div className={`grid gap-2 ${showHoursTile ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+            <div className="bg-indigo-600 text-white rounded-2xl px-2 py-3 shadow-lg shadow-indigo-100 flex flex-col justify-between">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Thu nhập</p>
+              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalGross || 0).toLocaleString('vi-VN')}đ</p>
+            </div>
+            <div className="bg-emerald-500 text-white rounded-2xl px-2 py-3 shadow-lg shadow-emerald-100 flex flex-col justify-between">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-100">Thực nhận</p>
+              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalNet || 0).toLocaleString('vi-VN')}đ</p>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-2xl px-2 py-3 shadow-sm flex flex-col justify-between items-center text-center">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Đơn</p>
+              <p className="text-base font-black text-gray-900 tabular-nums mt-0.5">{summary.totalOrders}</p>
+            </div>
+            {showHoursTile && (
+              <button
+                onClick={() => setShowHours(true)}
+                className="bg-white border border-gray-100 rounded-2xl px-2 py-3 shadow-sm flex flex-col justify-between items-center text-center active:scale-95 transition-transform"
+              >
+                <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Giờ tích luỹ</p>
+                <p className="text-sm font-black text-indigo-600 tabular-nums mt-0.5">
+                  {hours.isLoading ? '…' : fmtHours(hours.totals.net)}
+                </p>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-0.5">
+                  <ListTree size={9} /> Chi tiết
+                </span>
+              </button>
+            )}
+          </div>
+
           {/* Order List */}
           <div className="space-y-2.5">
             {isLoading ? (
@@ -498,6 +540,24 @@ export default function KTVHistoryPage() {
           </div>
         </div>
       </PullToRefresh>
+
+      {showHours && showHoursTile && (
+        <HoursLedgerSheet
+          subtitle={`${selectedDates.length} ngày đã chọn · Tháng ${monthLabel}`}
+          earned={hours.totals.earned}
+          penalty={hours.totals.penalty}
+          net={hours.totals.net}
+          rows={hours.rows}
+          note={<>
+            Cả tháng {monthLabel}: làm thực <b className="text-slate-600">{fmtHours(hours.monthTotals.earned)}</b> ·
+            bị phạt <b className="text-slate-600">{fmtHours(hours.monthTotals.penalty)}</b> ·
+            thực nhận <b className="text-slate-600">{fmtHours(hours.monthTotals.net)}</b>.
+            Cột &ldquo;Còn&rdquo; ở mỗi dòng là số dư dồn của cả tháng, không phải của riêng mấy ngày đang chọn.
+          </>}
+          emptyText="Những ngày bạn chọn chưa có tua nào được ghi sổ."
+          onClose={() => setShowHours(false)}
+        />
+      )}
     </AppLayout>
   );
 }

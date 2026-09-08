@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { format, subDays } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
@@ -142,5 +142,105 @@ export const useKTVHistory = () => {
     summary,
     getStatusLabel,
     refetch: () => fetchHistory(selectedDates),
+  };
+};
+
+// ─── Sổ giờ tích luỹ (KTV Loại D) ─────────────────────────────────────────────
+
+/** Một dòng trong sổ giờ — cùng hình dạng với sổ giờ ở trang Xếp Hạng Giờ. */
+export interface HoursLedgerRow {
+  id: string;
+  date: string;
+  earned: number;
+  penalty: number;
+  /** Số dư dồn của CẢ THÁNG tính tới dòng này, không phải của khoảng đang chọn. */
+  balance: number;
+  note: string | null;
+  at: string | null;
+  /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
+  penaltyLabel: string | null;
+  orderCode: string | null;
+}
+
+/** 'YYYY-MM-DD' → 'YYYY-MM'. */
+const monthOf = (date: string) => date.slice(0, 7);
+
+/**
+ * Giờ tích luỹ của chính KTV, lọc theo đúng những ngày đang chọn ở trang Lịch Sử.
+ *
+ * Server trả sổ giờ theo THÁNG (cùng hàm với trang Xếp Hạng và màn Office của quầy,
+ * để ba nơi không ra số khác nhau), còn trang này chọn ngày lẻ — nên lọc ở client
+ * theo `selectedDates`. Chỉ gọi lại API khi tập THÁNG đổi: bấm thêm/bớt vài ngày
+ * trong cùng một tháng thì dùng luôn dữ liệu đã có.
+ */
+export const useKtvHoursLedger = (selectedDates: string[]) => {
+  const { user } = useAuth();
+
+  const [rows, setRows] = useState<HoursLedgerRow[]>([]);
+  const [monthTotals, setMonthTotals] = useState({ earned: 0, penalty: 0, net: 0 });
+  const [applicable, setApplicable] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Tập tháng cần tải — chuỗi ổn định để useEffect không chạy lại vì mảng mới.
+  const monthsKey = useMemo(
+    () => Array.from(new Set(selectedDates.map(monthOf))).sort().join(','),
+    [selectedDates]
+  );
+
+  const fetchLedger = useCallback(async () => {
+    if (!user?.id || !monthsKey) return;
+    setIsLoading(true);
+    try {
+      const months = monthsKey.split(',');
+      const results = await Promise.all(
+        months.map(m => apiClient.get<any>(`/api/ktv/hours-ledger?month=${m}`, { timeout: 20000 }))
+      );
+
+      setApplicable(results.every(r => r?.applicable !== false));
+      setEnabled(results.every(r => r?.enabled !== false));
+
+      // Mỗi tháng server đã trả mới-nhất-trước; ghép nhiều tháng thì xếp lại theo
+      // ngày giảm dần (sort của JS ổn định nên thứ tự trong cùng ngày giữ nguyên).
+      const merged: HoursLedgerRow[] = results
+        .flatMap(r => (r?.rows || []) as HoursLedgerRow[])
+        .sort((a, b) => b.date.localeCompare(a.date));
+      setRows(merged);
+
+      setMonthTotals({
+        earned: results.reduce((s, r) => s + (r?.monthEarned || 0), 0),
+        penalty: results.reduce((s, r) => s + (r?.monthPenalty || 0), 0),
+        net: results.reduce((s, r) => s + (r?.monthNet || 0), 0),
+      });
+    } catch (err: any) {
+      console.error('[KTVHoursLedger]', err?.message || err);
+      setRows([]);
+      setMonthTotals({ earned: 0, penalty: 0, net: 0 });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id, monthsKey]);
+
+  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+
+  /** Chỉ những dòng rơi đúng vào các ngày đang chọn. */
+  const rangeRows = useMemo(() => {
+    const picked = new Set(selectedDates);
+    return rows.filter(r => picked.has(r.date));
+  }, [rows, selectedDates]);
+
+  const rangeTotals = useMemo(() => {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const earned = rangeRows.reduce((s, r) => s + (r.earned || 0), 0);
+    const penalty = rangeRows.reduce((s, r) => s + (r.penalty || 0), 0);
+    return { earned: r2(earned), penalty: r2(penalty), net: r2(earned - penalty) };
+  }, [rangeRows]);
+
+  const months = useMemo(() => (monthsKey ? monthsKey.split(',') : []), [monthsKey]);
+
+  return {
+    applicable, enabled, isLoading,
+    rows: rangeRows, totals: rangeTotals, monthTotals, months,
+    refetch: fetchLedger,
   };
 };
