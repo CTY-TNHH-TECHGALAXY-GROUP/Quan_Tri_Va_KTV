@@ -6,6 +6,7 @@ import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { fmtHours } from '@/lib/hours-format';
 
 // 🔧 UI CONFIGURATION
 const CSS_VARS = {
@@ -494,15 +495,6 @@ const AdminKtvOfficePage = () => {
   const fmtDate = (iso: string) => {
     try { return new Date(iso + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }); }
     catch { return iso; }
-  };
-  /** Giờ thập phân → "18h 30P" cho dễ đọc, khớp với bảng điều phối. */
-  const fmtHours = (h: number) => {
-    const total = Number(h) || 0;
-    const sign = total < 0 ? '−' : '';
-    const abs = Math.abs(total);
-    const hh = Math.floor(abs);
-    const mm = Math.round((abs - hh) * 60);
-    return `${sign}${hh}h ${String(mm).padStart(2, '0')}P`;
   };
 
   return (

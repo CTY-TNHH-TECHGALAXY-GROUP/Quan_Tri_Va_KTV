@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
 import { useTurnQueueBoard } from './TurnQueueBoard.logic';
 import { getVnTimeStr } from '@/lib/time-helper';
+import { fmtHours } from '@/lib/hours-format';
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
@@ -160,12 +161,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         {/* Type D: hiện giờ tích lũy thay vì số tua */}
                         {isTypeD ? (
                             <span className="text-[10px] px-1.5 py-0.5 rounded font-bold border bg-purple-50 text-purple-600 border-purple-100">
-                                {(() => {
-                                    const totalHours = turn.net_hours || 0;
-                                    const h = Math.floor(totalHours);
-                                    const m = Math.round((totalHours - h) * 60);
-                                    return `${h}h ${m.toString().padStart(2, '0')}P`;
-                                })()}
+                                {fmtHours(turn.net_hours || 0)}
                             </span>
                         ) : (
                             (turn.turns_completed > 0 || allowEditTurns) && (

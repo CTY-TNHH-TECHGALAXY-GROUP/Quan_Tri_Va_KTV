@@ -5,6 +5,7 @@ import { Printer, X, ChevronDown, ChevronUp, Plus, Clock, AlertCircle, CheckCirc
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { fmtHours } from '@/lib/hours-format';
 
 // 🛠 UI CONFIGURATION
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
@@ -1414,12 +1415,7 @@ const ServiceGroupCard = ({
                       <div className="flex items-center gap-2">
                         {isTypeD ? (
                           <span className="text-[10px] bg-purple-100 px-1.5 py-0.5 rounded-md font-black text-purple-700 border border-purple-200" title="Giờ làm trong tháng">
-                            {(() => {
-                                const totalHours = turn.net_hours || 0;
-                                const h = Math.floor(totalHours);
-                                const m = Math.round((totalHours - h) * 60);
-                                return `${h}h ${m.toString().padStart(2, '0')}P`;
-                            })()}
+                            fmtHours(turn.net_hours || 0)
                           </span>
                         ) : (
                           <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
