@@ -399,13 +399,78 @@ export function ScreenDashboard({ logic }: { logic: any }) {
           </div>
         </div>
       
-      {(!booking || !booking.id) ? (
+      {(!booking || !booking.id || needsAcceptance) ? (
         <div className="space-y-4">
           
           {/* ─── HERO SECTION (ALERTS) ─── */}
           
-          {/* 1. Có Đơn Mới (Highest Priority) */}
-          {logic.booking?.nextBookingId ? (
+          {/* 1. Đơn vừa điều phối — phải xác nhận trước khi xem chi tiết.
+              Trước đây khối này thay TRỌN màn hình, nuốt mất Thứ tự tua, Điểm
+              hôm nay, Quy chế, Mã QR — KTV đang xem dở thì bị cắt ngang, muốn
+              coi lại điểm phải xử lý xong đơn. Nay nó nằm đúng ô "Đang chờ điều
+              phối", phần còn lại của trang giữ nguyên. */}
+          {needsAcceptance ? (
+            /* ─── CHẶN: đơn vừa điều phối, phải xác nhận nhận hay từ chối đã ─── */
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              className="p-6 rounded-[32px] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)]"
+            >
+              <div className="flex flex-col gap-4">
+                {/* Tên dịch vụ + thời lượng là thứ KTV cần đọc trước tiên để biết
+                    mình sắp làm gì và trong bao lâu. Mã đơn chỉ để đối chiếu với quầy. */}
+                <div className="min-w-0">
+                  <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
+                    {item?.service_name || 'Dịch vụ'}
+                  </p>
+                  {item?.duration && (
+                    <p className="mt-2 inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1 text-sm font-black">
+                      <Clock size={14} strokeWidth={3} /> {item.duration} phút
+                    </p>
+                  )}
+                  {booking.billCode && (
+                    <p className="text-[11px] font-bold text-slate-400 mt-1.5">Đơn {booking.billCode}</p>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Phòng</p>
+                    <p className="font-black text-slate-800">{currentSeg?.roomId || booking.assignedRoomId || booking.roomName || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Giường</p>
+                    <p className="font-black text-slate-800">
+                      {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
+                        ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nhận là hành động chính nên nằm bên phải, chiếm 2 phần. */}
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => setShowRejectModal(true)}
+                    disabled={isAccepting}
+                    className="py-4 bg-rose-50 border border-rose-100 text-rose-600 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all disabled:opacity-60"
+                  >
+                    TỪ CHỐI
+                  </button>
+                  <button
+                    onClick={handleAcceptOrder}
+                    disabled={isAccepting}
+                    className="col-span-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-md shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <Check size={16} strokeWidth={3} />
+                    {isAccepting ? 'ĐANG BÁO…' : 'NHẬN ĐƠN'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 text-center font-medium">
+                  Xác nhận xong mới xem được chi tiết đơn và bắt đầu tua.
+                </p>
+              </div>
+            </motion.div>
+          ) : logic.booking?.nextBookingId ? (
             <motion.div 
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               className="p-6 rounded-[32px] bg-gradient-to-br from-emerald-500 to-teal-600 shadow-xl shadow-emerald-200/50 relative overflow-hidden"
@@ -635,67 +700,6 @@ export function ScreenDashboard({ logic }: { logic: any }) {
           </AnimatePresence>
 
         </div>
-      ) : needsAcceptance ? (
-        /* ─── CHẶN: đơn vừa điều phối, phải xác nhận nhận hay từ chối đã ─── */
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="p-6 rounded-[32px] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)]"
-        >
-          <div className="flex flex-col gap-4">
-            {/* Tên dịch vụ + thời lượng là thứ KTV cần đọc trước tiên để biết
-                mình sắp làm gì và trong bao lâu. Mã đơn chỉ để đối chiếu với quầy. */}
-            <div className="min-w-0">
-              <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
-                {item?.service_name || 'Dịch vụ'}
-              </p>
-              {item?.duration && (
-                <p className="mt-2 inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1 text-sm font-black">
-                  <Clock size={14} strokeWidth={3} /> {item.duration} phút
-                </p>
-              )}
-              {booking.billCode && (
-                <p className="text-[11px] font-bold text-slate-400 mt-1.5">Đơn {booking.billCode}</p>
-              )}
-            </div>
-
-            <div className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Phòng</p>
-                <p className="font-black text-slate-800">{currentSeg?.roomId || booking.assignedRoomId || booking.roomName || '—'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Giường</p>
-                <p className="font-black text-slate-800">
-                  {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
-                    ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
-                    : '—'}
-                </p>
-              </div>
-            </div>
-
-            {/* Nhận là hành động chính nên nằm bên phải, chiếm 2 phần. */}
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => setShowRejectModal(true)}
-                disabled={isAccepting}
-                className="py-4 bg-rose-50 border border-rose-100 text-rose-600 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all disabled:opacity-60"
-              >
-                TỪ CHỐI
-              </button>
-              <button
-                onClick={handleAcceptOrder}
-                disabled={isAccepting}
-                className="col-span-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-md shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                <Check size={16} strokeWidth={3} />
-                {isAccepting ? 'ĐANG BÁO…' : 'NHẬN ĐƠN'}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-400 text-center font-medium">
-              Xác nhận xong mới xem được chi tiết đơn và bắt đầu tua.
-            </p>
-          </div>
-        </motion.div>
       ) : (
         <div className="space-y-6">
           {/* Active Booking Card - ONLY SHOW ASSIGNED ITEM */}
