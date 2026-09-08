@@ -18,7 +18,6 @@ export interface CommissionConfig {
     milestones: Record<string, number>;
     ratePer60: number;
     minDeposit: number;
-    isPenaltyEnabled: boolean;
     isBonusWalletEnabled: boolean;
     fixedOrderBonus?: number;
 }
@@ -45,9 +44,6 @@ export class KtvCommissionService {
             `ktv_deposit_amount${typeSuffix}`,
             `ktv_deposit_amount`,
             `ktv_min_deposit`, // Legacy
-            `ktv_sudden_off_penalty${typeSuffix}`,
-            `ktv_sudden_off_penalty`,
-            `enable_ktv_penalty`, // Legacy
             `ktv_instant_reward_enabled${typeSuffix}`,
             `ktv_instant_reward_enabled`,
             `enable_bonus_wallet`, // Legacy
@@ -108,14 +104,17 @@ export class KtvCommissionService {
             if (rawDeposit) minDeposit = Number(rawDeposit);
         }
 
-        // Penalty
-        let penaltyAmount = 50000;
-        let penaltyKey = configMap[`ktv_sudden_off_penalty${typeSuffix}`] !== undefined ? `ktv_sudden_off_penalty${typeSuffix}` 
-                         : configMap['ktv_sudden_off_penalty'] !== undefined ? 'ktv_sudden_off_penalty' : null;
-        if (penaltyKey && configMap[penaltyKey] !== undefined) {
-             penaltyAmount = Number(configMap[penaltyKey]) || 50000;
-        }
-        const isPenaltyEnabled = penaltyAmount > 0 || configMap['enable_ktv_penalty'] === 'true'; // Nếu phạt > 0 thì bật
+        // ⚠️ Đã gỡ `isPenaltyEnabled` / `enable_ktv_penalty`.
+        //
+        // Nó là công tắc GIẢ ở hai tầng: (1) công thức cũ là
+        // `penaltyAmount > 0 || cờ === 'true'` nên hễ có mức tiền phạt là bật,
+        // gạt cờ không đổi được gì; (2) không nơi nào trong dự án đọc kết quả đó
+        // — grep cả app/ lẫn lib/ chỉ thấy chính chỗ khai báo. Giữ lại chỉ để
+        // người sau tưởng có thể tắt phạt bằng cờ này.
+        //
+        // Muốn TẮT phạt nghỉ đột xuất thì dùng hai đường đang chạy thật:
+        //   · đặt `ktv_sudden_off_penalty[_TYPE_x]` = 0  (tắt cả loại)
+        //   · gạt cờ `sudden_leave_penalty` của từng KTV  (tắt riêng một người)
 
         // Instant Reward (Bonus Wallet)
         let instantRewardKey = configMap[`ktv_instant_reward_enabled${typeSuffix}`] !== undefined ? `ktv_instant_reward_enabled${typeSuffix}` 
@@ -128,7 +127,7 @@ export class KtvCommissionService {
             fixedOrderBonus = Number(configMap['ktv_type_b_fixed_order_bonus']) || 20000;
         }
 
-        return { milestones, ratePer60, minDeposit, isPenaltyEnabled, isBonusWalletEnabled, fixedOrderBonus };
+        return { milestones, ratePer60, minDeposit, isBonusWalletEnabled, fixedOrderBonus };
     }
 
     /**
