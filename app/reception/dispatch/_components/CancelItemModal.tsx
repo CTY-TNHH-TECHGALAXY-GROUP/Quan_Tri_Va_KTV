@@ -20,6 +20,7 @@ export default function CancelItemModal({
     customerName,
     workedMinutes,
     wholeBooking,
+    canhBao,
 }: {
     isOpen: boolean;
     onClose: () => void;
@@ -29,6 +30,8 @@ export default function CancelItemModal({
     workedMinutes?: number | null;
     /** true = huỷ cả bill, false/undefined = chỉ huỷ đơn con của một KTV. */
     wholeBooking?: boolean;
+    /** Cảnh báo khi thao tác đi ngược với những gì KTV đã bấm báo. */
+    canhBao?: string | null;
 }) {
     const [reason, setReason] = useState('');
     const [credit, setCredit] = useState(false);
@@ -84,6 +87,13 @@ export default function CancelItemModal({
                                 ? 'Huỷ TẤT CẢ dịch vụ chưa hoàn tất của bill này, mọi khách trong bill đều bị huỷ.'
                                 : 'Chỉ huỷ đơn con này, các khách khác trong cùng bill không bị ảnh hưởng.'}
                         </p>
+
+                        {canhBao && (
+                            <div className="mt-4 flex gap-2 p-3 bg-rose-50 border-2 border-rose-300 text-rose-800 rounded-xl text-xs font-bold leading-snug">
+                                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                <span>{canhBao}</span>
+                            </div>
+                        )}
 
                         <div className="mt-5">
                             <label className="block text-sm font-bold text-gray-700 mb-2">Lý do huỷ</label>

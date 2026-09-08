@@ -6,6 +6,7 @@ import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
+import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
@@ -2250,5 +2251,37 @@ export async function submitGuestRating(guestId: string, rating: number, feedbac
     } catch (error) {
         console.error("❌ [Server] submitGuestRating error:", error);
         return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+
+/**
+ * Quầy sắp bấm Kết thúc sớm / Huỷ — KTV có bấm báo gì không?
+ *
+ * Hai nút cho kết quả tiền NGƯỢC NHAU, mà thứ phân biệt là KTV có báo hay
+ * không. Trả về câu cảnh báo khi thao tác đi ngược với dữ liệu, để quầy còn
+ * kịp dừng lại. Xem lib/ktv-notify-check.ts.
+ */
+export async function kiemTraTruocKhiChot(bookingId: string, thaoTac: 'FINISH_EARLY' | 'CANCEL') {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) return { success: true, canhBao: null as string | null };
+
+        // KTV có thể đã bấm trên đơn cha hoặc đơn con — soi cả nhà.
+        const { data: bk } = await supabase
+            .from('Bookings').select('parent_booking_id').eq('id', bookingId).maybeSingle();
+        const parentId = (bk as any)?.parent_booking_id || bookingId;
+        const { data: con } = await supabase
+            .from('Bookings').select('id').eq('parent_booking_id', parentId);
+
+        const ids = Array.from(new Set([parentId, bookingId, ...(con || []).map((b: any) => b.id)]));
+        const tt = await layTrangThaiBaoCuaKtv(supabase, ids);
+
+        return { success: true, canhBao: canhBaoLechKichBan(thaoTac, tt), trangThai: tt };
+    } catch (e: any) {
+        // Cảnh báo hỏng thì thôi, đừng chặn thao tác của quầy.
+        console.error('[kiemTraTruocKhiChot]', e?.message || e);
+        return { success: true, canhBao: null as string | null };
     }
 }

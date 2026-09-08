@@ -8,6 +8,7 @@ import { computeMinutes } from '../lib/services/KtvDLedgerEngine';
 import { KtvTypeDTurnService } from '../lib/services/KtvTypeDTurnService';
 import { KtvCommissionService } from '../lib/services/KtvCommissionService';
 import { pausedMsOf, workedMsOf, expectedEndMs, endedByCounter, scenarioOf } from '../lib/segment-time';
+import { canhBaoLechKichBan } from '../lib/ktv-notify-check';
 
 const T = (m: number) => new Date(Date.UTC(2026, 8, 6, 10, m, 0)).toISOString();
 const item = (segs: any[]) => ({ segments: JSON.stringify(segs) });
@@ -92,6 +93,17 @@ check('kich ban huy mat trang', scenarioOf({ status: 'CANCELLED', options: {}, s
 check('kich ban huy co cong gio', scenarioOf({ status: 'CANCELLED', options: { cancelCredit: 'WORKED' }, segments: [huyCoCongGio] }).scenario, 'C3_HUY_CO_CONG_GIO');
 check('kich ban ra som', scenarioOf({ status: 'DONE', options: { earlyLeave: true }, segments: [ketThucSom] }).scenario, 'B_RA_SOM');
 check('kich ban doi KTV', scenarioOf({ status: 'IN_PROGRESS', options: {}, segments: [doiKtv] }).scenario, 'C2_DOI_KTV');
+
+// ── 10. Chốt chặn bấm nhầm Kết thúc / Huỷ ─────────────────────────────────
+// Kết thúc = KTV CÓ tiền có giờ; Huỷ = MẤT sạch. Phân biệt bằng việc KTV có
+// bấm báo hay không, nên thao tác đi ngược dữ liệu thì phải cảnh báo.
+const coBao = { daBao: true, loai: 'EARLY_EXIT' };
+const khongBao = { daBao: false };
+
+check('ket thuc · KTV CHUA bao -> canh bao', canhBaoLechKichBan('FINISH_EARLY', khongBao) !== null, true);
+check('ket thuc · KTV DA bao   -> khong canh bao', canhBaoLechKichBan('FINISH_EARLY', coBao), null);
+check('huy · KTV DA bao        -> canh bao', canhBaoLechKichBan('CANCEL', coBao) !== null, true);
+check('huy · KTV CHUA bao      -> khong canh bao', canhBaoLechKichBan('CANCEL', khongBao), null);
 
 console.log(ok.join('\n'));
 console.log(`\n✅ ${ok.length}/${ok.length} phép thử đạt.`);

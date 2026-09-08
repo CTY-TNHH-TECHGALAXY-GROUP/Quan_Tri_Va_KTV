@@ -350,7 +350,7 @@ export default function DispatchBoardPage() {
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
   const [pauseModalLockAction, setPauseModalLockAction] = useState<'SWAP' | undefined>(undefined);
-  const [cancelItemModal, setCancelItemModal] = useState<{ orderId: string; itemIds: string[]; wholeBooking?: boolean; ktvLabel?: string; customerName?: string; workedMinutes: number | null } | null>(null);
+  const [cancelItemModal, setCancelItemModal] = useState<{ orderId: string; itemIds: string[]; wholeBooking?: boolean; ktvLabel?: string; customerName?: string; workedMinutes: number | null; canhBao?: string | null } | null>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string, guestId?: string } | null>(null);
   const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
@@ -1596,6 +1596,10 @@ if (!hasPermission('dispatch_board')) {
       }
     }
 
+    import('./actions').then(m => m.kiemTraTruocKhiChot(orderId, 'CANCEL'))
+      .then(chk => { if (chk?.canhBao) setCancelItemModal(prev => prev ? { ...prev, canhBao: chk.canhBao } : prev); })
+      .catch(() => {});
+
     setCancelItemModal({
       orderId,
       itemIds: [],            // rỗng = huỷ cả đơn, không phải từng dịch vụ
@@ -1630,6 +1634,11 @@ if (!hasPermission('dispatch_board')) {
       workedMinutes,
     });
     setContextMenu(null);
+
+    // Hỏi nền: KTV đã bấm báo gì chưa? Nếu rồi thì huỷ là mất trắng oan.
+    import('./actions').then(m => m.kiemTraTruocKhiChot(orderId, 'CANCEL'))
+      .then(chk => { if (chk?.canhBao) setCancelItemModal(prev => prev ? { ...prev, canhBao: chk.canhBao } : prev); })
+      .catch(() => {});
   };
 
   const submitCancelItems = async (reason: string, cancelCredit: 'NONE' | 'WORKED') => {
@@ -2910,6 +2919,13 @@ if (!hasPermission('dispatch_board')) {
               }}
               onFinishEarlyPaused={async (orderId, subOrder) => {
                 try {
+                  // Chốt chặn bấm nhầm: Kết thúc thì KTV CÓ tiền có giờ, mà nếu họ
+                  // chưa hề bấm báo thì nhiều khả năng đây là ca bỏ khách → phải Huỷ.
+                  const { kiemTraTruocKhiChot } = await import('./actions');
+                  const chk = await kiemTraTruocKhiChot(orderId, 'FINISH_EARLY');
+                  if (chk.canhBao && !window.confirm(`⚠️ ${chk.canhBao}
+
+Vẫn kết thúc sớm?`)) return;
                   const res = await fetch('/api/ktv/finish-early-paused', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -3117,6 +3133,7 @@ if (!hasPermission('dispatch_board')) {
         customerName={cancelItemModal?.customerName}
         workedMinutes={cancelItemModal?.workedMinutes ?? null}
         wholeBooking={cancelItemModal?.wholeBooking}
+        canhBao={cancelItemModal?.canhBao}
       />
 
       <MergePromptModal
