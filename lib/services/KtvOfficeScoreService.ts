@@ -295,9 +295,23 @@ export class KtvOfficeScoreService {
             })),
         ];
 
-        // Cùng ngày thì xếp giờ làm trước, phạt sau — số dư đọc mới xuôi.
-        entries.sort((a, b) =>
-            a.date === b.date ? (b.earned - a.earned) : a.date.localeCompare(b.date));
+        // Thứ tự cộng số dư:
+        //   1. Theo NGÀY LÀM VIỆC.
+        //   2. Cùng ngày: giờ làm trước, phạt sau — số dư đọc mới xuôi.
+        //   3. Trong cùng nhóm: theo MỐC GIỜ THẬT.
+        //
+        // Bước 3 trước đây không có, nên các tua cùng một ngày làm việc nằm theo thứ
+        // tự DB trả về. Từ khi lịch sử hiện thêm giờ thì lệch lộ ra: ngày làm việc
+        // 03/09 có tua 18:57 rồi 00:54, 00:57, 01:01 (rạng sáng 04/09 — ngày làm việc
+        // chốt lúc 6h sáng), mà bảng lại xếp 00:54 trên 01:01 nên cột "Còn lại" chạy
+        // ngược: dòng dưới giờ muộn hơn mà số dư nhỏ hơn.
+        entries.sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            const aPen = a.penalty > 0 ? 1 : 0;
+            const bPen = b.penalty > 0 ? 1 : 0;
+            if (aPen !== bPen) return aPen - bPen;
+            return String(a.at || '').localeCompare(String(b.at || ''));
+        });
 
         let balance = 0;
         let earnedTotal = 0;

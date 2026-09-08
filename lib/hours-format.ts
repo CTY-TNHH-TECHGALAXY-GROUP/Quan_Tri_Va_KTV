@@ -48,6 +48,24 @@ export function fmtFullDate(iso: string): string {
  * UTC (booking_time_start). Chuỗi trần mà đưa thẳng vào `new Date()` sẽ bị hiểu là
  * giờ ĐỊA PHƯƠNG — lệch 7 tiếng. Phải gắn 'Z' trước, giống parseDbDate.
  */
+/**
+ * Giờ kèm ngày lịch THẬT khi nó khác ngày làm việc.
+ *
+ * Ngày làm việc chốt lúc 6h sáng, nên tua lúc 00:54 rạng sáng 04/09 vẫn thuộc ngày
+ * làm việc 03/09. Nếu chỉ in "03/09 · 00:54" thì người đọc hiểu là 0h54 ngày 03 —
+ * lệch hẳn một ngày. Trường hợp đó in thành "00:54 (04/09)".
+ */
+export function fmtClockOnDate(at: string | null | undefined, businessDate: string): string {
+    const clock = fmtClock(at);
+    if (!clock || !at) return clock;
+    const raw = String(at);
+    const iso = raw.includes('Z') || raw.includes('+') ? raw : raw + 'Z';
+    const real = new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+    if (!real || real === businessDate) return clock;
+    const [, m, d] = real.split('-');
+    return `${clock} (${d}/${m})`;
+}
+
 export function fmtClock(at: string | null | undefined): string {
     if (!at) return '';
     const raw = String(at);

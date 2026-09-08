@@ -6,7 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Search, RefreshCw, Timer, Lock, ClipboardCheck, X, Clock, User, AlertTriangle } from 'lucide-react';
 import { useAdminKtvHoursLogic, fmtHours, fmtShortDate } from './AdminKtvHours.logic';
-import { fmtWeekday, fmtFullDate, fmtClock } from '@/lib/hours-format';
+import { fmtWeekday, fmtFullDate, fmtClock, fmtClockOnDate } from '@/lib/hours-format';
 
 // 🔧 UI CONFIGURATION — cùng bảng màu với trang Chấm điểm Office.
 const CSS_VARS = {
@@ -172,7 +172,7 @@ const LedgerTable = ({ rows, total }: { rows: any[]; total: number }) => (
               <td className="px-4 py-3 whitespace-nowrap">
                 <p className="font-bold text-sm">{fmtWeekday(r.date)}</p>
                 <p className="text-xs text-[var(--muted)] tabular-nums">{fmtFullDate(r.date)}</p>
-                {fmtClock(r.at) && <p className="text-xs text-[var(--muted)] tabular-nums">{fmtClock(r.at)}</p>}
+                {fmtClock(r.at) && <p className="text-xs text-[var(--muted)] tabular-nums">{fmtClockOnDate(r.at, r.date)}</p>}
               </td>
               <td className="px-4 py-3 max-w-[280px]"><ContentCell v={v} /></td>
               <td className="px-4 py-3"><KindPill v={v} /></td>
@@ -202,7 +202,7 @@ const LedgerTable = ({ rows, total }: { rows: any[]; total: number }) => (
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs text-[var(--muted)] tabular-nums">
-                  {fmtWeekday(r.date)} · {fmtFullDate(r.date)}{fmtClock(r.at) ? ` · ${fmtClock(r.at)}` : ''}
+                  {fmtWeekday(r.date)} · {fmtFullDate(r.date)}{fmtClock(r.at) ? ` · ${fmtClockOnDate(r.at, r.date)}` : ''}
                 </p>
                 <div className="mt-1"><ContentCell v={v} /></div>
               </div>
