@@ -19,7 +19,6 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_A: FeatureFlagsTypeA = {
     enable_employee_tasks: true,
     tua_wallet: true,
     bonus_wallet: true,
-    savings_wallet: true,
     maintenance_fee: true,
 };
 
@@ -33,7 +32,6 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_B: FeatureFlagsTypeB = {
     enable_employee_tasks: false,
     tua_wallet: true,
     bonus_wallet: false,
-    savings_wallet: false,
     maintenance_fee: true,
 };
 
@@ -44,7 +42,6 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_C = {
     enable_employee_tasks: false,
     tua_wallet: true,
     bonus_wallet: false,
-    savings_wallet: false,
     maintenance_fee: true,
 };
 
@@ -55,7 +52,6 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_D: FeatureFlagsTypeD = {
     enable_employee_tasks: false,
     tua_wallet: true,
     bonus_wallet: true,
-    savings_wallet: false,
     maintenance_fee: true,
     internal_fund_enabled: true,
     withdraw_morning_only: true

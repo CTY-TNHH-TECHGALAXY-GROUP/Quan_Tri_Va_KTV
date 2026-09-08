@@ -17,12 +17,11 @@ const FORCE_LOGOUT_KEY = 'auth_force_logout_enabled';
  * Kết quả cuối = công tắc loại VÀ cờ cá nhân.
  */
 
-const WALLET_ICON: Record<WalletType, string> = { TUA: '💰', BONUS: '💎', SAVINGS: '🐷' };
+const WALLET_ICON: Record<WalletType, string> = { TUA: '💰', BONUS: '💎' };
 
 const WALLET_HINT: Record<WalletType, string> = {
     TUA: 'Số dư tua, hoa hồng và lệnh rút tiền',
     BONUS: 'Điểm thưởng ca / tua và đổi điểm',
-    SAVINGS: 'Khoản tích luỹ dài hạn',
 };
 
 export function WalletSwitchesBlock({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' | 'TYPE_D' }) {
@@ -151,7 +150,7 @@ export function WalletSwitchesBlock({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE
                 </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {WALLET_TYPES.map(w => {
                     const key = walletConfigKey(w, activeTab);
                     const enabled = values[key] ?? true;

@@ -7,7 +7,6 @@ export interface FeatureFlagsTypeD {
     allow_on_call: boolean;
     enable_employee_tasks: boolean;
     bonus_wallet: boolean;
-    savings_wallet: boolean;
     maintenance_fee: boolean;
     internal_fund_enabled: boolean;
     withdraw_morning_only: boolean;

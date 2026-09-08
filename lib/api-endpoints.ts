@@ -17,7 +17,6 @@ export const API = {
       BALANCE: (techCode: string) => `/api/ktv/wallet/balance?techCode=${techCode}`,
       TIMELINE: (techCode: string) => `/api/ktv/wallet/timeline?techCode=${techCode}`,
       WITHDRAW: '/api/ktv/wallet/withdraw',
-      PIGGY_BANK: (techCode: string) => `/api/ktv/wallet/piggy-bank?techCode=${techCode}`,
       BONUS_BALANCE: (techCode: string) => `/api/ktv/wallet/bonus/balance?techCode=${techCode}`,
       BONUS_TIMELINE: (techCode: string) => `/api/ktv/wallet/bonus/timeline?techCode=${techCode}`,
     },
@@ -39,7 +38,6 @@ export const API = {
   },
   ADMIN: {
     NOTIFICATION_RULES: '/api/admin/notification-rules',
-    PIGGY_BANK: '/api/admin/piggy-bank',
     SETTINGS_SYSTEM: '/api/admin/settings/system',
     UPDATE_WIFI_IP: '/api/admin/update-wifi-ip',
   },

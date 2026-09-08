@@ -36,11 +36,6 @@ export const FEATURE_FLAG_DEFS = [
         description: 'Tích điểm thưởng ca, tua vào ví Bonus',
     },
     {
-        key: 'savings_wallet',
-        label: '💎 Ví Tích Luỹ',
-        description: 'Tích luỹ lâu dài',
-    },
-    {
         key: 'bonus_from_office',
         label: '🏅 Ví Điểm theo Office',
         description: 'Loại D: Ví Điểm lấy điểm Office thay cho điểm sao khách chấm. Điểm Office không quy đổi ra tiền — chỉ quyết định mức quỹ nội bộ phải đóng',

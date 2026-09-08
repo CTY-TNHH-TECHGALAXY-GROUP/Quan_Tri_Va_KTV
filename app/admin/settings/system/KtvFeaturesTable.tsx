@@ -33,7 +33,6 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
         // Nhãn ví lấy từ nguồn chung để app KTV và admin không gọi hai tên khác nhau.
         if (def.key === 'tua_wallet') return `💰 ${walletLabel('TUA', activeTab).toUpperCase()}`;
         if (def.key === 'bonus_wallet') return `💎 ${walletLabel('BONUS', activeTab).toUpperCase()}`;
-        if (def.key === 'savings_wallet') return `🐷 ${walletLabel('SAVINGS', activeTab).toUpperCase()}`;
         return def.label;
     };
 

@@ -3,7 +3,7 @@
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceKTV } from './FinanceKTV.logic';
-import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, PiggyBank, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -278,7 +278,6 @@ export default function FinanceKTVPage() {
                                 <div className="flex items-center gap-2">
                                     {activeTab === 'TUA' && <><Zap size={16} className="text-amber-300 fill-amber-300" /> <span>Ví Tua (VNĐ)</span></>}
                                     {activeTab === 'BONUS' && <><Star size={16} className="fill-white" /> <span>Ví Bonus (Points)</span></>}
-                                    {activeTab === 'TICH_LUY' && <><PiggyBank size={16} /> <span>Ví Tích Luỹ</span></>}
                                 </div>
                                 <ChevronDown size={16} className={`transition-transform duration-200 ${isWalletDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
@@ -298,13 +297,6 @@ export default function FinanceKTVPage() {
                                     >
                                         <Star size={16} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
                                         <span className="font-bold text-sm">Ví Bonus (Points)</span>
-                                    </button>
-                                    <button 
-                                        onClick={() => { setActiveTab('TICH_LUY'); setIsWalletDropdownOpen(false); }}
-                                        className={`flex items-center gap-2 px-4 py-3 transition-all border-t border-slate-50 ${activeTab === 'TICH_LUY' ? 'bg-purple-50 text-purple-600' : 'text-slate-600 hover:bg-slate-50'}`}
-                                    >
-                                        <PiggyBank size={16} className={activeTab === 'TICH_LUY' ? 'text-purple-500' : 'text-slate-400'} />
-                                        <span className="font-bold text-sm">Ví Tích Luỹ</span>
                                     </button>
                                 </div>
                             )}
@@ -465,13 +457,6 @@ export default function FinanceKTVPage() {
                             </table>
                             )}
 
-                            {activeTab === 'TICH_LUY' && (
-                                <div className="p-12 text-center text-slate-400">
-                                    <PiggyBank size={48} className="mx-auto mb-4 opacity-50" />
-                                    <h3 className="font-bold text-lg mb-1 text-slate-600">Ví Tích Luỹ KTV</h3>
-                                    <p className="text-sm">Bảng thống kê này đang được phát triển.</p>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>

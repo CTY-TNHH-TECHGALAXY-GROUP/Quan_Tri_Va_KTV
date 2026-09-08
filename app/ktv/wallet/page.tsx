@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { walletLabel } from '@/lib/featureFlags';
 import { useKTVWallet } from './KTVWallet.logic';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
 
@@ -23,9 +23,8 @@ const THEME = {
 export default function KTVWalletPage() {
     const { addToast } = useToast();
     const { 
-        user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus, canViewPiggyBank,
-        walletBalance, walletTimeline, bonusBalance, bonusTimeline, 
-        piggyBankBalance, piggyBankTimeline, piggyBankTotalWeeks,
+        user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus,
+        walletBalance, walletTimeline, bonusBalance, bonusTimeline,
         isLoading, submitWithdraw, submitRedeemBonus 
     } = useKTVWallet();
 
@@ -34,7 +33,6 @@ export default function KTVWalletPage() {
     const [withdrawAmountStr, setWithdrawAmountStr] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [ruleModalOpen, setRuleModalOpen] = useState(false);
 
     const handleOpenWithdrawModal = (type: 'TUA' | 'BONUS') => {
         if (type === 'TUA') {
@@ -109,7 +107,7 @@ export default function KTVWalletPage() {
         // Lịch sử điểm Office là danh sách theo NGÀY CHẤM ĐIỂM, không phải giao
         // dịch cộng/trừ, nên không đi qua bộ gom chung — nó có danh sách riêng.
         if (activeTab === 'BONUS' && isOfficeBonus) return [];
-        const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : (activeTab === 'TICH_LUY' ? piggyBankTimeline : []));
+        const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : []);
         if (!sourceData) return [];
         const groups: Record<string, any[]> = {};
         sourceData.forEach((item: any) => {
@@ -124,7 +122,7 @@ export default function KTVWalletPage() {
             groups[dateStr].push(item);
         });
         return Object.entries(groups).map(([date, items]) => ({ date, items }));
-    }, [activeTab, isOfficeBonus, walletTimeline, bonusTimeline, piggyBankTimeline]);
+    }, [activeTab, isOfficeBonus, walletTimeline, bonusTimeline]);
 
     if (!user || !canViewWallet) {
         return (
@@ -164,7 +162,6 @@ export default function KTVWalletPage() {
                         <div className="flex items-center gap-3">
                             {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">{walletLabel('TUA', user?.work_type)}</span></>}
                             {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">{walletLabel('BONUS', user?.work_type)}</span></>}
-                            {activeTab === 'TICH_LUY' && <><PiggyBank size={20} /> <span className="text-lg">Heo Đất Tích Lũy</span></>}
                         </div>
                         <ChevronDown size={20} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
@@ -189,15 +186,6 @@ export default function KTVWalletPage() {
                                     <span className="font-bold">{walletLabel('BONUS', user?.work_type)}</span>
                                 </button>
                             )}
-                            {canViewPiggyBank && (
-                                <button 
-                                    onClick={() => { setActiveTab('TICH_LUY'); setIsDropdownOpen(false); }}
-                                    className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TICH_LUY' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    <PiggyBank size={20} className={activeTab === 'TICH_LUY' ? 'text-indigo-500' : 'text-slate-400'} />
-                                    <span className="font-bold">Heo Đất Tích Lũy</span>
-                                </button>
-                            )}
                         </div>
                     )}
                 </div>
@@ -206,8 +194,8 @@ export default function KTVWalletPage() {
                     <div className="flex justify-center items-center py-20">
                         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                ) : (!canViewTua && !canViewBonus && !canViewPiggyBank) ? (
-                    /* Tắt sạch cả 3 ví thì nói thẳng, đừng để màn hình trống hay
+                ) : (!canViewTua && !canViewBonus) ? (
+                    /* Tắt sạch mọi ví thì nói thẳng, đừng để màn hình trống hay
                        hiện 0đ — KTV sẽ tưởng mất tiền chứ không nghĩ là bị tắt. */
                     <div className="text-center py-20 px-6">
                         <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -382,57 +370,6 @@ export default function KTVWalletPage() {
                             </div>
                         )}
 
-                        {/* Heo Đất Tích Lũy */}
-                        {activeTab === 'TICH_LUY' && piggyBankBalance && (
-                            <div className={`p-6 rounded-[32px] shadow-lg shadow-indigo-900/10 bg-gradient-to-br from-indigo-500 to-purple-700 text-white`}>
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="font-bold text-indigo-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
-                                        <PiggyBank size={16} className="text-white" />
-                                        Heo Đất Tích Lũy
-                                    </h3>
-                                    <button 
-                                        onClick={() => setRuleModalOpen(true)}
-                                        className="text-[10px] bg-white/20 hover:bg-white/30 transition-colors px-2 py-1.5 rounded-lg font-bold flex items-center gap-1 text-white"
-                                    >
-                                        <Info size={12} /> Quy Định
-                                    </button>
-                                </div>
-                                <div className="mb-5">
-                                    <p className="text-[10px] text-indigo-200 uppercase tracking-widest mb-1">Tổng Số Dư Tiết Kiệm</p>
-                                    <p className="text-4xl font-black tracking-tight drop-shadow-sm">
-                                        {(Number(piggyBankBalance.weekly_amount || 0) * Number(piggyBankBalance.contributed_weeks || 0)).toLocaleString()}đ
-                                    </p>
-                                </div>
-
-                                {/* Progress Bar */}
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className="text-xs font-bold text-indigo-100 uppercase tracking-widest">Tiến độ tuần (18 tháng)</span>
-                                        <span className="text-sm font-black bg-white/20 px-2 py-0.5 rounded-lg">
-                                            {piggyBankBalance.contributed_weeks} / {piggyBankTotalWeeks}
-                                        </span>
-                                    </div>
-                                    <div className="w-full bg-indigo-900/40 rounded-full h-2.5 overflow-hidden">
-                                        <div 
-                                            className="bg-white h-2.5 rounded-full transition-all duration-1000" 
-                                            style={{ width: `${Math.min(100, (piggyBankBalance.contributed_weeks / piggyBankTotalWeeks) * 100)}%` }}
-                                        ></div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl">
-                                    <div>
-                                        <p className="text-indigo-200/70 text-[10px] uppercase mb-0.5">Tiền nạp hàng tuần</p>
-                                        <p className="font-bold">{Number(piggyBankBalance.weekly_amount || 0).toLocaleString()}đ/tuần</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-indigo-200/70 text-[10px] uppercase mb-0.5">Thời gian còn lại</p>
-                                        <p className="font-bold text-amber-300">{Math.max(0, piggyBankTotalWeeks - piggyBankBalance.contributed_weeks)} tuần</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         {groupedTimeline.length > 0 ? (
                             <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                                 <div className="flex items-center justify-between mb-6">
@@ -454,8 +391,8 @@ export default function KTVWalletPage() {
 
                                             <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
                                                 {group.items.map((item: any, idx: number) => {
-                                                    const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : (activeTab === 'TICH_LUY' ? item.type === 'DEPOSIT' : Number(item.amount) >= 0);
-                                                    const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : (activeTab === 'TICH_LUY' ? item.type === 'WITHDRAW' : item.type === 'WITHDRAWAL');
+                                                    const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : Number(item.amount) >= 0;
+                                                    const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : item.type === 'WITHDRAWAL';
                                                     const isPending = item.status === 'PENDING';
                                                     const isRejected = item.status === 'REJECTED';
                                                     
@@ -464,16 +401,13 @@ export default function KTVWalletPage() {
                                                     if (activeTab === 'BONUS') {
                                                         Icon = item.type === 'EARN' ? Star : (item.type === 'REDEEM' ? TrendingDown : TrendingDown);
                                                         iconColor = item.type === 'EARN' ? 'text-amber-500 fill-amber-500' : 'text-rose-500';
-                                                    } else if (activeTab === 'TICH_LUY') {
-                                                        Icon = item.type === 'DEPOSIT' ? PiggyBank : TrendingDown;
-                                                        iconColor = item.type === 'DEPOSIT' ? 'text-indigo-500 fill-indigo-100' : 'text-rose-500';
                                                     } else {
                                                         Icon = item.type === 'TIP' ? Gift : (item.type === 'COMMISSION' ? Banknote : (item.type === 'WITHDRAWAL' ? TrendingDown : (item.type === 'GIFT' ? TrendingUp : Zap)));
                                                         iconColor = item.type === 'TIP' ? 'text-emerald-500' : (item.type === 'COMMISSION' ? 'text-indigo-500' : (item.type === 'WITHDRAWAL' ? 'text-rose-500' : (item.type === 'GIFT' ? 'text-amber-500' : 'text-slate-500')));
                                                     }
 
-                                                    const titleText = activeTab === 'BONUS' ? (item.desc || item.type) : (activeTab === 'TICH_LUY' ? item.note || item.type : item.title);
-                                                    const noteText = activeTab === 'BONUS' || activeTab === 'TICH_LUY' ? null : item.note;
+                                                    const titleText = activeTab === 'BONUS' ? (item.desc || item.type) : item.title;
+                                                    const noteText = activeTab === 'BONUS' ? null : item.note;
                                                     const displayAmount = activeTab === 'BONUS' ? Math.abs(Number(item.points)) : Math.abs(Number(item.amount));
 
                                                     return (
@@ -660,61 +594,6 @@ export default function KTVWalletPage() {
                     </div>
                 </div>
             )}
-            <AnimatePresence>
-                {ruleModalOpen && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative"
-                        >
-                            <button 
-                                onClick={() => setRuleModalOpen(false)}
-                                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 p-1.5 rounded-full transition-colors"
-                            >
-                                <XCircle size={24} />
-                            </button>
-                            <div className="text-center mb-6 mt-2">
-                                <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 bg-indigo-100 text-indigo-600">
-                                    <PiggyBank size={32} />
-                                </div>
-                                <h3 className="text-xl font-black text-slate-800">
-                                    Quy Định Rút Tiền
-                                </h3>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    Chính sách Heo Đất Tích Lũy
-                                </p>
-                            </div>
-                            
-                            <div className="space-y-4 text-sm text-slate-600">
-                                <div className="p-3 bg-indigo-50 rounded-xl text-indigo-800">
-                                    <p>• Bạn cần đóng đủ số tuần mục tiêu (Ví dụ: <strong>72 tuần / 18 tháng</strong>) mới được phép rút toàn bộ số tiền tiết kiệm.</p>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-xl">
-                                    <p>• Số tiền sẽ được trích tự động từ {walletLabel('TUA', user?.work_type)} hàng tuần.</p>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-xl">
-                                    <p>• Nếu nghỉ việc giữa chừng hoặc chưa đủ số tuần, vui lòng liên hệ quản lý để được hỗ trợ theo quy định của cơ sở.</p>
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={() => setRuleModalOpen(false)}
-                                className="w-full mt-6 py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all bg-indigo-600 shadow-lg shadow-indigo-600/20"
-                            >
-                                Đã Hiểu
-                            </button>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </AppLayout>
     );
 }

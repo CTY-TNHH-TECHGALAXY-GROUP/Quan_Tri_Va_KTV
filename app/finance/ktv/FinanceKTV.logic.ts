@@ -12,7 +12,7 @@ export function useFinanceKTV() {
     const [isProcessing, setIsProcessing] = useState(false);
 
     // UI States
-    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS' | 'TICH_LUY'>('TUA');
+    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS'>('TUA');
     const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
     
     // Date Filters

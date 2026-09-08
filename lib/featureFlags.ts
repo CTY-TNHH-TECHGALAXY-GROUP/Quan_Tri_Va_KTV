@@ -17,7 +17,6 @@ export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
     // Ví: chỉ ví tua là mặc định BẬT (app đang đọc `!== false`)
     tua_wallet: true,
     bonus_wallet: false,
-    savings_wallet: false,
     // Trừ tiền tự động: mặc định KHÔNG trừ, trừ phí bảo trì đọc `=== false`
     laundry_deduction: false,
     sudden_leave_penalty: false,
@@ -37,7 +36,6 @@ export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
 /** Cờ cũ còn sót trong DB, coi như bí danh của cờ mới. */
 const FLAG_ALIASES: Record<string, string[]> = {
     bonus_wallet: ['enable_bonus_wallet'],
-    savings_wallet: ['enable_piggy_wallet'],
 };
 
 /**
@@ -83,15 +81,14 @@ function parseFlags(flags: any): Record<string, any> {
 // Ví: công tắc hai tầng
 // ---------------------------------------------------------------------------
 
-export type WalletType = 'TUA' | 'BONUS' | 'SAVINGS';
+export type WalletType = 'TUA' | 'BONUS';
 
-export const WALLET_TYPES: WalletType[] = ['TUA', 'BONUS', 'SAVINGS'];
+export const WALLET_TYPES: WalletType[] = ['TUA', 'BONUS'];
 
 /** Cờ per-nhân-viên tương ứng mỗi loại ví. */
 export const WALLET_STAFF_FLAG: Record<WalletType, string> = {
     TUA: 'tua_wallet',
     BONUS: 'bonus_wallet',
-    SAVINGS: 'savings_wallet',
 };
 
 export const WORK_TYPES = ['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D'] as const;
@@ -147,7 +144,6 @@ export function isWalletEnabled(
 const WALLET_LABEL: Record<WalletType, { default: string; TYPE_D?: string }> = {
     TUA: { default: 'Ví Tua', TYPE_D: 'Ví Thu Nhập' },
     BONUS: { default: 'Ví Bonus', TYPE_D: 'Điểm Tích Lũy' },
-    SAVINGS: { default: 'Ví Tích Luỹ' },
 };
 
 export function walletLabel(wallet: WalletType, workType: string | null | undefined): string {

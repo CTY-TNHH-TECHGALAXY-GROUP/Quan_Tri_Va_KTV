@@ -13,10 +13,6 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/piggy-bank-deduct",
-      "schedule": "0 19 * * 0"
-    },
-    {
       "path": "/api/cron/cleanup-online",
       "schedule": "0 2,4,8,10,12,14,17 * * *"
     },

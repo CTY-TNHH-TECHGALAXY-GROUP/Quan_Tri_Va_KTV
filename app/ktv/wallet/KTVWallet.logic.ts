@@ -13,10 +13,9 @@ export const useKTVWallet = () => {
     const canViewWallet = hasPermission('ktv_wallet');
     const ktvId = user?.id || '';
 
-    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS' | 'TICH_LUY'>('TUA');
+    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS'>('TUA');
     const [canViewTua, setCanViewTua] = useState(true);
     const [canViewBonus, setCanViewBonus] = useState(false);
-    const [canViewPiggyBank, setCanViewPiggyBank] = useState(false);
 
     // Ví Tua
     const [walletBalance, setWalletBalance] = useState<any>(null);
@@ -27,9 +26,6 @@ export const useKTVWallet = () => {
     const [bonusTimeline, setBonusTimeline] = useState<any[]>([]);
 
     // Ví Tích Lũy
-    const [piggyBankBalance, setPiggyBankBalance] = useState<any>(null);
-    const [piggyBankTimeline, setPiggyBankTimeline] = useState<any[]>([]);
-    const [piggyBankTotalWeeks, setPiggyBankTotalWeeks] = useState<number>(50);
 
     const [isLoading, setIsLoading] = useState(true);
 
@@ -49,17 +45,14 @@ export const useKTVWallet = () => {
             // trả 403, mở tab ra chỉ để báo lỗi thì thà đừng mở.
             const hasTuaFlag = access?.TUA === true;
             const hasBonusFlag = access?.BONUS === true;
-            const hasPiggyFlag = access?.SAVINGS === true;
             
             // If the user doesn't have TUA wallet flag, but TUA is active, switch tab
             if (activeTab === 'TUA' && !hasTuaFlag) {
                 if (hasBonusFlag) setActiveTab('BONUS');
-                else if (hasPiggyFlag) setActiveTab('TICH_LUY');
             }
 
             setCanViewTua(hasTuaFlag);
             setCanViewBonus(hasBonusFlag);
-            setCanViewPiggyBank(hasPiggyFlag);
 
             if (activeTab === 'TUA' && hasTuaFlag) {
                 const [balanceRes, timelineRes] = await Promise.all([
@@ -75,13 +68,6 @@ export const useKTVWallet = () => {
                 ]);
                 if (bonusBalRes.data) setBonusBalance(bonusBalRes.data);
                 if (bonusTimeRes.data) setBonusTimeline(bonusTimeRes.data);
-            } else if (activeTab === 'TICH_LUY' && hasPiggyFlag) {
-                const piggyRes = await apiClient.get<any>(API.KTV.WALLET.PIGGY_BANK(ktvId)).catch(() => ({ data: null }));
-                if (piggyRes.data) {
-                    setPiggyBankBalance(piggyRes.data.bank);
-                    setPiggyBankTimeline(piggyRes.data.ledger);
-                    setPiggyBankTotalWeeks(piggyRes.data.totalWeeks);
-                }
             }
         } catch (err) {
             console.error('Lỗi khi tải dữ liệu ví:', err);
@@ -153,14 +139,10 @@ export const useKTVWallet = () => {
         setActiveTab,
         canViewTua,
         canViewBonus,
-        canViewPiggyBank,
         walletBalance,
         walletTimeline,
         bonusBalance,
         bonusTimeline,
-        piggyBankBalance,
-        piggyBankTimeline,
-        piggyBankTotalWeeks,
         isLoading,
         submitWithdraw,
         submitRedeemBonus,
