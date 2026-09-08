@@ -240,17 +240,32 @@ const OrderCard = ({ order, getStatusLabel }: {
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Quầy duyệt</span>
                 <div className="flex items-center gap-2">
-                  {order.handover_status === 'APPROVED' ? (
+                  {/* ⚠️ Trước đây chỉ tách APPROVED / REJECTED, MỌI thứ còn lại đổ
+                      vào "Chờ duyệt". Mà 'PENDING' là GIÁ TRỊ MẶC ĐỊNH của cột —
+                      đơn chưa từng bàn giao, đơn bị bỏ qua, đơn đã huỷ đều mang nó.
+                      Nên KTV thấy "Chờ duyệt" và tưởng quầy đang ngâm, trong khi
+                      thật ra chưa ai nộp gì cả. */}
+                  {order.status === 'CANCELLED' ? (
+                    <span className="text-xs text-gray-300">—</span>
+                  ) : order.handover_status === 'APPROVED' ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50">
                       Đã duyệt
                     </span>
                   ) : order.handover_status === 'REJECTED' ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-red-700 bg-red-50">
-                      Từ chối
+                      Bị trả lại
                     </span>
-                  ) : (
+                  ) : order.handover_status === 'SKIPPED' ? (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-amber-700 bg-amber-50">
+                      Nợ bàn giao
+                    </span>
+                  ) : order.handover_submitted ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-blue-700 bg-blue-50">
                       Chờ duyệt
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-gray-500 bg-gray-100">
+                      Chưa bàn giao
                     </span>
                   )}
                 </div>

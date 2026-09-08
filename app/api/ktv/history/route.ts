@@ -219,7 +219,7 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, status, violations')
+            .select('id, bookingId, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
@@ -437,6 +437,10 @@ export async function GET(request: Request) {
                 const handoverItem = groupItems.find((i: any) => i.handover_status) || groupItems[0];
                 const handover_status = handoverItem?.handover_status || 'PENDING';
                 const handover_comment = handoverItem?.handover_comment || null;
+                // 'PENDING' là GIÁ TRỊ MẶC ĐỊNH của cột, mọi item chưa từng bàn giao
+                // đều mang nó. Chỉ có mốc nộp ảnh mới phân biệt được "đã nộp, đang
+                // chờ quầy" với "chưa nộp gì cả".
+                const handover_submitted = !!groupItems.find((i: any) => i.handover_submitted_at);
 
                 // Tìm KTV làm cùng trong CÙNG booking này (đơn con)
                 const allKTVsInBooking = new Set<string>();
@@ -541,6 +545,7 @@ export async function GET(request: Request) {
                     ratingDeductionAmount: isFeedbackDone ? Math.max(0, commissionBeforeDeduction - commission) : 0,
                     mixedTeamNote,
                     handover_status,
+                    handover_submitted,
                     handover_comment,
                     // Ô góp ý khách đã tích. Tích lỗi kéo trần đánh giá xuống 3 sao
                     // nên KTV phải xem được mình bị phản ánh chuyện gì, khỏi thắc mắc.

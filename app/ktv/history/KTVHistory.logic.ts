@@ -31,6 +31,8 @@ export interface HistoryRecord {
   ratingDeductionRate?: number;       // 0 / 0.25 / 0.5 / 0.75
   ratingDeductionAmount?: number;     // số tiền bị trừ do đánh giá
   handover_status?: string;
+  /** Đã thực sự nộp ảnh bàn giao chưa — 'PENDING' không nói lên điều đó. */
+  handover_submitted?: boolean;
   handover_comment?: string | null;
   /** Ô góp ý khách tích khi đánh giá: [{id, text}] — có từ migration 20260907000000. */
   violations?: { id: string; text: string }[] | null;
