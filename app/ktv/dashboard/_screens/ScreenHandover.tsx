@@ -15,7 +15,14 @@ export function ScreenHandover({ logic }: { logic: any }) {
 
   // Hết lượt bỏ qua thì KHÓA NÚT luôn, đừng để KTV bấm rồi mới bị từ chối.
   const noSkipLeft = !!skipQuota && skipQuota.remaining <= 0;
-  const skipLocked = (isRepayingDebt || noSkipLeft) && !isHandoverComplete;
+
+  // Đang TRẢ NỢ mà chưa chụp đủ ảnh: không cho "Bỏ qua" (nợ sẽ không bao giờ
+  // trả xong), nhưng cũng KHÔNG nhốt KTV lại. Trước đây nút xám ngắt "Chưa chụp
+  // đủ ảnh" là ngõ cụt — có đơn mới đang chờ mà không có đường nào ra ngoài
+  // ngoài việc phải chụp cho xong ngay lúc đó. Nay nút đổi thành TRỞ LẠI: phòng
+  // vẫn còn nợ nguyên đó, quay lại nộp sau.
+  const isDebtNeedsPhotos = isRepayingDebt && !isHandoverComplete;
+  const skipLocked = noSkipLeft && !isRepayingDebt && !isHandoverComplete;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -192,6 +199,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
       {isRepayingDebt && !isHandoverComplete && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
           Đây là phòng bạn đang NỢ bàn giao — phải chụp đủ ảnh mới nộp được, không bỏ qua thêm lần nữa.
+          <br /><span className="font-medium">Chưa chụp kịp thì bấm <b>Trở lại</b>, phòng vẫn còn nợ, lát quay lại nộp.</span>
         </p>
       )}
 
@@ -214,6 +222,9 @@ export function ScreenHandover({ logic }: { logic: any }) {
         disabled={logic.isLoading || isSkippingHandover || skipLocked}
         onClick={() => {
             if (skipLocked) return;
+            // Trả nợ mà thiếu ảnh → chỉ rời màn hình, KHÔNG gọi API nào: không
+            // nộp, không ghi thêm nợ, không tiêu lượt bỏ qua. Đúng nghĩa "để đó".
+            if (isDebtNeedsPhotos) { logic.goToDashboard?.(); return; }
             if (!isHandoverComplete) {
                 if (hasNextOrder) {
                     // Nếu có đơn mới và chưa chụp ảnh -> Cho nợ ảnh và qua đơn luôn
@@ -253,6 +264,8 @@ export function ScreenHandover({ logic }: { logic: any }) {
         className={`w-full py-5 rounded-[24px] font-black text-sm uppercase tracking-widest shadow-xl transition-all
         ${skipLocked
             ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+            : isDebtNeedsPhotos
+            ? 'bg-slate-700 text-white shadow-slate-200'
             : isHandoverComplete
             ? 'bg-blue-600 text-white shadow-blue-200'
             : (hasNextOrder ? 'bg-amber-500 text-white shadow-amber-200' : 'bg-rose-500 text-white shadow-rose-200')}`}
@@ -260,7 +273,9 @@ export function ScreenHandover({ logic }: { logic: any }) {
         {logic.isLoading || isSkippingHandover 
           ? 'Đang xử lý...' 
           : skipLocked
-              ? (noSkipLeft && !isRepayingDebt ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
+              ? 'Đã hết lượt bỏ qua'
+          : isDebtNeedsPhotos
+              ? '← Trở lại'
           : (isHandoverComplete
               ? (isRepayingDebt ? 'Nộp ảnh & Trả nợ' : (hasNextOrder ? 'Xong & Nhận đơn mới' : 'Xong & Sẵn sàng đón khách'))
               : (hasNextOrder ? '⏭ Bỏ qua — Nhận đơn mới' : 'Bỏ qua')

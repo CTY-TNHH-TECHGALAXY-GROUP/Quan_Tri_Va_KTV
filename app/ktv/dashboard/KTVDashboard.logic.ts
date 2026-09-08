@@ -2095,7 +2095,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     };
 
 
-    const handleFinishHandover = async () => {
+    const handleFinishHandover = async (opts?: { skipped?: boolean }) => {
         if (!booking || !ktvId) {
             console.log("🚨 [KTV Logic] Mất dữ liệu phiên làm việc ở bước Dọn phòng, ép thoát về DASHBOARD");
             setScreen('DASHBOARD');
@@ -2226,6 +2226,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsPrepping(false);
             setPrepTimeRemaining(0);
             
+            // BỎ QUA dọn phòng thì cũng KHÔNG qua màn Thưởng / Đánh giá quầy.
+            // Phòng còn đang nợ, việc chưa xong, mà lý do bỏ qua luôn là "có đơn
+            // khác đang chờ" — bắt ngồi chấm sao quầy đúng lúc đó là giữ chân KTV
+            // vô lý. Lúc quay lại dọn nốt mới là lúc xong việc thật.
+            if (opts?.skipped) {
+                isTransitioningRef.current = true;
+                goToDashboard(booking?.nextBookingId);
+                fetchPendingHandovers();
+                return;
+            }
+
             // Trả nợ dọn phòng thì KHÔNG qua màn Thưởng / Đánh giá quầy: tiền tua đã
             // trả từ lần làm xong trước đó, quầy cũng đã đánh giá rồi. Bắt đi lại một
             // vòng nữa chỉ tổ rối, mà còn dễ tưởng được trả tiền thêm lần hai.
@@ -2361,8 +2372,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 ktvCode: ktvId,
             });
             if (res.success) {
-                // Skip successful → go to REWARD or next order
-                handleFinishHandover();
+                // Ghi nợ xong → về Dashboard / đơn kế tiếp, KHÔNG qua Đánh giá quầy.
+                handleFinishHandover({ skipped: true });
             } else {
                 setSkipBlockedMsg(res.error || 'Bạn đã nợ quá số đơn bàn giao cho phép.');
             }
