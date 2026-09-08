@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 
 export function ScreenReward({ logic }: { logic: any }) {
   const { addToast } = useToast();
-  const { commission, goToDashboard, booking, ktvId, workType } = logic;
+  const { commission, goToDashboard, booking, ktvId, workType, rewardHideMoney } = logic;
   const [rating, setRating] = React.useState(5);
   const [note, setNote] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -70,17 +70,29 @@ export function ScreenReward({ logic }: { logic: any }) {
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1, rotate: [0, 10, -10, 0] }}
-        className="w-20 h-20 bg-amber-100 rounded-[28px] flex items-center justify-center shadow-xl shadow-amber-100 shrink-0 mt-6"
+        className={`w-20 h-20 rounded-[28px] flex items-center justify-center shadow-xl shrink-0 mt-6 ${
+          rewardHideMoney ? 'bg-emerald-100 shadow-emerald-100' : 'bg-amber-100 shadow-amber-100'}`}
       >
-        <Gift className="text-amber-600" size={40} />
+        {rewardHideMoney
+          ? <CheckCircle2 className="text-emerald-600" size={40} />
+          : <Gift className="text-amber-600" size={40} />}
       </motion.div>
 
       <div className="space-y-1">
-        <h2 className="text-lg font-black text-slate-800 tracking-tight">Chúc mừng!</h2>
-        <p className="text-xs text-slate-500 font-bold px-4">Bạn vừa hoàn thành xuất sắc tua phục vụ</p>
+        <h2 className="text-lg font-black text-slate-800 tracking-tight">
+          {rewardHideMoney ? 'Đã trả nợ xong!' : 'Chúc mừng!'}
+        </h2>
+        <p className="text-xs text-slate-500 font-bold px-4">
+          {rewardHideMoney
+            ? 'Ảnh bàn giao đã nộp, phòng này hết nợ. Còn một bước cuối:'
+            : 'Bạn vừa hoàn thành xuất sắc tua phục vụ'}
+        </p>
       </div>
 
-      {workType === 'TYPE_D' ? (
+      {/* Vào đây từ đường TRẢ NỢ thì ẨN tiền tua: tiền của tua này đã trả từ lần
+          làm xong trước rồi. Hiện lại con số đó lần hai là KTV tưởng được trả
+          thêm, tới lúc mở ví không thấy đâu lại đi hỏi quầy. */}
+      {rewardHideMoney ? null : workType === 'TYPE_D' ? (
           <div className="bg-white border-2 border-indigo-100 rounded-[24px] p-4 w-full shadow-lg max-w-xs sm:max-w-sm">
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.1em] block mb-1">TUA ĐÃ HOÀN THÀNH</span>
               <div className="text-sm font-bold text-slate-600">

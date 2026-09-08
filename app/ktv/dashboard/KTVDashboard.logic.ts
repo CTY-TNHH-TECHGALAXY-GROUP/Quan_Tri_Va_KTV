@@ -109,6 +109,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
     /** Hạn mức bỏ qua bàn giao — server tính, client chỉ hiển thị. */
     const [skipQuota, setSkipQuota] = useState<{ used: number; max: number; remaining: number } | null>(null);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
+    /**
+     * Màn Thưởng lần này mở ra sau khi TRẢ NỢ dọn phòng, nên chỉ để đánh giá
+     * quầy — phải ẨN phần tiền tua đi.
+     *
+     * Tiền của tua đó đã trả từ lần làm xong trước rồi. Hiện lại con số đó lần
+     * hai thì KTV tưởng được trả thêm, tới lúc xem ví không thấy đâu lại đi hỏi.
+     */
+    const [rewardHideMoney, setRewardHideMoney] = useState(false);
 
     useEffect(() => {
         // Kiểm tra xem đã chụp đủ ảnh theo checklist chưa
@@ -2246,9 +2254,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // rồi đi tan ca, tới nơi mới thấy vẫn bị chặn.
                 if (photosToSubmit.length > 0) {
                     addToast('✅ Đã nộp ảnh bàn giao. Bạn hết nợ phòng này rồi!', 'success');
-                } else {
-                    addToast('⚠️ Bạn chưa chụp ảnh nên phòng này VẪN CÒN NỢ. Chụp đủ ảnh rồi nộp lại nhé.', 'warning');
+                    // Dọn xong nợ MỚI là lúc việc thật sự kết thúc, nên giờ mới cho
+                    // đánh giá quầy — phần đã bị bỏ qua lúc bấm "Bỏ qua".
+                    setRewardHideMoney(true);
+                    isTransitioningRef.current = true;
+                    setScreen('REWARD');
+                    setTimeout(() => isTransitioningRef.current = false, 1000);
+                    fetchPendingHandovers();
+                    return;
                 }
+                // Không có ảnh thì nợ vẫn nguyên, chưa xong việc → không có gì để
+                // đánh giá, trả về trang chờ.
+                addToast('⚠️ Bạn chưa chụp ảnh nên phòng này VẪN CÒN NỢ. Chụp đủ ảnh rồi nộp lại nhé.', 'warning');
                 isTransitioningRef.current = true;
                 goToDashboard();
                 fetchPendingHandovers();
@@ -2263,6 +2280,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             // Luôn chuyển sang REWARD để KTV thấy thành quả công việc
+            setRewardHideMoney(false);
             isTransitioningRef.current = true;
             setScreen('REWARD');
             setTimeout(() => isTransitioningRef.current = false, 1000);
@@ -2551,6 +2569,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // Về tới Dashboard là việc chuyển màn đã xong, nên nhả ngay trước
             // lần nạp có chủ đích này — nhả sau thì chính nó cũng bị vứt.
             isTransitioningRef.current = false;
+            setRewardHideMoney(false);
             fetchBookingRef.current?.();
         }, 100);
     };
@@ -2602,6 +2621,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setHandoverPhotosBase64,
         isHandoverComplete,
         handleFinishHandover,
+        rewardHideMoney,
         // Handover V5
         dynamicChecklist,
         isRepayingDebt,
