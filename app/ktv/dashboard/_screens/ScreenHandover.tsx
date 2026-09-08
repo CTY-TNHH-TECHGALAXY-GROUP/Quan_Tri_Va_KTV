@@ -11,7 +11,11 @@ export function ScreenHandover({ logic }: { logic: any }) {
   const { addToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<any>(null);
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
-  const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt, skipBlockedMsg, setSkipBlockedMsg } = logic;
+  const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt, skipBlockedMsg, setSkipBlockedMsg, skipQuota } = logic;
+
+  // Hết lượt bỏ qua thì KHÓA NÚT luôn, đừng để KTV bấm rồi mới bị từ chối.
+  const noSkipLeft = !!skipQuota && skipQuota.remaining <= 0;
+  const skipLocked = (isRepayingDebt || noSkipLeft) && !isHandoverComplete;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -191,10 +195,25 @@ export function ScreenHandover({ logic }: { logic: any }) {
         </p>
       )}
 
+      {/* Hạn mức bỏ qua: nói TRƯỚC khi bấm. Hết lượt thì báo đỏ, còn lượt thì
+          nhắc nhẹ để KTV biết mình đang tiêu tới đâu. */}
+      {!isRepayingDebt && !isHandoverComplete && skipQuota && (
+        noSkipLeft ? (
+          <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
+            Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua và đang nợ {skipQuota.used} phòng.
+            <br/>Không bỏ qua tiếp được — phải chụp đủ ảnh, hoặc trả nợ phòng cũ trước.
+          </p>
+        ) : (
+          <p className="text-xs text-center font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5">
+            Bỏ qua sẽ bị ghi nợ. Bạn còn <b>{skipQuota.remaining}/{skipQuota.max}</b> lượt.
+          </p>
+        )
+      )}
+
       <button
-        disabled={logic.isLoading || isSkippingHandover || (isRepayingDebt && !isHandoverComplete)}
+        disabled={logic.isLoading || isSkippingHandover || skipLocked}
         onClick={() => {
-            if (isRepayingDebt && !isHandoverComplete) return;
+            if (skipLocked) return;
             if (!isHandoverComplete) {
                 if (hasNextOrder) {
                     // Nếu có đơn mới và chưa chụp ảnh -> Cho nợ ảnh và qua đơn luôn
@@ -204,7 +223,9 @@ export function ScreenHandover({ logic }: { logic: any }) {
                     setConfirmDialog({
                         open: true,
                         title: 'Thiếu Ảnh Bàn Giao',
-                        message: 'Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị ghi NỢ BÀN GIAO. Còn nợ thì chưa tan ca được.',
+                        message: skipQuota
+                            ? `Bạn chưa chụp đủ ảnh. Bỏ qua sẽ bị ghi NỢ BÀN GIAO và bạn chỉ còn ${Math.max(0, skipQuota.remaining - 1)}/${skipQuota.max} lượt. Còn nợ thì chưa tan ca được.`
+                            : 'Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị ghi NỢ BÀN GIAO. Còn nợ thì chưa tan ca được.',
                         onConfirm: () => {
                             setConfirmDialog(null);
                             // PHẢI đi qua handleSkipHandover để ghi nợ, giống hệt nhánh
@@ -230,7 +251,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
             }
         }}
         className={`w-full py-5 rounded-[24px] font-black text-sm uppercase tracking-widest shadow-xl transition-all
-        ${isRepayingDebt && !isHandoverComplete
+        ${skipLocked
             ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
             : isHandoverComplete
             ? 'bg-blue-600 text-white shadow-blue-200'
@@ -238,8 +259,8 @@ export function ScreenHandover({ logic }: { logic: any }) {
       >
         {logic.isLoading || isSkippingHandover 
           ? 'Đang xử lý...' 
-          : (isRepayingDebt && !isHandoverComplete)
-              ? 'Chưa chụp đủ ảnh'
+          : skipLocked
+              ? (noSkipLeft && !isRepayingDebt ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
           : (isHandoverComplete
               ? (isRepayingDebt ? 'Nộp ảnh & Trả nợ' : (hasNextOrder ? 'Xong & Nhận đơn mới' : 'Xong & Sẵn sàng đón khách'))
               : (hasNextOrder ? '⏭ Bỏ qua — Nhận đơn mới' : 'Bỏ qua')

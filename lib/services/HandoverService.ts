@@ -185,6 +185,37 @@ export class HandoverService {
     }
 
     /**
+     * Hạn mức bỏ qua bàn giao của một KTV.
+     *
+     * `used` là số đơn ĐANG NỢ, không phải tổng số lần từng bỏ qua — trả nợ xong
+     * thì lấy lại lượt. Đây là nguồn duy nhất: cả chỗ CHẶN (skipHandover) lẫn chỗ
+     * HIỂN THỊ trên màn KTV đều gọi vào đây, nên con số hai bên không thể lệch.
+     */
+    static async getSkipQuota(
+        supabase: SupabaseClient,
+        ktvCode: string
+    ): Promise<{ used: number; max: number; remaining: number }> {
+        const { data: configRow } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'max_handover_skip')
+            .maybeSingle();
+
+        const parsed = parseInt(String((configRow as any)?.value ?? '2'), 10);
+        const max = Number.isFinite(parsed) && parsed >= 0 ? parsed : 2;
+
+        const { count } = await supabase
+            .from('BookingItems')
+            .select('id', { count: 'exact', head: true })
+            .eq('handover_skipped', true)
+            .eq('handover_status', 'SKIPPED')
+            .contains('technicianCodes', [ktvCode]);
+
+        const used = count || 0;
+        return { used, max, remaining: Math.max(0, max - used) };
+    }
+
+    /**
      * KTV skips handover (has next order to attend).
      * Checks max_handover_skip limit (Loophole #1).
      */
@@ -194,25 +225,12 @@ export class HandoverService {
         ktvCode: string
     ): Promise<{ success: boolean; error?: string }> {
         // 1. Check how many pending skips this KTV already has
-        const { data: configRow } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'max_handover_skip')
-            .single();
+        const { used: currentSkips, max: maxSkip } = await HandoverService.getSkipQuota(supabase, ktvCode);
 
-        const maxSkip = parseInt(configRow?.value || '2', 10);
-
-        const { count: currentSkips } = await supabase
-            .from('BookingItems')
-            .select('id', { count: 'exact', head: true })
-            .eq('handover_skipped', true)
-            .eq('handover_status', 'SKIPPED')
-            .contains('technicianCodes', [ktvCode]);
-
-        if ((currentSkips || 0) >= maxSkip) {
+        if (currentSkips >= maxSkip) {
             return {
                 success: false,
-                error: `Bạn đã nợ ${currentSkips} đơn bàn giao. Vui lòng bàn giao đơn cũ trước.`
+                error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua (đang nợ ${currentSkips} phòng). Phải trả nợ xong mới bỏ qua tiếp được.`
             };
         }
 

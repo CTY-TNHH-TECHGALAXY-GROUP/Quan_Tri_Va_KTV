@@ -106,6 +106,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [isFetchingChecklist, setIsFetchingChecklist] = useState(false);
     const fetchedChecklistBookingIdRef = useRef<string | null>(null);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
+    /** Hạn mức bỏ qua bàn giao — server tính, client chỉ hiển thị. */
+    const [skipQuota, setSkipQuota] = useState<{ used: number; max: number; remaining: number } | null>(null);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
 
     useEffect(() => {
@@ -2323,15 +2325,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const res = await apiClient.get<any>(`/api/ktv/handover/pending?ktvCode=${ktvId}`);
             if (res.success) {
                 setPendingHandovers(res.items || []);
+                if (res.quota) setSkipQuota(res.quota);
             }
         } catch (e) {
             console.error('[Handover V5] Error fetching pending:', e);
         }
     }, [ktvId]);
 
-    // Fetch pending on DASHBOARD screen
+    // Nạp cả ở màn BÀN GIAO, không chỉ DASHBOARD: đúng lúc KTV sắp bấm "Bỏ qua"
+    // thì mới cần biết còn mấy lượt.
     useEffect(() => {
-        if (screen === 'DASHBOARD' && ktvId) {
+        if ((screen === 'DASHBOARD' || screen === 'HANDOVER') && ktvId) {
             fetchPendingHandovers();
         }
     }, [screen, ktvId]);
@@ -2555,6 +2559,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         dynamicChecklist,
         isRepayingDebt,
         skipBlockedMsg, setSkipBlockedMsg,
+        skipQuota,
         isFetchingChecklist,
         pendingHandovers,
         isSkippingHandover,
