@@ -22,6 +22,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HandoverService } from '../../lib/services/HandoverService';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -77,7 +78,7 @@ async function main() {
     if (!ktvCode) {
         console.log('\n  (khong tim duoc KTV loai D dang sach no — bo qua S2..S5)');
         console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-        process.exit(failures === 0 ? 0 : 1);
+        finish(failures);
     }
     console.log(`\nKTV dung de test: ${ktvCode} (dang no 0 phong)`);
 
@@ -192,7 +193,7 @@ async function main() {
     }
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);

@@ -22,6 +22,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { resolveMyItems, markAccepted, acceptedAtOf } from '../../lib/services/KtvOrderTargetService';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -62,7 +63,7 @@ async function main() {
         .eq('work_type', 'TYPE_D').neq('status', 'ĐÃ NGHỈ').order('id').limit(2);
     if ((staffRows || []).length < 2) {
         console.log('  (can it nhat 2 KTV loai D de chay test nay)');
-        process.exit(1);
+        return finish(1);
     }
     const A = staffRows![0].id;
     const B = staffRows![1].id;
@@ -187,7 +188,7 @@ async function main() {
     }
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);

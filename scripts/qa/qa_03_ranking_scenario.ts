@@ -23,6 +23,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { KtvOfficeScoreService, monthRange } from '../../lib/services/KtvOfficeScoreService';
 import { KtvTypeDTurnService } from '../../lib/services/KtvTypeDTurnService';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -56,7 +57,7 @@ async function main() {
     const staff = staffRows || [];
     if (staff.length < 5) {
         console.log('  (can it nhat 5 KTV loai D)');
-        process.exit(1);
+        return finish(1);
     }
     const [A, B, C, D, E] = staff.map(s => s.id);
     const ids = [A, B, C, D, E];
@@ -207,7 +208,7 @@ async function main() {
     }
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);

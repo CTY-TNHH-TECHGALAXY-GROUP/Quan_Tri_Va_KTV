@@ -21,6 +21,7 @@ import * as dotenv from 'dotenv';
 import { KtvOfficeScoreService, monthRange } from '../../lib/services/KtvOfficeScoreService';
 import { KtvTypeDTurnService } from '../../lib/services/KtvTypeDTurnService';
 import { getRows, getPenalties } from '../../lib/services/KtvDLedgerReader';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -183,7 +184,7 @@ async function main() {
     console.log(`  Dong so cai 0 phut: ${zeroMin.length} (khong tinh vao so tua/ngay cong)`);
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);

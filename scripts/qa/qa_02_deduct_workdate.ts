@@ -19,6 +19,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { getDayCutoffHours, toBusinessDate } from '../../lib/business-date';
 import { monthRange, KtvOfficeScoreService } from '../../lib/services/KtvOfficeScoreService';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -186,7 +187,7 @@ async function main() {
     }
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);

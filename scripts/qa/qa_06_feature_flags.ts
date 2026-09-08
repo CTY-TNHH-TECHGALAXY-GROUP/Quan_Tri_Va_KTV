@@ -22,6 +22,7 @@ import {
     isWalletEnabled, isWalletEnabledForType, walletConfigKey, WALLET_TYPES,
 } from '../../lib/featureFlags';
 import { FEATURE_FLAG_DEFS } from '../../app/admin/settings/system/KtvFeatures.logic';
+import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
 
@@ -217,7 +218,7 @@ async function main() {
         sysGuard ? '' : 'KHONG co — tat vi ca loai TYPE_D ma khong can quyen gi');
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
-    process.exit(failures === 0 ? 0 : 1);
+    finish(failures);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(fatal);
