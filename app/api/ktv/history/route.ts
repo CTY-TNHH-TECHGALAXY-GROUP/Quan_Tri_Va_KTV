@@ -462,12 +462,23 @@ export async function GET(request: Request) {
                     catch { return {}; }
                 };
 
-                // 1. ĐÃ HUỶ. recomputeBookingStatus() gộp CANCELLED chung với DONE ở
-                //    nhánh cuối nên trả 'DONE' — lịch sử hiện "Hoàn tất" cho một đơn
-                //    đã huỷ. KHÔNG sửa hàm đó vì bảng điều phối đang dựa vào nó để
-                //    xếp cột; nắn ngay tại đây.
-                const allCancelled = myItemStatuses.length > 0
-                    && myItemStatuses.every((s: string) => s === 'CANCELLED');
+                // 1. ĐÃ HUỶ. Hai lớp:
+                //
+                //    a) recomputeBookingStatus() gộp CANCELLED chung với DONE ở nhánh
+                //       cuối nên trả 'DONE' — hiện "Hoàn tất" cho một đơn đã huỷ.
+                //       KHÔNG sửa hàm đó vì bảng điều phối dựa vào nó để xếp cột.
+                //
+                //    b) Cột `status` có thể ĐÃ BỊ GHI ĐÈ mất dấu huỷ: trước đây KTV
+                //       dọn nốt phòng rồi bấm bàn giao là item bị lật về FEEDBACK.
+                //       (Đã bịt ở handleFinishService, nhưng dữ liệu cũ vẫn sai.)
+                //       `options.cancelCredit` do chính đường huỷ ghi và không đường
+                //       nào xoá, nên nó là dấu vết bền hơn cột status.
+                const daHuy = (i: any) => {
+                    if (String(i.status).toUpperCase() === 'CANCELLED') return true;
+                    const o = optsOf(i);
+                    return o?.cancelCredit !== undefined || !!o?.cancelReason;
+                };
+                const allCancelled = groupItems.length > 0 && groupItems.every(daHuy);
 
                 // 2. QUẦY BẤM KẾT THÚC SỚM (`options.earlyLeave`). Khách đã về nên
                 //    không còn ai chấm sao — Kanban bỏ qua bước Chờ đánh giá từ lâu,

@@ -222,7 +222,16 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         });
 
-        const newItemStatus = (item.status === 'DONE')
+        const newItemStatus = (item.status === 'CANCELLED')
+            ? 'CANCELLED'                     // 🛡️ ĐÃ HUỶ là trạng thái CHỐT — không đi đâu nữa.
+                                              //
+                                              // Thiếu nhánh này thì quầy huỷ đơn xong, KTV
+                                              // (vẫn phải dọn nốt phòng) bấm bàn giao là item
+                                              // bị lật ngược về FEEDBACK/CLEANING/DONE. Dấu huỷ
+                                              // trong cột status BIẾN MẤT, chỉ còn sót lại trong
+                                              // options.cancelReason — nên lịch sử KTV hiện đơn
+                                              // đã huỷ thành "Chờ đánh giá" hoặc "Hoàn tất".
+            : (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
             : hasUnstartedSegs
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
