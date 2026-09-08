@@ -2354,18 +2354,38 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [booking, ktvId, handleFinishHandover]);
 
+    /** Chữ báo lại cho KTV sau khi gửi — mỗi loại một câu, đừng để chung chung. */
+    const INTERACTION_SENT: Record<string, string> = {
+        WATER: '✅ Đã gọi nước. Quầy sẽ mang lên phòng.',
+        SUPPORT: '✅ Đã gọi hỗ trợ. Quầy đang tới.',
+        EMERGENCY: '🚨 ĐÃ BÁO ĐỘNG. Quầy nhận được rồi, giữ bình tĩnh.',
+        BUY_MORE: '✅ Đã báo quầy khách muốn mua thêm dịch vụ.',
+        EARLY_EXIT: '✅ Đã báo quầy khách về sớm.',
+    };
+
     const handleInteraction = async (type: 'WATER' | 'SUPPORT' | 'EMERGENCY' | 'BUY_MORE' | 'EARLY_EXIT') => {
         if (!booking) return;
         setIsLoading(true);
         try {
             const res = await apiClient.post<any>(API.KTV.INTERACTION, { bookingId: booking.id, type, techCode: ktvId });
+            // Gửi xong PHẢI báo lại. Trước đây thành công chỉ console.log, hỏng thì
+            // console.error — cả hai đường đều im, KTV bấm "Báo động khẩn cấp" xong
+            // không biết quầy có nhận được không, đứng đó bấm lại.
             if (res.success) {
-                console.log(`Sent interaction: ${type}`);
+                addToast(INTERACTION_SENT[type] || '✅ Đã gửi yêu cầu tới quầy.', type === 'EMERGENCY' ? 'warning' : 'success');
             } else {
-                addToast('Lỗi gửi yêu cầu', 'error');
+                addToast(res.error || 'Không gửi được yêu cầu. Vui lòng gọi quầy trực tiếp.', 'error');
             }
-        } catch (err) {
+        } catch (err: any) {
+            // apiClient NÉM LỖI với mọi mã khác 2xx nên nhánh `else` ở trên gần như
+            // không bao giờ chạy — chỗ báo lỗi thật sự là đây.
             console.error('Error sending interaction:', err);
+            addToast(
+                type === 'EMERGENCY'
+                    ? '🚨 KHÔNG GỬI ĐƯỢC BÁO ĐỘNG — hãy gọi quầy trực tiếp NGAY.'
+                    : `Không gửi được yêu cầu: ${err?.message || 'lỗi kết nối'}. Vui lòng báo quầy trực tiếp.`,
+                'error'
+            );
         } finally {
             setIsLoading(false);
         }
