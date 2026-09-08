@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { readConfigBool } from '@/lib/featureFlags';
 
 export async function processMonthlyLedgerSync(supabase: SupabaseClient, month: number, year: number) {
     console.log(`[Cron] Syncing Monthly Ledger for ${month}/${year}`);
@@ -119,6 +120,43 @@ export async function processYearlyLedgerSync(supabase: SupabaseClient, year: nu
     return true;
 }
 
+const MAINTENANCE_FEE_DEFAULT = 50000;
+
+/**
+ * Cấu hình phí bảo trì áp cho MỘT loại KTV.
+ *
+ * Hiện CHỈ Loại D có khoá riêng (`enable_maintenance_fee_TYPE_D`,
+ * `maintenance_fee_amount_TYPE_D`); thiếu thì rơi về khoá chung. A/B/C vẫn đọc
+ * thẳng khoá chung y như trước.
+ *
+ * ⚠️ Trang Cài đặt hệ thống GHI khoá có hậu tố cho cả A/B/C — thẻ phí bảo trì
+ * nằm trong từng tab loại và ghi rõ "Cấu hình riêng cho Loại X" — nhưng chỗ này
+ * cố tình KHÔNG đọc mấy khoá đó. Đọc vào là hành vi của A/B/C đổi ngay: ngày
+ * 27/08/2026 quản lý đã tắt cả ba loại, DB đang sẵn ba dòng `false`, bật đọc
+ * lên là 13 KTV ngừng bị thu trong kỳ tới.
+ *
+ * Nói cách khác, thẻ phí bảo trì ở tab A/B/C VẪN LÀ NÚT GIẢ — lỗi đã biết, để
+ * xử lý sau cùng với phần còn lại của trang. Đừng "dọn cho gọn" bằng cách bỏ
+ * nhánh `TYPE_D` ở đây: đó chính là chỗ khác biệt cố ý.
+ */
+export function resolveMaintenanceFeeForType(
+    configs: Record<string, any>,
+    workType: string,
+): { enabled: boolean; amount: number } {
+    const pick = (base: string) => {
+        if (workType !== 'TYPE_D') return configs[base];
+        const scoped = configs[`${base}_TYPE_D`];
+        return scoped !== undefined && scoped !== null && scoped !== '' ? scoped : configs[base];
+    };
+
+    const parsedAmount = Number(String(pick('maintenance_fee_amount') ?? '').replace(/"/g, ''));
+
+    return {
+        enabled: readConfigBool(pick('enable_maintenance_fee'), false),
+        amount: !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : MAINTENANCE_FEE_DEFAULT,
+    };
+}
+
 /**
  * Process monthly maintenance fee deduction for all active KTVs.
  * Called on the last day of each month during the daily ledger sync cron.
@@ -129,19 +167,6 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
 
     // Date restriction removed for testing via toggle
 
-    // 1. Check if feature is enabled
-    const { data: enableConfig } = await supabase
-        .from('SystemConfigs')
-        .select('value')
-        .eq('key', 'enable_maintenance_fee')
-        .single();
-
-    const isEnabled = enableConfig?.value === true || enableConfig?.value === 'true';
-    if (!isEnabled) {
-        console.log('[Cron] Maintenance fee is DISABLED. Skipping.');
-        return true;
-    }
-
     // 🔧 YÊU CẦU TỪ KHÁCH: Tháng 07/2026 đã thu tiền tay, hệ thống sẽ bỏ qua không thu.
     // Đến 31/08/2026 mới bắt đầu thu tiếp (tức là month >= 8 năm 2026).
     if (year === 2026 && month <= 7) {
@@ -149,23 +174,24 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
         return true;
     }
 
-    // 2. Get fee amount
-    const { data: amountConfig } = await supabase
+    // 1. Nạp cấu hình phí bảo trì — cả khoá chung lẫn khoá theo từng loại KTV.
+    const { data: configRows, error: configError } = await supabase
         .from('SystemConfigs')
-        .select('value')
-        .eq('key', 'maintenance_fee_amount')
-        .single();
+        .select('key, value')
+        .or('key.like.enable_maintenance_fee%,key.like.maintenance_fee_amount%');
 
-    let feeAmount = 50000; // default
-    if (amountConfig?.value) {
-        const parsed = Number(String(amountConfig.value).replace(/"/g, ''));
-        if (!isNaN(parsed) && parsed > 0) feeAmount = parsed;
+    if (configError) {
+        console.error('[Cron] Error loading maintenance fee configs:', configError.message);
+        return false;
     }
 
-    // 3. Get all active KTVs
+    const configs: Record<string, any> = {};
+    (configRows || []).forEach(row => { configs[row.key] = row.value; });
+
+    // 2. Get all active KTVs
     const { data: ktvs, error: ktvError } = await supabase
         .from('Staff')
-        .select('id, full_name, feature_flags')
+        .select('id, full_name, feature_flags, work_type')
         .eq('status', 'ĐANG LÀM')
         .ilike('id', 'NH%');
 
@@ -174,7 +200,7 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
         return true;
     }
 
-    // 4. Idempotency: Check which KTVs already got charged this month
+    // 3. Idempotency: Check which KTVs already got charged this month
     const reasonPattern = `Phí bảo trì hệ thống tháng ${String(month).padStart(2, '0')}/${year}`;
     const { data: existingRecords } = await supabase
         .from('WalletAdjustments')
@@ -184,28 +210,38 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
 
     const alreadyChargedSet = new Set((existingRecords || []).map(r => r.staff_id));
 
-    // 5. Filter out KTVs that were already charged or have the feature flag disabled
-    const toCharge = ktvs.filter(k => {
-        if (alreadyChargedSet.has(k.id)) return false;
-        if (k.feature_flags && k.feature_flags.maintenance_fee === false) return false;
-        return true;
-    });
+    // 4. Lọc theo cần gạt CỦA CHÍNH LOẠI người đó, rồi tới cờ cá nhân.
+    const feeCache = new Map<string, { enabled: boolean; amount: number }>();
+    const feeFor = (workType: string) => {
+        if (!feeCache.has(workType)) feeCache.set(workType, resolveMaintenanceFeeForType(configs, workType));
+        return feeCache.get(workType)!;
+    };
+
+    const toCharge = ktvs
+        .map(k => ({ ktv: k, fee: feeFor(k.work_type || 'TYPE_A') }))
+        .filter(({ ktv, fee }) => {
+            if (!fee.enabled) return false;
+            if (alreadyChargedSet.has(ktv.id)) return false;
+            if (ktv.feature_flags && ktv.feature_flags.maintenance_fee === false) return false;
+            return true;
+        });
+
     if (toCharge.length === 0) {
-        console.log('[Cron] All KTVs already charged for this month. Skipping.');
+        console.log('[Cron] No KTV to charge maintenance fee (disabled per type, or already charged).');
         return true;
     }
 
-    // 6. Batch insert negative adjustments
-    const adjustments: any[] = toCharge.map(ktv => ({
+    // 5. Batch insert negative adjustments — mỗi loại có thể một mức tiền khác nhau.
+    const adjustments: any[] = toCharge.map(({ ktv, fee }) => ({
         staff_id: ktv.id,
-        amount: -feeAmount, // Negative = deduction
+        amount: -fee.amount, // Negative = deduction
         type: 'ADJUST',
         reason: reasonPattern,
         created_by: 'SYSTEM_CRON',
     }));
 
     // Add total to 'dev' account
-    const totalCollected = feeAmount * toCharge.length;
+    const totalCollected = toCharge.reduce((sum, { fee }) => sum + fee.amount, 0);
     adjustments.push({
         staff_id: 'dev',
         amount: totalCollected, // Positive = income
@@ -223,6 +259,6 @@ export async function processMonthlyMaintenanceFee(supabase: SupabaseClient, mon
         return false;
     }
 
-    console.log(`✅ Charged maintenance fee (${feeAmount.toLocaleString()}đ) for ${toCharge.length} KTVs.`);
+    console.log(`✅ Charged maintenance fee (tổng ${totalCollected.toLocaleString()}đ) for ${toCharge.length} KTVs.`);
     return true;
 }
