@@ -7,7 +7,7 @@ import assert from 'assert';
 import { computeMinutes } from '../lib/services/KtvDLedgerEngine';
 import { KtvTypeDTurnService } from '../lib/services/KtvTypeDTurnService';
 import { KtvCommissionService } from '../lib/services/KtvCommissionService';
-import { pausedMsOf, workedMsOf, expectedEndMs } from '../lib/segment-time';
+import { pausedMsOf, workedMsOf, expectedEndMs, endedByCounter, scenarioOf } from '../lib/segment-time';
 
 const T = (m: number) => new Date(Date.UTC(2026, 8, 6, 10, m, 0)).toISOString();
 const item = (segs: any[]) => ({ segments: JSON.stringify(segs) });
@@ -66,6 +66,32 @@ check('đồng hồ · hạn kết thúc lùi 15p', (han - new Date(T(0)).getTim
 const dangDung = { ktvId: 'T016', duration: 60, actualStartTime: T(0), pauses: [{ from: T(20) }] };
 check('đang dừng · đóng tại mốc dừng thì cộng 0', pausedMsOf(dangDung, T(20)) / 60000, 0);
 check('đang dừng · tính tới 10:35 thì đã dừng 15p', pausedMsOf(dangDung, T(35)) / 60000, 15);
+
+// ── 8. Quầy chốt hộ: đồng hồ KTV phải dừng ở CẢ BA luồng ───────────────────
+// Guard chống ghost-completion trên app KTV chặn theo endedByCounter(). Bản
+// trước chỉ nhận 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ vẫn để đồng hồ chạy.
+const ketThucSom = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(20), note: 'FINISHED_EARLY_ON_PAUSE' };
+const huyMatTrang = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(20), note: 'CANCELLED_NO_CREDIT', voided: true };
+const huyCoCongGio = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(20), pauses: [{ from: T(20), to: T(20), closedBy: 'CANCEL' }] };
+const doiKtv = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(20), note: 'CHANGED', voided: true };
+const ktvTuBam = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(60) };
+
+check('quay chot · ket thuc som', endedByCounter(ketThucSom), true);
+check('quay chot · huy mat trang', endedByCounter(huyMatTrang), true);
+check('quay chot · huy CO cong gio (khong note)', endedByCounter(huyCoCongGio), true);
+check('quay chot · doi KTV', endedByCounter(doiKtv), true);
+check('KTV tu bam xong -> KHONG phai quay chot', endedByCounter(ktvTuBam), false);
+
+// ── 9. Nhận diện kịch bản ──────────────────────────────────────────────────
+const dungThatRoiTiep = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(70), pauses: [{ from: T(10), to: T(20), closedBy: 'RESUME' }] };
+check('co bam Tiep -> dem 1 lan tam dung', scenarioOf({ status: 'DONE', segments: [dungThatRoiTiep] }).soLanTamDung, 1);
+check('chi chot don -> KHONG dem la tam dung', scenarioOf({ status: 'DONE', segments: [huyCoCongGio] }).soLanTamDung, 0);
+const cuKhacDinhDang = { ktvId: 'T1', duration: 60, actualStartTime: T(0), actualEndTime: T(20), pauses: [{ from: '2026-09-06T10:20:00.000Z', to: '2026-09-06T10:20:00+00:00' }] };
+check('du lieu cu · so moc gio chu khong so chuoi', scenarioOf({ status: 'DONE', segments: [cuKhacDinhDang] }).soLanTamDung, 0);
+check('kich ban huy mat trang', scenarioOf({ status: 'CANCELLED', options: {}, segments: [huyMatTrang] }).scenario, 'A_C4_HUY_MAT_TRANG');
+check('kich ban huy co cong gio', scenarioOf({ status: 'CANCELLED', options: { cancelCredit: 'WORKED' }, segments: [huyCoCongGio] }).scenario, 'C3_HUY_CO_CONG_GIO');
+check('kich ban ra som', scenarioOf({ status: 'DONE', options: { earlyLeave: true }, segments: [ketThucSom] }).scenario, 'B_RA_SOM');
+check('kich ban doi KTV', scenarioOf({ status: 'IN_PROGRESS', options: {}, segments: [doiKtv] }).scenario, 'C2_DOI_KTV');
 
 console.log(ok.join('\n'));
 console.log(`\n✅ ${ok.length}/${ok.length} phép thử đạt.`);

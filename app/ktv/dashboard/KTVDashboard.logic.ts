@@ -1,4 +1,4 @@
-import { pausedMsOf } from '@/lib/segment-time';
+import { pausedMsOf, endedByCounter } from '@/lib/segment-time';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
@@ -643,13 +643,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // 🔒 ABSOLUTE GUARD: Nếu timer đang chạy (isTimerRunning = true) → KHÔNG được chuyển sang CLEANING/FEEDBACK/DONE
             // Ngăn chặn ghost completion do race condition (allDone = true khi actualEndTime từ session cũ còn trong DB)
             //
-            // NGOẠI LỆ: quầy kết thúc hộ đơn đang tạm dừng. Lúc đó KTV chưa hề bấm xong nên
-            // isTimerRunning vẫn bật, guard ép ngược về IN_PROGRESS và đồng hồ chạy mãi tới khi F5.
-            // Server đã đánh dấu chặng bằng note FINISHED_EARLY_ON_PAUSE — đó là mốc kết thúc
-            // thật, không phải dữ liệu thừa của phiên cũ, nên phải cho đi tiếp.
-            const endedByReception = allMySegsForStatus.some(
-                (seg: any) => seg.actualEndTime && seg.note === 'FINISHED_EARLY_ON_PAUSE'
-            );
+            // NGOẠI LỆ: quầy chốt hộ (Kết thúc sớm / Huỷ / Đổi KTV). Lúc đó KTV chưa hề
+            // bấm xong nên isTimerRunning vẫn bật, guard ép ngược về IN_PROGRESS và đồng
+            // hồ chạy mãi tới khi F5, luồng không đi tiếp được.
+            // Nhận diện qua endedByCounter() — KHÔNG kiểm bằng một chuỗi note, vì bản
+            // trước chỉ nhận 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ vẫn bị chặn.
+            const endedByReception = allMySegsForStatus.some(endedByCounter);
             if (isTimerRunningRef.current && !endedByReception && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
                 console.warn(`🛡️ [ScreenEngine] Timer đang chạy nhưng status=${currentStatus} → ép giữ IN_PROGRESS`);
                 currentStatus = 'IN_PROGRESS';
@@ -688,7 +687,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
         // bước đó, y hệt lỗi đã gặp với "Kết thúc sớm".
         //
         // Chỉ văng ra khi KTV thật sự CHƯA bắt đầu chặng nào.
-        if (booking.status === 'CANCELLED') {
+        // ⚠️ Huỷ hết dịch vụ của một ĐƠN CON thì recomputeBookingStatus trả về 'DONE'
+        // chứ KHÔNG phải 'CANCELLED' — nên chỉ soi booking.status là hụt. Phải xét cả
+        // trạng thái ITEM của chính KTV này.
+        const itemBiHuy = assignedItem?.status === 'CANCELLED'
+            || allAssignedItems.every((i: any) => i?.status === 'CANCELLED');
+
+        if (booking.status === 'CANCELLED' || itemBiHuy) {
             if (['REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
                 console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (ScreenEngine CANCELLED).");
                 return;

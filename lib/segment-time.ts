@@ -216,3 +216,26 @@ export const SCENARIO_LABEL: Record<Scenario, string> = {
     C3_HUY_CO_CONG_GIO: 'Huỷ — có cộng giờ',
     A_C4_HUY_MAT_TRANG: 'Huỷ — mất trắng',
 };
+
+/**
+ * Chặng này bị QUẦY chốt hộ, không phải do KTV tự bấm xong?
+ *
+ * Dùng cho guard chống "ghost completion" trên app KTV: guard đó ép trạng thái
+ * ngược về IN_PROGRESS khi `isTimerRunning` còn bật, mà quầy chốt hộ thì KTV
+ * chưa hề bấm xong nên cờ vẫn bật → đồng hồ chạy mãi và luồng đứng im.
+ *
+ * ⚠️ ĐỪNG kiểm bằng MỘT chuỗi note. Đã sai đúng kiểu đó: guard chỉ nhận
+ * 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ (ghi 'CANCELLED_NO_CREDIT', hoặc KHÔNG
+ * ghi note nào khi quầy chọn cộng giờ) vẫn bị chặn. Thêm luồng mới là lại sót.
+ * Nhận theo DẤU HIỆU chung: khoảng dừng đóng bởi quầy, hoặc chặng bị tước.
+ */
+export function endedByCounter(seg: any): boolean {
+    if (!seg?.actualEndTime) return false;
+    if (seg.voided === true) return true;
+
+    const COUNTER_NOTES = ['FINISHED_EARLY_ON_PAUSE', 'CANCELLED_NO_CREDIT', 'CHANGED'];
+    if (COUNTER_NOTES.includes(String(seg.note))) return true;
+
+    const pauses = Array.isArray(seg.pauses) ? seg.pauses : [];
+    return pauses.some((p: any) => p?.closedBy && p.closedBy !== 'RESUME');
+}
