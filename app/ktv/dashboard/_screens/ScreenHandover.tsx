@@ -198,8 +198,8 @@ export function ScreenHandover({ logic }: { logic: any }) {
           vì lần trước bỏ qua, cho bỏ qua tiếp là nợ không bao giờ trả xong. */}
       {isRepayingDebt && !isHandoverComplete && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
-          Đây là phòng bạn đang NỢ bàn giao — phải chụp đủ ảnh mới nộp được, không bỏ qua thêm lần nữa.
-          <br /><span className="font-medium">Chưa chụp kịp thì bấm <b>Trở lại</b>, phòng vẫn còn nợ, lát quay lại nộp.</span>
+          Phòng đang <b>NỢ bàn giao</b> — chụp đủ ảnh mới nộp được.
+          <br /><span className="font-medium">Chưa kịp thì bấm <b>Trở lại</b>, nợ vẫn còn đó.</span>
         </p>
       )}
 
