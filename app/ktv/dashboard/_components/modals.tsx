@@ -10,6 +10,7 @@ import { apiClient } from '@/lib/apiClient';
 import { shiftMonth, currentMonthVn } from '@/lib/hours-format';
 import { ROOM_ISSUE_OPTIONS } from '../KTVDashboard.logic';
 import { useToast } from '@/components/ui/Toast';
+import { roomLabel } from '@/lib/room-label';
 import { THEME } from '../_shared/ui';
 
 /** Các hộp thoại của KTV Dashboard. Mỗi cái tự quản state riêng, nhận dữ liệu qua props. */
@@ -103,7 +104,7 @@ export function RoomIssueModal({
               <AlertTriangle size={20} />
               Báo Sự Cố Phòng
             </h3>
-            {roomId && <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mt-1">Phòng {roomId}</p>}
+            {roomId && <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mt-1">Phòng {roomLabel(roomId)}</p>}
           </div>
           <button onClick={onClose} className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors">
             <X size={20} />

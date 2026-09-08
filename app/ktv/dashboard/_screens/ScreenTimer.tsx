@@ -2,6 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
+import { roomLabel } from '@/lib/room-label';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
 import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert } from 'lucide-react';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
@@ -80,7 +81,7 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
               </div>
               <div className="flex-1">
                 <p className={`text-xs font-black ${isActive ? 'text-emerald-900' : 'text-slate-800'}`}>
-                  Phòng {seg.roomId}
+                  Phòng {roomLabel(seg.roomId)}
                   {isActive && <span className="ml-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md animate-pulse">ĐANG LÀM</span>}
                 </p>
                 <p className={`text-[10px] font-bold uppercase tracking-tighter ${isActive ? 'text-emerald-600/70' : 'text-slate-400'}`}>
@@ -281,7 +282,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
                 {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}` : 'Phòng'}
               </span>
               <span className="text-lg">
-                {currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName}
+                {roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName)}
                 {(currentSeg?.bedId || booking?.assignedBedId) && ` (G: ${(currentSeg?.bedId || booking.assignedBedId).split('-').pop()})`}
               </span>
             </div>

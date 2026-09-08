@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
+import { roomLabel } from '@/lib/room-label';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
 import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Wallet, X } from 'lucide-react';
 import { ProcedureModal, RoomIssueModal, RejectOrderModal, TurnQueueTypeDModal, OfficeScoreModal } from '../_components/modals';
@@ -435,7 +436,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Phòng</p>
-                    <p className="font-black text-slate-800">{currentSeg?.roomId || booking.assignedRoomId || booking.roomName || '—'}</p>
+                    <p className="font-black text-slate-800">{roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Giường</p>
@@ -545,7 +546,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   <div key={item.id} onClick={() => logic.handleSelectDebt(item.bookingId)} className="bg-white p-3 rounded-2xl flex items-center justify-between gap-3 border border-amber-100 cursor-pointer hover:bg-amber-100/50">
                     <div className="min-w-0">
                       <p className="text-sm font-black text-slate-800 leading-tight">
-                        Phòng {item.roomName || '—'}
+                        Phòng {roomLabel(item.roomName) || '—'}
                       </p>
                       <p className="text-[10px] font-medium text-slate-400 leading-tight mt-0.5 break-all">
                         {item.Bookings?.billCode || 'Không rõ mã đơn'}
@@ -753,7 +754,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   </span>
                   <div className="flex items-center gap-2">
                     <div className="bg-emerald-600 text-white px-4 py-2 rounded-2xl font-black text-lg shadow-lg shadow-emerald-100">
-                      Phòng {currentSeg?.roomId || booking.assignedRoomId || booking.roomName}
+                      Phòng {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName)}
                     </div>
                     {(currentSeg?.bedId || booking.assignedBedId || booking.bedId) && (
                       <div className="bg-white border-2 border-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl font-black text-lg">

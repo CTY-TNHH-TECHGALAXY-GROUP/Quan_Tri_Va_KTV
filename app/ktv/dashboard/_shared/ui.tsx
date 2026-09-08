@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
+import { roomLabel } from '@/lib/room-label';
 
 /**
  * Token giao diện + mảnh UI nhỏ dùng chung cho mọi màn của KTV Dashboard.
@@ -56,7 +57,7 @@ export const formatMultiServiceNames = (segments: any[]) => {
   const parts: string[] = [];
   groups.forEach((serviceSet: Set<string>, roomName: string) => {
     const servicesStr = Array.from(serviceSet).join(' - ');
-    parts.push(roomName ? `${servicesStr} ${roomName}` : servicesStr);
+    parts.push(roomName ? `${servicesStr} ${roomLabel(roomName)}` : servicesStr);
   });
 
   return parts.join(' + ');
