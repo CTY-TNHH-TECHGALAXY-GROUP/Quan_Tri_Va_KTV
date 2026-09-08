@@ -30,6 +30,8 @@ export interface PenaltyRow {
     hours_penalty: number;
     money_penalty: number;
     note: string | null;
+    /** Lúc ghi phiếu phạt. Dòng phạt không gắn với tua nào nên đây là mốc giờ duy nhất có. */
+    created_at: string | null;
 }
 
 export interface GetRowsOptions {
@@ -103,7 +105,7 @@ export async function getPenalties(
 ): Promise<PenaltyRow[]> {
     let q = supabase
         .from('KTVDPenaltyLedger')
-        .select('staff_id, work_date, penalty_type, hours_penalty, money_penalty, note')
+        .select('staff_id, work_date, penalty_type, hours_penalty, money_penalty, note, created_at')
         .gte('work_date', opts.from)
         .lte('work_date', opts.to);
 

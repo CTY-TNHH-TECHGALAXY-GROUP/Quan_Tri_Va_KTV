@@ -259,6 +259,14 @@ export class KtvOfficeScoreService {
         type Entry = {
             id: string; date: string; earned: number; penalty: number;
             penaltyType: string | null; bookingId: string | null; note: string | null;
+            /**
+             * Mốc giờ để hiện trên lịch sử. Tua lấy giờ bắt đầu đơn, phiếu phạt lấy
+             * lúc ghi phiếu. Có thể null với dữ liệu cũ — UI phải chịu được.
+             *
+             * ⚠️ CHỈ để hiển thị. Thứ tự cộng số dư vẫn theo quy tắc "cùng ngày thì
+             * giờ làm trước, phạt sau", không sắp lại theo mốc này.
+             */
+            at: string | null;
         };
 
         const entries: Entry[] = [
@@ -271,6 +279,7 @@ export class KtvOfficeScoreService {
                 // Mã bill đọc được thì ưu tiên hơn UUID — admin tra đơn bằng mã, không bằng id.
                 bookingId: r.bill_code || r.booking_id || null,
                 note: r.service_name,
+                at: r.booking_time_start || null,
             })),
             // Khoản chỉ trừ TIỀN (phí kích hoạt lại) không thuộc sổ giờ — để lại
             // sẽ thành một dòng '0 giờ' vô nghĩa giữa các tua.
@@ -282,6 +291,7 @@ export class KtvOfficeScoreService {
                 penaltyType: p.penalty_type,
                 bookingId: null,
                 note: p.note,
+                at: p.created_at || null,
             })),
         ];
 
@@ -290,8 +300,12 @@ export class KtvOfficeScoreService {
             a.date === b.date ? (b.earned - a.earned) : a.date.localeCompare(b.date));
 
         let balance = 0;
+        let earnedTotal = 0;
+        let penaltyTotal = 0;
         const rows = entries.map(e => {
             balance += e.earned - e.penalty;
+            earnedTotal += e.earned;
+            penaltyTotal += e.penalty;
             return {
                 ...e,
                 earned: Math.round(e.earned * 100) / 100,
@@ -300,7 +314,17 @@ export class KtvOfficeScoreService {
             };
         });
 
-        return { rows: rows.reverse(), total: Math.round(balance * 100) / 100 };
+        // ⚠️ Tổng phải cộng từ số GỐC rồi mới làm tròn MỘT lần. Cộng các dòng đã làm
+        // tròn sẵn thì sai số dồn lại: mỗi tua 1 phút = 0.0167h, mười tua là lệch tới
+        // 0.01h — đủ để ô "Thực nhận" và số dư của dòng mới nhất đá nhau ngay trên
+        // cùng một màn hình, và quầy thì không biết tin số nào.
+        const r2 = (n: number) => Math.round(n * 100) / 100;
+        return {
+            rows: rows.reverse(),
+            total: r2(balance),
+            earnedTotal: r2(earnedTotal),
+            penaltyTotal: r2(penaltyTotal),
+        };
     }
 
     /**

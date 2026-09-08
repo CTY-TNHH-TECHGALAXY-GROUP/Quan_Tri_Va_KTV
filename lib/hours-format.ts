@@ -26,6 +26,37 @@ export function fmtShortDate(iso: string | null): string {
     return m && d ? `${d}/${m}` : iso;
 }
 
+/** 'YYYY-MM-DD' → 'Thứ 7' / 'Chủ nhật'. */
+export function fmtWeekday(iso: string): string {
+    const [y, m, d] = String(iso ?? '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    // Dựng theo UTC để khỏi bị lệch một ngày do múi giờ của máy chạy.
+    const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    return ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][wd];
+}
+
+/** 'YYYY-MM-DD' → '05/09/2026'. */
+export function fmtFullDate(iso: string): string {
+    const [y, m, d] = String(iso ?? '').split('-');
+    return d && m && y ? `${d}/${m}/${y}` : String(iso ?? '');
+}
+
+/**
+ * Mốc thời gian trong sổ → 'HH:mm' giờ VN.
+ *
+ * Cột giờ trong DB khi thì có múi (timestamptz của phiếu phạt), khi thì trần theo
+ * UTC (booking_time_start). Chuỗi trần mà đưa thẳng vào `new Date()` sẽ bị hiểu là
+ * giờ ĐỊA PHƯƠNG — lệch 7 tiếng. Phải gắn 'Z' trước, giống parseDbDate.
+ */
+export function fmtClock(at: string | null | undefined): string {
+    if (!at) return '';
+    const raw = String(at);
+    const hasZone = raw.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(raw);
+    const d = new Date(hasZone ? raw : raw + 'Z');
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+}
+
 /** 'YYYY-MM' dịch đi `delta` tháng. */
 export function shiftMonth(monthStr: string, delta: number): string {
     const [y, m] = monthStr.split('-').map(Number);

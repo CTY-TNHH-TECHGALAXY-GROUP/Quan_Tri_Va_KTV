@@ -58,9 +58,9 @@ export async function GET(request: Request) {
                 : null,
         }));
 
-        const earned = rows.reduce((a, r) => a + r.earned, 0);
-        const penalty = rows.reduce((a, r) => a + r.penalty, 0);
-        const round2 = (n: number) => Math.round(n * 100) / 100;
+        // Lấy tổng đã cộng từ số gốc trong hoursLedger, KHÔNG tự cộng lại các dòng
+        // đã làm tròn — nếu không, ô "Thực nhận" lệch số dư dòng mới nhất 0.01h.
+        const { earnedTotal, penaltyTotal, total } = ledger;
 
         return NextResponse.json({
             success: true,
@@ -73,9 +73,9 @@ export async function GET(request: Request) {
                 locked: staff.status === 'KHÓA_TÀI_KHOẢN',
             },
             hours: {
-                earned: round2(earned),
-                penalty: round2(penalty),
-                net: round2(earned - penalty),
+                earned: earnedTotal,
+                penalty: penaltyTotal,
+                net: total,
                 turns: rows.filter(r => r.earned > 0).length,
                 days: new Set(rows.filter(r => r.earned > 0).map(r => r.date)).size,
                 rows,

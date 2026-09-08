@@ -4,8 +4,9 @@ import React from 'react';
 import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Search, RefreshCw, Timer, Lock, ClipboardCheck, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, RefreshCw, Timer, Lock, ClipboardCheck, X, Clock, User, AlertTriangle } from 'lucide-react';
 import { useAdminKtvHoursLogic, fmtHours, fmtShortDate } from './AdminKtvHours.logic';
+import { fmtWeekday, fmtFullDate, fmtClock } from '@/lib/hours-format';
 
 // 🔧 UI CONFIGURATION — cùng bảng màu với trang Chấm điểm Office.
 const CSS_VARS = {
@@ -72,42 +73,153 @@ const HoursBreakdown = ({ earned, penalty, net }: { earned: number; penalty: num
 );
 
 /**
- * Một dòng sổ giờ.
+ * Một dòng sổ giờ đã được diễn giải sẵn cho UI.
  *
  * Phân loại theo `penaltyType` chứ KHÔNG theo `penalty > 0`: dấu mốc khoá tài khoản
  * (ACCOUNT_LOCK) có hours_penalty = 0, lấy số làm mốc thì nó hiện nhầm thành một tua
  * dịch vụ "+0h 00P".
  */
-const LedgerRow = ({ r }: { r: any }) => {
+function readLedgerRow(r: any) {
   const isPenalty = !!r.penaltyType;
   const isMarker = isPenalty && r.penalty === 0;
+  return {
+    isPenalty,
+    isMarker,
+    /** Nhãn nhóm ở cột Nội dung. */
+    badge: isMarker ? 'Dấu mốc' : isPenalty ? 'Vi phạm nội quy' : 'Giờ làm khách',
+    /** Dòng đậm ở cột Nội dung: mã đơn với tua, tên lỗi với phiếu phạt. */
+    heading: isPenalty ? (r.penaltyLabel || 'Phạt giờ') : (r.orderCode || 'Tua dịch vụ'),
+    /** Dòng mờ bên dưới: `note` là tên dịch vụ với tua, là ghi chú với phiếu phạt. */
+    sub: r.note || '',
+    kindLabel: isMarker ? 'Ghi nhận' : isPenalty ? 'Vi phạm' : 'Làm khách',
+    kindNote: isMarker ? 'Không trừ giờ' : isPenalty ? 'Trừ giờ' : 'Cộng giờ',
+    amount: isMarker ? null : isPenalty ? `− ${fmtHours(r.penalty)}` : `+ ${fmtHours(r.earned)}`,
+  };
+}
 
-  return (
-    <div className={`rounded-2xl p-3 flex items-center gap-3 ${isMarker ? 'bg-[var(--amber-2)]' : isPenalty ? 'bg-[var(--rust-2)]' : 'bg-[var(--surface-soft)]'}`}>
-      <div className="w-11 shrink-0 text-center">
-        <p className="text-sm font-bold tabular-nums">{fmtShortDate(r.date)}</p>
+/** Ô "Loại giao dịch" — viên thuốc có icon, dùng chung cho cả bảng lẫn thẻ. */
+const KindPill = ({ v }: { v: ReturnType<typeof readLedgerRow> }) => (
+  <div className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 ${
+    v.isMarker ? 'bg-[var(--amber-2)]' : v.isPenalty ? 'bg-[var(--rust-2)]' : 'bg-[var(--green-2)]'
+  }`}>
+    <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-white/70 ${
+      v.isMarker ? 'text-[var(--amber)]' : v.isPenalty ? 'text-[var(--rust)]' : 'text-[var(--green)]'
+    }`}>
+      {v.isPenalty ? <AlertTriangle size={14} /> : <User size={14} />}
+    </span>
+    <span className="leading-tight">
+      <span className={`block text-[13px] font-bold ${
+        v.isMarker ? 'text-[var(--amber)]' : v.isPenalty ? 'text-[var(--rust)]' : 'text-[var(--green)]'
+      }`}>{v.kindLabel}</span>
+      <span className="block text-[10px] text-[var(--muted)]">{v.kindNote}</span>
+    </span>
+  </div>
+);
+
+const ContentCell = ({ v }: { v: ReturnType<typeof readLedgerRow> }) => (
+  <>
+    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md mb-1 ${
+      v.isMarker ? 'bg-[var(--amber-2)] text-[var(--amber)]'
+        : v.isPenalty ? 'bg-[var(--rust-2)] text-[var(--rust)]'
+        : 'bg-[var(--green-2)] text-[var(--green)]'
+    }`}>{v.badge}</span>
+    <p className="font-bold text-sm leading-snug">{v.heading}</p>
+    {v.sub && <p className="text-xs text-[var(--muted)] leading-snug mt-0.5">{v.sub}</p>}
+  </>
+);
+
+/**
+ * Lịch sử giờ tích luỹ.
+ *
+ * Màn lớn dùng bảng 5 cột như quầy vẫn đối soát trên giấy; điện thoại đổ về thẻ
+ * xếp chồng vì 5 cột nhét vào 375px thì cột nào cũng không đọc nổi.
+ */
+const LedgerTable = ({ rows, total }: { rows: any[]; total: number }) => (
+  <div className="bg-[var(--surface)] rounded-[var(--radius)] border border-[var(--line)] overflow-hidden">
+    <div className="flex items-center justify-between gap-3 flex-wrap p-4 border-b border-[var(--line)]">
+      <div className="flex items-center gap-3">
+        <span className="w-10 h-10 rounded-full bg-[var(--surface-soft)] text-[var(--green)] flex items-center justify-center shrink-0">
+          <Clock size={20} />
+        </span>
+        <div>
+          <p className="font-bold">Lịch sử giờ tích luỹ</p>
+          <p className="text-xs text-[var(--muted)]">Tất cả giao dịch cộng trừ giờ làm việc</p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-bold truncate ${isMarker ? 'text-[var(--amber)]' : isPenalty ? 'text-[var(--rust)]' : ''}`}>
-          {isPenalty ? (r.penaltyLabel || 'Phạt giờ') : (r.note || 'Tua dịch vụ')}
-        </p>
-        <p className="text-[11px] text-[var(--muted)] truncate">
-          {isPenalty ? (r.note || '—') : (r.orderCode || '—')}
-        </p>
-      </div>
-      <div className="text-right shrink-0">
-        {isMarker ? (
-          <p className="text-[11px] font-bold text-[var(--amber)] uppercase tracking-widest">Dấu mốc</p>
-        ) : (
-          <p className={`text-sm font-bold tabular-nums ${isPenalty ? 'text-[var(--rust)]' : 'text-[var(--green)]'}`}>
-            {isPenalty ? `− ${fmtHours(r.penalty)}` : `+ ${fmtHours(r.earned)}`}
-          </p>
-        )}
-        <p className="text-[10px] text-[var(--muted)]">Còn {fmtHours(r.balance)}</p>
+      <div className="flex items-center gap-2 bg-[var(--surface-soft)] rounded-2xl px-4 py-2">
+        <span className="text-xs text-[var(--muted)]">Tổng giờ hiện tại</span>
+        <Clock size={16} className="text-[var(--muted)]" />
+        <span className="font-bold tabular-nums">{fmtHours(total)}</span>
       </div>
     </div>
-  );
-};
+
+    {/* Bảng — từ md trở lên */}
+    <table className="hidden md:table w-full text-left">
+      <thead>
+        <tr className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">
+          <th className="px-4 py-3 font-bold">Ngày</th>
+          <th className="px-4 py-3 font-bold">Nội dung</th>
+          <th className="px-4 py-3 font-bold">Loại giao dịch</th>
+          <th className="px-4 py-3 font-bold text-right">Số giờ</th>
+          <th className="px-4 py-3 font-bold text-right">Còn lại</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r: any) => {
+          const v = readLedgerRow(r);
+          return (
+            <tr key={r.id} className="border-t border-[var(--line)] align-top">
+              <td className="px-4 py-3 whitespace-nowrap">
+                <p className="font-bold text-sm">{fmtWeekday(r.date)}</p>
+                <p className="text-xs text-[var(--muted)] tabular-nums">{fmtFullDate(r.date)}</p>
+                {fmtClock(r.at) && <p className="text-xs text-[var(--muted)] tabular-nums">{fmtClock(r.at)}</p>}
+              </td>
+              <td className="px-4 py-3 max-w-[280px]"><ContentCell v={v} /></td>
+              <td className="px-4 py-3"><KindPill v={v} /></td>
+              <td className="px-4 py-3 text-right whitespace-nowrap">
+                {v.amount === null
+                  ? <span className="text-xs font-bold text-[var(--amber)] uppercase tracking-widest">Dấu mốc</span>
+                  : <span className={`font-bold tabular-nums ${v.isPenalty ? 'text-[var(--rust)]' : 'text-[var(--green)]'}`}>{v.amount}</span>}
+              </td>
+              <td className="px-4 py-3 text-right whitespace-nowrap">
+                <span className="inline-flex items-center gap-1.5 font-bold tabular-nums">
+                  <Clock size={14} className="text-[var(--muted)]" />
+                  {fmtHours(r.balance)}
+                </span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+
+    {/* Thẻ xếp chồng — dưới md */}
+    <div className="md:hidden divide-y divide-[var(--line)]">
+      {rows.map((r: any) => {
+        const v = readLedgerRow(r);
+        return (
+          <div key={r.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--muted)] tabular-nums">
+                  {fmtWeekday(r.date)} · {fmtFullDate(r.date)}{fmtClock(r.at) ? ` · ${fmtClock(r.at)}` : ''}
+                </p>
+                <div className="mt-1"><ContentCell v={v} /></div>
+              </div>
+              <div className="text-right shrink-0">
+                {v.amount === null
+                  ? <p className="text-[11px] font-bold text-[var(--amber)] uppercase tracking-widest">Dấu mốc</p>
+                  : <p className={`font-bold tabular-nums ${v.isPenalty ? 'text-[var(--rust)]' : 'text-[var(--green)]'}`}>{v.amount}</p>}
+                <p className="text-[11px] text-[var(--muted)] mt-0.5">Còn {fmtHours(r.balance)}</p>
+              </div>
+            </div>
+            <div className="mt-2"><KindPill v={v} /></div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const AdminKtvHoursPage = () => {
   const logic = useAdminKtvHoursLogic();
@@ -316,7 +428,7 @@ const AdminKtvHoursPage = () => {
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="bg-[var(--surface)] w-full max-w-2xl max-h-[92vh] flex flex-col rounded-t-[26px] md:rounded-[26px] overflow-hidden shadow-2xl"
+                className="bg-[var(--surface)] w-full max-w-4xl max-h-[92vh] flex flex-col rounded-t-[26px] md:rounded-[26px] overflow-hidden shadow-2xl"
               >
                 {/* Header */}
                 <div className="p-5 border-b border-[var(--line)] flex justify-between items-start gap-3">
@@ -353,17 +465,13 @@ const AdminKtvHoursPage = () => {
                         {d.hours.days > 0 && ` · TB ${fmtHours(d.hours.earned / d.hours.days)}/ngày`}
                       </p>
 
-                      <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--muted)] mt-6 mb-2">
-                        Chi tiết từng dòng · mới nhất trước
-                      </p>
-
-                      {d.hours.rows.length === 0 ? (
-                        <p className="py-8 text-center text-[var(--muted)] text-sm">Tháng này chưa có dòng nào trong sổ giờ.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {d.hours.rows.map((r: any) => <LedgerRow key={r.id} r={r} />)}
-                        </div>
-                      )}
+                      <div className="mt-6">
+                        {d.hours.rows.length === 0 ? (
+                          <p className="py-8 text-center text-[var(--muted)] text-sm">Tháng này chưa có dòng nào trong sổ giờ.</p>
+                        ) : (
+                          <LedgerTable rows={d.hours.rows} total={d.hours.net} />
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
