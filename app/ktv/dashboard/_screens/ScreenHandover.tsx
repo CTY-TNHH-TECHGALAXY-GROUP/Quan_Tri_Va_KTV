@@ -204,19 +204,15 @@ export function ScreenHandover({ logic }: { logic: any }) {
         </p>
       )}
 
-      {/* Hạn mức bỏ qua: nói TRƯỚC khi bấm. Hết lượt thì báo đỏ, còn lượt thì
-          nhắc nhẹ để KTV biết mình đang tiêu tới đâu. */}
-      {!isRepayingDebt && !isHandoverComplete && skipQuota && (
-        noSkipLeft ? (
-          <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
-            Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua và đang nợ {skipQuota.used} phòng.
-            <br/>Không bỏ qua tiếp được — phải chụp đủ ảnh, hoặc trả nợ phòng cũ trước.
-          </p>
-        ) : (
-          <p className="text-xs text-center font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5">
-            Bỏ qua sẽ bị ghi nợ. Bạn còn <b>{skipQuota.remaining}/{skipQuota.max}</b> lượt.
-          </p>
-        )
+      {/* Chỉ báo khi ĐÃ HẾT lượt — lúc đó là chặn thật, phải nói trước khi bấm.
+          Còn lượt thì không nhắc: dòng "còn 1/2 lượt" hiện thường trực chỉ làm
+          nhiễu màn hình, mà số lượt còn lại vẫn được nói đúng lúc cần — trong
+          hộp thoại xác nhận ngay trước khi KTV bấm Bỏ qua. */}
+      {!isRepayingDebt && !isHandoverComplete && noSkipLeft && skipQuota && (
+        <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
+          Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua và đang nợ {skipQuota.used} phòng.
+          <br/>Không bỏ qua tiếp được — phải chụp đủ ảnh, hoặc trả nợ phòng cũ trước.
+        </p>
       )}
 
       <button
