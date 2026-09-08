@@ -2199,8 +2199,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 photosBase64: photosToSubmit
             });
             
+            // Lưu hỏng thì DỪNG LẠI, đừng đi tiếp như không có chuyện gì.
+            //
+            // Trước đây chỗ này chỉ console.error rồi chạy thẳng xuống: báo "Đã nộp
+            // ảnh bàn giao, bạn hết nợ rồi" và đẩy sang màn Thưởng, trong khi server
+            // chưa ghi được gì. KTV tin là xong, đi tan ca, tới nơi mới bị chặn vì
+            // vẫn còn nợ — mà ảnh thì đã mất.
             if (!res.success) {
                 console.error('Lỗi khi giải phóng KTV:', res.error);
+                addToast(res.error || 'Không lưu được bàn giao. Vui lòng thử lại.', 'error');
+                return;   // ở lại màn Bàn giao để nộp lại
             }
 
             setCommission(totalCommission);
@@ -2240,11 +2248,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
             isTransitioningRef.current = true;
             setScreen('REWARD');
             setTimeout(() => isTransitioningRef.current = false, 1000);
-        } catch (err) {
+        } catch (err: any) {
+            // apiClient NÉM LỖI với mọi mã khác 2xx nên nhánh `!res.success` ở trên
+            // hiếm khi chạy — chỗ bắt lỗi thật sự là đây.
+            //
+            // Trước đây catch này đẩy thẳng sang màn Thưởng: hỏng mà vẫn coi như
+            // xong. Nay ở lại màn Bàn giao và nói rõ, để KTV nộp lại — hoặc bấm
+            // "Bỏ qua" để ghi nợ đàng hoàng thay vì mất trắng.
             console.error('Error in finish handover:', err);
-            isTransitioningRef.current = true;
-            setScreen('REWARD');
-            setTimeout(() => isTransitioningRef.current = false, 1000);
+            addToast(
+                `Không lưu được bàn giao: ${err?.message || 'lỗi kết nối'}. Thử lại, hoặc bấm "Bỏ qua" để ghi nợ.`,
+                'error'
+            );
         } finally {
             setIsLoading(false);
         }
