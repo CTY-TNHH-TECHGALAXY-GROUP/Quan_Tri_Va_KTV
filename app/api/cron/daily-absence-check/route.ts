@@ -83,8 +83,12 @@ async function runLockUnregistered() {
         });
         await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staff.id);
         await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, today, lyDo);
+        // Khoá tài khoản là tin CÁ NHÂN gửi chính chủ, không phải tin khẩn của quầy.
+        // Để chung type EMERGENCY thì rule của nó (admin/reception/dev, cờ 🎯 tắt)
+        // đẩy câu "Tài khoản của bạn đã bị khoá" cho Admin/Lễ tân đọc, còn KTV bị
+        // khoá thì không hay biết gì.
         await createNotification({
-            type: 'EMERGENCY',
+            type: 'ACCOUNT_LOCK',
             message: `Tài khoản của bạn đã bị khóa do chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${today}.`,
             employeeId: staff.id,
         });
@@ -166,7 +170,7 @@ async function run() {
             await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staff.id);
             await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, targetDate, lyDo);
             await createNotification({
-                type: 'EMERGENCY',
+                type: 'ACCOUNT_LOCK',
                 message: `Tài khoản của bạn đã bị khóa do không đăng ký lịch và không đi làm ngày ${vnDate(targetDate)}.`,
                 employeeId: staff.id,
             });
@@ -238,13 +242,14 @@ async function run() {
         await supabase.from('KTVTypeDDailyRegistration')
             .update({ status: 'COMPLETED' }).eq('id', registration.id);
         await createNotification({
-            type: 'EMERGENCY',
+            type: 'ACCOUNT_LOCK',
             message: `Tài khoản của bạn đã bị khóa do ${lyDoKhoa.toLowerCase()} ngày ${vnDate(targetDate)}.`,
             employeeId: staff.id,
         });
     }
 
     if (locked.length > 0 && enabled) {
+        // Bản tổng hợp này viết ở ngôi thứ ba và gửi cho quản lý, nên vẫn là EMERGENCY.
         await createNotification({
             type: 'EMERGENCY',
             message: `Hệ thống vừa khóa ${locked.length} KTV do không đăng ký lịch ngày ${vnDate(targetDate)}: ${locked.join(', ')}`,

@@ -173,9 +173,11 @@ export async function POST(request: Request) {
                         user_agent: 'API',
                         details: { source: 'REJECT_ORDER', bookingItemId: itemId, minHours, availableHours, penaltyHours, reason },
                     });
+                    // Tin cá nhân gửi chính chủ. Quầy vẫn biết chuyện qua tin
+                    // KTV_REJECT_ORDER bắn ngay sau đó ở cuối route này.
                     await supabase.from('StaffNotifications').insert({
                         employeeId: staffId,
-                        type: 'EMERGENCY',
+                        type: 'ACCOUNT_LOCK',
                         message: `Tài khoản của bạn đã bị khoá: ${lyDo}.`,
                     });
                     accountLocked = true;

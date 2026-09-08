@@ -209,8 +209,9 @@ export async function POST(request: Request) {
     });
 
     // 5. Gửi thông báo cho KTV
+    // Tin cá nhân gửi chính chủ — không dùng EMERGENCY (tin khẩn của quầy).
     await createNotification({
-      type: 'EMERGENCY',
+      type: 'MANUAL_UNLOCK',
       message: feeCharged > 0
         ? `Tài khoản của bạn đã được mở khóa. Phí kích hoạt lại: ${feeCharged.toLocaleString('vi-VN')}đ. Lý do: ${reason}`
         : `Tài khoản của bạn đã được mở khóa. Lý do: ${reason}`,

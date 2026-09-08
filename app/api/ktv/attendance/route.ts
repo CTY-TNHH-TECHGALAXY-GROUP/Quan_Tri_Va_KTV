@@ -683,6 +683,32 @@ export async function POST(request: Request) {
             message: notifMessage,
         });
 
+        // ─── Step 5b: Báo lại cho chính KTV ─────────────────────────────
+        // `ATTENDANCE_RESPONSE` xưa nay chỉ được tạo ở route `attendance/confirm`
+        // — nơi Admin bấm duyệt tay. Nhưng Step 3 đã chốt cứng `isAutoApprove =
+        // true`, nên route đó không bao giờ chạy: từ trước tới nay bảng
+        // StaffNotifications KHÔNG có lấy một dòng ATTENDANCE_RESPONSE nào, và
+        // KTV bấm tan ca xong không nhận được xác nhận gì cả — im lặng y như
+        // lúc bấm hụt. Giờ tự duyệt thì tự báo luôn tại đây.
+        if (isAutoApprove) {
+            let confirmText = 'Đã ghi nhận điểm danh của bạn';
+            if (checkType === 'CHECK_OUT') {
+                confirmText = selectedShiftType === 'SUDDEN_OFF_CHECKOUT'
+                    ? 'Đã ghi nhận tan ca sớm (tính là nghỉ đột xuất)'
+                    : 'Đã ghi nhận tan ca của bạn';
+            }
+            else if (checkType === 'LATE_CHECKIN') confirmText = 'Đã ghi nhận điểm danh bổ sung của bạn';
+            else if (checkType === 'OFF_REQUEST') confirmText = 'Đã ghi nhận yêu cầu OFF của bạn';
+            else if (checkType === 'SUDDEN_OFF') confirmText = 'Đã ghi nhận yêu cầu nghỉ đột xuất của bạn';
+            else if (checkType === 'OVERTIME') confirmText = `Đã ghi nhận đăng ký làm thêm giờ đến ${estimatedEndTime}`;
+
+            await createNotification({
+                type: 'ATTENDANCE_RESPONSE',
+                message: `✅ ${confirmText}.`,
+                employeeId: staffCode || employeeId,
+            });
+        }
+
         return NextResponse.json({
             success: true,
             data: record,
