@@ -84,12 +84,17 @@ export const useAdminKtvHoursLogic = () => {
    * Xếp hạng theo GIỜ THỰC NHẬN (đã trừ phạt) — cùng con số quyết định thứ tự
    * nhận tua ở bảng điều phối, nên hai màn hình không bao giờ đọc ra hai thứ hạng.
    *
+   * Hoà giờ thì chốt bằng MÃ NHÂN VIÊN tăng dần — đúng nút chặn cuối của
+   * `KtvTypeDTurnService.getTurnQueue`. Trước đây chốt bằng TÊN, nên đầu tháng
+   * khi cả đội cùng 0h, bảng này và trang Chấm điểm xếp ra hai thứ tự khác nhau
+   * cho cùng một nhóm người.
+   *
    * Tính trên TOÀN ĐỘI rồi mới lọc theo ô tìm kiếm: gõ tên một người vẫn phải thấy
    * đúng hạng của người đó trong đội, không phải hạng 1 giả.
    */
   const ranked: HoursRow[] = useMemo(() => {
     return [...rawRows]
-      .sort((a, b) => (b.net - a.net) || (b.earned - a.earned) || a.name.localeCompare(b.name, 'vi'))
+      .sort((a, b) => (b.net - a.net) || String(a.code).localeCompare(String(b.code)))
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [rawRows]);
 

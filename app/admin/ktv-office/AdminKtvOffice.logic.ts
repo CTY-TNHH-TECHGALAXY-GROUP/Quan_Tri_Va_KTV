@@ -10,10 +10,27 @@ const FILTER_MODES: FilterMode[] = ['Tất cả', 'Cần xử lý', 'Điểm th�
 
 const MAX_PHOTOS = 5;
 
-/** 'YYYY-MM-DD' theo giờ VN, lùi n ngày. */
+/**
+ * 'YYYY-MM-DD' theo giờ VN, lùi n ngày — chỉ là GIÁ TRỊ TẠM trước khi server
+ * trả về ngày làm việc thật.
+ *
+ * ⚠️ Ngày chấm điểm phải là NGÀY LÀM VIỆC (mốc cắt 06:00), không phải ngày lịch:
+ * ca đêm 04/09 kết thúc 01:30 ngày 05/09 vẫn thuộc ngày làm việc 04/09, đúng như
+ * `KTVAttendance.date` và sổ cái tua đang ghi. Lấy ngày lịch thì phiếu trừ trong
+ * khung 00:00–06:00 rơi sang ngày sau, đẻ thêm một "ngày đi làm" ma trong mẫu số
+ * điểm tháng. Nút Hôm nay / Hôm qua vì vậy đọc `logic.today` (server tính) chứ
+ * không gọi thẳng hàm này.
+ */
 export function vnTodayStr(daysAgo = 0): string {
   const vn = new Date(Date.now() + 7 * 60 * 60 * 1000 - daysAgo * 86400000);
   return vn.toISOString().slice(0, 10);
+}
+
+/** Dịch 'YYYY-MM-DD' đi `days` ngày (âm = lùi). */
+export function shiftDay(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /** 'YYYY-MM' dịch đi `delta` tháng. */
@@ -94,6 +111,10 @@ export const useAdminKtvOfficeLogic = () => {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /** Ngày làm việc hôm nay theo mốc cắt 06:00 — server trả về trong summary. */
+  const [businessToday, setBusinessToday] = useState<string>(vnTodayStr());
+  const yesterday = shiftDay(businessToday, -1);
+
   // Chi tiết 1 KTV (điểm Office + sổ giờ), tải khi mở sheet Lịch sử.
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -161,6 +182,9 @@ export const useAdminKtvOfficeLogic = () => {
     try {
       const res = await apiClient.get<any>(`/api/admin/ktv-office/summary?month=${monthStr}`);
       setStaffList(res?.data || []);
+      // Ngày làm việc do SERVER chốt theo mốc cắt 06:00 — máy quầy để sai giờ,
+      // hay đang là 1h sáng, thì nút "Hôm nay" vẫn trỏ đúng ca đang chạy.
+      if (res?.today) setBusinessToday(res.today);
     } catch (error: any) {
       const msg = error?.status === 403
         ? 'Bạn không có quyền xem trang chấm điểm.'
@@ -251,7 +275,7 @@ export const useAdminKtvOfficeLogic = () => {
   }, [addToast]);
 
   const openSheet = (type: Exclude<SheetType, null>, person = '', code = '', score = 100) => {
-    const today = vnTodayStr();
+    const today = businessToday;
     setSheetState(prev => ({
       ...prev, isOpen: true, type, person, code, score,
       workDate: today, selectedIds: [], note: '', photos: [],
@@ -597,6 +621,7 @@ export const useAdminKtvOfficeLogic = () => {
     searchQuery, setSearchQuery,
     filterMode, toggleFilter,
     staffList, loading, loadError, refresh: fetchSummary,
+    today: businessToday, yesterday,
     detail, detailLoading, historyTab, setHistoryTab,
     detailMonth, changeDetailMonth, setDetailMonth: setDetailMonthDirect,
     sheetState, openSheet, closeSheet, setSheetState,

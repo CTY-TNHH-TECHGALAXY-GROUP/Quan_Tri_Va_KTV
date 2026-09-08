@@ -204,6 +204,40 @@ export async function requireBusinessUser() {
     };
 }
 
+/**
+ * Chặn thao tác nhân danh NGƯỜI KHÁC.
+ *
+ * Nhiều route của app KTV nhận `ktvCode` thẳng từ body rồi tin luôn. Đổi một
+ * ký tự trong request là thao tác trên hạn mức, sổ giờ và món nợ của đồng
+ * nghiệp — ví dụ gửi mã người khác vào `/api/ktv/handover/skip` thì lượt bỏ
+ * qua trừ vào quỹ của họ, còn mình vẫn còn nguyên lượt.
+ *
+ * Trả `null` khi hợp lệ, hoặc `Response` 403 khi lệch.
+ *
+ * ⚠️ Phiên đăng nhập kiểu cũ (chưa có JWT) không tra ra danh tính — giai đoạn
+ * tương thích vẫn cho qua, giống `requirePermission`. Có JWT thì bắt buộc khớp.
+ */
+export async function requireStaffMatches(claimedStaffId: string) {
+    let bUser: Awaited<ReturnType<typeof requireBusinessUser>> = null;
+    try {
+        bUser = await requireBusinessUser();
+    } catch {
+        return null;   // Compatibility Phase: chưa map được business user
+    }
+
+    const sessionId = bUser?.techCode || bUser?.businessUserId;
+    if (!sessionId) return null;
+
+    if (String(sessionId).trim().toLowerCase() !== String(claimedStaffId || '').trim().toLowerCase()) {
+        console.warn(`[AuthServer] ⛔ ${sessionId} thao tác dưới danh nghĩa ${claimedStaffId}`);
+        return Response.json(
+            { success: false, error: 'Bạn chỉ thao tác được trên tài khoản của chính mình.' },
+            { status: 403 }
+        );
+    }
+    return null;
+}
+
 export async function requireRole(requiredRoles: string[]) {
     const bUser = await requireBusinessUser();
 

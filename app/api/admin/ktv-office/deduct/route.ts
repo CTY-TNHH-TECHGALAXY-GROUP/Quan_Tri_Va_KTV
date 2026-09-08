@@ -3,7 +3,7 @@ import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { vnDate } from '@/lib/vn-time';
 import { createNotification } from '@/lib/notification-helper';
-import { vnToday } from '@/lib/vn-time';
+import { getBusinessToday, shiftBusinessDate } from '@/lib/business-date';
 import { isOfficeManager } from '@/lib/services/KtvOfficeScoreService';
 
 export const dynamic = 'force-dynamic';
@@ -11,10 +11,19 @@ export const dynamic = 'force-dynamic';
 
 const MAX_PHOTOS = 5;
 
-/** Ngày VN lùi n ngày, dạng 'YYYY-MM-DD'. */
-function vnDaysAgo(n: number): string {
-    const vn = new Date(Date.now() + 7 * 60 * 60 * 1000 - n * 86400000);
-    return vn.toISOString().slice(0, 10);
+/**
+ * "Hôm nay" và "hôm qua" của trang chấm điểm phải là NGÀY LÀM VIỆC (mốc cắt
+ * 06:00), không phải ngày lịch.
+ *
+ * Spa chạy qua nửa đêm. Ca đêm 04/09 kết thúc lúc 01:30 ngày 05/09 vẫn thuộc
+ * ngày làm việc 04/09 — `KTVAttendance.date` và sổ cái tua đều ghi như vậy.
+ * Nếu chỗ này lấy ngày lịch thì mọi phiếu trừ trong khung 00:00–06:00 rơi sang
+ * 05/09: mẫu số "số ngày đi làm" của điểm tháng mọc thêm một ngày ma, ngày làm
+ * thật thì hiện sạch 100đ, và luật "mỗi lỗi chỉ trừ 1 lần/ngày" bị lách được —
+ * trừ lúc 23:00 rồi trừ lại đúng lỗi đó lúc 01:00 cùng ca vẫn lọt.
+ */
+async function officeToday(supabase: any): Promise<string> {
+    return getBusinessToday(supabase);
 }
 
 /**
@@ -127,13 +136,14 @@ export async function POST(request: Request) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
             return NextResponse.json({ success: false, error: 'Ngày vi phạm không hợp lệ.' }, { status: 400 });
         }
-        if (workDate > vnToday()) {
+        const today = await officeToday(supabase);
+        if (workDate > today) {
             return NextResponse.json({ success: false, error: 'Không thể trừ điểm cho ngày ở tương lai.' }, { status: 400 });
         }
 
         // Lễ tân chỉ được trừ hôm nay và hôm qua — không giới hạn thì dễ trừ bù
         // cả tuần trước, KTV không còn cách nào phản hồi. Quản lý trừ được mọi ngày.
-        if (!isOfficeManager(bUser.role) && workDate < vnDaysAgo(1)) {
+        if (!isOfficeManager(bUser.role) && workDate < shiftBusinessDate(today, -1)) {
             return NextResponse.json(
                 { success: false, error: 'Chỉ Quản lý mới trừ điểm được cho ngày cũ hơn hôm qua.' },
                 { status: 403 }
@@ -334,7 +344,7 @@ export async function PATCH(request: Request) {
                     { status: 403 }
                 );
             }
-            if (log.work_date < vnDaysAgo(1)) {
+            if (log.work_date < shiftBusinessDate(await officeToday(supabase), -1)) {
                 return NextResponse.json(
                     { success: false, error: 'Chỉ Quản lý mới sửa được phiếu cũ hơn hôm qua.' },
                     { status: 403 }

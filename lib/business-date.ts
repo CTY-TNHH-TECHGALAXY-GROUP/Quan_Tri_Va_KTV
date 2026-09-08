@@ -102,7 +102,19 @@ export async function getBusinessToday(supabase: SupabaseClient, at: Date = new 
  * Ngày làm việc liền trước `dateStr` — ngày mà cron chốt sổ cần xử lý.
  */
 export function previousBusinessDate(dateStr: string): string {
+    return shiftBusinessDate(dateStr, -1);
+}
+
+/**
+ * Dịch một chuỗi 'YYYY-MM-DD' đi `days` ngày (âm = lùi).
+ *
+ * Dùng để suy ra "hôm qua theo ngày làm việc" từ ngày làm việc hôm nay, thay vì
+ * lấy `Date.now() − 86400000` rồi cắt chuỗi: cách đó bỏ qua mốc cắt 06:00 nên
+ * trong khung 00:00–06:00 nó trả về ngày lịch, lệch một ngày so với chấm công
+ * và sổ cái tua.
+ */
+export function shiftBusinessDate(dateStr: string, days: number): string {
     const d = new Date(`${dateStr}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - 1);
+    d.setUTCDate(d.getUTCDate() + days);
     return d.toISOString().slice(0, 10);
 }

@@ -218,24 +218,53 @@ export class HandoverService {
     /**
      * KTV skips handover (has next order to attend).
      * Checks max_handover_skip limit (Loophole #1).
+     *
+     * ĐẾM và GHI phải nằm trong CÙNG một giao dịch, khoá theo mã KTV — việc đó
+     * do hàm `skip_handover_with_quota` trong DB lo (migration 20260908120000).
+     *
+     * ⚠️ Trước đây hai bước tách rời: đếm xong mới ghi. Hai lần bấm gần nhau —
+     * bấm đúp vì mạng chậm, hay mở app trên hai máy — cùng đọc ra "còn 1 lượt"
+     * rồi cùng ghi, nên hạn mức 2 mà nợ 3 phòng. Ba lần bấm thì nợ 4, và không
+     * có đường nào tự kéo về: `getSkipQuota` chỉ đếm chứ không ép ai trả lại.
      */
     static async skipHandover(
         supabase: SupabaseClient,
         itemId: string,
         ktvCode: string
     ): Promise<{ success: boolean; error?: string }> {
-        // 1. Check how many pending skips this KTV already has
-        const { used: currentSkips, max: maxSkip } = await HandoverService.getSkipQuota(supabase, ktvCode);
+        const { max: maxSkip } = await HandoverService.getSkipQuota(supabase, ktvCode);
 
-        if (currentSkips >= maxSkip) {
-            return {
-                success: false,
-                error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua (đang nợ ${currentSkips} phòng). Phải trả nợ xong mới bỏ qua tiếp được.`
-            };
+        const quotaError = (used: number) => ({
+            success: false,
+            error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua (đang nợ ${used} phòng). Phải trả nợ xong mới bỏ qua tiếp được.`,
+        });
+
+        const { data, error } = await supabase.rpc('skip_handover_with_quota', {
+            p_item_id: itemId,
+            p_ktv_code: ktvCode,
+            p_max: maxSkip,
+        });
+
+        if (!error) {
+            const res = (data || {}) as { ok?: boolean; reason?: string; used?: number };
+            if (res.ok) return { success: true };
+            if (res.reason === 'NOT_ASSIGNED') {
+                return { success: false, error: 'Phòng này không còn gán cho bạn.' };
+            }
+            return quotaError(Number(res.used) || maxSkip);
         }
 
-        // 2. Mark as skipped
-        const { error } = await supabase
+        // 42883 = hàm chưa tồn tại (chưa chạy migration). Chạy đường cũ để không
+        // chết tính năng, nhưng phải kêu lên: đường cũ KHÔNG chống được bấm đúp.
+        if ((error as any).code !== '42883' && !/does not exist/i.test(error.message || '')) {
+            return { success: false, error: error.message };
+        }
+        console.warn('[HandoverService] Thiếu hàm skip_handover_with_quota — chạy đường cũ, hạn mức bỏ qua KHÔNG chống được bấm đúp. Hãy chạy migration 20260908120000.');
+
+        const { used: currentSkips } = await HandoverService.getSkipQuota(supabase, ktvCode);
+        if (currentSkips >= maxSkip) return quotaError(currentSkips);
+
+        const { error: upErr } = await supabase
             .from('BookingItems')
             .update({
                 handover_skipped: true,
@@ -243,7 +272,7 @@ export class HandoverService {
             })
             .eq('id', itemId);
 
-        if (error) return { success: false, error: error.message };
+        if (upErr) return { success: false, error: upErr.message };
         return { success: true };
     }
 

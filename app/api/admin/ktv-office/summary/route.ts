@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
+import { getBusinessToday } from '@/lib/business-date';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +31,14 @@ export async function GET(request: Request) {
         const staffList = staff || [];
         const staffIds = staffList.map((s: any) => s.id);
 
+        // NGÀY LÀM VIỆC hôm nay (mốc cắt 06:00), không phải ngày lịch của trình
+        // duyệt. Sheet chấm điểm lấy con số này cho nút "Hôm nay"/"Hôm qua" nên
+        // ca đêm sau nửa đêm vẫn trừ đúng vào ngày làm việc đang chạy — cùng hệ
+        // ngày với chấm công và sổ cái tua.
+        const today = await getBusinessToday(supabase);
+
         if (staffIds.length === 0) {
-            return NextResponse.json({ success: true, month, data: [] });
+            return NextResponse.json({ success: true, month, today, data: [] });
         }
 
         const [scores, hours, lockLogs] = await Promise.all([
@@ -80,16 +87,22 @@ export async function GET(request: Request) {
 
         // Xếp hạng theo giờ tích lũy — quy chế: giờ cao hơn được ưu tiên xếp tua trước.
         // KTV bị khóa không tham gia xếp hạng vì không nhận tua được.
-        const ranked = data.filter(d => !d.locked).sort((a, b) => b.hours - a.hours);
+        //
+        // Hoà giờ thì chốt bằng MÃ NHÂN VIÊN tăng dần, đúng nút chặn cuối của
+        // `KtvTypeDTurnService.getTurnQueue` (net DESC → check_in_order ASC →
+        // employee_id ASC). Không có nút này thì thứ tự rơi về thứ tự PostgREST
+        // trả về: đầu tháng khi cả đội cùng 0h, danh sách đảo lung tung mỗi lần
+        // tải trang và quầy không tin được thứ hạng nào là thật.
+        const byHours = (a: any, b: any) => (b.hours - a.hours) || String(a.id).localeCompare(String(b.id));
+
+        const ranked = data.filter(d => !d.locked).sort(byHours);
         ranked.forEach((d: any, i) => { d.rank = i + 1; });
         data.forEach((d: any) => { if (d.locked) d.rank = null; });
 
         // Bị khóa lên đầu để không bị bỏ sót, còn lại theo thứ hạng.
-        data.sort((a: any, b: any) =>
-            (Number(b.locked) - Number(a.locked)) || (b.hours - a.hours)
-        );
+        data.sort((a: any, b: any) => (Number(b.locked) - Number(a.locked)) || byHours(a, b));
 
-        return NextResponse.json({ success: true, month, data });
+        return NextResponse.json({ success: true, month, today, data });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
         const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;

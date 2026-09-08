@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useAdminKtvOfficeLogic, vnTodayStr } from './AdminKtvOffice.logic';
+import { useAdminKtvOfficeLogic } from './AdminKtvOffice.logic';
 import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2, Trash2, Plus, SlidersHorizontal, Timer } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
@@ -706,17 +706,19 @@ const AdminKtvOfficePage = () => {
                     <div className="bg-[var(--surface-soft)] p-3.5 rounded-2xl mb-5">
                       <label className="block text-xs text-[var(--muted)] mb-2">Ngày vi phạm</label>
                       <div className="flex gap-2 flex-wrap">
+                        {/* Ngày làm việc do server chốt theo mốc cắt 06:00 — sau nửa đêm
+                            "Hôm nay" vẫn là ca đang chạy, không nhảy sang ngày lịch mới. */}
                         <button
-                          onClick={() => logic.changeWorkDate(vnTodayStr())}
-                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === vnTodayStr() ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
+                          onClick={() => logic.changeWorkDate(logic.today)}
+                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === logic.today ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
                         >Hôm nay</button>
                         <button
-                          onClick={() => logic.changeWorkDate(vnTodayStr(1))}
-                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === vnTodayStr(1) ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
+                          onClick={() => logic.changeWorkDate(logic.yesterday)}
+                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === logic.yesterday ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
                         >Hôm qua</button>
                         <input
                           type="date"
-                          max={vnTodayStr()}
+                          max={logic.today}
                           value={logic.sheetState.workDate}
                           onChange={e => logic.changeWorkDate(e.target.value)}
                           className="h-11 px-3 rounded-xl border border-[var(--line)] bg-white text-sm font-bold"

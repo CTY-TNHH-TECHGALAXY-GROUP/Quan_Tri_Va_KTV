@@ -161,25 +161,49 @@ export function RoomIssueModal({
   );
 }
 
+/** Một dịch vụ của KTV trong đơn — dùng cho ô chọn khi đơn có nhiều dịch vụ. */
+export interface RejectableService {
+  id: string;
+  name: string;
+  minutes: number;
+}
+
 export function RejectOrderModal({ 
   isOpen, 
   onClose, 
   onSubmit, 
   isExempted, 
   disciplineStatus,
-  isTypeD = false
+  isTypeD = false,
+  services = []
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
-  onSubmit: (reason: string) => void, 
+  onSubmit: (reason: string, itemId?: string) => void, 
   isExempted: boolean,
   disciplineStatus: any,
   /** Loại D ăn theo quy chế GIỜ TÍCH LŨY, không phải điểm chuyên cần. */
-  isTypeD?: boolean
+  isTypeD?: boolean,
+  /**
+   * Các dịch vụ của chính KTV này trong đơn. Nhiều hơn một thì BẮT BUỘC chọn:
+   * mức phạt tính theo thời lượng của đúng gói bị từ chối, nên gói 30 phút và
+   * gói 90 phút ra hai mức phạt khác hẳn nhau. Để hệ thống tự đoán là KTV bị
+   * trừ số giờ không ai giải thích được.
+   */
+  services?: RejectableService[]
 }) {
   const { addToast } = useToast();
   const [reason, setReason] = React.useState('');
-  
+  const mustPick = services.length > 1;
+  const [pickedId, setPickedId] = React.useState<string>('');
+
+  // Mở lại modal cho đơn khác thì bỏ lựa chọn cũ.
+  React.useEffect(() => {
+    if (!isOpen) { setPickedId(''); setReason(''); }
+  }, [isOpen]);
+
+  const multiplier = disciplineStatus?.rejectMultiplier ?? 3;
+
   if (!isOpen) return null;
 
   return (
@@ -236,6 +260,36 @@ export function RejectOrderModal({
             </div>
           )}
 
+          {mustPick && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Đơn này có {services.length} dịch vụ của bạn — chọn dịch vụ muốn từ chối
+              </p>
+              <div className="space-y-2">
+                {services.map(sv => (
+                  <button
+                    key={sv.id}
+                    onClick={() => setPickedId(sv.id)}
+                    className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all ${
+                      pickedId === sv.id
+                        ? 'border-rose-400 bg-rose-50'
+                        : 'border-slate-100 bg-white active:scale-[0.99]'
+                    }`}
+                  >
+                    <p className="text-sm font-black text-slate-700">{sv.name}</p>
+                    <p className="text-[11px] font-bold text-slate-400 mt-0.5">
+                      {sv.minutes} phút
+                      {isTypeD && ` · từ chối sẽ trừ ${Math.round((sv.minutes / 60) * multiplier * 100) / 100} giờ tích lũy`}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] font-bold text-slate-400">
+                Chỉ dịch vụ được chọn bị từ chối. Các dịch vụ còn lại bạn vẫn phải làm.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lý do từ chối (bắt buộc)</p>
             <textarea
@@ -250,8 +304,11 @@ export function RejectOrderModal({
         <div className="p-5 border-t border-slate-100 space-y-2">
           <button
             onClick={() => {
+               if (mustPick && !pickedId) {
+                 return addToast('Hãy chọn dịch vụ bạn muốn từ chối.', 'error');
+               }
                if (!reason.trim()) return addToast('Vui lòng nhập lý do từ chối!', 'error');
-               onSubmit(reason);
+               onSubmit(reason, mustPick ? pickedId : services[0]?.id);
             }}
             className={`w-full py-4 ${isExempted ? 'bg-emerald-600 shadow-emerald-200' : 'bg-rose-600 shadow-rose-200'} text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2`}
           >

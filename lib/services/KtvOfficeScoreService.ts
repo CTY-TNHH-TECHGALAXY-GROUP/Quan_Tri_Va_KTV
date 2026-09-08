@@ -120,6 +120,32 @@ export function fundTierOf(score: number) {
     };
 }
 
+/**
+ * Ngày KTV bắt đầu thuộc chế độ hiện tại. Sổ cái tua giữ lại cả dòng của thời
+ * gian trước khi chuyển chế độ, nhưng quỹ giờ tích lũy thì tính lại từ đầu.
+ *
+ * ⚠️ `KtvTypeDTurnService.getMonthlyNetHours` — hàm quyết định THỨ TỰ NHẬN TUA
+ * thật — đã lọc theo mốc này từ lâu. Hai hàm giờ tích lũy ở dưới thì chưa, nên
+ * người vừa chuyển sang loại D giữa tháng hiện dư giờ trên bảng Chấm điểm và
+ * bảng Giờ tích lũy so với thứ tự tua thật: kịch bản QA #3 dựng lại được cảnh
+ * điều phối tính 1h còn bảng Office tính 3h. Xếp hạng lệch thì không ai giải
+ * thích nổi vì sao người nhiều giờ hơn lại nhận tua sau.
+ */
+async function effectiveFromOf(
+    supabase: SupabaseClient,
+    staffIds: string[]
+): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (staffIds.length === 0) return out;
+    const { data } = await supabase
+        .from('Staff').select('id, work_type_effective_from').in('id', staffIds);
+    for (const id of staffIds) out.set(id, '2020-01-01');
+    (data || []).forEach((s: any) => {
+        out.set(s.id, s.work_type_effective_from || '2020-01-01');
+    });
+    return out;
+}
+
 export class KtvOfficeScoreService {
     /**
      * Tính điểm Office tháng cho nhiều KTV cùng lúc.
@@ -355,15 +381,18 @@ export class KtvOfficeScoreService {
         if (staffIds.length === 0) return out;
 
         const { from, to } = monthRange(month);
-        const [rows, penalties] = await Promise.all([
+        const [rows, penalties, effFrom] = await Promise.all([
             getRows(supabase, { staffIds, from, to }),
             getPenalties(supabase, { staffIds, from, to }),
+            effectiveFromOf(supabase, staffIds),
         ]);
 
         for (const r of rows) {
+            if (r.work_date < (effFrom.get(r.staff_id) || '2020-01-01')) continue;
             out.set(r.staff_id, (out.get(r.staff_id) || 0) + r.actual_minutes / 60);
         }
         for (const p of penalties) {
+            if (p.work_date < (effFrom.get(p.staff_id) || '2020-01-01')) continue;
             out.set(p.staff_id, (out.get(p.staff_id) || 0) - p.hours_penalty);
         }
         for (const [k, v] of out) out.set(k, Math.round(v * 100) / 100);
@@ -395,9 +424,10 @@ export class KtvOfficeScoreService {
         const from = range.from || '2020-01-01';
         const to = range.to || '2099-12-31';
 
-        const [rows, penalties] = await Promise.all([
+        const [rows, penalties, effFrom] = await Promise.all([
             getRows(supabase, { staffIds, from, to }),
             getPenalties(supabase, { staffIds, from, to }),
+            effectiveFromOf(supabase, staffIds),
         ]);
 
         const daysOf = new Map<string, Set<string>>();
@@ -405,6 +435,7 @@ export class KtvOfficeScoreService {
         for (const r of rows) {
             const agg = out.get(r.staff_id);
             if (!agg) continue;
+            if (r.work_date < (effFrom.get(r.staff_id) || '2020-01-01')) continue;
             const earned = r.actual_minutes / 60;
             agg.earned += earned;
             // Mỗi dòng sổ cái là một tua đã làm; tua 0 phút không tính vào ngày công.
@@ -418,7 +449,9 @@ export class KtvOfficeScoreService {
 
         for (const p of penalties) {
             const agg = out.get(p.staff_id);
-            if (agg) agg.penalty += Number(p.hours_penalty) || 0;
+            if (!agg) continue;
+            if (p.work_date < (effFrom.get(p.staff_id) || '2020-01-01')) continue;
+            agg.penalty += Number(p.hours_penalty) || 0;
         }
 
         const round2 = (n: number) => Math.round(n * 100) / 100;

@@ -89,9 +89,35 @@ export function ScreenDashboard({ logic }: { logic: any }) {
     }
   };
 
-  const handleRejectOrder = async (reason: string, confirmLock = false) => {
-    // Đơn kế tiếp nếu có, ngược lại là chính đơn đang chờ xác nhận.
-    const rejectId = logic.booking?.nextBookingItemId
+  /**
+   * Các dịch vụ của CHÍNH KTV này trong đơn đang xem.
+   *
+   * Một đơn có thể gồm nhiều dịch vụ cùng gán cho một người (gội + massage +
+   * lấy ráy tai). Từ chối là hành vi có chế tài, mức phạt bằng 3 lần thời lượng
+   * của đúng gói bị từ chối — nên phải để KTV chỉ đích danh, không được để hệ
+   * thống bốc đại một cái.
+   */
+  const myServices = React.useMemo(() => {
+    const ids: string[] = logic.booking?.assignedItemIds || [];
+    const items: any[] = logic.booking?.BookingItems || [];
+    return items
+      .filter(i => ids.includes(i.id))
+      .map(i => ({
+        id: i.id,
+        name: i.service_name || 'Dịch vụ',
+        minutes: Number(i.duration) || 60,
+      }));
+  }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems]);
+
+  const handleRejectOrder = async (reason: string, itemIdOrLock?: string | boolean, confirmLockArg = false) => {
+    // Modal gọi (reason, itemId); nhánh xác nhận khoá gọi (reason, undefined, true).
+    const pickedItemId = typeof itemIdOrLock === 'string' ? itemIdOrLock : undefined;
+    const confirmLock = typeof itemIdOrLock === 'boolean' ? itemIdOrLock : confirmLockArg;
+
+    // Ưu tiên đúng dịch vụ KTV đã chọn; sau đó là đơn kế tiếp, cuối cùng mới
+    // tới đơn đang chờ xác nhận.
+    const rejectId = pickedItemId
+      || logic.booking?.nextBookingItemId
       || logic.booking?.nextBookingId
       || logic.booking?.assignedItemId
       || logic.booking?.id;
@@ -111,7 +137,9 @@ export function ScreenDashboard({ logic }: { logic: any }) {
       // Hỏi lại cho chắc rồi mới gọi tiếp — từ chối lúc này là mất tài khoản,
       // không thể để mất vì một cú chạm nhầm.
       if (!res.success && res.needsLockConfirm) {
-        setLockWarning({ reason, ...res });
+        // Giữ lại ĐÚNG dịch vụ vừa chọn: bấm xác nhận ở bước sau mà rơi về dịch
+        // vụ khác thì KTV mất tài khoản vì một gói họ không hề định từ chối.
+        setLockWarning({ reason, itemId: rejectId, ...res });
         return;
       }
 
@@ -135,7 +163,14 @@ export function ScreenDashboard({ logic }: { logic: any }) {
         addToast('Lỗi: ' + res.error, 'error');
       }
     } catch (e: any) {
-      addToast('Lỗi kết nối: ' + e.message, 'error');
+      // apiClient NÉM LỖI với mọi mã khác 2xx, nên nhánh `!res.success` ở trên
+      // gần như không chạy — lời nhắn thật của server tới đây. Gắn "Lỗi kết nối"
+      // vào là nói sai: 400 "hãy chọn đúng dịch vụ" không phải lỗi mạng.
+      if (e?.data?.needsLockConfirm) {
+        setLockWarning({ reason, itemId: rejectId, ...e.data });
+        return;
+      }
+      addToast(e?.data?.error || e?.message || 'Không gửi được yêu cầu từ chối.', 'error');
     } finally {
       logic.setIsLoading(false);
     }
@@ -810,6 +845,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
         disciplineStatus={logic.disciplineStatus}
         isExempted={logic.disciplineStatus ? logic.disciplineStatus.continuousWorkMins >= logic.disciplineStatus.exemptHours * 60 : false}
         isTypeD={logic.workType === 'TYPE_D'}
+        services={myServices}
       />
 
       {/* Cảnh báo thiếu giờ tích lũy — bước cuối trước khi mất tài khoản */}
@@ -846,7 +882,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   Quay lại nhận đơn
                 </button>
                 <button
-                  onClick={() => { const r = lockWarning.reason; setLockWarning(null); handleRejectOrder(r, true); }}
+                  onClick={() => { const r = lockWarning.reason; const it = lockWarning.itemId; setLockWarning(null); handleRejectOrder(r, it, true); }}
                   className="py-3.5 rounded-2xl font-black text-white bg-rose-600 hover:bg-rose-700 transition-colors uppercase text-sm"
                 >
                   Vẫn từ chối

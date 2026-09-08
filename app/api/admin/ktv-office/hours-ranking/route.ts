@@ -76,7 +76,10 @@ export async function GET(request: Request) {
             };
         });
 
-        data.sort((a: any, b: any) => b.earned - a.earned);
+        // Thứ tự mặc định = CHUẨN của bảng điều phối: giờ ròng giảm dần, hoà thì
+        // mã nhân viên tăng dần. Client vẫn xếp lại theo tiêu chí người dùng chọn,
+        // nhưng ai đọc thẳng API này cũng nhận đúng thứ hạng thật.
+        data.sort((a: any, b: any) => (b.net - a.net) || String(a.id).localeCompare(String(b.id)));
 
         return NextResponse.json({ success: true, scope, month, range, data });
     } catch (error: any) {

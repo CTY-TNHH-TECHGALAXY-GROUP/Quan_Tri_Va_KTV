@@ -11,7 +11,8 @@
     "pack-context": "npx repomix --style markdown",
     "gen-map": "npx codebase-context map",
     "test:type-d": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/simulate_type_d_commission.ts && ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/simulate_type_d_bonus.ts && ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/simulate_type_d_discipline.ts && ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/simulate_type_d_turn_order.ts",
-    "test:race": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/test_race_condition_handover.ts"
+    "test:race": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/test_race_condition_handover.ts",
+    "test:qa": "ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_01_03_hours_sort.ts && ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_02_deduct_workdate.ts && ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_03_ranking_scenario.ts && ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_04_multi_service_order.ts && ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_05_skip_limit.ts && ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_06_feature_flags.ts"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

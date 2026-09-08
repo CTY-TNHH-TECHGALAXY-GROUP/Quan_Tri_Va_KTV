@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvDisciplineService } from '@/lib/services/KtvDisciplineService';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
-import { requireActiveStaff } from '@/lib/auth-server';
+import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
+import { resolveMyItems } from '@/lib/services/KtvOrderTargetService';
 
 export async function POST(request: Request) {
     try {
@@ -20,6 +21,11 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'Thiếu thông tin bắt buộc (staffId, bookingItemId, reason)' }, { status: 400 });
         }
 
+        // Từ chối tua trừ giờ tích lũy và có thể khoá tài khoản — không cho ai
+        // bấm dưới danh nghĩa người khác.
+        const wrongStaff = await requireStaffMatches(staffId);
+        if (wrongStaff) return wrongStaff;
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase init failed' }, { status: 500 });
@@ -28,22 +34,27 @@ export async function POST(request: Request) {
         // Màn hình KTV từng gửi nhầm BOOKING id vào đây (nextBookingId). Chấp nhận
         // cả hai: nếu id không khớp BookingItem nào thì coi như booking id và tìm
         // đơn con đang gán cho chính KTV này.
-        let itemId: string = bookingItemId;
-        const { data:directItem } = await supabase
-            .from('BookingItems').select('id').eq('id', bookingItemId).maybeSingle();
-        if (!directItem) {
-            const { data: candidates } = await supabase
-                .from('BookingItems')
-                .select('id, technicianCodes, status')
-                .eq('bookingId', bookingItemId);
-            const mine = (candidates || []).find((i: any) =>
-                (i.technicianCodes || []).some((t: string) => String(t).toLowerCase() === String(staffId).toLowerCase()));
-            if (!mine) {
-                return NextResponse.json(
-                    { success: false, error: 'Không tìm thấy đơn đang gán cho bạn.' }, { status: 404 });
-            }
-            itemId = mine.id;
+        //
+        // ⚠️ Một đơn có thể gồm NHIỀU dịch vụ cùng gán cho KTV này. Từ chối là
+        // hành vi CÓ CHẾ TÀI — mức phạt bằng 3 lần thời lượng của đúng gói bị từ
+        // chối — nên tuyệt đối không được bốc đại một dịch vụ. Trước đây `.find`
+        // lấy phần tử đầu theo thứ tự DB trả về: cùng một cú bấm, trúng gói 30
+        // phút thì phạt 1,5 giờ, trúng gói 90 phút thì phạt 4,5 giờ, và hai dịch
+        // vụ còn lại vẫn dính tên KTV. Nhiều hơn một thì bắt gọi đích danh.
+        const resolved = await resolveMyItems(supabase, staffId, bookingItemId);
+        if (resolved.items.length === 0) {
+            return NextResponse.json(
+                { success: false, error: 'Không tìm thấy đơn đang gán cho bạn.' }, { status: 404 });
         }
+        if (resolved.items.length > 1) {
+            return NextResponse.json({
+                success: false,
+                needsItemPick: true,
+                items: resolved.items.map(i => ({ id: i.id, serviceId: i.serviceId, status: i.status })),
+                error: `Đơn này có ${resolved.items.length} dịch vụ đang gán cho bạn. Hãy chọn đúng dịch vụ muốn từ chối — mức phạt tính theo thời lượng của dịch vụ đó.`,
+            }, { status: 400 });
+        }
+        const itemId: string = resolved.items[0].id;
 
         // 1. Lấy thông tin KTV
         const { data: staffData } = await supabase.from('Staff').select('full_name, work_type').eq('id', staffId).single();
