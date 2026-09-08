@@ -529,6 +529,13 @@ export function ScreenDashboard({ logic }: { logic: any }) {
 
           {/* Nhắc trực nước đã gộp vào ô "Thứ tự tua" bên dưới, không còn banner riêng. */}
 
+          {/* ⚠️ ĐANG CHỜ XÁC NHẬN ĐƠN thì giấu hết phần dưới.
+              Lúc đó KTV chỉ có đúng một việc: nhận hay từ chối. Bày thêm Nợ bàn
+              giao, Thứ tự tua, Điểm, Quy chế, Mã QR chỉ tổ rối và dễ bấm nhầm
+              sang chỗ khác — bấm vào ô nợ là rời luôn khỏi đơn đang chờ.
+              Xác nhận xong thì mọi thứ hiện lại như cũ. */}
+          {!needsAcceptance && (
+          <>
           {logic.pendingHandovers?.length > 0 && (
             <div className="bg-amber-50 p-4 rounded-3xl border border-amber-100">
               <div className="flex items-center justify-between mb-2">
@@ -674,7 +681,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                 )}
              </div>
           </div>
-          
+          </>
+          )}
 
 
           {/* QR Modal (Backdrop Blur) */}
