@@ -134,6 +134,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setIsHandoverComplete(totalUploadedPhotos >= requiredCount);
     }, [handoverPhotosBase64, booking?.handoverChecklist, dynamicChecklist]);
 
+    /**
+     * Đổi đơn thì XOÁ SẠCH ảnh bàn giao của đơn trước.
+     *
+     * ⚠️ `handoverPhotosBase64` trước đây không được xoá ở đâu cả — nó sống suốt
+     * phiên. Hai hậu quả, cái sau nặng hơn nhiều:
+     *
+     *  · Vào màn Bàn giao của đơn mới đã thấy sẵn ảnh phòng cũ, và
+     *    `isHandoverComplete` bật lên luôn nên nút "Xong" mở sẵn dù chưa chụp gì.
+     *  · Bấm nộp thì `Object.values(handoverPhotosBase64)` gửi đúng ẢNH PHÒNG CŨ
+     *    lên làm bằng chứng bàn giao cho PHÒNG MỚI. Quầy duyệt ảnh của một phòng
+     *    khác mà không ai biết.
+     */
+    useEffect(() => {
+        setHandoverPhotosBase64({});
+    }, [booking?.id]);
+
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
         setPrepChecklist(new Array(prepProcedure.length).fill(false));
@@ -2248,6 +2264,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             setCommission(totalCommission);
+
+            // Ảnh đã gửi đi rồi thì bỏ khỏi máy. Quan trọng với đường TRẢ NỢ: quay
+            // lại đúng đơn cũ nên `booking.id` không đổi, effect xoá-theo-đơn ở trên
+            // không chạy — không xoá ở đây thì lần sau vào vẫn thấy ảnh lần trước.
+            setHandoverPhotosBase64({});
 
             // KHÔNG xoá booking ở đây để Reward còn lấy được rating/points
             setPrepChecklist(prev => prev.map(() => false));
