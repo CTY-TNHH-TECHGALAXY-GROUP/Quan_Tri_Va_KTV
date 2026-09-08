@@ -2147,6 +2147,49 @@ export async function updateBookingCustomerName(bookingId: string, newName: stri
     }
 }
 
+/**
+ * Đặt tên khách cho các đơn con vừa tách.
+ *
+ * RPC split_booking_into_sub_bookings đặt cứng nhãn "Khách A/B/C…". Quầy gõ tên
+ * thật trong hộp xem trước thì ghi đè ở đây, để thẻ đơn và màn KTV gọi đúng tên
+ * chứ không phải nhớ ai là "Khách B".
+ */
+export async function renameSubBookings(
+    parentBookingId: string,
+    renames: { suffix: string; name: string }[]
+) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        for (const item of renames) {
+            const newName = (item.name || '').trim();
+            if (!newName || !item.suffix) continue;
+
+            const subBookingId = `${parentBookingId}-${item.suffix}`;
+
+            const { error: bookingErr } = await supabase
+                .from('Bookings')
+                .update({ customerName: newName })
+                .eq('id', subBookingId);
+            if (bookingErr) throw bookingErr;
+
+            // guest_label là dòng "👨 …" KTV nhìn thấy trên máy, phải đổi theo.
+            const { error: guestErr } = await supabase
+                .from('BookingGuests')
+                .update({ guest_label: newName, customer_name: newName })
+                .eq('booking_id', subBookingId);
+            if (guestErr) throw guestErr;
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('❌ [Server] renameSubBookings error:', error);
+        return { success: false, error: error.message || 'Cannot rename sub bookings' };
+    }
+}
+
 export async function unmergeServicesAction(
     parentSvcId: string,
     mergedServiceIds: string[],

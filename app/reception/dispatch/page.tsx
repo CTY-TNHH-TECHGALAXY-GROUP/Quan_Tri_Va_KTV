@@ -49,7 +49,7 @@ import { MergePromptModal } from '@/app/reception/dispatch/_components/MergeProm
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
 import { Customer } from '@/lib/types';
-import { SplitPreviewModal } from './_components/SplitPreviewModal';
+import { SplitPreviewModal, defaultGuestName } from './_components/SplitPreviewModal';
 import { WebBookingBoard } from '../web-booking/WebBookingBoard';
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 import { 
@@ -1072,7 +1072,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }) => {
+  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }, customGuestNames?: Record<string, string>) => {
     if (typeof skipPreview !== 'boolean') skipPreview = false;
     
     // When dispatching a specific sub-order, use that order instead of selectedOrder
@@ -1216,6 +1216,19 @@ if (!hasPermission('dispatch_board')) {
             if (splitErr || (splitRes && !splitRes.success)) {
                 console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
                 alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
+            } else if (customGuestNames) {
+                // Quầy gõ tên khách trong hộp xem trước thì ghi đè nhãn "Khách A/B/C" của RPC.
+                const renames = splitPlan
+                    .map((plan: any) => ({ suffix: plan.suffix, name: (customGuestNames[plan.suffix] || '').trim() }))
+                    .filter(r => r.name && r.name !== defaultGuestName(r.suffix));
+
+                if (renames.length > 0) {
+                    const { renameSubBookings } = await import('./actions');
+                    const renameRes = await renameSubBookings(clonedOrder.parentBookingId || clonedOrder.id, renames);
+                    if (!renameRes.success) {
+                        alert('Đã tách đơn nhưng chưa đổi được tên khách: ' + renameRes.error);
+                    }
+                }
             }
         }
 
@@ -3192,16 +3205,16 @@ Vẫn kết thúc sớm?`)) return;
           allServices={allServices}
           splitPlan={splitPreviewState.splitPlan}
           onClose={() => setSplitPreviewState(null)}
-          onSaveDraftOnly={() => {
+          onSaveDraftOnly={(guestNames) => {
             const intent = splitPreviewState.intent;
             const dispatchArgs = splitPreviewState.dispatchArgs;
             setSplitPreviewState(null);
-            handleSaveDraft(true, intent, dispatchArgs);
+            handleSaveDraft(true, intent, dispatchArgs, guestNames);
           }}
-          onSaveAndDispatch={() => {
+          onSaveAndDispatch={(guestNames) => {
             const dispatchArgs = splitPreviewState.dispatchArgs;
             setSplitPreviewState(null);
-            handleSaveDraft(true, 'DISPATCH', dispatchArgs);
+            handleSaveDraft(true, 'DISPATCH', dispatchArgs, guestNames);
           }}
         />
       )}
