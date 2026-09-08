@@ -9,6 +9,7 @@ import { KtvTypeDTurnService } from '../lib/services/KtvTypeDTurnService';
 import { KtvCommissionService } from '../lib/services/KtvCommissionService';
 import { pausedMsOf, workedMsOf, expectedEndMs, endedByCounter, scenarioOf } from '../lib/segment-time';
 import { canhBaoLechKichBan } from '../lib/ktv-notify-check';
+import { ktvMatchesSeg } from '../lib/ktvUtils';
 
 const T = (m: number) => new Date(Date.UTC(2026, 8, 6, 10, m, 0)).toISOString();
 const item = (segs: any[]) => ({ segments: JSON.stringify(segs) });
@@ -104,6 +105,16 @@ check('ket thuc · KTV CHUA bao -> canh bao', canhBaoLechKichBan('FINISH_EARLY',
 check('ket thuc · KTV DA bao   -> khong canh bao', canhBaoLechKichBan('FINISH_EARLY', coBao), null);
 check('huy · KTV DA bao        -> canh bao', canhBaoLechKichBan('CANCEL', coBao) !== null, true);
 check('huy · KTV CHUA bao      -> khong canh bao', canhBaoLechKichBan('CANCEL', khongBao), null);
+
+// ── 11. Đổi KTV: tìm chặng của KTV cũ ─────────────────────────────────────
+// Dữ liệu thật có chặng GHÉP nhiều người ("Bao - Na") và chữ hoa/thường không
+// thống nhất ("NA - BAO"). So `===` là không thấy chặng cũ → nó không bị đóng,
+// không bị tước → KTV cũ vẫn ăn đủ tiền mà KTV mới còn được cộng thêm chặng.
+check('chang ghep · tim duoc KTV cu', ktvMatchesSeg('Bao - Na', 'NA'), true);
+check('chang ghep · khac hoa thuong', ktvMatchesSeg('NA - BAO', 'bao'), true);
+check('so === thi truot', ('Bao - Na' as any) === 'NA', false);
+check('khong nham KTV khac', ktvMatchesSeg('Bao - Na', 'TOM'), false);
+check('chang thuong van dung', ktvMatchesSeg('T016', 'T016'), true);
 
 console.log(ok.join('\n'));
 console.log(`\n✅ ${ok.length}/${ok.length} phép thử đạt.`);

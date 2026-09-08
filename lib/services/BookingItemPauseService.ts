@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
-import { punishTurnIfIdle } from '@/lib/turn-punish';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
+import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
 import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
 
 export class BookingItemPauseService {
@@ -309,7 +310,12 @@ export class BookingItemPauseService {
         // Quy chế (chốt 06/09/2026): KTV bị đổi ra MẤT HẾT — tiền, giờ tích luỹ, tua.
         // Nhưng vẫn GIỮ trong đơn kèm số phút đã làm, để còn biết ai từng làm cho
         // khách và giải thích được khi đối soát. Cờ `voided` mới là thứ chặn tiền.
-        const aIndex = segments.findIndex(seg => seg.ktvId === oldKtvId && !seg.endTime);
+        // ⚠️ PHẢI dùng ktvMatchesSeg, đừng so `===`. `seg.ktvId` có thể là chặng
+        // GHÉP nhiều người ("Bao - Na") và chữ hoa/thường không thống nhất
+        // ("Bao - Na" vs "NA - BAO") — dữ liệu thật đang có cả hai kiểu. So bằng
+        // `===` là không tìm thấy chặng cũ: nó KHÔNG bị đóng, KHÔNG bị tước, nên
+        // KTV cũ vẫn ăn đủ tiền còn KTV mới được cộng thêm một chặng nữa.
+        const aIndex = segments.findIndex(seg => ktvMatchesSeg(seg.ktvId, oldKtvId) && !seg.endTime);
         let oldWorkedMins = 0;
         const pauseTime = item.pauseStart || new Date().toISOString();
         if (aIndex !== -1) {
@@ -329,19 +335,6 @@ export class BookingItemPauseService {
             segments[aIndex] = closed;
         }
 
-        // --- MẤT TUA CỦA KTV CŨ ---
-        // syncTurnsForDate đã lọc sẵn is_punished khỏi turns_completed; trước đây
-        // cột này có mà chưa nơi nào ghi, nên "mất tua" chỉ nằm trên giấy.
-        if (businessDate && !keepTurnForOldKtv) {
-            // punishTurnIfIdle tự quy về mã ĐƠN CHA — sổ cái tua lưu theo đơn cha,
-            // update thẳng theo mã đơn con sẽ khớp 0 dòng và tua không hề bị tước.
-            await punishTurnIfIdle(supabase, {
-                bookingId: item.bookingId,
-                employeeId: oldKtvId,
-                date: businessDate,
-            });
-        }
-
         // --- NẾU CÓ KTV MỚI VÀO THAY ---
         if (newKtvId) {
             // Số phút KTV mới được tính:
@@ -353,12 +346,15 @@ export class BookingItemPauseService {
 
             if (businessDate) {
                 // Thêm tua cho KTV B
+                // ⚠️ Sổ cái tua khoá theo ĐƠN CHA (RPC điều phối ghi
+                // COALESCE(parent_booking_id, id)). Ghi bằng mã đơn con sẽ đẻ ra
+                // dòng lệch khoá, không khớp với chỗ tước tua và chỗ đối soát.
                 await supabase
                     .from('TurnLedger')
                     .insert({
                         date: businessDate,
                         employee_id: newKtvId,
-                        booking_id: item.bookingId,
+                        booking_id: await ledgerBookingIdOf(supabase, item.bookingId),
                         counted_at: new Date().toISOString()
                     });
                     
@@ -401,6 +397,19 @@ export class BookingItemPauseService {
             .eq('id', bookingItemId);
             
         if (errUpdate) throw new Error('Lỗi khi cập nhật BookingItem.');
+
+        // --- MẤT TUA CỦA KTV CŨ ---
+        // ⚠️ PHẢI chạy SAU khi segments đã ghi xuống DB. punishTurnIfIdle đọc lại
+        // BookingItems để xem KTV còn chặng nào chưa bị tước không — chạy trước
+        // lệnh update ở trên thì nó thấy chặng cũ vẫn nguyên và bỏ qua, tua không
+        // bao giờ bị tước.
+        if (businessDate && !keepTurnForOldKtv) {
+            await punishTurnIfIdle(supabase, {
+                bookingId: item.bookingId,
+                employeeId: oldKtvId,
+                date: businessDate,
+            });
+        }
 
         const actorSwap = await currentCounterActor();
         await logCounterAction(supabase, [bookingItemId], {

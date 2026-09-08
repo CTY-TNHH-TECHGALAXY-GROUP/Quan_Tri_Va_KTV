@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ktvMatchesSeg } from './ktvUtils';
 
 /**
  * ================================================================
@@ -51,16 +52,30 @@ export async function punishTurnIfIdle(
         .eq('parent_booking_id', parentId);
     const familyIds = Array.from(new Set([parentId, bookingId, ...(children || []).map((b: any) => b.id)]));
 
-    // Còn dịch vụ nào chưa huỷ mà KTV này phụ trách thì thôi, đừng tước.
-    const { data: alive } = await supabase
+    // Còn việc thật sự nào trong bill không?
+    //
+    // ⚠️ KHÔNG chỉ đếm item chưa huỷ. Khi ĐỔI KTV, item vẫn chạy bình thường và
+    // KTV cũ vẫn nằm trong `technicianCodes` (cố ý giữ để biết ai từng làm cho
+    // khách) — đếm kiểu cũ thì luôn thấy "còn việc" và tua KHÔNG BAO GIỜ bị tước.
+    // Chặng đã bị tước (`voided`) thì không còn là việc của họ nữa.
+    const { data: rows } = await supabase
         .from('BookingItems')
-        .select('id')
+        .select('id, status, segments')
         .in('bookingId', familyIds)
-        .contains('technicianCodes', [employeeId])
-        .neq('status', 'CANCELLED')
-        .limit(1);
+        .contains('technicianCodes', [employeeId]);
 
-    if (alive && alive.length > 0) return false;
+    const conViec = (rows || []).some((r: any) => {
+        if (r.status === 'CANCELLED') return false;
+        let segs: any[] = [];
+        try { segs = typeof r.segments === 'string' ? JSON.parse(r.segments) : (r.segments || []); } catch { }
+        const cua = (Array.isArray(segs) ? segs : []).filter((g: any) => ktvMatchesSeg(g?.ktvId, employeeId));
+        // Không có chặng nào của họ trong item này → không tính là việc.
+        if (cua.length === 0) return false;
+        // Còn ít nhất một chặng CHƯA bị tước → vẫn còn việc.
+        return cua.some((g: any) => g?.voided !== true);
+    });
+
+    if (conViec) return false;
 
     const { error } = await supabase
         .from('TurnLedger')
