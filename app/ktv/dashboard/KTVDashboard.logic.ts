@@ -1225,6 +1225,27 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ.");
                             return;
                         }
+
+                        // ⚠️ Đang hỏi theo MỘT mã đơn cụ thể mà server trả về rỗng →
+                        // con trỏ đó đã chết (đơn bị huỷ, bị gỡ khỏi KTV, hoặc trả nợ
+                        // xong rồi). Phải bỏ nó đi.
+                        //
+                        // Không bỏ thì mọi lần nạp sau vẫn kèm đúng `?bookingId=` chết
+                        // đó, nên đường nạp TỰ DO — đường duy nhất tìm ra đơn mới trong
+                        // hàng tua — không bao giờ được chạy. KTV ngồi nhìn "Đang chờ
+                        // điều phối" trong khi quầy đã gửi đơn, và KHÔNG có một dòng
+                        // báo lỗi nào vì server vẫn trả 200.
+                        //
+                        // Con trỏ này được đặt khi bấm vào ô "Nợ bàn giao", hoặc từ
+                        // `?bookingId=` trên URL — nên xoá luôn query để F5 không dính lại.
+                        if (targetBookingIdRef.current) {
+                            console.warn('⚠️ [KTV] Đơn đang theo dõi không còn — bỏ con trỏ, nạp lại tự do:', targetBookingIdRef.current);
+                            targetBookingIdRef.current = null;
+                            try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+                            // Nạp lại đúng MỘT lần ở khối finally. Lần đó không còn
+                            // bookingId nên không quay lại nhánh này được nữa.
+                            pendingRefetchRef.current = true;
+                        }
                         setBooking(res.data?.nextBookingId ? res.data : null);
                         setScreen('DASHBOARD');
                         setIsTimerRunning(false);
