@@ -161,7 +161,10 @@ export async function GET(request: Request) {
             .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, guestCount, BookingItems!fk_bookingitems_booking(technicianCodes)')
             .gte('bookingDate', fromFilter)
             .lte('bookingDate', toFilter)
-            .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE'])
+            // 'CANCELLED' phải có trong danh sách: thiếu nó thì đơn quầy đã huỷ
+            // BIẾN MẤT khỏi lịch sử KTV — người đã vào làm rồi mà tra lại không thấy
+            // đâu, không biết đơn đi đâu về đâu.
+            .in('status', ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'COMPLETED', 'DONE', 'CANCELLED'])
             .order('bookingDate', { ascending: false })
             .limit(3000);
 
@@ -449,9 +452,31 @@ export async function GET(request: Request) {
                 // 🧠 STATUS: Xét theo BookingItems của group này
                 const myItemStatuses = groupItems.map((i: any) => i.status || 'NEW');
                 const { recomputeBookingStatus } = require('@/lib/dispatch-status');
-                const itemBasedStatus = myItemStatuses.length > 0
+                let itemBasedStatus = myItemStatuses.length > 0
                     ? recomputeBookingStatus(myItemStatuses)
                     : b.status;
+
+                // ─── Hai chỗ recomputeBookingStatus() không diễn tả được ───────
+                const optsOf = (i: any) => {
+                    try { return typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {}); }
+                    catch { return {}; }
+                };
+
+                // 1. ĐÃ HUỶ. recomputeBookingStatus() gộp CANCELLED chung với DONE ở
+                //    nhánh cuối nên trả 'DONE' — lịch sử hiện "Hoàn tất" cho một đơn
+                //    đã huỷ. KHÔNG sửa hàm đó vì bảng điều phối đang dựa vào nó để
+                //    xếp cột; nắn ngay tại đây.
+                const allCancelled = myItemStatuses.length > 0
+                    && myItemStatuses.every((s: string) => s === 'CANCELLED');
+
+                // 2. QUẦY BẤM KẾT THÚC SỚM (`options.earlyLeave`). Khách đã về nên
+                //    không còn ai chấm sao — Kanban bỏ qua bước Chờ đánh giá từ lâu,
+                //    lịch sử KTV thì chưa, nên đơn nằm mãi ở "Chờ đánh giá" và tiền
+                //    mãi là "tạm tính".
+                const isEarlyLeave = groupItems.some((i: any) => optsOf(i)?.earlyLeave === true);
+
+                if (allCancelled) itemBasedStatus = 'CANCELLED';
+                else if (isEarlyLeave && itemBasedStatus === 'FEEDBACK') itemBasedStatus = 'DONE';
 
                 const billSuffix = suffixMap.get(groupId0) || '';
 
@@ -459,7 +484,9 @@ export async function GET(request: Request) {
                 // Đơn chưa được khách FB thì KHÔNG hiện tiền.
                 // Chỉ khi status = DONE/COMPLETED (khách đã FB hoặc bị bỏ qua) mới hiện số tiền thực nhận.
                 const hasRating = itemRating != null && Number(itemRating) > 0;
-                const isFinalStatus = ['DONE', 'COMPLETED'].includes(itemBasedStatus);
+                // 'CANCELLED' cũng là chốt: đơn huỷ sẽ KHÔNG BAO GIỜ có rating, để nó
+                // ở "tạm tính" là treo vĩnh viễn.
+                const isFinalStatus = ['DONE', 'COMPLETED', 'CANCELLED'].includes(itemBasedStatus);
                 const isFeedbackDone = isFinalStatus; // Khách đã FB hoặc đã bỏ qua
                 const isProvisional = !hasRating && !isFinalStatus;
 
