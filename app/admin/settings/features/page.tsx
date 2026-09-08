@@ -5,6 +5,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Loader2, Settings2, ToggleLeft, ToggleRight, Target } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { useToast } from '@/components/ui/Toast';
 
 // 🔧 SYSTEM-WIDE FEATURE TOGGLES
 const SYSTEM_TOGGLES = [
@@ -24,6 +25,7 @@ const useSystemToggles = () => {
     const [values, setValues] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState<string | null>(null);
+    const { addToast } = useToast();
 
     const fetchConfigs = useCallback(async () => {
         try {
@@ -48,22 +50,31 @@ const useSystemToggles = () => {
     const toggle = useCallback(async (key: string, newValue: boolean) => {
         setUpdating(key);
         setValues(prev => ({ ...prev, [key]: newValue }));
+        // Lật cần gạt về chỗ cũ thôi thì chưa đủ: admin thấy nó tự nhảy lại sẽ
+        // tưởng mình bấm hụt và bấm tiếp, chứ không biết là LƯU HỎNG.
+        const revert = (msg: string) => {
+            setValues(prev => ({ ...prev, [key]: !newValue }));
+            addToast(`Không lưu được cài đặt: ${msg}`, 'error');
+        };
         try {
             const json = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, { [key]: newValue });
             if (!json.success) {
-                setValues(prev => ({ ...prev, [key]: !newValue }));
+                revert(json.error || 'máy chủ từ chối');
             }
-        } catch {
-            setValues(prev => ({ ...prev, [key]: !newValue }));
+        } catch (err: any) {
+            // apiClient ném lỗi với mọi mã khác 2xx nên nhánh trên hiếm khi chạy —
+            // chỗ bắt lỗi thật sự là đây.
+            revert(err?.message || 'lỗi kết nối');
         } finally {
             setUpdating(null);
         }
-    }, []);
+    }, [addToast]);
 
     return { values, loading, updating, toggle };
 };
 
 const useDisciplineConfigs = () => {
+    const { addToast } = useToast();
     const [values, setValues] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState<string | null>(null);
@@ -93,13 +104,19 @@ const useDisciplineConfigs = () => {
             const json = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, { [key]: newValue });
             if (json.success) {
                 setValues(prev => ({ ...prev, [key]: newValue }));
+                addToast('Đã lưu.', 'success');
+            } else {
+                addToast(`Không lưu được: ${json.error || 'máy chủ từ chối'}`, 'error');
             }
-        } catch (error) {
+        } catch (error: any) {
+            // Hỏng mà chỉ console.error thì nút "Lưu" biến mất như đã lưu xong,
+            // trong khi giá trị cũ vẫn nguyên trong DB.
             console.error('Error update:', error);
+            addToast(`Không lưu được: ${error?.message || 'lỗi kết nối'}`, 'error');
         } finally {
             setUpdating(null);
         }
-    }, []);
+    }, [addToast]);
 
     return { values, loading, updating, updateConfig };
 };
@@ -281,6 +298,7 @@ const HANDOVER_KEYS = [
 ];
 
 const HandoverSettingsSection = () => {
+    const { addToast } = useToast();
     const [values, setValues] = useState<Record<string, number>>({});
     const [local, setLocal] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -307,9 +325,15 @@ const HandoverSettingsSection = () => {
         setUpdating(key);
         try {
             const json = await apiClient.patch<any>(API.ADMIN.SETTINGS_SYSTEM, { [key]: newValue });
-            if (json.success) setValues(prev => ({ ...prev, [key]: newValue }));
-        } catch (error) {
+            if (json.success) {
+                setValues(prev => ({ ...prev, [key]: newValue }));
+                addToast('Đã lưu.', 'success');
+            } else {
+                addToast(`Không lưu được: ${json.error || 'máy chủ từ chối'}`, 'error');
+            }
+        } catch (error: any) {
             console.error('Error update:', error);
+            addToast(`Không lưu được: ${error?.message || 'lỗi kết nối'}`, 'error');
         } finally {
             setUpdating(null);
         }
