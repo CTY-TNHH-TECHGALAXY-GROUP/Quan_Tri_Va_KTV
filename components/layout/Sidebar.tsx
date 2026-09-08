@@ -46,6 +46,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { isServingLockedScreen } from '@/lib/ktv-screen';
 
 const ICONS: Record<string, React.ReactNode> = {
   dashboard: <Home size={20} />,
@@ -151,10 +152,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: SidebarProps) {
-  // 🔒 KTV đang phục vụ khách (màn hình đồng hồ đếm ngược) → khoá điều hướng,
-  // không cho rời khỏi đơn đang chạy.
+  // 🔒 KTV đang trong một đơn → khoá điều hướng, không cho rời đi giữa chừng.
   const { ktvScreen } = useNotifications();
-  const isServingLocked = ktvScreen === 'TIMER';
+  const isServingLocked = isServingLockedScreen(ktvScreen);
   const { hasPermission, user, role, logout } = useAuth();
   const pathname = usePathname();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
@@ -208,7 +208,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
       return (
         <div
           key={module.id}
-          title="Đang phục vụ khách — hoàn tất đơn trước khi chuyển mục khác."
+          title="Đang trong đơn — bàn giao phòng xong mới chuyển mục khác được."
           aria-disabled="true"
           className={`flex items-center ${showLabel ? 'gap-3 px-3' : 'justify-center px-0'} py-2 rounded-xl text-gray-300 cursor-not-allowed select-none`}
         >
@@ -299,7 +299,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
         <div className={`py-4 space-y-1 flex-1 overflow-y-auto w-full overflow-x-hidden ${isExpanded ? 'px-3' : 'px-3'}`}>
           {isServingLocked && isExpanded && (
             <div className="mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 text-[11px] font-semibold text-amber-700 leading-snug">
-              Đang phục vụ khách. Hoàn tất đơn rồi mới chuyển mục khác được.
+              Đang trong đơn. Bàn giao phòng xong rồi mới chuyển mục khác được.
             </div>
           )}
           {isExpanded ? (

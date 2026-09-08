@@ -9,6 +9,7 @@ import { AIAssistant } from '@/components/AIAssistant';
 import { useNotifications } from '@/components/NotificationProvider';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { AccountLockedScreen } from '@/components/shared/AccountLockedScreen';
+import { isServingLockedScreen } from '@/lib/ktv-screen';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -29,8 +30,8 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
   const [lockInfo, setLockInfo] = useState<any>(null);
   const { user, lockedInfo: contextLockedInfo } = useAuth();
   const { unlockAudio, ktvScreen } = useNotifications();
-  // 🔒 KTV đang ở màn đồng hồ đếm ngược → không cho mở menu 3 gạch.
-  const isServingLocked = ktvScreen === 'TIMER';
+  // 🔒 KTV đang trong một đơn (làm → đánh giá → bàn giao) → không cho mở menu 3 gạch.
+  const isServingLocked = isServingLockedScreen(ktvScreen);
 
   const router = useRouter();
 
@@ -131,7 +132,7 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
           <button
             onClick={() => { if (isServingLocked) return; setIsSidebarOpen(true); }}
             disabled={isServingLocked}
-            title={isServingLocked ? 'Đang phục vụ khách — hoàn tất đơn trước khi mở menu.' : undefined}
+            title={isServingLocked ? 'Đang trong đơn — bàn giao phòng xong mới mở menu được.' : undefined}
             className={`p-2 -ml-2 rounded-xl transition-colors ${
               isServingLocked
                 ? 'text-gray-300 cursor-not-allowed'
