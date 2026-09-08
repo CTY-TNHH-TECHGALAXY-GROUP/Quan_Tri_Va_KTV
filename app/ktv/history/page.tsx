@@ -74,8 +74,10 @@ const DisciplineCard = ({ item }: { item: HistoryRecord }) => {
               <h4 className="text-sm font-bold text-red-900 leading-tight">{title}</h4>
               <span className="text-sm font-black text-red-600 shrink-0">-{item.points_deducted}đ</span>
             </div>
+            {/* Chỉ giờ, không ngày: nút lịch trên header đã nói rõ đang xem
+                ngày nào, in lại "09/09/2026" ở từng dòng là thừa. */}
             <p className="text-[11px] text-red-400 mt-1">
-              {format(parseDbDate(item.createdAt), 'HH:mm — dd/MM/yyyy')}
+              {format(parseDbDate(item.createdAt), 'HH:mm')}
             </p>
             {item.reason && (
               <div className="mt-2 text-xs text-red-800 bg-red-100/50 p-2 rounded-lg italic">
@@ -144,8 +146,10 @@ const OrderCard = ({ order, getStatusLabel }: {
             {order.guestLabel && (
               <span className="ml-1.5 text-[11px] font-bold text-gray-500">· {order.guestLabel}</span>
             )}
+            {/* Chỉ giờ, không ngày: nút lịch trên header đã nói rõ đang xem
+                ngày nào, in lại "09/09/2026" ở từng dòng là thừa. */}
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {format(parseDbDate(order.createdAt), 'HH:mm — dd/MM/yyyy')}
+              {format(parseDbDate(order.createdAt), 'HH:mm')}
             </p>
           </div>
         </div>
