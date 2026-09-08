@@ -86,7 +86,12 @@ export async function POST(request: Request) {
         // A/B/C. Loại D không dùng hệ đó — quy chế loại D chỉ có giờ tích lũy và
         // hạn mức tối thiểu, nên làm liên tục bao lâu cũng không miễn được.
         if (isTypeD) {
-            {
+            const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
+
+            // Công tắc TẮT thì tắt TOÀN BỘ: không chặn cửa, không trừ giờ, không
+            // khoá tài khoản. Làm nửa vời — vẫn chặn nhưng không phạt — thì công
+            // tắc lại nói dối một lần nữa, đúng thứ đang đi sửa.
+            if (await KtvTypeDDisciplineService.isEnabled(supabase)) {
                 const { data: item } = await supabase
                     .from('BookingItems').select('serviceId, segments').eq('id', itemId).maybeSingle();
 
@@ -109,7 +114,6 @@ export async function POST(request: Request) {
                 }
                 if (mins <= 0) mins = 60;
 
-                const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
                 const { getBusinessToday } = await import('@/lib/business-date');
                 const workDate = await getBusinessToday(supabase);
 

@@ -54,6 +54,9 @@ const DEFAULT_CONFIGS = {
     // KTV Loai D
     // BAT = KTV loai D tu xem duoc bang xep hang gio cua ca nhom tren app cua ho.
     ktv_type_d_hours_ranking_enabled: true,
+    // Cong tac TONG cua ky luat Loai D: tru gio vang/tre/bo ca/tu choi tua VA
+    // tu khoa tai khoan. TAT = khong tru, khong khoa, khong chan cua.
+    ktv_type_d_discipline_enabled: false,
 
     // Global
     enable_web_advance_booking_email: false,

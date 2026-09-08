@@ -199,10 +199,28 @@ export function KtvTypeDSettingsBlock() {
                         </div>
                         <h2 className="text-lg font-black text-gray-900">Kỷ luật trừ giờ tích lũy</h2>
                     </div>
-                    <SaveButton group="discipline" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_discipline_rules'], 'discipline')} />
+                    <SaveButton group="discipline" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_discipline_enabled', 'ktv_type_d_discipline_rules'], 'discipline')} />
                 </div>
                 
                 <div className="space-y-4 max-w-2xl">
+                    {/* Công tắc tổng — phải đặt ngay đầu thẻ, vì mấy ô số bên dưới
+                        chỉ có nghĩa khi nó đang BẬT. */}
+                    <div className="flex items-center justify-between p-4 bg-red-50/60 rounded-xl border border-red-100">
+                        <div className="pr-4">
+                            <p className="font-bold text-gray-900">Áp dụng kỷ luật Loại D</p>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                BẬT = trừ giờ tích luỹ khi vắng, trễ, bỏ ca đã đăng ký, từ chối tua;
+                                và tự khoá tài khoản theo quy chế.<br />
+                                TẮT = <b>không trừ giờ, không khoá, không chặn từ chối tua</b> —
+                                hệ thống chỉ ghi log để bạn xem trước sẽ đụng vào ai.
+                            </p>
+                        </div>
+                        <Toggle
+                            value={boolConfig(configs.ktv_type_d_discipline_enabled, false)}
+                            onChange={(v: any) => handleChange('ktv_type_d_discipline_enabled', v)}
+                        />
+                    </div>
+
                     <NumberInput label="Bỏ lịch / báo trễ (từ 07:00)" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
                     <NumberInput label="Báo vắng hoặc trễ (trước 06:59)" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
                     <NumberInput label="Đi trễ không cập nhật" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />

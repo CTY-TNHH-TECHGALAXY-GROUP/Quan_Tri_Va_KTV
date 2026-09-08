@@ -112,7 +112,9 @@ export async function POST(request: Request) {
           supabase as any, staff.id, entry.work_date, 'ABSENT_EARLY_NOTICE',
           'Bỏ ca đã đăng ký sau 00:00 ngày làm việc', staff.id,
         );
-        penalised.push({ work_date: entry.work_date, hours });
+        // Kỷ luật tắt thì deductDailyViolation trả 0 và không ghi sổ — đừng
+        // đưa vào danh sách, kẻo màn hình báo "bị trừ 0 giờ".
+        if (hours > 0) penalised.push({ work_date: entry.work_date, hours });
       }
     }
 

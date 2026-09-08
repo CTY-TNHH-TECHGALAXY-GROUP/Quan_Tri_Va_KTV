@@ -49,10 +49,7 @@ async function runLockUnregistered() {
     // được ghi (vnToday()), không dùng business date.
     const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-    const { data: swRow } = await supabase
-        .from('SystemConfigs').select('value')
-        .eq('key', 'ktv_type_d_discipline_enabled').maybeSingle();
-    const enabled = String(swRow?.value ?? '').replace(/"/g, '').trim() === 'true';
+    const enabled = await KtvTypeDDisciplineService.isEnabled(supabase);
 
     const { data: staffList } = await supabase
         .from('Staff')
@@ -119,10 +116,7 @@ async function run() {
     // SAU KHI KTV đã quen đăng ký. Không cần deploy lại.
     //
     // `?dry=1` để xem trước sẽ đụng vào ai mà không ghi gì.
-    const { data: swRow } = await supabase
-        .from('SystemConfigs').select('value')
-        .eq('key', 'ktv_type_d_discipline_enabled').maybeSingle();
-    const enabled = String(swRow?.value ?? '').replace(/"/g, '').trim() === 'true';
+    const enabled = await KtvTypeDDisciplineService.isEnabled(supabase);
 
     console.log(`[Kỷ luật D] Chốt sổ ngày làm việc ${targetDate} (${enabled ? 'ĐANG BẬT' : 'đang TẮT — chỉ ghi log'})`);
 
