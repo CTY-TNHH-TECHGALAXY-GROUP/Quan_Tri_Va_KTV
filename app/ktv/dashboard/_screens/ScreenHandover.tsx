@@ -210,7 +210,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
           hộp thoại xác nhận ngay trước khi KTV bấm Bỏ qua. */}
       {!isRepayingDebt && !isHandoverComplete && noSkipLeft && skipQuota && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
-          Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua và đang nợ {skipQuota.used} phòng.
+          Bạn đã dùng hết {skipQuota.max}/{skipQuota.max} lượt bỏ qua.
           <br/>Không bỏ qua tiếp được — phải chụp đủ ảnh, hoặc trả nợ phòng cũ trước.
         </p>
       )}
@@ -231,9 +231,12 @@ export function ScreenHandover({ logic }: { logic: any }) {
                     setConfirmDialog({
                         open: true,
                         title: 'Thiếu Ảnh Bàn Giao',
-                        message: skipQuota
-                            ? `Bạn chưa chụp đủ ảnh. Bỏ qua sẽ bị ghi NỢ BÀN GIAO và bạn chỉ còn ${Math.max(0, skipQuota.remaining - 1)}/${skipQuota.max} lượt. Còn nợ thì chưa tan ca được.`
-                            : 'Bạn chưa chụp đủ ảnh bàn giao, nếu bỏ qua sẽ bị ghi NỢ BÀN GIAO. Còn nợ thì chưa tan ca được.',
+                        // Không nói số lượt ở đây nữa. Trước đây popup ghi số lượt
+                        // CÒN LẠI SAU khi bỏ qua (remaining - 1), còn dòng nhắc ở
+                        // ngoài ghi số lượt ĐANG CÓ — hai con số khác nhau trên cùng
+                        // một màn hình ("còn 1" rồi "còn 0") mà không ai nói rõ cái
+                        // nào là cái nào. Điều KTV cần biết chỉ là: bỏ qua thì mắc nợ.
+                        message: 'Bạn chưa chụp đủ ảnh bàn giao. Bỏ qua sẽ bị ghi NỢ BÀN GIAO. Còn nợ thì chưa tan ca được.',
                         onConfirm: () => {
                             setConfirmDialog(null);
                             // PHẢI đi qua handleSkipHandover để ghi nợ, giống hệt nhánh

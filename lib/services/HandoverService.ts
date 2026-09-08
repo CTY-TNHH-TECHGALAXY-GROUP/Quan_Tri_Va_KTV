@@ -236,7 +236,11 @@ export class HandoverService {
 
         const quotaError = (used: number) => ({
             success: false,
-            error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua (đang nợ ${used} phòng). Phải trả nợ xong mới bỏ qua tiếp được.`,
+            // ⚠️ Đừng ghép "đang nợ N phòng" vào đây. `used` đếm số lượt BỎ QUA
+            // đã tiêu (chỉ status SKIPPED), còn ô "Nợ bàn giao" trên dashboard đếm
+            // cả phòng bị quầy TRẢ VỀ (REJECTED). Hai con số lệch nhau là đúng —
+            // nhưng lấy con số lượt rồi gọi nó là "số phòng đang nợ" thì thành sai.
+            error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua. Phải trả nợ phòng cũ xong mới bỏ qua tiếp được.`,
         });
 
         const { data, error } = await supabase.rpc('skip_handover_with_quota', {
