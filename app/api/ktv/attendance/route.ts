@@ -207,27 +207,42 @@ export async function POST(request: Request) {
             const todayStr = await getBusinessToday(supabase);
             const { data: registration } = await supabase
                 .from('KTVTypeDDailyRegistration')
-                .select('id, status, late_expected_time')
+                .select('id, status, expected_time, late_expected_time')
                 .eq('staff_id', staffCode)
                 .eq('work_date', todayStr)
                 .single();
-                
+
             if (registration && registration.status === 'OFF_REGISTERED') {
                 await supabase.from('KTVTypeDDailyRegistration')
                   .update({ status: 'REGISTERED', expected_time: format(vnNow(), 'HH:mm') })
                   .eq('id', registration.id);
             }
-            
-            if (registration && registration.status === 'LATE_REPORTED' && registration.late_expected_time) {
+
+            // Phạt trễ (§4.4 - đã chốt 2026-09-08):
+            //  - LATE_REPORTED: so với late_expected_time (giờ đã báo trễ)
+            //  - REGISTERED  : so với expected_time (giờ đăng ký gốc) — đến trễ mà KHÔNG báo
+            if (registration) {
                 const now = vnNow();
-                const [h, m] = registration.late_expected_time.split(':').map(Number);
-                const expectedMinutes = h * 60 + m;
                 const actualMinutes = now.getHours() * 60 + now.getMinutes();
-                if (actualMinutes > expectedMinutes) {
-                    await KtvTypeDDisciplineService.deductDailyViolation(
-                      supabase, staffCode, todayStr, 'LATE_NO_UPDATE',
-                      `Trễ hơn giờ đã báo trễ (${registration.late_expected_time})`
-                    );
+                let deadline: string | null = null;
+                let noteContext = '';
+
+                if (registration.status === 'LATE_REPORTED' && registration.late_expected_time) {
+                    deadline = registration.late_expected_time;
+                    noteContext = `Trễ hơn giờ đã báo trễ (${deadline})`;
+                } else if (registration.status === 'REGISTERED' && registration.expected_time) {
+                    deadline = registration.expected_time;
+                    noteContext = `Đến trễ không báo — đăng ký ${String(deadline).slice(0, 5)}`;
+                }
+
+                if (deadline) {
+                    const [h, m] = String(deadline).split(':').map(Number);
+                    const expectedMinutes = h * 60 + m;
+                    if (actualMinutes > expectedMinutes) {
+                        await KtvTypeDDisciplineService.deductDailyViolation(
+                          supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
+                        );
+                    }
                 }
             }
         }
