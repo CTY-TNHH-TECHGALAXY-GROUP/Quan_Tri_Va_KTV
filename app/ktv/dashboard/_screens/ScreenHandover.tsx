@@ -31,6 +31,13 @@ export function ScreenHandover({ logic }: { logic: any }) {
   const isDebtNeedsPhotos = isRepayingDebt && !isHandoverComplete;
   // Khoá nút Bỏ qua khi: hết lượt, HOẶC không có đơn nào đang chờ.
   const skipLocked = (noSkipLeft || !hasNextOrder) && !isRepayingDebt && !isHandoverComplete;
+
+  // Bỏ qua CHỈ tồn tại khi quầy đã gửi đơn kế tiếp. Không có đơn nào chờ thì trên
+  // màn hình cũng đừng nhắc gì tới nó — KTV chỉ việc chụp ảnh rồi nộp.
+  //
+  // Trước đây nút vẫn ghi "ĐÃ HẾT LƯỢT BỎ QUA" giữa lúc chẳng có đơn nào để mà bỏ
+  // qua: nói về một lựa chọn không tồn tại, đọc xong chỉ thêm hoang mang.
+  const noiChuyenBoQua = hasNextOrder && noSkipLeft && !isRepayingDebt && !isHandoverComplete;
   
   // V5: Use dynamic checklist from API, fallback to old checklist from booking
   let checklist: string[] = dynamicChecklist.length > 0
@@ -213,13 +220,9 @@ export function ScreenHandover({ logic }: { logic: any }) {
           Còn lượt thì không nhắc: dòng "còn 1/2 lượt" hiện thường trực chỉ làm
           nhiễu màn hình, mà số lượt còn lại vẫn được nói đúng lúc cần — trong
           hộp thoại xác nhận ngay trước khi KTV bấm Bỏ qua. */}
-      {skipLocked && (
+      {noiChuyenBoQua && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
-          {noSkipLeft ? (
-            <>Bạn đang nợ <b>{debtCount}</b> phòng chưa bàn giao — đơn này <b>bắt buộc phải bàn giao</b>, không bỏ qua thêm được.</>
-          ) : (
-            <>Chưa có đơn nào đang chờ bạn — phòng này <b>bắt buộc phải bàn giao</b>, không bỏ qua được.</>
-          )}
+          Bạn đang nợ <b>{debtCount}</b> phòng chưa bàn giao — đơn này <b>bắt buộc phải bàn giao</b>, không bỏ qua thêm được.
         </p>
       )}
 
@@ -277,7 +280,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
         {logic.isLoading || isSkippingHandover 
           ? 'Đang xử lý...' 
           : skipLocked
-              ? (noSkipLeft ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
+              ? (noiChuyenBoQua ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
           : isDebtNeedsPhotos
               ? '← Trở lại'
           : (isHandoverComplete
