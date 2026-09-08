@@ -25,6 +25,21 @@ interface Props {
   guestArrivalLock?: { active: boolean; message: string };
 }
 
+/** 'HH:MM:SS' hoặc 'HH:MM' đều về 'HH:MM'. */
+const hhmm = (t?: string | null) => (t ? String(t).slice(0, 5) : '');
+
+/** Số phút từ mốc này tới mốc kia trong cùng một ngày. */
+const phutLech = (tu: string, den: string) => {
+  const p = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+  return p(den) - p(tu);
+};
+
+/** 90 → "1 giờ 30 phút", 30 → "30 phút". */
+const dienGiaiPhut = (n: number) => {
+  const h = Math.floor(n / 60), m = n % 60;
+  return [h ? `${h} giờ` : '', m ? `${m} phút` : ''].filter(Boolean).join(' ') || '0 phút';
+};
+
 export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0, roomDebt, guestArrivalLock }: Props) {
   const { addToast } = useToast();
   const [state, setState] = useState<OnCallState | null>(null);
@@ -79,6 +94,10 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   };
 
   // Chỉ hiện nút khi: đã đăng ký LÀM, chưa điểm danh, và chưa dùng lượt báo trễ.
+  // Giờ KTV đã tự đăng ký cho hôm nay — mốc để đối chiếu khi báo trễ.
+  const gioDaDangKy = hhmm(registration?.expected_time);
+  const lechPhut = (gioDaDangKy && lateTime) ? phutLech(gioDaDangKy, lateTime) : null;
+
   const daBaoTre = (registration?.late_report_count || 0) >= 1;
   const coTheBaoTre = !!registration
     && registration.status !== 'OFF_REGISTERED'
@@ -217,7 +236,8 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
           <CheckCircle2 size={20} className="text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-amber-900">
-              Đã báo đi muộn — hẹn có mặt {registration.late_expected_time}
+              Đã báo đi muộn — hẹn có mặt {hhmm(registration.late_expected_time)}
+              {gioDaDangKy && <span className="font-medium"> (đăng ký ban đầu {gioDaDangKy})</span>}
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
               Chỉ được báo 1 lần. Đến muộn hơn giờ đã hẹn sẽ bị trừ 5 giờ tích lũy.
@@ -339,6 +359,13 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
               </div>
             </div>
 
+            {/* Giờ đã đăng ký, để đối chiếu ngay tại chỗ. Trước đây hộp thoại
+                không nhắc gì, muốn xem lại phải thoát ra mở trang Lịch rồi vào lại. */}
+            <div className="mb-4 flex items-center justify-between rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2.5">
+              <span className="text-xs font-medium text-slate-500">Giờ bạn đã đăng ký hôm nay</span>
+              <span className="text-sm font-black text-slate-800">{gioDaDangKy || 'Chưa đặt giờ'}</span>
+            </div>
+
             <label className="text-sm font-bold text-slate-700 block mb-2">
               Bạn sẽ có mặt lúc mấy giờ?
             </label>
@@ -348,6 +375,21 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
               onChange={(e) => setLateTime(e.target.value)}
               className="w-full border-2 border-slate-200 rounded-2xl p-3 text-lg font-bold text-slate-700 focus:border-amber-400 outline-none"
             />
+
+            {/* Con số chỉ có nghĩa khi đặt cạnh giờ đã đăng ký. Chọn giờ không
+                muộn hơn thì báo đỏ — mỗi ngày chỉ được báo 1 lần, bấm nhầm là mất. */}
+            {lechPhut !== null && (
+              lechPhut > 0 ? (
+                <p className="mt-2 text-xs font-bold text-amber-700">
+                  Muộn hơn giờ đã đăng ký {dienGiaiPhut(lechPhut)}.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs font-bold text-rose-600">
+                  Giờ này không muộn hơn giờ bạn đã đăng ký ({gioDaDangKy}) — kiểm tra lại,
+                  vì mỗi ngày bạn chỉ được báo 1 lần.
+                </p>
+              )
+            )}
 
             <div className="mt-4 p-3 rounded-2xl bg-amber-50 border border-amber-200">
               <p className="text-xs text-amber-800 font-medium leading-relaxed">
