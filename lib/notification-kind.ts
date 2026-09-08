@@ -71,6 +71,8 @@ const BY_TYPE: Record<string, NotificationKind> = {
     ATTENDANCE_RESPONSE: 'checkin',
 
     SHIFT_RESPONSE: 'shift',
+    KTV_ON_CALL: 'shift',
+    KTV_OFF_CALL: 'shift',
     LEAVE_RESPONSE: 'leave',
     WALLET: 'wallet',
     REQUEST_CONFIRMED: 'reception',
