@@ -140,8 +140,27 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
             );
             if (items.length === 0) continue;
 
-            // Rating logic
-            const safeRating = b.rating ?? 0;
+            // ⚠️ SAO PHẢI LẤY THEO ĐÚNG KHÁCH MÀ KTV NÀY PHỤC VỤ.
+            //
+            // Trước đây lấy `b.rating` — sao cấp BILL. Một bill nhiều khách:
+            // khách A chấm 2, khách B chấm 5 thì người làm cho khách B cũng bị
+            // cắt tiền vì lỗi ở khách A, dù hai người không hề đụng nhau.
+            // `lowestRating` là thứ quyết định mức TRỪ hoa hồng, nên đây là tiền
+            // thật chứ không phải chuyện hiển thị.
+            //
+            // Phần THƯỞNG ngay bên dưới đã sửa sang lấy theo khách từ trước; phần
+            // TRỪ này bị bỏ sót. Nay dùng đúng một cách với nhau.
+            const guestIdsOfMine = [...new Set(items.map((i: any) => i.guest_id ?? null))];
+            let safeRating = 5;
+            for (const gid of guestIdsOfMine) {
+                const guest = (b as any).BookingGuests?.find((g: any) => String(g.id) === String(gid));
+                const mineOfGuest = items.filter((i: any) =>
+                    gid === null ? true : String(i.guest_id) === String(gid));
+                // Thứ tự dự phòng khớp với phần thưởng: sao của khách → sao trên
+                // item → sao cấp bill → 0 (chưa chấm; bảng mức trừ để 0 là không trừ).
+                const r = Number(guest?.rating ?? mineOfGuest[0]?.itemRating ?? b.rating ?? 0);
+                if (r < safeRating) safeRating = r;
+            }
             if (safeRating < lowestRating) lowestRating = safeRating;
 
             // Separate items by category — VIP (NHP/NHT/VIP) vs Phổ thông (còn lại).
