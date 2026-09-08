@@ -1872,6 +1872,54 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
             updatedAt: new Date().toISOString() 
         };
 
+        // ⚠️ Chấm sao ở đây PHẢI ghi xuống tới KTV, không chỉ dừng ở cấp bill.
+        //
+        // Trước đây hàm này chỉ ghi `Bookings.rating`. KTV không nhận được gì:
+        // `itemRating` và `ktvRatings` vẫn trống. Sao đó thành mồ côi — nằm ở
+        // bill mà không thuộc về ai.
+        //
+        // Hậu quả kép, đều gặp thật ngày 08/09 trên cây đơn TEST-260908-YNAY:
+        //   · Người làm thật KHÔNG được ghi nhận (không lên sổ, không có thưởng).
+        //   · Các chỗ tính tiền lại đi "mượn" con số mồ côi đó cho khách khác
+        //     trong cùng bill — một khách chấm mà cả bill được thưởng.
+        //
+        // Nhật ký phân biệt rõ hai đường: bấm sao ở hàng CỦA TỪNG KHÁCH thì log
+        // ghi "KTV T079 nhận đánh giá…", còn bấm ở hàng CẢ ĐƠN thì chỉ ghi
+        // "Đơn hàng #… được đánh giá…" — không có tên ai.
+        //
+        // Nay hàng CẢ ĐƠN cũng gán sao cho đúng những KTV đã làm đơn đó, y như
+        // `submitGuestRating` vẫn làm cho từng khách.
+        const { data: ratingItems } = await supabase
+            .from('BookingItems')
+            .select('id, ktvRatings, technicianCodes, status')
+            .eq('bookingId', bookingId);
+
+        for (const item of ratingItems || []) {
+            // Dịch vụ đã huỷ thì không gán sao — không ai làm thì không ai nhận.
+            if (String(item.status || '').toUpperCase() === 'CANCELLED') continue;
+
+            const ktvs = (item.technicianCodes || []).filter(Boolean);
+            if (ktvs.length === 0) continue;
+
+            const currentRatings: any = item.ktvRatings || {};
+            for (const ktvId of ktvs) currentRatings[ktvId] = rating;
+
+            const { error: rErr } = await supabase
+                .from('BookingItems')
+                .update({ itemRating: rating, ktvRatings: currentRatings })
+                .eq('id', item.id);
+            if (rErr) console.error('[submitCustomerRating] không gán được sao cho item', item.id, rErr.message);
+        }
+
+        // Có bản ghi khách thì ghi luôn xuống đó, để lần sau đọc ra đúng nguồn
+        // GUEST thay vì phải lần xuống item.
+        const { error: gErr } = await supabase
+            .from('BookingGuests')
+            .update({ rating, updated_at: new Date().toISOString() })
+            .eq('booking_id', bookingId)
+            .is('rating', null);
+        if (gErr) console.warn('[submitCustomerRating] chưa ghi được sao xuống BookingGuests:', gErr.message);
+
         // 🛡️ SMART DONE: Chỉ set booking DONE nếu TẤT CẢ KTV đã bàn giao phòng xong
         // Nếu còn KTV chưa handover → giữ nguyên status, để handleReleaseKTV quyết định sau
         const { data: items } = await supabase
