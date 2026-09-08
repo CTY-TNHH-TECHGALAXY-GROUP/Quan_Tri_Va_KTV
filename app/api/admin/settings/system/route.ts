@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission } from '@/lib/auth-server';
 import { SystemSettingsSchema } from '@/lib/schemas/admin.schema';
+import { SessionEpochService, scopeForConfigKey, EpochScope } from '@/lib/services/SessionEpochService';
 
 // Các config mặc định nếu chưa có trong DB
 const DEFAULT_CONFIGS = {
@@ -100,6 +102,11 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
     try {
+        // Đây là chỗ gạt CÔNG TẮC CẢ LOẠI — tắt ví tua TYPE_D ở đây là cả nhóm
+        // mất ví. Không có lớp kiểm quyền thì bất kỳ ai gọi được API cũng đổi
+        // được cấu hình vận hành của toàn hệ thống.
+        await requirePermission('system_settings');
+
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ error: 'Supabase init failed' }, { status: 500 });
 
@@ -122,9 +129,25 @@ export async function PATCH(request: Request) {
 
         await Promise.all(promises);
 
-        return NextResponse.json({ success: true });
+        // Đổi CÔNG TẮC tính năng thì phải đá người dùng ra, không thì máy nào
+        // không đăng xuất vẫn giữ menu/quyền cũ trong storage. Khoá có đuôi
+        // `_TYPE_x` chỉ đá loại đó; khoá chung đá tất cả. Đơn giá / số tiền
+        // không nằm trong session nên bỏ qua.
+        const scopes = Object.keys(validBody)
+            .map(scopeForConfigKey)
+            .filter((s): s is EpochScope => s !== null);
+        const loggedOutScopes = await SessionEpochService.bumpScopes(supabase, scopes);
+
+        return NextResponse.json({ success: true, loggedOutScopes });
     } catch (error: any) {
+        const msg = error?.message || 'Lỗi không xác định';
+        if (msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED') {
+            return NextResponse.json({ success: false, error: msg }, { status: 403 });
+        }
+        if (msg === 'Unauthorized') {
+            return NextResponse.json({ success: false, error: msg }, { status: 401 });
+        }
         console.error('Lỗi lưu SystemConfigs:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

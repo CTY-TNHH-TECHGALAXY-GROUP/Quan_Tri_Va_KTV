@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
+import { STAFF_STATUS } from '@/lib/constants/staffStatus';
 
 export const useTurnQueueBoard = (staffs: StaffData[]) => {
     // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
@@ -240,7 +241,10 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             if (error) {
                 // Nếu có liên kết khóa ngoại (BookingItems), chuyển sang ẩn
                 console.warn('Lỗi khóa ngoại, chuyển sang ẩn nhân viên', error);
-                await supabase.from('Staff').update({ status: 'NGHỈ VIỆC' }).eq('id', staffId);
+                // ⚠️ Chỗ này từng ghi 'NGHỈ VIỆC' — một biến thể KHÔNG nơi nào đọc,
+                // nên người bị ẩn khỏi mọi danh sách mà không hệ thống nào coi là
+                // đã nghỉ. Dùng đúng giá trị chuẩn.
+                await supabase.from('Staff').update({ status: STAFF_STATUS.RESIGNED }).eq('id', staffId);
             }
             setAllExternalStaffs(prev => prev.filter(s => s.id !== staffId));
             setExternalTurns(prev => prev.filter(t => t.employee_id !== staffId));

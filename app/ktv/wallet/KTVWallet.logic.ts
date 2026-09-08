@@ -37,11 +37,19 @@ export const useKTVWallet = () => {
         if (!ktvId) return;
         setIsLoading(true);
         try {
-            const { data: staffData } = await supabase.from('Staff').select('feature_flags').eq('id', ktvId).single();
-            // Default to true for backward compatibility if flag is missing
-            const hasTuaFlag = staffData?.feature_flags?.tua_wallet !== false;
-            const hasBonusFlag = staffData?.feature_flags?.bonus_wallet === true || staffData?.feature_flags?.enable_bonus_wallet === true;
-            const hasPiggyFlag = staffData?.feature_flags?.savings_wallet === true || staffData?.feature_flags?.enable_piggy_wallet === true;
+            // Quyền xem ví do SERVER quyết (công tắc cả loại VÀ cờ cá nhân).
+            // Trước đây chỗ này tự đọc feature_flags và tự chế mặc định, lệch
+            // hẳn với bảng admin: cờ thiếu thì admin thấy OFF mà KTV vẫn xem được.
+            const accessRes = await apiClient
+                .get<any>(API.KTV.WALLET.ACCESS(ktvId))
+                .catch(() => ({ data: null }));
+            const access = accessRes?.data;
+
+            // Không hỏi được server thì đóng hết — các route ví đằng nào cũng
+            // trả 403, mở tab ra chỉ để báo lỗi thì thà đừng mở.
+            const hasTuaFlag = access?.TUA === true;
+            const hasBonusFlag = access?.BONUS === true;
+            const hasPiggyFlag = access?.SAVINGS === true;
             
             // If the user doesn't have TUA wallet flag, but TUA is active, switch tab
             if (activeTab === 'TUA' && !hasTuaFlag) {

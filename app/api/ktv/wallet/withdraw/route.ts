@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDWalletService } from '@/lib/services/KtvTypeDWalletService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { WalletType } from '@/lib/featureFlags';
+import { usesOfficeBonus } from '@/lib/services/KtvOfficeBonusService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -16,6 +19,24 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         const { techCode, amount, walletType } = parseResult.data;
+
+        // Ví đang tắt thì không được rút — trước đây cờ chỉ ẩn tab, gọi thẳng
+        // API vẫn tạo được lệnh rút.
+        const deniedWallet = await WalletAccessService.denyIfDisabled(
+            supabase, techCode, (walletType === 'BONUS' ? 'BONUS' : 'TUA') as WalletType);
+        if (deniedWallet) return deniedWallet;
+
+        // Điểm Office là thang chất lượng, không phải số dư tích được — không có
+        // tỉ giá điểm→tiền nào trong quy chế. Hệ quả tiền duy nhất của nó là mức
+        // quỹ nội bộ còn phải đóng cuối tháng. Giao diện đã bỏ nút quy đổi, đây
+        // là lớp chặn thật: ẩn nút không phải là chặn.
+        if (walletType === 'BONUS' && await usesOfficeBonus(supabase, techCode)) {
+            return NextResponse.json({
+                success: false,
+                error: 'Điểm Office không quy đổi ra tiền được. Điểm tháng chỉ quyết định mức quỹ nội bộ bạn phải đóng.',
+                code: 'OFFICE_POINTS_NOT_REDEEMABLE',
+            }, { status: 400 });
+        }
 
         
         const requestAmount = Number(amount);

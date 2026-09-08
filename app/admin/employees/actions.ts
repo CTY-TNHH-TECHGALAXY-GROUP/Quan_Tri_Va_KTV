@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
 import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_D } from '@/lib/constants/staff.constants';
+import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
 
@@ -10,10 +11,13 @@ export async function getStaffList() {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
+        // Tài khoản hệ thống (admin/dev) không phải nhân sự. Trước đây chúng vẫn
+        // nằm trong danh sách này và bị hiển thị là "Đã nghỉ" — sai và gây rối.
         const { data: staff, error } = await supabase
             .from('Staff')
             .select('*')
             .neq('work_type', 'TYPE_C')
+            .neq('status', STAFF_STATUS.SYSTEM)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -114,7 +118,7 @@ export async function createStaffMember(formData: any) {
         const staffPayload = {
             id: formData.id, // ID gõ tay (e.g. NV-001)
             full_name: formData.full_name,
-            status: formData.status || 'ĐANG LÀM',
+            status: normalizeStaffStatus(formData.status),
             birthday: formData.birthday || null,
             gender: formData.gender || null,
             id_card: formData.id_card || null,
@@ -163,9 +167,15 @@ export async function updateStaffMember(id: string, updates: any) {
         // The modal might pass Employee type (camelCase)
         const staffPayload: any = {};
         if (updates.name !== undefined) staffPayload.full_name = updates.name;
-        if (updates.status !== undefined) {
-            staffPayload.status = updates.status === 'active' ? 'ĐANG LÀM' : 'ĐÃ NGHỈ';
-            if (staffPayload.status === 'ĐÃ NGHỈ') {
+        // Modal chỉ có hai nút active/inactive, không biết tới 'HỆ THỐNG'. Lưu
+        // một tài khoản hệ thống mà không chặn ở đây là nó thành 'ĐÃ NGHỈ' —
+        // admin/dev bị ép đăng xuất ngay.
+        const { data: currentStaff } = await supabase
+            .from('Staff').select('status').eq('id', id).maybeSingle();
+
+        if (updates.status !== undefined && !isSystemAccount(currentStaff?.status)) {
+            staffPayload.status = updates.status === 'active' ? STAFF_STATUS.WORKING : STAFF_STATUS.RESIGNED;
+            if (staffPayload.status === STAFF_STATUS.RESIGNED) {
                 staffPayload.is_active_vip_menu = false;
                 staffPayload.is_home_spa = false;
                 

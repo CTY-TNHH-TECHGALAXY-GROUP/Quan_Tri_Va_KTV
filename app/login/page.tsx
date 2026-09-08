@@ -27,6 +27,11 @@ export default function LoginPage() {
     if (reason === 'account_locked') {
       setError('Tài khoản của bạn vừa bị khoá kỷ luật. Liên hệ quản lý để mở lại.');
     }
+    // Quản lý vừa đổi cấu hình tính năng → phải đăng nhập lại thì mới nhận
+    // được cờ/quyền mới, chứ không phải app hỏng.
+    if (reason === 'config_changed') {
+      setError('Cài đặt tính năng vừa được cập nhật. Vui lòng đăng nhập lại để áp dụng.');
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {

@@ -1,4 +1,8 @@
 export const API = {
+  AUTH: {
+    SESSION_CHECK: (staffId: string, issuedAt: string) =>
+      `/api/auth/session-check?staffId=${encodeURIComponent(staffId)}&issuedAt=${encodeURIComponent(issuedAt)}`,
+  },
   KTV: {
     BOOKING: '/api/ktv/booking',
     SETTINGS: '/api/ktv/settings',
@@ -9,6 +13,7 @@ export const API = {
     NOTIFICATIONS: (techCode: string) => `/api/ktv/notifications?techCode=${techCode}`,
     NOTIFICATION_MARK_READ: (id: string) => `/api/ktv/notifications?id=${id}`,
     WALLET: {
+      ACCESS: (techCode: string) => `/api/ktv/wallet/access?techCode=${techCode}`,
       BALANCE: (techCode: string) => `/api/ktv/wallet/balance?techCode=${techCode}`,
       TIMELINE: (techCode: string) => `/api/ktv/wallet/timeline?techCode=${techCode}`,
       WITHDRAW: '/api/ktv/wallet/withdraw',

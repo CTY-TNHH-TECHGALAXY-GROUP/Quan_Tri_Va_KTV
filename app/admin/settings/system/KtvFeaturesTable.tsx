@@ -15,10 +15,43 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
         setSearchQuery,
         toggleFlag,
         bulkToggle,
+        bulkTargetCount,
+        isFlagOn,
         refetch,
     } = useStaffFeatures(activeTab);
 
     const [selectedBulkFeature, setSelectedBulkFeature] = useState<string>(FEATURE_FLAG_DEFS[0].key);
+
+    const TYPE_LABEL: Record<string, string> = {
+        TYPE_A: 'Loại A', TYPE_B: 'Loại B', TYPE_C: 'Loại C', TYPE_D: 'Loại D',
+    };
+
+    const typeLabel = TYPE_LABEL[activeTab] || activeTab;
+
+    const getLabel = (def: any) => {
+        if (activeTab === 'TYPE_D') {
+            if (def.key === 'tua_wallet') return '💰 VÍ THU NHẬP';
+            if (def.key === 'bonus_wallet') return '💎 ĐIỂM TÍCH LŨY';
+        }
+        return def.label;
+    };
+
+    /**
+     * Thao tác hàng loạt phải nói rõ đụng bao nhiêu người của loại nào — và
+     * kèm cảnh báo đăng xuất, vì đổi cờ là ép đúng những người đó đăng nhập lại.
+     */
+    const confirmBulk = (value: boolean) => {
+        const def = FEATURE_FLAG_DEFS.find(d => d.key === selectedBulkFeature);
+        const label = def ? getLabel(def) : selectedBulkFeature;
+        const verb = value ? 'BẬT' : 'TẮT';
+        const scope = searchQuery.trim() ? ' (đang lọc theo ô tìm kiếm)' : '';
+        const ok = window.confirm(
+            `${verb} "${label}" cho ${bulkTargetCount} KTV ${typeLabel}${scope}.\n\n`
+            + `Các loại KTV khác giữ nguyên.\n`
+            + `Nếu "Ép đăng xuất" đang bật, ${bulkTargetCount} người này phải đăng nhập lại.\n\nTiếp tục?`
+        );
+        if (ok) bulkToggle(selectedBulkFeature, value);
+    };
 
     if (loading) {
         return (
@@ -31,20 +64,15 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
         );
     }
 
-    const getLabel = (def: any) => {
-        if (activeTab === 'TYPE_D') {
-            if (def.key === 'tua_wallet') return '💰 VÍ THU NHẬP';
-            if (def.key === 'bonus_wallet') return '💎 ĐIỂM TÍCH LŨY';
-        }
-        return def.label;
-    };
-
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-lg font-bold text-gray-900">Quản Lý Tính Năng KTV</h2>
-                    <p className="text-sm text-gray-500">Bật/tắt đặc quyền và quy định cho từng nhân viên riêng biệt.</p>
+                    <p className="text-sm text-gray-500">
+                        Bật/tắt cho <b>từng nhân viên</b> {typeLabel}. Đổi cờ ở đây
+                        chỉ ảnh hưởng đúng người đó; muốn tắt cả loại thì dùng công tắc phía trên.
+                    </p>
                 </div>
                 <button
                     onClick={refetch}
@@ -82,22 +110,22 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                     </select>
                     
                     <button
-                        onClick={() => bulkToggle(selectedBulkFeature, true)}
+                        onClick={() => confirmBulk(true)}
                         disabled={updating === `bulk-${selectedBulkFeature}`}
                         className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 whitespace-nowrap"
-                        title="Bật tính năng này cho tất cả"
+                        title={`Bật cho ${bulkTargetCount} KTV ${typeLabel} đang hiển thị`}
                     >
                         <Zap size={14} />
-                        Bật hết
+                        Bật hết ({bulkTargetCount})
                     </button>
                     <button
-                        onClick={() => bulkToggle(selectedBulkFeature, false)}
+                        onClick={() => confirmBulk(false)}
                         disabled={updating === `bulk-${selectedBulkFeature}`}
                         className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 whitespace-nowrap"
-                        title="Tắt tính năng này cho tất cả"
+                        title={`Tắt cho ${bulkTargetCount} KTV ${typeLabel} đang hiển thị`}
                     >
                         <ZapOff size={14} />
-                        Tắt hết
+                        Tắt hết ({bulkTargetCount})
                     </button>
                 </div>
             </div>
@@ -142,7 +170,9 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                                             </span>
                                         </td>
                                         {FEATURE_FLAG_DEFS.map(def => {
-                                            const isEnabled = staff.feature_flags?.[def.key] === true;
+                                            // Dùng chung bộ giải mã với app KTV: cờ THIẾU không
+                                            // mặc nhiên là TẮT (ví tua thiếu cờ = ĐANG BẬT).
+                                            const isEnabled = isFlagOn(staff, def.key);
                                             const isUpdating = updating === `${staff.id}-${def.key}`;
 
                                             return (

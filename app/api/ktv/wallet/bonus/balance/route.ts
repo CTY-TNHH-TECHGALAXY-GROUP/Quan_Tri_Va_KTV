@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { usesOfficeBonus, officeBonusBalance } from '@/lib/services/KtvOfficeBonusService';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -15,6 +17,19 @@ export async function GET(request: Request) {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'Lỗi máy chủ' }, { status: 500 });
+
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'BONUS');
+        if (denied) return denied;
+
+        // Loại D bật `bonus_from_office`: Ví Điểm lấy điểm Office, không phải
+        // điểm sao. Rẽ nhánh NGAY ở đây — cả khối tính điểm sao bên dưới (đọc
+        // KTVDailyLedger, tính bonus realtime theo ca) không còn nghĩa gì với
+        // nguồn này, chạy tiếp chỉ tốn truy vấn rồi vứt đi.
+        if (await usesOfficeBonus(supabase, techCode)) {
+            const { searchParams: sp } = new URL(request.url);
+            const data = await officeBonusBalance(supabase, techCode, sp.get('month') || undefined);
+            return NextResponse.json({ success: true, data });
+        }
 
         const START_DATE = '2026-06-01';
 

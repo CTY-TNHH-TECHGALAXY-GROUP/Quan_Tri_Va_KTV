@@ -118,6 +118,11 @@ export interface User {
   code?: string;
   featureFlags?: Record<string, boolean>;
   work_type?: string;
+  /**
+   * Thời điểm cấp session (ISO). Admin đổi cấu hình sau mốc này thì session
+   * hết hiệu lực — xem `lib/services/SessionEpochService.ts`.
+   */
+  sessionIssuedAt?: string;
 }
 
 export interface Customer {

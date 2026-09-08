@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { resolveStaffFlag } from '@/lib/featureFlags';
 
 // 🔧 FEATURE FLAG DEFINITIONS
 export const FEATURE_FLAG_DEFS = [
@@ -38,6 +39,11 @@ export const FEATURE_FLAG_DEFS = [
         key: 'savings_wallet',
         label: '💎 Ví Tích Luỹ',
         description: 'Tích luỹ lâu dài',
+    },
+    {
+        key: 'bonus_from_office',
+        label: '🏅 Ví Điểm theo Office',
+        description: 'Loại D: Ví Điểm lấy điểm Office thay cho điểm sao khách chấm. Điểm Office không quy đổi ra tiền — chỉ quyết định mức quỹ nội bộ phải đóng',
     },
     {
         key: 'maintenance_fee',
@@ -91,6 +97,26 @@ export const getDefaultFlagsForType = (workType: string): Record<string, any> =>
         default:
             return {};
     }
+};
+
+/**
+ * Danh sách đang HIỂN THỊ: lọc theo tab loại KTV rồi theo ô tìm kiếm.
+ * Bảng, bộ đếm và nút "Bật hết / Tắt hết" phải dùng chung đúng hàm này —
+ * lệch nhau một chỗ là thao tác hàng loạt đụng nhầm người.
+ */
+const selectVisibleStaff = (
+    all: StaffFeature[],
+    activeTab: string | undefined,
+    searchQuery: string,
+): StaffFeature[] => {
+    const byType = activeTab
+        ? all.filter(s => (s.work_type || 'TYPE_A') === activeTab)
+        : all;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return byType;
+    return byType.filter(s =>
+        s.full_name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
+    );
 };
 
 export const useStaffFeatures = (activeTab?: string) => {
@@ -187,17 +213,28 @@ export const useStaffFeatures = (activeTab?: string) => {
         }
     }, [fetchData]);
 
+    /**
+     * "Bật hết / Tắt hết" chỉ áp cho ĐÚNG danh sách đang hiển thị (đã lọc theo
+     * tab loại KTV + ô tìm kiếm).
+     *
+     * ⚠️ Trước đây hàm này lấy `staffList` — state gốc chứa TOÀN BỘ nhân viên —
+     * nên đứng ở tab Loại D bấm "Tắt hết" ví tua là tắt luôn ví của cả loại
+     * A, B, C. Đó là lý do tắt ví ở một loại lại mất ví ở mọi tài khoản.
+     */
     const bulkToggle = useCallback(async (flagKey: string, newValue: boolean) => {
+        const staffIds = selectVisibleStaff(staffList, activeTab, searchQuery).map(s => s.id);
+        if (staffIds.length === 0) return;
+
         setUpdating(`bulk-${flagKey}`);
 
-        // Optimistic update
-        setStaffList(prev => prev.map(s => ({
-            ...s,
-            feature_flags: { ...s.feature_flags, [flagKey]: newValue }
-        })));
+        // Optimistic update — cũng chỉ đụng đúng những người trong tầm ảnh hưởng
+        const targetSet = new Set(staffIds);
+        setStaffList(prev => prev.map(s => targetSet.has(s.id)
+            ? { ...s, feature_flags: { ...s.feature_flags, [flagKey]: newValue } }
+            : s
+        ));
 
         try {
-            const staffIds = staffList.map(s => s.id);
             const res = await fetch('/api/admin/staff-features', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -212,18 +249,14 @@ export const useStaffFeatures = (activeTab?: string) => {
         } finally {
             setUpdating(null);
         }
-    }, [staffList, fetchData]);
+    }, [staffList, activeTab, searchQuery, fetchData]);
 
-    // Filter by tab type first
-    const typeFilteredStaff = activeTab 
+    const typeFilteredStaff = activeTab
         ? staffList.filter(s => (s.work_type || 'TYPE_A') === activeTab)
         : staffList;
-
-    // Filtered list by search
-    const filteredStaff = typeFilteredStaff.filter(s =>
-        s.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.id.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredStaff = selectVisibleStaff(staffList, activeTab, searchQuery);
+    /** Số người sẽ bị ảnh hưởng nếu bấm "Bật hết / Tắt hết" ngay lúc này. */
+    const bulkTargetCount = filteredStaff.length;
 
     return {
         staffList: filteredStaff,
@@ -235,6 +268,8 @@ export const useStaffFeatures = (activeTab?: string) => {
         toggleFlag,
         updateWorkType,
         bulkToggle,
+        bulkTargetCount,
+        isFlagOn: (staff: StaffFeature, key: string) => resolveStaffFlag(staff.feature_flags, key),
         refetch: fetchData,
     };
 };

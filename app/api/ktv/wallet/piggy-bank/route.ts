@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 export async function GET(request: Request) {
     try {
@@ -12,6 +13,9 @@ export async function GET(request: Request) {
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'SAVINGS');
+        if (denied) return denied;
         
         // 1. Config tổng số tuần
         const { data: configData } = await supabase

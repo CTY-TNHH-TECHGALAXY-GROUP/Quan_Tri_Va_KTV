@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,6 +71,9 @@ export async function GET(request: Request) {
         if (!techCode) {
             return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
         }
+
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'TUA');
+        if (denied) return denied;
 
         // ─── Resolve workType from Staff (Mới nhất) ───
         let workType = 'TYPE_A'; // Default

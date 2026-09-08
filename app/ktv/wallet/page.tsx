@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKTVWallet } from './KTVWallet.logic';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, AlertCircle } from 'lucide-react';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
 
@@ -97,7 +97,17 @@ export default function KTVWalletPage() {
         }
     };
 
+    /**
+     * Ví Điểm của KTV này lấy điểm từ ĐIỂM OFFICE chứ không phải điểm sao.
+     * Server nói ra bằng `source`, client không tự đoán theo work_type — cờ bật
+     * riêng từng người nên cùng là loại D vẫn có thể khác nguồn.
+     */
+    const isOfficeBonus = bonusBalance?.source === 'OFFICE';
+
     const groupedTimeline = useMemo(() => {
+        // Lịch sử điểm Office là danh sách theo NGÀY CHẤM ĐIỂM, không phải giao
+        // dịch cộng/trừ, nên không đi qua bộ gom chung — nó có danh sách riêng.
+        if (activeTab === 'BONUS' && isOfficeBonus) return [];
         const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : (activeTab === 'TICH_LUY' ? piggyBankTimeline : []));
         if (!sourceData) return [];
         const groups: Record<string, any[]> = {};
@@ -113,7 +123,7 @@ export default function KTVWalletPage() {
             groups[dateStr].push(item);
         });
         return Object.entries(groups).map(([date, items]) => ({ date, items }));
-    }, [activeTab, walletTimeline, bonusTimeline, piggyBankTimeline]);
+    }, [activeTab, isOfficeBonus, walletTimeline, bonusTimeline, piggyBankTimeline]);
 
     if (!user || !canViewWallet) {
         return (
@@ -195,6 +205,19 @@ export default function KTVWalletPage() {
                     <div className="flex justify-center items-center py-20">
                         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                     </div>
+                ) : (!canViewTua && !canViewBonus && !canViewPiggyBank) ? (
+                    /* Tắt sạch cả 3 ví thì nói thẳng, đừng để màn hình trống hay
+                       hiện 0đ — KTV sẽ tưởng mất tiền chứ không nghĩ là bị tắt. */
+                    <div className="text-center py-20 px-6">
+                        <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Wallet size={32} />
+                        </div>
+                        <h2 className="text-xl font-black text-slate-800 mb-2">Ví đang tạm tắt</h2>
+                        <p className="text-slate-500 text-sm max-w-xs mx-auto">
+                            Quản lý đã tắt ví cho tài khoản của bạn. Số dư vẫn được giữ nguyên,
+                            liên hệ quản lý khi cần mở lại.
+                        </p>
+                    </div>
                 ) : (
                     <>
                         {/* Ví Thu Nhập (KTV Wallet) */}
@@ -232,8 +255,104 @@ export default function KTVWalletPage() {
                             </div>
                         )}
 
-                        {/* Ví Bonus */}
-                        {activeTab === 'BONUS' && bonusBalance && (
+                        {/* Ví Điểm — nguồn ĐIỂM OFFICE.
+                            Không có nút quy đổi: điểm Office là thang chất lượng,
+                            hệ quả tiền duy nhất là mức quỹ nội bộ phải đóng. */}
+                        {activeTab === 'BONUS' && bonusBalance && isOfficeBonus && (
+                            <div className="p-6 rounded-[32px] shadow-lg shadow-amber-900/10 bg-gradient-to-br from-amber-500 to-orange-600 text-white">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-bold text-amber-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
+                                        <Star size={16} className="fill-amber-100" />
+                                        Điểm Office tháng {String(bonusBalance.month || '').slice(5)}
+                                    </h3>
+                                    <span className="text-[10px] bg-white/20 px-2 py-1 rounded-lg font-bold">ĐIỂM</span>
+                                </div>
+
+                                <div className="mb-5">
+                                    <p className="text-4xl font-black tracking-tight drop-shadow-sm flex items-baseline gap-1">
+                                        {Number(bonusBalance.points ?? 0).toLocaleString('vi-VN')}
+                                        <span className="text-xl font-bold">/ 100</span>
+                                    </p>
+                                    <p className="text-xs text-amber-100/90 font-medium mt-1">
+                                        Trung bình {Number(bonusBalance.avg ?? 0).toLocaleString('vi-VN')}đ/ngày
+                                        {Number(bonusBalance.repeatPenalty) > 0
+                                            && ` · trừ thêm ${Number(bonusBalance.repeatPenalty).toLocaleString('vi-VN')}đ do lỗi lặp`}
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
+                                    <div>
+                                        <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày đi làm</p>
+                                        <p className="font-bold">{bonusBalance.workDays ?? 0} ngày</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày không lỗi</p>
+                                        <p className="font-bold">{bonusBalance.cleanDays ?? 0} ngày</p>
+                                    </div>
+                                </div>
+
+                                {/* Hệ quả tiền DUY NHẤT của điểm Office. Hiện số CÒN PHẢI ĐÓNG,
+                                    không hiện số được miễn — KTV cần biết mình nợ bao nhiêu. */}
+                                <div className={`p-4 rounded-2xl ${Number(bonusBalance.fundDue) > 0 ? 'bg-black/20' : 'bg-white/20'}`}>
+                                    <p className="text-[10px] uppercase tracking-widest text-amber-100/80 mb-1">
+                                        Quỹ nội bộ tháng này còn phải đóng
+                                    </p>
+                                    <p className="text-2xl font-black">
+                                        {Number(bonusBalance.fundDue ?? 0).toLocaleString('vi-VN')}đ
+                                        <span className="text-xs font-bold text-amber-100/70">
+                                            {' '}/ {Number(bonusBalance.fundBase ?? 250000).toLocaleString('vi-VN')}đ
+                                        </span>
+                                    </p>
+                                    <p className="text-[11px] font-medium text-amber-100/90 mt-1">
+                                        {Number(bonusBalance.exemptPct) > 0
+                                            ? `Đang được miễn ${bonusBalance.exemptPct}% nhờ điểm tháng.`
+                                            : 'Chưa đạt bậc miễn nào — giữ điểm trên 85 để bắt đầu được miễn.'}
+                                    </p>
+                                </div>
+
+                                <p className="text-[11px] text-amber-100/80 font-medium mt-3 text-center">
+                                    Điểm Office không quy đổi ra tiền. Điểm chỉ quyết định mức quỹ phải đóng.
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Lịch sử điểm Office theo từng ngày */}
+                        {activeTab === 'BONUS' && isOfficeBonus && bonusTimeline.length > 0 && (
+                            <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-3">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    Chi tiết từng ngày
+                                </h4>
+                                {bonusTimeline.map((d: any) => (
+                                    <div key={d.date} className="border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-bold text-slate-700">
+                                                {new Date(d.date + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                                            </p>
+                                            <p className={`text-sm font-black ${d.deducted > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                {d.dayScore}đ
+                                            </p>
+                                        </div>
+                                        {d.hits?.length > 0 && (
+                                            <ul className="mt-1.5 space-y-1">
+                                                {d.hits.map((h: any, i: number) => (
+                                                    <li key={i} className="text-xs text-slate-500 flex justify-between gap-3">
+                                                        <span>
+                                                            {h.label}
+                                                            {h.photoCount > 0 && <span className="text-slate-400"> · {h.photoCount} ảnh</span>}
+                                                            {h.note && <span className="text-slate-400"> · {h.note}</span>}
+                                                        </span>
+                                                        <span className="font-bold text-rose-500 shrink-0">−{h.points}đ</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Ví Bonus — nguồn điểm sao khách chấm */}
+                        {activeTab === 'BONUS' && bonusBalance && !isOfficeBonus && (
                             <div className={`p-6 rounded-[32px] shadow-lg shadow-amber-900/10 bg-gradient-to-br from-amber-500 to-orange-600 text-white`}>
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="font-bold text-amber-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
