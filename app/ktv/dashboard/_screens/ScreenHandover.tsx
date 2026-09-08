@@ -194,12 +194,13 @@ export function ScreenHandover({ logic }: { logic: any }) {
       </button>
 
       {/* Nút tích hợp V5: Xử lý dựa trên hasNextOrder và isHandoverComplete */}
-      {/* Đang trả nợ mà vẫn thiếu ảnh thì không cho bấm: món nợ này sinh ra đúng
-          vì lần trước bỏ qua, cho bỏ qua tiếp là nợ không bao giờ trả xong. */}
+      {/* Đang trả nợ mà vẫn thiếu ảnh thì không cho bỏ qua: món nợ này sinh ra
+          đúng vì lần trước bỏ qua, cho bỏ qua tiếp là nợ không bao giờ trả xong.
+          Lối ra không cần giải thích bằng chữ — nút ngay bên dưới đã ghi
+          "← Trở lại". */}
       {isRepayingDebt && !isHandoverComplete && (
         <p className="text-xs text-center font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
           Phòng đang <b>NỢ bàn giao</b> — chụp đủ ảnh mới nộp được.
-          <br /><span className="font-medium">Chưa kịp thì bấm <b>Trở lại</b>, nợ vẫn còn đó.</span>
         </p>
       )}
 
