@@ -103,6 +103,22 @@ export function walletConfigKey(wallet: WalletType, workType: string): string {
 }
 
 /**
+ * Đọc một cần gạt lưu trong `SystemConfigs.value`.
+ *
+ * Cột đó là jsonb và được ghi từ nhiều đường (trang cấu hình, tab Nâng cao,
+ * script vá tay) nên cùng một cần gạt có thể về `true`, `"true"` hoặc
+ * `'"true"'`. So thẳng `=== true` là hỏng thầm lặng: cần gạt đang BẬT bị đọc
+ * thành TẮT mà không có lỗi nào.
+ *
+ * Thiếu khoá thì trả `fallback` — nơi gọi tự quyết định mặc định của mình.
+ */
+export function readConfigBool(raw: any, fallback: boolean): boolean {
+    if (raw === undefined || raw === null || raw === '') return fallback;
+    if (typeof raw === 'boolean') return raw;
+    return String(raw).replace(/"/g, '').toLowerCase() === 'true';
+}
+
+/**
  * Công tắc cả loại. Thiếu khoá = BẬT — trước khi có tính năng này thì không
  * có tầng chặn nào, mặc định phải giữ nguyên hành vi cũ.
  */
@@ -111,10 +127,7 @@ export function isWalletEnabledForType(
     workType: string,
     configs: Record<string, any> | null | undefined,
 ): boolean {
-    const raw = configs?.[walletConfigKey(wallet, workType || 'TYPE_A')];
-    if (raw === undefined || raw === null || raw === '') return true;
-    if (typeof raw === 'boolean') return raw;
-    return String(raw).replace(/"/g, '').toLowerCase() === 'true';
+    return readConfigBool(configs?.[walletConfigKey(wallet, workType || 'TYPE_A')], true);
 }
 
 /**
