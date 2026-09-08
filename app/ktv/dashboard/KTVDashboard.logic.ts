@@ -2474,6 +2474,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     const handleSelectDebt = (bookingId: string) => {
         console.log("🔄 [KTV Logic] Chuyển qua đơn nợ bàn giao:", bookingId);
+
+        // ⚠️ Gỡ hai cái chốt đang chặn chính đơn này, nếu không bấm vào ô nợ sẽ
+        // KHÔNG có gì xảy ra:
+        //
+        // · `lastAcknowledgedIdRef` = "đơn KTV đã xong và đã rời đi, đừng kéo họ
+        //   lại". goToDashboard() đóng dấu nó mỗi lần về Dashboard — kể cả lần
+        //   trả nợ mà KTV nộp thiếu ảnh nên phòng VẪN CÒN NỢ. Sau đó bấm vào
+        //   đúng ô nợ đó thì lần nạp bị vứt ở `res.data.id === lastAcknowledged`.
+        // · `isTransitioningRef` = chốt "đang chuyển màn".
+        //
+        // KTV tự tay bấm vào đơn nào thì đó là ý muốn rõ ràng, mọi chốt suy đoán
+        // phải nhường.
+        lastAcknowledgedIdRef.current = null;
+        isTransitioningRef.current = false;
+
         targetBookingIdRef.current = bookingId;
         postServiceBookingIdRef.current = bookingId;
         try {
@@ -2509,6 +2524,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         // 🚀 Trigger fetch immediately instead of waiting for 5s interval
         setTimeout(() => {
+            // ⚠️ MỞ CỬA CHẶN "đang chuyển màn" TẠI ĐÂY.
+            //
+            // `isTransitioningRef` là chốt tạm để một lần nạp đang bay dở không
+            // ghi đè lên lúc đang đổi màn hình. Mọi nhánh khác đều nhả nó ra sau
+            // ~1 giây, riêng hai nhánh kết thúc bằng goToDashboard() thì quên:
+            // trả nợ bàn giao xong, và trường hợp tắt hiện tiền tua tức thì.
+            //
+            // Quên nhả là hỏng nặng chứ không nhẹ: mọi lần nạp sau đó đều bị vứt
+            // ở `if (isTransitioningRef.current) return`, nên KTV dọn phòng nợ
+            // xong thì màn hình đứng im mãi — đơn mới điều phối gửi tới không
+            // hiện, bấm vào ô "Nợ bàn giao" cũng không vào được. Phải F5 mới
+            // sống lại, vì tải lại trang đặt ref về false.
+            //
+            // Về tới Dashboard là việc chuyển màn đã xong, nên nhả ngay trước
+            // lần nạp có chủ đích này — nhả sau thì chính nó cũng bị vứt.
+            isTransitioningRef.current = false;
             fetchBookingRef.current?.();
         }, 100);
     };
