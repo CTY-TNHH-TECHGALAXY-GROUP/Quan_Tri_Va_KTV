@@ -23,6 +23,20 @@ npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa
 | `qa_04_multi_service_order.ts` | #4 Một đơn nhiều dịch vụ, nhận/từ chối từng cái | Ghi rồi xoá (đơn `QA-MULTI-04`) |
 | `qa_05_skip_limit.ts` | #5 Giới hạn bỏ qua dọn phòng lần thứ 3 | Ghi rồi xoá (đơn `QA-SKIP-05`) |
 | `qa_06_feature_flags.ts` | #6 Bật/tắt riêng từng tính năng, không ảnh hưởng chéo | Chỉ đọc |
+| `qa_07_office_bonus_wallet.ts` | Ví Thu Nhập + Ví Điểm tính theo điểm Office | Chỉ đọc |
+
+Kèm một script cấu hình (không phải kiểm thử):
+
+```bash
+# xem truoc
+npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/enable_office_bonus_for_test_accounts.ts
+# ghi that  (--off de tat lai)
+npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/enable_office_bonus_for_test_accounts.ts --apply
+```
+
+Script chỉ đụng tài khoản test mã `T###`, bỏ qua người thật `NH###` — đổi nguồn
+điểm của người thật là đổi mức quỹ nội bộ họ phải đóng, việc đó phải do quản lý
+bấm trên bảng Tính năng.
 
 ## Quy ước
 
