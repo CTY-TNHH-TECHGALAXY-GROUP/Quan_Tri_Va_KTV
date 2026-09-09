@@ -27,6 +27,20 @@ const ACTION_LABEL: Record<string, string> = {
     SWAP_KTV: 'Đổi KTV',
 };
 
+/**
+ * Tên người bấm để HIỂN THỊ.
+ *
+ * ⚠️ `by` của tài khoản văn phòng là id kỹ thuật — cuid ('cmlxhhysl0000…') hoặc
+ * uuid ('8de3f0a8-1783-…'), dài và vô nghĩa với quầy. Chỉ đổ `by` ra màn hình
+ * khi nó là MÃ NHÂN VIÊN thật (T007, NH025…), tức chuỗi ngắn không có dấu gạch.
+ */
+const counterActorName = (entry: any): string => {
+    if (entry?.byName) return String(entry.byName);
+    const by = entry?.by ? String(entry.by) : '';
+    if (by && by.length <= 12 && !by.includes('-')) return by;
+    return by ? 'tài khoản văn phòng' : 'không rõ người bấm';
+};
+
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
 
 /**
@@ -542,9 +556,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     // 'WORKED' = quầy đã bật công tắc cộng giờ đã làm cho KTV.
                                     const cancelCredited = services.some((s: any) => s.options?.cancelCredit === 'WORKED');
                                     // Nhật ký thao tác tại quầy — ai bấm gì, lúc nào.
+                                    // ⚠️ Sắp theo MỐC THỜI GIAN đã parse, đừng so chuỗi: `...Z` và
+                                    // `...+00:00` là cùng một thời điểm nhưng so chuỗi ra khác nhau.
                                     const counterLog = services
                                         .flatMap((s: any) => Array.isArray(s.options?.counterLog) ? s.options.counterLog : [])
-                                        .sort((a: any, b: any) => String(a.at).localeCompare(String(b.at)));
+                                        .sort((a: any, b: any) => (new Date(a?.at).getTime() || 0) - (new Date(b?.at).getTime() || 0));
+                                    const lastCounterAction = counterLog[counterLog.length - 1];
                                     // Gộp lỗi khách tích của mọi dịch vụ trong thẻ, khử trùng theo id.
                                     const subOrderViolations = Array.from(
                                         new Map(
@@ -1224,14 +1241,24 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                 {counterLog.length > 0 && (
                                                     <details className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
-                                                        <summary className="cursor-pointer text-[10px] font-black text-gray-500 uppercase tracking-wider select-none">
-                                                            Quầy đã thao tác ({counterLog.length})
+                                                        {/* Hiện luôn THAO TÁC gần nhất trên dòng tiêu đề — không phải
+                                                            chỉ đếm số lần. Quầy nhìn thẻ là biết vừa bấm gì, khỏi mở ra. */}
+                                                        <summary className="cursor-pointer select-none text-[10px] font-black uppercase tracking-wider text-gray-600 leading-snug">
+                                                            <span className="text-gray-400">Quầy · </span>
+                                                            {ACTION_LABEL[lastCounterAction?.action] || lastCounterAction?.action}
+                                                            {lastCounterAction?.at ? ` · ${formatToHourMinute(lastCounterAction.at)}` : ''}
+                                                            {lastCounterAction ? ` · ${counterActorName(lastCounterAction)}` : ''}
+                                                            {counterLog.length > 1 && (
+                                                                <span className="ml-1 text-gray-400 normal-case">
+                                                                    (+{counterLog.length - 1} thao tác trước)
+                                                                </span>
+                                                            )}
                                                         </summary>
                                                         <div className="mt-1 flex flex-col gap-0.5">
                                                             {counterLog.map((c: any, k: number) => (
                                                                 <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
                                                                     {formatToHourMinute(c.at)} · {ACTION_LABEL[c.action] || c.action}
-                                                                    {c.byName || c.by ? ` · ${c.byName || c.by}` : ' · (không rõ người bấm)'}
+                                                                    {` · ${counterActorName(c)}`}
                                                                     {c.note ? ` — ${c.note}` : ''}
                                                                 </span>
                                                             ))}

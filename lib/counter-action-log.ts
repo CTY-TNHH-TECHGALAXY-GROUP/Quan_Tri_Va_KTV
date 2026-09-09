@@ -36,13 +36,34 @@ export interface CounterLogEntry {
     note?: string | null;
 }
 
-/** Lấy người đang đăng nhập ở quầy. Không chặn luồng chính nếu không lấy được. */
+/**
+ * Lấy người đang đăng nhập ở quầy. Không chặn luồng chính nếu không lấy được.
+ *
+ * ⚠️ `id` của tài khoản văn phòng là một cuid dài ('cmlxhhysl0000d76c7xvak9gs'),
+ * KHÔNG phải mã nhân viên. Thẻ Kanban rơi về hiển thị `id` khi thiếu `name`, nên
+ * trước 09/09/2026 nhật ký hiện nguyên chuỗi cuid thay vì 'admin' / 'dev'.
+ * Vì vậy `name` phải luôn có: username → tra bảng Users → cuối cùng là techCode.
+ */
 export async function currentCounterActor(): Promise<{ id: string | null; name: string | null }> {
     try {
         const { requireBusinessUser } = await import('@/lib/auth-server');
         const u = await requireBusinessUser();
         if (!u) return { id: null, name: null };
-        return { id: u.businessUserId || u.techCode || null, name: (u as any).username || null };
+
+        const id = u.businessUserId || u.techCode || null;
+        let name = u.username || null;
+
+        // Phiên cũ chưa map được username thì tra thẳng bảng Users theo id.
+        if (!name && id) {
+            const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+            const sb = getSupabaseAdmin();
+            if (sb) {
+                const { data } = await sb.from('Users').select('username').eq('id', id).maybeSingle();
+                name = (data as any)?.username || null;
+            }
+        }
+
+        return { id, name: name || u.techCode || null };
     } catch {
         return { id: null, name: null };
     }

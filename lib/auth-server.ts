@@ -199,6 +199,10 @@ export async function requireBusinessUser() {
     return {
         techCode: finalTechCode,
         businessUserId,
+        // Tên đăng nhập ('admin', 'dev'...). `businessUserId` của tài khoản văn
+        // phòng là một cuid dài, không đọc được — chỗ nào cần HIỂN THỊ người
+        // thao tác thì dùng trường này (xem lib/counter-action-log.ts).
+        username: dbUser?.username || user.user_metadata?.username || null,
         role: finalRole,
         permissions: finalPermissions
     };
