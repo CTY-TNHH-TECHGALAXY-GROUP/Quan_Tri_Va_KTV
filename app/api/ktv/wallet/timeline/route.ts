@@ -12,6 +12,25 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
+ * Sắp xếp để hiển thị: mới nhất lên trên, và trong CÙNG một mốc thời gian thì
+ * dòng CỘNG tiền đứng trước dòng TRỪ tiền.
+ *
+ * Tiền tua, thưởng và thuế của một đơn dùng chung đúng một `created_at`, nên
+ * thứ tự giữa chúng hoàn toàn do tiêu chí phụ quyết định. Trước đây không có
+ * tiêu chí phụ nào — thứ tự đúng chỉ nhờ `Array.sort` giữ nguyên thứ tự chèn
+ * khi hai khoá bằng nhau. Đó là may, không phải bảo đảm: chỉ cần ai đó chèn
+ * dòng thuế trước dòng tiền tua là KTV thấy bị trừ trước khi được cộng.
+ */
+function sortForDisplay(timeline: any[]): void {
+    timeline.sort((a, b) => {
+        const dt = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        if (dt !== 0) return dt;
+        // Cùng mốc: cộng (>= 0) lên trước trừ (< 0).
+        return (Number(a.amount) < 0 ? 1 : 0) - (Number(b.amount) < 0 ? 1 : 0);
+    });
+}
+
+/**
  * Điều chỉnh + rút tiền — phần chung cho MỌI chế độ.
  * Tách ra để nhánh loại D (đọc sổ cái) và nhánh A/B/C (đường cũ) dùng chung,
  * không phải chép đôi.
@@ -186,7 +205,7 @@ export async function GET(request: Request) {
             }
 
             await appendAdjustmentsAndWithdrawals(supabase, techCode, workType, START_DATE, timeline);
-            timeline.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            sortForDisplay(timeline);
             return NextResponse.json({ success: true, data: timeline });
         }
 
@@ -432,8 +451,13 @@ export async function GET(request: Request) {
 
         await appendAdjustmentsAndWithdrawals(supabase, techCode, workType, START_DATE, timeline);
 
-        // Sort timeline asc by created_at to calculate running balance
-        timeline.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        // Cộng dồn số dư theo thứ tự thời gian. Cùng mốc thì cộng tiền trước rồi
+        // mới trừ — khớp với thứ tự hiển thị, để số dư từng dòng đọc xuôi.
+        timeline.sort((a, b) => {
+            const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            if (dt !== 0) return dt;
+            return (Number(a.amount) < 0 ? 1 : 0) - (Number(b.amount) < 0 ? 1 : 0);
+        });
 
         let currentBalance = 0;
         const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
@@ -445,7 +469,7 @@ export async function GET(request: Request) {
         });
 
         // Sort timeline desc for display
-        timeline.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        sortForDisplay(timeline);
 
         return NextResponse.json({ success: true, data: timeline });
     } catch (err: any) {
