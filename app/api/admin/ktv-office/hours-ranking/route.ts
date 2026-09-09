@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { KtvOfficeScoreService, monthRange, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
+import { KtvOfficeScoreService, monthRange, currentMonthVn, attendedStaffOfMonth, assignRanks } from '@/lib/services/KtvOfficeScoreService';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,11 +77,18 @@ export async function GET(request: Request) {
         });
 
         // Thứ tự mặc định = CHUẨN của bảng điều phối: giờ ròng giảm dần, hoà thì
-        // mã nhân viên tăng dần. Client vẫn xếp lại theo tiêu chí người dùng chọn,
-        // nhưng ai đọc thẳng API này cũng nhận đúng thứ hạng thật.
-        data.sort((a: any, b: any) => (b.net - a.net) || String(a.id).localeCompare(String(b.id)));
+        // mã nhân viên tăng dần. Người chưa điểm danh trong tháng thì CHƯA CÓ
+        // HẠNG (`rank = null`) và nằm cuối — giống hệt màn KTV.
+        const attended = await attendedStaffOfMonth(supabase, staffIds, month);
+        const ranked = assignRanks(data as any, attended);
+        data.length = 0;
+        (data as any[]).push(...ranked);
 
-        return NextResponse.json({ success: true, scope, month, range, data });
+        return NextResponse.json({
+            success: true, scope, month, range,
+            rankedCount: (data as any[]).filter(r => r.ranked).length,
+            data,
+        });
     } catch (error: any) {
         const msg = error?.message || 'Lỗi không xác định';
         const status = msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED' ? 403 : msg === 'Unauthorized' ? 401 : 500;

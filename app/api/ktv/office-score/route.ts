@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService } from '@/lib/services/KtvOfficeScoreService';
+import { canSeeOfficePoints, dedupePhotosWithinDay } from '@/lib/services/KtvOfficeBonusService';
 import { vnToday } from '@/lib/vn-time';
 
 export const dynamic = 'force-dynamic';
@@ -34,8 +35,11 @@ export async function GET(request: Request) {
             .eq('id', staffId)
             .maybeSingle();
 
-        // Chỉ Loại D có điểm Office. Vai trò khác trả về null để UI ẩn hẳn ô này.
-        if (!staff || staff.work_type !== 'TYPE_D') {
+        // Chỉ Loại D có điểm Office, VÀ phải là người đang dùng Ví Điểm theo
+        // Office. Cùng một cửa với trang Ví — xem `canSeeOfficePoints`. Không
+        // qua cửa thì trả null để Dashboard ẩn hẳn ô này, thay vì hiện một nút
+        // dẫn tới thứ mà trang Ví lại không có.
+        if (!staff || staff.work_type !== 'TYPE_D' || !(await canSeeOfficePoints(supabase, staffId))) {
             return NextResponse.json({ success: true, applicable: false, data: null });
         }
 
@@ -53,13 +57,15 @@ export async function GET(request: Request) {
         // gặp quầy để xem — nhưng đây là ảnh chụp chính họ, bị trừ điểm mà không
         // được nhìn bằng chứng thì cãi nhau ở quầy còn lâu hơn. Route này chỉ đọc
         // dữ liệu của người đang đăng nhập nên không lộ sang KTV khác.
-        const mapHits = (hits: typeof m.days[number]['hits']) => hits.map(h => ({
+        // Bỏ ảnh trùng trong cùng ngày — phiếu cũ dùng chung một rổ ảnh cho mọi
+        // lỗi, xem `dedupePhotosWithinDay`.
+        const mapHits = (hits: typeof m.days[number]['hits']) => dedupePhotosWithinDay(hits.map(h => ({
             label: h.label,
             points: h.points,
             note: h.note,
             photoCount: h.photoUrls.length,
             photoUrls: h.photoUrls,
-        }));
+        })));
 
         return NextResponse.json({
             success: true,

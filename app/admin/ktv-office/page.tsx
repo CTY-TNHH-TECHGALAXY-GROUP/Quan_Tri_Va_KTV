@@ -764,73 +764,84 @@ const AdminKtvOfficePage = () => {
                           {group.items.map((item: any) => {
                             const done = logic.existingHits.find((h: any) => h.criteriaId === item.id);
                             const isChecked = !!done || logic.sheetState.selectedIds.includes(item.id);
+                            // Chỉ lỗi ĐANG tích (chưa trừ trước đó) mới mở khung ảnh riêng.
+                            const picking = !done && logic.sheetState.selectedIds.includes(item.id);
+                            const mine: string[] = logic.photosOf(item.id);
                             return (
-                              <label
-                                key={item.id}
-                                className={`flex items-center gap-3 py-3 border-b border-[var(--line)] ${done ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  className="w-5 h-5 accent-[var(--rust)] shrink-0"
-                                  checked={isChecked}
-                                  disabled={!!done}
-                                  onChange={() => logic.toggleCriteria(item.id)}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <strong className="block text-sm font-semibold">{item.label}</strong>
-                                  {done ? (
-                                    <small className="block text-[11px] text-[var(--muted)] mt-0.5">
-                                      Đã trừ lúc {new Date(done.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} bởi {done.byName}
-                                      {done.photoCount > 0 ? ` · ${done.photoCount} ảnh` : ''}
-                                    </small>
-                                  ) : item.requiresPhoto && (
-                                    <small className="inline-block text-[10px] font-bold text-[var(--amber)] bg-[var(--amber-2)] px-2 py-0.5 rounded mt-1">CẦN ẢNH</small>
-                                  )}
-                                </div>
-                                <span className="font-bold text-[var(--rust)] shrink-0">−{fmtNum(item.points)}</span>
-                              </label>
+                              <div key={item.id} className="border-b border-[var(--line)]">
+                                {/* Ô ảnh phải nằm NGOÀI <label>: đặt trong label thì bấm
+                                    "Thêm ảnh" sẽ gạt luôn dấu tích của chính lỗi đó. */}
+                                <label
+                                  className={`flex items-center gap-3 py-3 ${done ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="w-5 h-5 accent-[var(--rust)] shrink-0"
+                                    checked={isChecked}
+                                    disabled={!!done}
+                                    onChange={() => logic.toggleCriteria(item.id)}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <strong className="block text-sm font-semibold">{item.label}</strong>
+                                    {done ? (
+                                      <small className="block text-[11px] text-[var(--muted)] mt-0.5">
+                                        Đã trừ lúc {new Date(done.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} bởi {done.byName}
+                                        {done.photoCount > 0 ? ` · ${done.photoCount} ảnh` : ''}
+                                      </small>
+                                    ) : item.requiresPhoto && (
+                                      <small className="inline-block text-[10px] font-bold text-[var(--amber)] bg-[var(--amber-2)] px-2 py-0.5 rounded mt-1">CẦN ẢNH</small>
+                                    )}
+                                  </div>
+                                  <span className="font-bold text-[var(--rust)] shrink-0">−{fmtNum(item.points)}</span>
+                                </label>
+
+                                {picking && (
+                                  <div className="pb-3 pl-8">
+                                    <div className="flex gap-2 flex-wrap items-center">
+                                      <label className="h-[46px] px-3 rounded-xl border-2 border-dashed border-[var(--line)] bg-[var(--surface-soft)] flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--green)] hover:border-[var(--green)]">
+                                        <ImageIcon size={14} /> Ảnh cho lỗi này
+                                        <input
+                                          type="file" accept="image/*" multiple capture="environment" className="hidden"
+                                          onChange={e => { logic.addPhotosFor(item.id, e.target.files); e.target.value = ''; }}
+                                        />
+                                      </label>
+                                      {mine.map((src: string, i: number) => (
+                                        <div key={i} className="relative w-[46px] h-[46px] rounded-xl overflow-hidden border border-[var(--line)]">
+                                          <img src={src} alt={`${item.label} — ảnh ${i + 1}`} className="w-full h-full object-cover" />
+                                          <button
+                                            onClick={() => logic.removePhotoFor(item.id, i)}
+                                            aria-label={`Xóa ảnh ${i + 1} của ${item.label}`}
+                                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-[var(--rust)] text-white text-[10px] flex items-center justify-center"
+                                          >✕</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <p className={`text-[11px] mt-1.5 ${item.requiresPhoto && mine.length === 0 ? 'text-[var(--rust)] font-bold' : 'text-[var(--muted)]'}`}>
+                                      {item.requiresPhoto && mine.length === 0
+                                        ? 'Lỗi này bắt buộc phải có ảnh riêng.'
+                                        : `${mine.length}/${logic.maxPhotos} ảnh của riêng lỗi này`}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
                       </div>
                     ))}
 
-                    {/* Ảnh minh chứng */}
+                    {/* Ảnh minh chứng gắn ngay dưới từng lỗi ở trên, không còn rổ
+                        dùng chung. Ở đây chỉ nhắc lại lỗi nào còn thiếu ảnh. */}
                     <div className="border-t border-[var(--line)] pt-5">
-                      <div className="flex items-baseline justify-between mb-1">
-                        <h3 className="text-sm font-bold">Ảnh minh chứng</h3>
-                        {logic.needPhoto
-                          ? <span className="text-[10px] font-bold text-[var(--amber)] bg-[var(--amber-2)] px-2 py-0.5 rounded">BẮT BUỘC</span>
-                          : <span className="text-xs text-[var(--muted)]">(tùy chọn)</span>}
-                      </div>
-                      <p className="text-xs text-[var(--muted)] mb-3">
-                        {logic.needPhoto
-                          ? 'Lỗi bạn chọn cần ảnh để KTV không khiếu nại được.'
-                          : 'Nên có ảnh nếu lỗi dễ gây tranh cãi.'}
-                      </p>
+                      {logic.missingPhotoFor.length > 0 && (
+                        <div className="mb-4 p-3 rounded-2xl bg-[var(--amber-2)] border border-[var(--amber)]/30">
+                          <p className="text-xs font-bold text-[var(--amber)]">
+                            Còn thiếu ảnh minh chứng riêng cho: {logic.missingPhotoFor.map((c: any) => c.label).join(', ')}.
+                          </p>
+                        </div>
+                      )}
 
-                      <div className="flex gap-2 flex-wrap items-center">
-                        <label className="h-[54px] px-4 rounded-xl border-2 border-dashed border-[var(--line)] bg-[var(--surface-soft)] flex items-center gap-2 cursor-pointer text-sm font-bold text-[var(--green)] hover:border-[var(--green)]">
-                          <ImageIcon size={16} /> Thêm ảnh
-                          <input
-                            type="file" accept="image/*" multiple capture="environment" className="hidden"
-                            onChange={e => { logic.addPhotos(e.target.files); e.target.value = ''; }}
-                          />
-                        </label>
-                        {logic.sheetState.photos.map((src: string, i: number) => (
-                          <div key={i} className="relative w-[54px] h-[54px] rounded-xl overflow-hidden border border-[var(--line)]">
-                            <img src={src} alt={`Minh chứng ${i + 1}`} className="w-full h-full object-cover" />
-                            <button
-                              onClick={() => logic.removePhoto(i)}
-                              aria-label={`Xóa ảnh ${i + 1}`}
-                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-[var(--rust)] text-white text-xs flex items-center justify-center"
-                            >✕</button>
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-xs text-[var(--muted)] mt-2">{logic.sheetState.photos.length}/{logic.maxPhotos} ảnh</p>
-
-                      <label className="block text-sm font-bold mt-5 mb-2">Ghi chú cho KTV</label>
+                      <label className="block text-sm font-bold mb-2">Ghi chú cho KTV</label>
                       <textarea
                         className="w-full min-h-[80px] p-3 rounded-2xl border border-[var(--line)] focus:outline-none focus:ring-2 focus:ring-[var(--green)]/20 text-sm"
                         placeholder="Ví dụ: Không đeo bảng tên suốt ca chiều."
@@ -1087,7 +1098,7 @@ const AdminKtvOfficePage = () => {
                     >
                       {logic.submitting ? 'Đang lưu…'
                         : logic.sheetState.selectedIds.length === 0 ? 'Chưa chọn lỗi nào'
-                        : logic.needPhoto && logic.sheetState.photos.length === 0 ? 'Cần thêm ảnh minh chứng'
+                        : logic.missingPhotoFor.length > 0 ? `Cần ảnh riêng cho ${logic.missingPhotoFor.length} lỗi`
                         : `Xác nhận trừ ${fmtNum(logic.totalPoints)} điểm`}
                     </button>
                   </>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { KtvOfficeScoreService, HOURS_PENALTY_VI, monthRange, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
+import { KtvOfficeScoreService, HOURS_PENALTY_VI, monthRange, currentMonthVn, attendedStaffOfMonth, assignRanks } from '@/lib/services/KtvOfficeScoreService';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,9 +111,16 @@ export async function GET(request: Request) {
             };
         });
 
-        rows.sort((a: any, b: any) =>
-            (b.net - a.net) || a.name.localeCompare(b.name, 'vi'));
-        rows.forEach((r: any, i) => { r.rank = i + 1; });
+        // Xếp hạng dùng CHUNG luật với bảng của quầy: hoà giờ thì chốt bằng MÃ
+        // nhân viên, và chưa điểm danh trong tháng thì chưa có hạng.
+        //
+        // ⚠️ Trước đây chỗ này chốt bằng TÊN và xếp hạng cho tất cả loại D, kể cả
+        // người chưa đi làm buổi nào. Đầu tháng cả đội cùng 0h nên màn KTV và màn
+        // quầy hiện hai thứ tự khác nhau cho cùng một nhóm người.
+        const attended = await attendedStaffOfMonth(supabase, staffIds, month);
+        const ranked = assignRanks(rows, attended);
+        rows.length = 0;
+        rows.push(...ranked);
 
         // Sổ giờ TỪNG DÒNG — chỉ của chính người đang xem. Dùng đúng hàm mà màn
         // Office của quầy đang dùng, để hai bên không bao giờ ra số khác nhau.
@@ -143,6 +150,8 @@ export async function GET(request: Request) {
             month,
             workType: me.work_type,
             meId,
+            /** Số người đã điểm danh — 0 nghĩa là chưa ai vào bảng xếp hạng. */
+            rankedCount: rows.filter((r: any) => r.ranked).length,
             data: rows,
             myLedger,
         });

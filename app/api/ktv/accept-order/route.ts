@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
 import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
-import { resolveMyItems, markAccepted } from '@/lib/services/KtvOrderTargetService';
+import { resolveMyItems, markAcceptedGroup, idsOf } from '@/lib/services/KtvOrderTargetService';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
         // xác nhận hay chưa. Không có mốc này thì reload trang là mất trạng thái.
         // Mốc lưu THEO TỪNG KTV, xem KtvOrderTargetService.markAccepted.
         for (const item of resolved.items) {
-            const marked = await markAccepted(supabase, item, staffId);
+            const marked = await markAcceptedGroup(supabase, item, staffId);
             if (marked.error) {
                 console.error('[Accept Order] Không ghi được mốc nhận đơn:', marked.error);
                 return NextResponse.json(
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
             success: true,
             billCode: bill,
             bookingItemId: itemId,
-            bookingItemIds: resolved.items.map(i => i.id),
+            bookingItemIds: resolved.items.flatMap(idsOf),
         });
 
     } catch (error: any) {

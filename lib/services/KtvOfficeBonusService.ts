@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveStaffFlag } from '@/lib/featureFlags';
 import { KtvOfficeScoreService, currentMonthVn, FUND_BASE } from '@/lib/services/KtvOfficeScoreService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 /**
  * ================================================================
@@ -67,6 +68,38 @@ export async function usesOfficeBonus(
     return resolveStaffFlag((staff as any).feature_flags, 'bonus_from_office');
 }
 
+/**
+ * KTV này có được XEM điểm Office không — dùng chung cho MỌI màn hình.
+ *
+ * Ba điều kiện, và cả ba đều đã có sẵn, không đẻ thêm cần gạt mới:
+ *   1. Loại D — chỉ nhóm này có thang điểm Office.
+ *   2. Ví Điểm đang mở (công tắc cả loại VÀ cờ `bonus_wallet` của người đó) —
+ *      không có ví thì không có chỗ nào chứa điểm.
+ *   3. `bonus_from_office` bật — điểm của họ tính theo Office.
+ *
+ * ⚠️ Trước đây nút "Điểm Office" trên Dashboard không đi qua cửa nào: nó hiện
+ * bất cứ khi nào API trả về số. Còn ví thì đòi đủ cả ba. Nên tài khoản có
+ * `bonus_wallet = false` mà `bonus_from_office = true` (ví dụ T001) nhìn thấy
+ * nút trên Dashboard nhưng mở ví ra thì không có gì — hai màn hình nói hai
+ * chuyện khác nhau về cùng một tính năng. Giờ cả hai gọi chung hàm này.
+ */
+export async function canSeeOfficePoints(
+    supabase: SupabaseClient,
+    staffId: string,
+): Promise<boolean> {
+    const { data: staff } = await supabase
+        .from('Staff')
+        .select('work_type, feature_flags')
+        .eq('id', staffId)
+        .maybeSingle();
+
+    if (!staff || staff.work_type !== 'TYPE_D') return false;
+    if (!resolveStaffFlag((staff as any).feature_flags, 'bonus_from_office')) return false;
+
+    const { ok } = await WalletAccessService.isEnabled(supabase, staffId, 'BONUS');
+    return ok;
+}
+
 /** Số liệu Ví Điểm lấy từ điểm Office của một tháng. */
 export async function officeBonusBalance(
     supabase: SupabaseClient,
@@ -91,6 +124,33 @@ export async function officeBonusBalance(
         fundBase: FUND_BASE,
         redeemable: false,
     };
+}
+
+/**
+ * Bỏ ảnh TRÙNG trong cùng một ngày.
+ *
+ * Phiếu ghi TRƯỚC bản vá "ảnh theo từng lỗi" dùng chung một rổ: tích 3 lỗi, tải
+ * 2 ảnh thì cả 3 dòng cùng mang đúng 2 link đó. KTV mở ngày đó ra thấy mỗi tấm
+ * lặp 3 lần và tưởng mình bị chụp rất nhiều lần.
+ *
+ * Không sửa được dữ liệu cũ (không biết tấm nào vốn thuộc lỗi nào), nên vá ở
+ * tầng ĐỌC: link nào đã xuất hiện ở một lỗi phía trên thì thôi lặp lại ở dưới.
+ * Lỗi đầu tiên giữ ảnh — đúng cách "xem ảnh từng mục" đang chạy tốt.
+ *
+ * Phiếu ghi sau bản vá vốn đã không trùng nên hàm này không đụng gì tới chúng.
+ */
+export function dedupePhotosWithinDay<T extends { photoUrls: string[]; photoCount: number }>(
+    hits: T[],
+): T[] {
+    const seen = new Set<string>();
+    return hits.map(h => {
+        const kept = (h.photoUrls || []).filter(u => {
+            if (seen.has(u)) return false;
+            seen.add(u);
+            return true;
+        });
+        return { ...h, photoUrls: kept, photoCount: kept.length };
+    });
 }
 
 export interface OfficeBonusEntry {
@@ -123,7 +183,7 @@ export async function officeBonusTimeline(
         date: d.workDate,
         dayScore: d.dayScore,
         deducted: Math.round(d.hits.reduce((a, h) => a + h.points, 0) * 100) / 100,
-        hits: d.hits.map(h => ({
+        hits: dedupePhotosWithinDay(d.hits.map(h => ({
             label: h.label,
             points: h.points,
             note: h.note,
@@ -131,6 +191,6 @@ export async function officeBonusTimeline(
             photoUrls: h.photoUrls,
             byName: h.byName,
             at: h.at,
-        })),
+        }))),
     }));
 }

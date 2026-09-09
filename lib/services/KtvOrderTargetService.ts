@@ -33,6 +33,15 @@ export interface KtvItemRef {
     status: string | null;
     serviceId: string | null;
     options: any;
+    /**
+     * Các dịch vụ đã GHÉP vào dịch vụ này (`options.mergedIntoId` trỏ về đây).
+     *
+     * Ghép dịch vụ ở màn điều phối: thời lượng của dịch vụ con được cộng thẳng
+     * vào dịch vụ cha, con bị xoá KTV và không còn là một chặng riêng. Mọi chỗ
+     * khác trong luồng KTV — bấm giờ, kết thúc, sổ cái, lịch sử — đều gom theo
+     * `mergedIntoId || item.id`. Nhận/từ chối đơn phải gom y như vậy.
+     */
+    mergedChildren: string[];
 }
 
 export interface ResolveResult {
@@ -51,6 +60,52 @@ function assignedTo(item: any, staffId: string): boolean {
 }
 
 const SELECT = 'id, bookingId, status, serviceId, options, technicianCodes';
+
+const optsOf = (raw: any): any =>
+    (typeof raw === 'string' ? safeParse(raw) : (raw || {}));
+
+/** Dịch vụ này thuộc "đơn con" nào — chính nó, hoặc dịch vụ cha đã ghép nó vào. */
+const groupKeyOf = (item: any): string => optsOf(item?.options).mergedIntoId || item.id;
+
+/**
+ * Gom các dịch vụ ĐÃ GHÉP về một mối.
+ *
+ * ⚠️ Trước đây hàm này coi dịch vụ con đã ghép như một lựa chọn độc lập. Hậu quả
+ * khi quầy ghép "Gội" vào "Massage" rồi giao cả cụm cho một KTV:
+ *   · Hộp chọn dịch vụ khi từ chối hiện HAI dòng, mà thật ra chỉ có một chặng.
+ *   · Chọn nhầm dòng con thì KTV chỉ bị gỡ khỏi cái con — cái cha (đã ôm luôn
+ *     thời lượng của con) vẫn dính tên họ, coi như từ chối mà chưa từ chối.
+ *   · Mức phạt tính theo thời lượng của riêng con, trong khi giờ đã dồn hết
+ *     sang cha — phạt hụt.
+ * Nay cả cụm ghép là MỘT lựa chọn, đại diện là dịch vụ cha.
+ */
+function foldMerged(rows: any[]): KtvItemRef[] {
+    const groups = new Map<string, any[]>();
+    for (const r of rows) {
+        const k = groupKeyOf(r);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(r);
+    }
+
+    const out: KtvItemRef[] = [];
+    for (const [key, members] of groups) {
+        // Đại diện là dịch vụ CHA nếu chính nó cũng thuộc về KTV này; không thì
+        // lấy dòng con có id nhỏ nhất để kết quả ổn định giữa hai lần gọi.
+        const sorted = [...members].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const head = sorted.find(m => m.id === key) || sorted[0];
+        const { technicianCodes, ...rest } = head;
+        out.push({
+            ...(rest as any),
+            mergedChildren: sorted.filter(m => m.id !== head.id).map(m => m.id),
+        } as KtvItemRef);
+    }
+    return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
+/** Mọi id cần đụng tới khi thao tác lên một lựa chọn: chính nó + phần đã ghép. */
+export function idsOf(item: KtvItemRef): string[] {
+    return [item.id, ...(item.mergedChildren || [])];
+}
 
 /**
  * Tra ra các dịch vụ đang gán cho `staffId` từ một id bất kỳ.
@@ -71,19 +126,25 @@ export async function resolveMyItems(
 
     if (direct) {
         if (!assignedTo(direct, staffId)) return { items: [], bookingId: (direct as any).bookingId, exact: true };
-        const { technicianCodes, ...rest } = direct as any;
-        return { items: [rest as KtvItemRef], bookingId: (direct as any).bookingId, exact: true };
+
+        // Gửi lên id của một dịch vụ ĐÃ GHÉP thì phải quy về cả cụm: thao tác
+        // trên mình nó là bỏ sót phần còn lại của cùng một chặng.
+        const { data: siblings } = await supabase
+            .from('BookingItems').select(SELECT).eq('bookingId', (direct as any).bookingId);
+        const key = groupKeyOf(direct);
+        const sameGroup = (siblings || [])
+            .filter((i: any) => assignedTo(i, staffId) && groupKeyOf(i) === key);
+
+        const folded = foldMerged(sameGroup.length > 0 ? sameGroup : [direct]);
+        return { items: folded, bookingId: (direct as any).bookingId, exact: true };
     }
 
     const { data: candidates } = await supabase
         .from('BookingItems').select(SELECT).eq('bookingId', id);
 
-    const mine = (candidates || [])
-        .filter((i: any) => assignedTo(i, staffId))
-        // Thứ tự PostgREST không có gì bảo đảm; chốt theo id để hai lần gọi ra
-        // cùng một danh sách, và để thông báo lỗi liệt kê ổn định.
-        .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))
-        .map(({ technicianCodes, ...rest }: any) => rest as KtvItemRef);
+    // Thứ tự PostgREST không có gì bảo đảm; `foldMerged` chốt theo id để hai lần
+    // gọi ra cùng một danh sách, và để thông báo lỗi liệt kê ổn định.
+    const mine = foldMerged((candidates || []).filter((i: any) => assignedTo(i, staffId)));
 
     return { items: mine, bookingId: id, exact: false };
 }
@@ -133,4 +194,32 @@ export async function markAccepted(
         .from('BookingItems').update({ options: next }).eq('id', item.id);
     if (error) return { changed: false, error: error.message };
     return { changed: true };
+}
+
+/**
+ * Đánh dấu "đã nhận" cho CẢ CỤM: dịch vụ cha và mọi dịch vụ đã ghép vào nó.
+ *
+ * Ghép rồi thì cả cụm là một chặng — nhận cha mà con vẫn treo ở bước chờ xác
+ * nhận là trạng thái không ai gỡ được, vì màn KTV chỉ hiện đúng cái cha.
+ */
+export async function markAcceptedGroup(
+    supabase: SupabaseClient,
+    item: KtvItemRef,
+    staffId: string
+): Promise<{ error?: string }> {
+    const first = await markAccepted(supabase, item, staffId);
+    if (first.error) return { error: first.error };
+
+    if (item.mergedChildren.length === 0) return {};
+
+    const { data: children } = await supabase
+        .from('BookingItems').select(SELECT).in('id', item.mergedChildren);
+
+    for (const c of (children || [])) {
+        const { technicianCodes, ...rest } = c as any;
+        const res = await markAccepted(
+            supabase, { ...(rest as any), mergedChildren: [] } as KtvItemRef, staffId);
+        if (res.error) return { error: res.error };
+    }
+    return {};
 }

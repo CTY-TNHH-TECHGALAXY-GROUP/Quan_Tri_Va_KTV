@@ -121,9 +121,16 @@ const KtvHoursRankingPage = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-[10px] uppercase tracking-widest text-blue-100">Hạng của bạn</p>
                     <p className="font-black text-3xl leading-none mt-1">
-                      {me.rank}
-                      <span className="text-sm font-medium opacity-70 ml-1">/ {logic.rows.length}</span>
+                      {me.rank ?? '—'}
+                      {me.rank != null && (
+                        <span className="text-sm font-medium opacity-70 ml-1">/ {logic.rankedCount}</span>
+                      )}
                     </p>
+                    {me.rank == null && (
+                      <p className="text-[11px] font-medium text-blue-100 mt-1">
+                        Điểm danh xong mới vào bảng xếp hạng.
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-[10px] uppercase tracking-widest text-blue-100">Thực nhận</p>
@@ -171,8 +178,8 @@ const KtvHoursRankingPage = () => {
                             : 'bg-white border-slate-100 shadow-sm'
                         }`}
                       >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${MEDAL[r.rank] || 'bg-slate-100 text-slate-400'}`}>
-                          #{r.rank}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${(r.rank != null && MEDAL[r.rank]) || 'bg-slate-100 text-slate-400'}`}>
+                          {r.rank != null ? `#${r.rank}` : '—'}
                         </div>
 
                         <Avatar row={r} />

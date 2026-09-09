@@ -170,20 +170,27 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
     );
   }
 
-  if (!state?.allow_on_call) {
-    return (
-      <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-center">
-        <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-        <p className="text-amber-800 font-bold">Tính năng không khả dụng</p>
-        <p className="text-sm text-amber-600 mt-2">Bạn chưa được cấp quyền sử dụng chế độ Nhận Đơn.</p>
-      </div>
-    );
-  }
+  /**
+   * Cờ `allow_on_call` chỉ quản đúng MỘT thứ: chế độ nhận đơn ngoài giờ.
+   *
+   * ⚠️ Trước đây chỗ này `return` sớm cả màn hình khi cờ tắt, kèm câu "Tính năng
+   * không khả dụng". Nhưng đây là TOÀN BỘ màn Điểm Danh của loại D — tắt cờ là
+   * KTV mất luôn nút "Oria Xin chào" và "Oria Xin cảm ơn", tức là không điểm
+   * danh và không tan ca được. Một cần gạt phụ khoá mất chức năng chính.
+   *
+   * Nay cờ tắt thì chỉ ẩn cụm nhận đơn; điểm danh và tan ca giữ nguyên.
+   */
+  const canOnCall = state?.allow_on_call === true;
 
-  const isOnline = state.online_status === 'ONLINE';
+  // Không gọi được API on-call cũng không được để màn hình chết — coi như đang
+  // tắt, KTV vẫn phải điểm danh được.
+  const onlineStatus = state?.online_status ?? 'OFFLINE';
+
+  // Cờ tắt thì không thể ở trạng thái "đang chờ đơn": không có đường nào bật.
+  const isOnline = canOnCall && onlineStatus === 'ONLINE';
   // Ngăn lỗi kẹt trạng thái AT_VENUE sang ngày mới: Chỉ khi đã điểm danh hôm nay mới tính là AT_VENUE.
-  const isAtVenue = state.online_status === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
-  const isOffline = (state.online_status === 'OFFLINE' || state.online_status === 'AT_VENUE') && !isOnline && !isAtVenue;
+  const isAtVenue = onlineStatus === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
+  const isOffline = !isOnline && !isAtVenue;
 
   const getPreviewTime = () => {
     const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
@@ -198,7 +205,11 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
           <AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
           <div className="text-left">
             <p className="text-amber-800 font-bold">Hôm nay bạn đã đăng ký nghỉ</p>
-            <p className="text-sm text-amber-600">Nếu đổi ý, bấm bật nhận đơn để đi làm bình thường.</p>
+            <p className="text-sm text-amber-600">
+              {canOnCall
+                ? 'Nếu đổi ý, bấm bật nhận đơn để đi làm bình thường.'
+                : 'Nếu đổi ý, bấm "Oria Xin chào" để đi làm bình thường.'}
+            </p>
           </div>
         </div>
       )}
@@ -221,12 +232,15 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
             isOnline ? 'text-blue-700' :
             'text-slate-600'
         }`}>
-            {isAtVenue ? 'ĐÃ TỚI TIỆM' : isOnline ? 'ĐANG CHỜ ĐƠN' : 'ĐANG TẮT'}
+            {isAtVenue ? 'ĐÃ TỚI TIỆM' : isOnline ? 'ĐANG CHỜ ĐƠN' : canOnCall ? 'ĐANG TẮT' : 'CHƯA ĐIỂM DANH'}
         </h3>
         <p className="text-sm font-medium text-slate-500">
-            {isAtVenue ? 'Đã tới tiệm. Vui lòng bàn giao đồ và sẵn sàng nhận tour.' : 
-             isOnline ? `Đang sẵn sàng từ nhà. Thời gian di chuyển: ${state.travel_time_mins} phút.` :
-             'Chưa bật nhận đơn. Hãy bật khi bạn rảnh.'}
+            {isAtVenue ? 'Đã tới tiệm. Vui lòng bàn giao đồ và sẵn sàng nhận tour.' :
+             isOnline ? `Đang sẵn sàng từ nhà. Thời gian di chuyển: ${state?.travel_time_mins ?? 0} phút.` :
+             // Cờ nhận đơn ngoài giờ đang tắt thì đừng nhắc chuyện "bật nhận đơn" —
+             // KTV không có nút nào để bật, đọc xong chỉ thêm hoang mang.
+             canOnCall ? 'Chưa bật nhận đơn. Hãy bật khi bạn rảnh.'
+                       : 'Bấm "Oria Xin chào" khi bạn tới tiệm để bắt đầu ca.'}
         </p>
       </div>
 
@@ -268,13 +282,16 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
                 >
                     <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin chào'}
                 </button>
-                <button
-                    onClick={() => setShowPopup(true)}
-                    disabled={actionLoading}
-                    className="w-full py-4 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                    <BellRing size={22} /> {actionLoading ? 'Đang xử lý...' : 'Bật Nhận Đơn'}
-                </button>
+                {/* CHỈ nút này thuộc cờ nhận đơn ngoài giờ. Điểm danh ở trên không dính. */}
+                {canOnCall && (
+                  <button
+                      onClick={() => setShowPopup(true)}
+                      disabled={actionLoading}
+                      className="w-full py-4 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                      <BellRing size={22} /> {actionLoading ? 'Đang xử lý...' : 'Bật Nhận Đơn'}
+                  </button>
+                )}
             </div>
         )}
 
@@ -292,7 +309,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
                   <button
                       onClick={() => {
                         if (incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0 || guestArrivalLock?.active) return;
-                        handleToggleOnCall(false, state.travel_time_mins);
+                        handleToggleOnCall(false, state?.travel_time_mins ?? 30);
                       }}
                       disabled={actionLoading || incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0 || guestArrivalLock?.active}
                       className={`w-full py-4 font-bold text-lg rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all
@@ -419,7 +436,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
       )}
 
       {/* POPUP BẬT NHẬN ĐƠN */}
-      {showPopup && (
+      {showPopup && canOnCall && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}

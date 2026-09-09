@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { KtvOfficeScoreService, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
+import { KtvOfficeScoreService, currentMonthVn, attendedStaffOfMonth } from '@/lib/services/KtvOfficeScoreService';
 import { getBusinessToday } from '@/lib/business-date';
 
 export const dynamic = 'force-dynamic';
@@ -95,9 +95,12 @@ export async function GET(request: Request) {
         // tải trang và quầy không tin được thứ hạng nào là thật.
         const byHours = (a: any, b: any) => (b.hours - a.hours) || String(a.id).localeCompare(String(b.id));
 
-        const ranked = data.filter(d => !d.locked).sort(byHours);
+        // Chưa điểm danh trong tháng thì chưa có hạng — cùng luật với bảng Giờ
+        // tích lũy và màn KTV, để ba nơi không bao giờ nói ba con số.
+        const attended = await attendedStaffOfMonth(supabase, staffIds, month);
+        const ranked = data.filter(d => !d.locked && attended.has(d.id)).sort(byHours);
         ranked.forEach((d: any, i) => { d.rank = i + 1; });
-        data.forEach((d: any) => { if (d.locked) d.rank = null; });
+        data.forEach((d: any) => { if (d.locked || !attended.has(d.id)) d.rank = null; });
 
         // Bị khóa lên đầu để không bị bỏ sót, còn lại theo thứ hạng.
         data.sort((a: any, b: any) => (Number(b.locked) - Number(a.locked)) || byHours(a, b));

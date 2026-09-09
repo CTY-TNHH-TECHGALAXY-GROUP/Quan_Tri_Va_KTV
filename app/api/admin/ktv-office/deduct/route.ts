@@ -122,12 +122,15 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json().catch(() => ({}));
-        const { staffId, workDate, criteriaIds, note, photosBase64 } = body as {
+        const { staffId, workDate, criteriaIds, note, photosBase64, photosByCriteria } = body as {
             staffId?: string;
             workDate?: string;
             criteriaIds?: string[];
             note?: string;
+            /** Đường CŨ — rổ ảnh dùng chung. Chỉ còn nhận khi tích đúng 1 lỗi. */
             photosBase64?: string[];
+            /** Đường MỚI — ảnh của riêng từng lỗi: { criteriaId: base64[] }. */
+            photosByCriteria?: Record<string, string[]>;
         };
 
         if (!staffId || !workDate || !Array.isArray(criteriaIds) || criteriaIds.length === 0) {
@@ -176,12 +179,43 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'Có tiêu chí không tồn tại hoặc đã ngừng áp dụng.' }, { status: 400 });
         }
 
-        const photos = Array.isArray(photosBase64) ? photosBase64.slice(0, MAX_PHOTOS) : [];
-        const needPhoto = criteria.some((c: any) => c.requires_photo);
-        if (needPhoto && photos.length === 0) {
-            const names = criteria.filter((c: any) => c.requires_photo).map((c: any) => c.label).join(', ');
+        // ─── Ảnh minh chứng gắn THEO TỪNG LỖI ───
+        //
+        // ⚠️ Trước đây chỉ có một rổ ảnh dùng chung: lễ tân tích 3 lỗi rồi tải 2
+        // ảnh thì CẢ BA dòng phiếu cùng nhận đúng 2 link đó. Hậu quả:
+        //   · KTV mở ngày đó ra thấy mỗi tấm lặp lại 3 lần;
+        //   · ảnh chụp cái đồng phục bị đính luôn vào lỗi "bật app trễ" — không
+        //     còn là bằng chứng của lỗi nào cả;
+        //   · trần 5 ảnh áp cho cả rổ, nên 3 lỗi bắt buộc ảnh chỉ được chia nhau
+        //     5 tấm, mà tải 1 tấm là đủ điều kiện cho cả ba.
+        // Nay mỗi lỗi có rổ riêng, trần riêng, và điều kiện bắt buộc xét riêng.
+        const perCriteria: Record<string, string[]> = {};
+        for (const c of criteria) {
+            const raw = (photosByCriteria as any)?.[c.id];
+            perCriteria[c.id] = Array.isArray(raw) ? raw.slice(0, MAX_PHOTOS) : [];
+        }
+
+        // Đường cũ (`photosBase64`) chỉ còn chấp nhận khi tích ĐÚNG MỘT lỗi — lúc
+        // đó "rổ chung" và "rổ của lỗi đó" là một, không có gì để nhập nhằng.
+        const legacy = Array.isArray(photosBase64) ? photosBase64.slice(0, MAX_PHOTOS) : [];
+        if (legacy.length > 0) {
+            if (criteria.length > 1) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'Nhiều lỗi cùng lúc thì ảnh phải gắn theo từng lỗi. Vui lòng tải lại trang để dùng bản mới.',
+                    code: 'PHOTOS_MUST_BE_PER_CRITERIA',
+                }, { status: 400 });
+            }
+            const only = criteria[0].id;
+            if (perCriteria[only].length === 0) perCriteria[only] = legacy;
+        }
+
+        const missing = criteria
+            .filter((c: any) => c.requires_photo && perCriteria[c.id].length === 0)
+            .map((c: any) => c.label);
+        if (missing.length > 0) {
             return NextResponse.json(
-                { success: false, error: `Các lỗi sau bắt buộc có ảnh minh chứng: ${names}.` },
+                { success: false, error: `Các lỗi sau bắt buộc có ảnh minh chứng RIÊNG: ${missing.join(', ')}.` },
                 { status: 400 }
             );
         }
@@ -203,7 +237,12 @@ export async function POST(request: Request) {
         }
 
         // Upload ảnh trước khi ghi log — có ảnh hỏng thì dừng, không ghi nửa vời.
-        const photoUrls = await uploadEvidence(supabase, staffId, workDate, photos);
+        // Mỗi lỗi upload riêng để link ảnh không dùng chung giữa các lỗi.
+        const urlsOf: Record<string, string[]> = {};
+        for (const c of criteria) {
+            urlsOf[c.id] = await uploadEvidence(supabase, staffId, workDate, perCriteria[c.id]);
+        }
+        const photoUrls = Object.values(urlsOf).flat();
 
         // bUser.techCode có thể là UUID (tài khoản admin không gắn mã NV) — tra tên thật
         // để KTV nhìn lịch sử biết ai chấm, chứ không phải một chuỗi UUID vô nghĩa.
@@ -223,7 +262,7 @@ export async function POST(request: Request) {
             criteria_label: c.label,          // snapshot, phòng khi quy chế đổi tên tiêu chí
             points_deducted: Number(c.points) || 0,
             note: note?.trim() || null,
-            photo_urls: photoUrls,
+            photo_urls: urlsOf[c.id],
             created_by: bUser.techCode,
             created_by_name: createdByName,
         }));

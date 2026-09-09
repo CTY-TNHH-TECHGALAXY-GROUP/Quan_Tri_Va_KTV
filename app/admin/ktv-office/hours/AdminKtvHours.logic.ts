@@ -21,7 +21,9 @@ export interface HoursRow {
   days: number;
   lastDate: string | null;
   avgPerDay: number;
-  rank: number;
+  /** null = chưa điểm danh trong tháng nên chưa có hạng. */
+  rank: number | null;
+  ranked: boolean;
 }
 
 // Định dạng giờ và tiện ích tháng nay nằm ở lib/hours-format.ts để trang này và
@@ -93,9 +95,10 @@ export const useAdminKtvHoursLogic = () => {
    * đúng hạng của người đó trong đội, không phải hạng 1 giả.
    */
   const ranked: HoursRow[] = useMemo(() => {
-    return [...rawRows]
-      .sort((a, b) => (b.net - a.net) || String(a.code).localeCompare(String(b.code)))
-      .map((r, i) => ({ ...r, rank: i + 1 }));
+    // Server đã gán `rank` và cờ `ranked` (chưa điểm danh thì rank = null, nằm
+    // cuối). Client CHỈ giữ nguyên thứ tự đó — tự đánh số lại ở đây là xoá mất
+    // luật "chưa điểm danh thì chưa có hạng" và bảng này lại lệch với màn KTV.
+    return [...rawRows] as HoursRow[];
   }, [rawRows]);
 
   const rows = useMemo(() => {

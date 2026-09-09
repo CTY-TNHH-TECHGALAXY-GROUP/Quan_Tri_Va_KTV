@@ -21,7 +21,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
-import { resolveMyItems, markAccepted, acceptedAtOf } from '../../lib/services/KtvOrderTargetService';
+import {
+    resolveMyItems, markAccepted, markAcceptedGroup, acceptedAtOf, idsOf,
+} from '../../lib/services/KtvOrderTargetService';
 import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
@@ -181,6 +183,59 @@ async function main() {
         check(s1 === s2 && s1 === [IT[0], IT[2]].sort().join(','),
             'Hai lan goi ra cung thu tu, sap theo id',
             s1);
+
+        // ── M7: dịch vụ GHÉP ───────────────────────────────────────────
+        console.log('\n--- M7: dich vu GHEP (mergedIntoId) ---');
+        // Dựng lại: DV1 là cha, DV2 ghép vào DV1, cả hai gán cho A.
+        await supabase.from('BookingItems')
+            .update({ technicianCodes: [A], options: { mergedServiceIds: [IT[1]] } })
+            .eq('id', IT[0]);
+        await supabase.from('BookingItems')
+            .update({ technicianCodes: [A], options: { mergedIntoId: IT[0] } })
+            .eq('id', IT[1]);
+
+        const rMerged = await resolveMyItems(supabase, A, BK);
+        const merged = rMerged.items.find(i => i.id === IT[0]);
+        check(!!merged && merged.mergedChildren.includes(IT[1]),
+            'Cum ghep gom ve MOT lua chon, dai dien la dich vu cha',
+            `${rMerged.items.length} lua chon: ${rMerged.items.map(i => `${i.id.slice(-4)}(+${i.mergedChildren.length})`).join(', ')}`);
+        check(!rMerged.items.some(i => i.id === IT[1]),
+            'Dich vu con KHONG hien thanh mot lua chon rieng');
+        check(rMerged.items.length === 2,
+            'Don con 2 lua chon: cum ghep (DV1+DV2) va DV3', `${rMerged.items.length}`);
+
+        // Gửi thẳng id của dịch vụ CON cũng phải quy về cả cụm.
+        const rByChild = await resolveMyItems(supabase, A, IT[1]);
+        check(rByChild.items.length === 1 && rByChild.items[0].id === IT[0]
+            && rByChild.items[0].mergedChildren.includes(IT[1]),
+            'Dua id dich vu CON van quy ve dich vu cha kem ca cum',
+            rByChild.items.map(i => i.id.slice(-4)).join(','));
+
+        check(idsOf(merged!).sort().join(',') === [IT[0], IT[1]].sort().join(','),
+            'idsOf() liet ke du ca cha lan con');
+
+        // Nhận đơn: cả cụm phải được đánh dấu.
+        await markAcceptedGroup(supabase, (await resolveMyItems(supabase, A, IT[0])).items[0], A);
+        const [p7, c7] = await Promise.all([readItem(IT[0]), readItem(IT[1])]);
+        check(!!acceptedAtOf(p7.options, A) && !!acceptedAtOf(c7.options, A),
+            'Nhan don: ca dich vu cha VA dich vu ghep deu co moc nhan');
+
+        // Từ chối: gỡ cả cụm (mô phỏng đúng vòng lặp của route).
+        const meLower = A.toLowerCase();
+        const { data: rows7 } = await supabase
+            .from('BookingItems').select('id, technicianCodes, status').in('id', idsOf(merged!));
+        for (const r of (rows7 || [])) {
+            const left = (r.technicianCodes || []).filter((c: string) => c.toLowerCase() !== meLower);
+            await supabase.from('BookingItems')
+                .update({ technicianCodes: left, status: left.length === 0 ? 'PREPARING' : r.status })
+                .eq('id', r.id);
+        }
+        const [p8, c8] = await Promise.all([readItem(IT[0]), readItem(IT[1])]);
+        check(!p8.technicianCodes.includes(A) && !c8.technicianCodes.includes(A),
+            'Tu choi: KTV duoc go khoi CA cha lan con, khong con dinh lai');
+        const rLeft = await resolveMyItems(supabase, A, BK);
+        check(rLeft.items.length === 1 && rLeft.items[0].id === IT[2],
+            'Sau khi tu choi cum ghep, A chi con DV3', `${rLeft.items.length} lua chon`);
 
     } finally {
         await cleanup();

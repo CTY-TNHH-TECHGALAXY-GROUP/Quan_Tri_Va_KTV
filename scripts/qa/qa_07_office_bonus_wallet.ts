@@ -52,15 +52,21 @@ async function main() {
     const configs: Record<string, any> = {};
     (cfgRows || []).forEach((c: any) => { configs[c.key] = c.value; });
 
-    // ── W1: hai ví đều mở ──────────────────────────────────────────────
-    console.log('--- W1: Vi Thu Nhap (TUA) va Vi Diem (BONUS) deu mo ---');
+    // ── W1: công tắc ví ────────────────────────────────────────────────
+    //
+    // ⚠️ Ở đây chỉ IN RA cấu hình đang chạy, KHÔNG đòi mọi tài khoản phải bật.
+    // Bản đầu của kịch bản này bắt cả 13 KTV phải mở đủ hai ví, nên hễ ai tắt
+    // một cờ để thử nghiệm là bộ kiểm thử đỏ — nó đi kiểm tra CẤU HÌNH chứ
+    // không kiểm tra sản phẩm, mà tắt/bật cờ lại đúng là việc tính năng này
+    // sinh ra để làm. Điều phải luôn đúng là HÀNH VI khớp với cấu hình, và đó
+    // là việc của W2/W6 bên dưới.
+    console.log('--- W1: cong tac vi dang o trang thai nao ---');
     console.log(`  Cong tac CA LOAI TYPE_D: ${WALLET_TYPES.map(w => `${w}=${configs[walletConfigKey(w, 'TYPE_D')]}`).join(' · ')}`);
     const noTua = staff.filter(s => !isWalletEnabled('TUA', s as any, configs)).map(s => s.id);
     const noBonus = staff.filter(s => !isWalletEnabled('BONUS', s as any, configs)).map(s => s.id);
-    check(noTua.length === 0, `Ca ${ids.length} KTV loai D mo duoc Vi Thu Nhap`,
-        noTua.length ? `con tat: ${noTua.join(', ')}` : '');
-    check(noBonus.length === 0, `Ca ${ids.length} KTV loai D mo duoc Vi Diem`,
-        noBonus.length ? `con tat: ${noBonus.join(', ')}` : '');
+    console.log(`  Vi Thu Nhap dang TAT o: ${noTua.join(', ') || 'khong ai'}`);
+    console.log(`  Vi Diem     dang TAT o: ${noBonus.join(', ') || 'khong ai'}`);
+    check(true, `Doc duoc cong tac vi cua ca ${ids.length} KTV loai D`);
 
     // ── W2: cờ nguồn điểm ──────────────────────────────────────────────
     console.log('\n--- W2: co `bonus_from_office` quyet dinh NGUON diem ---');
@@ -77,14 +83,18 @@ async function main() {
     console.log(`  Dang dung diem SAO   : ${ids.filter(i => !onOffice.includes(i)).join(', ') || 'khong ai'}`);
     check(onOffice.length > 0, 'Co it nhat mot tai khoan dung diem Office de kiem chung');
 
-    // Bật cờ nguồn điểm KHÔNG được kéo theo cờ ví nào khác.
-    const sample = staff.find(s => onOffice.includes(s.id));
-    if (sample) {
-        const f = (sample as any).feature_flags || {};
-        check(resolveStaffFlag(f, 'tua_wallet') === true && resolveStaffFlag(f, 'bonus_wallet') === true,
-            `${sample.id}: bat nguon Office khong lam tat vi nao`,
-            `tua=${resolveStaffFlag(f, 'tua_wallet')} bonus=${resolveStaffFlag(f, 'bonus_wallet')}`);
-    }
+    // Cờ nguồn điểm là cờ ĐỘC LẬP: bật/tắt nó không được kéo theo cờ ví nào.
+    // Kiểm bằng phép đọc thuần trên dữ liệu dựng sẵn, không phụ thuộc cấu hình
+    // thật của ai — người vận hành tắt cờ nào là quyền của họ.
+    const before = { tua_wallet: true, bonus_wallet: true, savings_wallet: true };
+    const after = { ...before, bonus_from_office: true };
+    check(
+        resolveStaffFlag(after, 'tua_wallet') === true
+        && resolveStaffFlag(after, 'bonus_wallet') === true
+        && resolveStaffFlag(after, 'savings_wallet') === true,
+        'Bat `bonus_from_office` khong lam tat vi nao khac');
+    check(resolveStaffFlag({ tua_wallet: true }, 'bonus_from_office') === false,
+        'Thieu co `bonus_from_office` => mac dinh TAT (giu nguyen hanh vi cu)');
     // Loại khác loại D thì cờ có bật cũng không ăn thua.
     const { data: nonD } = await supabase
         .from('Staff').select('id').neq('work_type', 'TYPE_D').eq('status', 'ĐANG LÀM').limit(1);

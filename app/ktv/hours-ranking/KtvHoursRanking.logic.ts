@@ -10,7 +10,9 @@ export interface RankRow {
   name: string;
   avatarUrl: string | null;
   isMe: boolean;
-  rank: number;
+  /** null = chưa điểm danh trong tháng nên chưa có hạng. */
+  rank: number | null;
+  ranked: boolean;
   net: number;
   turns: number;
   /** Chỉ có giá trị ở dòng của chính mình — server không trả của người khác. */
@@ -42,6 +44,8 @@ export const useKtvHoursRankingLogic = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [showDetail, setShowDetail] = useState(false);
+  /** Số người ĐÃ điểm danh trong tháng — mẫu số của "Hạng x/y". */
+  const [rankedCount, setRankedCount] = useState(0);
 
   const thisMonth = currentMonthVn();
 
@@ -56,10 +60,12 @@ export const useKtvHoursRankingLogic = () => {
       setApplicable(res?.applicable !== false);
       setEnabled(res?.enabled !== false);
       setRows(res?.data || []);
+      setRankedCount(Number(res?.rankedCount) || 0);
       setLedger(res?.myLedger || []);
     } catch (error: any) {
       setLoadError(error?.message || 'Không tải được bảng xếp hạng giờ.');
       setRows([]);
+      setRankedCount(0);
       setLedger([]);
     } finally {
       setLoading(false);
@@ -88,7 +94,7 @@ export const useKtvHoursRankingLogic = () => {
 
   return {
     month, changeMonth, canGoNext,
-    rows, me, maxNet,
+    rows, me, maxNet, rankedCount,
     applicable, enabled,
     ledger, showDetail, setShowDetail,
     loading, loadError,

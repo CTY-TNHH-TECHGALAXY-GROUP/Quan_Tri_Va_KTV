@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvDisciplineService } from '@/lib/services/KtvDisciplineService';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
 import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
-import { resolveMyItems } from '@/lib/services/KtvOrderTargetService';
+import { resolveMyItems, idsOf } from '@/lib/services/KtvOrderTargetService';
 
 export async function POST(request: Request) {
     try {
@@ -55,6 +55,9 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
         const itemId: string = resolved.items[0].id;
+        // Dịch vụ đã GHÉP đi theo dịch vụ cha: từ chối là gỡ cả cụm. Gỡ mỗi cái
+        // cha thì cái con vẫn dính tên KTV, coi như từ chối mà chưa từ chối.
+        const affectedIds: string[] = idsOf(resolved.items[0]);
 
         // 1. Lấy thông tin KTV
         const { data: staffData } = await supabase.from('Staff').select('full_name, work_type').eq('id', staffId).single();
@@ -196,9 +199,10 @@ export async function POST(request: Request) {
 
         // 5. Gỡ KTV khỏi BookingItem và TurnQueue
         // Lấy BookingItem hiện tại
-        const { data: itemData } = await supabase
-            .from('BookingItems').select('technicianCodes, status, options').eq('id', itemId).maybeSingle();
-        if (itemData && itemData.technicianCodes) {
+        const { data: affectedRows } = await supabase
+            .from('BookingItems').select('id, technicianCodes, status, options').in('id', affectedIds);
+        for (const itemData of (affectedRows || [])) {
+            if (!itemData?.technicianCodes) continue;
             // So khớp KHÔNG phân biệt hoa thường — chỗ tra đơn phía trên cũng vậy.
             // Trước đây so bằng `!==` thuần: lệch một chữ hoa là không gỡ được, KTV
             // từ chối xong vẫn dính đơn.
@@ -225,7 +229,7 @@ export async function POST(request: Request) {
                 technicianCodes: newTechCodes,
                 status: newStatus,
                 options: nextOpts
-            }).eq('id', itemId);
+            }).eq('id', (itemData as any).id);
         }
 
         // Cập nhật TurnQueue của KTV này (gỡ đơn đang làm)
@@ -238,10 +242,9 @@ export async function POST(request: Request) {
             .single();
 
         if (turnData) {
-            let newBookingItemIds = turnData.booking_item_ids || [];
-            if (newBookingItemIds.includes(itemId)) {
-                newBookingItemIds = newBookingItemIds.filter((id: string) => id !== itemId);
-            }
+            // Gỡ khỏi hàng đợi CẢ CỤM ghép, không chỉ dịch vụ cha.
+            let newBookingItemIds = (turnData.booking_item_ids || [])
+                .filter((id: string) => !affectedIds.includes(id));
             
             await supabase.from('TurnQueue').update({
                 current_order_id: newBookingItemIds.length > 0 ? newBookingItemIds[0] : null,

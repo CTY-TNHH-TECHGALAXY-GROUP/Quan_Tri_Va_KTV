@@ -228,7 +228,9 @@ const AdminKtvHoursPage = () => {
   // Bục chỉ có nghĩa khi cả 3 hạng đầu đều CÓ giờ. Đầu tháng gần như ai cũng 0h,
   // lúc đó bục chỉ tôn vinh thứ tự tên gọi chứ không phải thành tích.
   const top3 = logic.ranked.slice(0, 3);
-  const podium = !logic.searchQuery.trim() && top3.length === 3 && top3.every(r => r.net > 0)
+  // Thêm điều kiện CÓ HẠNG: người chưa điểm danh không có hạng nên không lên bục.
+  const podium = !logic.searchQuery.trim() && top3.length === 3
+    && top3.every(r => r.net > 0 && r.rank != null)
     ? top3
     : [];
 
@@ -321,7 +323,7 @@ const AdminKtvHoursPage = () => {
               {podium.length === 3 && (
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {[podium[1], podium[0], podium[2]].map(r => {
-                    const medal = MEDALS[r.rank];
+                    const medal = MEDALS[r.rank as number];
                     const isTop = r.rank === 1;
                     return (
                       <button
@@ -353,7 +355,7 @@ const AdminKtvHoursPage = () => {
               <div className="space-y-2">
                 {logic.rows.map(r => {
                   const pct = maxValue > 0 ? Math.max(0, (r.net / maxValue) * 100) : 0;
-                  const medal = MEDALS[r.rank];
+                  const medal = r.rank != null ? MEDALS[r.rank] : undefined;
                   return (
                     <button
                       key={r.id}
@@ -363,7 +365,7 @@ const AdminKtvHoursPage = () => {
                       <div
                         style={medal ? { background: medal.bg, color: medal.ink } : undefined}
                         className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center font-bold text-sm tabular-nums ${medal ? '' : 'bg-[var(--surface-soft)] text-[var(--muted)]'}`}
-                      >{r.rank}</div>
+                      >{r.rank ?? '—'}</div>
 
                       <Avatar row={r} />
 

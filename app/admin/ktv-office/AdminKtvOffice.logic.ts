@@ -161,7 +161,15 @@ export const useAdminKtvOfficeLogic = () => {
     workDate: string;              // 'YYYY-MM-DD' gửi lên server
     selectedIds: string[];         // criteria_id đã tích
     note: string;
-    photos: string[];              // base64 đã nén
+    /**
+     * Ảnh minh chứng của RIÊNG từng lỗi: { criteria_id: base64[] }.
+     *
+     * ⚠️ Trước đây là một mảng `photos` dùng chung cho cả phiếu. Tích 3 lỗi rồi
+     * tải 2 ảnh thì cả 3 dòng cùng nhận đúng 2 link đó — KTV mở ra thấy mỗi tấm
+     * lặp 3 lần, và tấm chụp đồng phục bị đính vào cả lỗi "bật app trễ". Trần 5
+     * ảnh cũng áp cho cả rổ nên 3 lỗi cần ảnh chỉ được chia nhau 5 tấm.
+     */
+    photosByCriteria: Record<string, string[]>;
   }>({
     isOpen: false,
     type: null,
@@ -171,7 +179,7 @@ export const useAdminKtvOfficeLogic = () => {
     workDate: vnTodayStr(),
     selectedIds: [],
     note: '',
-    photos: [],
+    photosByCriteria: {},
   });
 
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
@@ -278,7 +286,7 @@ export const useAdminKtvOfficeLogic = () => {
     const today = businessToday;
     setSheetState(prev => ({
       ...prev, isOpen: true, type, person, code, score,
-      workDate: today, selectedIds: [], note: '', photos: [],
+      workDate: today, selectedIds: [], note: '', photosByCriteria: {},
     }));
     setEditState(null);
     setRevokeState(null);
@@ -364,19 +372,35 @@ export const useAdminKtvOfficeLogic = () => {
     }));
   };
 
-  const addPhotos = async (files: FileList | null) => {
+  /** Trần ảnh áp cho TỪNG lỗi, không phải cho cả phiếu. */
+  const photosOf = (criteriaId: string): string[] => sheetState.photosByCriteria[criteriaId] || [];
+
+  const addPhotosFor = async (criteriaId: string, files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const room = MAX_PHOTOS - sheetState.photos.length;
+    const room = MAX_PHOTOS - photosOf(criteriaId).length;
     if (room <= 0) {
-      addToast(`Tối đa ${MAX_PHOTOS} ảnh.`, 'error');
+      addToast(`Mỗi lỗi tối đa ${MAX_PHOTOS} ảnh.`, 'error');
       return;
     }
     const picked = await compressMany(files, room, msg => addToast(msg, 'error'));
-    if (picked.length) setSheetState(prev => ({ ...prev, photos: [...prev.photos, ...picked] }));
+    if (!picked.length) return;
+    setSheetState(prev => ({
+      ...prev,
+      photosByCriteria: {
+        ...prev.photosByCriteria,
+        [criteriaId]: [...(prev.photosByCriteria[criteriaId] || []), ...picked],
+      },
+    }));
   };
 
-  const removePhoto = (index: number) => {
-    setSheetState(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }));
+  const removePhotoFor = (criteriaId: string, index: number) => {
+    setSheetState(prev => ({
+      ...prev,
+      photosByCriteria: {
+        ...prev.photosByCriteria,
+        [criteriaId]: (prev.photosByCriteria[criteriaId] || []).filter((_, i) => i !== index),
+      },
+    }));
   };
 
   /** Tất cả tiêu chí phẳng, để tra điểm và cờ bắt buộc ảnh. */
@@ -386,7 +410,10 @@ export const useAdminKtvOfficeLogic = () => {
     .filter(Boolean);
   const totalPoints = selectedCriteria.reduce((a, c: any) => a + (c.points || 0), 0);
   const needPhoto = selectedCriteria.some((c: any) => c.requiresPhoto);
-  const canSubmit = sheetState.selectedIds.length > 0 && (!needPhoto || sheetState.photos.length > 0);
+  /** Lỗi bắt buộc ảnh mà CHÍNH NÓ chưa có ảnh nào. */
+  const missingPhotoFor: any[] = selectedCriteria
+    .filter((c: any) => c.requiresPhoto && photosOf(c.id).length === 0);
+  const canSubmit = sheetState.selectedIds.length > 0 && missingPhotoFor.length === 0;
 
   const submitDeduct = async () => {
     if (!canSubmit || submitting) return;
@@ -397,7 +424,7 @@ export const useAdminKtvOfficeLogic = () => {
         workDate: sheetState.workDate,
         criteriaIds: sheetState.selectedIds,
         note: sheetState.note,
-        photosBase64: sheetState.photos,
+        photosByCriteria: sheetState.photosByCriteria,
       }, { timeout: 60000 });
 
       addToast(`Đã trừ ${res.totalPoints} điểm của ${sheetState.person}. KTV đã nhận thông báo.`, 'success');
@@ -625,7 +652,8 @@ export const useAdminKtvOfficeLogic = () => {
     detail, detailLoading, historyTab, setHistoryTab,
     detailMonth, changeDetailMonth, setDetailMonth: setDetailMonthDirect,
     sheetState, openSheet, closeSheet, setSheetState,
-    criteriaGroups, allCriteria, toggleCriteria, addPhotos, removePhoto,
+    criteriaGroups, allCriteria, toggleCriteria,
+    photosOf, addPhotosFor, removePhotoFor, missingPhotoFor,
     totalPoints, needPhoto, canSubmit, submitting, submitDeduct,
     unlockInfo, unlockReason, setUnlockReason, unlockFee, setUnlockFee, canUnlock, submitUnlock,
     existingHits, existingLoading, changeWorkDate,

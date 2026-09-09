@@ -146,6 +146,61 @@ async function effectiveFromOf(
     return out;
 }
 
+/**
+ * Ai đã ĐIỂM DANH ít nhất một lần trong tháng — điều kiện để CÓ THỨ HẠNG.
+ *
+ * Quy tắc: chưa điểm danh thì chưa vào bảng xếp hạng, kể cả khi đang 0 giờ.
+ * Đầu tháng chưa ai điểm danh thì bảng rỗng, không phải một danh sách toàn 0h
+ * xếp theo thứ tự vô nghĩa.
+ *
+ * ⚠️ Đây chính là chỗ bảng của QUẦY và bảng của NHÂN VIÊN từng lệch nhau. Quầy
+ * đọc `TurnQueue` — chỉ có người đã điểm danh mới nằm trong đó — còn màn KTV
+ * liệt kê TOÀN BỘ loại D. Cả đội cùng 0h thì hai bên xếp ra hai thứ tự khác
+ * hẳn, và không ai giải thích nổi vì sao. Giờ cả hai đi qua hàm này.
+ */
+export async function attendedStaffOfMonth(
+    supabase: SupabaseClient,
+    staffIds: string[],
+    month: string,
+): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (staffIds.length === 0) return out;
+
+    const { from, to } = monthRange(month);
+    const { data } = await supabase
+        .from('KTVAttendance')
+        .select('employeeId')
+        .in('employeeId', staffIds)
+        .gte('date', from)
+        .lte('date', to)
+        .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']);
+
+    (data || []).forEach((a: any) => out.add(a.employeeId));
+    return out;
+}
+
+/**
+ * Gán thứ hạng theo CHUẨN GỐC: giờ ròng giảm dần, hoà thì mã nhân viên tăng dần
+ * (đúng nút chặn cuối của `KtvTypeDTurnService.getTurnQueue`).
+ *
+ * Người chưa điểm danh trong tháng nhận `rank = null` và bị đẩy xuống cuối.
+ */
+export function assignRanks<T extends { id: string; net: number }>(
+    rows: T[],
+    attended: Set<string>,
+): Array<T & { rank: number | null; ranked: boolean }> {
+    const byStandard = (a: T, b: T) =>
+        (b.net - a.net) || String(a.id).localeCompare(String(b.id));
+
+    const inRanking = rows.filter(r => attended.has(r.id)).sort(byStandard);
+    const notYet = rows.filter(r => !attended.has(r.id)).sort(byStandard);
+
+    return [
+        ...inRanking.map((r, i) => ({ ...r, rank: i + 1, ranked: true })),
+        ...notYet.map(r => ({ ...r, rank: null, ranked: false })),
+    ];
+}
+
 export class KtvOfficeScoreService {
     /**
      * Tính điểm Office tháng cho nhiều KTV cùng lúc.
