@@ -325,11 +325,21 @@ const OrderCard = ({ order, getStatusLabel }: {
                     <Award size={14} className="text-amber-500" />
                     <span className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Bonus Xuất Sắc</span>
                   </div>
+                  {/* ⚠️ `bonusPoints` là ĐIỂM, không phải tiền. Trước đây in thẳng
+                      `+{bonusPoints}đ` nên thưởng 20 điểm hiện ra "+20đ" trong khi
+                      thực nhận là 20.000đ — KTV đọc tưởng được thưởng có 20 đồng.
+                      Số tiền lên trước, số điểm xuống dòng phụ. */}
                   <div className="text-right leading-tight">
-                    <span className="text-sm font-black text-amber-600">+{order.bonusPoints}đ</span>
-                    {!!order.bonusValue && order.bonusValue !== order.bonusPoints && (
+                    {/* Chưa quy đổi được ra tiền (tỉ lệ quy đổi = 0) thì hiện
+                        thẳng số điểm, đừng in "+0đ". */}
+                    <span className="text-sm font-black text-amber-600">
+                      {Number(order.bonusValue) > 0
+                        ? `+${Number(order.bonusValue).toLocaleString('vi-VN')}đ`
+                        : `+${Number(order.bonusPoints).toLocaleString('vi-VN')} điểm`}
+                    </span>
+                    {Number(order.bonusValue) > 0 && (
                       <p className="text-[10px] text-amber-500 font-semibold">
-                        = {order.bonusValue.toLocaleString('vi-VN')}đ
+                        {Number(order.bonusPoints).toLocaleString('vi-VN')} điểm
                       </p>
                     )}
                   </div>

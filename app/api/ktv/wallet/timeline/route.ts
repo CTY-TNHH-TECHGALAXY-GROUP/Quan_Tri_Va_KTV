@@ -162,8 +162,8 @@ export async function GET(request: Request) {
                 //
                 // ⚠️ Tách làm hai dòng thì KTV phải tự cộng nhẩm mới ra con số
                 // mà quy chế nói, và dòng thuế bên dưới trông như đánh trên
-                // riêng phần tiền tua. Phần thưởng vẫn ghi rõ trong ghi chú để
-                // biết cục tiền đó gồm những gì.
+                // riêng phần tiền tua. Ghi chú cũng KHÔNG tách phần thưởng ra:
+                // nói "gồm thưởng X" là lại gợi ý đây là hai khoản ghép lại.
                 const tienTua = g.commission_net + g.bonus_amount;
                 if (tienTua > 0) {
                     timeline.push({
@@ -173,9 +173,6 @@ export async function GET(request: Request) {
                         amount: Math.round(tienTua),
                         note: `${g.service_name} · ${Math.round(g.paid_minutes)} phút`
                             + (g.deduction_rate > 0 ? ` · ${g.rating}★ trừ ${Math.round(g.deduction_rate * 100)}%` : '')
-                            + (g.bonus_amount > 0
-                                ? ` · gồm thưởng ${g.rating}★ ${Math.round(g.bonus_amount).toLocaleString('vi-VN')}đ`
-                                : '')
                             + (g.is_provisional ? ' · tạm tính' : ''),
                         created_at: at,
                         status: g.is_provisional ? 'PENDING' : 'APPROVED',
