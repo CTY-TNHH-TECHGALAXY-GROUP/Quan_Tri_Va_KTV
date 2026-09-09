@@ -38,6 +38,11 @@ export interface HistoryRecord {
   handover_comment?: string | null;
   /** Ô góp ý khách tích khi đánh giá: [{id, text}] — có từ migration 20260907000000. */
   violations?: { id: string; text: string }[] | null;
+  /**
+   * Nhãn khi KTV bị tước sạch quyền lợi ở đơn này (bị đổi ra, hoặc huỷ không
+   * tính công): "Đã đổi KTV · đã làm 25p · 0đ". `null` với đơn bình thường.
+   */
+  voidedNote?: string | null;
   ktv_comment?: string | null;
   guestCount?: number;
   coWorkers?: string[];

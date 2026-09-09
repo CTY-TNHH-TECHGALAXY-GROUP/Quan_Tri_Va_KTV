@@ -335,22 +335,36 @@ export async function GET(request: Request) {
                 
                 // Approximate passedDuration
                 passedDuration = relevantItems.reduce((sum: number, item: any) => {
+                    const biTuoc = KtvCommissionService.isKtvVoidedOnItem(item, techCode);
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                    return sum + (itemDuration <= 0 ? 60 : itemDuration);
+                    if (itemDuration <= 0) itemDuration = biTuoc ? 0 : 60;
+                    return sum + itemDuration;
                 }, 0);
                 
                 passedCount = relevantItems.length;
             } else {
+                // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+                // Xem KtvCommissionService.isKtvVoidedOnItem để hiểu vì sao không
+                // được dựa vào `itemDuration <= 0` để nhận ra chuyện này.
+                const coItemConQuyenLoi = relevantItems.some(
+                    (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, techCode)
+                );
+
                 for (const item of relevantItems) {
+                    const biTuoc = KtvCommissionService.isKtvVoidedOnItem(item, techCode);
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                    if (itemDuration <= 0) itemDuration = 60;
-                    
-                    const commissionForItem = KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                    // Dự phòng 60 phút chỉ dành cho đơn THIẾU DỮ LIỆU, không dành cho
+                    // đơn bị tước — bị tước là đúng 0.
+                    if (itemDuration <= 0) itemDuration = biTuoc ? 0 : 60;
+
+                    const commissionForItem = biTuoc
+                        ? 0
+                        : KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
 
                     const { isPassed, reasons } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
-                    
+
                     if (isPassed) {
                         passedDuration += itemDuration;
                         passedCommission += commissionForItem;
@@ -361,12 +375,13 @@ export async function GET(request: Request) {
                         reasons.forEach(r => allHoldReasons.add(r));
                     }
                 }
-                
-                // Fallback for TYPE_A if total passed commission is 0 but they did work
-                if (passedCommission === 0 && passedCount > 0) {
+
+                // Fallback for TYPE_A if total passed commission is 0 but they did work.
+                // Chừa đơn bị tước ra, nếu không nó trả lại đúng 60 phút vừa chặn ở trên.
+                if (passedCommission === 0 && passedCount > 0 && coItemConQuyenLoi) {
                     passedCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 }
-                if (heldCommission === 0 && relevantItems.length > passedCount && passedCount === 0) {
+                if (heldCommission === 0 && relevantItems.length > passedCount && passedCount === 0 && coItemConQuyenLoi) {
                     heldCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 }
             }

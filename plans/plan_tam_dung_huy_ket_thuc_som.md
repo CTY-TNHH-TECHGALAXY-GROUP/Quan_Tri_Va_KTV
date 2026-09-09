@@ -154,6 +154,17 @@ Riêng **tua** thì tước bằng `TurnLedger.is_punished = true` — hạ tầ
     - ✅ An toàn: KTV cũ **không** bị kéo ngược vào đơn. `handleGetBooking` bước 1.a chỉ nhận item mà KTV còn chặng **chưa có `actualEndTime`** ([:78](app/api/ktv/booking/_handlers/handleGetBooking.ts)) — chặng của họ đã đóng; bước 1.b đi theo `TurnQueue`, mà swap đã hạ họ về `waiting`.
 11. Người mới: thêm lựa chọn **(a) phần còn lại** / **(b) số phút quầy gán tay** (L3).
 12. Ba nơi tính tiền phải cùng bỏ qua chặng `voided`: `computeMinutes`, `calculateActualMinutes`, `calculateItemDuration` — nếu sót một nơi thì KTV bị đổi vẫn được trả.
+    - ⚠️ **Rà lại 09/09: có NƠI THỨ TƯ mà plan bỏ sót, và nó vô hiệu hoá cả ba.**
+      `if (itemDuration <= 0) itemDuration = 60` ở màn Lịch sử ([history/route.ts](app/api/ktv/history/route.ts)) và màn **Ví** ([wallet/timeline/route.ts](app/api/ktv/wallet/timeline/route.ts)).
+      Dòng dự phòng này sinh ra để cứu đơn **thiếu segment**, nhưng chặng bị tước cũng ra 0 nên bị gộp làm một → KTV bị đổi ra **được trả nguyên 1 giờ**.
+      Cộng thêm `checkIsItemPassed` hiện luôn `return true` vô điều kiện, và hai lớp `if (commission === 0 && passedCount > 0) → 60 phút`.
+      Đối chiếu dữ liệu thật: **6 cặp KTV-dịch vụ, mỗi cặp 100.000đ, tổng 600.000đ** trả sai.
+      Đã vá bằng `KtvCommissionService.isKtvVoidedOnItem()` — tách "0 vì bị tước" khỏi "0 vì thiếu data".
+    - Nhãn trên **lịch sử KTV** (yêu cầu ở mục 10) trước đó chưa hề có. Đã thêm `voidedNote`: `Đã đổi KTV · đã làm 25p · 0đ`.
+13. ⚠️ **Sửa lại mục 10 (chốt 09/09): `is_punished` CHỈ áp dụng cho A/B/C.**
+    Loại D xếp thứ tự theo **giờ tích luỹ** (`net_hours` từ `KTVDTurnLedger`), `TurnLedger` không đụng tới thứ tự của họ.
+    Tước tua cho D vừa vô nghĩa vừa đẻ ra tua ma trong báo cáo tài chính. Với D, chặng `voided` đã tự tước giờ.
+    Cộng tua cho người mới cũng vậy: chỉ A/B/C.
 
 ### Đợt 5 — Nút trên thẻ *(nhẹ, làm lúc nào cũng được)*
 12. Bỏ **Link**, thay bằng **Huỷ** trên thẻ tạm dừng (L9). Link vẫn còn ở thẻ thường và ở menu chuột phải.

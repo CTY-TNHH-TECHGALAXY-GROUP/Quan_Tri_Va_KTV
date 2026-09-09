@@ -175,6 +175,15 @@ const OrderCard = ({ order, getStatusLabel }: {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+              {/* Đơn bị tước quyền lợi: đổi KTV, hoặc huỷ không tính công.
+                  Không có dòng này thì đơn hiện y như đơn thường mà tiền bằng 0 —
+                  KTV không hiểu vì sao, quầy không giải thích được. */}
+              {order.voidedNote && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                  <span className="text-[13px] font-semibold text-rose-700">{order.voidedNote}</span>
+                </div>
+              )}
+
               {/* Dịch vụ */}
               <div className="flex justify-between items-start">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Dịch vụ</span>

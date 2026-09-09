@@ -13,6 +13,8 @@
 */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { ktvMatchesSeg } from '../ktvUtils';
+import { isVoidedSegment } from '../segment-time';
 
 export interface CommissionConfig {
     milestones: Record<string, number>;
@@ -526,6 +528,45 @@ export class KtvCommissionService {
      * @param ktvId Technician ID to check against
      * @returns { isPassed: boolean, reasons: string[] }
      */
+    /**
+     * ================================================================
+     * KTV NÀY ĐÃ BỊ TƯỚC QUYỀN LỢI TRÊN DỊCH VỤ NÀY CHƯA?
+     * ================================================================
+     * Đúng khi họ CÓ chặng trong dịch vụ và MỌI chặng của họ đều `voided`
+     * (bị đổi ra, hoặc huỷ không công).
+     *
+     * ⚠️ VÌ SAO CẦN MỘT HÀM RIÊNG, KHÔNG DỰA VÀO `itemDuration <= 0`:
+     * `calculateItemDuration` trả 0 cho chặng bị tước — đúng thiết kế. Nhưng
+     * các màn tiền đều có một dòng dự phòng `if (itemDuration <= 0) itemDuration
+     * = 60`, vốn sinh ra để cứu đơn KHÔNG có segment nào (dữ liệu thiếu). Hai
+     * trường hợp đó cùng ra số 0 nên bị gộp làm một: người bị tước sạch tiền
+     * lại được trả nguyên một giờ. Hàm này tách chúng ra —
+     *   0 vì bị tước    → trả 0
+     *   0 vì thiếu data → vẫn dự phòng 60
+     *
+     * Nhận diện chặng bằng CẢ HAI cách khớp mã: `ktvMatchesSeg` (đúng chuẩn,
+     * hiểu chặng ghép "Bao - Na") hợp với phép khớp lỏng `includes` mà
+     * `calculateItemDuration` đang dùng — để không bao giờ bỏ sót một chặng đã
+     * bị tước mà vẫn đem trả tiền.
+     */
+    static isKtvVoidedOnItem(item: any, techCode: string): boolean {
+        const code = String(techCode || '').trim().toLowerCase();
+        if (!code) return false;
+
+        let segs: any[] = [];
+        try {
+            segs = typeof item?.segments === 'string' ? JSON.parse(item.segments) : (item?.segments || []);
+        } catch { }
+        if (!Array.isArray(segs)) return false;
+
+        const mine = segs.filter((s: any) =>
+            ktvMatchesSeg(s?.ktvId, techCode)
+            || (typeof s?.ktvId === 'string' && s.ktvId.toLowerCase().includes(code))
+        );
+
+        return mine.length > 0 && mine.every((s: any) => isVoidedSegment(s));
+    }
+
     static checkIsItemPassed(item: any, booking: any, ktvId: string): { isPassed: boolean, reasons: string[] } {
         // 🔧 YÊU CẦU TỪ KHÁCH: Hủy bỏ hoàn toàn phương án giữ tiền hoặc bonus của nhân viên.
         // Mọi đơn hàng đều được trả lương và thưởng đầy đủ.

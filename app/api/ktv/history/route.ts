@@ -347,10 +347,44 @@ export async function GET(request: Request) {
                 let actualDuration = 0;
                 let commission = 0;
                 let passedCount = 0;
+                // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+                // Xem KtvCommissionService.isKtvVoidedOnItem để hiểu vì sao không
+                // được dựa vào `itemDuration <= 0` để nhận ra chuyện này.
+                const coItemConQuyenLoi = groupItems.some(
+                    (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, techCode)
+                );
+
+                // Nhãn giải thích cho KTV khi họ bị tước sạch quyền lợi ở đơn này.
+                // Plan Đợt 4 #10: lịch sử KTV vẫn phải thấy "từng làm cho khách",
+                // kèm nhãn và số phút đã làm, dù tiền = 0. Không có nhãn thì đơn
+                // hiện ra y như đơn thường mà tiền lại bằng 0 — không giải thích được.
+                const voidedNote: string | null = (() => {
+                    if (groupItems.length === 0 || coItemConQuyenLoi) return null;
+                    let phut = 0;
+                    let loai = '';
+                    for (const i of groupItems) {
+                        let segs: any[] = [];
+                        try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []); } catch { }
+                        for (const s of (Array.isArray(segs) ? segs : [])) {
+                            if (s?.voided !== true) continue;
+                            if (!s.ktvId || !String(s.ktvId).toLowerCase().includes(techCode.toLowerCase())) continue;
+                            phut += Number(s.customCommissionDuration) || 0;
+                            if (!loai) loai = String(s.note || '');
+                        }
+                    }
+                    const nhan = loai === 'CHANGED' ? 'Đã đổi KTV'
+                        : loai === 'CANCELLED_NO_CREDIT' ? 'Huỷ không tính công'
+                        : 'Không tính công';
+                    return `${nhan} · đã làm ${phut}p · 0đ`;
+                })();
+
                 for (const item of groupItems) {
+                    const biTuoc = KtvCommissionService.isKtvVoidedOnItem(item, techCode);
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                    if (itemDuration <= 0) itemDuration = 60;
+                    // Dự phòng 60 phút chỉ dành cho đơn THIẾU DỮ LIỆU, không dành cho
+                    // đơn bị tước — bị tước là đúng 0.
+                    if (itemDuration <= 0) itemDuration = biTuoc ? 0 : 60;
                     totalDuration += itemDuration;
 
                     // Calculate actual working time from segments
@@ -370,10 +404,16 @@ export async function GET(request: Request) {
                     const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
                     if (isPassed) {
                         passedCount++;
-                        commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                        if (!biTuoc) {
+                            commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                        }
                     }
                 }
-                if (commission === 0 && passedCount > 0) commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                // Lớp dự phòng thứ hai — cũng phải chừa đơn bị tước ra, nếu không
+                // nó trả lại đúng 60 phút vừa chặn ở trên.
+                if (commission === 0 && passedCount > 0 && coItemConQuyenLoi) {
+                    commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                }
 
                 const serviceNames = groupItems
                     .map((i: any) => (i.options && i.options.displayName) ? i.options.displayName : (svcMap[String(i.serviceId)] || String(i.serviceId || '').toUpperCase()))
@@ -564,6 +604,7 @@ export async function GET(request: Request) {
                     ratingDeductionRate: isFeedbackDone ? ratingDeductionRate : 0,
                     ratingDeductionAmount: isFeedbackDone ? Math.max(0, commissionBeforeDeduction - commission) : 0,
                     mixedTeamNote,
+                    voidedNote,
                     handover_status,
                     handover_submitted,
                     handover_comment,
