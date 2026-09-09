@@ -231,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Bị khoá thì báo đúng lý do, đừng để trang login đổ tại sai mật khẩu.
       loginErrorRef.current = (
         !response.success && (response as any).error === 'ACCOUNT_LOCKED'
-          ? ((response as any).message || 'Tài khoản của bạn đang bị khoá kỷ luật.')
+          ? ((response as any).message || 'Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.')
           : null
       );
 

@@ -25,7 +25,7 @@ export default function LoginPage() {
     }
     // Đang dùng dở mà quản lý khoá tài khoản → auth-context đá về đây kèm cờ này.
     if (reason === 'account_locked') {
-      setError('Tài khoản của bạn vừa bị khoá kỷ luật. Liên hệ quản lý để mở lại.');
+      setError('Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.');
     }
     // Quản lý vừa đổi cấu hình tính năng → phải đăng nhập lại thì mới nhận
     // được cờ/quyền mới, chứ không phải app hỏng.

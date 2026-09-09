@@ -154,8 +154,8 @@ export async function authenticateUser(username: string, password?: string) {
                 success: false,
                 error: 'ACCOUNT_LOCKED',
                 message: lockReason
-                    ? `Tài khoản của bạn đang bị khoá: ${lockReason}. Liên hệ quản lý để mở lại.`
-                    : 'Tài khoản của bạn đang bị khoá kỷ luật. Liên hệ quản lý để mở lại.',
+                    ? `Tài khoản đã bị khoá. Lý do: ${lockReason}. Liên hệ admin Oria Spa để mở lại.`
+                    : 'Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.',
                 lockDate,
             };
         }

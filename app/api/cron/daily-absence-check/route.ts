@@ -89,7 +89,7 @@ async function runLockUnregistered() {
         // khoá thì không hay biết gì.
         await createNotification({
             type: 'ACCOUNT_LOCK',
-            message: `Tài khoản của bạn đã bị khóa do chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${today}.`,
+            message: `Tài khoản đã bị khoá. Lý do: Chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${today}. Liên hệ admin Oria Spa để mở lại.`,
             employeeId: staff.id,
         });
     }
@@ -171,7 +171,7 @@ async function run() {
             await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, targetDate, lyDo);
             await createNotification({
                 type: 'ACCOUNT_LOCK',
-                message: `Tài khoản của bạn đã bị khóa do không đăng ký lịch và không đi làm ngày ${vnDate(targetDate)}.`,
+                message: `Tài khoản đã bị khoá. Lý do: Không đăng ký lịch và không đi làm ngày ${vnDate(targetDate)}. Liên hệ admin Oria Spa để mở lại.`,
                 employeeId: staff.id,
             });
             continue;
@@ -243,7 +243,7 @@ async function run() {
             .update({ status: 'COMPLETED' }).eq('id', registration.id);
         await createNotification({
             type: 'ACCOUNT_LOCK',
-            message: `Tài khoản của bạn đã bị khóa do ${lyDoKhoa.toLowerCase()} ngày ${vnDate(targetDate)}.`,
+            message: `Tài khoản đã bị khoá. Lý do: ${lyDoKhoa} ngày ${vnDate(targetDate)}. Liên hệ admin Oria Spa để mở lại.`,
             employeeId: staff.id,
         });
     }

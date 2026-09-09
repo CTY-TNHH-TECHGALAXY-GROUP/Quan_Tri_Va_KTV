@@ -166,7 +166,11 @@ export async function POST(request: Request) {
 
                 if (notEnough) {
                     await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staffId);
-                    const lyDo = `Từ chối tua khi quỹ giờ chỉ còn ${availableHours} giờ, không vượt hạn mức tối thiểu ${minHours} giờ`;
+                    // Câu này KTV đọc ở màn đăng nhập, nên viết ngắn và không
+                    // bày số. Con số chi tiết (`minHours`, `availableHours`) vẫn
+                    // nằm đủ trong SecurityAuditLogs ngay bên dưới — quản lý cần
+                    // tra thì có, còn người bị khoá không cần nhìn phép tính.
+                    const lyDo = 'Từ chối tua khi không đủ giờ khả dụng';
                     await KtvTypeDDisciplineService.markAccountLock(supabase, staffId, workDate, lyDo);
                     await supabase.from('SecurityAuditLogs').insert({
                         employee_id: staffId,
@@ -181,7 +185,7 @@ export async function POST(request: Request) {
                     await supabase.from('StaffNotifications').insert({
                         employeeId: staffId,
                         type: 'ACCOUNT_LOCK',
-                        message: `Tài khoản của bạn đã bị khoá: ${lyDo}.`,
+                        message: `Tài khoản đã bị khoá. Lý do: ${lyDo}. Liên hệ admin Oria Spa để mở lại.`,
                     });
                     accountLocked = true;
                     console.warn(`[Type D] KHOÁ TÀI KHOẢN ${staffId} — ${lyDo}`);
