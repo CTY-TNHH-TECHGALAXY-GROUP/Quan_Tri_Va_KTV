@@ -156,28 +156,29 @@ export async function GET(request: Request) {
 
             for (const g of groupForHistory(turnRows)) {
                 const at = g.rows[0].booking_time_start || `${g.work_date}T12:00:00`;
-                if (g.commission_net > 0) {
+
+                // Tiền tua và thưởng 4★ là MỘT CỤC, đúng như công thức:
+                //     tiền tua = tiền theo thời gian làm + thưởng
+                //
+                // ⚠️ Tách làm hai dòng thì KTV phải tự cộng nhẩm mới ra con số
+                // mà quy chế nói, và dòng thuế bên dưới trông như đánh trên
+                // riêng phần tiền tua. Phần thưởng vẫn ghi rõ trong ghi chú để
+                // biết cục tiền đó gồm những gì.
+                const tienTua = g.commission_net + g.bonus_amount;
+                if (tienTua > 0) {
                     timeline.push({
                         id: `${g.key}_comm`,
                         type: 'COMMISSION',
                         title: `Tiền tua đơn ${g.bill}`,
-                        amount: Math.round(g.commission_net),
+                        amount: Math.round(tienTua),
                         note: `${g.service_name} · ${Math.round(g.paid_minutes)} phút`
                             + (g.deduction_rate > 0 ? ` · ${g.rating}★ trừ ${Math.round(g.deduction_rate * 100)}%` : '')
+                            + (g.bonus_amount > 0
+                                ? ` · gồm thưởng ${g.rating}★ ${Math.round(g.bonus_amount).toLocaleString('vi-VN')}đ`
+                                : '')
                             + (g.is_provisional ? ' · tạm tính' : ''),
                         created_at: at,
                         status: g.is_provisional ? 'PENDING' : 'APPROVED',
-                    });
-                }
-                if (g.bonus_amount > 0) {
-                    timeline.push({
-                        id: `${g.key}_bonus`,
-                        type: 'GIFT',
-                        title: `Thưởng ${g.rating}★ đơn ${g.bill}`,
-                        amount: Math.round(g.bonus_amount),
-                        note: 'Cộng vào tiền tua',
-                        created_at: at,
-                        status: 'APPROVED',
                     });
                 }
                 if (g.tax_amount > 0) {
@@ -186,7 +187,7 @@ export async function GET(request: Request) {
                         type: 'ADJUSTMENT',
                         title: `Thuế TNCN đơn ${g.bill}`,
                         amount: -Math.round(g.tax_amount),
-                        note: 'Khấu trừ 10% trên tiền tua + thưởng',
+                        note: 'Khấu trừ 10%',
                         created_at: at,
                         status: 'APPROVED',
                     });
