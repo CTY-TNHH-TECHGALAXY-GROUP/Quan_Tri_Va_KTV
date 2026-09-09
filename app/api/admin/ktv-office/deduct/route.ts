@@ -5,6 +5,9 @@ import { vnDate } from '@/lib/vn-time';
 import { createNotification } from '@/lib/notification-helper';
 import { getBusinessToday, shiftBusinessDate } from '@/lib/business-date';
 import { isOfficeManager } from '@/lib/services/KtvOfficeScoreService';
+import {
+    resolvePhotosPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
+} from '@/lib/services/KtvOfficeEvidenceService';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,46 +182,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'Có tiêu chí không tồn tại hoặc đã ngừng áp dụng.' }, { status: 400 });
         }
 
-        // ─── Ảnh minh chứng gắn THEO TỪNG LỖI ───
-        //
-        // ⚠️ Trước đây chỉ có một rổ ảnh dùng chung: lễ tân tích 3 lỗi rồi tải 2
-        // ảnh thì CẢ BA dòng phiếu cùng nhận đúng 2 link đó. Hậu quả:
-        //   · KTV mở ngày đó ra thấy mỗi tấm lặp lại 3 lần;
-        //   · ảnh chụp cái đồng phục bị đính luôn vào lỗi "bật app trễ" — không
-        //     còn là bằng chứng của lỗi nào cả;
-        //   · trần 5 ảnh áp cho cả rổ, nên 3 lỗi bắt buộc ảnh chỉ được chia nhau
-        //     5 tấm, mà tải 1 tấm là đủ điều kiện cho cả ba.
-        // Nay mỗi lỗi có rổ riêng, trần riêng, và điều kiện bắt buộc xét riêng.
-        const perCriteria: Record<string, string[]> = {};
-        for (const c of criteria) {
-            const raw = (photosByCriteria as any)?.[c.id];
-            perCriteria[c.id] = Array.isArray(raw) ? raw.slice(0, MAX_PHOTOS) : [];
-        }
-
-        // Đường cũ (`photosBase64`) chỉ còn chấp nhận khi tích ĐÚNG MỘT lỗi — lúc
-        // đó "rổ chung" và "rổ của lỗi đó" là một, không có gì để nhập nhằng.
-        const legacy = Array.isArray(photosBase64) ? photosBase64.slice(0, MAX_PHOTOS) : [];
-        if (legacy.length > 0) {
-            if (criteria.length > 1) {
-                return NextResponse.json({
-                    success: false,
-                    error: 'Nhiều lỗi cùng lúc thì ảnh phải gắn theo từng lỗi. Vui lòng tải lại trang để dùng bản mới.',
-                    code: 'PHOTOS_MUST_BE_PER_CRITERIA',
-                }, { status: 400 });
-            }
-            const only = criteria[0].id;
-            if (perCriteria[only].length === 0) perCriteria[only] = legacy;
-        }
-
-        const missing = criteria
-            .filter((c: any) => c.requires_photo && perCriteria[c.id].length === 0)
-            .map((c: any) => c.label);
-        if (missing.length > 0) {
+        // Ảnh minh chứng gắn THEO TỪNG LỖI — xem KtvOfficeEvidenceService.
+        const resolvedPhotos = resolvePhotosPerCriteria(
+            criteria as any, photosByCriteria, photosBase64, MAX_PHOTOS_PER_CRITERIA);
+        if (!resolvedPhotos.ok) {
             return NextResponse.json(
-                { success: false, error: `Các lỗi sau bắt buộc có ảnh minh chứng RIÊNG: ${missing.join(', ')}.` },
-                { status: 400 }
-            );
+                { success: false, error: resolvedPhotos.error, code: resolvedPhotos.code },
+                { status: 400 });
         }
+        const perCriteria = resolvedPhotos.perCriteria;
 
         // Chặn trừ trùng trong ngày (DB cũng có unique index, đây là lớp báo lỗi thân thiện).
         const { data: existing } = await supabase
@@ -255,17 +227,10 @@ export async function POST(request: Request) {
             || (bUser.role ? `Quản lý (${bUser.role})` : null)
             || bUser.techCode
             || 'Không rõ';
-        const rows = criteria.map((c: any) => ({
-            staff_id: staffId,
-            work_date: workDate,
-            criteria_id: c.id,
-            criteria_label: c.label,          // snapshot, phòng khi quy chế đổi tên tiêu chí
-            points_deducted: Number(c.points) || 0,
-            note: note?.trim() || null,
-            photo_urls: urlsOf[c.id],
-            created_by: bUser.techCode,
-            created_by_name: createdByName,
-        }));
+        const rows = buildDeductRows({
+            staffId, workDate, criteria: criteria as any, urlsOf,
+            note, createdBy: bUser.techCode, createdByName,
+        });
 
         const { data: inserted, error: insErr } = await supabase
             .from('KTVOfficeScoreLog')

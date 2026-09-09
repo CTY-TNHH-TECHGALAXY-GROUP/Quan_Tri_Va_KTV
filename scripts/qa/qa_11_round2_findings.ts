@@ -29,6 +29,7 @@ import {
 } from '../../lib/services/KtvOfficeScoreService';
 import { canSeeOfficePoints, dedupePhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
 import { resolveStaffFlag } from '../../lib/featureFlags';
+import { resolvePhotosPerCriteria, buildDeductRows } from '../../lib/services/KtvOfficeEvidenceService';
 import { WalletAccessService } from '../../lib/services/WalletAccessService';
 import { finish, fatal } from './_exit';
 
@@ -57,13 +58,38 @@ async function main() {
 
     check(/photosByCriteria/.test(deduct),
         'A0. Route nhan anh theo tung loi (`photosByCriteria`)');
-    check(/PHOTOS_MUST_BE_PER_CRITERIA/.test(deduct),
-        'A1. Ro anh dung chung bi CHAN khi tich nhieu loi');
-    check(/photo_urls:\s*urlsOf\[c\.id\]/.test(deduct),
+
+    // A1–A3 kiểm HÀNH VI bằng chính hai hàm route đang gọi, không grep chuỗi
+    // trong source: đợt refactor vừa rồi dời code sang service là mấy phép grep
+    // cũ do ngay, trong khi san pham van dung. Test bam vao hinh dang cua code
+    // thi no bao dong moi lan don dep, va im khi hanh vi thay doi that.
+    // Kich ban di tron duong (ghi -> DB -> KTV doc) nam o `qa_12`.
+    const CRIT = [
+        { id: 'X1', label: 'Loi bat buoc anh', points: 3, requires_photo: true },
+        { id: 'X2', label: 'Loi bat buoc anh 2', points: 6, requires_photo: true },
+        { id: 'X3', label: 'Loi khong can anh', points: 5, requires_photo: false },
+    ];
+    const rShared = resolvePhotosPerCriteria(CRIT, undefined, ['u1', 'u2']);
+    check(!rShared.ok && rShared.code === 'PHOTOS_MUST_BE_PER_CRITERIA',
+        'A1. Ro anh dung chung bi CHAN khi tich nhieu loi',
+        rShared.ok ? 'KHONG chan' : '');
+
+    const rOk = resolvePhotosPerCriteria(CRIT, { X1: ['a1'], X2: ['b1', 'b2'] });
+    const builtRows = rOk.ok ? buildDeductRows({
+        staffId: 'QA', workDate: '2019-01-01', criteria: CRIT,
+        urlsOf: rOk.perCriteria, createdBy: 'QA', createdByName: 'QA',
+    }) : [];
+    check(builtRows.length === 3
+        && builtRows[0].photo_urls.join() === 'a1'
+        && builtRows[1].photo_urls.join() === 'b1,b2'
+        && builtRows[2].photo_urls.length === 0,
         'A2. Moi dong phieu chi mang anh CUA RIENG loi do',
-        /photo_urls:\s*photoUrls\b/.test(deduct) ? 'VAN con ghi chung mot mang cho moi dong!' : '');
-    check(/bắt buộc có ảnh minh chứng RIÊNG/.test(deduct),
-        'A3. Loi bat buoc anh phai co anh cua chinh no');
+        builtRows.map(r => `${r.criteria_id}:[${r.photo_urls.join(' ')}]`).join(' '));
+
+    const rMissing = resolvePhotosPerCriteria(CRIT.slice(0, 2), { X1: ['a1'] });
+    check(!rMissing.ok && rMissing.code === 'MISSING_REQUIRED_PHOTO',
+        'A3. Loi bat buoc anh phai co anh cua chinh no, khong muon cua loi khac',
+        rMissing.ok ? 'LOT' : '');
 
     const adminLogic = src('app/admin/ktv-office/AdminKtvOffice.logic.ts');
     check(/MAX_PHOTOS - photosOf\(criteriaId\)\.length/.test(adminLogic),
