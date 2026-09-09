@@ -38,6 +38,13 @@ export class KtvTypeDCommissionService {
             );
             
             for (const seg of mySegs) {
+                // 0. Chặng bị TƯỚC quyền lợi (KTV bị đổi ra, huỷ do lỗi KTV) → 0đ.
+                // ⚠️ PHẢI đứng TRƯỚC nhánh `customCommissionDuration`: chặng bị tước
+                // vẫn CỐ Ý giữ số phút đã làm ở đó để đối soát (quy chế 06/09/2026),
+                // nên vào được nhánh dưới là trả tiền đúng bằng số phút họ đã làm —
+                // ngược hẳn quy chế "mất trắng".
+                if (seg?.voided === true) continue;
+
                 // 1. Admin can thiệp tay
                 if (seg.customCommissionDuration !== undefined && seg.customCommissionDuration !== null) {
                     const customPhut = Number(seg.customCommissionDuration);

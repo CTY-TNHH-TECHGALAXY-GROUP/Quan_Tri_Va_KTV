@@ -220,9 +220,19 @@ async function processLedgerSync(targetDateStr: string) {
                         note: 'TYPE_D calculated via KtvTypeDCommissionService'
                     });
                 } else {
+                    // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+                    // Xem KtvCommissionService.isKtvVoidedOnItem: dòng dự phòng
+                    // `itemDuration <= 0 → 60` sinh ra để cứu đơn THIẾU SEGMENT,
+                    // nhưng chặng bị tước cũng ra 0 nên bị gộp làm một. Đây là sổ
+                    // cái ngày — số sai ở đây đóng cứng vào KTVDailyLedger rồi màn
+                    // Lịch sử và Ví đọc lại, sửa sau phải chạy lại cron.
+                    const coItemConQuyenLoi = relevantItems.some(
+                        (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, techCode)
+                    );
+
                     for (const item of relevantItems) {
                         const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
-                        if (isPassed) {
+                        if (isPassed && !KtvCommissionService.isKtvVoidedOnItem(item, techCode)) {
                             const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                             let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                             if (itemDuration <= 0) itemDuration = 60;
@@ -239,7 +249,7 @@ async function processLedgerSync(targetDateStr: string) {
                         }
                     }
 
-                    if (bookingCommission === 0) {
+                    if (bookingCommission === 0 && coItemConQuyenLoi) {
                         bookingCommission = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
                         commissionBreakdown.push({
                             bookingId: b.id,

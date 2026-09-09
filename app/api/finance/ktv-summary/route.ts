@@ -200,13 +200,23 @@ export async function GET(request: Request) {
                 const config = commConfigs[workType] || commConfigs['TYPE_A'];
                 const bConfig = bonusConfigs[workType] || bonusConfigs['TYPE_A'];
 
+                // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+                // Xem KtvCommissionService.isKtvVoidedOnItem: dòng dự phòng
+                // `itemDuration <= 0 → 60` sinh ra để cứu đơn THIẾU SEGMENT, còn
+                // chặng bị tước cũng ra 0 nên bị gộp làm một → báo cáo tài chính
+                // lệch so với con số quầy thấy trên Kanban (0đ).
+                const coItemConQuyenLoi = relevantItems.some(
+                    (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, techCode)
+                );
+
                 for (const item of relevantItems) {
+                    if (KtvCommissionService.isKtvVoidedOnItem(item, techCode)) continue;
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
                     bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
                 }
-                if (bookingCommission === 0) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                if (bookingCommission === 0 && coItemConQuyenLoi) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
                 const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig, ktvWorkTypeMap, staffBonusMap);
 

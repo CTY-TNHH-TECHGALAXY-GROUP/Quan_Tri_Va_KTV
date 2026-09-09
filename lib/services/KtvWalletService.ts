@@ -134,19 +134,31 @@ export class KtvWalletService {
             let bookingTip = 0;
             let passedItemCount = 0;
 
+            // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+            // Xem KtvCommissionService.isKtvVoidedOnItem: dòng dự phòng
+            // `itemDuration <= 0 → 60` ở dưới sinh ra để cứu đơn THIẾU SEGMENT,
+            // nhưng chặng bị tước cũng ra 0 nên bị gộp làm một → người bị tước
+            // sạch tiền lại được trả nguyên một giờ, ngay trên SỐ DƯ VÍ.
+            const coItemConQuyenLoi = relevantItems.some(
+                (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, staffId)
+            );
+
             for (const item of relevantItems) {
                 const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, staffId);
                 if (isPassed) {
                     passedItemCount++;
-                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
-                    let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
-                    if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                    const biTuoc = KtvCommissionService.isKtvVoidedOnItem(item, staffId);
+                    if (!biTuoc) {
+                        const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
+                        let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
+                        if (itemDuration <= 0) itemDuration = 60;
+                        bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                    }
                     bookingTip += (Number(item.tip) || 0);
                 }
             }
 
-            if (bookingCommission === 0 && passedItemCount > 0) {
+            if (bookingCommission === 0 && passedItemCount > 0 && coItemConQuyenLoi) {
                 bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
             }
 

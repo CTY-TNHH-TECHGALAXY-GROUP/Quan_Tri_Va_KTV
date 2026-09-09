@@ -76,6 +76,10 @@ export async function GET(request: Request) {
                 }
 
                 relevantItems.forEach((item: any) => {
+                    // Chặng bị TƯỚC quyền lợi → không tính giờ dịch vụ. Nếu không,
+                    // dòng dự phòng `<= 0 → 60` bên dưới (vốn để cứu đơn THIẾU
+                    // SEGMENT) tặng cho họ đúng một giờ.
+                    if (KtvCommissionService.isKtvVoidedOnItem(item, staffId)) return;
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
