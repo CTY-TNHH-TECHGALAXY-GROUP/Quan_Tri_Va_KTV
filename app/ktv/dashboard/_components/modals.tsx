@@ -666,11 +666,29 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
             </div>
             <div className="bg-slate-50 rounded-2xl p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Trung bình tháng</p>
-              <p className="text-2xl font-black text-slate-800 mt-1">{view?.monthScore ?? '—'}</p>
+              {/* Chưa có ngày công thì trung bình không có mẫu số. */}
+              {view?.hasData === false ? (
+                <>
+                  <p className="text-2xl font-black text-slate-400 mt-1">—</p>
+                  <p className="text-[11px] font-medium text-slate-400 mt-0.5">Chưa có dữ liệu</p>
+                </>
+              ) : (
+                <p className="text-2xl font-black text-slate-800 mt-1">{view?.monthScore ?? '—'}</p>
+              )}
             </div>
           </div>
 
-          {view && (
+          {view && view.hasData === false && (
+            <div className="rounded-2xl p-4 border bg-slate-50 border-slate-200">
+              <p className="text-[11px] font-bold text-slate-500">Quỹ nội bộ tháng {month}</p>
+              <p className="text-xl font-black mt-1 text-slate-400">Chưa có dữ liệu</p>
+              <p className="text-[11px] text-slate-500 font-medium mt-1">
+                Tháng này bạn chưa có ngày công nào — điểm và mức quỹ sẽ hiện sau buổi đi làm đầu tiên.
+              </p>
+            </div>
+          )}
+
+          {view && view.hasData !== false && (
             <div className={`rounded-2xl p-4 border ${view.fundDue === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
               <p className="text-[11px] font-bold text-slate-500">Quỹ nội bộ tháng {month} bạn phải đóng</p>
               <p className={`text-xl font-black mt-1 ${view.fundDue === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>

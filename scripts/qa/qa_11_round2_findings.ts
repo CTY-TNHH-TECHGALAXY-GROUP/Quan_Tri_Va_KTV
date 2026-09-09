@@ -182,6 +182,52 @@ async function main() {
     check(rows.every(r => r.dashboard === r.vi),
         'C2b. Moi tai khoan: nut Dashboard va trang Vi cung an hoac cung hien');
 
+    // ══ D. 0 ngày công thì "chưa có dữ liệu" ═════════════════════════
+    console.log('\n--- D: 0 ngay cong => chua co du lieu, khong phai 100 diem ---');
+    const scores = await KtvOfficeScoreService.computeMonth(supabase, ids, month);
+    const noWork = ids.filter(id => scores.get(id)!.workDays === 0);
+    const withWork = ids.filter(id => scores.get(id)!.workDays > 0);
+
+    console.log(`  Chua co ngay cong: ${noWork.join(', ') || 'khong ai'}`);
+    console.log(`  Da co ngay cong  : ${withWork.join(', ') || 'khong ai'}`);
+
+    check(noWork.every(id => scores.get(id)!.hasData === false),
+        'D1. Ai 0 ngay cong deu co hasData = false');
+    check(withWork.every(id => scores.get(id)!.hasData === true),
+        'D2. Ai co ngay cong deu co hasData = true');
+
+    // Con số 100 vẫn còn để phép tính không vỡ — nhưng phải kèm cờ để màn hình
+    // biết đừng vẽ nó ra.
+    if (noWork.length > 0) {
+        const m0 = scores.get(noWork[0])!;
+        check(m0.hasData === false,
+            `D3. ${noWork[0]}: 0 ngay cong ma avg=${m0.avg}, fundDue=${m0.fundDue} — CO co canh bao`,
+            'man hinh phai doc hasData truoc khi ve');
+    } else {
+        console.log('  (thang nay ai cung da di lam — khong kich hoat duoc D3)');
+    }
+
+    // Mọi màn hình hiển thị điểm/quỹ đều phải soi cờ này.
+    const surfaces: Array<[string, string]> = [
+        ['Vi Diem (trang Vi)', 'app/ktv/wallet/page.tsx'],
+        ['O Diem Office (Dashboard)', 'app/ktv/dashboard/_screens/ScreenDashboard.tsx'],
+        ['Modal Diem Office', 'app/ktv/dashboard/_components/modals.tsx'],
+        ['The KTV (trang Cham diem)', 'app/admin/ktv-office/page.tsx'],
+    ];
+    for (const [name, rel] of surfaces) {
+        check(/hasData/.test(src(rel)), `D4. ${name} co kiem hasData`);
+    }
+    // Và API phải trả cờ ra thì màn hình mới soi được.
+    const apis: Array<[string, string]> = [
+        ['/api/ktv/office-score', 'app/api/ktv/office-score/route.ts'],
+        ['/api/ktv/wallet/bonus/balance', 'lib/services/KtvOfficeBonusService.ts'],
+        ['/api/admin/ktv-office/summary', 'app/api/admin/ktv-office/summary/route.ts'],
+        ['/api/admin/ktv-office/staff/[id]', 'app/api/admin/ktv-office/staff/[id]/route.ts'],
+    ];
+    for (const [name, rel] of apis) {
+        check(/hasData/.test(src(rel)), `D5. ${name} tra ra hasData`);
+    }
+
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
     finish(failures);
 }

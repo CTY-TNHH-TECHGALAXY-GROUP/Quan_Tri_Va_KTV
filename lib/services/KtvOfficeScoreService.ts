@@ -61,6 +61,18 @@ export interface RepeatPenalty {
 
 export interface OfficeMonth {
     staffId: string;
+    /**
+     * Tháng này KTV có ngày công nào chưa.
+     *
+     * `false` = CHƯA CÓ DỮ LIỆU, không phải "điểm tuyệt đối". Không có ngày công
+     * thì trung bình cộng không có mẫu số; `avg` bên dưới rơi về 100 chỉ để phép
+     * tính không vỡ, chứ nó KHÔNG có nghĩa là làm việc hoàn hảo. Trước đây mọi
+     * màn hình đọc thẳng con số đó nên người chưa đi làm buổi nào hiện 100 điểm
+     * và được miễn 100% quỹ — vừa sai với thực tế, vừa là một lỗ hổng.
+     *
+     * Màn hình phải kiểm cờ này TRƯỚC khi vẽ điểm hay mức quỹ.
+     */
+    hasData: boolean;
     workDays: number;
     cleanDays: number;
     avg: number;
@@ -295,7 +307,10 @@ export class KtvOfficeScoreService {
         const cleanDays = days.filter(d => d.hits.length === 0).length;
 
         const sum = days.reduce((a, d) => a + d.dayScore, 0);
-        const avg = workDays > 0 ? sum / workDays : 100;
+        // Không có ngày công thì không có trung bình. Giữ 100 để phép trừ phía
+        // dưới không vỡ, nhưng `hasData = false` là thứ màn hình phải nhìn.
+        const hasData = workDays > 0;
+        const avg = hasData ? sum / workDays : 100;
 
         // Phạt lỗi lặp — phương án A: cùng 1 lỗi từ 3 lần/tháng (rải rác bất kỳ,
         // không cần liên tiếp) thì trừ thêm ĐÚNG 1 LẦN điểm lỗi đó, dù lặp 3 hay 10 lần.
@@ -314,7 +329,7 @@ export class KtvOfficeScoreService {
         const { exemptPct, fundDue } = fundTierOf(final);
 
         return {
-            staffId, workDays, cleanDays,
+            staffId, hasData, workDays, cleanDays,
             avg: Math.round(avg * 100) / 100,
             repeats, repeatPenalty,
             final: Math.round(final * 10) / 10,

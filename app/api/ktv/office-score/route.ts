@@ -85,6 +85,12 @@ export async function GET(request: Request) {
                     hits: mapHits(d.hits),
                 })),
                 monthScore: m.final,
+                /**
+                 * `false` = tháng này chưa có ngày công nào. `monthScore` khi đó
+                 * rơi về 100 chỉ vì trung bình cộng không có mẫu số — KHÔNG phải
+                 * điểm tuyệt đối. Màn hình phải hiện "chưa có dữ liệu".
+                 */
+                hasData: m.hasData,
                 workDays: m.workDays,
                 repeats: m.repeats,
                 repeatPenalty: m.repeatPenalty,

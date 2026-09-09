@@ -75,6 +75,8 @@ export async function GET(request: Request) {
                 lockReason: locked ? lockInfo.get(s.id)?.reason ?? null : null,
                 lockedAt: locked ? lockInfo.get(s.id)?.at ?? null : null,
                 score: m.final,
+                /** false = chưa có ngày công nào trong tháng → chưa có dữ liệu. */
+                hasData: m.hasData,
                 workDays: m.workDays,
                 avg: m.avg,
                 repeats: m.repeats,

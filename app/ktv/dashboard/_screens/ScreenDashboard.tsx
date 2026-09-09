@@ -642,8 +642,19 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                    </div>
                    <div className="text-right">
                      <h3 className="font-bold text-[10px] uppercase tracking-widest text-white/80">Điểm tháng</h3>
-                     <p className="font-black text-xl leading-none mt-1">{os.monthScore}</p>
-                     <p className="text-[10px] font-bold text-white/85 mt-1">Quỹ đóng {os.fundDue.toLocaleString('vi-VN')}đ</p>
+                     {/* Chưa có ngày công thì điểm tháng không có mẫu số — hiện
+                         con số ra là nói KTV đạt tuyệt đối và miễn sạch quỹ. */}
+                     {os.hasData === false ? (
+                       <>
+                         <p className="font-black text-base leading-none mt-1">—</p>
+                         <p className="text-[10px] font-bold text-white/85 mt-1">Chưa có dữ liệu</p>
+                       </>
+                     ) : (
+                       <>
+                         <p className="font-black text-xl leading-none mt-1">{os.monthScore}</p>
+                         <p className="text-[10px] font-bold text-white/85 mt-1">Quỹ đóng {os.fundDue.toLocaleString('vi-VN')}đ</p>
+                       </>
+                     )}
                    </div>
                  </button>
                );

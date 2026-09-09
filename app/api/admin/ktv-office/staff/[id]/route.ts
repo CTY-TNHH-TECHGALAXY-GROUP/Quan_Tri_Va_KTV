@@ -64,6 +64,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 locked: staff.status === 'KHÓA_TÀI_KHOẢN',
             },
             office: {
+                /** false = chưa có ngày công nào trong tháng → chưa có dữ liệu. */
+                hasData: m.hasData,
                 workDays: m.workDays,
                 cleanDays: m.cleanDays,
                 avg: m.avg,

@@ -596,7 +596,12 @@ const AdminKtvOfficePage = () => {
                       {ktv.locked ? (ktv.lockReason || 'Tài khoản đang bị khóa') : 'Điểm tháng dưới 90'}
                     </p>
                     <div className="grid grid-cols-2 gap-4">
-                      <div><strong className="block text-xl">{fmtNum(ktv.score)} điểm</strong><span className="text-[var(--muted)] text-xs">Điểm tháng {logic.month} · {ktv.workDays} ngày làm</span></div>
+                      <div>
+                      {/* Chưa có ngày công thì điểm tháng không có mẫu số — hiện
+                          "100 điểm" ra là khai khống thành tích của người chưa đi làm. */}
+                      <strong className="block text-xl">{ktv.hasData === false ? 'Chưa có dữ liệu' : `${fmtNum(ktv.score)} điểm`}</strong>
+                      <span className="text-[var(--muted)] text-xs">Điểm tháng {logic.month} · {ktv.workDays} ngày làm</span>
+                    </div>
                       <div><strong className="block text-xl">{fmtHours(ktv.hours)}</strong><span className="text-[var(--muted)] text-xs">Giờ tích lũy{ktv.rank ? ` · hạng ${ktv.rank}` : ''}</span></div>
                     </div>
                     {ktv.repeatPenalty > 0 && (
@@ -635,7 +640,12 @@ const AdminKtvOfficePage = () => {
                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-[var(--green-2)] text-[var(--green)] whitespace-nowrap">{ktv.status}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div><strong className="block text-xl">{fmtNum(ktv.score)} điểm</strong><span className="text-[var(--muted)] text-xs">Điểm tháng {logic.month} · {ktv.workDays} ngày làm</span></div>
+                    <div>
+                      {/* Chưa có ngày công thì điểm tháng không có mẫu số — hiện
+                          "100 điểm" ra là khai khống thành tích của người chưa đi làm. */}
+                      <strong className="block text-xl">{ktv.hasData === false ? 'Chưa có dữ liệu' : `${fmtNum(ktv.score)} điểm`}</strong>
+                      <span className="text-[var(--muted)] text-xs">Điểm tháng {logic.month} · {ktv.workDays} ngày làm</span>
+                    </div>
                     <div><strong className="block text-xl">{fmtHours(ktv.hours)}</strong><span className="text-[var(--muted)] text-xs">Giờ tích lũy{ktv.rank ? ` · hạng ${ktv.rank}` : ''}</span></div>
                   </div>
                   {ktv.repeatPenalty > 0 && (
@@ -645,7 +655,9 @@ const AdminKtvOfficePage = () => {
                   )}
                   <div className="mt-auto pt-3 border-t border-[var(--line)] text-sm mb-4">
                     <span className="text-[var(--muted)]">Quỹ nội bộ phải đóng </span>
-                    <strong className={ktv.fundDue === 0 ? 'text-[var(--green)]' : 'text-[var(--rust)]'}>{fmtMoney(ktv.fundDue)}</strong>
+                    <strong className={ktv.hasData === false ? 'text-[var(--muted)]' : (ktv.fundDue === 0 ? 'text-[var(--green)]' : 'text-[var(--rust)]')}>
+                      {ktv.hasData === false ? '—' : fmtMoney(ktv.fundDue)}
+                    </strong>
                     <span className="text-[var(--muted)]">{ktv.exemptPct > 0 ? ` (đã miễn ${ktv.exemptPct}%)` : ' — không được miễn'}</span>
                   </div>
                   <div className="flex gap-2">

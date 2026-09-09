@@ -30,6 +30,12 @@ export interface OfficeBonusWallet {
     source: 'OFFICE';
     /** 'YYYY-MM' của kỳ đang tính. */
     month: string;
+    /**
+     * `false` = tháng này chưa có ngày công nào → CHƯA CÓ DỮ LIỆU.
+     * Màn hình phải hiện "chưa có dữ liệu", không được vẽ 100 điểm / miễn 100%
+     * quỹ: chưa đi làm buổi nào mà hiện điểm tuyệt đối là nói sai sự thật.
+     */
+    hasData: boolean;
     /** Điểm tháng (đã trừ phạt lỗi lặp) — con số chính hiện trên thẻ. */
     points: number;
     /** Trung bình điểm ngày, TRƯỚC khi trừ phạt lỗi lặp. */
@@ -113,6 +119,7 @@ export async function officeBonusBalance(
     return {
         source: 'OFFICE',
         month: m,
+        hasData: s.hasData,
         points: s.final,
         avg: s.avg,
         workDays: s.workDays,

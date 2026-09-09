@@ -257,51 +257,67 @@ export default function KTVWalletPage() {
                                     <span className="text-[10px] bg-white/20 px-2 py-1 rounded-lg font-bold">ĐIỂM</span>
                                 </div>
 
-                                <div className="mb-5">
-                                    <p className="text-4xl font-black tracking-tight drop-shadow-sm flex items-baseline gap-1">
-                                        {Number(bonusBalance.points ?? 0).toLocaleString('vi-VN')}
-                                        <span className="text-xl font-bold">/ 100</span>
-                                    </p>
-                                    <p className="text-xs text-amber-100/90 font-medium mt-1">
-                                        Trung bình {Number(bonusBalance.avg ?? 0).toLocaleString('vi-VN')}đ/ngày
-                                        {Number(bonusBalance.repeatPenalty) > 0
-                                            && ` · trừ thêm ${Number(bonusBalance.repeatPenalty).toLocaleString('vi-VN')}đ do lỗi lặp`}
-                                    </p>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
-                                    <div>
-                                        <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày đi làm</p>
-                                        <p className="font-bold">{bonusBalance.workDays ?? 0} ngày</p>
+                                {/* Chưa có ngày công nào thì KHÔNG vẽ điểm và KHÔNG vẽ mức quỹ.
+                                    Điểm tháng là trung bình cộng — không có mẫu số thì con số
+                                    100 chỉ là giá trị kỹ thuật, hiện ra là nói KTV làm việc
+                                    hoàn hảo và được miễn sạch quỹ, cả hai đều sai. */}
+                                {bonusBalance.hasData === false ? (
+                                    <div className="p-4 rounded-2xl bg-black/15 text-center">
+                                        <p className="text-lg font-black">Chưa có dữ liệu</p>
+                                        <p className="text-[12px] font-medium text-amber-100/90 mt-1">
+                                            Tháng này bạn chưa có ngày công nào. Điểm Office và mức quỹ
+                                            sẽ hiện sau buổi đi làm đầu tiên.
+                                        </p>
                                     </div>
-                                    <div>
-                                        <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày không lỗi</p>
-                                        <p className="font-bold">{bonusBalance.cleanDays ?? 0} ngày</p>
+                                ) : (
+                                  <>
+                                    <div className="mb-5">
+                                        <p className="text-4xl font-black tracking-tight drop-shadow-sm flex items-baseline gap-1">
+                                            {Number(bonusBalance.points ?? 0).toLocaleString('vi-VN')}
+                                            <span className="text-xl font-bold">/ 100</span>
+                                        </p>
+                                        <p className="text-xs text-amber-100/90 font-medium mt-1">
+                                            Trung bình {Number(bonusBalance.avg ?? 0).toLocaleString('vi-VN')}đ/ngày
+                                            {Number(bonusBalance.repeatPenalty) > 0
+                                                && ` · trừ thêm ${Number(bonusBalance.repeatPenalty).toLocaleString('vi-VN')}đ do lỗi lặp`}
+                                        </p>
                                     </div>
-                                </div>
 
-                                {/* Hệ quả tiền DUY NHẤT của điểm Office. Hiện số CÒN PHẢI ĐÓNG,
-                                    không hiện số được miễn — KTV cần biết mình nợ bao nhiêu. */}
-                                <div className={`p-4 rounded-2xl ${Number(bonusBalance.fundDue) > 0 ? 'bg-black/20' : 'bg-white/20'}`}>
-                                    <p className="text-[10px] uppercase tracking-widest text-amber-100/80 mb-1">
-                                        Quỹ nội bộ tháng này còn phải đóng
-                                    </p>
-                                    <p className="text-2xl font-black">
-                                        {Number(bonusBalance.fundDue ?? 0).toLocaleString('vi-VN')}đ
-                                        <span className="text-xs font-bold text-amber-100/70">
-                                            {' '}/ {Number(bonusBalance.fundBase ?? 250000).toLocaleString('vi-VN')}đ
-                                        </span>
-                                    </p>
-                                    <p className="text-[11px] font-medium text-amber-100/90 mt-1">
-                                        {Number(bonusBalance.exemptPct) > 0
-                                            ? `Đang được miễn ${bonusBalance.exemptPct}% nhờ điểm tháng.`
-                                            : 'Chưa đạt bậc miễn nào — giữ điểm trên 85 để bắt đầu được miễn.'}
-                                    </p>
-                                </div>
+                                    <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
+                                        <div>
+                                            <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày đi làm</p>
+                                            <p className="font-bold">{bonusBalance.workDays ?? 0} ngày</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày không lỗi</p>
+                                            <p className="font-bold">{bonusBalance.cleanDays ?? 0} ngày</p>
+                                        </div>
+                                    </div>
 
-                                <p className="text-[11px] text-amber-100/80 font-medium mt-3 text-center">
-                                    Điểm Office không quy đổi ra tiền. Điểm chỉ quyết định mức quỹ phải đóng.
-                                </p>
+                                    {/* Hệ quả tiền DUY NHẤT của điểm Office. Hiện số CÒN PHẢI ĐÓNG,
+                                        không hiện số được miễn — KTV cần biết mình nợ bao nhiêu. */}
+                                    <div className={`p-4 rounded-2xl ${Number(bonusBalance.fundDue) > 0 ? 'bg-black/20' : 'bg-white/20'}`}>
+                                        <p className="text-[10px] uppercase tracking-widest text-amber-100/80 mb-1">
+                                            Quỹ nội bộ tháng này còn phải đóng
+                                        </p>
+                                        <p className="text-2xl font-black">
+                                            {Number(bonusBalance.fundDue ?? 0).toLocaleString('vi-VN')}đ
+                                            <span className="text-xs font-bold text-amber-100/70">
+                                                {' '}/ {Number(bonusBalance.fundBase ?? 250000).toLocaleString('vi-VN')}đ
+                                            </span>
+                                        </p>
+                                        <p className="text-[11px] font-medium text-amber-100/90 mt-1">
+                                            {Number(bonusBalance.exemptPct) > 0
+                                                ? `Đang được miễn ${bonusBalance.exemptPct}% nhờ điểm tháng.`
+                                                : 'Chưa đạt bậc miễn nào — giữ điểm trên 85 để bắt đầu được miễn.'}
+                                        </p>
+                                    </div>
+
+                                    <p className="text-[11px] text-amber-100/80 font-medium mt-3 text-center">
+                                        Điểm Office không quy đổi ra tiền. Điểm chỉ quyết định mức quỹ phải đóng.
+                                    </p>
+                                  </>
+                                )}
                             </div>
                         )}
 
