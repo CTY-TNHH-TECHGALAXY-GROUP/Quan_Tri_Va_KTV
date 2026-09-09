@@ -286,13 +286,60 @@ export class BookingItemPauseService {
             throw new Error(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${originalDuration} phút).`);
         }
 
-        // Hạ KTV cũ xuống waiting (nếu đang ở working với đơn này)
+        // Loại hình quyết định KTV "mất/được" cái gì khi đổi người:
+        //   A/B/C → chạy theo SỔ TUA        (turns_completed ASC, app/api/turns/route.ts)
+        //   D     → chạy theo GIỜ TÍCH LUỸ  (net_hours DESC, đọc KTVDTurnLedger)
+        // `TurnLedger` KHÔNG đụng tới thứ tự của D, nên cộng/tước tua cho D vừa vô
+        // nghĩa vừa đẻ ra tua ma trong báo cáo tài chính (nơi vẫn đếm TurnLedger).
+        // Với D, chặng `voided` ở dưới mới là thứ tước giờ — và nó tự động.
+        const dsLoai = [oldKtvId, newKtvId].filter(Boolean) as string[];
+        const { data: staffTypes } = await supabase
+            .from('Staff')
+            .select('id, work_type')
+            .in('id', dsLoai);
+        const theoSoTua = (id: string) =>
+            ((staffTypes || []).find((s: any) => s.id === id)?.work_type || 'TYPE_A') !== 'TYPE_D';
+
+        // Hạ KTV cũ xuống waiting — CHỈ khi hàng đợi của họ đang trỏ vào ĐƠN NÀY.
+        // ⚠️ Trước 09/09/2026 lệnh này chỉ lọc theo (employee_id, date). KTV cũ vừa
+        // bị rút khỏi đơn này mà đã được gán sang đơn khác thì bị gỡ luôn khỏi đơn
+        // kia — mất phòng, mất giường, đơn kia thành đơn không người làm.
         if (businessDate) {
-            await supabase
+            const { data: hangCu } = await supabase
                 .from('TurnQueue')
-                .update({ status: 'waiting', current_order_id: null, booking_item_id: null, booking_item_ids: [] })
+                .select('id, current_order_id, booking_item_id, booking_item_ids')
                 .eq('employee_id', oldKtvId)
-                .eq('date', businessDate);
+                .eq('date', businessDate)
+                .maybeSingle();
+
+            const q = hangCu as any;
+            const dangOmDonNay = !!q && (
+                q.current_order_id === item.bookingId
+                || q.booking_item_id === bookingItemId
+                || (Array.isArray(q.booking_item_ids) && q.booking_item_ids.includes(bookingItemId))
+            );
+
+            if (dangOmDonNay) {
+                await supabase
+                    .from('TurnQueue')
+                    .update({ status: 'waiting', current_order_id: null, booking_item_id: null, booking_item_ids: [] })
+                    .eq('id', q.id);
+            }
+
+            // Đóng phiếu phân công của KTV cũ trên chính dịch vụ này.
+            // ⚠️ Bỏ bước này là KTV cũ giữ mãi một dòng ACTIVE cho đơn họ không còn
+            // làm. `promote_next_assignment` gặp dòng đó là thoát ngay với "KTV
+            // already has an ACTIVE assignment" — họ không bao giờ được kéo đơn kế
+            // tiếp lên nữa. Đây đúng là kiểu "KTV kẹt đơn".
+            const { error: errHuyPhieu } = await supabase
+                .from('KtvAssignments')
+                .update({ status: 'CANCELLED' })
+                .eq('employee_id', oldKtvId)
+                .eq('business_date', businessDate)
+                .eq('booking_item_id', bookingItemId);
+            if (errHuyPhieu) {
+                console.error('[swapKtv] khong dong duoc phieu phan cong cu:', errHuyPhieu.message);
+            }
         }
 
         let parsedSegments = item.segments;
@@ -345,25 +392,56 @@ export class BookingItemPauseService {
                 : Math.max(0, originalDuration - oldWorkedMins) + extraTimeMins;
 
             if (businessDate) {
-                // Thêm tua cho KTV B
+                // Thêm tua cho KTV mới — CHỈ loại A/B/C. Loại D tính công bằng giờ
+                // của chặng TAKEOVER ở dưới, không cần dòng sổ tua nào.
                 // ⚠️ Sổ cái tua khoá theo ĐƠN CHA (RPC điều phối ghi
                 // COALESCE(parent_booking_id, id)). Ghi bằng mã đơn con sẽ đẻ ra
                 // dòng lệch khoá, không khớp với chỗ tước tua và chỗ đối soát.
-                await supabase
-                    .from('TurnLedger')
-                    .insert({
-                        date: businessDate,
-                        employee_id: newKtvId,
-                        booking_id: await ledgerBookingIdOf(supabase, item.bookingId),
-                        counted_at: new Date().toISOString()
-                    });
-                    
-                // Kéo KTV B lên working
+                if (theoSoTua(newKtvId)) {
+                    // upsert thay vì insert: bảng có UNIQUE (date, booking_id,
+                    // employee_id). KTV mới đã có tua trên chính bill này (đang làm
+                    // dịch vụ khác, hoặc từng bị đổi ra rồi đổi vào lại) thì insert
+                    // vỡ khoá — trước đây lỗi bị nuốt vì không ai đọc `error`.
+                    const { error: errTua } = await supabase
+                        .from('TurnLedger')
+                        .upsert({
+                            date: businessDate,
+                            employee_id: newKtvId,
+                            booking_id: await ledgerBookingIdOf(supabase, item.bookingId),
+                            counted_at: new Date().toISOString(),
+                            source: 'SWAP_KTV',
+                        }, { onConflict: 'date,booking_id,employee_id', ignoreDuplicates: true });
+                    if (errTua) console.error('[swapKtv] khong ghi duoc tua cho KTV moi:', errTua.message);
+                }
+
+                // Kéo KTV mới lên working
                 await supabase
                     .from('TurnQueue')
                     .update({ status: 'working', current_order_id: item.bookingId, booking_item_id: item.id })
                     .eq('employee_id', newKtvId)
                     .eq('date', businessDate);
+
+                // Phiếu phân công cho KTV mới.
+                // ⚠️ Trước 09/09/2026 luồng này chỉ đẩy TurnQueue sang 'working' mà
+                // không tạo dòng nào ở KtvAssignments. Lần kế tiếp có ai gọi
+                // `promote_next_assignment` cho họ: không thấy ACTIVE, cũng không
+                // thấy QUEUED/READY → RPC dọn sạch TurnQueue về 'waiting', cướp mất
+                // đơn đang làm dở ngay trên tay.
+                const { error: errPhieu } = await supabase
+                    .from('KtvAssignments')
+                    .upsert({
+                        employee_id: newKtvId,
+                        business_date: businessDate,
+                        booking_id: item.bookingId,
+                        booking_item_id: bookingItemId,
+                        status: 'ACTIVE',
+                        dispatch_source: 'SWAP_KTV',
+                        planned_start_time: new Date().toISOString(),
+                    }, { onConflict: 'employee_id,booking_item_id' });
+                if (errPhieu) {
+                    // Không chặn luồng đổi người: đơn vẫn chạy nhờ TurnQueue.
+                    console.error('[swapKtv] khong tao duoc phieu phan cong cho KTV moi:', errPhieu.message);
+                }
             }
             
             segments.push({
@@ -403,7 +481,10 @@ export class BookingItemPauseService {
         // BookingItems để xem KTV còn chặng nào chưa bị tước không — chạy trước
         // lệnh update ở trên thì nó thấy chặng cũ vẫn nguyên và bỏ qua, tua không
         // bao giờ bị tước.
-        if (businessDate && !keepTurnForOldKtv) {
+        // Chỉ A/B/C. Loại D không có gì để tước ở đây: giờ tích luỹ của họ đã tụt
+        // ngay khi chặng bị `voided` (KtvDLedgerEngine bỏ qua chặng voided), và
+        // trigger trên BookingItems đã đẩy đơn vào KTVDRecomputeQueue để tính lại.
+        if (businessDate && !keepTurnForOldKtv && theoSoTua(oldKtvId)) {
             await punishTurnIfIdle(supabase, {
                 bookingId: item.bookingId,
                 employeeId: oldKtvId,
