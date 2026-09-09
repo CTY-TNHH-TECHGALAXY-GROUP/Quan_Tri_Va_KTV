@@ -307,7 +307,7 @@ export class BookingItemPauseService {
         if (businessDate) {
             const { data: hangCu } = await supabase
                 .from('TurnQueue')
-                .select('id, current_order_id, booking_item_id, booking_item_ids')
+                .select('id, current_order_id, booking_item_id, booking_item_ids, queue_position')
                 .eq('employee_id', oldKtvId)
                 .eq('date', businessDate)
                 .maybeSingle();
@@ -339,6 +339,35 @@ export class BookingItemPauseService {
                 .eq('booking_item_id', bookingItemId);
             if (errHuyPhieu) {
                 console.error('[swapKtv] khong dong duoc phieu phan cong cu:', errHuyPhieu.message);
+            }
+
+            // Kéo đơn kế tiếp của KTV cũ lên, giống luồng huỷ điều phối
+            // (dispatch_confirm_booking cũng PERFORM promote_next_assignment cho
+            // KTV bị gỡ). Không gọi thì họ ngồi không cho tới khi có sự kiện khác
+            // đánh thức, dù trong hàng vẫn còn đơn đã xếp sẵn cho họ.
+            //
+            // ⚠️ PHẢI chạy SAU khi phiếu ở trên đã CANCELLED: RPC gặp một dòng
+            // ACTIVE là thoát ngay với "KTV already has an ACTIVE assignment".
+            //
+            // ⚠️ Khi họ KHÔNG còn đơn nào, RPC đặt lại queue_position = max + 1,
+            // tức đẩy xuống cuối bảng — phá đúng thứ tự mà quầy vừa kéo tay.
+            // Thứ tự nhận khách không đọc cột này (A/B/C theo turns_completed,
+            // D theo net_hours) nhưng bảng tua thì có, nên chụp lại rồi trả về
+            // chỗ cũ khi không kéo được đơn nào lên.
+            if (dangOmDonNay) {
+                const viTriCu = q.queue_position;
+                const { data: kqPromote, error: errPromote } = await supabase.rpc('promote_next_assignment', {
+                    p_employee_id: oldKtvId,
+                    p_business_date: businessDate,
+                });
+                if (errPromote) {
+                    console.error('[swapKtv] khong keo duoc don ke tiep cho KTV cu:', errPromote.message);
+                } else if (!(kqPromote as any)?.promoted_booking_id && viTriCu != null) {
+                    await supabase
+                        .from('TurnQueue')
+                        .update({ queue_position: viTriCu })
+                        .eq('id', q.id);
+                }
             }
         }
 
