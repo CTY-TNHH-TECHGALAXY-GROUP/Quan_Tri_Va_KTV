@@ -445,7 +445,10 @@ export async function GET(request: Request) {
                 if (workType === 'TYPE_D') {
                     const led = ledgerByGroup.get(`${b.id}|${groupId0}`);
                     if (led) {
-                        commission = Math.round(led.commission_net);
+                        // Thưởng 4★ LÀ MỘT PHẦN của tiền tua, không phải khoản
+                        // riêng: `tiền tua = tiền theo thời gian làm + thưởng`.
+                        // Lấy thẳng từ sổ cái nên khớp tuyệt đối với ví.
+                        commission = Math.round(led.commission_net + led.bonus_amount);
                         commissionBeforeDeduction = Math.round(led.commission_gross);
                         ratingDeductionRate = led.deduction_rate;
                         ledgerRating = led.rating;
@@ -478,8 +481,17 @@ export async function GET(request: Request) {
                     effectiveFrom: bDateStr
                 }];
                 
+                // Loại D KHÔNG có dòng thưởng riêng — thưởng đã nằm trong
+                // `commission` bên trên.
+                //
+                // ⚠️ Trước đây chỗ này vẫn chạy `calculateBookingBonus` (đường
+                // thưởng của A/B/C) cho cả loại D, ra một con số tính từ NGUỒN
+                // KHÁC với sổ cái. Hệ quả kép: màn Lịch sử tách thưởng thành
+                // dòng riêng, và `taxAmount` bên dưới cộng thêm 10% của nó lên
+                // trên `ledgerTax` — mà `ledgerTax` đã gồm thuế phần thưởng rồi,
+                // nên thuế bị đếm hai lần.
                 let bonusPoints = 0;
-                if (passedCount > 0) {
+                if (passedCount > 0 && workType !== 'TYPE_D') {
                     const bDate = new Date(b.timeStart || (b as any).createdAt || bDateStr);
                     const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
                     // TÍNH BONUS CHO TỪNG ĐƠN CON (GROUP)
@@ -569,11 +581,10 @@ export async function GET(request: Request) {
                 const grossIncome = commission + bonusValue;
                 const isTaxed = isTaxableWorkType && String(b.bookingDate || bDateStr) >= taxEffectiveFrom;
 
-                // Loại D: thuế phần hoa hồng lấy thẳng từ sổ cái (không làm tròn khi
-                // lưu, làm tròn ở đây) để khớp tuyệt đối với ví. Thuế phần thưởng vẫn
-                // tính ở đây vì thưởng tính theo KHÁCH, không thuộc tầng đơn.
+                // Loại D: thuế lấy THẲNG từ sổ cái — nó đã tính trên
+                // (tiền tua + thưởng) nên không cộng thêm gì nữa.
                 const taxAmount = workType === 'TYPE_D'
-                    ? (ledgerTax ?? 0) + (isTaxed ? Math.round(bonusValue * TAX_RATE) : 0)
+                    ? (ledgerTax ?? 0)
                     : (isTaxed ? Math.round(grossIncome * TAX_RATE) : 0);
 
                 return {
