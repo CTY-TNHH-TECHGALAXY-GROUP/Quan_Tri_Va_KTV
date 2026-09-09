@@ -12,22 +12,55 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
- * Sắp xếp để hiển thị: mới nhất lên trên, và trong CÙNG một mốc thời gian thì
- * dòng CỘNG tiền đứng trước dòng TRỪ tiền.
+ * Sắp xếp để hiển thị: mới nhất lên trên. Cùng một mốc thời gian thì dòng TRỪ
+ * đứng trên dòng CỘNG.
+ *
+ * Nghe ngược, nhưng đúng với cách đọc danh sách này: trên cùng là mới nhất.
+ * Trong một đơn, tiền tua vào trước rồi mới trừ thuế — nên thuế là việc xảy ra
+ * SAU, phải nằm TRÊN. Nhờ vậy dòng trên cùng luôn mang số dư hiện tại, đọc
+ * xuống dưới là lùi dần về quá khứ.
  *
  * Tiền tua, thưởng và thuế của một đơn dùng chung đúng một `created_at`, nên
- * thứ tự giữa chúng hoàn toàn do tiêu chí phụ quyết định. Trước đây không có
- * tiêu chí phụ nào — thứ tự đúng chỉ nhờ `Array.sort` giữ nguyên thứ tự chèn
- * khi hai khoá bằng nhau. Đó là may, không phải bảo đảm: chỉ cần ai đó chèn
- * dòng thuế trước dòng tiền tua là KTV thấy bị trừ trước khi được cộng.
+ * thứ tự giữa chúng hoàn toàn do tiêu chí phụ này quyết định — trước đây không
+ * có tiêu chí nào, thứ tự chỉ nhờ `Array.sort` giữ nguyên thứ tự chèn.
  */
 function sortForDisplay(timeline: any[]): void {
     timeline.sort((a, b) => {
         const dt = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         if (dt !== 0) return dt;
-        // Cùng mốc: cộng (>= 0) lên trước trừ (< 0).
+        // Cùng mốc: trừ (< 0) lên trên cộng (>= 0).
+        return (Number(a.amount) < 0 ? 0 : 1) - (Number(b.amount) < 0 ? 0 : 1);
+    });
+}
+
+/**
+ * Gắn số dư luỹ kế vào từng dòng: số dư của ví NGAY SAU giao dịch đó.
+ *
+ * Cộng dồn theo thứ tự THỜI GIAN (cũ → mới); cùng mốc thì cộng tiền trước rồi
+ * mới trừ, tức đúng chiều ngược với thứ tự hiển thị. Nhờ vậy dòng trên cùng
+ * của danh sách mang số dư hiện tại.
+ *
+ * Tip không tính vào số dư ví (KTV cầm tiền mặt trực tiếp), dòng bị từ chối
+ * cũng không.
+ *
+ * ⚠️ Nhánh loại D trước đây `return` trước khi tới đoạn này nên MỌI dòng đều
+ * thiếu `running_balance`, giao diện đổ về 0 — KTV vừa được cộng 33.333đ mà
+ * dòng nào cũng ghi "Số dư: 0đ".
+ */
+function attachRunningBalance(timeline: any[], minDeposit = 0): void {
+    const asc = timeline.slice().sort((a, b) => {
+        const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        if (dt !== 0) return dt;
         return (Number(a.amount) < 0 ? 1 : 0) - (Number(b.amount) < 0 ? 1 : 0);
     });
+
+    let balance = 0;
+    for (const item of asc) {
+        if (item.type !== 'TIP' && item.status !== 'REJECTED') {
+            balance += Number(item.amount);
+        }
+        item.running_balance = balance - minDeposit;
+    }
 }
 
 /**
@@ -203,6 +236,7 @@ export async function GET(request: Request) {
             }
 
             await appendAdjustmentsAndWithdrawals(supabase, techCode, workType, START_DATE, timeline);
+            attachRunningBalance(timeline);
             sortForDisplay(timeline);
             return NextResponse.json({ success: true, data: timeline });
         }
@@ -449,22 +483,10 @@ export async function GET(request: Request) {
 
         await appendAdjustmentsAndWithdrawals(supabase, techCode, workType, START_DATE, timeline);
 
-        // Cộng dồn số dư theo thứ tự thời gian. Cùng mốc thì cộng tiền trước rồi
-        // mới trừ — khớp với thứ tự hiển thị, để số dư từng dòng đọc xuôi.
-        timeline.sort((a, b) => {
-            const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-            if (dt !== 0) return dt;
-            return (Number(a.amount) < 0 ? 1 : 0) - (Number(b.amount) < 0 ? 1 : 0);
-        });
-
-        let currentBalance = 0;
+        // A/B/C trừ thêm tiền cọc khỏi số dư hiển thị — quy chế của các chế độ
+        // này. Loại D không trừ, nên dòng trên cùng khớp thẳng số dư thẻ ví.
         const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-        timeline.forEach(item => {
-            if (item.type !== 'TIP' && item.status !== 'REJECTED') {
-                currentBalance += Number(item.amount);
-            }
-            item.running_balance = currentBalance - activeConfig.minDeposit;
-        });
+        attachRunningBalance(timeline, activeConfig.minDeposit);
 
         // Sort timeline desc for display
         sortForDisplay(timeline);

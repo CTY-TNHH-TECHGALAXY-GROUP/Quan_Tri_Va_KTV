@@ -401,7 +401,7 @@ export default function KTVWalletPage() {
                                                 <h4 className="text-xs font-bold text-slate-600 capitalize">{group.date}</h4>
                                             </div>
 
-                                            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
+                                            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
                                                 {group.items.map((item: any, idx: number) => {
                                                     const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : Number(item.amount) >= 0;
                                                     const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : item.type === 'WITHDRAWAL';
@@ -422,12 +422,18 @@ export default function KTVWalletPage() {
                                                     const noteText = activeTab === 'BONUS' ? null : item.note;
                                                     const displayAmount = activeTab === 'BONUS' ? Math.abs(Number(item.points)) : Math.abs(Number(item.amount));
 
+                                                    // Một cột thẳng, KHÔNG so le.
+                                                    //
+                                                    // ⚠️ Trước đây bố cục zigzag (`md:odd:flex-row-reverse`
+                                                    // + thẻ rộng 50%) ném hai dòng của CÙNG một đơn —
+                                                    // tiền tua và thuế — ra hai bên đối diện. Nhìn không
+                                                    // ra chúng đi cặp, KTV tưởng thứ tự bị lộn.
                                                     return (
-                                                        <div key={item.id || idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-100 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 ${isRejected ? 'opacity-50' : ''} ${iconColor}`}>
+                                                        <div key={item.id || idx} className="relative flex items-center justify-between md:justify-normal group is-active">
+                                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-100 shadow shrink-0 z-10 ${isRejected ? 'opacity-50' : ''} ${iconColor}`}>
                                                                 <Icon size={16} />
                                                             </div>
-                                                            <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-2xl border ${isRejected ? 'border-dashed border-slate-200 opacity-60' : 'border-slate-100'} shadow-sm transition-all hover:shadow-md`}>
+                                                            <div className={`w-[calc(100%-4rem)] bg-white p-4 rounded-2xl border ${isRejected ? 'border-dashed border-slate-200 opacity-60' : 'border-slate-100'} shadow-sm transition-all hover:shadow-md`}>
                                                                 <div className="flex items-center justify-between mb-1">
                                                                     <span className={`font-bold text-xs line-clamp-2 pr-2 ${isRejected ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{titleText}</span>
                                                                     <span className={`font-black text-sm whitespace-nowrap ${isRejected ? 'text-slate-400 line-through' : isWithdrawal ? 'text-rose-600' : isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
