@@ -1413,17 +1413,24 @@ const ServiceGroupCard = ({
                     <div key={turn.employee_id} onClick={() => { addKtv(turn.employee_id); }}
                       className={`px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] ${!hasSkill ? 'text-gray-400' : 'text-gray-700'}`}>
                       <div className="flex items-center gap-2">
-                        {isTypeD ? (
-                          <span className="text-[10px] bg-purple-100 px-1.5 py-0.5 rounded-md font-black text-purple-700 border border-purple-200" title="Giờ làm trong tháng">
-                            fmtHours(turn.net_hours || 0)
-                          </span>
-                        ) : (
+                        {/* Thứ tự đọc: MÃ trước, rồi mới tới giờ tích luỹ.
+                            Loại A/B/C giữ #thứ-tự-điểm-danh làm tiền tố vì đó là
+                            thứ hạng trong hàng, không phải thuộc tính của người. */}
+                        {!isTypeD && (
                           <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
                         )}
                         <span>{displayName}</span>
                         {workType !== 'TYPE_A' && (
                           <span className={`px-1 py-0.5 text-[8px] font-black rounded border leading-none ${workType === 'TYPE_B' ? 'bg-purple-100 text-purple-700 border-purple-200' : workType === 'TYPE_D' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
                             {workType === 'TYPE_B' ? 'B' : workType === 'TYPE_D' ? 'D' : 'C'}
+                          </span>
+                        )}
+                        {/* ⚠️ PHẢI có ngoặc nhọn. Thiếu thì JSX in ra nguyên chuỗi
+                            "fmtHours(turn.net_hours || 0)" — lỗi này đã lọt vào
+                            commit d2357e7 và sống cho tới 09/09/2026. */}
+                        {isTypeD && (
+                          <span className="text-[10px] bg-purple-100 px-1.5 py-0.5 rounded-md font-black text-purple-700 border border-purple-200" title="Giờ làm trong tháng">
+                            {fmtHours(turn.net_hours || 0)}
                           </span>
                         )}
                       </div>

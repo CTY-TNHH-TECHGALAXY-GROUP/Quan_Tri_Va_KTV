@@ -167,6 +167,26 @@ export async function GET(request: Request) {
             .gte('request_date', GLOBAL_START_DATE_ISO)
         );
 
+        // ─── Giờ tích luỹ loại D: ĐỌC CÙNG NGUỒN với bảng tua ──────────────
+        // ⚠️ Trước 09/09/2026 chỗ này đọc bảng `KTVMonthlyServiceHours`, vốn chỉ
+        // được cron `reset-type-d-hours` ghi vào NGÀY 1 HÀNG THÁNG. Tháng nào cron
+        // chưa chạy thì bảng rỗng và báo cáo tài chính hiện 0h cho mọi KTV loại D,
+        // trong khi bảng tua đang hiện 2h00P. Bảng đó cũng tính theo công thức
+        // khác (dựng lại từ BookingItems) và kẹp `Math.max(0, …)` nên nuốt mất giờ
+        // ÂM — mà giờ âm là có thật, phạt từ chối tua trừ gấp 3 thời lượng gói.
+        // Migration 20260904120000 đã ghi rõ hai bảng cũ sẽ được gỡ dần.
+        const typeDIds = ktvs
+            .filter((k: any) => (ktvWorkTypeMap[k.id] || 'TYPE_A') === 'TYPE_D')
+            .map((k: any) => k.id);
+        let netHoursMap: Record<string, number> = {};
+        if (typeDIds.length > 0) {
+            const nowVn = new Date();
+            const { KtvTypeDTurnService } = await import('@/lib/services/KtvTypeDTurnService');
+            netHoursMap = await KtvTypeDTurnService.getMonthlyNetHours(
+                supabase as any, typeDIds, nowVn.getMonth() + 1, nowVn.getFullYear()
+            );
+        }
+
         // 6. Calculate per KTV
         const summaries = [];
         for (const ktv of ktvs) {
@@ -314,13 +334,8 @@ export async function GET(request: Request) {
             let internal_fund = 0;
 
             if (workType === 'TYPE_D') {
-                const now = new Date();
-                const month = now.getMonth() + 1;
-                const year = now.getFullYear();
-                const { data: mh } = await supabase.from('KTVMonthlyServiceHours')
-                    .select('net_hours').eq('staff_id', ktv.id).eq('month', month).eq('year', year).maybeSingle();
-                accumulated_hours = mh?.net_hours || 0;
-                
+                accumulated_hours = netHoursMap[ktv.id] ?? 0;
+
                 // Fetch bonus wallet total
                 const { data: hw } = await supabase.from('WalletAdjustments')
                     .select('amount').eq('staff_id', ktv.id).eq('wallet_type', 'BONUS');
