@@ -444,11 +444,12 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
                     {item?.service_name || 'Dịch vụ'}
                   </p>
-                  {item?.duration && (
-                    <p className="mt-2 inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1 text-sm font-black">
-                      <Clock size={14} strokeWidth={3} /> {item.duration} phút
-                    </p>
-                  )}
+                  {/* KHONG hien thoi luong o man xac nhan.
+                      Con so o day lay tu `item.duration` — thoi luong CA DICH VU,
+                      khong phai phan KTV nay se lam. Don doi nguoi thi no sai han:
+                      dich vu 60 phut nhung nguoi vao thay chi lam 21 phut. Hien mot
+                      con so sai ngay o buoc nhan don la de cai nhau ve sau. So dung
+                      nam o chi tiet don va o dong ho, sau khi da nhan. */}
                   {booking.billCode && (
                     <p className="text-[11px] font-bold text-slate-400 mt-1.5">Đơn {booking.billCode}</p>
                   )}
