@@ -50,12 +50,6 @@ interface QuickDispatchTableProps {
   subOrderCodeProp?: string;
 }
 
-const SERVICE_TO_SKILL: Record<string, string> = {
-  'Gội đầu': 'shampoo', 'Massage Thái': 'thaiBody', 'Massage Dầu': 'oilBody',
-  'Đá Nóng': 'hotStoneBody', 'Massage Body': 'thaiBody', 'Foot Dầu': 'foot',
-  'Ráy Combo': 'earCombo', 'Ráy Chuyên': 'earChuyen', 'Chăm sóc da': 'facial',
-  'Tinh dầu': 'oilBody', 'Chăm sóc': 'thaiBody', 'Massage Chân': 'foot', 'Foot': 'foot',
-};
 
 const calcEndTime = (start: string, duration: number): string => {
   if (!start || !duration) return '';
@@ -793,11 +787,6 @@ export const QuickDispatchTable = ({
                       const count = items.length;
                       const duration = items[0]?.duration || 0;
                       
-                      // Find matching skill for this service
-                      const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => displayServiceName.toLowerCase().includes(k.toLowerCase()))
-                        ? SERVICE_TO_SKILL[Object.keys(SERVICE_TO_SKILL).find(k => displayServiceName.toLowerCase().includes(k.toLowerCase()))!]
-                        : null;
-
                       return (
                         <ServiceGroupCard
                           key={groupKey}
@@ -806,7 +795,6 @@ export const QuickDispatchTable = ({
                           count={count}
                           duration={duration}
                           state={state}
-                          targetSkill={targetSkill}
                           availableTurns={availableTurns}
                           allSelectedKtvIds={allSelectedKtvIds}
                           rooms={rooms}
@@ -883,7 +871,6 @@ interface ServiceGroupCardProps {
     isMergedGroup?: boolean; 
     workMode?: 'parallel' | 'sequential'; 
   };
-  targetSkill: string | null;
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
   allSelectedKtvIds: string[];
   rooms: Room[];
@@ -916,7 +903,7 @@ interface ServiceGroupCardProps {
 const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
-  serviceName, serviceDescription, count, duration, state, targetSkill,
+  serviceName, serviceDescription, count, duration, state,
   availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
   allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc,
   orderId,
@@ -1403,7 +1390,6 @@ const ServiceGroupCard = ({
               <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden">
                 <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
                   {filteredTurns.map(turn => { 
-                    const hasSkill = targetSkill ? turn.staff?.skills?.[targetSkill] === true : true; 
                     const isUsed = allSelectedKtvIds.includes(turn.employee_id) && !state.selectedKtvIds.includes(turn.employee_id); 
                     const workType = turn.work_type || turn.staff?.work_type || 'TYPE_A';
                     const isTypeAOrB = workType === 'TYPE_A' || workType === 'TYPE_B'; 
@@ -1411,7 +1397,7 @@ const ServiceGroupCard = ({
                     const displayName = (isTypeAOrB || isTypeD) ? turn.employee_id : (turn.staff?.full_name || turn.employee_id); 
                     return (
                     <div key={turn.employee_id} onClick={() => { addKtv(turn.employee_id); }}
-                      className={`px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] ${!hasSkill ? 'text-gray-400' : 'text-gray-700'}`}>
+                      className="px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] text-gray-700">
                       <div className="flex items-center gap-2">
                         {/* Thứ tự đọc: MÃ trước, rồi mới tới giờ tích luỹ.
                             Loại A/B/C giữ #thứ-tự-điểm-danh làm tiền tố vì đó là

@@ -61,20 +61,6 @@ interface DispatchStaffRowProps {
     svcStatus?: string;
 }
 
-const SERVICE_TO_SKILL: Record<string, string> = {
-    'Gội đầu': 'shampoo',
-    'Massage Thái': 'thaiBody',
-    'Massage Dầu': 'oilBody',
-    'Đá Nóng': 'hotStoneBody',
-    'Massage Body': 'thaiBody',
-    'Foot Dầu': 'foot',
-    'Ráy tai': 'earCombo', // fallback for old data
-    'Ráy Combo': 'earCombo',
-    'Ráy Chuyên': 'earChuyen',
-    'Chăm sóc da': 'facial',
-    'Massage Chân': 'foot',
-    'Foot': 'foot',
-};
 
 // 🔧 WORK TYPE BADGE CONFIG
 const WORK_TYPE_BADGE: Record<string, { label: string; className: string }> = {
@@ -109,10 +95,6 @@ export const DispatchStaffRow = ({
     displayName, serviceDescription, strength, adminNote, customerNote, selectedDate, focus, avoid, realSvcId, reminders = [],
     billCode, genderReq, customerName, onViewPhoto, now: nowProp, svcStatus
 }: DispatchStaffRowProps) => {
-
-    const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => serviceName.toLowerCase().includes(k.toLowerCase()))
-        ? SERVICE_TO_SKILL[Object.keys(SERVICE_TO_SKILL).find(k => serviceName.toLowerCase().includes(k.toLowerCase()))!]
-        : null;
 
     const isVip = realSvcId && (realSvcId.toUpperCase().startsWith('NHP') || realSvcId.toUpperCase().startsWith('VIP_'));
 
@@ -310,7 +292,6 @@ export const DispatchStaffRow = ({
                                                 return 0;
                                             })
                                             .map((turn) => {
-                                                const hasSkill = targetSkill ? turn.staff?.skills?.[targetSkill] === true : true;
                                                 const isUsedInOtherSvc = usedKtvIds.includes(turn.employee_id);
                                                 
                                                 const isOnCall = (turn.staff?.feature_flags as any)?.is_on_call === true;
@@ -329,7 +310,6 @@ export const DispatchStaffRow = ({
                                                         className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex flex-col gap-0.5
                                                             cursor-pointer hover:bg-indigo-50 active:scale-[0.98]
                                                             ${row.ktvId === turn.employee_id ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'text-gray-700'}
-                                                            ${!hasSkill && !isUsedInOtherSvc ? 'text-gray-400' : ''}
                                                         `}
                                                     >
                                                         <div className="flex items-center justify-between">
@@ -363,7 +343,6 @@ export const DispatchStaffRow = ({
                                                                             : <span className="text-emerald-500">✅ Sẵn sàng</span>
                                                                 )
                                                             }
-                                                            {!hasSkill && <span className="text-gray-400 font-medium">(Chưa có kỹ năng)</span>}
                                                         </div>
                                                     </div>
                                                 );
@@ -477,15 +456,6 @@ export const DispatchStaffRow = ({
                         </button>
                     )}
                 </div>
-
-                {/* Skill Badge */}
-                {row.ktvId && availableTurns.find(t => t.employee_id === row.ktvId)?.staff?.skills?.[targetSkill || ''] === true && (
-                    <div className="px-1">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black border border-emerald-100 uppercase tracking-tighter">
-                            <CheckCircle2 size={10} /> Đạt yêu cầu
-                        </span>
-                    </div>
-                )}
 
                 {/* Segments Area */}
                 <div className="space-y-4">
