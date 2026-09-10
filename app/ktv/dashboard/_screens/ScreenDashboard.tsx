@@ -295,9 +295,18 @@ export function ScreenDashboard({ logic }: { logic: any }) {
    * Căn cứ đúng là segment đã có actualStartTime, hoặc item đã rời trạng thái chờ.
    */
   const STARTED_STATUSES = ['IN_PROGRESS', 'PAUSED', 'CLEANING', 'COMPLETED', 'FEEDBACK', 'DONE'];
-  const alreadyStarted =
-    ktvSegments.some((s: any) => s.actualStartTime) ||
-    STARTED_STATUSES.includes(String(item?.status || '').toUpperCase());
+
+  // ⚠️ Trạng thái ITEM không đại diện cho người VÀO THAY.
+  // Đổi KTV xong quầy bấm Tiếp tục nên item về IN_PROGRESS ngay, trong khi người
+  // thay còn chưa nhận đơn, chưa vào phòng. Xét theo item là `alreadyStarted`
+  // bật lên và màn hỏi nhận/từ chối bị bỏ qua hoàn toàn — họ nhảy thẳng vào chi
+  // tiết đơn, không thấy dòng "khách đang ở sẵn trong phòng".
+  // Với họ, căn cứ duy nhất là chặng CỦA CHÍNH HỌ đã bắt đầu hay chưa.
+  const vaoThayChuaBatDau = laDonVaoThay && !currentSeg?.actualStartTime;
+  const alreadyStarted = vaoThayChuaBatDau
+    ? false
+    : (ktvSegments.some((s: any) => s.actualStartTime)
+        || STARTED_STATUSES.includes(String(item?.status || '').toUpperCase()));
   const needsAcceptance = !!booking?.id && !booking?.acceptedAt && !alreadyStarted;
 
   // Lấy danh sách đồng đội cùng làm CÙNG 1 DỊCH VỤ (chỉ từ item được gán cho KTV này)

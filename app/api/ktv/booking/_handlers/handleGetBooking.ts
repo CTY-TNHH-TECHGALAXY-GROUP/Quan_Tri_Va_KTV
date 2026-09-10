@@ -855,6 +855,22 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     const o = typeof it.options === 'string' ? JSON.parse(it.options || '{}') : (it.options || {});
                     const mine = o.acceptedByStaff?.[technicianCode.toUpperCase()];
                     if (mine) return mine;
+
+                    // ⚠️ Người VÀO THAY thì KHÔNG được hưởng nhánh dữ liệu cũ bên dưới.
+                    // Đơn này đã được người trước nhận rồi, và đơn cũ chỉ lưu một cặp
+                    // `acceptedAt`/`acceptedBy` chung — người thay sẽ khớp nhầm vào đó
+                    // và app coi như họ đã nhận đơn, bỏ luôn màn hỏi nhận/từ chối.
+                    // Họ phải tự bấm nhận, vì đó là lúc app báo "khách đang ở sẵn
+                    // trong phòng, phòng đã mở".
+                    let segsCuaToi: any[] = [];
+                    try {
+                        const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
+                        segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
+                            String(x?.ktvId || '').toLowerCase().includes(String(technicianCode).toLowerCase()));
+                    } catch { }
+                    const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
+                    if (laNguoiVaoThay) return null;
+
                     // Dữ liệu cũ chỉ có một cặp acceptedAt/acceptedBy — chấp nhận khi
                     // đúng là mình đã bấm, hoặc khi không rõ ai bấm (đơn trước bản vá).
                     if (o.acceptedAt && (!o.acceptedBy
