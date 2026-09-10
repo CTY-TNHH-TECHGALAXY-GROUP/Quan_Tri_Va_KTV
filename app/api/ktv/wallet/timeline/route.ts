@@ -34,6 +34,32 @@ function sortForDisplay(timeline: any[]): void {
 }
 
 /**
+ * Đánh dấu mốc thời gian của Bookings là UTC.
+ *
+ * `Bookings.timeStart` / `timeEnd` / `createdAt` và `KTVDTurnLedger.booking_time_start`
+ * đều là `timestamp WITHOUT time zone`, và giá trị bên trong là giờ UTC —
+ * kiểm chứng: booking vừa tạo có `createdAt` khớp `now() AT TIME ZONE 'UTC'`,
+ * lệch 7 tiếng so với giờ VN.
+ *
+ * PostgREST trả chúng dưới dạng `"2026-09-08T14:02:01"` KHÔNG có `Z`, nên
+ * `new Date(...)` trên trình duyệt hiểu là GIỜ ĐỊA PHƯƠNG và hiện sớm 7 tiếng.
+ *
+ * ⚠️ Đây là lỗi có thật, KTV phát hiện ra: T079 điểm danh 17:26 mà lịch sử ghi
+ * làm tua lúc 12:04 và 14:02 — chưa điểm danh sao gán được dịch vụ. Giờ làm
+ * thật (`segments.actualStartTime`, chuỗi ISO có `Z`) là 19:04 và 21:02, tức
+ * đúng sau lúc điểm danh. Cộng `Z` vào là ba mốc khớp nhau.
+ *
+ * `KtvDLedgerEngine` đã xử lý y hệt khi tính ngày làm việc — chỗ hiển thị chỉ
+ * là nốt còn sót.
+ */
+function asUtcIso(raw: any): string | null {
+    if (!raw) return null;
+    const v = String(raw);
+    // Đã mang sẵn múi giờ (`...Z` hoặc `...+07:00`) thì để nguyên.
+    return /[Z+]|-\d{2}:\d{2}$/.test(v.slice(10)) ? v : `${v.replace(' ', 'T')}Z`;
+}
+
+/**
  * Gắn số dư luỹ kế vào từng dòng: số dư của ví NGAY SAU giao dịch đó.
  *
  * Cộng dồn theo thứ tự THỜI GIAN (cũ → mới); cùng mốc thì cộng tiền trước rồi
@@ -188,7 +214,7 @@ export async function GET(request: Request) {
             } catch { /* không chặn hiển thị */ }
 
             for (const g of groupForHistory(turnRows)) {
-                const at = g.rows[0].booking_time_start || `${g.work_date}T12:00:00`;
+                const at = asUtcIso(g.rows[0].booking_time_start) || `${g.work_date}T12:00:00+07:00`;
 
                 // Tiền tua và thưởng 4★ là MỘT CỤC, đúng như công thức:
                 //     tiền tua = tiền theo thời gian làm + thưởng
@@ -450,7 +476,7 @@ export async function GET(request: Request) {
                     title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)}`,
                     amount: passedCommission,
                     note: `Tổng thời gian: ${passedDuration} phút`,
-                    created_at: b.timeStart || (b as any).createdAt,
+                    created_at: asUtcIso(b.timeStart) || asUtcIso((b as any).createdAt),
                     status: 'APPROVED'
                 });
             }
@@ -462,7 +488,7 @@ export async function GET(request: Request) {
                     title: `Tiền tua đơn ${b.billCode || b.id.substring(0,6)} (Đang tạm giữ)`,
                     amount: heldCommission,
                     note: Array.from(allHoldReasons).join(', '),
-                    created_at: b.timeStart || (b as any).createdAt,
+                    created_at: asUtcIso(b.timeStart) || asUtcIso((b as any).createdAt),
                     status: 'HELD'
                 });
             }
@@ -475,7 +501,7 @@ export async function GET(request: Request) {
                     title: `Tiền Tip đơn ${b.billCode || b.id.substring(0,6)}`,
                     amount: ktvTip,
                     note: '',
-                    created_at: b.timeEnd || b.createdAt,
+                    created_at: asUtcIso(b.timeEnd) || asUtcIso(b.createdAt),
                     status: 'APPROVED'
                 });
             }
