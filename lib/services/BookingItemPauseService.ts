@@ -2,7 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { closeOpenPause, voidSegment, parseTimeMs } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
-import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
+import { logCounterAction, currentCounterActor, type CounterAction } from '@/lib/counter-action-log';
 
 export class BookingItemPauseService {
     /**
@@ -119,7 +119,16 @@ export class BookingItemPauseService {
      * Hàm này tính toán khoảng thời gian đã bị Pause và cộng bù vào timeStart của Booking,
      * để timer trên màn hình KTV tiếp tục chạy mượt mà không bị hụt giờ.
      */
-    static async resumeItem(supabase: SupabaseClient, bookingItemId: string) {
+    static async resumeItem(
+        supabase: SupabaseClient,
+        bookingItemId: string,
+        /**
+         * Ghi nhật ký quầy thành việc gì. Bỏ trống là 'Tiếp tục' như thường.
+         * Luồng đổi KTV truyền 'SWAP_SEND' kèm mã người mới — xem route
+         * /api/ktv/pause-swap-resume.
+         */
+        ghiNhatKy?: { action: CounterAction; note?: string | null }
+    ) {
         // 1. Lấy thông tin BookingItem và Booking
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
@@ -249,7 +258,9 @@ export class BookingItemPauseService {
 
         const actorResume = await currentCounterActor();
         await logCounterAction(supabase, itemsToUpdate.map(i => i.id), {
-            action: 'RESUME', by: actorResume.id, byName: actorResume.name, at: resumeAt,
+            action: ghiNhatKy?.action || 'RESUME',
+            note: ghiNhatKy?.note ?? null,
+            by: actorResume.id, byName: actorResume.name, at: resumeAt,
         });
 
         return { success: true, resumedAt: resumeAt, resumedItemIds: itemsToUpdate.map(i => i.id) };

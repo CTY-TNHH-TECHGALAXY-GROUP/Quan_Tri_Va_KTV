@@ -108,10 +108,13 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         await BookingItemPauseService.swapKtvOnPausedItem(
             sb as any, itemId, oldKtv, newKtv, 0, DATE, false, 0
         );
-        // Route /api/ktv/pause-swap-resume gọi tiếp resumeItem ngay sau khi đổi.
-        // Phải chạy y hệt ở đây, vì chính resumeItem mới là chỗ từng gán nhầm
-        // khoảng dừng cho chặng của người vào thay.
-        await BookingItemPauseService.resumeItem(sb as any, itemId);
+        // Route /api/ktv/pause-swap-resume gọi tiếp resumeItem ngay sau khi đổi,
+        // và ghi nhật ký thành "Gửi người mới" kèm mã. Phải truyền y hệt ở đây,
+        // vì chính resumeItem mới là chỗ từng gán nhầm khoảng dừng cho chặng của
+        // người vào thay.
+        await BookingItemPauseService.resumeItem(sb as any, itemId, {
+            action: 'SWAP_SEND', note: newKtv,
+        });
 
         // ── Soi lại ──────────────────────────────────────────────
         const { data: it } = await sb.from('BookingItems').select('technicianCodes, segments').eq('id', itemId).single();
@@ -156,6 +159,18 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         const aMoi = (as || []).find((a: any) => a.employee_id === newKtv) as any;
         check('phiếu phân công cũ đóng (CANCELLED)', aCu?.status === 'CANCELLED', `status=${aCu?.status}`);
         check('KTV mới CÓ phiếu ACTIVE', aMoi?.status === 'ACTIVE', `status=${aMoi?.status ?? 'KHÔNG CÓ DÒNG'}`);
+
+        // Nhật ký quầy phải truy được ai ra ai vào, và dòng cuối phải nói đơn đã
+        // sang tay ai — không phải "Tiếp tục" chung chung.
+        const { data: itLog } = await sb.from('BookingItems').select('options').eq('id', itemId).single();
+        let opts: any = (itLog as any).options;
+        if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = {}; } }
+        const nhatKy: any[] = Array.isArray(opts?.counterLog) ? opts.counterLog : [];
+        const dongDoi = nhatKy.find((r: any) => r.action === 'SWAP_KTV');
+        const dongCuoi = nhatKy[nhatKy.length - 1];
+        check('nhật ký ghi rõ đổi từ ai sang ai', dongDoi?.note === `${oldKtv} → ${newKtv}`, `note=${JSON.stringify(dongDoi?.note)}`);
+        check('dòng cuối là "Gửi người mới" kèm mã', dongCuoi?.action === 'SWAP_SEND' && dongCuoi?.note === newKtv,
+            `${dongCuoi?.action} note=${JSON.stringify(dongCuoi?.note)}`);
 
         const { data: tl } = await sb.from('TurnLedger').select('employee_id, is_punished, source').eq('date', DATE).in('employee_id', [oldKtv, newKtv]);
         const lCu = (tl || []).find((r: any) => r.employee_id === oldKtv) as any;

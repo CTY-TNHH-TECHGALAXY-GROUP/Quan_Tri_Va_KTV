@@ -22,7 +22,20 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * theo đơn nên xoá đơn là xoá luôn, không để lại rác.
  */
 
-export type CounterAction = 'PAUSE' | 'RESUME' | 'FINISH_EARLY' | 'CANCEL' | 'SWAP_KTV';
+export type CounterAction =
+    | 'PAUSE'
+    | 'RESUME'
+    | 'FINISH_EARLY'
+    | 'CANCEL'
+    | 'SWAP_KTV'
+    /**
+     * Đẩy đơn sang người mới ngay sau khi đổi KTV.
+     *
+     * Về kỹ thuật nó là `resumeItem`, nhưng ghi thành 'Tiếp tục' thì đọc nhật ký
+     * ra cảnh quầy bấm tạm dừng rồi tự bấm tiếp tục — không thấy đơn đã sang tay
+     * ai. Tách riêng để dòng cuối nói đúng việc: gửi cho người mới, kèm mã họ.
+     */
+    | 'SWAP_SEND';
 
 export interface CounterLogEntry {
     action: CounterAction;

@@ -61,9 +61,14 @@ export async function POST(req: Request) {
                     keepTurnForOldKtv,
                     assignedMins
                 );
-                // Sau khi swap thành công, tự động resume luôn theo luồng
+                // Sau khi swap thành công, tự động resume luôn theo luồng.
+                // Ghi nhật ký thành "Gửi người mới <mã>" chứ không phải "Tiếp tục":
+                // quầy không hề bấm Tiếp tục, và dòng cuối phải cho biết đơn đã
+                // sang tay ai.
                 if (newKtvId) {
-                    await BookingItemPauseService.resumeItem(supabase, bookingItemId);
+                    await BookingItemPauseService.resumeItem(supabase, bookingItemId, {
+                        action: 'SWAP_SEND', note: newKtvId,
+                    });
                 }
                 
                 // ĐỒNG BỘ LẠI LƯỢT TUA

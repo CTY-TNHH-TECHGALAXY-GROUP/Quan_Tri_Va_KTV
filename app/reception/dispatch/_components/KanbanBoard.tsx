@@ -25,6 +25,7 @@ const ACTION_LABEL: Record<string, string> = {
     FINISH_EARLY: 'Kết thúc sớm',
     CANCEL: 'Huỷ',
     SWAP_KTV: 'Đổi KTV',
+    SWAP_SEND: 'Gửi người mới',
 };
 
 /**
@@ -1292,7 +1293,11 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         <div className="mt-1 flex flex-col gap-0.5">
                                                             {counterLog.map((c: any, k: number) => (
                                                                 <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
+                                                                    {/* Ghi chú là chỗ DUY NHẤT nói đơn đổi từ ai sang ai
+                                                                        ("T069 → T007"). Bỏ nó đi thì nhật ký chỉ còn
+                                                                        "Đổi KTV", không truy được ai ra ai vào. */}
                                                                     {formatToHourMinute(c.at)} {counterActorName(c)} {ACTION_LABEL[c.action] || c.action}
+                                                                    {c.note ? <span className="font-bold text-gray-700"> {c.note}</span> : ''}
                                                                 </span>
                                                             ))}
                                                         </div>
