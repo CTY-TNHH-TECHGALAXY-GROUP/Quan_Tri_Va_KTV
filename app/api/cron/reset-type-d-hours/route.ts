@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,26 +22,27 @@ export async function POST(request: Request) {
         
         const monthStr = `${year}-${String(month).padStart(2, '0')}`;
 
-        const url = new URL(request.url);
-        const baseUrl = `${url.protocol}//${url.host}`;
-        
-        const res = await fetch(`${baseUrl}/api/ktv/type-d/service-hours?month=${monthStr}`);
-        if (!res.ok) {
-            throw new Error('Failed to fetch service hours');
-        }
-        const result = await res.json();
-        
-        if (!result.success || !result.data) {
-            throw new Error('Service hours API returned false or no data');
-        }
+        // Gọi THẲNG service, không tự fetch API của chính mình.
+        //
+        // ⚠️ Đường cũ dựng baseUrl từ `request.url` rồi HTTP về `/service-hours`.
+        // Hỏng ở hai chỗ: mạng/host sai là cả tháng không chốt được, và route đó
+        // trả 0 giờ cho tất cả khi tham số tháng sai định dạng — cron nuốt số 0
+        // rồi GHI ĐÈ sổ tháng bằng số rỗng.
+        const { data: staff } = await supabase
+            .from('Staff').select('id').eq('work_type', 'TYPE_D');
+        const staffIds = (staff || []).map((s: any) => s.id);
 
-        const upsertData = result.data.map((d: any) => ({
-            staff_id: d.staff_id,
+        const breakdown = await KtvTypeDTurnService.getMonthlyHoursBreakdown(
+            supabase as any, staffIds, month, year
+        );
+
+        const upsertData = staffIds.map((id: string) => ({
+            staff_id: id,
             month,
             year,
-            total_hours_earned: d.total_hours_earned,
-            total_hours_penalty: d.total_hours_penalty,
-            net_hours: d.net_hours,
+            total_hours_earned: breakdown[id]?.hours_earned ?? 0,
+            total_hours_penalty: breakdown[id]?.hours_penalty ?? 0,
+            net_hours: breakdown[id]?.net_hours ?? 0,
             synced_at: new Date().toISOString()
         }));
 

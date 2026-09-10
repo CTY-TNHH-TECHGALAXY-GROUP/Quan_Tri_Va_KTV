@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,19 +8,57 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+/**
+ * GET /api/ktv/type-d/service-hours?month=YYYY-MM[&techCode=T079]
+ *
+ * Giờ tích luỹ tháng của KTV loại D. Dùng bởi màn giờ tích luỹ và bởi cron
+ * chốt tháng `/api/cron/reset-type-d-hours` (ghi vào KTVMonthlyServiceHours).
+ *
+ * ⚠️ Route này TỪNG tự quét lại Bookings và tính lấy một công thức riêng. Đo
+ * trên tháng 9/2026 thì lệch với bảng xếp hạng tua ở 4/13 KTV, riêng T016 chênh
+ * 9,16 giờ. Ba nguyên nhân:
+ *
+ *   · lấy giờ GÁN (`KtvCommissionService.calculateItemDuration`) thay vì giờ
+ *     làm THẬT — đã trừ tạm dừng, đã bỏ chặng bị tước quyền lợi;
+ *   · đọc phạt từ `KTVServiceHoursLedger`, bảng nay chỉ còn 3 dòng test cũ;
+ *     phạt thật (từ chối tua, khoá tài khoản) nằm ở `KTVDPenaltyLedger`;
+ *   · kẹp sàn `Math.max(0, …)` nên phần phạt vượt quá số giờ đang có bốc hơi.
+ *
+ * Số sai đó không chỉ hiện lên màn hình — cron chốt tháng ĐÓNG DẤU nó vào
+ * `KTVMonthlyServiceHours`. Nay cả ba nơi dùng chung
+ * `KtvTypeDTurnService.getMonthlyHoursBreakdown`, tức đúng phép tính quyết định
+ * thứ tự nhận tua.
+ */
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const techCode = searchParams.get('techCode');
         const monthParam = searchParams.get('month'); // YYYY-MM
-        
+
         const now = new Date();
-        const year = monthParam ? parseInt(monthParam.split('-')[0]) : now.getFullYear();
-        const month = monthParam ? parseInt(monthParam.split('-')[1]) : now.getMonth() + 1;
-        
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01T00:00:00.000Z`;
-        const endDay = new Date(year, month, 0).getDate();
-        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}T23:59:59.999Z`;
+        let year = now.getFullYear();
+        let month = now.getMonth() + 1;
+
+        if (monthParam) {
+            // ⚠️ Trước đây `parseInt(split('-')[1])` với `month=9` ra NaN, rồi
+            // khoảng ngày thành chuỗi rác và route trả 0 giờ cho TẤT CẢ mà
+            // không báo lỗi gì. Cron đọc số 0 đó rồi ghi đè sổ tháng.
+            const m = /^(\d{4})-(\d{2})$/.exec(monthParam.trim());
+            if (!m) {
+                return NextResponse.json(
+                    { success: false, error: `Tham số month phải dạng YYYY-MM, nhận được '${monthParam}'` },
+                    { status: 400 }
+                );
+            }
+            year = Number(m[1]);
+            month = Number(m[2]);
+            if (month < 1 || month > 12) {
+                return NextResponse.json(
+                    { success: false, error: `Tháng không hợp lệ: ${monthParam}` },
+                    { status: 400 }
+                );
+            }
+        }
 
         let staffIds: string[] = [];
         if (techCode) {
@@ -30,82 +68,22 @@ export async function GET(request: Request) {
             staffIds = (data || []).map(s => s.id);
         }
 
-        const { data: services } = await supabase.from('Services').select('id, duration, is_utility');
-        const svcDurationMap: Record<string, number> = {};
-        const svcUtilityMap: Record<string, boolean> = {};
-        (services || []).forEach((s: any) => { 
-            svcDurationMap[String(s.id)] = s.duration || 0; 
-            svcUtilityMap[String(s.id)] = !!s.is_utility; 
-        });
+        const breakdown = await KtvTypeDTurnService.getMonthlyHoursBreakdown(
+            supabase as any, staffIds, month, year
+        );
 
-        const results = [];
-
-        for (const staffId of staffIds) {
-            let allBookings: any[] = [];
-            let page = 0;
-            while (true) {
-                const { data, error } = await supabase
-                    .from('Bookings')
-                    .select(`
-                        id, timeStart, status, billCode, createdAt, rating,
-                        BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status )
-                    `)
-                    .gte('timeStart', startDate)
-                    .lte('timeStart', endDate)
-                    .range(page * 1000, (page + 1) * 1000 - 1);
-                
-                if (error || !data || data.length === 0) break;
-                allBookings = allBookings.concat(data);
-                page++;
-            }
-
-            let total_hours_earned = 0;
-            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
-
-            allBookings.forEach((b: any) => {
-                const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
-                    i.technicianCodes &&
-                    Array.isArray(i.technicianCodes) &&
-                    i.technicianCodes.some((tc: string) => tc.toLowerCase().includes(staffId.toLowerCase())) &&
-                    DONE_STATUSES.includes(i.status)
-                );
-                
-                let relevantItems = relevantItemsOriginal.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
-                if (relevantItems.length === 0 && relevantItemsOriginal.length > 0) {
-                    relevantItems = relevantItemsOriginal;
-                }
-
-                relevantItems.forEach((item: any) => {
-                    // Chặng bị TƯỚC quyền lợi → không tính giờ dịch vụ. Nếu không,
-                    // dòng dự phòng `<= 0 → 60` bên dưới (vốn để cứu đơn THIẾU
-                    // SEGMENT) tặng cho họ đúng một giờ.
-                    if (KtvCommissionService.isKtvVoidedOnItem(item, staffId)) return;
-                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
-                    let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
-                    if (itemDuration <= 0) itemDuration = 60;
-                    total_hours_earned += itemDuration / 60;
-                });
-            });
-
-            const { data: penalties } = await supabase
-                .from('KTVServiceHoursLedger')
-                .select('*')
-                .eq('staff_id', staffId)
-                .gte('date', `${year}-${String(month).padStart(2, '0')}-01`)
-                .lte('date', `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`);
-
-            const total_hours_penalty = (penalties || []).reduce((sum, p) => sum + Number(p.hours_penalty), 0);
-            const net_hours = Math.max(0, total_hours_earned - total_hours_penalty);
-
-            results.push({
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const results = staffIds.map(staffId => {
+            const b = breakdown[staffId];
+            return {
                 staff_id: staffId,
-                month: monthParam || `${year}-${String(month).padStart(2, '0')}`,
-                total_hours_earned,
-                total_hours_penalty,
-                net_hours,
-                penalty_history: penalties || []
-            });
-        }
+                month: monthStr,
+                total_hours_earned: b?.hours_earned ?? 0,
+                total_hours_penalty: b?.hours_penalty ?? 0,
+                net_hours: b?.net_hours ?? 0,
+                penalty_history: b?.penalties ?? [],
+            };
+        });
 
         return NextResponse.json({ success: true, data: techCode ? results[0] : results });
     } catch (err: any) {

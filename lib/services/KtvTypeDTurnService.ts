@@ -1,7 +1,16 @@
 import { isVoidedSegment, workedMsOf } from '../segment-time';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getDayCutoffHours, toBusinessDate } from '../business-date';
-import { getRows, getPenalties } from './KtvDLedgerReader';
+import { getRows, getPenalties, PenaltyRow } from './KtvDLedgerReader';
+
+/** Giờ tích luỹ của một KTV trong một tháng, tách sẵn ba phần. */
+export interface MonthlyHours {
+    hours_earned: number;
+    hours_penalty: number;
+    /** = hours_earned − hours_penalty. ĐƯỢC PHÉP ÂM. */
+    net_hours: number;
+    penalties: PenaltyRow[];
+}
 
 export class KtvTypeDTurnService {
 
@@ -99,10 +108,38 @@ export class KtvTypeDTurnService {
         month: number,
         year: number
     ): Promise<Record<string, number>> {
+        const breakdown = await this.getMonthlyHoursBreakdown(supabase, staffIds, month, year);
+        const out: Record<string, number> = {};
+        for (const id of staffIds) out[id] = breakdown[id]?.net_hours ?? 0;
+        return out;
+    }
+
+    /**
+     * Cùng phép tính với `getMonthlyNetHours`, nhưng trả ra CẢ BA phần: giờ
+     * làm, giờ bị phạt, và giờ ròng — kèm danh sách phiếu phạt.
+     *
+     * Tách ra để `/api/ktv/type-d/service-hours` (màn giờ tích luỹ + cron chốt
+     * tháng) dùng chung, thay vì tự quét lại Bookings.
+     *
+     * ⚠️ Bản tự tính của route đó lệch ở BA chỗ, đo trên tháng 9/2026 ra tới
+     * 9,16 giờ chênh cho T016:
+     *   · lấy giờ GÁN (`calculateItemDuration`) thay vì giờ làm thật
+     *   · đọc phạt từ `KTVServiceHoursLedger` — bảng chỉ còn 3 dòng test cũ;
+     *     phạt thật nằm ở `KTVDPenaltyLedger`
+     *   · kẹp sàn 0 nên phần phạt vượt ngưỡng bốc hơi
+     */
+    static async getMonthlyHoursBreakdown(
+        supabase: SupabaseClient,
+        staffIds: string[],
+        month: number,
+        year: number
+    ): Promise<Record<string, MonthlyHours>> {
         if (staffIds.length === 0) return {};
 
-        const result: Record<string, number> = {};
-        for (const id of staffIds) result[id] = 0;
+        const result: Record<string, MonthlyHours> = {};
+        for (const id of staffIds) {
+            result[id] = { hours_earned: 0, hours_penalty: 0, net_hours: 0, penalties: [] };
+        }
 
         // Reset khi KTV chuyển chế độ: chỉ tính từ ngày vào chế độ hiện tại.
         const { data: staffData } = await supabase
@@ -126,18 +163,26 @@ export class KtvTypeDTurnService {
 
         for (const r of rows) {
             if (r.work_date < (effectiveDateMap[r.staff_id] || '2020-01-01')) continue;
-            result[r.staff_id] = (result[r.staff_id] || 0) + r.actual_minutes / 60;
+            const e = result[r.staff_id];
+            if (e) e.hours_earned += r.actual_minutes / 60;
         }
         for (const p of penalties) {
             if (p.work_date < (effectiveDateMap[p.staff_id] || '2020-01-01')) continue;
-            result[p.staff_id] = (result[p.staff_id] || 0) - p.hours_penalty;
+            const e = result[p.staff_id];
+            if (e) { e.hours_penalty += p.hours_penalty; e.penalties.push(p); }
         }
 
         // Giờ tích lũy ĐƯỢC PHÉP ÂM. Phạt từ chối tua trừ gấp 3 lần thời lượng gói
         // nên vượt quá số giờ đang có là bình thường. Trước đây ép về 0 khiến phần
         // phạt vượt ngưỡng bốc hơi: người bị trừ 2 giờ xếp ngang người chưa làm gì,
         // và dashboard hiện 0h trong khi sổ Office ghi số âm.
-        for (const id of staffIds) result[id] = Math.round((result[id] || 0) * 100) / 100;
+        const r2 = (n: number) => Math.round(n * 100) / 100;
+        for (const id of staffIds) {
+            const e = result[id];
+            e.hours_earned = r2(e.hours_earned);
+            e.hours_penalty = r2(e.hours_penalty);
+            e.net_hours = r2(e.hours_earned - e.hours_penalty);
+        }
 
         return result;
     }

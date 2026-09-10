@@ -183,6 +183,40 @@ async function main() {
     const zeroMin = rows.filter(r => r.actual_minutes === 0);
     console.log(`  Dong so cai 0 phut: ${zeroMin.length} (khong tinh vao so tua/ngay cong)`);
 
+    console.log('\n--- Kiem tra 7: nguon thu TU — /api/ktv/type-d/service-hours ---');
+    //
+    // Route do va cron chot thang (`/api/cron/reset-type-d-hours`) doc qua
+    // `getMonthlyHoursBreakdown`. Phai ra dung con so voi ba nguon o tren.
+    //
+    // ⚠️ Truoc day route tu quet lai Bookings bang mot cong thuc rieng: lay gio
+    // GAN thay vi gio lam that, doc phat tu `KTVServiceHoursLedger` (bang nay
+    // nay chi con dong test cu), va kep san 0 nen phan phat vuot nguong boc hoi.
+    // So sai do khong chi hien len man hinh — cron DONG DAU no vao
+    // `KTVMonthlyServiceHours`, tuc la chot so thang bang so sai.
+    const breakdown = await KtvTypeDTurnService.getMonthlyHoursBreakdown(supabase, staffIds, m, y);
+    let shLech = 0;
+    for (const t of table) {
+        const b = breakdown[t.id];
+        const ok = b
+            && r2(b.net_hours) === r2(t.C_dispatch)
+            && r2(b.hours_earned) === r2(t.earned)
+            && r2(b.hours_penalty) === r2(t.phat);
+        if (!ok) {
+            check(false, `${t.id}: service-hours lech`,
+                `lam ${b?.hours_earned} phat ${b?.hours_penalty} rong ${b?.net_hours}` +
+                ` vs xep hang ${t.earned}/${t.phat}/${t.C_dispatch}`);
+            shLech++;
+        }
+    }
+    if (shLech === 0) {
+        check(true, `service-hours + cron chot thang khop ca ${staffIds.length} KTV voi thu tu tua`);
+    }
+
+    // Tham so thang sai dinh dang phai bao loi, KHONG duoc tra 0 gio am tham:
+    // cron nuot so 0 do roi ghi de so thang.
+    const badMonth = !/^(\d{4})-(\d{2})$/.test('9');
+    check(badMonth, 'Tham so month="9" (thieu nam) bi coi la sai dinh dang');
+
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);
     finish(failures);
 }
