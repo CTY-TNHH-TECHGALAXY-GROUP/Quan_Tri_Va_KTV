@@ -842,7 +842,11 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               <CollapsibleRequirements booking={booking} />
           </div>
 
-          {/* Setup Checklist */}
+          {/* Setup Checklist
+              Đơn VÀO THAY thì bỏ hẳn phần này: phòng đã mở, khách đang nằm trên
+              đó, không có gì để vệ sinh máy lạnh hay setup giường nữa. Bắt tích
+              đủ 5 mục mới cho đi tiếp là bắt họ khai gian. */}
+          {!laDonVaoThay && (
           <div>
             <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
               <h3 className={`font-bold ${THEME.textBase} flex items-center gap-2 uppercase text-[11px] tracking-widest min-w-[120px]`}>
@@ -863,6 +867,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               ))}
             </div>
           </div>
+          )}
 
           {/* Room Issue Report Button */}
           <button
@@ -873,13 +878,17 @@ export function ScreenDashboard({ logic }: { logic: any }) {
             Báo sự cố phòng
           </button>
 
+          {/* Đơn vào thay không có checklist để tích, nên không được khoá nút theo
+              checklist — khoá là kẹt luôn, không vào phòng làm tiếp được. */}
           <button
-            disabled={!isChecklistComplete || logic.isLoading}
+            disabled={(!laDonVaoThay && !isChecklistComplete) || logic.isLoading}
             onClick={handleConfirmSetup}
-            className={`w-full py-4 ${THEME.radius} font-bold text-white transition-all 
-              ${isChecklistComplete ? THEME.primary + ' shadow-lg shadow-emerald-200' : 'bg-slate-300'}`}
+            className={`w-full py-4 ${THEME.radius} font-bold text-white transition-all
+              ${(laDonVaoThay || isChecklistComplete) ? THEME.primary + ' shadow-lg shadow-emerald-200' : 'bg-slate-300'}`}
           >
-            {logic.isLoading ? 'Đang xử lý...' : 'Xác nhận chuẩn bị xong'}
+            {logic.isLoading
+              ? 'Đang xử lý...'
+              : (laDonVaoThay ? 'Vào phòng làm tiếp' : 'Xác nhận chuẩn bị xong')}
           </button>
 
           {/* Next Order Notification when prepping current one */}
