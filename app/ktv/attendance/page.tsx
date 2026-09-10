@@ -870,10 +870,13 @@ const KTVAttendancePage = () => {
                                                             : `Giờ bạn đã đăng ký: ${fmtGioBuoi(gioHen) || '--:--'}`}
                                                     </p>
                                                     {/* Nói thẳng lúc bấm điểm danh, đừng để cuối tháng chốt sổ
-                                                        mới biết mình bị tính đi trễ. */}
+                                                        mới biết mình bị tính đi trễ.
+
+                                                        Không nhắc lại giờ hiện tại hay giờ đã hẹn: đồng hồ nằm
+                                                        ngay trên đầu máy, còn giờ đã hẹn thì ở dòng ngay trên. */}
                                                     {diMuon && (
                                                         <p className="text-center text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-                                                            Bây giờ là {fmtGioBuoi(gioBayGio)} — bạn đang ĐI MUỘN so với giờ đã hẹn.
+                                                            Bạn đang ĐI MUỘN.
                                                         </p>
                                                     )}
                                                 </>
