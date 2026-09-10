@@ -355,6 +355,9 @@ export default function KTVWalletPage() {
                                                                     > · 📷 Ảnh {k + 1}</a>
                                                                   ))
                                                                 : h.photoCount > 0 && <span className="text-slate-400"> · {h.photoCount} ảnh</span>}
+                                                            {h.sharedPhotos && (
+                                                                <span className="text-slate-400"> · ảnh dùng chung phiếu cũ</span>
+                                                            )}
                                                             {h.note && <span className="text-slate-400"> · {h.note}</span>}
                                                         </span>
                                                         <span className="font-bold text-rose-500 shrink-0">−{h.points}đ</span>

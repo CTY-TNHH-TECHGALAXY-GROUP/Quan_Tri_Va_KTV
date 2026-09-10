@@ -4,7 +4,7 @@
  * Đây là kịch bản đi TRỌN đường, không phải kiểm bằng mắt trên source:
  *   ghi  : `resolvePhotosPerCriteria` + `buildDeductRows` — đúng hai hàm mà
  *          `POST /api/admin/ktv-office/deduct` đang gọi;
- *   đọc  : `officeBonusTimeline` (thẻ Ví Điểm) và `dedupePhotosWithinDay`
+ *   đọc  : `officeBonusTimeline` (thẻ Ví Điểm) và `markSharedPhotosWithinDay`
  *          (đường mà `/api/ktv/office-score` dùng cho Dashboard).
  * Chỉ mỗi khâu đẩy file lên storage là thay bằng link giả — chỗ đó chưa bao giờ
  * là nguồn lỗi, và không nên rác hoá bucket thật mỗi lần chạy test.
@@ -15,7 +15,8 @@
  *   E4. Lỗi bắt buộc ảnh mà thiếu ảnh RIÊNG thì bị chặn, dù lỗi khác đã có ảnh.
  *   E5. Rổ ảnh dùng chung bị chặn khi tích nhiều lỗi; vẫn cho khi đúng một lỗi.
  *   E6. Trần ảnh áp cho TỪNG lỗi.
- *   E7. Dữ liệu CŨ (một ảnh dính nhiều lỗi) đọc ra không còn lặp.
+ *   E7. Dữ liệu CŨ (một ảnh dính nhiều lỗi): KTV vẫn xem được ảnh ở MỌI lỗi,
+ *       kèm nhãn 'ảnh dùng chung' — không tấm nào bị giấu đi.
  *
  * Chạy: npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register \
  *       scripts/qa/qa_12_evidence_end_to_end.ts
@@ -27,7 +28,7 @@ import * as dotenv from 'dotenv';
 import {
     resolvePhotosPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
 } from '../../lib/services/KtvOfficeEvidenceService';
-import { officeBonusTimeline, dedupePhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
+import { officeBonusTimeline, markSharedPhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
 import { finish, fatal } from './_exit';
 
 dotenv.config({ path: '.env.local' });
@@ -186,12 +187,23 @@ async function main() {
 
         const tl2 = await officeBonusTimeline(supabase, staffId, MONTH);
         const dayOld = tl2.find(d => d.date === DAY_LEGACY)!;
-        const shownOld = dayOld.hits.reduce((a, h) => a + h.photoCount, 0);
-        check(shownOld === 1,
-            'Anh dung chung cua phieu cu chi hien MOT lan',
-            `3 dong cung 1 link -> hien ${shownOld} lan`);
-        check(dedupePhotosWithinDay(dayOld.hits as any).filter(h => h.photoCount > 0).length === 1,
-            'Chi loi DAU TIEN giu anh, cac loi sau bo trong');
+
+        // ⚠️ Ban dau cho nay XOA anh trung, va do la sai lam: tren du lieu that
+        // (T016 ngay 05/09, 1 anh dinh 8 loi) KTV mat sach bang chung o 7/8 loi.
+        // Voi nguoi bi tru diem, "khong co anh" te hon han "anh dung chung".
+        const coAnh = dayOld.hits.filter(h => h.photoCount > 0).length;
+        check(coAnh === 3,
+            'Phieu cu: CA BA loi van xem duoc anh, khong loi nao bi giau',
+            `${coAnh}/3 loi con anh`);
+        check(dayOld.hits.every(h => h.photoUrls.includes(legacyUrl)),
+            'Moi loi van tro toi dung tam anh da chup');
+        check(dayOld.hits.every(h => h.sharedPhotos === true),
+            'Ca ba deu duoc gan co "anh dung chung" de man hinh giai thich cho lap');
+
+        // Phiếu ghi theo đường mới (ngày DAY) thì không được gắn cờ.
+        const dayNew = tl2.find(d => d.date === DAY)!;
+        check(dayNew.hits.every(h => h.sharedPhotos === false),
+            'Phieu ghi theo duong moi khong bi gan co dung chung');
 
         console.log(`\n  (Ghi chu: du lieu that dang co 3 ngay bi dinh canh nay — T016 ngay`);
         console.log(`   04/09, 05/09, 08/09. Rieng 05/09 mot tam anh dinh vao 8 loi.`);

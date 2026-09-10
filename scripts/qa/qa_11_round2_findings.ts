@@ -5,7 +5,7 @@
  *    A1. Rổ ảnh dùng chung bị CHẶN khi tích nhiều lỗi.
  *    A2. Mỗi lỗi có trần ảnh RIÊNG, không chia nhau một trần chung.
  *    A3. Lỗi bắt buộc ảnh phải có ảnh CỦA CHÍNH NÓ, không mượn của lỗi khác.
- *    A4. Dữ liệu cũ đọc ra không còn ảnh lặp (`dedupePhotosWithinDay`).
+ *    A4. Phiếu cũ dùng chung ảnh: ĐÁNH DẤU, không xoá — KTV không mất bằng chứng.
  *
  * B. XẾP HẠNG GIỜ (hạng mục 3)
  *    B1. Chưa điểm danh trong tháng thì CHƯA CÓ HẠNG (rank = null).
@@ -27,7 +27,7 @@ import * as path from 'path';
 import {
     currentMonthVn, attendedStaffOfMonth, assignRanks, KtvOfficeScoreService, monthRange,
 } from '../../lib/services/KtvOfficeScoreService';
-import { canSeeOfficePoints, dedupePhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
+import { canSeeOfficePoints, markSharedPhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
 import { resolveStaffFlag } from '../../lib/featureFlags';
 import { resolvePhotosPerCriteria, buildDeductRows } from '../../lib/services/KtvOfficeEvidenceService';
 import { WalletAccessService } from '../../lib/services/WalletAccessService';
@@ -97,27 +97,38 @@ async function main() {
     check(!/sheetState\.photos\b/.test(adminLogic) && !/sheetState\.photos\b/.test(src('app/admin/ktv-office/page.tsx')),
         'A2c. Khong con ro anh dung chung nao sot lai trong giao dien');
 
-    // A4 — dedupe cho dữ liệu cũ.
+    // A4 — phiếu CŨ dùng chung ảnh: đánh dấu, KHÔNG được xoá.
+    //
+    // ⚠️ Ban dau ham nay di XOA anh trung. Tren du lieu that (T016 ngay 05/09,
+    // 1 anh dinh 8 loi) no lam 7/8 loi hien "0 anh" — KTV dang xem duoc bang
+    // chung thi mat sach. Voi nguoi bi tru diem, "khong co anh" te hon han
+    // "anh dung chung". Nay giu nguyen anh, chi gan co de man hinh giai thich.
     const legacy = [
         { label: 'Đồng phục', points: 3, photoUrls: ['u1', 'u2'], photoCount: 2 },
         { label: 'Ngoại hình', points: 6, photoUrls: ['u1', 'u2'], photoCount: 2 },
         { label: 'Tác phong', points: 6, photoUrls: ['u1', 'u2', 'u3'], photoCount: 3 },
     ];
-    const cleaned = dedupePhotosWithinDay(legacy);
-    check(cleaned[0].photoUrls.join() === 'u1,u2'
-        && cleaned[1].photoUrls.length === 0
-        && cleaned[2].photoUrls.join() === 'u3',
-        'A4. Anh trung trong cung ngay chi hien MOT lan',
-        `${legacy.reduce((a, h) => a + h.photoCount, 0)} luot hien → ${cleaned.reduce((a, h) => a + h.photoCount, 0)}`);
-    check(cleaned.every(h => h.photoCount === h.photoUrls.length),
-        'A4b. So dem anh khop voi so link con lai');
-    // Phiếu ghi theo đường mới vốn không trùng → hàm không được đụng vào.
+    const marked = markSharedPhotosWithinDay(legacy);
+    const luotTruoc = legacy.reduce((a, h) => a + h.photoUrls.length, 0);
+    const luotSau = marked.reduce((a, h) => a + h.photoUrls.length, 0);
+    check(luotSau === luotTruoc,
+        'A4. KHONG mat luot xem anh nao cua phieu cu',
+        `${luotTruoc} → ${luotSau}`);
+    check(marked.every(h => h.photoUrls.length > 0),
+        'A4b. Moi loi van giu duoc anh cua no de KTV doi chieu');
+    check(marked[0].sharedPhotos && marked[1].sharedPhotos && marked[2].sharedPhotos,
+        'A4c. Anh dung chung duoc GAN CO de man hinh noi ro');
+    // u3 chỉ thuộc một lỗi → không phải ảnh dùng chung, nhưng lỗi đó vẫn có u1/u2
+    // dùng chung nên cờ vẫn bật. Phiếu ghi theo đường MỚI thì cờ phải tắt hẳn.
     const fresh = [
         { label: 'Đồng phục', points: 3, photoUrls: ['a1'], photoCount: 1 },
         { label: 'Ngoại hình', points: 6, photoUrls: ['b1', 'b2'], photoCount: 2 },
     ];
-    check(JSON.stringify(dedupePhotosWithinDay(fresh)) === JSON.stringify(fresh),
-        'A4c. Phieu ghi theo duong moi khong bi dung toi');
+    const freshMarked = markSharedPhotosWithinDay(fresh);
+    check(freshMarked.every(h => h.sharedPhotos === false),
+        'A4d. Phieu ghi theo duong moi khong bi gan co dung chung');
+    check(freshMarked.every((h, i) => h.photoUrls.join() === fresh[i].photoUrls.join()),
+        'A4e. Phieu moi giu nguyen anh, khong bi dung toi');
 
     // ══ B. Xếp hạng giờ ══════════════════════════════════════════════
     console.log('\n--- B: xep hang gio ---');

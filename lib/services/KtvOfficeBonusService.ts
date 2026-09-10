@@ -134,30 +134,36 @@ export async function officeBonusBalance(
 }
 
 /**
- * Bỏ ảnh TRÙNG trong cùng một ngày.
+ * Đánh dấu ảnh DÙNG CHUNG giữa nhiều lỗi trong cùng một ngày — KHÔNG xoá đi.
  *
- * Phiếu ghi TRƯỚC bản vá "ảnh theo từng lỗi" dùng chung một rổ: tích 3 lỗi, tải
- * 2 ảnh thì cả 3 dòng cùng mang đúng 2 link đó. KTV mở ngày đó ra thấy mỗi tấm
- * lặp 3 lần và tưởng mình bị chụp rất nhiều lần.
+ * Phiếu ghi TRƯỚC bản vá "ảnh theo từng lỗi" dùng chung một rổ: tích 8 lỗi, tải
+ * 1 ảnh thì cả 8 dòng cùng mang đúng link đó. Trên dữ liệu thật, T016 ngày
+ * 05/09 đúng như vậy.
  *
- * Không sửa được dữ liệu cũ (không biết tấm nào vốn thuộc lỗi nào), nên vá ở
- * tầng ĐỌC: link nào đã xuất hiện ở một lỗi phía trên thì thôi lặp lại ở dưới.
- * Lỗi đầu tiên giữ ảnh — đúng cách "xem ảnh từng mục" đang chạy tốt.
+ * ⚠️ BẢN ĐẦU CỦA HÀM NÀY ĐI XOÁ ẢNH TRÙNG — và đó là một sai lầm. Nó khiến 7
+ * trong 8 lỗi của ngày 05/09 hiện "0 ảnh", tức là KTV đang xem được bằng chứng
+ * thì mất sạch. Với người bị trừ điểm và muốn khiếu nại, "không có ảnh" tệ hơn
+ * hẳn "ảnh dùng chung": ảnh lặp thì khó nhìn, còn ảnh biến mất thì họ không còn
+ * gì để đối chiếu, và quầy cũng không chứng minh được đã chụp.
  *
- * Phiếu ghi sau bản vá vốn đã không trùng nên hàm này không đụng gì tới chúng.
+ * Nay giữ NGUYÊN ảnh ở mọi lỗi, chỉ gắn cờ `sharedPhotos` để màn hình nói rõ
+ * "ảnh dùng chung của phiếu ngày này" — giải thích chỗ lặp thay vì giấu nó đi.
+ *
+ * Phiếu ghi sau bản vá vốn không dùng chung nên cờ luôn `false`.
  */
-export function dedupePhotosWithinDay<T extends { photoUrls: string[]; photoCount: number }>(
+export function markSharedPhotosWithinDay<T extends { photoUrls: string[] }>(
     hits: T[],
-): T[] {
-    const seen = new Set<string>();
-    return hits.map(h => {
-        const kept = (h.photoUrls || []).filter(u => {
-            if (seen.has(u)) return false;
-            seen.add(u);
-            return true;
-        });
-        return { ...h, photoUrls: kept, photoCount: kept.length };
-    });
+): Array<T & { sharedPhotos: boolean }> {
+    const count = new Map<string, number>();
+    for (const h of hits) {
+        for (const u of new Set(h.photoUrls || [])) {
+            count.set(u, (count.get(u) || 0) + 1);
+        }
+    }
+    return hits.map(h => ({
+        ...h,
+        sharedPhotos: (h.photoUrls || []).some(u => (count.get(u) || 0) > 1),
+    }));
 }
 
 export interface OfficeBonusEntry {
@@ -166,8 +172,15 @@ export interface OfficeBonusEntry {
     dayScore: number;
     /** Tổng điểm bị trừ trong ngày. Ngày sạch = 0. */
     deducted: number;
-    /** Lỗi bị trừ trong ngày, kèm link ảnh minh chứng để KTV tự đối chiếu. */
-    hits: Array<{ label: string; points: number; note: string | null; photoCount: number; photoUrls: string[]; byName: string; at: string }>;
+    /**
+     * Lỗi bị trừ trong ngày, kèm link ảnh minh chứng để KTV tự đối chiếu.
+     * `sharedPhotos` = ảnh này dùng chung với lỗi khác trong ngày (phiếu cũ).
+     */
+    hits: Array<{
+        label: string; points: number; note: string | null;
+        photoCount: number; photoUrls: string[]; sharedPhotos: boolean;
+        byName: string; at: string;
+    }>;
 }
 
 /**
@@ -190,7 +203,7 @@ export async function officeBonusTimeline(
         date: d.workDate,
         dayScore: d.dayScore,
         deducted: Math.round(d.hits.reduce((a, h) => a + h.points, 0) * 100) / 100,
-        hits: dedupePhotosWithinDay(d.hits.map(h => ({
+        hits: markSharedPhotosWithinDay(d.hits.map(h => ({
             label: h.label,
             points: h.points,
             note: h.note,

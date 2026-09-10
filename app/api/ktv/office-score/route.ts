@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService } from '@/lib/services/KtvOfficeScoreService';
-import { canSeeOfficePoints, dedupePhotosWithinDay } from '@/lib/services/KtvOfficeBonusService';
+import { canSeeOfficePoints, markSharedPhotosWithinDay } from '@/lib/services/KtvOfficeBonusService';
 import { vnToday } from '@/lib/vn-time';
 
 export const dynamic = 'force-dynamic';
@@ -57,9 +57,9 @@ export async function GET(request: Request) {
         // gặp quầy để xem — nhưng đây là ảnh chụp chính họ, bị trừ điểm mà không
         // được nhìn bằng chứng thì cãi nhau ở quầy còn lâu hơn. Route này chỉ đọc
         // dữ liệu của người đang đăng nhập nên không lộ sang KTV khác.
-        // Bỏ ảnh trùng trong cùng ngày — phiếu cũ dùng chung một rổ ảnh cho mọi
-        // lỗi, xem `dedupePhotosWithinDay`.
-        const mapHits = (hits: typeof m.days[number]['hits']) => dedupePhotosWithinDay(hits.map(h => ({
+        // Phiếu cũ dùng chung một rổ ảnh cho mọi lỗi — KHÔNG xoá bớt, chỉ gắn cờ
+        // để màn hình nói rõ là ảnh dùng chung. Xem `markSharedPhotosWithinDay`.
+        const mapHits = (hits: typeof m.days[number]['hits']) => markSharedPhotosWithinDay(hits.map(h => ({
             label: h.label,
             points: h.points,
             note: h.note,

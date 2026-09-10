@@ -723,6 +723,14 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
                         )
                         : <p className="text-[11px] text-slate-400 font-bold mt-1">📷 {h.photoCount} ảnh minh chứng</p>
                     )}
+                    {/* Phiếu ghi trước bản vá "ảnh theo từng lỗi" dùng chung một
+                        rổ ảnh cho mọi lỗi trong ngày. Nói thẳng ra, đừng để KTV
+                        tưởng mình bị chụp riêng từng lỗi bằng ấy lần. */}
+                    {h.sharedPhotos && (
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">
+                        Ảnh dùng chung cho các lỗi cùng ngày (phiếu chấm đợt cũ).
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
