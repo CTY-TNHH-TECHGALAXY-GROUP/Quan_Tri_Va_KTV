@@ -583,17 +583,30 @@ export async function POST(request: Request) {
                         .maybeSingle();
                     const laundryFee = Number(String(laundryConf?.value || '20000').replace(/"/g, ''));
 
-                    // Check idempotent: already deducted today?
-                    const dayStart = `${today}T00:00:00+07:00`;
-                    const dayEnd = `${today}T23:59:59+07:00`;
+                    // Một lần cho mỗi NGÀY LÀM VIỆC — nhận diện bằng chính chuỗi
+                    // lý do, vì nó đã mang sẵn ngày làm việc.
+                    //
+                    // ⚠️ Trước đây dò bằng `reason ILIKE 'Giặt đồ ngày%'` (khớp
+                    // BẤT KỲ ngày nào) trong cửa sổ `created_at` của NGÀY LỊCH
+                    // `today`. Mà `today` là ngày LÀM VIỆC (cutoff 6h), nên hai
+                    // thứ lệch nhau mỗi khi KTV điểm danh sau nửa đêm — loại D
+                    // làm ca đêm nên chuyện này có thật:
+                    //
+                    //   · BỎ SÓT: T001 điểm danh 09/09 00:11 → dòng "ngày 08/09"
+                    //     nhưng created_at nằm ngày 09/09. Hôm sau điểm danh
+                    //     ngày làm việc 09/09, cửa sổ 09/09 thấy đúng dòng đó
+                    //     rồi tưởng đã trừ → quán mất 20k.
+                    //   · TRỪ HAI LẦN: nếu lần điểm danh ĐẦU của ngày làm việc X
+                    //     rơi sau nửa đêm, dòng vừa ghi nằm ngoài cửa sổ của
+                    //     chính nó; lần điểm danh kế tiếp trong cùng ngày làm
+                    //     việc sẽ trừ thêm một lần nữa.
+                    const laundryReason = `Giặt đồ ngày ${today.split('-').reverse().join('/')}`;
                     const { data: existingLaundry } = await supabase
                         .from('WalletAdjustments')
                         .select('id')
                         .eq('staff_id', staffCode)
                         .eq('type', 'PENALTY')
-                        .ilike('reason', 'Giặt đồ ngày%')
-                        .gte('created_at', dayStart)
-                        .lte('created_at', dayEnd)
+                        .eq('reason', laundryReason)
                         .limit(1);
 
                     if (!existingLaundry || existingLaundry.length === 0) {
@@ -603,7 +616,7 @@ export async function POST(request: Request) {
                                 staff_id: staffCode,
                                 amount: -Math.abs(laundryFee),
                                 type: 'PENALTY',
-                                reason: `Giặt đồ ngày ${today.split('-').reverse().join('/')}`,
+                                reason: laundryReason,
                                 created_by: 'SYSTEM',
                                 work_type_snapshot: workType,
                             });
