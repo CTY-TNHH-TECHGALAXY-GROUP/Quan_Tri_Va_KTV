@@ -46,6 +46,8 @@ async function dungDon(tag: string, oldKtv: string) {
     const itemId = `${bookingId}-item1`;
     const batDau = new Date(now - 30 * 60000).toISOString();   // bắt đầu 30' trước
     const mocDung = new Date(now - 5 * 60000).toISOString();   // bấm dừng 5' trước → làm thực 25'
+    const dEnd = new Date(now + 40 * 60000);
+    const gioDuKien = `${String(dEnd.getHours()).padStart(2, '0')}:${String(dEnd.getMinutes()).padStart(2, '0')}`;
 
     const { error: eB } = await sb.from('Bookings').insert({
         id: bookingId, billCode: bookingId, branchName: 'Ngan Ha Spa',
@@ -61,7 +63,11 @@ async function dungDon(tag: string, oldKtv: string) {
         status: 'PAUSED', pauseStart: mocDung, technicianCodes: [oldKtv],
         segments: [{
             ktvId: oldKtv, startTime: batDau, actualStartTime: batDau,
-            endTime: null, duration: DUR, pauses: [{ from: mocDung }],
+            // ⚠️ Phải giống DỮ LIỆU THẬT: điều phối ghi `endTime` là GIỜ DỰ KIẾN
+            // dạng "HH:mm" cho mọi chặng ngay từ đầu. Bản test cũ đặt `null` nên
+            // không bắt được lỗi lọc `!seg.endTime` — lỗi đó làm chặng KTV cũ
+            // không bao giờ bị tìm thấy, ngoài giao diện thì danh sách chọn rỗng trơn.
+            endTime: gioDuKien, duration: DUR, pauses: [{ from: mocDung }],
         }],
     });
     if (eI) throw new Error('tao BookingItems: ' + eI.message);
@@ -115,6 +121,7 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         check('ghi chú CHANGED', segCu?.note === 'CHANGED');
         check('giữ số phút đã làm để đối soát', segCu?.customCommissionDuration === 25, `= ${segCu?.customCommissionDuration}p`);
         check('khoảng dừng đóng bằng SWAP', segCu?.pauses?.[0]?.closedBy === 'SWAP');
+        check('endTime vẫn là giờ đồng hồ HH:mm', /^\d{2}:\d{2}$/.test(String(segCu?.endTime)), `= ${segCu?.endTime}`);
         check('KTV cũ VẪN nằm trong đơn', (it as any).technicianCodes?.includes(oldKtv));
         check('chặng KTV mới là TAKEOVER', segMoi?.note === 'TAKEOVER');
         check('KTV mới nhận phần còn lại 45p', segMoi?.customCommissionDuration === 45, `= ${segMoi?.customCommissionDuration}p`);

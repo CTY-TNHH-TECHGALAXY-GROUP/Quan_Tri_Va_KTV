@@ -5,6 +5,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, PauseCircle, PlayCircle, UserMinus, UserPlus, Clock, AlertTriangle } from 'lucide-react';
 import { PendingOrder, StaffData } from '../types';
 import { WORK_TYPE_LABELS } from '@/lib/constants/staff.constants';
+import { workedMsOf } from '@/lib/segment-time';
+import { fmtHours } from '@/lib/hours-format';
+
+/**
+ * Chặng này còn đang làm dở chưa?
+ *
+ * ⚠️ Mốc đã xong là `actualEndTime`, KHÔNG phải `endTime`.
+ * `endTime` là GIỜ DỰ KIẾN dạng "21:19", được ghi ngay lúc điều phối cho mọi
+ * chặng. Lọc bằng `!seg.endTime` thì chuỗi "21:19" luôn truthy — mọi KTV đều
+ * bị coi là đã xong, danh sách "KTV bị phạt" rỗng trơn và không ai đổi được
+ * người. Đây là lỗi có thật, quan sát 10/09/2026 trên đơn WB-10092026-016.
+ */
+const conDangLam = (seg: any) => !seg?.actualEndTime;
 
 interface PauseSwapKtvModalProps {
   isOpen: boolean;
@@ -64,7 +77,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   React.useEffect(() => {
     if (isOpen && selectedServiceId) {
       const ktvs = activeServices.find((s: any) => s.id === selectedServiceId)?.staffList.filter((staff: any) => 
-        !staff.segments.some((seg: any) => seg.endTime)
+        staff.segments.some(conDangLam)
       ) || [];
       if (ktvs.length === 1) {
         setSelectedOldKtv(ktvs[0].ktvId);
@@ -81,9 +94,24 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   }, [isOpen, lockAction, isPaused, selectedServiceId]);
 
   // Find KTVs currently working on the selected service
-  const currentKtvs = selectedService?.staffList.filter((staff: any) => 
-    !staff.segments.some((seg: any) => seg.endTime) // Find active segments without endTime
+  const currentKtvs = selectedService?.staffList.filter((staff: any) =>
+    staff.segments.some(conDangLam)
   ) || [];
+
+  // ── Số phút KTV mới sẽ nhận khi chọn "Làm phần còn lại" ──────────────
+  // Phải ra ĐÚNG con số mà swapKtvOnPausedItem tính ở server:
+  //   max(0, thời lượng dịch vụ − giờ KTV cũ đã làm thật) + giờ bù
+  // Giờ làm thật chốt tại MỐC BẤM DỪNG (`pauseStart`), không phải bây giờ —
+  // khoảng quầy ngồi cân nhắc là KTV không làm, xem lib/counter-action-log.ts.
+  const changKtvCu = currentKtvs
+    .find((st: any) => st.ktvId === selectedOldKtv)?.segments?.find(conDangLam);
+  const mocChot = selectedService?.pauseStart || Date.now();
+  const msDaLam = changKtvCu ? workedMsOf(changKtvCu, mocChot) : null;
+  const phutDaLam = msDaLam == null ? null : Math.round(msDaLam / 60000);
+  const tongThoiLuong = selectedService?.duration || 0;
+  const phutConLai = phutDaLam == null
+    ? null
+    : Math.max(0, tongThoiLuong - phutDaLam) + (Number(extraTimeMins) || 0);
 
   const handleConfirm = async () => {
     if (!selectedServiceId) return;
@@ -270,6 +298,39 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           Quầy gán tay
                         </button>
                       </div>
+
+                      {/* Chọn "Làm phần còn lại" thì phải thấy NGAY con số KTV mới
+                          nhận, khỏi phải nhẩm. Con số này khớp đúng công thức
+                          server dùng — xem chú thích chỗ tính `phutConLai`. */}
+                      {timeMode === 'REMAIN' && (
+                        <div className="rounded-lg border-2 border-indigo-100 bg-indigo-50/60 px-3 py-2">
+                          {phutConLai == null ? (
+                            <span className="text-[12px] font-semibold text-gray-500">
+                              Chọn KTV bị phạt để xem số phút KTV mới nhận.
+                            </span>
+                          ) : (
+                            <>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-[11px] font-black uppercase tracking-wider text-indigo-500">
+                                  KTV mới nhận
+                                </span>
+                                <span className="text-lg font-black leading-none text-indigo-700">
+                                  {phutConLai} phút
+                                  {phutConLai >= 60 && (
+                                    <span className="ml-1.5 text-[12px] font-bold text-indigo-400">
+                                      ({fmtHours(phutConLai / 60)})
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[11px] font-medium leading-snug text-gray-500">
+                                Dịch vụ {tongThoiLuong} phút − {selectedOldKtv} đã làm {phutDaLam} phút
+                                {(Number(extraTimeMins) || 0) > 0 ? ` + bù ${extraTimeMins} phút` : ''}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      )}
 
                       {timeMode === 'MANUAL' && (
                         <div>

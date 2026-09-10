@@ -399,7 +399,15 @@ export class BookingItemPauseService {
         // ("Bao - Na" vs "NA - BAO") — dữ liệu thật đang có cả hai kiểu. So bằng
         // `===` là không tìm thấy chặng cũ: nó KHÔNG bị đóng, KHÔNG bị tước, nên
         // KTV cũ vẫn ăn đủ tiền còn KTV mới được cộng thêm một chặng nữa.
-        const aIndex = segments.findIndex(seg => ktvMatchesSeg(seg.ktvId, oldKtvId) && !seg.endTime);
+        //
+        // ⚠️ Mốc "đã xong" là `actualEndTime`, KHÔNG phải `endTime`. `endTime` là
+        // GIỜ DỰ KIẾN dạng "21:19", được ghi cho MỌI chặng ngay từ lúc điều
+        // phối. Lọc `!seg.endTime` thì chuỗi đó luôn truthy → aIndex = -1 → chặng
+        // của KTV cũ KHÔNG bị đóng, KHÔNG bị tước: họ ăn đủ tiền, còn
+        // `oldWorkedMins` = 0 nên KTV mới được tính TRỌN thời lượng dịch vụ.
+        // Một đơn trả tiền hai lần. Phát hiện 10/09/2026 trên đơn thật
+        // WB-10092026-016-NHS0008-0 (endTime = "21:19", actualEndTime trống).
+        const aIndex = segments.findIndex(seg => ktvMatchesSeg(seg.ktvId, oldKtvId) && !seg.actualEndTime);
         let oldWorkedMins = 0;
         const pauseTime = item.pauseStart || new Date().toISOString();
         if (aIndex !== -1) {
@@ -409,8 +417,12 @@ export class BookingItemPauseService {
             // (đã trừ các lần dừng trước đó) — xem lib/segment-time.ts
             const closed = { ...oldSeg, pauses: Array.isArray(oldSeg.pauses) ? [...oldSeg.pauses] : [] };
             closeOpenPause(closed, pauseTime, 'SWAP');
-            closed.endTime = pauseTime;
             closed.actualEndTime = pauseTime;
+            // `endTime` là cột GIỜ ĐỒNG HỒ "HH:mm" mà thẻ Kanban, màn Đánh giá và
+            // KtvCommissionService.getMinsFromTimes cùng đọc. Nhét chuỗi ISO vào đó
+            // là ba nơi cùng hiểu sai — ghi đúng định dạng của cột.
+            const dChot = new Date(pauseTime);
+            closed.endTime = `${String(dChot.getHours()).padStart(2, '0')}:${String(dChot.getMinutes()).padStart(2, '0')}`;
 
             // Tước sạch quyền lợi nhưng VẪN ghi số phút đã làm để đối soát.
             voidSegment(closed, pauseTime, 'CHANGED');
