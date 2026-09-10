@@ -35,6 +35,14 @@ class ApiClient {
     const id = setTimeout(() => controller.abort(), timeout);
 
     const response = await fetch(url, {
+      // ⚠️ KHÔNG để trình duyệt cache. Mọi đường trong `/api` ở đây đều là dữ
+      // liệu sống — điểm, ví, tua, cờ tính năng. Trước đây không đặt gì cả, mà
+      // các route này cũng không gắn Cache-Control, nên Safari trên iOS giữ lại
+      // bản JSON cũ: admin tắt một tính năng, KTV mở app vẫn thấy y như cũ, F5
+      // cũng vậy, phải xoá dữ liệu web mới hết.
+      //
+      // Vẫn cho ghi đè qua `options` nếu chỗ nào thật sự muốn cache.
+      cache: 'no-store',
       ...fetchOptions,
       signal: controller.signal
     });
