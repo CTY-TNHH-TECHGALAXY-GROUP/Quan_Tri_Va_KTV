@@ -71,6 +71,16 @@ const dsKtvHienThi = (s: any): any[] => {
 const coNguoiBiTuoc = (s: any): boolean =>
     dsKtvHienThi(s).some((st: any) => (st?.segments || []).some((g: any) => g?.voided === true));
 
+/**
+ * Có vẽ khối "giờ theo từng KTV" không?
+ *
+ * Khối đó đã in đủ mã KTV, huỷ hiệu loại, dấu đã nhận đơn và ảnh selfie —
+ * đúng những thứ dãy chip ở trên in. Bật cả hai là thẻ lặp hai lần cùng một
+ * người, nên chỉ được chọn một. Một hàm duy nhất quyết định, hai nơi cùng đọc.
+ */
+const veTungNguoi = (s: any): boolean =>
+    !s?.isUtility && (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
+
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
 
 /**
@@ -980,7 +990,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                             
                                                             {/* Danh sách KTV */}
-                                                            {!s.isUtility && dsKtvHienThi(s).length > 0 && (
+                                                            {!s.isUtility && dsKtvHienThi(s).length > 0 && !veTungNguoi(s) && (
                                                                 <div className="flex flex-wrap gap-1">
                                                                     {dsKtvHienThi(s).map((st: any, idx: number) => {
                                                                         const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
@@ -1013,11 +1023,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                             {/* Hiển thị thời gian THEO TỪNG KTV */}
                                                             {!s.isUtility && (
-                                                                // Hiện theo từng người khi đơn có nhiều KTV, HOẬC khi có người
-                                                                // bị tước quyền lợi — nhánh một-người bên dưới chỉ vẽ một
-                                                                // khoảng BẮT ĐẦU → KẾT THÚC chung, không chỗ nào để gắn
-                                                                // nhãn "Đã đổi" cả.
-                                                                (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s)) ? (
+                                                                veTungNguoi(s) ? (
                                                                     <div className="space-y-1 mt-1">
                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
                                                                             const seg = st?.segments?.[0];
@@ -1025,7 +1031,10 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             // 🔥 FIX: Luôn tính dynamic end time từ ktvStart thực tế, không dùng seg.endTime cũ
                                                                             const ktvEnd = seg?.actualEndTime ? seg.actualEndTime : getDynamicEndTime(ktvStart, Number(seg?.duration) || duration);
                                                                             return (
-                                                                                <div key={stIdx} className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
+                                                                                /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
+                                                                                   hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
+                                                                                   ngoài thẻ. */
+                                                                                <div key={stIdx} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
@@ -1054,21 +1063,22 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                                 {s.options.serviceNamesForKtvs[st.ktvId]}
                                                                                             </span>
                                                                                         )}
+                                                                                        {seg?.voided && (
+                                                                                            <span className="text-[8px] font-black text-rose-500 bg-rose-50 border border-rose-100 px-1 py-0.5 rounded shrink-0" title="KTV bị đổi ra — không tính tiền, không tính giờ tích luỹ, mất lượt tua">
+                                                                                                ĐÃ ĐỔI{(Number(seg.customCommissionDuration) || 0) > 0 ? ` · ${Number(seg.customCommissionDuration)}p` : ''}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         {/* KTV bị đổi ra: giữ tên trong đơn để biết ai từng làm cho khách,
                                                                                             kèm số phút đã làm — dù tiền và giờ tích luỹ đều bằng 0. */}
-                                                                                        {seg?.voided ? (
-                                                                                            <span className="text-[9px] font-black text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded" title="KTV bị đổi ra — không tính tiền, không tính giờ tích luỹ, mất lượt tua">
-                                                                                                đã làm {Number(seg.customCommissionDuration) || 0}p · Đã đổi · 0đ
-                                                                                            </span>
-                                                                                        ) : (
-                                                                                            <>
-                                                                                                <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvStart)}</span>
-                                                                                                <span className="text-indigo-300 text-[8px]">→</span>
-                                                                                                <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvEnd)}</span>
-                                                                                            </>
-                                                                                        )}
+                                                                                        {/* Luôn in khoảng giờ, kể cả người bị đổi ra — quầy cần biết họ
+                                                                                            ở trong phòng từ lúc nào tới lúc nào. Không gạch ngang, không
+                                                                                            làm mờ: nhãn "ĐÃ ĐỔI" ở cụm bên trái đã nói rõ khoảng này
+                                                                                            không tính công. */}
+                                                                                        <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvStart)}</span>
+                                                                                        <span className="text-indigo-300 text-[8px]">→</span>
+                                                                                        <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvEnd)}</span>
                                                                                     </div>
                                                                                 </div>
                                                                             );
