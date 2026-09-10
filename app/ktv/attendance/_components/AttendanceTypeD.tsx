@@ -5,6 +5,8 @@ import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useToast } from '@/components/ui/Toast';
 import { fmtGioBuoi } from '@/lib/hours-format';
+import { vnNow } from '@/lib/vn-time';
+import { format } from 'date-fns';
 
 interface OnCallState {
   allow_on_call: boolean;
@@ -100,10 +102,27 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   const lechPhut = (gioDaDangKy && lateTime) ? phutLech(gioDaDangKy, lateTime) : null;
 
   const daBaoTre = (registration?.late_report_count || 0) >= 1;
-  const coTheBaoTre = !!registration
+
+  /**
+   * ĐÃ QUÁ giờ đã đăng ký.
+   *
+   * "Báo đi muộn" là báo TRƯỚC — hẹn lại một mốc muộn hơn để khỏi bị tính lỗi.
+   * Quá giờ rồi thì không còn gì để báo trước: người đó đang muộn thật. Cho bấm
+   * lúc này là mở đường lách — cứ muộn xong mới báo thì luật đi trễ thành vô nghĩa.
+   *
+   * So sánh chuỗi 'HH:MM' được vì cùng định dạng 2 chữ số, không cần dựng Date.
+   */
+  const gioHienTai = format(vnNow(), 'HH:mm');
+  const daQuaGioDangKy = !!gioDaDangKy && gioHienTai > gioDaDangKy;
+
+  const chuaDiemDanh = !!registration
     && registration.status !== 'OFF_REGISTERED'
-    && !registration.check_in_at
-    && !daBaoTre;
+    && !registration.check_in_at;
+
+  // Còn hiện nút (dù xám) để KTV biết vì sao không bấm được, thay vì nút biến mất
+  // không dấu vết rồi họ đi hỏi quản lý.
+  const hienNutBaoTre = chuaDiemDanh && !daBaoTre;
+  const coTheBaoTre = hienNutBaoTre && !daQuaGioDangKy;
 
   const fetchState = async () => {
     try {
@@ -261,13 +280,17 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
         </div>
       )}
 
-      {coTheBaoTre && (
+      {hienNutBaoTre && (
         <button
-          onClick={() => setShowLateModal(true)}
-          disabled={actionLoading}
-          className="w-full mb-4 py-3 bg-white border-2 border-amber-300 hover:bg-amber-50 active:scale-95 text-amber-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          onClick={() => { if (coTheBaoTre) setShowLateModal(true); }}
+          disabled={actionLoading || !coTheBaoTre}
+          className={`w-full mb-4 py-3 border-2 font-bold rounded-2xl transition-all flex items-center justify-center gap-2 ${
+            coTheBaoTre
+              ? 'bg-white border-amber-300 hover:bg-amber-50 active:scale-95 text-amber-700 disabled:opacity-50'
+              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+          }`}
         >
-          <Clock size={20} /> Báo đi muộn
+          <Clock size={20} /> {coTheBaoTre ? 'Báo đi muộn' : `Đã quá giờ đăng ký (${gioDaDangKy})`}
         </button>
       )}
 

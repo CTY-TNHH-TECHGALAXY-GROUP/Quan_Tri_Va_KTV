@@ -7,6 +7,7 @@ import {
     ExternalLink, Loader2, XCircle, LogOut, LogIn, Camera, AlertCircle, SwitchCamera
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { vnNow } from '@/lib/vn-time';
 import { useKTVAttendance } from './Attendance.logic';
 import { t } from './Attendance.i18n';
 import AttendanceTypeB from './_components/AttendanceTypeB';
@@ -853,11 +854,31 @@ const KTVAttendancePage = () => {
                             {formType === 'CHECK_IN' && workType === 'TYPE_D' && (
                                 <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                     {todayRegistration ? (
-                                        <p className="text-center font-bold text-emerald-600">
-                                            {todayRegistration.status === 'OFF_REGISTERED' 
-                                                ? 'Nghỉ làm (OFF)'
-                                                : `Giờ bạn đã đăng ký: ${fmtGioBuoi(todayRegistration.expected_time) || '--:--'}`}
-                                        </p>
+                                        (() => {
+                                            // Giờ hẹn có hiệu lực: đã báo trễ thì tính theo giờ hẹn mới,
+                                            // chưa báo thì theo giờ đăng ký ban đầu.
+                                            const gioHen = String(todayRegistration.late_expected_time || todayRegistration.expected_time || '').slice(0, 5);
+                                            const gioBayGio = format(vnNow(), 'HH:mm');
+                                            const isOff = todayRegistration.status === 'OFF_REGISTERED';
+                                            // So chuỗi 'HH:MM' được vì cùng định dạng 2 chữ số.
+                                            const diMuon = !isOff && /^\d{2}:\d{2}$/.test(gioHen) && gioBayGio > gioHen;
+                                            return (
+                                                <>
+                                                    <p className={`text-center font-bold ${diMuon ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {isOff
+                                                            ? 'Nghỉ làm (OFF)'
+                                                            : `Giờ bạn đã đăng ký: ${fmtGioBuoi(gioHen) || '--:--'}`}
+                                                    </p>
+                                                    {/* Nói thẳng lúc bấm điểm danh, đừng để cuối tháng chốt sổ
+                                                        mới biết mình bị tính đi trễ. */}
+                                                    {diMuon && (
+                                                        <p className="text-center text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                                                            Bây giờ là {fmtGioBuoi(gioBayGio)} — bạn đang ĐI MUỘN so với giờ đã hẹn.
+                                                        </p>
+                                                    )}
+                                                </>
+                                            );
+                                        })()
                                     ) : (
                                         <div className="text-center">
                                             <p className="text-sm font-bold text-amber-600">
