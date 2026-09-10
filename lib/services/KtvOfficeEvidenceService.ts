@@ -102,20 +102,50 @@ export function buildDeductRows(args: {
     workDate: string;
     criteria: CriteriaRow[];
     urlsOf: Record<string, string[]>;
-    note?: string | null;
+    /** Ghi chú của RIÊNG từng lỗi: { criteriaId: text }. */
+    notesOf?: Record<string, string>;
     createdBy: string;
     createdByName: string;
 }): DeductRow[] {
-    const { staffId, workDate, criteria, urlsOf, note, createdBy, createdByName } = args;
+    const { staffId, workDate, criteria, urlsOf, notesOf, createdBy, createdByName } = args;
     return criteria.map(c => ({
         staff_id: staffId,
         work_date: workDate,
         criteria_id: c.id,
         criteria_label: c.label,          // snapshot, phòng khi quy chế đổi tên tiêu chí
         points_deducted: Number(c.points) || 0,
-        note: note?.trim() || null,
+        note: notesOf?.[c.id]?.trim() || null,
         photo_urls: urlsOf[c.id] ?? [],
         created_by: createdBy,
         created_by_name: createdByName,
     }));
+}
+
+/**
+ * Chia ghi chú về đúng từng lỗi.
+ *
+ * ⚠️ Trước đây cả phiếu chỉ có MỘT ô "Ghi chú cho KTV", và nội dung đó được ghi
+ * y hệt vào MỌI dòng phiếu — đúng cái bệnh của rổ ảnh dùng chung. Tích 3 lỗi rồi
+ * gõ "Không đeo bảng tên" thì lỗi "bật app trễ" và "thái độ" cũng mang đúng câu
+ * đó. KTV mở ra đọc thấy ba lỗi khác nhau cùng một lời giải thích, không biết
+ * câu đó nói về lỗi nào, và cũng không cãi vào đâu được.
+ *
+ * `noteChung` là đường CŨ: chỉ còn nhận khi tích ĐÚNG MỘT lỗi — lúc đó "ghi chú
+ * chung" và "ghi chú của lỗi đó" là một.
+ */
+export function resolveNotesPerCriteria(
+    criteria: CriteriaRow[],
+    notesByCriteria?: Record<string, string> | null,
+    noteChung?: string | null,
+): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const c of criteria) {
+        out[c.id] = String(notesByCriteria?.[c.id] ?? '').trim();
+    }
+
+    const legacy = String(noteChung ?? '').trim();
+    if (legacy && criteria.length === 1 && !out[criteria[0].id]) {
+        out[criteria[0].id] = legacy;
+    }
+    return out;
 }

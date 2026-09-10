@@ -17,6 +17,7 @@
  *   E6. Trần ảnh áp cho TỪNG lỗi.
  *   E7. Dữ liệu CŨ (một ảnh dính nhiều lỗi): KTV vẫn xem được ảnh ở MỌI lỗi,
  *       kèm nhãn 'ảnh dùng chung' — không tấm nào bị giấu đi.
+ *   E8. GHI CHÚ cũng của riêng từng lỗi, không dùng chung một câu cho tất cả.
  *
  * Chạy: npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register \
  *       scripts/qa/qa_12_evidence_end_to_end.ts
@@ -26,7 +27,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import {
-    resolvePhotosPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
+    resolvePhotosPerCriteria, resolveNotesPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
 } from '../../lib/services/KtvOfficeEvidenceService';
 import { officeBonusTimeline, markSharedPhotosWithinDay } from '../../lib/services/KtvOfficeBonusService';
 import { finish, fatal } from './_exit';
@@ -125,10 +126,18 @@ async function main() {
         const resolved = resolvePhotosPerCriteria([c1, c2, c3] as any, wanted);
         if (!resolved.ok) { check(false, 'Dung phieu hop le', resolved.error); return finish(failures); }
 
+        // Mỗi lỗi một câu ghi chú khác nhau — để biết câu nào rơi vào lỗi nào.
+        const notesWanted: Record<string, string> = {
+            [c1.id]: 'QA-AUTOTEST ghi chu cua LOI 1',
+            [c2.id]: 'QA-AUTOTEST ghi chu cua LOI 2',
+            [c3.id]: '',
+        };
+        const notesOf = resolveNotesPerCriteria([c1, c2, c3] as any, notesWanted);
+
         const rows = buildDeductRows({
             staffId, workDate: DAY, criteria: [c1, c2, c3] as any,
             urlsOf: resolved.perCriteria,          // that ra la link sau khi upload
-            note: 'QA-AUTOTEST', createdBy: staffId, createdByName: 'QA',
+            notesOf, createdBy: staffId, createdByName: 'QA',
         });
         const { error: insErr } = await supabase.from('KTVOfficeScoreLog').insert(rows);
         if (insErr) throw new Error(`Khong ghi duoc phieu QA: ${insErr.message}`);
@@ -152,6 +161,32 @@ async function main() {
             `"${c2.label}" hien DUNG anh cua no`, (seen.get(c2.label) || []).join(' '));
         check((seen.get(c3.label) || []).length === 0,
             `"${c3.label}" khong co anh thi KHONG muon cua loi khac`);
+
+        // ── E8: ghi chú theo từng lỗi ─────────────────────────────────
+        console.log('\n--- E8: ghi chu cua RIENG tung loi ---');
+        const noteOf = new Map<string, string | null>();
+        for (const h of day!.hits) noteOf.set(h.label, h.note);
+        console.table(day!.hits.map(h => ({
+            loi: h.label.slice(0, 26), ghi_chu: h.note ?? '(khong)',
+        })));
+        check(noteOf.get(c1.label) === notesWanted[c1.id],
+            `"${c1.label}" mang DUNG ghi chu cua no`, String(noteOf.get(c1.label)));
+        check(noteOf.get(c2.label) === notesWanted[c2.id],
+            `"${c2.label}" mang DUNG ghi chu cua no`, String(noteOf.get(c2.label)));
+        check(noteOf.get(c3.label) === null,
+            `"${c3.label}" khong ghi chu thi de TRONG, khong muon cau cua loi khac`);
+        check(new Set(day!.hits.map(h => h.note).filter(Boolean)).size
+            === day!.hits.filter(h => h.note).length,
+            'Khong hai loi nao dung chung mot cau ghi chu');
+
+        // Đường CŨ (một ô ghi chú chung) chỉ còn nhận khi tích ĐÚNG MỘT lỗi.
+        const chungNhieu = resolveNotesPerCriteria([c1, c2] as any, undefined, 'ghi chu chung');
+        check(chungNhieu[c1.id] === '' && chungNhieu[c2.id] === '',
+            'Nhieu loi ma chi co ghi chu chung => KHONG rai cho ca hai',
+            `${JSON.stringify(chungNhieu)}`);
+        const chungMot = resolveNotesPerCriteria([c1] as any, undefined, 'ghi chu chung');
+        check(chungMot[c1.id] === 'ghi chu chung',
+            'Dung MOT loi thi ghi chu chung van duoc (khong the nham lan)');
 
         // E2 — không tấm nào xuất hiện dưới hai lỗi.
         const owner = new Map<string, string[]>();

@@ -849,6 +849,17 @@ const AdminKtvOfficePage = () => {
                                         ? 'Lỗi này bắt buộc phải có ảnh riêng.'
                                         : `${mine.length}/${logic.maxPhotos} ảnh của riêng lỗi này`}
                                     </p>
+
+                                    {/* Ghi chú cũng của RIÊNG lỗi này. Một ô dùng
+                                        chung thì câu giải thích bị ghi y hệt vào
+                                        mọi lỗi, KTV đọc không biết nói về cái nào. */}
+                                    <textarea
+                                      value={logic.noteOf(item.id)}
+                                      onChange={e => logic.setNoteFor(item.id, e.target.value)}
+                                      placeholder={`Ghi chú cho lỗi "${item.label}" — ví dụ: quên bật app tới 19:30`}
+                                      rows={2}
+                                      className="w-full mt-2 p-2.5 rounded-xl border border-[var(--line)] focus:outline-none focus:ring-2 focus:ring-[var(--green)]/20 text-xs"
+                                    />
                                   </div>
                                 )}
                               </div>
@@ -869,13 +880,10 @@ const AdminKtvOfficePage = () => {
                         </div>
                       )}
 
-                      <label className="block text-sm font-bold mb-2">Ghi chú cho KTV</label>
-                      <textarea
-                        className="w-full min-h-[80px] p-3 rounded-2xl border border-[var(--line)] focus:outline-none focus:ring-2 focus:ring-[var(--green)]/20 text-sm"
-                        placeholder="Ví dụ: Không đeo bảng tên suốt ca chiều."
-                        value={logic.sheetState.note}
-                        onChange={e => logic.setSheetState(p => ({ ...p, note: e.target.value }))}
-                      />
+                      <p className="text-xs text-[var(--muted)]">
+                        Ảnh và ghi chú gắn ngay dưới từng lỗi ở trên — mỗi lỗi một
+                        bằng chứng riêng, để KTV đọc là biết câu đó nói về lỗi nào.
+                      </p>
                     </div>
                   </>
                 )}

@@ -6,7 +6,7 @@ import { createNotification } from '@/lib/notification-helper';
 import { getBusinessToday, shiftBusinessDate } from '@/lib/business-date';
 import { isOfficeManager } from '@/lib/services/KtvOfficeScoreService';
 import {
-    resolvePhotosPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
+    resolvePhotosPerCriteria, resolveNotesPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
 } from '@/lib/services/KtvOfficeEvidenceService';
 import { workdayEvidence, evidenceLabel } from '@/lib/services/KtvOfficeWorkdayService';
 
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json().catch(() => ({}));
-        const { staffId, workDate, criteriaIds, note, photosBase64, photosByCriteria } = body as {
+        const { staffId, workDate, criteriaIds, note, photosBase64, photosByCriteria, notesByCriteria } = body as {
             staffId?: string;
             workDate?: string;
             criteriaIds?: string[];
@@ -141,6 +141,8 @@ export async function POST(request: Request) {
             photosBase64?: string[];
             /** Đường MỚI — ảnh của riêng từng lỗi: { criteriaId: base64[] }. */
             photosByCriteria?: Record<string, string[]>;
+            /** Ghi chú của riêng từng lỗi: { criteriaId: text }. */
+            notesByCriteria?: Record<string, string>;
         };
 
         if (!staffId || !workDate || !Array.isArray(criteriaIds) || criteriaIds.length === 0) {
@@ -250,9 +252,13 @@ export async function POST(request: Request) {
             || (bUser.role ? `Quản lý (${bUser.role})` : null)
             || bUser.techCode
             || 'Không rõ';
+        // Ghi chú cũng gắn THEO TỪNG LỖI, không dùng chung — xem
+        // `resolveNotesPerCriteria`.
+        const notesOf = resolveNotesPerCriteria(criteria as any, notesByCriteria, note);
+
         const rows = buildDeductRows({
-            staffId, workDate, criteria: criteria as any, urlsOf,
-            note, createdBy: bUser.techCode, createdByName,
+            staffId, workDate, criteria: criteria as any, urlsOf, notesOf,
+            createdBy: bUser.techCode, createdByName,
         });
 
         const { data: inserted, error: insErr } = await supabase

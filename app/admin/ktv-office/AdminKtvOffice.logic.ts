@@ -177,6 +177,15 @@ export const useAdminKtvOfficeLogic = () => {
      * ảnh cũng áp cho cả rổ nên 3 lỗi cần ảnh chỉ được chia nhau 5 tấm.
      */
     photosByCriteria: Record<string, string[]>;
+    /**
+     * Ghi chú của RIÊNG từng lỗi: { criteria_id: text }.
+     *
+     * ⚠️ Trước đây cả phiếu chỉ có MỘT ô ghi chú, và nội dung đó ghi y hệt vào
+     * mọi dòng — cùng cái bệnh của rổ ảnh dùng chung. Tích 3 lỗi rồi gõ "Không
+     * đeo bảng tên" thì lỗi "bật app trễ" cũng mang đúng câu đó, KTV đọc không
+     * biết câu ấy nói về lỗi nào.
+     */
+    notesByCriteria: Record<string, string>;
   }>({
     isOpen: false,
     type: null,
@@ -187,6 +196,7 @@ export const useAdminKtvOfficeLogic = () => {
     selectedIds: [],
     note: '',
     photosByCriteria: {},
+    notesByCriteria: {},
   });
 
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
@@ -296,7 +306,7 @@ export const useAdminKtvOfficeLogic = () => {
     const today = businessToday;
     setSheetState(prev => ({
       ...prev, isOpen: true, type, person, code, score,
-      workDate: today, selectedIds: [], note: '', photosByCriteria: {},
+      workDate: today, selectedIds: [], note: '', photosByCriteria: {}, notesByCriteria: {},
     }));
     setEditState(null);
     setRevokeState(null);
@@ -403,6 +413,15 @@ export const useAdminKtvOfficeLogic = () => {
     }));
   };
 
+  const noteOf = (criteriaId: string): string => sheetState.notesByCriteria[criteriaId] || '';
+
+  const setNoteFor = (criteriaId: string, text: string) => {
+    setSheetState(prev => ({
+      ...prev,
+      notesByCriteria: { ...prev.notesByCriteria, [criteriaId]: text },
+    }));
+  };
+
   const removePhotoFor = (criteriaId: string, index: number) => {
     setSheetState(prev => ({
       ...prev,
@@ -437,7 +456,7 @@ export const useAdminKtvOfficeLogic = () => {
         staffId: sheetState.code,
         workDate: sheetState.workDate,
         criteriaIds: sheetState.selectedIds,
-        note: sheetState.note,
+        notesByCriteria: sheetState.notesByCriteria,
         photosByCriteria: sheetState.photosByCriteria,
       }, { timeout: 60000 });
 
@@ -668,6 +687,7 @@ export const useAdminKtvOfficeLogic = () => {
     sheetState, openSheet, closeSheet, setSheetState,
     criteriaGroups, allCriteria, toggleCriteria,
     photosOf, addPhotosFor, removePhotoFor, missingPhotoFor,
+    noteOf, setNoteFor,
     totalPoints, needPhoto, canSubmit, submitting, submitDeduct,
     unlockInfo, unlockReason, setUnlockReason, unlockFee, setUnlockFee, canUnlock, submitUnlock,
     existingHits, existingLoading, changeWorkDate,
