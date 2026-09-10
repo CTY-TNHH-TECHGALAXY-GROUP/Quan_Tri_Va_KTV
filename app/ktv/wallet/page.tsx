@@ -476,17 +476,13 @@ export default function KTVWalletPage() {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex gap-1">
-                                                                        {/* ⚠️ PENDING ở đây mang HAI nghĩa khác hẳn nhau.
-                                                                            Dòng rút tiền: đúng là đang chờ quầy duyệt.
-                                                                            Dòng tiền tua: chỉ là TẠM TÍNH — khách chưa
-                                                                            đánh giá xong nên số còn có thể đổi, không ai
-                                                                            đang ngồi duyệt cả. Gắn chung một nhãn
-                                                                            "Chờ duyệt" khiến KTV đi hỏi quầy vì sao ngâm
-                                                                            tiền tua, trong khi chẳng có gì để duyệt. */}
-                                                                        {isPending && (
-                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                                                                                {isWithdrawal ? 'Chờ duyệt' : 'Tạm tính'}
-                                                                            </span>
+                                                                        {/* ⚠️ Chỉ dòng RÚT TIỀN mới có gì đó để duyệt.
+                                                                            Dòng tiền tua PENDING chỉ là tạm tính — khách
+                                                                            chưa đánh giá xong nên số còn có thể đổi, và
+                                                                            ghi chú ngay trên dòng đã nói "· tạm tính"
+                                                                            rồi. Gắn thêm nhãn ở đây là nói hai lần. */}
+                                                                        {isPending && isWithdrawal && (
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Chờ duyệt</span>
                                                                         )}
                                                                         {item.type === 'WITHDRAWAL' && item.status === 'APPROVED' && (
                                                                             <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Đã nhận</span>
