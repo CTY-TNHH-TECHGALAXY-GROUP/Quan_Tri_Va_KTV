@@ -201,10 +201,9 @@ export default function KTVWalletPage() {
                         <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Wallet size={32} />
                         </div>
-                        <h2 className="text-xl font-black text-slate-800 mb-2">Ví đang tạm tắt</h2>
+                        <h2 className="text-xl font-black text-slate-800 mb-2">Ví đang bảo trì</h2>
                         <p className="text-slate-500 text-sm max-w-xs mx-auto">
-                            Quản lý đã tắt ví cho tài khoản của bạn. Số dư vẫn được giữ nguyên,
-                            liên hệ quản lý khi cần mở lại.
+                            Hệ thống đang bảo trì ví. Số dư của bạn vẫn được giữ nguyên.
                         </p>
                     </div>
                 ) : (
