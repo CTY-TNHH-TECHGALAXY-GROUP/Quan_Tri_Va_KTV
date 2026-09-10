@@ -62,6 +62,8 @@ const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
 export function useDispatchBoard(selectedDate: string, selectedOrderId: string | null) {
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [staffs, setStaffs] = useState<StaffData[]>([]);
+    /** Mã mà MÁY CHỦ đang nhận ra, khi nó khác người đang mở tab này. */
+    const [identityMismatch, setIdentityMismatch] = useState<string | null>(null);
     const [turns, setTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [beds, setBeds] = useState<any[]>([]);
@@ -152,9 +154,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             const res = await getDispatchData(selectedDate);
             if (!res.success || !res.data) {
                 console.error("❌ [Dispatch] Server Action error:", JSON.stringify(res, null, 2));
+                // Phiên bị lẫn: máy chủ nhận ra một người khác với người đang mở
+                // tab này. Phải nói ra, không thì bảng trống trơn mà không ai
+                // hiểu vì sao — xem ghi chú ở getDispatchData.
+                setIdentityMismatch((res as any).identityMismatch || null);
                 setLoading(false);
                 return;
             }
+            setIdentityMismatch(null);
 
             const { staffs: sData, turns: tData, bookings: bData } = res.data;
 
@@ -650,6 +657,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
     return {
         orders, setOrders,
         staffs, setStaffs,
+        identityMismatch,
         turns, setTurns,
         rooms, setRooms,
         beds, setBeds,

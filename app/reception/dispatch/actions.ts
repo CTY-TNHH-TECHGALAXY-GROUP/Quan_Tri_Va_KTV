@@ -1,7 +1,7 @@
 'use server';
 import { isUtilityService } from '@/lib/booking.logic';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { requirePermission } from '@/lib/auth-server';
+import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
@@ -502,6 +502,25 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         };
     } catch (error: any) {
         console.error('❌ [Server] getDispatchData error:', error);
+
+        // 'Forbidden' ở màn điều phối gần như luôn là PHIÊN BỊ LẪN, không phải
+        // quầy bị gỡ quyền: cookie JWT của Supabase khoá theo TÊN MÁY CHỦ và bỏ
+        // qua cổng, nên mở app KTV ở localhost:3001 rồi bảng điều phối ở
+        // localhost:57981 là dùng chung một phiên — ai đăng nhập sau đè lên trước.
+        // Tab vẫn nhớ "tôi là dev" (sessionStorage, riêng từng tab) nhưng mọi lời
+        // gọi server lại đi dưới danh nghĩa KTV kia.
+        //
+        // Trả kèm danh tính mà máy chủ đang thấy để màn hình nói được cho quầy
+        // biết vì sao bảng trống, thay vì im lặng rồi in Forbidden ra console.
+        if (String(error?.message) === 'Forbidden') {
+            let danhTinhMayChu: string | null = null;
+            try {
+                const u = await requireBusinessUser();
+                danhTinhMayChu = u?.techCode || u?.businessUserId || null;
+            } catch { /* không tra ra thì thôi, vẫn báo được là bị lẫn */ }
+            return { success: false, error: 'Forbidden', identityMismatch: danhTinhMayChu || '(không rõ)' };
+        }
+
         return { success: false, error: error.message || 'Unknown error' };
     }
 }

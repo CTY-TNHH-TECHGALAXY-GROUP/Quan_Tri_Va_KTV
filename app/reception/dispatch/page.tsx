@@ -181,6 +181,7 @@ export default function DispatchBoardPage() {
     loading, setLoading,
     fetchData,
     now,
+    identityMismatch,
   } = useDispatchBoard(selectedDate, selectedOrderId);
 
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
@@ -342,7 +343,7 @@ export default function DispatchBoardPage() {
     onCancel?: () => void;
   } | null>(null);
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string, guestId?: string } | null>(null);
@@ -1984,6 +1985,48 @@ if (!hasPermission('dispatch_board')) {
       </div>
     );
   };
+  /**
+   * Phiên bị lẫn: máy chủ nhận ra một người khác với người đang mở tab này.
+   *
+   * Cookie JWT của Supabase khoá theo TÊN MÁY CHỦ và bỏ qua cổng, nên mở app KTV
+   * ở localhost:3001 rồi bảng điều phối ở localhost:57981 là dùng chung một
+   * phiên — ai đăng nhập sau đè lên trước. Tab vẫn nhớ "tôi là dev"
+   * (sessionStorage, riêng từng tab) nhưng mọi lời gọi server đi dưới danh nghĩa
+   * người kia và bị trả Forbidden.
+   *
+   * Trước đây chỗ này im lặng: bảng trống trơn, lỗi chỉ nằm trong console. Quầy
+   * nhìn vào tưởng mất dữ liệu. Chặn hẳn và nói rõ vẫn hơn.
+   */
+  if (identityMismatch) {
+    return (
+      <AppLayout title="Điều Phối">
+        <div className="max-w-md mx-auto px-4 py-16 flex flex-col items-center text-center">
+          <ShieldAlert size={48} className="text-amber-500 mb-4" />
+          <h2 className="text-xl font-bold text-gray-900">Phiên đăng nhập bị lẫn</h2>
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            Màn hình đang mở bằng tài khoản <b>{user?.code || user?.id || '—'}</b>, nhưng máy chủ đang
+            nhận bạn là <b>{String(identityMismatch).toUpperCase()}</b> — do trình duyệt này đã đăng
+            nhập tài khoản khác ở tab khác. Bảng điều phối không tải được là vì vậy.
+          </p>
+          <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+            Cookie đăng nhập tính theo tên máy chủ, KHÔNG kể cổng — mở hai cổng khác nhau trên cùng
+            <b> localhost</b> vẫn dùng chung một phiên. Muốn mở hai tài khoản cùng lúc thì một bên
+            dùng <b>127.0.0.1</b>, bên kia dùng <b>localhost</b>.
+          </p>
+          <button
+            onClick={async () => {
+              await logout();
+              window.location.href = '/login?error=identity_mismatch';
+            }}
+            className="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200"
+          >
+            Đăng nhập lại
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout title="Điều Phối">
       <div className="h-[calc(100dvh-3.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden" style={{ overscrollBehaviorY: 'contain' }}>
