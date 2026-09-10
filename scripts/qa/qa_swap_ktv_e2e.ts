@@ -108,6 +108,10 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         await BookingItemPauseService.swapKtvOnPausedItem(
             sb as any, itemId, oldKtv, newKtv, 0, DATE, false, 0
         );
+        // Route /api/ktv/pause-swap-resume gọi tiếp resumeItem ngay sau khi đổi.
+        // Phải chạy y hệt ở đây, vì chính resumeItem mới là chỗ từng gán nhầm
+        // khoảng dừng cho chặng của người vào thay.
+        await BookingItemPauseService.resumeItem(sb as any, itemId);
 
         // ── Soi lại ──────────────────────────────────────────────
         const { data: it } = await sb.from('BookingItems').select('technicianCodes, segments').eq('id', itemId).single();
@@ -125,6 +129,13 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         check('KTV cũ VẪN nằm trong đơn', (it as any).technicianCodes?.includes(oldKtv));
         check('chặng KTV mới là TAKEOVER', segMoi?.note === 'TAKEOVER');
         check('KTV mới nhận phần còn lại 45p', segMoi?.customCommissionDuration === 45, `= ${segMoi?.customCommissionDuration}p`);
+        // Đồng hồ KTV cộng bù mọi khoảng dừng (expectedEndMs = bắt đầu + giờ gán +
+        // thời gian dừng). Chặng của người vào thay được tạo TRONG lúc đơn đang
+        // tạm ngưng nên nó KHÔNG được mang khoảng dừng nào — nếu không, quầy gán
+        // 5 phút mà máy KTV đếm 16 phút (lỗi thật 10/09/2026, đơn WB-10092026-016).
+        const dungCuaNguoiMoi = Array.isArray(segMoi?.pauses) ? segMoi.pauses : [];
+        check('chặng người vào thay KHÔNG mang khoảng dừng', dungCuaNguoiMoi.length === 0,
+            dungCuaNguoiMoi.length ? `có ${dungCuaNguoiMoi.length} khoảng — đồng hồ sẽ cộng bù sai` : 'không có');
 
         const { data: tq } = await sb.from('TurnQueue').select('employee_id, status, current_order_id, queue_position').eq('date', DATE).in('employee_id', [oldKtv, newKtv]);
         const qCu = (tq || []).find((t: any) => t.employee_id === oldKtv) as any;

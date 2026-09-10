@@ -41,6 +41,36 @@ const counterActorName = (entry: any): string => {
     return by ? 'tài khoản văn phòng' : 'không rõ người bấm';
 };
 
+/**
+ * Danh sách KTV để HIỆN TRÊN THẺ.
+ *
+ * `staffList` dựng từ `technicianCodes`. Người bị đổi ra vẫn được giữ trong
+ * danh sách đó (quy chế 06/09/2026) — nhưng dữ liệu cũ, hoặc đơn bị gỡ tay,
+ * có thể đã mất tên họ khỏi `technicianCodes` mà chặng thì vẫn còn. Khi đó
+ * thẻ chỉ hiện người mới, quay không biết ai đã từng làm cho khách.
+ * Ghép thêm từ `segments` để không bỏ sót ai.
+ */
+const dsKtvHienThi = (s: any): any[] => {
+    const ds: any[] = Array.isArray(s?.staffList) ? [...s.staffList] : [];
+    const daCo = new Set(ds.map((st: any) => String(st?.ktvId || '').toLowerCase()).filter(Boolean));
+
+    let segs: any = s?.segments;
+    if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch { segs = []; } }
+    if (!Array.isArray(segs)) return ds;
+
+    for (const seg of segs) {
+        const ma = String(seg?.ktvId || '').trim();
+        if (!ma || daCo.has(ma.toLowerCase())) continue;
+        daCo.add(ma.toLowerCase());
+        ds.push({ ktvId: ma, ktvName: ma, segments: [seg], _ghepTuChang: true });
+    }
+    return ds;
+};
+
+/** Đơn này có ai bị tước quyền lợi không (bị đổi ra, huỷ không công)? */
+const coNguoiBiTuoc = (s: any): boolean =>
+    dsKtvHienThi(s).some((st: any) => (st?.segments || []).some((g: any) => g?.voided === true));
+
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
 
 /**
@@ -561,7 +591,6 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     const counterLog = services
                                         .flatMap((s: any) => Array.isArray(s.options?.counterLog) ? s.options.counterLog : [])
                                         .sort((a: any, b: any) => (new Date(a?.at).getTime() || 0) - (new Date(b?.at).getTime() || 0));
-                                    const lastCounterAction = counterLog[counterLog.length - 1];
                                     // Gộp lỗi khách tích của mọi dịch vụ trong thẻ, khử trùng theo id.
                                     const subOrderViolations = Array.from(
                                         new Map(
@@ -951,9 +980,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                             
                                                             {/* Danh sách KTV */}
-                                                            {!s.isUtility && s.staffList && s.staffList.length > 0 && (
+                                                            {!s.isUtility && dsKtvHienThi(s).length > 0 && (
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    {s.staffList.map((st: any, idx: number) => {
+                                                                    {dsKtvHienThi(s).map((st: any, idx: number) => {
                                                                         const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
                                                                         return (
@@ -984,9 +1013,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                             {/* Hiển thị thời gian THEO TỪNG KTV */}
                                                             {!s.isUtility && (
-                                                                s.staffList && s.staffList.length > 1 ? (
+                                                                // Hiện theo từng người khi đơn có nhiều KTV, HOẬC khi có người
+                                                                // bị tước quyền lợi — nhánh một-người bên dưới chỉ vẽ một
+                                                                // khoảng BẮT ĐẦU → KẾT THÚC chung, không chỗ nào để gắn
+                                                                // nhãn "Đã đổi" cả.
+                                                                (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s)) ? (
                                                                     <div className="space-y-1 mt-1">
-                                                                        {s.staffList.map((st: any, stIdx: number) => {
+                                                                        {dsKtvHienThi(s).map((st: any, stIdx: number) => {
                                                                             const seg = st?.segments?.[0];
                                                                             const ktvStart = seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart;
                                                                             // 🔥 FIX: Luôn tính dynamic end time từ ktvStart thực tế, không dùng seg.endTime cũ
@@ -1241,25 +1274,15 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                 {counterLog.length > 0 && (
                                                     <details className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
-                                                        {/* Hiện luôn THAO TÁC gần nhất trên dòng tiêu đề — không phải
-                                                            chỉ đếm số lần. Quầy nhìn thẻ là biết vừa bấm gì, khỏi mở ra. */}
+                                                        {/* Dòng tiêu đề chỉ còn đúng một chữ "Thao tác" — chi tiết
+                                                            nằm ở danh sách bên dưới theo dạng: giờ · người · việc. */}
                                                         <summary className="cursor-pointer select-none text-[10px] font-black uppercase tracking-wider text-gray-600 leading-snug">
-                                                            <span className="text-gray-400">Quầy · </span>
-                                                            {ACTION_LABEL[lastCounterAction?.action] || lastCounterAction?.action}
-                                                            {lastCounterAction?.at ? ` · ${formatToHourMinute(lastCounterAction.at)}` : ''}
-                                                            {lastCounterAction ? ` · ${counterActorName(lastCounterAction)}` : ''}
-                                                            {counterLog.length > 1 && (
-                                                                <span className="ml-1 text-gray-400 normal-case">
-                                                                    (+{counterLog.length - 1} thao tác trước)
-                                                                </span>
-                                                            )}
+                                                            Thao tác
                                                         </summary>
                                                         <div className="mt-1 flex flex-col gap-0.5">
                                                             {counterLog.map((c: any, k: number) => (
                                                                 <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
-                                                                    {formatToHourMinute(c.at)} · {ACTION_LABEL[c.action] || c.action}
-                                                                    {` · ${counterActorName(c)}`}
-                                                                    {c.note ? ` — ${c.note}` : ''}
+                                                                    {formatToHourMinute(c.at)} {counterActorName(c)} {ACTION_LABEL[c.action] || c.action}
                                                                 </span>
                                                             ))}
                                                         </div>

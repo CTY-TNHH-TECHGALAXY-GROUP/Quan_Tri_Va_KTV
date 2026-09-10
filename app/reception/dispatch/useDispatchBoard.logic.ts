@@ -360,6 +360,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 selectedRoomId: bi.roomName || b.roomName || null,
                                 bedId: bi.bedId || b.bedId || null,
                                 staffList: staffList,
+                                // Chặng thô của cả dịch vụ. Thẻ Kanban cần nó để dựng lại
+                                // những KTV chỉ còn dấu vết trong `segments` — xem
+                                // `dsKtvHienThi` ở KanbanBoard.tsx.
+                                segments: parsedSegments,
                                 adminNote: finalAdminNote,
                                 genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
                                 strength: normalizeStrength(parsedOptions?.strength || ''),

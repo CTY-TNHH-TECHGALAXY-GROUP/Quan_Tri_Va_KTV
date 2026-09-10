@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+import { closeOpenPause, voidSegment, parseTimeMs } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
 import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
@@ -207,7 +207,23 @@ export class BookingItemPauseService {
                     if (!closeOpenPause(next, resumeAt, 'RESUME')) {
                         // Chặng bị dừng bằng code cũ (chưa có `pauses`) — dựng lại
                         // khoảng dừng từ `pauseStart` để không mất phần đã chờ.
-                        next.pauses.push({ from: item.pauseStart, to: resumeAt, closedBy: 'RESUME' });
+                        //
+                        // ⚠️ CHỈ dựng lại cho chặng đã chạy TRƯỚC lúc bấm dừng.
+                        // Chặng của KTV vào thay được tạo NGAY TRONG lúc đơn đang
+                        // tạm ngưng, nên nó không có khoảng dừng nào để đóng — rơi
+                        // vào nhánh này là bị gán một khoảng dừng có TRƯỚC cả lúc
+                        // nó bắt đầu. Đồng hồ KTV cộng bù khoảng đó (expectedEndMs
+                        // = bắt đầu + giờ gán + thời gian dừng) nên quầy gán 5 phút
+                        // mà máy KTV đếm 16 phút. Đúng lỗi quan sát 10/09/2026 trên
+                        // đơn WB-10092026-016: dừng 14:46:04, KTV mới vào 14:56:59.
+                        const msBatDau = parseTimeMs(seg.actualStartTime);
+                        const msBamDung = parseTimeMs(item.pauseStart);
+                        const daChayTruocKhiDung = Number.isFinite(msBatDau)
+                            && Number.isFinite(msBamDung)
+                            && msBatDau <= msBamDung;
+                        if (daChayTruocKhiDung) {
+                            next.pauses.push({ from: item.pauseStart, to: resumeAt, closedBy: 'RESUME' });
+                        }
                     }
                     return next;
                 });
