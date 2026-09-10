@@ -876,7 +876,7 @@ const KTVAttendancePage = () => {
                                                         ngay trên đầu máy, còn giờ đã hẹn thì ở dòng ngay trên. */}
                                                     {diMuon && (
                                                         <p className="text-center text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-                                                            Bạn đang ĐI MUỘN.
+                                                            Bạn đã ĐI MUỘN.
                                                         </p>
                                                     )}
                                                 </>
