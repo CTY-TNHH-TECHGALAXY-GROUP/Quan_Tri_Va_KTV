@@ -445,14 +445,15 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   )}
                 </div>
 
+                {/* MỘT dòng, chữ to. Đứng ở thẻ nhận đơn KTV chỉ cần biết đúng một
+                    điều: khách đã nằm sẵn trong phòng, đừng làm lại nghi thức đón khách.
+                    Dài dòng hơn là không ai đọc. Phần còn lại nhắc ở màn đồng hồ,
+                    đúng lúc họ đứng trước cửa phòng. */}
                 {laDonVaoThay && (
-                  <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-amber-700">
-                      <AlertTriangle size={13} strokeWidth={3} /> Bạn vào thay — không phải khách mới
-                    </p>
-                    <p className="mt-1.5 text-[13px] font-bold leading-snug text-amber-800">
-                      Khách đang ở sẵn trong phòng, phòng đã mở.
-                      Vào phòng, chụp ảnh xác nhận rồi bấm bắt đầu — khách chờ tới lúc đó.
+                  <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-4">
+                    <p className="flex items-center gap-2 text-lg font-black leading-snug text-amber-800">
+                      <AlertTriangle size={22} strokeWidth={3} className="shrink-0" />
+                      Khách đang ở sẵn trong phòng, phòng đã mở
                     </p>
                   </div>
                 )}
