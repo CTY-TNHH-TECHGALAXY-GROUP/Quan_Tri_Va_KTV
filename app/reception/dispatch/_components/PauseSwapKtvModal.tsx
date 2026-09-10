@@ -271,9 +271,22 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                             onChange={(e) => setSelectedNewKtv(e.target.value)}
                           >
                             <option value="">-- Chọn --</option>
-                            {availableKtvs.map(ktv => (
-                              <option key={ktv.id} value={ktv.id}>{ktv.full_name} ({ktv.id}) [{WORK_TYPE_LABELS[ktv.work_type as keyof typeof WORK_TYPE_LABELS] || 'A'}]</option>
-                            ))}
+                            {/* Bỏ chính người đang bị rút ra — đổi một người sang
+                                chính họ là vô nghĩa. Người đang bận vẫn liệt kê
+                                (quầy có thể cố ý điều), nhưng ghi rõ trạng thái. */}
+                            {availableKtvs
+                              .filter(ktv => ktv.id !== selectedOldKtv)
+                              .map(ktv => {
+                                const tt = (ktv as any).turnStatus;
+                                const nhan = tt === 'working' ? ' · đang làm'
+                                  : tt === 'assigned' ? ' · đã xếp lịch'
+                                  : '';
+                                return (
+                                  <option key={ktv.id} value={ktv.id}>
+                                    {ktv.full_name} ({ktv.id}) [{WORK_TYPE_LABELS[ktv.work_type as keyof typeof WORK_TYPE_LABELS] || 'A'}]{nhan}
+                                  </option>
+                                );
+                              })}
                           </select>
                         </div>
                       </div>

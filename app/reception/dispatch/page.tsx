@@ -3127,13 +3127,24 @@ Vẫn kết thúc sớm?`)) return;
         setPhotoIndex={setPhotoIndex}
       />
 
-      {/* Modal Tạm Dừng / Đổi KTV */}
+      {/* Modal Tạm Dừng / Đổi KTV
+          ⚠️ `availableKtvs` trước 10/09/2026 lọc `staffs.filter(s => s.status === 'ready')`.
+          `staffs` là bảng Staff thô, `status` của nó là 'ĐANG LÀM' — chuỗi 'ready'
+          chỉ tồn tại ở màn reception/turns (nơi map waiting → ready). Không khớp
+          dòng nào nên ô "KTV vào thay" luôn rỗng, quầy không đổi được ai.
+          Nguồn đúng là sổ tua trong ngày: ai không 'off' thì còn ở ca. */}
       <PauseSwapKtvModal
         isOpen={pauseModalOpen}
         onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); setPauseModalSubOrder(null); setPauseModalLockAction(undefined); }}
         order={pauseModalOrder}
         subOrder={pauseModalSubOrder}
-        availableKtvs={staffs.filter(s => s.status === 'ready')}
+        availableKtvs={turns
+          .filter(t => t.status !== 'off' && t.staff)
+          .map(t => ({ ...(t.staff as any), turnStatus: t.status }))
+          .sort((a: any, b: any) =>
+            (a.turnStatus === 'waiting' ? 0 : 1) - (b.turnStatus === 'waiting' ? 0 : 1)
+            || String(a.id).localeCompare(String(b.id))
+          )}
         onConfirm={handleConfirmPauseSwap}
         lockAction={pauseModalLockAction}
       />
