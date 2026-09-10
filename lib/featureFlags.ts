@@ -28,14 +28,21 @@ export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
     withdraw_morning_only: false,
     kpi_target_hours: false,
     enable_bonus: true,
-    // Ví Điểm của loại D lấy điểm từ đâu: TẮT = điểm sao khách chấm (mặc định
-    // cũ, giữ nguyên cho mọi tài khoản chưa set), BẬT = điểm Office.
-    bonus_from_office: false,
 };
 
 /** Cờ cũ còn sót trong DB, coi như bí danh của cờ mới. */
 const FLAG_ALIASES: Record<string, string[]> = {
-    bonus_wallet: ['enable_bonus_wallet'],
+    /**
+     * `bonus_from_office` từng là một cần gạt RIÊNG, đứng cạnh `bonus_wallet`
+     * trên bảng Tính năng: một cái bật/tắt ví, một cái chọn nguồn điểm. Hai cần
+     * gạt cho cùng một thứ là thừa, và đẻ ra hai trạng thái vô nghĩa — có ví mà
+     * không có nguồn điểm, hoặc có nguồn điểm mà không có ví để xem (đúng cảnh
+     * của T001). Nay gộp làm một: loại D bật Ví Điểm là điểm tính theo Office.
+     *
+     * Giữ tên cũ làm bí danh để tài khoản chỉ mới set `bonus_from_office` không
+     * bị mất ví sau khi gộp. Cờ đặt TƯỜNG MINH vẫn thắng bí danh.
+     */
+    bonus_wallet: ['enable_bonus_wallet', 'bonus_from_office'],
 };
 
 /**
@@ -156,7 +163,9 @@ export function isWalletEnabled(
  */
 const WALLET_LABEL: Record<WalletType, { default: string; TYPE_D?: string }> = {
     TUA: { default: 'Ví Tua', TYPE_D: 'Ví Thu Nhập' },
-    BONUS: { default: 'Ví Bonus', TYPE_D: 'Điểm Tích Lũy' },
+    // Loại D chỉ còn MỘT loại điểm — điểm Office. Tên nói thẳng nguồn để KTV
+    // không phải đoán điểm ở đâu ra.
+    BONUS: { default: 'Ví Bonus', TYPE_D: 'Ví Điểm theo Office' },
 };
 
 export function walletLabel(wallet: WalletType, workType: string | null | undefined): string {

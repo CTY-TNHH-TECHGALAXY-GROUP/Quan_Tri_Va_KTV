@@ -33,12 +33,10 @@ export const FEATURE_FLAG_DEFS = [
     {
         key: 'bonus_wallet',
         label: '💎 VÍ BONUS',
-        description: 'Tích điểm thưởng ca, tua vào ví Bonus',
-    },
-    {
-        key: 'bonus_from_office',
-        label: '🏅 Ví Điểm theo Office',
-        description: 'Loại D: Ví Điểm lấy điểm Office thay cho điểm sao khách chấm. Điểm Office không quy đổi ra tiền — chỉ quyết định mức quỹ nội bộ phải đóng',
+        // Loại D: đây CHÍNH LÀ cần gạt "Ví Điểm theo Office" — bảng tự đổi nhãn
+        // theo tab. Trước đây có thêm một cần gạt `bonus_from_office` riêng, gộp
+        // rồi vì hai cái quản cùng một thứ.
+        description: 'Loại A/B/C: tích điểm thưởng ca, tua vào ví Bonus. Loại D: Ví Điểm tính theo điểm Office, không quy đổi ra tiền — chỉ quyết định mức quỹ nội bộ phải đóng',
     },
     {
         key: 'maintenance_fee',

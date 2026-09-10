@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { resolveStaffFlag } from '@/lib/featureFlags';
 import { KtvOfficeScoreService, currentMonthVn, FUND_BASE } from '@/lib/services/KtvOfficeScoreService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
@@ -7,13 +6,14 @@ import { WalletAccessService } from '@/lib/services/WalletAccessService';
  * ================================================================
  * Ví Điểm của loại D lấy điểm từ ĐÂU
  * ================================================================
- * Hai nguồn, chọn một bằng cờ `bonus_from_office` của từng nhân viên:
+ * Loại D chỉ có MỘT nguồn: điểm Office — 100đ mỗi ngày đi làm, trừ dần theo
+ * lỗi, lấy trung bình tháng rồi trừ phạt lỗi lặp. Loại A/B/C giữ điểm sao
+ * (khách chấm ≥4★ thì cộng điểm, quy ra tiền, rút được).
  *
- *   TẮT (mặc định) — điểm sao: khách chấm ≥4★ thì cộng điểm, quy ra tiền theo
- *                    đơn giá điểm, KTV rút được. Đây là hành vi cũ, giữ nguyên
- *                    cho mọi tài khoản chưa set cờ.
- *   BẬT            — điểm Office: 100đ mỗi ngày đi làm, trừ dần theo lỗi, lấy
- *                    trung bình tháng rồi trừ phạt lỗi lặp.
+ * ⚠️ Trước đây có thêm cờ `bonus_from_office` để CHỌN nguồn, đứng cạnh cờ
+ * `bonus_wallet` bật/tắt ví. Hai cần gạt cho cùng một thứ là thừa và đẻ ra
+ * trạng thái vô nghĩa: có ví mà không có nguồn điểm, hoặc có nguồn điểm mà
+ * không có ví để xem. Nay gộp làm một — loại D bật Ví Điểm là điểm theo Office.
  *
  * ⚠️ Điểm Office KHÔNG quy ra tiền và KHÔNG rút được. Nó là thang chất lượng,
  * không phải số dư tích được. Hệ quả tiền của nó đã có sẵn trong quy chế và chỉ
@@ -64,30 +64,21 @@ export async function usesOfficeBonus(
     supabase: SupabaseClient,
     staffId: string,
 ): Promise<boolean> {
-    const { data: staff } = await supabase
-        .from('Staff')
-        .select('work_type, feature_flags')
-        .eq('id', staffId)
-        .maybeSingle();
-
-    if (!staff || staff.work_type !== 'TYPE_D') return false;
-    return resolveStaffFlag((staff as any).feature_flags, 'bonus_from_office');
+    return canSeeOfficePoints(supabase, staffId);
 }
 
 /**
- * KTV này có được XEM điểm Office không — dùng chung cho MỌI màn hình.
+ * KTV này có được XEM điểm Office không — cửa DUY NHẤT, dùng chung cho MỌI
+ * màn hình (Dashboard, trang Ví, các route ví bonus).
  *
- * Ba điều kiện, và cả ba đều đã có sẵn, không đẻ thêm cần gạt mới:
+ * Hai điều kiện, cả hai đều có sẵn:
  *   1. Loại D — chỉ nhóm này có thang điểm Office.
- *   2. Ví Điểm đang mở (công tắc cả loại VÀ cờ `bonus_wallet` của người đó) —
- *      không có ví thì không có chỗ nào chứa điểm.
- *   3. `bonus_from_office` bật — điểm của họ tính theo Office.
+ *   2. Ví Điểm đang mở: công tắc CẢ LOẠI và cờ `bonus_wallet` của người đó.
  *
- * ⚠️ Trước đây nút "Điểm Office" trên Dashboard không đi qua cửa nào: nó hiện
- * bất cứ khi nào API trả về số. Còn ví thì đòi đủ cả ba. Nên tài khoản có
- * `bonus_wallet = false` mà `bonus_from_office = true` (ví dụ T001) nhìn thấy
- * nút trên Dashboard nhưng mở ví ra thì không có gì — hai màn hình nói hai
- * chuyện khác nhau về cùng một tính năng. Giờ cả hai gọi chung hàm này.
+ * ⚠️ Trước đây nút "Điểm Office" trên Dashboard không đi qua cửa nào — nó hiện
+ * bất cứ khi nào API trả về số, còn trang Ví thì đòi đủ điều kiện. Tài khoản
+ * `bonus_wallet = false` (ví dụ T001) thấy nút trên Dashboard mà mở ví ra không
+ * có gì: hai màn hình nói hai chuyện về cùng một tính năng. Giờ chung một cửa.
  */
 export async function canSeeOfficePoints(
     supabase: SupabaseClient,
@@ -95,12 +86,11 @@ export async function canSeeOfficePoints(
 ): Promise<boolean> {
     const { data: staff } = await supabase
         .from('Staff')
-        .select('work_type, feature_flags')
+        .select('work_type')
         .eq('id', staffId)
         .maybeSingle();
 
     if (!staff || staff.work_type !== 'TYPE_D') return false;
-    if (!resolveStaffFlag((staff as any).feature_flags, 'bonus_from_office')) return false;
 
     const { ok } = await WalletAccessService.isEnabled(supabase, staffId, 'BONUS');
     return ok;

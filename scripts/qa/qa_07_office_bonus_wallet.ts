@@ -2,8 +2,8 @@
  * QA #7 — Ví Thu Nhập + Ví Điểm tính theo Office cho tài khoản loại D.
  *
  *   W1. Tài khoản test đều mở được Ví Thu Nhập (TUA) và Ví Điểm (BONUS).
- *   W2. Cờ `bonus_from_office` quyết định NGUỒN điểm, bật/tắt riêng từng người,
- *       và không đụng tới các cờ ví khác.
+ *   W2. Loại D bật Ví Điểm (`bonus_wallet`) là dùng NGUỒN ĐIỂM OFFICE — một cần
+ *       gạt duy nhất, không còn cờ chọn nguồn riêng.
  *   W3. Điểm ví = ĐÚNG điểm tháng Office (`computeMonth().final`), không lệch.
  *   W4. Bậc quỹ nội bộ khớp bảng quy chế (98 / 96 / 90 / 85).
  *   W5. Lịch sử là danh sách theo NGÀY, giữ cả ngày sạch, mới nhất trước.
@@ -68,14 +68,15 @@ async function main() {
     console.log(`  Vi Diem     dang TAT o: ${noBonus.join(', ') || 'khong ai'}`);
     check(true, `Doc duoc cong tac vi cua ca ${ids.length} KTV loai D`);
 
-    // ── W2: cờ nguồn điểm ──────────────────────────────────────────────
-    console.log('\n--- W2: co `bonus_from_office` quyet dinh NGUON diem ---');
+    // ── W2: một cần gạt duy nhất — bật Ví Điểm là dùng điểm Office ──────
+    console.log('\n--- W2: bat Vi Diem = dung nguon diem Office (mot can gat) ---');
     const onOffice: string[] = [];
     for (const s of staff) {
-        const flagOn = resolveStaffFlag((s as any).feature_flags, 'bonus_from_office');
+        const viDiemMo = isWalletEnabled('BONUS', s as any, configs);
         const svcSaysYes = await usesOfficeBonus(supabase, s.id);
-        if (flagOn !== svcSaysYes) {
-            check(false, `${s.id}: co va service khong khop`, `co=${flagOn} service=${svcSaysYes}`);
+        if (viDiemMo !== svcSaysYes) {
+            check(false, `${s.id}: co vi va service khong khop`,
+                `vi_diem=${viDiemMo} service=${svcSaysYes}`);
         }
         if (svcSaysYes) onOffice.push(s.id);
     }
@@ -83,18 +84,16 @@ async function main() {
     console.log(`  Dang dung diem SAO   : ${ids.filter(i => !onOffice.includes(i)).join(', ') || 'khong ai'}`);
     check(onOffice.length > 0, 'Co it nhat mot tai khoan dung diem Office de kiem chung');
 
-    // Cờ nguồn điểm là cờ ĐỘC LẬP: bật/tắt nó không được kéo theo cờ ví nào.
-    // Kiểm bằng phép đọc thuần trên dữ liệu dựng sẵn, không phụ thuộc cấu hình
-    // thật của ai — người vận hành tắt cờ nào là quyền của họ.
-    const before = { tua_wallet: true, bonus_wallet: true, savings_wallet: true };
-    const after = { ...before, bonus_from_office: true };
-    check(
-        resolveStaffFlag(after, 'tua_wallet') === true
-        && resolveStaffFlag(after, 'bonus_wallet') === true
-        && resolveStaffFlag(after, 'savings_wallet') === true,
-        'Bat `bonus_from_office` khong lam tat vi nao khac');
-    check(resolveStaffFlag({ tua_wallet: true }, 'bonus_from_office') === false,
-        'Thieu co `bonus_from_office` => mac dinh TAT (giu nguyen hanh vi cu)');
+    // Gạt Ví Điểm không được kéo theo ví nào khác.
+    check(resolveStaffFlag({ tua_wallet: true, bonus_wallet: false }, 'tua_wallet') === true,
+        'Tat Vi Diem khong lam tat Vi Thu Nhap');
+    // Cờ CŨ `bonus_from_office` giờ là bí danh: tài khoản chỉ mới set cờ cũ thì
+    // sau khi gộp vẫn còn ví, không bị mất trắng.
+    check(resolveStaffFlag({ bonus_from_office: true }, 'bonus_wallet') === true,
+        'Tai khoan chi co co CU `bonus_from_office` van doc ra Vi Diem BAT');
+    // Nhưng cờ đặt tường minh phải thắng bí danh.
+    check(resolveStaffFlag({ bonus_wallet: false, bonus_from_office: true }, 'bonus_wallet') === false,
+        'Co `bonus_wallet` dat tuong minh THANG bi danh cu');
     // Loại khác loại D thì cờ có bật cũng không ăn thua.
     const { data: nonD } = await supabase
         .from('Staff').select('id').neq('work_type', 'TYPE_D').eq('status', 'ĐANG LÀM').limit(1);

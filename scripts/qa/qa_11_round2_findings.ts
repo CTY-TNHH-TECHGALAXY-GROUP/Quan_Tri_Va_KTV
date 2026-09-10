@@ -206,11 +206,10 @@ async function main() {
         const { data: full } = await supabase
             .from('Staff').select('feature_flags').eq('id', s.id).maybeSingle();
         const flags = (full as any)?.feature_flags;
-        const fromOffice = resolveStaffFlag(flags, 'bonus_from_office');
         const { ok: bonusWallet } = await WalletAccessService.isEnabled(supabase, s.id, 'BONUS');
         const dashboard = await canSeeOfficePoints(supabase, s.id);
-        const wallet = bonusWallet && fromOffice;   // dieu kien that cua trang Vi
-        rows.push({ id: s.id, vi_diem: bonusWallet, nguon_office: fromOffice, dashboard, vi: wallet });
+        const wallet = bonusWallet;   // dieu kien that cua trang Vi (da gop 1 co)
+        rows.push({ id: s.id, vi_diem: bonusWallet, dashboard, vi: wallet });
         if (dashboard !== wallet) {
             check(false, `${s.id}: dashboard va vi LECH nhau`, `dashboard=${dashboard} vi=${wallet}`);
         }

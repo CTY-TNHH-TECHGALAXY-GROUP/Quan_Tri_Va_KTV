@@ -1,7 +1,7 @@
 /**
  * Bật Ví Thu Nhập + Ví Điểm-theo-Office cho các TÀI KHOẢN TEST loại D.
  *
- * Chỉ ghi ĐÚNG ba khoá `tua_wallet`, `bonus_wallet`, `bonus_from_office`; mọi
+ * Chỉ ghi ĐÚNG hai khoá `tua_wallet` và `bonus_wallet`; mọi
  * khoá khác trong `feature_flags` giữ nguyên (`is_on_call`, `travel_time_mins`…
  * do màn khác ghi chung vào đây).
  *
@@ -51,18 +51,20 @@ async function main() {
             ? JSON.parse(s.feature_flags || '{}')
             : (s.feature_flags || {})) as Record<string, any>;
 
-        const next = {
+        // `bonus_wallet` cho loại D CHÍNH LÀ "Ví Điểm theo Office" — hai cần gạt
+        // đã gộp làm một. Cờ cũ `bonus_from_office` xoá luôn cho khỏi sót lại.
+        const next: Record<string, any> = {
             ...cur,
             tua_wallet: true,
-            bonus_wallet: true,
-            bonus_from_office: !OFF,
+            bonus_wallet: !OFF,
         };
+        delete next.bonus_from_office;
 
         rows.push({
             id: s.id,
             ten: (s.full_name || '').slice(0, 20),
-            truoc: `tua=${cur.tua_wallet ?? '-'} bonus=${cur.bonus_wallet ?? '-'} office=${cur.bonus_from_office ?? '-'}`,
-            sau: `tua=${next.tua_wallet} bonus=${next.bonus_wallet} office=${next.bonus_from_office}`,
+            truoc: `tua=${cur.tua_wallet ?? '-'} vi_diem=${cur.bonus_wallet ?? '-'}${cur.bonus_from_office !== undefined ? ` (co cu office=${cur.bonus_from_office})` : ''}`,
+            sau: `tua=${next.tua_wallet} vi_diem=${next.bonus_wallet}`,
         });
 
         if (APPLY) {
