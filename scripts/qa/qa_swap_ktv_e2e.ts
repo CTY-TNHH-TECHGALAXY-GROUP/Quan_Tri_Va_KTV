@@ -134,6 +134,12 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         // tạm ngưng nên nó KHÔNG được mang khoảng dừng nào — nếu không, quầy gán
         // 5 phút mà máy KTV đếm 16 phút (lỗi thật 10/09/2026, đơn WB-10092026-016).
         const dungCuaNguoiMoi = Array.isArray(segMoi?.pauses) ? segMoi.pauses : [];
+        // Chốt 10/09/2026: server KHÔNG đóng dấu giờ bắt đầu thay KTV mới nữa.
+        // Khách chờ tới lúc họ tự bấm Bắt đầu; `handleStartTimer` mới đóng dấu,
+        // kèm ảnh xác nhận đã vào phòng. Đóng dấu sớm là KTV mất trắng mấy phút
+        // đi bộ sang phòng.
+        check('chặng người vào thay CHƯA có giờ bắt đầu', !segMoi?.actualStartTime,
+            segMoi?.actualStartTime ? `đã bị đóng dấu ${segMoi.actualStartTime}` : 'chưa đóng dấu');
         check('chặng người vào thay KHÔNG mang khoảng dừng', dungCuaNguoiMoi.length === 0,
             dungCuaNguoiMoi.length ? `có ${dungCuaNguoiMoi.length} khoảng — đồng hồ sẽ cộng bù sai` : 'không có');
 

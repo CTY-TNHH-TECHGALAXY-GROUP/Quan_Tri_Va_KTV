@@ -280,6 +280,14 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
 
   /**
+   * Đơn này là VÀO THAY người khác, không phải khách mới.
+   *
+   * Không báo rõ thì KTV tưởng khách mới, làm lại cả nghi thức đón khách và
+   * mở phòng — trong khi khách đang nằm sẵn trong phòng chờ người thay.
+   */
+  const laDonVaoThay = currentSeg?.note === 'TAKEOVER';
+
+  /**
    * Đơn vừa được điều phối nhưng KTV chưa bấm xác nhận → chặn lại, hỏi nhận hay từ chối.
    *
    * Chỉ chặn khi tua CHƯA chạy. KHÔNG dùng `dispatchStartTime` để nhận biết — đó là giờ
@@ -436,6 +444,18 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                     <p className="text-[11px] font-bold text-slate-400 mt-1.5">Đơn {booking.billCode}</p>
                   )}
                 </div>
+
+                {laDonVaoThay && (
+                  <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-amber-700">
+                      <AlertTriangle size={13} strokeWidth={3} /> Bạn vào thay — không phải khách mới
+                    </p>
+                    <p className="mt-1.5 text-[13px] font-bold leading-snug text-amber-800">
+                      Khách đang ở sẵn trong phòng, phòng đã mở.
+                      Vào phòng, chụp ảnh xác nhận rồi bấm bắt đầu — khách chờ tới lúc đó.
+                    </p>
+                  </div>
+                )}
 
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
                   <div>

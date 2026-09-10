@@ -119,6 +119,26 @@ export function ScreenTimer({ logic }: { logic: any }) {
     activeSegmentIndex
   } = logic;
 
+  /**
+   * Đơn này là VÀO THAY người khác — xem ghi chú ở ScreenDashboard.
+   * Chặng nằm trong `booking.BookingItems[].segments` — giống chỗ
+   * ScreenDashboard dựng `allKtvSegments`.
+   */
+  const laDonVaoThay = React.useMemo(() => {
+    const items = Array.isArray(booking?.BookingItems) ? booking.BookingItems : [];
+    const cuaToi = items.flatMap((i: any) => {
+      let segs: any = i?.segments;
+      if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch { segs = []; } }
+      return Array.isArray(segs) ? segs : [];
+    }).filter((sg: any) => String(sg?.ktvId || '').toLowerCase() === String(logic?.ktvId || '').toLowerCase());
+
+    // Chặng đang tính: ưu tiên chuỗi theo activeSegmentIndex, nhưng chỉ cần
+    // có MỘT chặng TAKEOVER chưa đóng là đủ để nhắc.
+    const seg = cuaToi[activeSegmentIndex || 0];
+    if (seg?.note === 'TAKEOVER' && !seg?.actualEndTime) return true;
+    return cuaToi.some((sg: any) => sg?.note === 'TAKEOVER' && !sg?.actualEndTime);
+  }, [booking, activeSegmentIndex, logic?.ktvId]);
+
   // 📸 CAMERA WEBRTC STATE & LOGIC FOR START TIMER
   const MIN_BRIGHTNESS_FALLBACK = 40;
   const [minBrightness, setMinBrightness] = React.useState(MIN_BRIGHTNESS_FALLBACK);
@@ -405,6 +425,20 @@ export function ScreenTimer({ logic }: { logic: any }) {
       <div className="px-6 mb-10">
         {(!isTimerRunning && !isPaused) || isPrepping ? (
           <div className="space-y-4">
+            {/* Đơn vào thay: nhắc lại ngay trên nút bắt đầu. KTV đọc bảng ở thẻ
+                nhận đơn xong có thể đã quên, mà đây mới là lúc họ đứng trước cửa
+                phòng — chỗ dễ làm lại nghi thức đón khách nhất. */}
+            {laDonVaoThay && (
+              <div className="rounded-3xl border-2 border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-amber-700">
+                  <AlertCircle size={13} strokeWidth={3} /> Bạn vào thay — phòng đã mở
+                </p>
+                <p className="mt-1.5 text-[13px] font-bold leading-snug text-amber-800">
+                  Khách đang ở sẵn trong phòng. Chụp ảnh là để xác nhận bạn đã vào tới
+                  nơi, không phải để mở phòng. Bấm bắt đầu lúc nào thì đếm từ lúc đó.
+                </p>
+              </div>
+            )}
             {/* Selfie Photo Preview (Sequential Flow) */}
             {logic.startPhotoBase64 && (
               <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">

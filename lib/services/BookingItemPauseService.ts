@@ -509,10 +509,21 @@ export class BookingItemPauseService {
                 }
             }
             
+            // ⚠️ CỐ Ý KHÔNG đóng dấu `actualStartTime` ở đây (chốt 10/09/2026).
+            //
+            // Trước đó quầy bấm Đổi là đồng hồ của người vào thay chạy ngay,
+            // trong khi họ còn đang đi bộ sang phòng — mất trắng mấy phút đó.
+            // Quy ước mới: KHÁCH CHỜ TỚI LÚC KTV MỚI BẤM BẮT ĐẦU, rồi mới đếm
+            // phần còn lại. `handleStartTimer` sẽ đóng dấu `actualStartTime` kèm
+            // ảnh xác nhận, y hệt đơn thường.
+            //
+            // Tiền KHÔNG phụ thuộc mốc này: `customCommissionDuration` đã chốt
+            // cứng số phút quầy quyết, nên KTV bắt đầu sớm hay muộn đều nhận
+            // đúng bằng nhau.
+            const dBatDau = new Date();
             segments.push({
                 ktvId: newKtvId,
-                startTime: new Date().toISOString(), 
-                actualStartTime: new Date().toISOString(), // set để commission tính đúng
+                startTime: `${String(dBatDau.getHours()).padStart(2, '0')}:${String(dBatDau.getMinutes()).padStart(2, '0')}`,
                 endTime: null,
                 duration: remainingMins, // để calculateItemExpectedDuration đọc
                 customCommissionDuration: remainingMins,
