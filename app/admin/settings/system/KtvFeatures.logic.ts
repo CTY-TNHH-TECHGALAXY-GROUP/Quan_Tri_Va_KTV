@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { resolveStaffFlag } from '@/lib/featureFlags';
+import { useToast } from '@/components/ui/Toast';
 
 // 🔧 FEATURE FLAG DEFINITIONS
 export const FEATURE_FLAG_DEFS = [
@@ -118,6 +119,19 @@ export const useStaffFeatures = (activeTab?: string) => {
     const [updating, setUpdating] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
+    const { addToast } = useToast();
+
+    /**
+     * Lưu hỏng thì PHẢI nói.
+     *
+     * ⚠️ Cả bốn lời gọi trong file này đều chỉ lật cần gạt về chỗ cũ rồi im.
+     * Admin bấm tắt, thấy nó tự bật lại, tưởng mình bấm hụt nên bấm tiếp — chứ
+     * không biết là KHÔNG LƯU ĐƯỢC. Rồi sang màn KTV thấy tính năng vẫn chạy,
+     * lại tưởng app hỏng.
+     */
+    const baoHong = (viec: string, ly?: string) =>
+        addToast(`Không ${viec}: ${ly || 'máy chủ từ chối'}`, 'error');
+
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
@@ -125,9 +139,12 @@ export const useStaffFeatures = (activeTab?: string) => {
             const json = await res.json();
             if (json.success) {
                 setStaffList(json.data || []);
+            } else {
+                baoHong('tải được danh sách nhân viên', json.error);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to fetch staff features:', err);
+            baoHong('tải được danh sách nhân viên', err?.message || 'lỗi kết nối');
         } finally {
             setLoading(false);
         }
@@ -155,21 +172,22 @@ export const useStaffFeatures = (activeTab?: string) => {
                 body: JSON.stringify({ staffId, flagKey, value: newValue }),
             });
             const json = await res.json();
-            if (!json.success) {
-                // Revert on failure
+            const lat = (ly?: string) => {
                 setStaffList(prev => prev.map(s =>
                     s.id === staffId
                         ? { ...s, feature_flags: { ...s.feature_flags, [flagKey]: !newValue } }
                         : s
                 ));
-            }
-        } catch (err) {
-            // Revert on error
+                baoHong(`${newValue ? 'bật' : 'tắt'} được tính năng cho ${staffId}`, ly);
+            };
+            if (!json.success) lat(json.error);
+        } catch (err: any) {
             setStaffList(prev => prev.map(s =>
                 s.id === staffId
                     ? { ...s, feature_flags: { ...s.feature_flags, [flagKey]: !newValue } }
                     : s
             ));
+            baoHong(`${newValue ? 'bật' : 'tắt'} được tính năng cho ${staffId}`, err?.message || 'lỗi kết nối');
         } finally {
             setUpdating(null);
         }
@@ -196,10 +214,11 @@ export const useStaffFeatures = (activeTab?: string) => {
             });
             const json = await res.json();
             if (!json.success) {
-                // Revert on failure (we would ideally revert to original, but fetching again is safer)
-                fetchData();
+                baoHong(`đổi được loại KTV cho ${staffId}`, json.error);
+                fetchData();   // nạp lại cho chắc, khỏi đoán trạng thái cũ
             }
-        } catch (err) {
+        } catch (err: any) {
+            baoHong(`đổi được loại KTV cho ${staffId}`, err?.message || 'lỗi kết nối');
             fetchData();
         } finally {
             setUpdating(null);
@@ -235,9 +254,11 @@ export const useStaffFeatures = (activeTab?: string) => {
             });
             const json = await res.json();
             if (!json.success) {
+                baoHong(`${newValue ? 'bật' : 'tắt'} được hàng loạt`, json.error);
                 fetchData(); // revert
             }
-        } catch (err) {
+        } catch (err: any) {
+            baoHong(`${newValue ? 'bật' : 'tắt'} được hàng loạt`, err?.message || 'lỗi kết nối');
             fetchData();
         } finally {
             setUpdating(null);
