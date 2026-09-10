@@ -456,14 +456,14 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                 </div>
 
                 {/* MỘT dòng, chữ to. Đứng ở thẻ nhận đơn KTV chỉ cần biết đúng một
-                    điều: khách đã nằm sẵn trong phòng, đừng làm lại nghi thức đón khách.
+                    điều: phòng đã mở, khách đã nằm sẵn trên đó — đừng làm lại nghi thức đón khách.
                     Dài dòng hơn là không ai đọc. Phần còn lại nhắc ở màn đồng hồ,
                     đúng lúc họ đứng trước cửa phòng. */}
                 {laDonVaoThay && (
                   <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-4">
                     <p className="flex items-center gap-2 text-lg font-black leading-snug text-amber-800">
                       <AlertTriangle size={22} strokeWidth={3} className="shrink-0" />
-                      Khách đang ở sẵn trong phòng, phòng đã mở
+                      Phòng đã mở, khách đang nằm trên phòng
                     </p>
                   </div>
                 )}
