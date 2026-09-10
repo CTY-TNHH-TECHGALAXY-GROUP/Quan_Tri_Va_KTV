@@ -60,6 +60,12 @@ const dsKtvHienThi = (s: any): any[] => {
     if (!Array.isArray(segs)) return ds;
 
     for (const seg of segs) {
+        // ⚠️ CHỈ ghép thêm người BỊ TƯỚC quyền lợi.
+        // `segments` là của CẢ dịch vụ, trong khi `staffList` của thẻ có thể đã được
+        // lọc bớt có chủ đích — ca nối tiếp tách mỗi người một thẻ. Ghép bừa mọi
+        // ktvId là kéo đồng nghiệp ở thẻ kia sang, thành thẻ nào cũng hiện đủ mọi
+        // người và nhìn như đơn bị lặp.
+        if (seg?.voided !== true) continue;
         const ma = String(seg?.ktvId || '').trim();
         if (!ma || daCo.has(ma.toLowerCase())) continue;
         daCo.add(ma.toLowerCase());

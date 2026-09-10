@@ -264,8 +264,23 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             const splitGroupServices: ServiceBlock[] = [];
             group.services.forEach(svc => {
                 if (svc.staffList && svc.staffList.length > 1) {
+                    // ⚠️ Người BỊ ĐỔI RA không phải một ca nối tiếp.
+                    //
+                    // Đổi KTV xong item có 2 người: người cũ (chặng `voided`) và người
+                    // thay, với giờ bắt đầu khác nhau. Đoạn tách dưới đây thấy "nhiều
+                    // KTV, giờ khác nhau" nên đẻ ra HAI thẻ Kanban cho cùng một dịch
+                    // vụ — thẻ thứ hai ghi "Đã tính ở thẻ trước". Nhìn ra như đơn bị
+                    // lặp. Ca nối tiếp thật là hai người CÙNG được tính công; người bị
+                    // đổi ra thì 0đ, 0 giờ, nên họ đi kèm thẻ của người thay chứ không
+                    // đứng riêng một thẻ.
+                    const conQuyenLoi = (st: any) =>
+                        !Array.isArray(st?.segments)
+                        || st.segments.length === 0
+                        || st.segments.some((g: any) => g?.voided !== true);
+                    const nguoiBiTuoc = svc.staffList.filter(st => !conQuyenLoi(st));
+
                     const staffByTime = new Map<string, any[]>();
-                    svc.staffList.forEach(st => {
+                    svc.staffList.filter(conQuyenLoi).forEach(st => {
                         const t = st._calculatedStartTime || 'unknown';
                         if (!staffByTime.has(t)) staffByTime.set(t, []);
                         staffByTime.get(t)!.push(st);
@@ -282,7 +297,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                             const isFirst = time === firstValidTime;
                             splitGroupServices.push({ 
                                 ...svc, 
-                                staffList: staffs, 
+                                // Người bị tước đi kèm thẻ ĐẦU TIÊN — họ là người làm
+                                // trước, và thẻ đó phải giải thích được vì sao đơn đổi tay.
+                                staffList: isFirst ? [...staffs, ...nguoiBiTuoc] : staffs,
                                 _splitTime: time,
                                 _isSequentialFollowUp: !isFirst
                             });
