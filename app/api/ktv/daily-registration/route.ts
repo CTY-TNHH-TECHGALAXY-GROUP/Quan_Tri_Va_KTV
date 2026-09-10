@@ -171,7 +171,12 @@ export async function GET(request: Request) {
 
     const { data, error } = await query;
     if (error) throw error;
-    return NextResponse.json({ data: data || [] });
+    // `staff_id` = danh tinh server doc tu JWT. Client phai doi chieu voi phien
+    // cua tab minh: cookie Supabase dung chung ca trinh duyet, con phien nghiep
+    // vu nam o sessionStorage tung tab -> mo 2 tai khoan tren cung trinh duyet
+    // la hai ben lech nhau. Khong tra truong nay thi lech ay bieu hien thanh
+    // "lich trong tron, khong bao loi".
+    return NextResponse.json({ data: data || [], staff_id: staff.id });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

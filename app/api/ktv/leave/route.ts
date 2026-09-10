@@ -56,7 +56,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true, data: data || [] });
+        // `staff_id` = danh tinh server doc tu JWT (chi co khi nguoi goi la KTV).
+        // Client doi chieu voi phien cua tab minh — xem chu thich o
+        // app/api/ktv/daily-registration/route.ts.
+        return NextResponse.json({ success: true, data: data || [], staff_id: onlyOwnerId });
     } catch (error: any) {
         console.error('❌ [Leave GET] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });

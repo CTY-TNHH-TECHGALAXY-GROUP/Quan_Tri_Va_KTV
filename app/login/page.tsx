@@ -29,6 +29,11 @@ export default function LoginPage() {
     }
     // Quản lý vừa đổi cấu hình tính năng → phải đăng nhập lại thì mới nhận
     // được cờ/quyền mới, chứ không phải app hỏng.
+    // Tab đang mở bằng tài khoản A nhưng cookie JWT là của tài khoản B (mở 2 tài
+    // khoản trên cùng trình duyệt). Đã đẩy ra đây để đăng nhập lại cho dứt điểm.
+    if (reason === 'identity_mismatch') {
+      setError('Trình duyệt này đã đăng nhập một tài khoản khác ở tab khác. Mỗi trình duyệt chỉ dùng được một tài khoản — vui lòng đăng nhập lại.');
+    }
     if (reason === 'config_changed') {
       setError('Cài đặt tính năng vừa được cập nhật. Vui lòng đăng nhập lại để áp dụng.');
     }

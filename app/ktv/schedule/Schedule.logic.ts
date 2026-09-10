@@ -40,7 +40,7 @@ export interface ShiftTypes {
 export type ScheduleTab = 'off' | 'shift';
 
 export const useKTVSchedule = () => {
-    const { hasPermission, user } = useAuth();
+    const { hasPermission, user, logout } = useAuth();
     const { addToast } = useToast();
 
     // Common
@@ -66,6 +66,10 @@ export const useKTVSchedule = () => {
     const [editingReg, setEditingReg] = useState<{ date: string, expected_time: string, status: string, step?: 'EDIT' | 'CONFIRM_CANCEL' } | null>(null);
 
     const [isLoadingLeaves, setIsLoadingLeaves] = useState(false);
+
+    // Phiên của tab này không phải người mà server đang thấy (xem chi tiết ở
+    // kiểm tra phía dưới). Chặn hẳn màn hình thay vì để lịch trống trơn.
+    const [identityMismatch, setIdentityMismatch] = useState<string | null>(null);
     const [offError, setOffError] = useState<string | null>(null);
     const [offSuccess, setOffSuccess] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState<{
@@ -111,12 +115,34 @@ export const useKTVSchedule = () => {
 
             // ⚠️ Cả 2 API đều đọc tham số `from` / `to` — KHÔNG phải start_date/end_date.
             // Dùng sai tên thì server bỏ qua bộ lọc và trả về khoảng mặc định.
+            // ⚠️ Danh tính của API và của màn hình KHÔNG cùng phạm vi:
+            //   • API biết bạn là ai qua cookie JWT của Supabase — dùng chung CẢ TRÌNH DUYỆT,
+            //     ai đăng nhập sau thì đè lên trước.
+            //   • Màn hình biết bạn là ai qua sessionStorage — riêng TẪNG TAB.
+            // Mở hai tài khoản KTV trên cùng một trình duyệt là hai bên lệch nhau: API trả về
+            // lịch của NGƯỜI KIA. Trước đây page.tsx lọc lại theo `staff_id === user.code` nên
+            // lệch biến thành "lịch trống trơn, không báo lỗi gì". Bỏ bộ lọc đó mà không chặn
+            // ở đây thì còn tệ hơn: nhìn và sửa được lịch của đồng nghiệp.
+            const khopDanhTinh = (serverStaffId: any) => {
+                const mine = String(user.code || user.id || '').trim().toLowerCase();
+                const theirs = String(serverStaffId || '').trim().toLowerCase();
+                if (!theirs || !mine || theirs === mine) return true;
+                setIdentityMismatch(theirs);
+                setWorkRegistrationList([]);
+                setLeaveList([]);
+                return false;
+            };
+
             if (user.work_type === 'TYPE_D') {
                 const res = await apiClient.get<any>(`${API.KTV.DAILY_REGISTRATION}?from=${startStr}&to=${endStr}`);
+                if (!khopDanhTinh(res?.staff_id)) return;
+                setIdentityMismatch(null);
                 setWorkRegistrationList(res?.data || []);
             } else {
                 // API trả về { success, data } chứ không phải mảng trần.
                 const res = await apiClient.get<any>(`${API.KTV.LEAVE}?from=${startStr}&to=${endStr}`);
+                if (!khopDanhTinh(res?.staff_id)) return;
+                setIdentityMismatch(null);
                 setLeaveList(Array.isArray(res?.data) ? res.data : []);
             }
             
@@ -127,7 +153,7 @@ export const useKTVSchedule = () => {
         } finally {
             setIsLoadingLeaves(false);
         }
-    }, [calendarMonth, user?.id, user?.work_type]);
+    }, [calendarMonth, user?.id, user?.code, user?.work_type]);
 
     const fetchShiftData = useCallback(async () => {
         if (!user?.id) return;
@@ -373,6 +399,7 @@ export const useKTVSchedule = () => {
         mounted,
         canAccessPage,
         user,
+        logout,
         activeTab,
         setActiveTab,
 
@@ -383,6 +410,7 @@ export const useKTVSchedule = () => {
         leaveList,
         workRegistrationList,
         isLoadingLeaves,
+        identityMismatch,
         offError,
         offSuccess,
         setOffSuccess,

@@ -51,7 +51,7 @@ const KTVSchedulePage = () => {
         pendingSubmit, setPendingSubmit, confirmSubmitWorkRegistration, 
         editingReg, setEditingReg, handleSaveEditRegistration,
         handleSubmitWorkRegistration, handleCancelWorkRegistration,
-        mounted, canAccessPage, user,
+        mounted, canAccessPage, user, logout, identityMismatch,
         activeTab, setActiveTab,
         currentShift, tomorrowShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift,
         selectedDates, toggleDate, isSubmittingOff, leaveList, isLoadingLeaves,
@@ -76,6 +76,36 @@ const KTVSchedulePage = () => {
         );
     }
 
+    // ⚠️ Phiên của tab này và phiên mà server đang thấy là hai người khác nhau.
+    // Xảy ra khi mở hai tài khoản KTV trên cùng một trình duyệt: cookie JWT dùng chung
+    // cả trình duyệt nên người đăng nhập sau đè lên trước. Phải chặn hẳn: đi tiếp thì
+    // màn hình hiển thị — và mọi thao tác sửa/huỷ — sẽ rơi vào lịch của đồng nghiệp.
+    if (identityMismatch) {
+        return (
+            <AppLayout title={t.pageTitle}>
+                <div className="max-w-md mx-auto px-4 py-16 flex flex-col items-center text-center">
+                    <ShieldAlert size={48} className="text-amber-500 mb-4" />
+                    <h2 className="text-xl font-bold text-gray-900">Phiên đăng nhập bị lẫn</h2>
+                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                        Màn hình đang mở bằng tài khoản <b>{user?.code || user?.id}</b>, nhưng máy chủ đang
+                        nhận bạn là <b>{String(identityMismatch).toUpperCase()}</b> — do trình duyệt này đã đăng
+                        nhập tài khoản khác ở tab khác. Để tránh sửa nhầm lịch của người khác, vui lòng
+                        đăng nhập lại.
+                    </p>
+                    <button
+                        onClick={async () => {
+                            await logout();
+                            window.location.href = '/login?error=identity_mismatch';
+                        }}
+                        className="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200"
+                    >
+                        Đăng nhập lại
+                    </button>
+                </div>
+            </AppLayout>
+        );
+    }
+
     const { year, month } = calendarMonth;
     const firstDayOfMonth = new Date(year, month, 1);
     const lastDayOfMonth = new Date(year, month + 1, 0);
@@ -84,6 +114,10 @@ const KTVSchedulePage = () => {
     let startDow = firstDayOfMonth.getDay(); 
     startDow = startDow === 0 ? 6 : startDow - 1; 
 
+    // API đã lọc sẵn theo người đăng nhập (JWT), nên mọi dòng ở đây đều là của
+    // chính mình — không lọc lại theo `user.code` nữa. Danh tính trong sessionStorage
+    // có thể cũ hoặc lệch với cookie, lọc theo nó thì lịch biến mất không lý do.
+    // Trường hợp lệch đã bị chặn hẳn ở `identityMismatch` phía trên.
     const workRegByDate: Record<string, any[]> = {};
     if (workRegistrationList) {
         workRegistrationList.forEach((reg: any) => {
@@ -116,7 +150,7 @@ const KTVSchedulePage = () => {
         // Kiểm tra xem user hiện tại đã đăng ký ngày này chưa
         const dayLeaves = leaveByDate[dateStr] || [];
         const myLeave = dayLeaves.find(l => l.employeeId === user?.id);
-        const myWorkReg = workRegByDate[dateStr]?.find((r: any) => r.staff_id === user?.code);
+        const myWorkReg = workRegByDate[dateStr]?.[0];
         
         // Chỉ cho phép chọn/huỷ chọn những ngày > today VÀ chưa từng đăng ký
         if (!myLeave) {
@@ -210,7 +244,7 @@ const KTVSchedulePage = () => {
                                         
                                         // Kiểm tra xem user hiện tại đã đăng ký ngày này chưa
                                         const myLeave = dayLeaves.find(l => l.employeeId === user?.id);
-                                        const myWorkReg = workRegByDate[dateStr]?.find((r: any) => r.staff_id === user?.code);
+                                        const myWorkReg = workRegByDate[dateStr]?.[0];
                                         
                                         let cellStyle = 'text-gray-500 hover:bg-gray-50';
                                         
@@ -330,7 +364,7 @@ const KTVSchedulePage = () => {
                 {/* ── DANH SÁCH NGÀY ĐÃ ĐĂNG KÝ ĐI LÀM (ngày + giờ) ── */}
                 {user?.work_type === 'TYPE_D' && (() => {
                     const myWorkDays = (workRegistrationList || [])
-                        .filter((r: any) => r.staff_id === user?.code && r.status === 'REGISTERED')
+                        .filter((r: any) => r.status === 'REGISTERED')
                         .sort((a: any, b: any) => a.work_date.localeCompare(b.work_date));
 
                     if (myWorkDays.length === 0) return null;
@@ -413,7 +447,7 @@ const KTVSchedulePage = () => {
                     // Loại D: OFF nằm ở KTVTypeDDailyRegistration. Loại khác: ở KTVLeaveRequests.
                     const myOffDays = isTypeD
                         ? (workRegistrationList || [])
-                            .filter((r: any) => r.staff_id === user?.code && r.status === 'OFF_REGISTERED')
+                            .filter((r: any) => r.status === 'OFF_REGISTERED')
                             .map((r: any) => ({ date: r.work_date, status: null as string | null, raw: r }))
                             .sort((a: any, b: any) => a.date.localeCompare(b.date))
                         : (leaveList || [])
@@ -749,7 +783,7 @@ const KTVSchedulePage = () => {
                             // 🛡️ RIÊNG TƯ: chỉ hiển thị lịch nghỉ của chính mình, không xem của người khác.
                             const leaves = (leaveByDate[date] || []).filter(l => l.employeeId === user?.id);
                             const myRegRaw = user?.work_type === 'TYPE_D'
-                                ? workRegByDate[date]?.find((r: any) => r.staff_id === user?.code)
+                                ? workRegByDate[date]?.[0]
                                 : null;
 
                             // Không có gì của mình trong ngày này → không render thẻ rỗng.
