@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
 
@@ -87,11 +87,16 @@ export async function GET(request: Request) {
             const year = Number(date.slice(0, 4));
             const month = Number(date.slice(5, 7));
 
-            // Tua vừa xong còn nằm trong hàng đợi cho tới khi cron chạy (5 phút/lần).
+            // Tua vừa xong còn nằm trong hàng đợi cho tới khi có người rút ra tính.
             // Rút ngay phần của những KTV đang xem để giờ tích lũy cập nhật tức thì,
-            // giống cách màn Lịch sử và Ví đang làm. Cron vẫn là lưới an toàn.
-            const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
+            // giống cách màn Lịch sử và Ví đang làm.
+            const { drainQueueForStaff, drainQueueBackground } = await import('@/lib/services/KtvDLedgerWriter');
             await drainQueueForStaff(supabase, typeDIds);
+
+            // Phần hàng đợi không thuộc KTV nào trong bảng thì dọn SAU khi đã trả
+            // response — xem `drainQueueBackground`. Không có bước này thì hàng đợi
+            // vẫn phình vô hạn vì trigger đẩy vào cả item của loại A/B/C.
+            after(async () => { await drainQueueBackground(supabase); });
 
             const hoursMap = await KtvTypeDTurnService.getMonthlyNetHours(supabase, typeDIds, month, year);
 

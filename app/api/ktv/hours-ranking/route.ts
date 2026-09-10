@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService, HOURS_PENALTY_VI, monthRange, currentMonthVn, attendedStaffOfMonth, assignRanks } from '@/lib/services/KtvOfficeScoreService';
@@ -85,10 +85,11 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, applicable: true, enabled: true, month, data: [] });
         }
 
-        // Tua vừa xong còn nằm trong hàng đợi cho tới khi cron chạy (5 phút/lần).
+        // Tua vừa xong còn nằm trong hàng đợi cho tới khi có người rút ra tính.
         // Rút ngay để KTV vừa kết thúc đơn là thấy giờ mình tăng, không phải chờ.
-        const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
+        const { drainQueueForStaff, drainQueueBackground } = await import('@/lib/services/KtvDLedgerWriter');
         await drainQueueForStaff(supabase, staffIds);
+        after(async () => { await drainQueueBackground(supabase); });
 
         const hours = await KtvOfficeScoreService.hoursBreakdown(supabase, staffIds, monthRange(month));
 

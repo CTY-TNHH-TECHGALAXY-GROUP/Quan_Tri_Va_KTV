@@ -11,6 +11,7 @@ import { BookingModificationService } from '@/lib/services/BookingModificationSe
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
+import { after } from 'next/server';
 
 async function resolveGuestIdsForUpdate(
     supabase: any,
@@ -156,6 +157,19 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         if (typeD.length > 0) {
             const { KtvTypeDTurnService } = await import('@/lib/services/KtvTypeDTurnService');
             const { getBusinessToday } = await import('@/lib/business-date');
+
+            // Tua vừa xong còn nằm trong hàng đợi cho tới khi có người rút ra tính.
+            // Rút ngay phần của các KTV trong bảng, giống hệt `/api/turns` đang làm.
+            //
+            // ⚠️ Trước 10/09/2026 chỗ này đọc thẳng sổ cái mà KHÔNG rút hàng đợi —
+            // bảng điều phối là màn duy nhất chỉ biết đọc, không bao giờ cập nhật.
+            // Mà `net_hours` lại là khoá xếp thứ tự nhận khách của loại D, nên quầy
+            // chia khách theo số giờ cũ: KTV vừa xong tua vẫn mang giờ của lần
+            // trước. Đo hôm đó có 8/13 KTV chụm trong vòng 5 phút giờ tích luỹ —
+            // đủ để một tua vào sổ trễ là lật thứ tự.
+            const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
+            await drainQueueForStaff(supabase, typeD.map(t => t.employee_id));
+
             // Tháng/năm theo NGÀY LÀM VIỆC, không theo ngày lịch — lúc 02:00 ngày 01/09
             // ngày làm việc vẫn là 31/08, phải xếp hạng theo giờ tích lũy tháng 8.
             const businessToday = await getBusinessToday(supabase);
@@ -176,6 +190,14 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         }
 
         const turns = [...typeA, ...typeB, ...typeC, ...typeD];
+
+        // Dọn phần hàng đợi CÒN LẠI sau khi đã trả dữ liệu — không làm chậm bảng.
+        // Bảng điều phối mở suốt ca ở quầy và tự tải lại theo realtime, nên đây là
+        // nơi dọn hàng đợi đều đặn nhất trong cả hệ thống.
+        after(async () => {
+            const { drainQueueBackground } = await import('@/lib/services/KtvDLedgerWriter');
+            await drainQueueBackground(supabase);
+        });
 
         // 3. Fetch Bookings for selected date
         // bookingDate is "timestamp without time zone"

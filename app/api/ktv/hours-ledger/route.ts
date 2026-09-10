@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService, HOURS_PENALTY_VI, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
@@ -69,10 +69,18 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, applicable: true, enabled: false, month, rows: [] });
         }
 
-        // Tua vừa xong còn nằm trong hàng đợi cho tới khi cron chạy (5 phút/lần).
+        // Tua vừa xong còn nằm trong hàng đợi cho tới khi có người rút ra tính.
         // Rút ngay để KTV vừa kết thúc đơn là thấy giờ mình tăng, không phải chờ.
-        const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
+        //
+        // Đây là nguồn của ô "Giờ tích luỹ" trên trang Lịch Sử. Trang đó gọi SONG
+        // SONG hai API: `/api/ktv/history` rút hàng đợi theo ĐƠN (chính xác), còn
+        // route này rút theo KTV. Bản cũ của `drainQueueForStaff` chỉ quét 100 dòng
+        // cũ nhất nên hai bên có thể ra hai kết quả khác nhau trên CÙNG một màn:
+        // danh sách đơn đã hiện tua mới mà ô giờ thì chưa cộng, tuỳ API nào về
+        // trước. Nay cả hai đều quét đủ nên không còn cửa lệch.
+        const { drainQueueForStaff, drainQueueBackground } = await import('@/lib/services/KtvDLedgerWriter');
         await drainQueueForStaff(supabase, [meId]);
+        after(async () => { await drainQueueBackground(supabase); });
 
         // orderCode: booking_id đôi khi là UUID nội bộ (đơn cũ), đôi khi là mã đơn
         // đọc được. UUID thì rút gọn cho đỡ chiếm chỗ trên màn điện thoại.
