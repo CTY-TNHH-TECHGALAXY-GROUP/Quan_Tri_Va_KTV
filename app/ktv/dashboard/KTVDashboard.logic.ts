@@ -734,10 +734,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
 
         if (currentStatus === 'READY' && currentScreen === 'DASHBOARD') {
+            // Đơn VÀO THAY thì BỎ HẲN thời gian chuẩn bị (chốt 10/09/2026).
+            // Khoảng đó dành cho việc set up phòng — vệ sinh máy lạnh, chuẩn bị
+            // tinh dầu, setup giường, khăn nóng. Người vào thay không phải làm gì
+            // trong số đó: phòng đã mở, khách đang nằm sẵn chờ.
+            const laDonVaoThay = allMySegsForStatus.some(
+                (seg: any) => seg?.note === 'TAKEOVER' && !seg?.actualEndTime
+            );
+
             const parsed = Number(settings.ktv_setup_duration_minutes);
-            const setupMs = (!isNaN(parsed) ? parsed : 0) * 60;
+            const setupMs = laDonVaoThay ? 0 : (!isNaN(parsed) ? parsed : 0) * 60;
             setPrepTimeRemaining(setupMs);
-            setIsPrepping(true);
+            // ⚠️ Chỉ bật cờ khi THẬT SỰ có giây để đếm. Bật với 0 giây thì vòng
+            // đếm ngược không chạy (điều kiện là `> 0`) nên không ai tắt nó, màn
+            // đồng hồ kẹt ở chữ "THỜI GIAN CHUẨN BỊ" với 00:00.
+            setIsPrepping(setupMs > 0);
             setScreen('TIMER');
         } 
         else if (currentStatus === 'IN_PROGRESS' || currentStatus === 'PAUSED') {
