@@ -258,6 +258,14 @@ export class BookingItemPauseService {
         assignedMins: number = 0
     ) {
         // 1. Fetch Item & Booking & Service
+        //
+        // ⚠️ PHẢI chỉ đích danh khoá ngoại cho Services. Giữa BookingItems và
+        // Services có HAI khoá ngoại cùng trỏ serviceId sang id:
+        // BookingItems_serviceId_fkey và fk_bookingitems_service. Viết trần
+        // "Services ( duration )" thì PostgREST từ chối cả câu với PGRST201
+        // "more than one relationship was found", `item` về null, và hàm này
+        // hiểu nhầm thành "Không tìm thấy dịch vụ." — toàn bộ luồng đổi KTV
+        // chết ở dòng đầu tiên, không ai đổi được người.
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
             .select(`
@@ -269,7 +277,7 @@ export class BookingItemPauseService {
                 serviceId,
                 status,
                 Bookings!fk_bookingitems_booking ( id, timeStart ),
-                Services ( duration )
+                Services!fk_bookingitems_service ( duration )
             `)
             .eq('id', bookingItemId)
             .single();

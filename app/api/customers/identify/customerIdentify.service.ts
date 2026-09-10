@@ -94,7 +94,7 @@ export class CustomerIdentifyService {
                     serviceId,
                     technicianCodes,
                     options,
-                    Services ( nameVN )
+                    Services!fk_bookingitems_service ( nameVN )
                 `)
                 .in('bookingId', bookingIds);
 
