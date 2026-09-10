@@ -265,7 +265,7 @@ const OrderCard = ({ order, getStatusLabel }: {
 
               {/* Bàn giao phòng */}
               <div className="flex justify-between items-center">
-                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Quầy duyệt</span>
+                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Bàn giao phòng</span>
                 <div className="flex items-center gap-2">
                   {/* ⚠️ Trước đây chỉ tách APPROVED / REJECTED, MỌI thứ còn lại đổ
                       vào "Chờ duyệt". Mà 'PENDING' là GIÁ TRỊ MẶC ĐỊNH của cột —

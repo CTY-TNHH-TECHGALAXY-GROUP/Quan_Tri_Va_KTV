@@ -476,8 +476,17 @@ export default function KTVWalletPage() {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex gap-1">
+                                                                        {/* ⚠️ PENDING ở đây mang HAI nghĩa khác hẳn nhau.
+                                                                            Dòng rút tiền: đúng là đang chờ quầy duyệt.
+                                                                            Dòng tiền tua: chỉ là TẠM TÍNH — khách chưa
+                                                                            đánh giá xong nên số còn có thể đổi, không ai
+                                                                            đang ngồi duyệt cả. Gắn chung một nhãn
+                                                                            "Chờ duyệt" khiến KTV đi hỏi quầy vì sao ngâm
+                                                                            tiền tua, trong khi chẳng có gì để duyệt. */}
                                                                         {isPending && (
-                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Chờ duyệt</span>
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                                                                {isWithdrawal ? 'Chờ duyệt' : 'Tạm tính'}
+                                                                            </span>
                                                                         )}
                                                                         {item.type === 'WITHDRAWAL' && item.status === 'APPROVED' && (
                                                                             <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Đã nhận</span>
