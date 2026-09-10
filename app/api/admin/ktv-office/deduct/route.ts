@@ -8,6 +8,7 @@ import { isOfficeManager } from '@/lib/services/KtvOfficeScoreService';
 import {
     resolvePhotosPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
 } from '@/lib/services/KtvOfficeEvidenceService';
+import { workdayEvidence, evidenceLabel } from '@/lib/services/KtvOfficeWorkdayService';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,8 +89,14 @@ export async function GET(request: Request) {
             .is('revoked_at', null);
         if (error) throw error;
 
+        // Kèm bằng chứng đi làm của ngày đó — sheet chấm điểm cần biết TRƯỚC khi
+        // lễ tân tích lỗi, chứ để họ điền xong rồi mới báo "không trừ được" là
+        // mất công và dễ bị hiểu là hệ thống hỏng.
+        const workday = await workdayEvidence(supabase, staffId, workDate);
+
         return NextResponse.json({
             success: true,
+            workday: { ...workday, label: evidenceLabel(workday) },
             existing: (data || []).map((r: any) => ({
                 logId: r.id,
                 createdBy: r.created_by,
@@ -168,6 +175,22 @@ export async function POST(request: Request) {
         }
         if (staff.work_type !== 'TYPE_D') {
             return NextResponse.json({ success: false, error: 'Chỉ áp dụng cho KTV Loại D.' }, { status: 400 });
+        }
+
+        // ─── Cửa vào: ngày đó KTV có đi làm không? ───
+        //
+        // Xét CÙNG LÚC hai nguồn — chấm công và lịch đăng ký. Chỉ nhìn lịch thì
+        // bỏ sót người đăng ký nghỉ mà vẫn vào làm; chỉ nhìn chấm công thì bỏ
+        // sót người có lịch mà không tới (chính sự vắng đó là lỗi cần trừ).
+        // Xem KtvOfficeWorkdayService.
+        const workday = await workdayEvidence(supabase, staffId, workDate);
+        if (!workday.canDeduct) {
+            return NextResponse.json({
+                success: false,
+                error: workday.reason,
+                code: 'NOT_A_WORKDAY',
+                workday,
+            }, { status: 422 });
         }
 
         // Lấy tiêu chí từ DB — KHÔNG tin điểm do client gửi lên.

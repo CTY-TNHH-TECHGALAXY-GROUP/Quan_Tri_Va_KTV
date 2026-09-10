@@ -134,6 +134,13 @@ export const useAdminKtvOfficeLogic = () => {
   const [existingHits, setExistingHits] = useState<any[]>([]);
   const [existingLoading, setExistingLoading] = useState(false);
 
+  /**
+   * Ngày đang chọn KTV có đi làm không — server xét cả chấm công lẫn lịch đăng
+   * ký. `canDeduct = false` thì khoá nút gửi ngay, đừng để lễ tân tích xong 5
+   * lỗi, chụp ảnh, bấm gửi rồi mới bị từ chối.
+   */
+  const [workday, setWorkday] = useState<any>(null);
+
   // Màn Cài đặt bộ tiêu chí (gồm cả tiêu chí đã ngừng áp dụng).
   const [settingsGroups, setSettingsGroups] = useState<any[]>([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -257,13 +264,16 @@ export const useAdminKtvOfficeLogic = () => {
   const fetchExisting = useCallback(async (code: string, workDate: string) => {
     setExistingLoading(true);
     setExistingHits([]);
+    setWorkday(null);
     try {
       const res = await apiClient.get<any>(
         `/api/admin/ktv-office/deduct?staffId=${encodeURIComponent(code)}&workDate=${workDate}`
       );
       setExistingHits(res?.existing || []);
+      setWorkday(res?.workday || null);
     } catch {
       setExistingHits([]); // không tra được thì để trống, server vẫn chặn trùng khi gửi
+      setWorkday(null);    // không rõ thì đừng tự khoá — server vẫn là cửa chặn thật
     } finally {
       setExistingLoading(false);
     }
@@ -413,7 +423,11 @@ export const useAdminKtvOfficeLogic = () => {
   /** Lỗi bắt buộc ảnh mà CHÍNH NÓ chưa có ảnh nào. */
   const missingPhotoFor: any[] = selectedCriteria
     .filter((c: any) => c.requiresPhoto && photosOf(c.id).length === 0);
-  const canSubmit = sheetState.selectedIds.length > 0 && missingPhotoFor.length === 0;
+  /** Ngày nghỉ + không điểm danh thì không có gì để chấm. */
+  const blockedNotWorkday = workday ? workday.canDeduct === false : false;
+  const canSubmit = sheetState.selectedIds.length > 0
+    && missingPhotoFor.length === 0
+    && !blockedNotWorkday;
 
   const submitDeduct = async () => {
     if (!canSubmit || submitting) return;
@@ -657,6 +671,7 @@ export const useAdminKtvOfficeLogic = () => {
     totalPoints, needPhoto, canSubmit, submitting, submitDeduct,
     unlockInfo, unlockReason, setUnlockReason, unlockFee, setUnlockFee, canUnlock, submitUnlock,
     existingHits, existingLoading, changeWorkDate,
+    workday, blockedNotWorkday,
     editState, startEditLog, cancelEditLog, patchEdit, addEditPhotos, removeEditPhoto, removeEditNewPhoto, saveEditLog,
     revokeState, startRevokeLog, cancelRevokeLog, setRevokeReason, confirmRevokeLog,
     logBusy,

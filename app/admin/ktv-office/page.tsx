@@ -729,6 +729,22 @@ const AdminKtvOfficePage = () => {
                         />
                       </div>
                       <p className="text-xs text-[var(--muted)] mt-2">Lễ tân chỉ trừ được hôm nay và hôm qua. Quản lý trừ được mọi ngày.</p>
+
+                      {/* Ngày đó KTV có đi làm không — server xét cả chấm công lẫn
+                          lịch đăng ký. Báo NGAY ở đây, đừng để tích xong 5 lỗi và
+                          chụp ảnh rồi mới bị từ chối lúc bấm gửi. */}
+                      {logic.workday && (
+                        <div className={`mt-3 p-3 rounded-2xl border text-xs font-bold ${
+                          logic.blockedNotWorkday
+                            ? 'bg-[var(--rust-2)] border-[var(--rust)]/30 text-[var(--rust)]'
+                            : 'bg-[var(--surface-soft)] border-[var(--line)] text-[var(--muted)]'
+                        }`}>
+                          {logic.blockedNotWorkday ? '⛔ ' : '✓ '}{logic.workday.label}
+                          {logic.blockedNotWorkday && (
+                            <p className="font-medium mt-1">{logic.workday.reason}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {(() => {
@@ -1109,6 +1125,7 @@ const AdminKtvOfficePage = () => {
                       onClick={logic.submitDeduct}
                     >
                       {logic.submitting ? 'Đang lưu…'
+                        : logic.blockedNotWorkday ? 'Ngày này KTV không đi làm'
                         : logic.sheetState.selectedIds.length === 0 ? 'Chưa chọn lỗi nào'
                         : logic.missingPhotoFor.length > 0 ? `Cần ảnh riêng cho ${logic.missingPhotoFor.length} lỗi`
                         : `Xác nhận trừ ${fmtNum(logic.totalPoints)} điểm`}
