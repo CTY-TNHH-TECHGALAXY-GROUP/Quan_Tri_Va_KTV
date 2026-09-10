@@ -14,6 +14,7 @@ import AttendanceTypeD from './_components/AttendanceTypeD';
 import { OnCallWidget } from './_components/OnCallWidget';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { fmtGioBuoi } from '@/lib/hours-format';
 
 const KTVAttendancePage = () => {
     const { addToast } = useToast();
@@ -855,7 +856,7 @@ const KTVAttendancePage = () => {
                                         <p className="text-center font-bold text-emerald-600">
                                             {todayRegistration.status === 'OFF_REGISTERED' 
                                                 ? 'Nghỉ làm (OFF)'
-                                                : `Giờ bạn đã đăng ký: ${String(todayRegistration.expected_time || '').slice(0, 5) || '--:--'}`}
+                                                : `Giờ bạn đã đăng ký: ${fmtGioBuoi(todayRegistration.expected_time) || '--:--'}`}
                                         </p>
                                     ) : (
                                         <div className="text-center">

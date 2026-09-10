@@ -19,6 +19,31 @@ export function fmtHours(h: number): string {
     return `${sign}${hh}h ${String(mm).padStart(2, '0')}P`;
 }
 
+/**
+ * Buổi trong ngày của một mốc giờ 'HH:MM'.
+ *
+ * Đọc "11:50" trơ trọi thì không biết sáng hay đêm. Tiệm chạy tới khuya, giờ
+ * đăng ký rải khắp ngày, nên phải ghi kèm buổi — không thì KTV đoán, mà đoán
+ * sai giờ đăng ký là bị tính đi trễ.
+ */
+export function buoiTrongNgay(hhmm: string): string {
+    const h = Number(String(hhmm).slice(0, 2));
+    if (!Number.isFinite(h) || h < 0 || h > 23) return '';
+    if (h < 5) return 'đêm';
+    if (h < 11) return 'sáng';
+    if (h < 13) return 'trưa';
+    if (h < 18) return 'chiều';
+    return 'tối';
+}
+
+/** 'HH:MM' hoặc 'HH:MM:SS' → '11:50 trưa'. Chuỗi hỏng/rỗng → ''. */
+export function fmtGioBuoi(hhmm?: string | null): string {
+    const t = String(hhmm ?? '').slice(0, 5);
+    if (!/^\d{2}:\d{2}$/.test(t)) return '';
+    const b = buoiTrongNgay(t);
+    return b ? `${t} ${b}` : t;
+}
+
 /** 'YYYY-MM-DD' → '03/09'. */
 export function fmtShortDate(iso: string | null): string {
     if (!iso) return '—';

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useToast } from '@/components/ui/Toast';
+import { fmtGioBuoi } from '@/lib/hours-format';
 
 interface OnCallState {
   allow_on_call: boolean;
@@ -250,8 +251,8 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
           <CheckCircle2 size={20} className="text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-amber-900">
-              Đã báo đi muộn — hẹn có mặt {hhmm(registration.late_expected_time)}
-              {gioDaDangKy && <span className="font-medium"> (đăng ký ban đầu {gioDaDangKy})</span>}
+              Đã báo đi muộn — hẹn có mặt {fmtGioBuoi(registration.late_expected_time)}
+              {gioDaDangKy && <span className="font-medium"> (đăng ký ban đầu {fmtGioBuoi(gioDaDangKy)})</span>}
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
               Chỉ được báo 1 lần. Đến muộn hơn giờ đã hẹn sẽ bị trừ 5 giờ tích lũy.
@@ -380,7 +381,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
                 không nhắc gì, muốn xem lại phải thoát ra mở trang Lịch rồi vào lại. */}
             <div className="mb-4 flex items-center justify-between rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2.5">
               <span className="text-xs font-medium text-slate-500">Giờ bạn đã đăng ký hôm nay</span>
-              <span className="text-sm font-black text-slate-800">{gioDaDangKy || 'Chưa đặt giờ'}</span>
+              <span className="text-sm font-black text-slate-800">{fmtGioBuoi(gioDaDangKy) || 'Chưa đặt giờ'}</span>
             </div>
 
             <label className="text-sm font-bold text-slate-700 block mb-2">
