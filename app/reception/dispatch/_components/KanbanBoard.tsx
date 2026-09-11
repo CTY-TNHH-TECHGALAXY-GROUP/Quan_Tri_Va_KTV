@@ -404,6 +404,19 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                     const isPaused = subOrder.services.some(s => s.pauseStart);
                     if (isPaused) return;
 
+                    // 🔒 GUARD: Người VÀO THAY chưa bấm bắt đầu → chưa có đồng hồ nào để "hết giờ".
+                    // Đổi KTV xong item về IN_PROGRESS ngay, nhưng người thay còn đang đi
+                    // sang phòng; giờ kết thúc lúc này chỉ là giờ DỰ KIẾN tính từ lúc quầy
+                    // bấm Đổi. Để nhánh dưới chạy là tự chốt đơn trước khi họ kịp làm:
+                    // quan sát 11/09/2026 trên đơn WB-11092026-002 — giờ dự kiến bị ghi
+                    // lệch 7 tiếng, hiện ra "đã quá giờ", đơn nhảy sang Dọn phòng một phút
+                    // sau khi đổi và T007 được tính 101 phút cho 0 phút làm.
+                    const vaoThayChuaBatDau = subOrder.services.some((s: any) =>
+                        (s.staffList || []).some((st: any) =>
+                            (st.segments || []).some((g: any) =>
+                                g?.note === 'TAKEOVER' && !g?.actualStartTime && !g?.actualEndTime)));
+                    if (vaoThayChuaBatDau) return;
+
                     // Chỉ tính estimated end time từ services CỦA subOrder này (không phải toàn booking)
                     const estEndStr = getEstimatedEndTime(originalOrder, subOrder.services, subOrder);
                     if (estEndStr && estEndStr !== '--:--') {
