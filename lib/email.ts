@@ -72,7 +72,7 @@ const escapeHtml = (v: any): string =>
     .replace(/"/g, '&quot;');
 
 const formatVND = (amount: number) =>
-  new Intl.NumberFormat('vi-VN').format(amount) + '&nbsp;₫';
+  new Intl.NumberFormat('vi-VN').format(amount) + '&nbsp;VNĐ';
 
 // ============================================================================
 // NỘI DUNG THEO NGÔN NGỮ
@@ -144,7 +144,7 @@ const STRINGS: Record<string, Strings> = {
     lService: 'Dịch vụ', lDate: 'Ngày hẹn', lTime: 'Giờ hẹn', lDuration: 'Thời lượng',
     lTherapist: 'Kỹ thuật viên', lLocation: 'Địa điểm', lGuests: 'Số lượng khách',
     lBookingId: 'Mã đặt lịch', lTotal: 'Tổng thanh toán dự kiến', lDeposit: 'Tiền đặt cọc',
-    lPreferences: 'Yêu cầu & lưu ý trị liệu', lFocus: 'Tập trung', lAvoid: 'Tránh',
+    lPreferences: 'Yêu cầu & lưu ý', lFocus: 'Tập trung', lAvoid: 'Tránh',
     lStrength: 'Lực', lNote: 'Ghi chú thêm',
     randomTherapist: 'Ngẫu nhiên',
     minsUnit: (n) => `${n} phút`,
@@ -185,7 +185,7 @@ const STRINGS: Record<string, Strings> = {
     lService: 'Service', lDate: 'Date', lTime: 'Time', lDuration: 'Duration',
     lTherapist: 'Therapist', lLocation: 'Location', lGuests: 'Guests',
     lBookingId: 'Booking ref.', lTotal: 'Estimated total', lDeposit: 'Deposit',
-    lPreferences: 'Treatment preferences & notes', lFocus: 'Focus on', lAvoid: 'Avoid',
+    lPreferences: 'Preferences & notes', lFocus: 'Focus on', lAvoid: 'Avoid',
     lStrength: 'Pressure', lNote: 'Additional notes',
     randomTherapist: 'Random',
     minsUnit: (n) => `${n} mins`,
@@ -226,7 +226,7 @@ const STRINGS: Record<string, Strings> = {
     lService: '서비스', lDate: '예약 날짜', lTime: '예약 시간', lDuration: '소요 시간',
     lTherapist: '테라피스트', lLocation: '오시는 길', lGuests: '방문 인원',
     lBookingId: '예약 번호', lTotal: '예상 결제 금액', lDeposit: '예약금',
-    lPreferences: '관리 요청 및 참고 사항', lFocus: '집중 부위', lAvoid: '제외 부위',
+    lPreferences: '요청 및 참고 사항', lFocus: '집중 부위', lAvoid: '제외 부위',
     lStrength: '강도', lNote: '추가 요청 사항',
     randomTherapist: '랜덤 배정',
     minsUnit: (n) => `${n}분`,
@@ -267,7 +267,7 @@ const STRINGS: Record<string, Strings> = {
     lService: 'メニュー', lDate: 'ご予約日', lTime: 'ご予約時間', lDuration: '所要時間',
     lTherapist: 'セラピスト', lLocation: '所在地', lGuests: 'ご利用人数',
     lBookingId: '予約番号', lTotal: 'お支払い予定額', lDeposit: '事前決済金',
-    lPreferences: '施術のご要望・注意事項', lFocus: '重点部位', lAvoid: '避ける部位',
+    lPreferences: 'ご要望・注意事項', lFocus: '重点部位', lAvoid: '避ける部位',
     lStrength: '強さ', lNote: 'その他ご要望',
     randomTherapist: 'ランダム',
     minsUnit: (n) => `${n} 分`,
@@ -308,7 +308,7 @@ const STRINGS: Record<string, Strings> = {
     lService: '服务项目', lDate: '预约日期', lTime: '预约时间', lDuration: '服务时长',
     lTherapist: '理疗师', lLocation: '地址', lGuests: '到店人数',
     lBookingId: '预约编号', lTotal: '预计支付金额', lDeposit: '定金',
-    lPreferences: '护理要求与备注', lFocus: '重点部位', lAvoid: '避开部位',
+    lPreferences: '要求与备注', lFocus: '重点部位', lAvoid: '避开部位',
     lStrength: '力度', lNote: '其他备注',
     randomTherapist: '随机',
     minsUnit: (n) => `${n} 分钟`,
@@ -395,7 +395,7 @@ function localizePref(value: string, language: string): string {
     .join(sep);
 }
 
-/** Khối "Yêu cầu & lưu ý trị liệu" — chỉ render khi khách có chọn. */
+/** Khối "Yêu cầu & lưu ý" — chỉ render khi khách có chọn. */
 function preferencesBlock(s: Strings, prefs: BookingPreferences | undefined, language: string) {
   if (!prefs) return '';
   const lines = [
