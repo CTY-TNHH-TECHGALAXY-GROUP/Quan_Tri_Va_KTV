@@ -190,15 +190,10 @@ const OrderCard = ({ order, getStatusLabel }: {
                   Không có dòng này thì đơn hiện y như đơn thường mà tiền bằng 0 —
                   KTV không hiểu vì sao, quầy không giải thích được. */}
               {biTuoc && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 space-y-0.5">
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
                   <p className="text-[13px] font-semibold text-rose-700 leading-snug">
                     {order.voidedKind === 'CHANGED' ? 'Lý do đổi' : 'Lý do huỷ'}:{' '}
                     {order.voidedReason ? <>&ldquo;{order.voidedReason}&rdquo;</> : <span className="italic font-medium">quầy không ghi lý do</span>}
-                  </p>
-                  <p className="text-[11px] font-medium text-rose-500">
-                    {order.voidedKind === 'CHANGED'
-                      ? 'Bạn đã được đổi ra — không tính tiền tua, giờ tích luỹ và lượt tua. Không phải dọn phòng.'
-                      : 'Đơn huỷ không tính công — không tính tiền tua, giờ tích luỹ và lượt tua.'}
                   </p>
                 </div>
               )}
