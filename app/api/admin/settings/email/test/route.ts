@@ -4,22 +4,31 @@ import { EmailConfig, getEmailConfig } from '@/lib/email-config';
 import { EmailTestSchema } from '@/lib/schemas/admin.schema';
 import { requirePermission } from '@/lib/auth-server';
 
-/** Đơn hàng mẫu dùng cho xem trước & gửi thử. */
+/**
+ * Đơn hàng mẫu dùng cho xem trước & gửi thử — mô phỏng đơn nhiều dịch vụ để thấy
+ * đủ các trường hợp: mỗi dịch vụ một yêu cầu, KTV khác nhau, ghi chú riêng từng dịch vụ.
+ * Giá trị dùng nhãn chuẩn tiếng Việt, email tự dịch theo ngôn ngữ đang xem.
+ */
 const SAMPLE_BOOKING: BookingDetails = {
     bookingId: 'WB-DEMO-0001',
     date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     time: '14:30',
-    services: [{ name: 'Aroma Coconut Oil Massage', duration: 90 }],
-    duration: 90,
-    guests: 2,
+    services: [
+        { name: 'Gói dịch vụ cao cấp', duration: 120 },
+        { name: 'Tinh dầu dừa', duration: 60 },
+        { name: 'Cạo/tỉa râu', duration: 30 },
+    ],
+    duration: 210,
+    guests: 3,
     depositAmount: 600000,
-    totalAmount: 1160000,
+    totalAmount: 1575000,
     therapist: '',
-    preferences: {
-        focus: 'Đầu, Cổ vai gáy',
-        avoid: 'Bụng',
-        strength: 'Mạnh (Strong)',
-    },
+    servicePrefs: [
+        { name: 'Gói dịch vụ cao cấp', focus: 'Đầu, Cổ, Lưng', avoid: 'Vai, Tay', strength: 'Vừa', therapist: 'Nữ' },
+        { name: 'Tinh dầu dừa', focus: 'Vai, Tay', avoid: 'Cổ, Đầu', strength: 'Mạnh' },
+        { name: 'Cạo/tỉa râu', note: 'Có dị ứng' },
+    ],
+    therapistRequests: ['Nữ', '', ''],
     note: 'Quý khách bị dị ứng với tinh dầu bạc hà, vui lòng thay bằng tinh dầu tràm trà.',
 };
 

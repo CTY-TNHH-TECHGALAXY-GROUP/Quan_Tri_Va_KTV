@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { isDummyEmail } from '../lib/customer.logic';
-import { formatBodyAreas, normalizeStrength } from '../lib/booking.logic';
+import { buildServiceSection, extractBookingNote } from '../lib/booking-email.logic';
 import { getEmailConfig } from '../lib/email-config';
 import { renderBookingEmailHtml, getBookingEmailSubject, buildVietQrUrl, BookingDetails } from '../lib/email';
 
@@ -52,8 +52,8 @@ async function main() {
             id, billCode, customerName, customerEmail, customerLang, customerPhone,
             bookingDate, timeBooking, totalAmount, technicianCode, notes,
             BookingItems!BookingItems_bookingId_fkey (
-                quantity, serviceId, options,
-                Services!BookingItems_serviceId_fkey ( nameVN, nameEN, nameKR, nameJP, nameCN, duration )
+                quantity, serviceId, guest_id, options,
+                Services!BookingItems_serviceId_fkey ( nameVN, nameEN, nameKR, nameJP, nameCN, duration, is_utility )
             )
         `)
         .not('customerEmail', 'is', null)
@@ -93,58 +93,16 @@ async function main() {
         if (ketQua !== 'GUI') { soBoQua++; continue; }
         soGui++;
 
-        // ── Dựng bookingDetails: y hệt confirmWebBooking ──
-        let tongPhut = 0, tongKhach = 0;
-        const dichVu: { name: string; duration: number }[] = [];
-        const focus = new Set<string>(), avoid = new Set<string>(), luc = new Set<string>();
-        const ghiChuItem: string[] = [];
-
-        for (const it of (b.BookingItems || [])) {
-            tongKhach += it.quantity || 1;
-            let opts: any = it.options ?? {};
-            if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = {}; } }
-            const f = formatBodyAreas(opts.focus), a = formatBodyAreas(opts.avoid);
-            if (f) focus.add(f);
-            if (a) avoid.add(a);
-            if (opts.strength) luc.add(normalizeStrength(opts.strength));
-            const n = opts.note || opts.customerNotes;
-            if (n) ghiChuItem.push(String(n).trim());
-
-            if (it.Services) {
-                tongPhut += it.Services.duration || 0;
-                let ten = it.Services.nameEN || 'Service';
-                if (lang === 'vi') ten = it.Services.nameVN || ten;
-                else if (lang === 'kr') ten = it.Services.nameKR || ten;
-                else if (lang === 'jp') ten = it.Services.nameJP || ten;
-                else if (lang === 'cn') ten = it.Services.nameCN || ten;
-                dichVu.push({ name: ten, duration: it.Services.duration || 0 });
-            }
-        }
-
-        let ghiChu = '';
-        if (typeof b.notes === 'string' && b.notes.trim()) {
-            const raw = b.notes.trim();
-            if (raw.startsWith('{')) {
-                try { const p = JSON.parse(raw); ghiChu = p.customerNote || p.note || ''; } catch { ghiChu = ''; }
-            } else ghiChu = raw;
-        }
-
+        // ── Dựng bookingDetails: dùng CHUNG hàm với confirmWebBooking ──
         const details: BookingDetails = {
             bookingId: b.billCode || b.id,
             date: b.bookingDate || '',
             time: b.timeBooking || '',
-            services: dichVu,
-            duration: tongPhut,
-            guests: tongKhach,
             depositAmount: b.totalAmount ? Math.max(100000, Math.round((b.totalAmount * 0.5) / 100000) * 100000) : 0,
             totalAmount: b.totalAmount || 0,
             therapist: (b.technicianCode || '').trim(),
-            preferences: {
-                focus: [...focus].join(', '),
-                avoid: [...avoid].join(', '),
-                strength: [...luc].join(', '),
-            },
-            note: [ghiChu, ...ghiChuItem].filter(Boolean).join('\n'),
+            note: extractBookingNote(b.notes),
+            ...buildServiceSection(b.BookingItems, lang),
         };
 
         // ── Dựng email thật (chỉ dựng, không gửi) ──
@@ -160,6 +118,11 @@ async function main() {
         if (!html.includes(String(details.bookingId))) loi.push('thiếu mã đơn');
         if (html.includes('XÁC NHẬN GIỮ CHỖ') || html.includes('vietqr.io')) loi.push('KHỐI ĐẶT CỌC CHƯA BỊ GỠ');
         if (html.includes('undefined') || html.includes('NaN')) loi.push('có undefined/NaN');
+        for (const g of details.servicePrefs || []) {
+            const f = new Set((g.focus || '').split(',').map(x => x.trim()).filter(Boolean));
+            const trung = (g.avoid || '').split(',').map(x => x.trim()).filter(x => f.has(x));
+            if (trung.length) loi.push(`[${g.name}] vừa Tập trung vừa Tránh: ${trung.join(', ')}`);
+        }
         if (loi.length) console.log(`        ⚠️  ${loi.join(' | ')}`);
 
         if (!mauDauTien) mauDauTien = { html, subject, billCode: String(details.bookingId) };

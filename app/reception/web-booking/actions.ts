@@ -8,8 +8,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
+import { buildServiceSection, extractBookingNote } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -244,7 +244,7 @@ export async function confirmWebBooking(bookingId: string) {
           guest_id,
           options,
           Services!BookingItems_serviceId_fkey (
-            nameVN, nameEN, nameKR, nameJP, nameCN, duration
+            nameVN, nameEN, nameKR, nameJP, nameCN, duration, is_utility
           )
         )
       `)
@@ -439,81 +439,18 @@ export async function confirmWebBooking(bookingId: string) {
             depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
         }
 
-        // Bóc tách danh sách dịch vụ và tính tổng phút, số lượng khách
-        let totalDuration = 0;
-        let totalGuests = 0;
-        const serviceList: { name: string; duration: number }[] = [];
-
-        // Gom yêu cầu điều trị của khách (tập trung / bỏ qua / lực) từ options của từng item
-        const focusSet = new Set<string>();
-        const avoidSet = new Set<string>();
-        const strengthSet = new Set<string>();
-        const itemNotes: string[] = [];
-
-        if (bData.BookingItems && Array.isArray(bData.BookingItems)) {
-            bData.BookingItems.forEach((item: any) => {
-                const qty = item.quantity || 1;
-                totalGuests += qty;
-
-                let opts = item.options ?? {};
-                if (typeof opts === 'string') {
-                    try { opts = JSON.parse(opts); } catch { opts = {}; }
-                }
-                const focusStr = formatBodyAreas(opts.focus);
-                const avoidStr = formatBodyAreas(opts.avoid);
-                if (focusStr) focusSet.add(focusStr);
-                if (avoidStr) avoidSet.add(avoidStr);
-                if (opts.strength) strengthSet.add(normalizeStrength(opts.strength));
-                const itemNote = opts.note || opts.customerNotes;
-                if (itemNote) itemNotes.push(String(itemNote).trim());
-
-                if (item.Services) {
-                    const dur = item.Services.duration || 0;
-                    totalDuration += dur;
-                    
-                    // Lấy tên dịch vụ theo ngôn ngữ khách hàng
-                    let sName = item.Services.nameEN || 'Service';
-                    if (bData.customerLang === 'vi') sName = item.Services.nameVN || sName;
-                    else if (bData.customerLang === 'kr') sName = item.Services.nameKR || sName;
-                    else if (bData.customerLang === 'jp') sName = item.Services.nameJP || sName;
-                    else if (bData.customerLang === 'cn') sName = item.Services.nameCN || sName;
-                    
-                    serviceList.push({ name: sName, duration: dur });
-                }
-            });
-        }
-
-        // Ghi chú chung của đơn có thể là JSON — chỉ lấy phần khách viết
-        let bookingNote = '';
-        if (bData.notes && typeof bData.notes === 'string') {
-            const raw = bData.notes.trim();
-            if (raw.startsWith('{')) {
-                try {
-                    const parsed = JSON.parse(raw);
-                    bookingNote = parsed.customerNote || parsed.note || '';
-                } catch { bookingNote = ''; }
-            } else {
-                bookingNote = raw;
-            }
-        }
-        const allNotes = [bookingNote, ...itemNotes].filter(Boolean).join('\n');
-
+        // Dịch vụ, thời lượng, số khách và yêu cầu theo TỪNG dịch vụ.
+        // Dùng chung với route gửi lại email — xem lib/booking-email.logic.ts.
+        const lang = bData.customerLang || 'vi';
         const bookingDetails = {
             bookingId: bData.billCode || bData.id || bookingId,
             date: bData.bookingDate || '',
             time: bData.timeBooking || '',
-            services: serviceList,
-            duration: totalDuration,
-            guests: totalGuests,
             depositAmount: depositAmountVND,
             totalAmount: bData.totalAmount || 0,
             therapist: (bData.technicianCode || '').trim(),
-            preferences: {
-                focus: Array.from(focusSet).join(', '),
-                avoid: Array.from(avoidSet).join(', '),
-                strength: Array.from(strengthSet).join(', '),
-            },
-            note: allNotes,
+            note: extractBookingNote(bData.notes),
+            ...buildServiceSection(bData.BookingItems, lang),
         };
 
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
