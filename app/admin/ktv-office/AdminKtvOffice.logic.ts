@@ -141,6 +141,22 @@ export const useAdminKtvOfficeLogic = () => {
    */
   const [workday, setWorkday] = useState<any>(null);
 
+  /**
+   * LỊCH chọn "Ngày vi phạm" — làm giống lịch KTV xem ở modal Điểm Office.
+   *
+   * Trước đây là ô chọn ngày của trình duyệt: ngày nào cũng trắng như nhau, admin
+   * bấm trúng ngày KTV nghỉ, tích lỗi xong mới bị báo đỏ. Lịch này tô màu từng
+   * ngày (xanh / đỏ / xám) và KHOÁ SẴN ngày không chọn được — xem
+   * `lib/office-calendar.ts`.
+   */
+  const [calendarMonth, setCalendarMonth] = useState<string>(vnTodayStr().slice(0, 7));
+  const [calendarDays, setCalendarDays] = useState<any[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  /** Do SERVER quyết (cùng hàm với cửa chặn của POST /deduct). */
+  const [canPickOld, setCanPickOld] = useState(false);
+  /** Mở sẵn khi vào sheet — chọn ngày là bước đầu tiên; chọn xong thì gập lại. */
+  const [showCalendar, setShowCalendar] = useState(true);
+
   // Màn Cài đặt bộ tiêu chí (gồm cả tiêu chí đã ngừng áp dụng).
   const [settingsGroups, setSettingsGroups] = useState<any[]>([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -302,6 +318,35 @@ export const useAdminKtvOfficeLogic = () => {
     }
   }, [addToast]);
 
+  const fetchCalendar = useCallback(async (code: string, month: string) => {
+    if (!code) return;
+    setCalendarLoading(true);
+    try {
+      const res = await apiClient.get<any>(
+        `/api/admin/ktv-office/calendar?staffId=${encodeURIComponent(code)}&month=${month}`
+      );
+      setCalendarDays(res?.days || []);
+      setCanPickOld(!!res?.canPickOld);
+      if (res?.today) setBusinessToday(res.today);
+    } catch {
+      // Không tải được lịch thì để trống — ô nào cũng hiện "không có dữ liệu",
+      // còn cửa chặn thật vẫn nằm ở server khi bấm gửi.
+      setCalendarDays([]);
+    } finally {
+      setCalendarLoading(false);
+    }
+  }, []);
+
+  const changeCalendarMonth = (delta: number) => {
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+    const next = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    // Tháng sau chưa xảy ra — không có ngày nào để trừ.
+    if (next > businessToday.slice(0, 7)) return;
+    setCalendarMonth(next);
+    fetchCalendar(sheetState.code, next);
+  };
+
   const openSheet = (type: Exclude<SheetType, null>, person = '', code = '', score = 100) => {
     const today = businessToday;
     setSheetState(prev => ({
@@ -319,6 +364,11 @@ export const useAdminKtvOfficeLogic = () => {
     if (type === 'deduct') {
       fetchCriteria();
       fetchExisting(code, today);
+      const m = today.slice(0, 7);
+      setCalendarMonth(m);
+      setCalendarDays([]);
+      setShowCalendar(true);
+      fetchCalendar(code, m);
     }
     if (type === 'settings') {
       fetchSettings();
@@ -377,6 +427,22 @@ export const useAdminKtvOfficeLogic = () => {
     // Bỏ tích những lỗi đã bị trừ ở ngày mới, tránh gửi lên rồi bị từ chối.
     setSheetState(prev => ({ ...prev, workDate }));
     fetchExisting(sheetState.code, workDate);
+  };
+
+  /** Bấm một ô trên lịch: chọn ngày rồi gập lịch lại, giống lịch của KTV. */
+  const pickCalendarDay = (iso: string) => {
+    changeWorkDate(iso);
+    setShowCalendar(false);
+  };
+
+  /** Nút "Hôm nay" dưới lịch: về tháng này, chọn hôm nay. */
+  const pickToday = () => {
+    const m = businessToday.slice(0, 7);
+    if (m !== calendarMonth) {
+      setCalendarMonth(m);
+      fetchCalendar(sheetState.code, m);
+    }
+    pickCalendarDay(businessToday);
   };
 
   const closeSheet = () => setSheetState(prev => ({ ...prev, isOpen: false }));
@@ -692,6 +758,8 @@ export const useAdminKtvOfficeLogic = () => {
     unlockInfo, unlockReason, setUnlockReason, unlockFee, setUnlockFee, canUnlock, submitUnlock,
     existingHits, existingLoading, changeWorkDate,
     workday, blockedNotWorkday,
+    calendarMonth, calendarDays, calendarLoading, canPickOld,
+    showCalendar, setShowCalendar, changeCalendarMonth, pickCalendarDay, pickToday,
     editState, startEditLog, cancelEditLog, patchEdit, addEditPhotos, removeEditPhoto, removeEditNewPhoto, saveEditLog,
     revokeState, startRevokeLog, cancelRevokeLog, setRevokeReason, confirmRevokeLog,
     logBusy,

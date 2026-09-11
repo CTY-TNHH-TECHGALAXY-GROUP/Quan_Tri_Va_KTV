@@ -2,11 +2,12 @@
 
 import React from 'react';
 import { useAdminKtvOfficeLogic } from './AdminKtvOffice.logic';
-import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2, Trash2, Plus, SlidersHorizontal, Timer } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2, Trash2, Plus, SlidersHorizontal, Timer, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { fmtHours } from '@/lib/hours-format';
+import { dayPickState, DayTone } from '@/lib/office-calendar';
 
 // 🔧 UI CONFIGURATION
 const CSS_VARS = {
@@ -480,6 +481,128 @@ const CriteriaSettings = ({ logic }: { logic: any }) => {
   );
 };
 
+/** '2026-09-05' → '05/09/2026' — cùng cách ô ngày của lịch KTV hiện. */
+function fmtDayFull(iso: string): string {
+  const [y, m, d] = String(iso || '').split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
+/**
+ * Màu từng loại ô — CÙNG bộ màu với lịch KTV ở modal Điểm Office
+ * (`app/ktv/dashboard/_components/modals.tsx`), để quầy và KTV nhìn cùng một
+ * ngày thấy cùng một màu.
+ */
+const DAY_TONE: Record<DayTone, string> = {
+  clean: 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100',
+  hit: 'bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100',
+  hitOff: 'bg-rose-50 text-rose-600 border border-rose-100 opacity-50 cursor-not-allowed',
+  off: 'bg-slate-50 text-slate-300 cursor-not-allowed',
+  locked: 'bg-slate-50 text-slate-300 cursor-not-allowed opacity-60',
+  future: 'text-slate-200 cursor-not-allowed',
+};
+
+/**
+ * Lịch chọn "Ngày vi phạm" trên sheet trừ điểm.
+ *
+ * Làm theo lưới của lịch KTV (tuần bắt đầu Thứ 2, ô xanh/đỏ/xám, dưới ô đỏ ghi
+ * điểm ngày), nhưng thêm một việc lịch KTV không cần: KHOÁ những ngày không trừ
+ * được — ngày tương lai, ngày cũ hơn hôm qua với lễ tân, và ngày KTV không đi làm.
+ * Luật nằm ở `dayPickState` (lib/office-calendar.ts), dùng chung với kịch bản
+ * kiểm thử `qa_14`.
+ */
+function DeductCalendar({ month, days, loading, today, selected, canPickOld, onPrev, onNext, onPick, onToday }: {
+  month: string;
+  days: any[];
+  loading: boolean;
+  today: string;
+  selected: string;
+  canPickOld: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onPick: (iso: string) => void;
+  onToday: () => void;
+}) {
+  const [y, m] = month.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  // getUTCDay(): CN = 0 → dịch để tuần bắt đầu Thứ 2, khớp lịch KTV.
+  const firstWeekday = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const byDate: Record<string, any> = {};
+  days.forEach(d => { byDate[d.date] = d; });
+  const isCurrentMonth = month >= String(today).slice(0, 7);
+
+  return (
+    <div className="bg-slate-50 rounded-2xl p-3 mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={onPrev} aria-label="Tháng trước"
+          className="w-8 h-8 rounded-lg bg-white text-slate-500 flex items-center justify-center shadow-sm">
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-xs font-black text-slate-600">Tháng {Number(month.slice(5))}/{month.slice(0, 4)}</span>
+        <button onClick={onNext} disabled={isCurrentMonth} aria-label="Tháng sau"
+          className="w-8 h-8 rounded-lg bg-white text-slate-500 flex items-center justify-center shadow-sm disabled:opacity-30">
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(d => (
+          <div key={d} className="text-center text-[9px] font-black uppercase text-slate-300 py-1">{d}</div>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="py-8 text-center text-slate-400 text-xs font-bold">Đang tải lịch…</p>
+      ) : (
+        <div className="grid grid-cols-7 gap-1">
+          {Array.from({ length: firstWeekday }).map((_, i) => <div key={`pad-${i}`} />)}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const iso = `${month}-${String(day).padStart(2, '0')}`;
+            const info = byDate[iso];
+            const pick = dayPickState({
+              date: iso,
+              today,
+              canPickOld,
+              // Chưa tải được dữ liệu ngày này thì đừng tự khoá — server vẫn chặn khi gửi.
+              canDeduct: info ? info.canDeduct : true,
+              hitCount: info?.hitCount || 0,
+            });
+            const isSelected = iso === selected;
+            const tone = isSelected ? 'bg-indigo-600 text-white shadow-md' : DAY_TONE[pick.tone];
+
+            return (
+              <button
+                key={iso}
+                disabled={!pick.pickable}
+                onClick={() => pick.pickable && onPick(iso)}
+                title={pick.why || info?.label || ''}
+                className={`aspect-square rounded-xl text-xs font-black flex flex-col items-center justify-center transition-colors ${tone} ${iso === today && !isSelected ? 'ring-2 ring-indigo-400' : ''}`}
+              >
+                {day}
+                {(pick.tone === 'hit' || pick.tone === 'hitOff') && info?.dayScore != null && (
+                  <span className={`text-[8px] font-bold leading-none ${isSelected ? 'text-white/80' : ''}`}>
+                    {info.dayScore}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-200">
+        <div className="flex items-center gap-2 text-[9px] font-bold text-slate-400 flex-wrap">
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded bg-emerald-200" /> Không lỗi</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded bg-rose-200" /> Có lỗi</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded bg-slate-200" /> Nghỉ / không chọn được</span>
+        </div>
+        <button onClick={onToday}
+          className="text-[10px] font-black uppercase tracking-widest text-indigo-600 shrink-0">Hôm nay</button>
+      </div>
+    </div>
+  );
+}
+
 const AdminKtvOfficePage = () => {
   const logic = useAdminKtvOfficeLogic();
   
@@ -708,27 +831,47 @@ const AdminKtvOfficePage = () => {
                 {logic.sheetState.type === 'deduct' && (
                   <>
                     <div className="bg-[var(--surface-soft)] p-3.5 rounded-2xl mb-5">
-                      <label className="block text-xs text-[var(--muted)] mb-2">Ngày vi phạm</label>
-                      <div className="flex gap-2 flex-wrap">
-                        {/* Ngày làm việc do server chốt theo mốc cắt 06:00 — sau nửa đêm
-                            "Hôm nay" vẫn là ca đang chạy, không nhảy sang ngày lịch mới. */}
+                      {/* Chọn ngày bằng LỊCH giống lịch KTV xem ở modal Điểm Office:
+                          ô ngày kiêm nút mở lịch, lịch tô màu xanh / đỏ / xám và khoá
+                          sẵn ngày không chọn được. Trước đây là ô chọn ngày của trình
+                          duyệt — ngày nào cũng trắng như nhau, bấm trúng ngày KTV nghỉ
+                          rồi mới bị báo đỏ. */}
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-xs text-[var(--muted)]">Ngày vi phạm</label>
                         <button
-                          onClick={() => logic.changeWorkDate(logic.today)}
-                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === logic.today ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
-                        >Hôm nay</button>
-                        <button
-                          onClick={() => logic.changeWorkDate(logic.yesterday)}
-                          className={`h-11 px-4 rounded-xl font-bold text-sm ${logic.sheetState.workDate === logic.yesterday ? 'btn-primary' : 'bg-white border border-[var(--line)]'}`}
-                        >Hôm qua</button>
-                        <input
-                          type="date"
-                          max={logic.today}
-                          value={logic.sheetState.workDate}
-                          onChange={e => logic.changeWorkDate(e.target.value)}
-                          className="h-11 px-3 rounded-xl border border-[var(--line)] bg-white text-sm font-bold"
-                        />
+                          onClick={() => logic.setShowCalendar(!logic.showCalendar)}
+                          className={`h-10 px-4 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${
+                            logic.showCalendar
+                              ? 'bg-indigo-600 text-white shadow-md'
+                              : 'bg-white border border-[var(--line)] text-slate-700'
+                          }`}
+                        >
+                          {fmtDayFull(logic.sheetState.workDate)}
+                          <CalendarDays size={16} className={logic.showCalendar ? 'text-white' : 'text-indigo-500'} />
+                        </button>
                       </div>
-                      <p className="text-xs text-[var(--muted)] mt-2">Lễ tân chỉ trừ được hôm nay và hôm qua. Quản lý trừ được mọi ngày.</p>
+
+                      {logic.showCalendar && (
+                        <DeductCalendar
+                          month={logic.calendarMonth}
+                          days={logic.calendarDays}
+                          loading={logic.calendarLoading}
+                          today={logic.today}
+                          selected={logic.sheetState.workDate}
+                          canPickOld={logic.canPickOld}
+                          onPrev={() => logic.changeCalendarMonth(-1)}
+                          onNext={() => logic.changeCalendarMonth(1)}
+                          onPick={logic.pickCalendarDay}
+                          onToday={logic.pickToday}
+                        />
+                      )}
+
+                      <p className="text-xs text-[var(--muted)] mt-2">
+                        {logic.canPickOld
+                          ? 'Bạn là Quản lý — chọn được mọi ngày đã qua.'
+                          : 'Lễ tân chỉ trừ được hôm nay và hôm qua.'}
+                        {' '}Ngày xám là ngày KTV không đi làm, không chọn được.
+                      </p>
 
                       {/* Ngày đó KTV có đi làm không — server xét cả chấm công lẫn
                           lịch đăng ký. Báo NGAY ở đây, đừng để tích xong 5 lỗi và
