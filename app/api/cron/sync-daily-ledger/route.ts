@@ -120,6 +120,11 @@ async function processLedgerSync(targetDateStr: string) {
 
     // 5. Calculate per KTV
     for (const ktv of ktvs) {
+        // TYPE_D uses its own formula (sync-daily-ledger-type-d). This legacy path would
+        // price them as TYPE_A and overwrite their rows in the shared DB, so skip them here.
+        // Kept in `ktvs` on purpose: staffWorkTypeMap still needs them for mixed-team bonus.
+        if (ktv.work_type === 'TYPE_D') continue;
+
         const techCode = ktv.id;
         const workType = ktv.work_type === 'TYPE_B' ? 'TYPE_B' : ktv.work_type === 'TYPE_C' ? 'TYPE_C' : 'TYPE_A';
         const commConfig = allConfigs[workType] || allConfigs['TYPE_A'];
