@@ -1,4 +1,4 @@
-import { isVoidedSegment, workedMsOf } from '../segment-time';
+import { isVoidedSegment, workedMsOf, parseTimeMs } from '../segment-time';
 import { toBusinessDate } from '../business-date';
 
 /**
@@ -243,6 +243,13 @@ export function resolveRating(
  * `customCommissionDuration` (admin can thiệp) thắng cả hai và KHÔNG bị chặn —
  * đó là con số admin cố ý nhập, không phải dữ liệu hỏng.
  */
+/** Incoming KTV of a TAKEOVER segment has really started and then finished. */
+function takeoverFinished(seg: any): boolean {
+    const start = parseTimeMs(seg?.actualStartTime);
+    const end = parseTimeMs(seg?.actualEndTime);
+    return Number.isFinite(start) && Number.isFinite(end) && end > start;
+}
+
 export function computeMinutes(segs: any[]): {
     assigned: number; actual: number; paid: number; custom: number | null;
 } {
@@ -255,6 +262,17 @@ export function computeMinutes(segs: any[]): {
 
         const gan = Number(seg?.duration) || 0;
         assigned += gan;
+
+        // A TAKEOVER segment (KTV swapped in mid-service) carries a minute count
+        // fixed at swap time in `customCommissionDuration`. That amount is only
+        // earned once the incoming KTV has actually started AND finished.
+        //
+        // ⚠️ Without this gate the fixed minutes were paid the moment the item
+        // reached a payable status — case WB-11092026-002: T007 was credited
+        // 101p = 168.333đ at 21:11, two minutes before pressing Start at 21:13.
+        // An end mark that is not after the start mark (stamped by another flow
+        // before the KTV began) does not count as finished either.
+        if (seg?.note === 'TAKEOVER' && !takeoverFinished(seg)) continue;
 
         const hasCustom = seg?.customCommissionDuration !== undefined
             && seg?.customCommissionDuration !== null;

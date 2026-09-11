@@ -1411,6 +1411,15 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
 
                     let segmentsModified = false;
                     segs.forEach((s: any) => {
+                        // Never stamp an end on a TAKEOVER segment whose KTV has not
+                        // started yet: that KTV is an independent entity (rule 9.4)
+                        // and may still start after this status change.
+                        //
+                        // ⚠️ Case WB-11092026-002: this loop stamped T007's fresh
+                        // TAKEOVER segment at 21:08, the item became CLEANING, and the
+                        // ledger paid T007's fixed 101p = 168.333đ before T007 pressed
+                        // Start at 21:13 — leaving an end mark earlier than the start.
+                        if (s.note === 'TAKEOVER' && !s.actualStartTime) return;
                         if (!s.actualEndTime) {
                             s.actualEndTime = endMark;
                             // Chốt số phút làm thực cho chặng đã tạm dừng — thiếu con số này thì
