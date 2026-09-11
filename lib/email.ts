@@ -358,13 +358,50 @@ function detailRow(label: string, value: string, opts: { gold?: boolean; bold?: 
               </tr>`;
 }
 
+/**
+ * Dịch ngược giá trị yêu cầu điều trị sang ngôn ngữ của email.
+ *
+ * Trước khi tới đây, formatBodyAreas / normalizeStrength (lib/booking.logic.ts) đã
+ * chuẩn hoá mọi đầu vào — dù khách chọn "medium", "보통" hay "普通" — về MỘT tập nhãn
+ * tiếng Việt cố định, để bảng Điều phối cho KTV đọc thống nhất. Bảng dưới phủ đúng
+ * tập nhãn đó; nhãn lạ (khách tự gõ) được giữ nguyên thay vì đoán.
+ */
+const PREF_I18N: Record<string, Record<string, string>> = {
+  // Lực massage
+  'Nhẹ':       { en: 'Light',     kr: '약하게', jp: '弱め',       cn: '轻' },
+  'Vừa':       { en: 'Medium',    kr: '보통',   jp: '普通',       cn: '适中' },
+  'Mạnh':      { en: 'Strong',    kr: '강하게', jp: '強め',       cn: '用力' },
+  // Vùng cơ thể
+  'Toàn thân': { en: 'Full body', kr: '전신',   jp: '全身',       cn: '全身' },
+  'Đầu':       { en: 'Head',      kr: '머리',   jp: '頭',         cn: '头部' },
+  'Cổ':        { en: 'Neck',      kr: '목',     jp: '首',         cn: '颈部' },
+  'Vai':       { en: 'Shoulders', kr: '어깨',   jp: '肩',         cn: '肩部' },
+  'Lưng':      { en: 'Back',      kr: '등',     jp: '背中',       cn: '背部' },
+  'Tay':       { en: 'Arms',      kr: '팔',     jp: '腕',         cn: '手臂' },
+  'Đùi':       { en: 'Thighs',    kr: '허벅지', jp: '太もも',     cn: '大腿' },
+  'Đầu gối':   { en: 'Knees',     kr: '무릎',   jp: '膝',         cn: '膝盖' },
+  'Bắp chân':  { en: 'Calves',    kr: '종아리', jp: 'ふくらはぎ', cn: '小腿' },
+  'Bàn chân':  { en: 'Feet',      kr: '발',     jp: '足',         cn: '脚' },
+};
+
+function localizePref(value: string, language: string): string {
+  if (language === 'vi') return value;
+  const sep = language === 'jp' || language === 'cn' ? '、' : ', ';
+  return value
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean)
+    .map(t => PREF_I18N[t]?.[language] || t)
+    .join(sep);
+}
+
 /** Khối "Yêu cầu & lưu ý trị liệu" — chỉ render khi khách có chọn. */
-function preferencesBlock(s: Strings, prefs?: BookingPreferences) {
+function preferencesBlock(s: Strings, prefs: BookingPreferences | undefined, language: string) {
   if (!prefs) return '';
   const lines = [
-    prefs.focus && { label: s.lFocus, value: prefs.focus },
-    prefs.avoid && { label: s.lAvoid, value: prefs.avoid },
-    prefs.strength && { label: s.lStrength, value: prefs.strength },
+    prefs.focus && { label: s.lFocus, value: localizePref(prefs.focus, language) },
+    prefs.avoid && { label: s.lAvoid, value: localizePref(prefs.avoid, language) },
+    prefs.strength && { label: s.lStrength, value: localizePref(prefs.strength, language) },
   ].filter(Boolean) as { label: string; value: string }[];
 
   if (lines.length === 0) return '';
@@ -459,7 +496,14 @@ export function renderBookingEmailHtml(
         const d = new Date(details.date);
         return isNaN(d.getTime())
           ? escapeHtml(details.date)
-          : d.toLocaleDateString(s.locale, { year: 'numeric', month: '2-digit', day: '2-digit' });
+          // Tiếng Anh dùng tên tháng: "09/10/2026" kiểu Mỹ là 10/09 nhưng khách
+          // Anh/Úc/châu Âu đọc thành 9 tháng 10. Các ngôn ngữ còn lại không mơ hồ.
+          : d.toLocaleDateString(
+              s.locale,
+              language === 'en'
+                ? { year: 'numeric', month: 'long', day: 'numeric' }
+                : { year: 'numeric', month: '2-digit', day: '2-digit' }
+            );
       })()
     : '—';
 
@@ -489,7 +533,7 @@ export function renderBookingEmailHtml(
     detailRow(s.lGuests, s.guestsUnit(details.guests || 1)),
     detailRow(s.lBookingId, escapeHtml(details.bookingId), { gold: true, bold: true }),
     details.totalAmount ? detailRow(s.lTotal, formatVND(details.totalAmount), { gold: true, bold: true }) : '',
-    preferencesBlock(s, details.preferences),
+    preferencesBlock(s, details.preferences, language),
     noteBlock(s, details.note),
   ].join('');
 
