@@ -1,6 +1,3 @@
-# ACTIVATION: ALWAYS_ON
-# PROJECT_TYPE: Next.js App Router (Spa Management System)
-
 # Ngan Ha Spa — Quản trị & KTV (Next.js App Router + Supabase)
 
 > **Bản gốc duy nhất của bộ rule.** Sửa ở đây rồi copy sang `.gemini/rules.md` để Antigravity dùng chung.
