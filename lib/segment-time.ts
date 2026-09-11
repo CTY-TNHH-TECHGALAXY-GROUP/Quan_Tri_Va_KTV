@@ -257,3 +257,34 @@ export function gioDongHoVN(at: string | number | Date): string {
     const d = new Date(ms + 7 * 60 * 60 * 1000);
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
+
+/**
+ * KTV này bị ĐỔI RA khỏi đơn: mọi chặng của họ trên các dịch vụ đưa vào đều bị
+ * tước (`voided`) với ghi chú 'CHANGED'.
+ *
+ * Dùng để quyết định người đó có phải dọn phòng không. Người bị đổi ra thì
+ * KHÔNG — người vào thay vẫn đang làm trong phòng, dọn là việc của họ.
+ *
+ * ⚠️ Phải là MỌI chặng. Một người có thể bị đổi ra ở dịch vụ này nhưng đã làm
+ * trọn dịch vụ khác cùng bill (gặp thật: WB-11092026-002, T069 bị đổi ở NHS0800
+ * nhưng làm xong NHS0900) — người đó vẫn phải dọn như thường.
+ * ⚠️ Phải đúng note 'CHANGED': huỷ không công cũng `voided`, nhưng đó là "đang
+ * làm thì khách không ưng" — phòng vẫn bẩn, vẫn phải dọn.
+ *
+ * @param items    các BookingItems (có `segments`, chuỗi JSON hay mảng đều được)
+ * @param khopKtv  hàm so mã KTV với `seg.ktvId` — truyền `ktvMatchesSeg` để hiểu
+ *                 chặng ghép kiểu "Bao - Na"
+ */
+export function laNguoiBiDoiRaKhoiDon(
+    items: any[],
+    ktvId: string,
+    khopKtv: (segKtvId: any, ktvId: string) => boolean
+): boolean {
+    if (!Array.isArray(items) || !ktvId) return false;
+    const segs = items.flatMap((i: any) => {
+        let parsed: any = i?.segments;
+        if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = []; } }
+        return (Array.isArray(parsed) ? parsed : []).filter((sg: any) => khopKtv(sg?.ktvId, ktvId));
+    });
+    return segs.length > 0 && segs.every((sg: any) => sg?.voided === true && sg?.note === 'CHANGED');
+}

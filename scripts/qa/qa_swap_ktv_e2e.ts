@@ -21,7 +21,8 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import { BookingItemPauseService } from '@/lib/services/BookingItemPauseService';
-import { gioDongHoVN } from '@/lib/segment-time';
+import { gioDongHoVN, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
 
 const env = fs.readFileSync(path.resolve('.env.local'), 'utf-8');
 let url = '', key = '';
@@ -137,6 +138,11 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
             `lưu ${segCu?.endTime}, đúng ra ${gioDongHoVN(segCu?.actualEndTime)}`);
         check('lý do đổi lưu ở chặng bị tước', segCu?.lyDoDoi === LY_DO, `= ${JSON.stringify(segCu?.lyDoDoi)}`);
         check('KTV cũ VẪN nằm trong đơn', (it as any).technicianCodes?.includes(oldKtv));
+        // Người bị đổi ra đánh giá khách xong là về — KHÔNG dọn phòng. Người vào
+        // thay thì vẫn phải dọn như thường.
+        const itemsDon = [{ segments: segs }];
+        check('người bị đổi ra: KHÔNG phải dọn phòng', laNguoiBiDoiRaKhoiDon(itemsDon, oldKtv, ktvMatchesSeg) === true);
+        check('người vào thay: vẫn phải dọn phòng', laNguoiBiDoiRaKhoiDon(itemsDon, newKtv, ktvMatchesSeg) === false);
         check('chặng KTV mới là TAKEOVER', segMoi?.note === 'TAKEOVER');
         const gioVnBayGio = gioDongHoVN(Date.now());
         const lechPhut = (() => {

@@ -1,4 +1,4 @@
-import { pausedMsOf, endedByCounter } from '@/lib/segment-time';
+import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
@@ -192,6 +192,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // Điểm Office của chính KTV (chỉ Loại D) — để họ tự xem thay vì cuối tháng mới biết.
     const [officeScore, setOfficeScore] = useState<any>(null);
+    // Type D whose points wallet is switched off: the tile shows the maintenance
+    // notice instead of disappearing (server answers applicable + disabled).
+    const [officeScoreDisabled, setOfficeScoreDisabled] = useState(false);
 
     const [workType, setWorkType] = useState('TYPE_A');
     useEffect(() => {
@@ -330,9 +333,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // từ client để KTV không xem được điểm của người khác.
                 try {
                     const officeJson = await apiClient.get<any>('/api/ktv/office-score');
-                    setOfficeScore(officeJson?.applicable ? officeJson.data : null);
+                    setOfficeScore(officeJson?.applicable && !officeJson?.disabled ? officeJson.data : null);
+                    setOfficeScoreDisabled(officeJson?.disabled === true);
                 } catch {
                     setOfficeScore(null); // không có điểm Office thì ẩn ô, không chặn dashboard
+                    setOfficeScoreDisabled(false);
                 }
             } catch (e) {
                 console.error('Error fetching KPI/Discipline state:', e);
@@ -780,6 +785,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     setScreen('REVIEW');
                     setIsTimerRunning(false);
                 }
+            } else if (laNguoiBiDoiRa(booking)) {
+                // Người BỊ ĐỔI RA đánh giá khách xong là xong việc — KHÔNG dọn phòng,
+                // không màn Thưởng. Người vào thay vẫn đang làm trong phòng đó; dọn là
+                // việc của họ sau khi xong. Server đã nhả người bị đổi khỏi đơn ngay lúc
+                // đổi (TurnQueue về waiting, phiếu phân công CANCELLED, kéo đơn kế tiếp),
+                // nên không cần đi qua bước bàn giao để giải phóng.
+                if (currentScreen !== 'DASHBOARD') goToDashboard();
             } else {
                 // Kiểm tra xem KTV này đã bàn giao phòng chưa (dựa vào handoverTime trong segments)
                 let allHandover = false;
@@ -2097,6 +2109,19 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // Keep ref up-to-date so timer callback always calls latest version
     handleFinishTimerRef.current = handleFinishTimer;
 
+    /**
+     * KTV này bị ĐỔI RA khỏi đơn: mọi chặng của họ trong đơn đều bị tước
+     * (`voided`) với ghi chú 'CHANGED'.
+     *
+     * ⚠️ Phải là MỌI chặng. Một người có thể bị đổi ra ở dịch vụ này nhưng vẫn
+     * đang làm dịch vụ khác cùng bill — người đó vẫn phải dọn phòng như thường.
+     * Và phải đúng note 'CHANGED': huỷ không công cũng `voided` nhưng đó là
+     * "đang làm thì khách không ưng" — phòng vẫn bẩn, vẫn phải dọn.
+     */
+    function laNguoiBiDoiRa(bk: any): boolean {
+        return laNguoiBiDoiRaKhoiDon(bk?.BookingItems || [], ktvId || '', ktvMatchesSeg);
+    }
+
     const handleSubmitReview = async (customerProfile: any) => {
         if (!booking || !ktvId) {
             console.log("🚨 [KTV Logic] Mất dữ liệu phiên làm việc, ép thoát về DASHBOARD");
@@ -2138,6 +2163,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 localStorage.setItem(reviewKey, 'true');
             } catch(e) {}
             
+            // Người bị đổi ra: đánh giá khách là việc cuối cùng — về thẳng trang chủ.
+            // Xem nhánh cùng tên trong ScreenEngine.
+            if (laNguoiBiDoiRa(booking)) {
+                addToast('Đã lưu đánh giá. Bạn đã được đổi ra nên không cần dọn phòng.', 'success');
+                goToDashboard();
+                return;
+            }
+
             // Always go to HANDOVER — commission is calculated in handleFinishHandover()
             isTransitioningRef.current = true;
             setScreen('HANDOVER');
@@ -2720,6 +2753,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         markNotificationAsRead,
         turnData,
         officeScore,
+        officeScoreDisabled,
         kpiData,
         disciplineStatus,
         canViewWallet,
