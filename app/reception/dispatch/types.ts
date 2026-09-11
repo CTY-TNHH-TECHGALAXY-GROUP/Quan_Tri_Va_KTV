@@ -114,6 +114,15 @@ export interface PendingOrder {
   accessToken?: string | null;
   rating?: number | null;
   feedbackNote?: string | null;
+  /** KTV chấm quầy ở màn Reward (bảng KTVReviewReception). */
+  ktvReviewsOfReception?: {
+    ktv_id: string;
+    booking_id: string;
+    rating: number;
+    note: string | null;
+    images: string[] | null;
+    created_at: string;
+  }[];
   rawNotes?: any;
   guests?: GuestBlock[]; // Danh sách khách hàng trong đơn
 }

@@ -476,6 +476,32 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             }
         });
 
+        // 5b. KTV đánh giá quầy (KTVReviewReception).
+        // ⚠️ Trước 11/09/2026 bảng này CHỈ có người ghi, không ai đọc: KTV chấm sao
+        // + góp ý cho quầy ở màn Reward xong là nằm im trong DB, không màn nào
+        // hiện. Gắn vào từng booking để thẻ Kanban hiện được ngay dưới thẻ.
+        {
+            const bookingIds = bookings.map((b: any) => b.id).filter(Boolean);
+            if (bookingIds.length > 0) {
+                const { data: rrRows, error: rrErr } = await supabase
+                    .from('KTVReviewReception')
+                    .select('ktv_id, booking_id, rating, note, images, created_at')
+                    .in('booking_id', bookingIds);
+                if (rrErr) {
+                    // Không chặn cả bảng điều phối chỉ vì phần đánh giá hỏng.
+                    console.error('[Dispatch] không đọc được đánh giá quầy:', rrErr.message);
+                } else {
+                    const theoBooking = new Map<string, any[]>();
+                    (rrRows || []).forEach((r: any) => {
+                        const k = String(r.booking_id);
+                        if (!theoBooking.has(k)) theoBooking.set(k, []);
+                        theoBooking.get(k)!.push(r);
+                    });
+                    bookings.forEach((b: any) => { b.ktvReviewsOfReception = theoBooking.get(String(b.id)) || []; });
+                }
+            }
+        }
+
         // 6. Fetch Rooms, Beds, and Reminders — 🔧 EGRESS FIX: select specific columns
         const { data: rooms } = await supabase.from('Rooms').select('id, name, capacity, type, default_reminders, has_guests');
         const { data: beds } = await supabase.from('Beds').select('id, name, roomId');

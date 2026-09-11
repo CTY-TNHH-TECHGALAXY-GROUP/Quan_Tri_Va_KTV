@@ -74,6 +74,13 @@ const dsKtvHienThi = (s: any): any[] => {
     return ds;
 };
 
+/** Mã mọi KTV có mặt trên một thẻ, kể cả người bị đổi ra. */
+const dsKtvHienThiCuaThe = (services: any[]): string[] =>
+    Array.from(new Set(
+        (services || []).flatMap((s: any) =>
+            dsKtvHienThi(s).map((st: any) => String(st?.ktvId || '').trim()).filter(Boolean))
+    ));
+
 /** Đơn này có ai bị tước quyền lợi không (bị đổi ra, huỷ không công)? */
 const coNguoiBiTuoc = (s: any): boolean =>
     dsKtvHienThi(s).some((st: any) => (st?.segments || []).some((g: any) => g?.voided === true));
@@ -602,6 +609,14 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     const cancelReason = services.map((s: any) => s.options?.cancelReason).find(Boolean);
                                     // 'WORKED' = quầy đã bật công tắc cộng giờ đã làm cho KTV.
                                     const cancelCredited = services.some((s: any) => s.options?.cancelCredit === 'WORKED');
+                                    // KTV chấm quầy — chỉ lấy đánh giá của những KTV CÓ MẶT trên thẻ
+                                    // này. Một booking tách nhiều thẻ (mỗi khách/ca một thẻ) thì
+                                    // đánh giá của KTV thẻ bên kia không được lọt sang đây.
+                                    const ktvTrenThe = new Set(
+                                        dsKtvHienThiCuaThe(services).map((k: string) => k.toLowerCase())
+                                    );
+                                    const danhGiaQuay = (order.ktvReviewsOfReception || [])
+                                        .filter((r: any) => ktvTrenThe.has(String(r.ktv_id).toLowerCase()));
                                     // Nhật ký thao tác tại quầy — ai bấm gì, lúc nào.
                                     // ⚠️ Sắp theo MỐC THỜI GIAN đã parse, đừng so chuỗi: `...Z` và
                                     // `...+00:00` là cùng một thời điểm nhưng so chuỗi ra khác nhau.
@@ -1287,6 +1302,45 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                         ) : null
                                                     )
+                                                )}
+
+                                                {/* KTV chấm quầy (màn Reward bên app KTV). Đặt ngoài nhánh Dọn
+                                                    phòng/Đánh giá để thẻ Hoàn tất vẫn hiện — KTV thường chấm
+                                                    ở đúng lúc đơn sắp xong. */}
+                                                {danhGiaQuay.length > 0 && (
+                                                    <div className="mb-3 flex flex-col gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-violet-700">
+                                                            KTV đánh giá quầy
+                                                        </span>
+                                                        {danhGiaQuay.map((r: any, k: number) => (
+                                                            <div key={k} className="flex flex-col gap-0.5">
+                                                                <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800">
+                                                                    {r.ktv_id}
+                                                                    <span className="text-amber-500 tracking-tight" title={`${r.rating}/5 sao`}>
+                                                                        {'★'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}
+                                                                        <span className="text-gray-300">{'★'.repeat(5 - Math.max(0, Math.min(5, Number(r.rating) || 0)))}</span>
+                                                                    </span>
+                                                                </span>
+                                                                {r.note && (
+                                                                    <span className="text-[11px] font-medium leading-snug text-violet-700">“{r.note}”</span>
+                                                                )}
+                                                                {Array.isArray(r.images) && r.images.length > 0 && (
+                                                                    <div className="flex gap-1">
+                                                                        {r.images.map((u: string, j: number) => (
+                                                                            <button
+                                                                                key={j}
+                                                                                onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: u, ktvId: r.ktv_id, time: r.created_at }); }}
+                                                                                className="w-8 h-8 rounded-md overflow-hidden border border-violet-200"
+                                                                                title="Xem ảnh KTV gửi kèm"
+                                                                            >
+                                                                                <img src={u} alt="Ảnh đánh giá" className="w-full h-full object-cover" />
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 )}
 
                                                 {counterLog.length > 0 && (
