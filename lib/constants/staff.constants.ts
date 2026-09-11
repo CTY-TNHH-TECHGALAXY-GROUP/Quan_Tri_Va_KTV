@@ -53,7 +53,6 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_D: FeatureFlagsTypeD = {
     tua_wallet: true,
     bonus_wallet: true,
     maintenance_fee: true,
-    internal_fund_enabled: true,
     withdraw_morning_only: true
 };
 

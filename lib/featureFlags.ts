@@ -21,6 +21,12 @@ export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
     laundry_deduction: false,
     sudden_leave_penalty: false,
     maintenance_fee: true,
+    // RETIRED flag — no longer shown on the admin Features table and read by
+    // nothing. The Type D internal fund is driven entirely by Office points
+    // behind the points wallet (`bonus_wallet`, see `canSeeOfficePoints`).
+    // Kept here ONLY so it stays in MANAGED_FLAG_KEYS: changing a KTV's work
+    // type then wipes the stale key from `Staff.feature_flags` instead of
+    // preserving it forever as an "unknown" runtime key.
     internal_fund_enabled: false,
     // Quyền thao tác
     allow_on_call: false,

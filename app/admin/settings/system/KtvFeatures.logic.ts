@@ -50,11 +50,6 @@ export const FEATURE_FLAG_DEFS = [
         description: 'Bật hiển thị KPI cho KTV Loại A/C',
     },
     {
-        key: 'internal_fund_enabled',
-        label: 'Quỹ nội bộ',
-        description: 'Tự động trừ tiền quỹ nội bộ TYPE_D',
-    },
-    {
         key: 'withdraw_morning_only',
         label: 'Rút tiền buổi sáng',
         description: 'Chỉ cho phép đăng ký rút tiền buổi sáng TYPE_D',
