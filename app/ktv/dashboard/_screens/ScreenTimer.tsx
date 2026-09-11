@@ -3,6 +3,7 @@
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
+import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
 import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert } from 'lucide-react';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
@@ -300,7 +301,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
             const timerAssignedItem = booking?.assignedItemId
               ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
               : null;
-            const timerCoWorkers = (timerAssignedItem?.technicianCodes || []).filter((code: string) => code !== logic.ktvId);
+            const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
             return timerCoWorkers.length > 0 ? (
               <p className="mt-1 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {timerCoWorkers.join(', ')}</p>
             ) : null;

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
+import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
 import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Wallet, X } from 'lucide-react';
 import { ProcedureModal, RoomIssueModal, RejectOrderModal, TurnQueueTypeDModal, OfficeScoreModal } from '../_components/modals';
@@ -313,7 +314,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   const assignedItem = booking?.assignedItemId
     ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
     : null;
-  const coWorkers = (assignedItem?.technicianCodes || []).filter((code: string) => code !== logic.ktvId);
+  // Chỉ người được xếp CÙNG LÀN (chồng giờ, không bị huỷ chặng) — xem lib/co-workers.
+  const coWorkers = coWorkersOf(assignedItem, logic.ktvId);
 
   return (
     <div className="p-3 md:p-5 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24 md:max-w-5xl md:mx-auto">

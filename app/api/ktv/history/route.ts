@@ -4,6 +4,7 @@ import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionService';
 import { KtvHistoryTipSchema } from '@/lib/schemas/ktv.schema';
 import { parseDbDate } from '@/lib/utils';
+import { coWorkersOfItems } from '@/lib/co-workers';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -512,16 +513,10 @@ export async function GET(request: Request) {
                 // chờ quầy" với "chưa nộp gì cả".
                 const handover_submitted = !!groupItems.find((i: any) => i.handover_submitted_at);
 
-                // Tìm KTV làm cùng trong CÙNG booking này (đơn con)
-                const allKTVsInBooking = new Set<string>();
-                groupItems.forEach((i: any) => {
-                    if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
-                        i.technicianCodes.forEach((tc: string) => {
-                            if (tc && tc.trim()) allKTVsInBooking.add(tc.trim().toUpperCase());
-                        });
-                    }
-                });
-                const coWorkers = Array.from(allKTVsInBooking).filter(tc => tc.toLowerCase() !== techCode.toLowerCase());
+                // KTV làm cùng: chỉ người được xếp CÙNG LÀN (chồng giờ, chặng còn
+                // hiệu lực). Không lấy cả `technicianCodes` — đổi KTV thì người bị
+                // thay vẫn còn tên trong đó. Xem lib/co-workers.
+                const coWorkers = coWorkersOfItems(groupItems, techCode);
 
                 // 🧠 STATUS: Xét theo BookingItems của group này
                 const myItemStatuses = groupItems.map((i: any) => i.status || 'NEW');
