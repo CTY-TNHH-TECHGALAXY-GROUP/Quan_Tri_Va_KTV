@@ -7,7 +7,8 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, History, Clock, Star, TrendingUp,
   Gift, CalendarDays, ChevronRight, ChevronDown,
-  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X, ListTree
+  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X, ListTree,
+  ArrowRight, ArrowUpRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,6 +28,8 @@ const fmtMonthLabel = (m: string) => {
 };
 
 // 🔧 UI CONFIGURATION
+const HINT_NUDGE_DURATION = 1.2;   // seconds per arrow nudge cycle
+const HINT_NUDGE_DISTANCE = 4;     // px the arrow travels toward the calendar button
 const RATING_CONFIG: Record<number, { label: string; color: string; bg: string }> = {
   1: { label: 'Tệ',          color: 'text-red-600',     bg: 'bg-red-50'     },
   2: { label: 'Bình thường',  color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
@@ -435,18 +438,23 @@ const nhanNgay = (dates: string[]): string => {
   return lienTuc ? `${dm(ds[0])} → ${dm(ds[ds.length - 1])}` : `${ds.length} ngày`;
 };
 
-const CalendarToggle = ({ compact = false, open, dates, onToggle }: {
+const CalendarToggle = ({ compact = false, open, dates, onToggle, highlight = false }: {
   compact?: boolean; open: boolean; dates: string[]; onToggle: () => void;
+  /** Pulse a ring around the button — the target the hint arrow points at. */
+  highlight?: boolean;
 }) => (
   <button
     onClick={onToggle}
     aria-label="Chọn ngày"
-    className={`flex items-center gap-1.5 rounded-xl border active:scale-95 transition-all ${
+    className={`relative flex items-center gap-1.5 rounded-xl border active:scale-95 transition-all ${
       compact ? 'h-8 px-2.5' : 'h-10 px-3.5 shadow-sm'
     } ${open
       ? 'bg-indigo-600 border-indigo-600 text-white'
       : 'bg-white border-gray-100 text-indigo-600'}`}
   >
+    {highlight && !open && (
+      <span className="absolute -inset-1 rounded-2xl border-2 border-indigo-400 animate-pulse pointer-events-none" />
+    )}
     <CalendarDays size={compact ? 15 : 17} />
     <span className={`font-bold whitespace-nowrap ${compact ? 'text-[11px]' : 'text-xs'}`}>{nhanNgay(dates)}</span>
   </button>
@@ -457,6 +465,9 @@ const CalendarToggle = ({ compact = false, open, dates, onToggle }: {
 export default function KTVHistoryPage() {
   const [mounted, setMounted] = React.useState(false);
   const [showCalendar, setShowCalendar] = React.useState(false);
+  // Once the KTV has found the calendar, stop pulsing — a ring that never stops
+  // turns into noise they learn to ignore.
+  const [calendarFound, setCalendarFound] = React.useState(false);
   const [showHours, setShowHours] = React.useState(false);
   const { hasPermission } = useAuth();
   const {
@@ -473,6 +484,11 @@ export default function KTVHistoryPage() {
   const showHoursTile = hours.applicable && hours.enabled;
   const monthLabel = hours.months.map(fmtMonthLabel).join(' · ');
 
+  const toggleCalendar = () => {
+    setShowCalendar(!showCalendar);
+    setCalendarFound(true);
+  };
+
   React.useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
 
@@ -488,16 +504,40 @@ export default function KTVHistoryPage() {
   }
 
   return (
-    <AppLayout title="Lịch Sử" disablePullToRefresh headerRight={<CalendarToggle compact open={showCalendar} dates={selectedDates} onToggle={() => setShowCalendar(!showCalendar)} />}>
+    <AppLayout title="Lịch Sử" disablePullToRefresh headerRight={<CalendarToggle compact open={showCalendar} dates={selectedDates} onToggle={toggleCalendar} highlight={!calendarFound} />}>
       <PullToRefresh onRefresh={async () => { await Promise.all([refetch(), hours.refetch()]); }}>
         <div className="space-y-4 max-w-xl mx-auto pb-6">
 
           {/* Header — nút lịch đã dời lên thanh header, nhưng thanh đó chỉ có ở
               mobile nên màn lớn vẫn cần một nút ngay trong trang. */}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-gray-400">Bấm vào đơn để xem chi tiết</p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2.5 shadow-sm shadow-indigo-100/60">
+              <CalendarDays size={15} className="text-indigo-500 shrink-0" />
+              {/* Only Type D KTVs have the hours tile — don't promise it to others. */}
+              <p className="flex-1 text-xs font-semibold text-indigo-700 leading-snug">
+                {showHoursTile
+                  ? 'Hãy chọn ngày trong lịch để xem thu nhập và giờ tích luỹ'
+                  : 'Hãy chọn ngày trong lịch để xem thu nhập'}
+              </p>
+              {/* Mobile: the button lives in the header above -> arrow points up-right.
+                  Desktop: the button sits right beside this row -> arrow points right. */}
+              <motion.span
+                className="lg:hidden text-indigo-600 shrink-0"
+                animate={{ x: [0, HINT_NUDGE_DISTANCE, 0], y: [0, -HINT_NUDGE_DISTANCE, 0] }}
+                transition={{ duration: HINT_NUDGE_DURATION, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <ArrowUpRight size={18} strokeWidth={2.75} />
+              </motion.span>
+              <motion.span
+                className="hidden lg:inline-flex text-indigo-600 shrink-0"
+                animate={{ x: [0, HINT_NUDGE_DISTANCE, 0] }}
+                transition={{ duration: HINT_NUDGE_DURATION, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <ArrowRight size={18} strokeWidth={2.75} />
+              </motion.span>
+            </div>
             <div className="hidden lg:block">
-              <CalendarToggle open={showCalendar} dates={selectedDates} onToggle={() => setShowCalendar(!showCalendar)} />
+              <CalendarToggle open={showCalendar} dates={selectedDates} onToggle={toggleCalendar} highlight={!calendarFound} />
             </div>
           </div>
 
