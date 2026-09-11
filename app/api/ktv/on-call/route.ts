@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error: fetchError } = await supabase
       .from('Staff')
-      .select('work_type, feature_flags, is_active_vip_menu')
+      .select('work_type, feature_flags, is_active_vip_menu, online_status')
       .eq('id', techCode)
       .single();
 
@@ -78,9 +78,15 @@ export async function POST(req: NextRequest) {
     const currentFlags = data?.feature_flags || {};
     const isTypeB = data?.work_type === 'TYPE_B';
     const allow_on_call = isTypeB || currentFlags.allow_on_call === true;
+    const currentlyOnCall = currentFlags.is_on_call === true || data?.online_status === 'ONLINE';
 
-    // Chỉ cập nhật nếu được phép allow_on_call (KTV Loại B hoặc được cấp cờ)
-    if (!allow_on_call) {
+    // `allow_on_call` only gates turning on-call ON. Admin can revoke the flag
+    // while the KTV is still on call; rejecting the OFF request then leaves them
+    // stuck ONLINE. An OFF request from a KTV who is neither permitted nor on call
+    // is still rejected: goOffline also closes the day's TurnQueue and KTVShifts.
+    const canToggle = is_on_call ? allow_on_call : (allow_on_call || currentlyOnCall);
+
+    if (!canToggle) {
       return NextResponse.json({ error: 'Tính năng này chỉ dành cho KTV Loại B (Hợp tác).' }, { status: 403 });
     }
 

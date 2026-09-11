@@ -206,8 +206,9 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   // tắt, KTV vẫn phải điểm danh được.
   const onlineStatus = state?.online_status ?? 'OFFLINE';
 
-  // Cờ tắt thì không thể ở trạng thái "đang chờ đơn": không có đường nào bật.
-  const isOnline = canOnCall && onlineStatus === 'ONLINE';
+  // Not gated on `canOnCall`: admin can revoke the flag while the KTV is still
+  // ONLINE, and hiding this state would also hide the only "Tắt Nhận Đơn" button.
+  const isOnline = onlineStatus === 'ONLINE';
   // Ngăn lỗi kẹt trạng thái AT_VENUE sang ngày mới: Chỉ khi đã điểm danh hôm nay mới tính là AT_VENUE.
   const isAtVenue = onlineStatus === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
   const isOffline = !isOnline && !isAtVenue;

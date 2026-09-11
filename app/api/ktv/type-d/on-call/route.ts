@@ -81,8 +81,16 @@ export async function POST(req: NextRequest) {
     const currentFlags = data?.feature_flags || {};
     const isTypeD = data?.work_type === 'TYPE_D';
     const allow_on_call = isTypeD && currentFlags.allow_on_call === true;
+    const currentlyOnCall = currentFlags.is_on_call === true || data?.online_status === 'ONLINE';
 
-    if (!allow_on_call) {
+    // `allow_on_call` only gates turning on-call ON. Admin can revoke it while the
+    // KTV is still on call; rejecting the OFF request then leaves them stuck
+    // ONLINE and reception keeps sending them out-of-hours orders.
+    // An OFF request from a KTV who is neither permitted nor on call is still
+    // rejected: goOffline also closes the day's TurnQueue and KTVShifts.
+    const canToggle = is_on_call ? allow_on_call : (allow_on_call || (isTypeD && currentlyOnCall));
+
+    if (!canToggle) {
       return NextResponse.json({ error: 'KTV Loại D này chưa được cấp quyền Nhận Đơn.' }, { status: 403 });
     }
 

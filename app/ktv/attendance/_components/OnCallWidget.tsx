@@ -85,8 +85,10 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, on
 
   if (loading) return null; // <div className="w-full text-center text-xs text-slate-400 py-2">Đang tải cấu hình...</div>;
 
-  // Nếu KTV không được cấp quyền allow_on_call (cờ feature flag) -> Không render gì cả
-  if (!state?.allow_on_call) {
+  // Nếu KTV không được cấp quyền allow_on_call (cờ feature flag) -> Không render gì cả.
+  // Still render while on call: the flag may be revoked mid-session and the KTV
+  // needs the "Tắt Nhận Đơn" button to get out.
+  if (!state || (!state.allow_on_call && !state.is_on_call)) {
       // DEBUG MODE ONLY:
       console.log("[OnCallWidget] state = ", state);
       return null;

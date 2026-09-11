@@ -25,6 +25,7 @@ npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa
 | `qa_06_feature_flags.ts` | #6 Bật/tắt riêng từng tính năng, không ảnh hưởng chéo | Chỉ đọc |
 | `qa_07_office_bonus_wallet.ts` | Ví Thu Nhập + Ví Điểm tính theo điểm Office | Chỉ đọc |
 | `qa_10_bonus_in_turn.ts` | Thưởng 4★ nằm trong tiền tua, thuế tính trên (tua + thưởng), không trả hai lần | Chỉ đọc |
+| `qa_15_on_call_off_after_revoke.ts` | Admin tắt cờ `allow_on_call` khi KTV đang nhận đơn: vẫn TẮT được, không BẬT lại được (cả route Loại D và route A/B/C) | Không (Supabase giả trong bộ nhớ) |
 
 Kèm một script cấu hình (không phải kiểm thử):
 
