@@ -242,7 +242,7 @@ export async function GET(request: Request) {
                         active: true,
                         lockedBy: activeLock.created_by_name,
                         lockedAt: activeLock.created_at,
-                        message: activeLock.note || 'Quầy vừa báo có khách. Vui lòng giữ máy.'
+                        message: activeLock.note || 'Quầy vừa thông báo có khách. Cb đón khách nhé'
                     };
                 }
             }

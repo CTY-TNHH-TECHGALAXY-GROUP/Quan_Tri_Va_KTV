@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         // Create notification
         await createNotification({
             type: 'GUEST_ARRIVAL',
-            message: 'Quầy vừa báo có khách. Vui lòng giữ máy.'
+            message: 'Quầy vừa thông báo có khách. Cb đón khách nhé'
         });
 
         return NextResponse.json({ success: true, data: newLock });
