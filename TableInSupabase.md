@@ -202,6 +202,35 @@
 
 ---
 
+### 4.4. KtvAssignments ✅ CHỦ LỰC (HÀNG ĐỢI PHÂN CÔNG)
+**Nhiệm vụ**: Danh sách phân công KTV — 1 dòng = 1 KTV + 1 BookingItem. Cho phép 1 KTV xếp nhiều đơn liên tiếp; `TurnQueue` chỉ phản chiếu **assignment đang ACTIVE**.
+**Nguồn**: `supabase/migrations/20260502150000_create_ktv_assignments.sql` (ghi bởi RPC `dispatch_confirm_booking`, `promote_next_assignment`, và các handler trong `app/api/ktv/booking/_handlers/`).
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `employee_id` | text NOT NULL | Mã KTV |
+| `business_date` | date NOT NULL | Ngày làm việc (business date) |
+| `booking_id` | text NOT NULL FK → Bookings (ON DELETE CASCADE) | Đơn hàng |
+| `booking_item_id` | text NOT NULL | BookingItem được phân công |
+| `segment_id` | text | Chặng cụ thể trong `BookingItems.segments` (nếu có) |
+| `planned_start_time` | timestamptz | Giờ bắt đầu dự kiến (quy đổi từ giờ Asia/Bangkok) |
+| `planned_end_time` | timestamptz | Giờ kết thúc dự kiến |
+| `room_id` | text | Phòng |
+| `bed_id` | text | Giường |
+| `priority` | integer | Độ ưu tiên (default 0, nhỏ hơn = ưu tiên hơn) |
+| `sequence_no` | integer | Thứ tự trong chuỗi phân công (default 0) |
+| `status` | KtvAssignmentStatus | `QUEUED` (chờ) → `READY` → `ACTIVE` (đang làm) → `COMPLETED`; hoặc `CANCELLED`, `SKIPPED` (default `QUEUED`) |
+| `dispatch_source` | text | Nguồn tạo (VD: `DISPATCH_CONFIRM`) |
+| `created_at` | timestamptz | Thời điểm tạo |
+| `updated_at` | timestamptz | Tự cập nhật qua trigger `ktvassignments_updated_at_trigger` |
+
+**Constraint / Invariant:**
+- `UNIQUE(employee_id, booking_item_id)` — 1 KTV không bị phân trùng 1 item.
+- `UNIQUE(employee_id, business_date) WHERE status = 'ACTIVE'` — mỗi KTV chỉ 1 assignment ACTIVE/ngày.
+
+---
+
 ### 4.6. KTVServiceHoursLedger ✅ CHỦ LỰC (GIỜ LÀM LOẠI D)
 **Nhiệm vụ**: Sổ cái ghi nhận giờ làm thực tế của KTV Loại D để xếp tua. Bù trừ và cộng dồn (gian thực).
 
