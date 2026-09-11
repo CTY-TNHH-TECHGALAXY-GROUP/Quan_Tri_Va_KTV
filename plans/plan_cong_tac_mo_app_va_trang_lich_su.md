@@ -137,3 +137,29 @@ Quyền (vai trò, trang Phân quyền) chính là dấu hiệu "đã được c
 | Ví bị tắt vẫn hiện trong danh sách chọn | Ví Tua luôn hiện; Ví Bonus hiện khi đang bật **hoặc** thuộc gói mặc định của loại (A, D) | Quyền `ktv_wallet` phủ cả trang chứ không riêng từng ví → không phân biệt được "admin tắt" với "loại B/C chưa từng có Ví Bonus". Gói mặc định của loại là dấu hiệu "đã được cấp" |
 
 Kiểm tra: `tsc` sạch; `eslint` các file đã sửa 0 lỗi; `npm run test:qa` 15/15 ĐẠT; chạy thật trên tài khoản thử T001 (đã khôi phục nguyên trạng): tắt Lịch sử → 403 đúng câu, bật lại → 200 ngay; khoá tay → `MANUAL`, khoá kỷ luật → `DISCIPLINE`.
+
+---
+
+## 8. Sửa lỗi: tắt "Hoạt động" bị chặn nhầm "đang có đơn chưa xong" (11/09/2026)
+
+**Hiện tượng:** tắt T069 báo còn đơn `a4d70766-…` và `WB-10092026-013`, quầy không thấy đơn nào.
+
+**Nguyên nhân gốc (đã tra DB):** điều kiện chặn tin thẳng `KtvAssignments.status`, mà cột này **không được đóng đáng tin cậy**:
+- `a4d70766-…` (= `TEST-260908-DS5E`, ngày 08/09): T069 đã bị đổi ra — món đó giờ chỉ còn T007 — nhưng phân công của T069 vẫn `ACTIVE`.
+- `WB-10092026-013` (ngày 10/09): đơn đã `FEEDBACK` (làm xong, chờ khách đánh giá) nhưng phân công vẫn `ACTIVE`.
+- Thông báo in `booking_id` (UUID) thay vì mã bill → quầy không tìm được.
+
+Mô phỏng trên dữ liệu thật: DB còn **rất nhiều** đơn treo từ tháng 3–8 (món kẹt `PREPARING`/`WAITING`/`CLEANING`, phân công kẹt `ACTIVE`) → cả luật cũ lẫn luật "lọc theo trạng thái món" đều chặn gần như MỌI KTV. Bắt buộc phải giới hạn theo ngày.
+
+**Luật mới** — "đang có đơn chưa xong" = phân công của **ngày làm việc hôm nay** (`business_date = getBusinessToday()`, đã tính ca đêm) mà:
+1. phân công `QUEUED` / `READY` / `ACTIVE`, **và**
+2. món tương ứng còn cần KTV: `PREPARING`, `IN_PROGRESS`, `CLEANING` (+ tên cũ `WAITING`, `READY`, `NEW`, `PAUSED`) — `FEEDBACK` / `DONE` / `CANCELLED` không tính, **và**
+3. KTV còn trong `technicianCodes` và **không phải người bị đổi ra** (`laNguoiBiDoiRaKhoiDon`, cùng hàm màn Chấm công đang dùng).
+
+Thông báo hiện **mã bill + trạng thái tiếng Việt** (VD: `006-11092026 — đang chuẩn bị`).
+
+Mô phỏng luật mới (11/09): chỉ T069 bị chặn, vì `006-11092026 [PREPARING]` — đơn THẬT quầy vừa điều hôm nay. Mọi KTV khác tắt được.
+
+**File sửa:** `app/api/admin/staff/lock/route.ts` (chỉ đoạn kiểm đơn + câu báo), `scripts/qa/qa_15_feature_off_maintenance.ts` (thêm mục kiểm luật mới).
+
+**Ngoài phạm vi (ghi nhận):** dữ liệu đơn/phân công treo từ tháng 3–8 và phân công không được đóng khi đổi KTV / khi đơn sang FEEDBACK — ảnh hưởng mọi chỗ khác đọc `KtvAssignments.status`.

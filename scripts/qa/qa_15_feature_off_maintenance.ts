@@ -8,7 +8,7 @@
  *       bảng Tính năng, có trong bộ mặc định 4 loại; câu tắt ví = câu bảo trì.
  *   M2. Chặn ở SERVER: lịch sử + sổ giờ trả 403 FEATURE_MAINTENANCE; ô Điểm Office
  *       trả `disabled`; điểm danh không phát tín hiệu rút khi Ví Tua tắt.
- *   M3. CLIENT không nuốt lỗi: trang Lịch sử / Ví / modal / Dashboard / Chấm công
+ *   M3. CLIENT không nuốt lỗi: trang Lịch sử / Ví / modal Điểm Office / Chấm công
  *       hiện `FeatureMaintenanceNotice` thay vì 0đ, danh sách rỗng, hay ẩn lặng lẽ.
  *   M4. DB `Staff.lock_source` + trigger (chạy trong transaction rồi ROLLBACK).
  *   M5. Route khoá tay: ghi `status` + `lock_source='MANUAL'` CÙNG một UPDATE,
@@ -147,9 +147,13 @@ async function main() {
         check(/res\?\.disabled/.test(modal) && /disabled \? <FeatureMaintenanceNotice \/>/.test(modal),
             'Modal Diem Office: Vi Diem tat giua chung -> thong bao, khong giu so cu');
 
+        // Owner's rule (commit c8f752ad): the HOME screen hides a switched-off
+        // feature entirely — a grey "đang bảo trì" tile there only takes room.
+        // Screens the KTV opens on purpose (History, Wallet, Attendance, the
+        // Office-score modal) keep the notice.
         const dash = read('app/ktv/dashboard/_screens/ScreenDashboard.tsx');
-        check(/logic\.officeScoreDisabled && logic\.canViewWallet/.test(dash),
-            'Dashboard: o Diem Office hien bao tri khi CON quyen vi');
+        check(!/<FeatureMaintenanceNotice/.test(dash),
+            'Trang chu KTV: tinh nang dang tat thi AN HAN, khong dat o "dang bao tri"');
 
         const attPage = read('app/ktv/attendance/page.tsx');
         check(/withdrawShowsMaintenance \?/.test(attPage), 'Cham cong: o "Yeu cau rut tien" -> bao tri khi Vi Tua tat');
@@ -204,8 +208,10 @@ async function main() {
         check(/\.update\(\{\s*status:\s*'KHÓA_TÀI_KHOẢN',\s*lock_source:\s*'MANUAL'\s*\}\)/.test(lock),
             'Ghi status + lock_source trong CUNG mot UPDATE (khong race)');
         check(/\.eq\('status',\s*'ĐANG LÀM'\)/.test(lock), 'UPDATE co dieu kien status cu (hai admin bam cung luc)');
-        check(before(lock, "from('KtvAssignments')", '.update({ status:'),
-            'Chan khi dang co don (KtvAssignments) TRUOC khi khoa');
+        check(before(lock, 'findUnfinishedWorkToday(supabase, staffId)', '.update({ status:'),
+            'Chan khi dang co don hom nay TRUOC khi khoa');
+        check(/b\.billCode/.test(lock) && !/bookingIds:/.test(lock),
+            'Cau bao chan ghi MA BILL (quay tim duoc), khong ghi UUID');
         check(!/KTVDPenaltyLedger/.test(lock.replace(/^\s*(\*|\/\/).*$/gm, '')),
             'KHONG ghi KTVDPenaltyLedger (khoa tay khong phai vi pham)');
         check(/invalidateLockedStaffCache\(\)/.test(lock), 'Xoa cache khoa (API chan ngay, khong doi 20s)');
@@ -265,15 +271,49 @@ async function main() {
                 const rel = path.join(dir, e.name);
                 if (e.isDirectory()) { walk(rel); continue; }
                 if (!/\.(ts|tsx)$/.test(e.name) || path.normalize(rel) === CONST_FILE) continue;
-                read(rel).split(/\r?\n/).forEach((line, i) => {
-                    const tline = line.trim();
-                    if (tline.startsWith('//') || tline.startsWith('*') || tline.startsWith('/*')) return;
+                // Blank out block comments (incl. multi-line JSX {/* ... */}) but
+                // keep their newlines, so reported line numbers stay correct.
+                const code = read(rel).replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '));
+                code.split(/\r?\n/).forEach((line, i) => {
+                    if (line.trim().startsWith('//')) return;
                     if (LITERAL.test(line)) stray.push(`${rel}:${i + 1}`);
                 });
             }
         };
         KTV_FACING.forEach(walk);
         check(stray.length === 0, 'Khong co ban sao viet tay nao ngoai hang so', stray.join(', '));
+    }
+
+    // ── M8 ──────────────────────────────────────────────────────────────
+    // Bug 11/09: T069 could not be switched off — "busy" with a test order
+    // they had been swapped out of (08/09) and a finished order (10/09),
+    // because KtvAssignments.status is never reliably closed.
+    console.log('\n--- M8: "dang co don chua xong" chi tinh don HOM NAY con can KTV ---');
+    {
+        const src = read('lib/unfinished-work.ts');
+        check(/\.eq\('business_date', today\)/.test(src), 'Chi xet phan cong cua ngay lam viec HOM NAY');
+        check(/laNguoiBiDoiRaKhoiDon\(\[it\], staffId, ktvMatchesSeg\)/.test(src), 'Bo qua nguoi bi DOI RA khoi don');
+        const needsBlock = src.slice(src.indexOf('STILL_NEEDS_KTV'), src.indexOf('};', src.indexOf('STILL_NEEDS_KTV')));
+        check(!/FEEDBACK|DONE|CANCELLED/.test(needsBlock), 'FEEDBACK / DONE / CANCELLED khong tinh la con viec');
+
+        const { findUnfinishedWorkToday } = await import('../../lib/unfinished-work');
+        const { data: staffRows } = await supabase.from('Staff').select('id').eq('status', 'ĐANG LÀM');
+        const ids = (staffRows || []).map(s => s.id).filter(id => !/^(EXT|C_)/i.test(id));
+        const blocked: string[] = [];
+        let badStatus = 0;
+        for (const id of ids) {
+            const w = await findUnfinishedWorkToday(supabase as any, id);
+            if (w.length) blocked.push(`${id}: ${w.map(x => `${x.billCode}(${x.status})`).join(', ')}`);
+            badStatus += w.filter(x => ['FEEDBACK', 'DONE', 'CANCELLED'].includes(x.status)).length;
+        }
+        console.log(`  KTV dang bi chan tat luc nay: ${blocked.length}/${ids.length}${blocked.length ? '\n    ' + blocked.join('\n    ') : ''}`);
+        check(badStatus === 0, 'Tren du lieu that: khong don nao da xong / cho danh gia bi tinh la con viec');
+        const t069 = await findUnfinishedWorkToday(supabase as any, 'T069');
+        check(!t069.some(x => ['TEST-260908-DS5E', 'WB-10092026-013'].includes(x.billCode)),
+            'T069 khong con bi chan boi 2 don cu (bi doi ra 08/09, da xong 10/09)',
+            t069.length ? `hien chan boi: ${t069.map(x => x.billCode).join(', ')}` : 'khong bi chan');
+        check(blocked.length < ids.length / 2, 'Du lieu treo tu thang 3-8 khong con chan hang loat KTV',
+            `${blocked.length}/${ids.length} dang bi chan`);
     }
 
     console.log(`\n=== ${failures === 0 ? 'DAT' : `${failures} MUC KHONG DAT`} ===\n`);

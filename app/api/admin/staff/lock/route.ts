@@ -3,6 +3,7 @@ import { requirePermission, requireBusinessUser, invalidateLockedStaffCache } fr
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
+import { findUnfinishedWorkToday } from '@/lib/unfinished-work';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,28 +71,19 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Refuse while the KTV still has work in flight. A locked KTV cannot
-        // press "Hoàn tất" / hand over the room, which breaks the commission
-        // flow for an order that is already running or already dispatched.
-        //   ACTIVE          → being served right now (any date: a stuck row is a
-        //                     real problem the admin should see, not skip).
-        //   QUEUED / READY  → dispatched to them from today on.
-        const { getBusinessToday } = await import('@/lib/business-date');
-        const today = await getBusinessToday(supabase);
-        const [{ data: active }, { data: upcoming }] = await Promise.all([
-            supabase.from('KtvAssignments').select('booking_id')
-                .eq('employee_id', staffId).eq('status', 'ACTIVE'),
-            supabase.from('KtvAssignments').select('booking_id')
-                .eq('employee_id', staffId).in('status', ['QUEUED', 'READY']).gte('business_date', today),
-        ]);
-        const busyBookings = Array.from(new Set(
-            [...(active || []), ...(upcoming || [])].map((a: any) => a.booking_id).filter(Boolean)
-        ));
-        if (busyBookings.length > 0) {
+        // Refuse while the KTV still has work in flight TODAY. A locked KTV
+        // cannot press "Hoàn tất" / hand over the room, which breaks the
+        // commission flow for an order that is running or already dispatched.
+        // The rule (today's business date, item still needs the KTV, not
+        // swapped out) lives in findUnfinishedWorkToday — see why there.
+        const busy = await findUnfinishedWorkToday(supabase, staffId);
+        if (busy.length > 0) {
+            // Bill codes, not ids: the counter must be able to find the order.
+            const list = busy.map(b => `${b.billCode} — ${b.statusLabel}`).join('; ');
             return NextResponse.json({
                 success: false,
-                error: `KTV đang có đơn chưa xong (${busyBookings.join(', ')}). Chờ xong đơn rồi hãy tắt.`,
-                bookingIds: busyBookings,
+                error: `KTV đang có đơn chưa xong hôm nay (${list}). Chờ xong đơn rồi hãy tắt.`,
+                billCodes: Array.from(new Set(busy.map(b => b.billCode))),
             }, { status: 409 });
         }
 
