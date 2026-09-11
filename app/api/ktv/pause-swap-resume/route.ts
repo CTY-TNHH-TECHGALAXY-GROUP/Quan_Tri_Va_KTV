@@ -14,6 +14,8 @@ const pauseSwapSchema = z.object({
     keepTurnForOldKtv: z.boolean().optional(),
     /** Số phút quầy gán tay cho KTV mới; 0 = dùng phần còn lại + giờ bù. */
     assignedMins: z.number().nonnegative().optional().default(0),
+    /** Lý do đổi người — hiện ở Lịch sử của KTV bị đổi. */
+    swapReason: z.string().max(500).optional().default(''),
 }).refine(data => {
     if (data.action === 'SWAP') {
         return !!data.oldKtvId && !!data.businessDate;
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
             }, { status: 400 });
         }
 
-        const { action, bookingItemId, oldKtvId, newKtvId, extraTimeMins, businessDate, keepTurnForOldKtv, assignedMins } = parsedData.data;
+        const { action, bookingItemId, oldKtvId, newKtvId, extraTimeMins, businessDate, keepTurnForOldKtv, assignedMins, swapReason } = parsedData.data;
 
         let result;
         switch (action) {
@@ -59,7 +61,8 @@ export async function POST(req: Request) {
                     extraTimeMins,
                     businessDate!,
                     keepTurnForOldKtv,
-                    assignedMins
+                    assignedMins,
+                    swapReason
                 );
                 // Sau khi swap thành công, tự động resume luôn theo luồng.
                 // Ghi nhật ký thành "Gửi người mới <mã>" chứ không phải "Tiếp tục":

@@ -32,7 +32,8 @@ interface PauseSwapKtvModalProps {
     newKtvId?: string,
     extraTimeMins?: number,
     keepTurnForOldKtv?: boolean,
-    assignedMins?: number
+    assignedMins?: number,
+    swapReason?: string
   ) => Promise<void>;
   /**
    * Mở thẳng vào một hành động, bỏ bước chọn.
@@ -50,6 +51,9 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   // 'REMAIN' = KTV mới làm phần còn lại (+ giờ bù). 'MANUAL' = quầy gán tay số phút.
   const [timeMode, setTimeMode] = useState<'REMAIN' | 'MANUAL'>('REMAIN');
   const [manualMins, setManualMins] = useState<number>(0);
+  // Lý do đổi người. Bắt buộc: nó là thứ DUY NHẤT giải thích cho KTV bị đổi vì
+  // sao tua đó 0đ — hiện ngay ở màn Lịch sử của họ.
+  const [lyDoDoi, setLyDoDoi] = useState<string>('');
   const [keepTurnForOldKtv, setKeepTurnForOldKtv] = useState<boolean>(false);
   const [actionType, setActionType] = useState<'PAUSE' | 'RESUME' | 'SWAP'>('PAUSE');
   const [loading, setLoading] = useState(false);
@@ -123,6 +127,10 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
           alert('Vui lòng chọn KTV cần rút/đổi!');
           return;
         }
+        if (!lyDoDoi.trim()) {
+          alert('Vui lòng nhập lý do đổi KTV — lý do này sẽ hiện ở lịch sử của KTV bị đổi.');
+          return;
+        }
         if (selectedService && extraTimeMins > selectedService.duration) {
           alert(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${selectedService.duration} phút)`);
           return;
@@ -131,11 +139,13 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
           selectedServiceId, 'SWAP', selectedOldKtv, selectedNewKtv || undefined,
           timeMode === 'MANUAL' ? 0 : extraTimeMins,
           false,
-          timeMode === 'MANUAL' ? manualMins : 0
+          timeMode === 'MANUAL' ? manualMins : 0,
+          lyDoDoi.trim()
         );
       } else {
         await onConfirm(selectedServiceId, actionType, undefined, undefined, undefined, false);
       }
+      setLyDoDoi('');
       onClose();
     } catch (err: any) {
       alert(err.message || 'Có lỗi xảy ra');
@@ -172,8 +182,11 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
             </div>
 
             <div className="mt-6 space-y-5">
-              {/* Chọn Dịch vụ */}
-              <div>
+              {/* Chọn Dịch vụ — CHỈ hiện khi thẻ có từ 2 dịch vụ đang làm trở lên.
+                  Bảng điều phối đã tách mỗi khách/ca một thẻ, nên đa số thẻ chỉ có
+                  một dịch vụ: bắt chọn lại cái duy nhất là thừa. Thẻ gộp nhiều dịch
+                  vụ (một khách làm liền 2 gói) thì vẫn phải chọn đổi người ở gói nào. */}
+              <div className={activeServices.length <= 1 ? 'hidden' : ''}>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Chọn Dịch vụ Đang làm / Tạm ngưng</label>
                 <select 
                   className={`w-full border-2 border-gray-200 rounded-xl p-3 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-medium transition-all ${activeServices.length === 1 ? 'bg-gray-100 text-gray-600' : ''}`}
@@ -385,6 +398,21 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           }}
                         />
                         <p className="text-[11px] text-gray-500 mt-1">*Thời gian tính lương KTV mới = (Tổng giờ dịch vụ - Giờ KTV cũ đã làm) + Giờ bù thêm.</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                          <AlertTriangle size={14} /> Lý do đổi <span className="text-rose-500">*</span>
+                        </label>
+                        <textarea
+                          rows={2}
+                          maxLength={500}
+                          placeholder="VD: Khách không hài lòng lực tay, xin đổi người"
+                          className="w-full border-2 border-gray-200 rounded-lg p-2 text-sm focus:border-rose-500 outline-none font-medium resize-none"
+                          value={lyDoDoi}
+                          onChange={(e) => setLyDoDoi(e.target.value)}
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">*Hiện ở lịch sử của {selectedOldKtv || 'KTV bị đổi'} — là thứ giải thích vì sao tua đó 0đ.</p>
                       </div>
                     </motion.div>
                   )}

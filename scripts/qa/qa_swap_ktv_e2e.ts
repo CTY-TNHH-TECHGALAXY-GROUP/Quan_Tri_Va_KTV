@@ -21,6 +21,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import { BookingItemPauseService } from '@/lib/services/BookingItemPauseService';
+import { gioDongHoVN } from '@/lib/segment-time';
 
 const env = fs.readFileSync(path.resolve('.env.local'), 'utf-8');
 let url = '', key = '';
@@ -33,6 +34,7 @@ const sb = createClient(url, key);
 const DATE = '2026-09-01';
 const SERVICE = 'NHS0002';   // Tinh dầu, 70 phút
 const DUR = 70;
+const LY_DO = 'Khách không hài lòng lực tay, xin đổi người';
 
 let pass = 0, fail = 0;
 function check(ten: string, dat: boolean, chiTiet = '') {
@@ -106,7 +108,7 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         await dungHangDoi(bookingId, itemId, oldKtv, newKtv);
 
         await BookingItemPauseService.swapKtvOnPausedItem(
-            sb as any, itemId, oldKtv, newKtv, 0, DATE, false, 0
+            sb as any, itemId, oldKtv, newKtv, 0, DATE, false, 0, LY_DO
         );
         // Route /api/ktv/pause-swap-resume gọi tiếp resumeItem ngay sau khi đổi,
         // và ghi nhật ký thành "Gửi người mới" kèm mã. Phải truyền y hệt ở đây,
@@ -129,8 +131,20 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         check('giữ số phút đã làm để đối soát', segCu?.customCommissionDuration === 25, `= ${segCu?.customCommissionDuration}p`);
         check('khoảng dừng đóng bằng SWAP', segCu?.pauses?.[0]?.closedBy === 'SWAP');
         check('endTime vẫn là giờ đồng hồ HH:mm', /^\d{2}:\d{2}$/.test(String(segCu?.endTime)), `= ${segCu?.endTime}`);
+        // Server chạy UTC — `getHours()` ra lệch 7 tiếng. Giờ đồng hồ phải là giờ VN
+        // (lỗi thật 11/09/2026: T069 vào 03:52 mà thẻ hiện "20:52 → 21:50").
+        check('endTime người cũ là GIỜ VN', segCu?.endTime === gioDongHoVN(segCu?.actualEndTime),
+            `lưu ${segCu?.endTime}, đúng ra ${gioDongHoVN(segCu?.actualEndTime)}`);
+        check('lý do đổi lưu ở chặng bị tước', segCu?.lyDoDoi === LY_DO, `= ${JSON.stringify(segCu?.lyDoDoi)}`);
         check('KTV cũ VẪN nằm trong đơn', (it as any).technicianCodes?.includes(oldKtv));
         check('chặng KTV mới là TAKEOVER', segMoi?.note === 'TAKEOVER');
+        const gioVnBayGio = gioDongHoVN(Date.now());
+        const lechPhut = (() => {
+            const [a, b] = String(segMoi?.startTime || '').split(':').map(Number);
+            const [c, d] = gioVnBayGio.split(':').map(Number);
+            return Math.abs((a * 60 + b) - (c * 60 + d));
+        })();
+        check('startTime người mới là GIỜ VN', lechPhut <= 2, `lưu ${segMoi?.startTime}, giờ VN hiện tại ${gioVnBayGio}`);
         check('KTV mới nhận phần còn lại 45p', segMoi?.customCommissionDuration === 45, `= ${segMoi?.customCommissionDuration}p`);
         // Đồng hồ KTV cộng bù mọi khoảng dừng (expectedEndMs = bắt đầu + giờ gán +
         // thời gian dừng). Chặng của người vào thay được tạo TRONG lúc đơn đang
@@ -168,7 +182,7 @@ async function chay(tenKichBan: string, oldKtv: string, newKtv: string, theoSoTu
         const nhatKy: any[] = Array.isArray(opts?.counterLog) ? opts.counterLog : [];
         const dongDoi = nhatKy.find((r: any) => r.action === 'SWAP_KTV');
         const dongCuoi = nhatKy[nhatKy.length - 1];
-        check('nhật ký ghi rõ đổi từ ai sang ai', dongDoi?.note === `${oldKtv} → ${newKtv}`, `note=${JSON.stringify(dongDoi?.note)}`);
+        check('nhật ký ghi rõ đổi từ ai sang ai + lý do', dongDoi?.note === `${oldKtv} → ${newKtv} · ${LY_DO}`, `note=${JSON.stringify(dongDoi?.note)}`);
         check('dòng cuối là "Gửi người mới" kèm mã', dongCuoi?.action === 'SWAP_SEND' && dongCuoi?.note === newKtv,
             `${dongCuoi?.action} note=${JSON.stringify(dongCuoi?.note)}`);
 

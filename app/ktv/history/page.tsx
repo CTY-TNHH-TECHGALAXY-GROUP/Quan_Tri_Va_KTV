@@ -215,7 +215,9 @@ const OrderCard = ({ order, getStatusLabel }: {
               )}
 
               {/* Thời gian làm DV (thực tế) */}
-              {order.actualDuration != null && order.actualDuration > 0 && (
+              {/* Đơn bị tước (đổi KTV / huỷ không công) thì KHÔNG in dòng này —
+                  lý do đã nằm ở dải đỏ phía trên, thay cho số phút đã làm. */}
+              {!order.voidedNote && order.actualDuration != null && order.actualDuration > 0 && (
                 <div className="flex justify-between items-start">
                   <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Thời gian làm DV</span>
                   <span className={`text-sm font-medium ${order.actualDuration > order.duration ? 'text-amber-600' : 'text-gray-600'}`}>

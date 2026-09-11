@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { closeOpenPause, voidSegment, parseTimeMs } from '@/lib/segment-time';
+import { closeOpenPause, voidSegment, parseTimeMs, gioDongHoVN } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
 import { logCounterAction, currentCounterActor, type CounterAction } from '@/lib/counter-action-log';
@@ -282,7 +282,12 @@ export class BookingItemPauseService {
          * phần còn lại của dịch vụ + giờ bù. Luôn bị kẹp trần bằng thời lượng
          * dịch vụ, không cho vượt (chốt 06/09/2026).
          */
-        assignedMins: number = 0
+        assignedMins: number = 0,
+        /**
+         * Lý do quầy đổi người. Lưu vào chặng bị tước (`lyDoDoi`) để màn Lịch sử
+         * của KTV bị đổi giải thích được vì sao tua đó 0đ, và vào nhật ký quầy.
+         */
+        lyDoDoi: string = ''
     ) {
         // 1. Fetch Item & Booking & Service
         //
@@ -448,8 +453,9 @@ export class BookingItemPauseService {
             // `endTime` là cột GIỜ ĐỒNG HỒ "HH:mm" mà thẻ Kanban, màn Đánh giá và
             // KtvCommissionService.getMinsFromTimes cùng đọc. Nhét chuỗi ISO vào đó
             // là ba nơi cùng hiểu sai — ghi đúng định dạng của cột.
-            const dChot = new Date(pauseTime);
-            closed.endTime = `${String(dChot.getHours()).padStart(2, '0')}:${String(dChot.getMinutes()).padStart(2, '0')}`;
+            // Giờ VN, KHÔNG phải giờ máy chủ — xem gioDongHoVN.
+            closed.endTime = gioDongHoVN(pauseTime);
+            if (lyDoDoi.trim()) closed.lyDoDoi = lyDoDoi.trim();
 
             // Tước sạch quyền lợi nhưng VẪN ghi số phút đã làm để đối soát.
             voidSegment(closed, pauseTime, 'CHANGED');
@@ -531,10 +537,10 @@ export class BookingItemPauseService {
             // Tiền KHÔNG phụ thuộc mốc này: `customCommissionDuration` đã chốt
             // cứng số phút quầy quyết, nên KTV bắt đầu sớm hay muộn đều nhận
             // đúng bằng nhau.
-            const dBatDau = new Date();
             segments.push({
                 ktvId: newKtvId,
-                startTime: `${String(dBatDau.getHours()).padStart(2, '0')}:${String(dBatDau.getMinutes()).padStart(2, '0')}`,
+                // Giờ VN, KHÔNG phải giờ máy chủ — xem gioDongHoVN.
+                startTime: gioDongHoVN(Date.now()),
                 endTime: null,
                 duration: remainingMins, // để calculateItemExpectedDuration đọc
                 customCommissionDuration: remainingMins,
@@ -582,7 +588,8 @@ export class BookingItemPauseService {
         const actorSwap = await currentCounterActor();
         await logCounterAction(supabase, [bookingItemId], {
             action: 'SWAP_KTV', by: actorSwap.id, byName: actorSwap.name,
-            note: `${oldKtvId} → ${newKtvId || '(rút, chưa có người thay)'}`,
+            note: `${oldKtvId} → ${newKtvId || '(rút, chưa có người thay)'}`
+                + (lyDoDoi.trim() ? ` · ${lyDoDoi.trim()}` : ''),
         });
 
         return { success: true };

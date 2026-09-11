@@ -239,3 +239,21 @@ export function endedByCounter(seg: any): boolean {
     const pauses = Array.isArray(seg.pauses) ? seg.pauses : [];
     return pauses.some((p: any) => p?.closedBy && p.closedBy !== 'RESUME');
 }
+
+/**
+ * Mốc thời gian → giờ đồng hồ "HH:mm" THEO GIỜ VIỆT NAM.
+ *
+ * ⚠️ Đừng dùng `new Date(x).getHours()` ở phía server. Nó trả giờ của MÁY CHỦ, mà
+ * máy chủ chạy UTC — ra lệch đúng 7 tiếng. Các cột `seg.startTime` / `seg.endTime`
+ * lưu giờ đồng hồ VN (điều phối ghi từ trình duyệt), nên ghi UTC vào là thẻ
+ * Kanban vẽ khoảng giờ vô nghĩa: quan sát 11/09/2026 trên đơn WB-10092026-014,
+ * T069 vào lúc 03:52 mà thẻ hiện "20:52 → 21:50".
+ *
+ * Việt Nam không có giờ mùa hè nên cộng cứng +7 là đủ, không phụ thuộc ICU.
+ */
+export function gioDongHoVN(at: string | number | Date): string {
+    const ms = at instanceof Date ? at.getTime() : (typeof at === 'number' ? at : parseTimeMs(at));
+    if (!Number.isFinite(ms)) return '';
+    const d = new Date(ms + 7 * 60 * 60 * 1000);
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}

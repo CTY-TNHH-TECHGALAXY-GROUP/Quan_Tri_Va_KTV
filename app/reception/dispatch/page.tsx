@@ -1679,7 +1679,7 @@ if (!hasPermission('dispatch_board')) {
   };
 
 
-  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean, assignedMins?: number) {
+  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean, assignedMins?: number, swapReason?: string) {
     try {
       const data = await apiClient.post<any>(API.KTV.PAUSE_SWAP, {
           action,
@@ -1689,6 +1689,7 @@ if (!hasPermission('dispatch_board')) {
           extraTimeMins,
           keepTurnForOldKtv,
           assignedMins,
+          swapReason,
           businessDate: selectedDate
       });
       if (!data.success) throw new Error(data.error || 'Có lỗi xảy ra');

@@ -359,24 +359,34 @@ export async function GET(request: Request) {
                 // Plan Đợt 4 #10: lịch sử KTV vẫn phải thấy "từng làm cho khách",
                 // kèm nhãn và số phút đã làm, dù tiền = 0. Không có nhãn thì đơn
                 // hiện ra y như đơn thường mà tiền lại bằng 0 — không giải thích được.
+                // Nhãn + LÝ DO, thay cho dòng "đã làm Xp" trước đây.
+                // KTV bị đổi cần biết VÌ SAO tua đó 0đ, chứ số phút họ tự biết. Lý do
+                // đổi người lưu ở chặng bị tước (`lyDoDoi`, quầy nhập lúc đổi); lý do
+                // huỷ lưu ở `options.cancelReason` của dịch vụ.
                 const voidedNote: string | null = (() => {
                     if (groupItems.length === 0 || coItemConQuyenLoi) return null;
-                    let phut = 0;
                     let loai = '';
+                    let lyDo = '';
                     for (const i of groupItems) {
                         let segs: any[] = [];
                         try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []); } catch { }
                         for (const s of (Array.isArray(segs) ? segs : [])) {
                             if (s?.voided !== true) continue;
                             if (!s.ktvId || !String(s.ktvId).toLowerCase().includes(techCode.toLowerCase())) continue;
-                            phut += Number(s.customCommissionDuration) || 0;
                             if (!loai) loai = String(s.note || '');
+                            if (!lyDo && s.lyDoDoi) lyDo = String(s.lyDoDoi);
+                        }
+                        if (!lyDo) {
+                            try {
+                                const o = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
+                                if (o?.cancelReason) lyDo = String(o.cancelReason);
+                            } catch { }
                         }
                     }
                     const nhan = loai === 'CHANGED' ? 'Đã đổi KTV'
                         : loai === 'CANCELLED_NO_CREDIT' ? 'Huỷ không tính công'
                         : 'Không tính công';
-                    return `${nhan} · đã làm ${phut}p · 0đ`;
+                    return lyDo ? `${nhan} — ${lyDo}` : `${nhan} · 0đ`;
                 })();
 
                 for (const item of groupItems) {
