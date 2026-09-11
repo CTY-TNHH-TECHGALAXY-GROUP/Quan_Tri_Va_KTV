@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, PauseCircle, PlayCircle, UserMinus, UserPlus, Clock, AlertTriangle } from 'lucide-react';
 import { PendingOrder, StaffData } from '../types';
-import { WORK_TYPE_LABELS } from '@/lib/constants/staff.constants';
+import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
 import { workedMsOf } from '@/lib/segment-time';
 import { fmtHours } from '@/lib/hours-format';
 
@@ -98,6 +98,11 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   }, [isOpen, lockAction, isPaused, selectedServiceId]);
 
   // Find KTVs currently working on the selected service
+  // Same labelling rule as the dispatch board: code for types A/B/D, name for
+  // type C (manual entries whose code is an unreadable generated id).
+  const ktvLabel = (id: string, name?: string | null, workType?: string | null) =>
+    ktvDisplayLabel(workType || (/^(C_|EXT)/i.test(String(id)) ? 'TYPE_C' : null), id, name);
+
   const currentKtvs = selectedService?.staffList.filter((staff: any) =>
     staff.segments.some(conDangLam)
   ) || [];
@@ -112,7 +117,14 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
   const mocChot = selectedService?.pauseStart || Date.now();
   const msDaLam = changKtvCu ? workedMsOf(changKtvCu, mocChot) : null;
   const phutDaLam = msDaLam == null ? null : Math.round(msDaLam / 60000);
-  const tongThoiLuong = selectedService?.duration || 0;
+  // Mirrors the server's `|| 60` fallback: seven services store duration 0
+  // (haircuts, shaves, private room); reading the raw 0 here showed "0 minutes"
+  // and capped manual minutes at 0 while swapKtvOnPausedItem actually used 60.
+  // ⚠️ Still NOT equal for VIP items: this reads `options.vipDuration` (as the
+  // board does) but the server reads `Services.duration`. That is a server-side
+  // bug — see plans/plan_thoi_luong_dich_vu_khi_doi_ktv.md.
+  const serviceDurationMins = Number(selectedService?.duration) || 60;
+  const tongThoiLuong = serviceDurationMins;
   const phutConLai = phutDaLam == null
     ? null
     : Math.max(0, tongThoiLuong - phutDaLam) + (Number(extraTimeMins) || 0);
@@ -131,8 +143,8 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
           alert('Vui lòng nhập lý do đổi KTV — lý do này sẽ hiện ở lịch sử của KTV bị đổi.');
           return;
         }
-        if (selectedService && extraTimeMins > selectedService.duration) {
-          alert(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${selectedService.duration} phút)`);
+        if (selectedService && extraTimeMins > serviceDurationMins) {
+          alert(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${serviceDurationMins} phút)`);
           return;
         }
         await onConfirm(
@@ -207,6 +219,17 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                 </select>
               </div>
 
+              {/* The service selector is hidden when the card holds a single service,
+                  so show which service this swap applies to. */}
+              {activeServices.length <= 1 && selectedService && (
+                <div className="flex items-baseline justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Dịch vụ</span>
+                  <span className="text-sm font-bold text-gray-800 text-right">
+                    {selectedService.serviceName} <span className="font-medium text-gray-500">· {serviceDurationMins} phút</span>
+                  </span>
+                </div>
+              )}
+
               {selectedServiceId && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   {/* lockAction: đã biết muốn làm gì rồi thì không hiện lại hàng nút chọn. */}
@@ -270,7 +293,7 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           >
                             <option value="">-- Chọn --</option>
                             {currentKtvs.map((staff: any) => (
-                              <option key={staff.ktvId} value={staff.ktvId}>{staff.ktvName || staff.ktvId}</option>
+                              <option key={staff.ktvId} value={staff.ktvId}>{ktvLabel(staff.ktvId, staff.ktvName)}</option>
                             ))}
                           </select>
                         </div>
@@ -289,17 +312,11 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                                 (quầy có thể cố ý điều), nhưng ghi rõ trạng thái. */}
                             {availableKtvs
                               .filter(ktv => ktv.id !== selectedOldKtv)
-                              .map(ktv => {
-                                const tt = (ktv as any).turnStatus;
-                                const nhan = tt === 'working' ? ' · đang làm'
-                                  : tt === 'assigned' ? ' · đã xếp lịch'
-                                  : '';
-                                return (
-                                  <option key={ktv.id} value={ktv.id}>
-                                    {ktv.full_name} ({ktv.id}) [{WORK_TYPE_LABELS[ktv.work_type as keyof typeof WORK_TYPE_LABELS] || 'A'}]{nhan}
-                                  </option>
-                                );
-                              })}
+                              .map(ktv => (
+                                <option key={ktv.id} value={ktv.id}>
+                                  {ktvLabel(ktv.id, ktv.full_name, ktv.work_type)}
+                                </option>
+                              ))}
                           </select>
                         </div>
                       </div>
@@ -366,17 +383,17 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                           <input
                             type="number"
                             min="0"
-                            max={selectedService?.duration || 0}
+                            max={serviceDurationMins}
                             className="w-full border-2 border-gray-200 rounded-lg p-2 text-sm focus:border-indigo-500 outline-none font-bold text-indigo-600"
                             value={manualMins}
                             onChange={(e) => {
                               let val = Number(e.target.value) || 0;
-                              const maxVal = selectedService?.duration || 0;
+                              const maxVal = serviceDurationMins;
                               if (val > maxVal) val = maxVal;   // trần = thời lượng dịch vụ, không cho vượt
                               setManualMins(val);
                             }}
                           />
-                          <p className="text-[11px] text-gray-500 mt-1">*Tối đa {selectedService?.duration || 0} phút — bằng đúng thời lượng dịch vụ, không thể hơn.</p>
+                          <p className="text-[11px] text-gray-500 mt-1">*Tối đa {serviceDurationMins} phút — bằng đúng thời lượng dịch vụ, không thể hơn.</p>
                         </div>
                       )}
 
@@ -387,12 +404,12 @@ export default function PauseSwapKtvModal({ isOpen, onClose, order, subOrder, av
                         <input 
                           type="number"
                           min="0"
-                          max={selectedService?.duration || 0}
+                          max={serviceDurationMins}
                           className="w-full border-2 border-gray-200 rounded-lg p-2 text-sm focus:border-indigo-500 outline-none font-bold text-indigo-600"
                           value={extraTimeMins}
                           onChange={(e) => {
                             let val = Number(e.target.value) || 0;
-                            const maxVal = selectedService?.duration || 0;
+                            const maxVal = serviceDurationMins;
                             if (val > maxVal) val = maxVal;
                             setExtraTimeMins(val);
                           }}
