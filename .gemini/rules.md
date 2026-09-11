@@ -217,3 +217,19 @@ Phạm vi: `app/api/ktv/booking/route.ts` (orchestrator) và `app/api/ktv/bookin
    - **Đang sửa**: `app/admin/dashboard/page.tsx`, `app/admin/dashboard/AdminDashboard.logic.ts`
    - **Trạng thái**: 🟢 Đang làm
    ```
+
+---
+
+## 13. Phân tích hệ quả nghiệp vụ spa — BẮT BUỘC trước khi code
+
+Áp dụng khi thêm/sửa một **sự kiện nghiệp vụ** làm đổi quyền lợi hoặc nghĩa vụ của KTV: tạm dừng, tiếp tục, kết thúc sớm, huỷ (có/không công), đổi KTV, khẩn cấp, bỏ qua bàn giao, và mọi sự kiện mới cùng loại. Xếp **Mức 2** (mục 3) nếu chạm tiền/tua/giờ/thưởng.
+
+**Bảng tra chuẩn:** `plans/nghiep_vu_tam_dung_doi_huy.md` — nguyên tắc gốc, bảng sự kiện × 17 khía cạnh, trạng thái triển khai, checklist tìm kiếm.
+
+1. **Điền đủ bảng hệ quả trước khi viết code.** Với từng vai trong sự kiện (VD đổi KTV có hai vai: người bị đổi ra, người vào thay), ghi kết quả ở mọi khía cạnh: tiền tua · giờ tích luỹ · lượt tua · thưởng · đánh giá khách tính cho ai · dọn phòng/bàn giao · nợ phòng/chặn tan ca · hạn mức bỏ qua · hàng đợi (TurnQueue/KtvAssignments) · màn app KTV · đồng hồ · tự chốt · thẻ Kanban · "cùng làm với" · lịch sử KTV · nhật ký quầy · lý do. Ô nào không áp dụng thì ghi rõ "không áp dụng — vì …".
+2. **Đi hết hệ quả, không dừng ở màn được chỉ ra.** Sửa một dòng hiển thị thì rà luôn MỌI dòng khác trên cùng màn (VD đã bị tước thì không còn "Chờ FB", "Tạm tính", "Chưa bàn giao", "Xuất sắc").
+3. **`technicianCodes` không phải danh sách người có quyền lợi.** Nó cố ý giữ cả người bị tước để truy vết. Chỗ nào suy ra tiền, giờ, tua, thưởng, nợ phòng, hạn mức từ `technicianCodes` → phải loại chặng `voided` (`isKtvVoidedOnItem`, `laNguoiBiDoiRaKhoiDon`). Grep `technicianCodes` ở `lib/services/*`, `app/api/{ktv,finance,cron}/*` và cả nhánh dự phòng (`<= 0 → 60`).
+4. **Kết quả đã chốt thì không có trạng thái "chờ".** Người bị tước = 0đ ngay khi quầy bấm.
+5. **Giờ "HH:mm" dựng ở server dùng `gioDongHoVN`**, cấm `getHours()` (server chạy UTC).
+6. **Kiểm bằng dữ liệu giống thật** (mục 10): fixture đúng định dạng DB, đi đủ các bước route thật gọi (VD `resumeItem` sau đổi), chạy thêm dưới `TZ=UTC`. Đối chiếu 2 phía (mục 4.3).
+7. Làm xong → **cập nhật mục 2 và 3 của bảng tra**.
