@@ -3,7 +3,6 @@
 import React, { useState, Suspense } from 'react';
 import { BellRing, Camera, CheckCircle2, Gift, Loader2, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 
 export function ScreenReward({ logic }: { logic: any }) {
@@ -16,22 +15,28 @@ export function ScreenReward({ logic }: { logic: any }) {
   const [images, setImages] = React.useState<string[]>([]);
   const [uploading, setUploading] = React.useState(false);
 
+  // ⚠️ Tải qua MÁY CHỦ, không tải thẳng từ trình duyệt.
+  // Bản cũ gọi `supabase.storage…upload` bằng client anon trần (không đọc cookie
+  // đăng nhập), trong khi kho `task-photos` chỉ cho `authenticated` tải lên — nên
+  // mọi lần đều bị RLS chặn và chưa từng có ảnh nào vào được. Xem
+  // /api/ktv/review-reception/upload.
   const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    e.target.value = '';   // cho chọn lại đúng file đó nếu lần trước lỗi
+    if (!ktvId) return;
     setUploading(true);
     try {
-      const file = e.target.files[0];
-      const ext = file.name.split('.').pop();
-      const fileName = `ktv_review_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-      const { data, error } = await supabase.storage.from('task-photos').upload(fileName, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from('task-photos').getPublicUrl(fileName);
-      if (urlData?.publicUrl) {
-        setImages(prev => [...prev, urlData.publicUrl]);
-      }
-    } catch (err) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('techCode', ktvId);
+      const res = await fetch('/api/ktv/review-reception/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data?.success || !data?.url) throw new Error(data?.error || 'Không nhận được đường dẫn ảnh');
+      setImages(prev => [...prev, data.url]);
+    } catch (err: any) {
       console.error('Lỗi tải ảnh:', err);
-      addToast('Tải ảnh thất bại!', 'error');
+      addToast(`Tải ảnh thất bại: ${err?.message || 'không rõ lỗi'}`, 'error');
     } finally {
       setUploading(false);
     }
