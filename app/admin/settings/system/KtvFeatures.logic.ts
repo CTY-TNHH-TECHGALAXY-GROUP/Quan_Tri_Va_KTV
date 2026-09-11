@@ -40,6 +40,14 @@ export const FEATURE_FLAG_DEFS = [
         description: 'Loại A/B/C: tích điểm thưởng ca, tua vào ví Bonus. Loại D: Ví Điểm tính theo điểm Office, không quy đổi ra tiền — chỉ quyết định mức quỹ nội bộ phải đóng',
     },
     {
+        // OFF keeps the menu visible; the page itself answers "Tính năng của
+        // bạn đang bảo trì" (server returns FEATURE_MAINTENANCE). Hiding the
+        // menu instead would tell the KTV nothing.
+        key: 'history_page',
+        label: '📜 Trang Lịch sử',
+        description: 'Tắt = KTV vẫn thấy menu Lịch sử nhưng vào trang chỉ thấy "Tính năng của bạn đang bảo trì" (áp cho người còn quyền Lịch sử)',
+    },
+    {
         key: 'maintenance_fee',
         label: '🔧 Phí Bảo Trì',
         description: 'Tự động trừ phí bảo trì app hàng tháng',
@@ -62,8 +70,20 @@ interface StaffFeature {
     id: string;
     full_name: string;
     status: string;
+    /** 'MANUAL' = switched off from this table; null = disciplinary / legacy lock. */
+    lock_source?: string | null;
     feature_flags: Record<string, any>;
     work_type: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' | 'TYPE_D';
+}
+
+/** The "Hoạt động" switch reads the same state as Office's "Mở khóa" button. */
+export const isAccountActive = (staff: { status: string }) => staff.status !== 'KHÓA_TÀI_KHOẢN';
+
+/** What the unlock dialog needs — same data Office's unlock sheet uses. */
+export interface UnlockInfo {
+    lockReason: string | null;
+    feeEnabled: boolean;
+    feeMin: number;
 }
 
 import {
@@ -267,6 +287,64 @@ export const useStaffFeatures = (activeTab?: string) => {
     /** Số người sẽ bị ảnh hưởng nếu bấm "Bật hết / Tắt hết" ngay lúc này. */
     const bulkTargetCount = filteredStaff.length;
 
+    /** GET /api/admin/staff/unlock — reason + reactivation fee floor, like Office. */
+    const getUnlockInfo = useCallback(async (staffId: string): Promise<UnlockInfo | null> => {
+        try {
+            const res = await fetch(`/api/admin/staff/unlock?staffId=${encodeURIComponent(staffId)}`, { cache: 'no-store' });
+            const json = await res.json();
+            if (!json?.success) { baoHong('tải được thông tin mở khoá', json?.error); return null; }
+            return {
+                lockReason: json.data?.lockReason ?? null,
+                feeEnabled: !!json.data?.feeEnabled,
+                feeMin: Number(json.data?.feeMin || 0),
+            };
+        } catch (err: any) {
+            baoHong('tải được thông tin mở khoá', err?.message || 'lỗi kết nối');
+            return null;
+        }
+    }, []);
+
+    /**
+     * "Hoạt động" switch.
+     *   OFF → POST /api/admin/staff/lock   (manual lock, KTV sees the maintenance notice)
+     *   ON  → POST /api/admin/staff/unlock (the SAME route Office uses — reason,
+     *         reactivation fee floor and audit log stay identical)
+     * No optimistic flip: locking can be refused (order in flight), and a switch
+     * that jumps back on its own reads as "I missed the button".
+     */
+    const setAccountActive = useCallback(async (
+        staffId: string,
+        active: boolean,
+        reason: string,
+        reactivationFee?: number,
+    ): Promise<boolean> => {
+        setUpdating(`${staffId}-active`);
+        try {
+            const res = await fetch(active ? '/api/admin/staff/unlock' : '/api/admin/staff/lock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(active
+                    ? { staffId, reason, ...(reactivationFee !== undefined ? { reactivationFee } : {}) }
+                    : { staffId, reason }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json?.success === false) {
+                baoHong(active ? 'bật lại được tài khoản' : 'tắt được tài khoản', json?.error);
+                return false;
+            }
+            setStaffList(prev => prev.map(s => s.id === staffId
+                ? { ...s, status: active ? 'ĐANG LÀM' : 'KHÓA_TÀI_KHOẢN', lock_source: active ? null : 'MANUAL' }
+                : s
+            ));
+            return true;
+        } catch (err: any) {
+            baoHong(active ? 'bật lại được tài khoản' : 'tắt được tài khoản', err?.message || 'lỗi kết nối');
+            return false;
+        } finally {
+            setUpdating(null);
+        }
+    }, []);
+
     return {
         staffList: filteredStaff,
         allStaffCount: typeFilteredStaff.length,
@@ -279,6 +357,8 @@ export const useStaffFeatures = (activeTab?: string) => {
         bulkToggle,
         bulkTargetCount,
         isFlagOn: (staff: StaffFeature, key: string) => resolveStaffFlag(staff.feature_flags, key),
+        getUnlockInfo,
+        setAccountActive,
         refetch: fetchData,
     };
 };

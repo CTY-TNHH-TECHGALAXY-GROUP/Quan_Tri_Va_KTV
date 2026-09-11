@@ -148,10 +148,20 @@ async function main() {
 
     // ── F4: bảng admin có thấy KTV cần chỉnh không ─────────────────────
     console.log('\n--- F4: bang admin Tinh nang co thay du KTV khong ---');
+    // Mirrors GET /api/admin/staff-features: WORKING + LOCKED. The "Hoạt động"
+    // switch locks accounts; a locked row must stay on the table, or it could
+    // never be switched back on from there.
     const { data: active } = await supabase
         .from('Staff').select('id, full_name, work_type')
-        .eq('status', 'ĐANG LÀM');
+        .in('status', ['ĐANG LÀM', 'KHÓA_TÀI_KHOẢN']);
     const all = active || [];
+    {
+        const routeSrc = fs.readFileSync(
+            path.join(__dirname, '../../app/api/admin/staff-features/route.ts'), 'utf8');
+        const keepsLocked = /\.in\(\s*'status'\s*,\s*\[\s*STAFF_STATUS\.WORKING\s*,\s*STAFF_STATUS\.LOCKED\s*\]\s*\)/.test(routeSrc);
+        check(keepsLocked, 'Bang Tinh nang van thay nguoi dang bi khoa (loc WORKING + LOCKED)',
+            keepsLocked ? '' : 'tat "Hoat dong" xong dong do bien mat, khong bat lai duoc tu bang');
+    }
     // Đúng bộ lọc mà GET /api/admin/staff-features đang dùng: bỏ các mã KHÔNG
     // phải tài khoản app (chỗ giữ tên KTV ngoài / gộp nhiều người).
     const PLACEHOLDER_ID = /^(EXT|C_)/i;
@@ -161,7 +171,7 @@ async function main() {
         list.forEach(s => { const k = s.work_type || 'TYPE_A'; m[k] = (m[k] || 0) + 1; });
         return m;
     };
-    console.log(`  Nhan vien dang lam : ${all.length} → ${JSON.stringify(byType(all))}`);
+    console.log(`  Nhan vien dang lam/bi khoa: ${all.length} → ${JSON.stringify(byType(all))}`);
     console.log(`  Bang admin hien thi: ${visible.length} → ${JSON.stringify(byType(visible))}  (bo EXT_/C_ placeholder)`);
     const hiddenD = all.filter(s => (s.work_type === 'TYPE_D') && PLACEHOLDER_ID.test(s.id));
     check(hiddenD.length === 0,

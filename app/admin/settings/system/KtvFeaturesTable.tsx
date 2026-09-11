@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff } from 'lucide-react';
-import { useStaffFeatures, FEATURE_FLAG_DEFS } from './KtvFeatures.logic';
+import { useStaffFeatures, FEATURE_FLAG_DEFS, isAccountActive } from './KtvFeatures.logic';
 import { walletLabel } from '@/lib/featureFlags';
+import { AccountActiveDialog } from './AccountActiveDialog';
+import { t as tActive } from './AccountActiveDialog.i18n';
 
 const ANIMATION_DURATION = '200ms';
 const TABLE_ROW_HEIGHT = '52px';
+// Pinned "Mã NV" column: sticks to the left edge while the flag columns scroll
+// horizontally. Needs its own background, otherwise the scrolled cells show
+// through it; the right border marks where the pinned area ends.
+const STICKY_ID_CELL = 'sticky left-0 z-10 bg-white group-hover:bg-gray-50 border-r border-gray-100';
+const STICKY_ID_HEAD = 'sticky left-0 z-20 bg-gray-50 border-r border-gray-200';
 
 export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B' | 'TYPE_C' | 'TYPE_D' }) => {
     const {
@@ -18,8 +25,22 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
         bulkToggle,
         bulkTargetCount,
         isFlagOn,
+        getUnlockInfo,
+        setAccountActive,
         refetch,
     } = useStaffFeatures(activeTab);
+
+    // "Hoạt động" switch: which row is being confirmed, and in which direction.
+    const [activeDialog, setActiveDialog] = useState<{ staffId: string; name: string; turningOn: boolean } | null>(null);
+    const [activeSubmitting, setActiveSubmitting] = useState(false);
+
+    const confirmActive = async (reason: string, reactivationFee?: number) => {
+        if (!activeDialog) return;
+        setActiveSubmitting(true);
+        const ok = await setAccountActive(activeDialog.staffId, activeDialog.turningOn, reason, reactivationFee);
+        setActiveSubmitting(false);
+        if (ok) setActiveDialog(null);
+    };
 
     const [selectedBulkFeature, setSelectedBulkFeature] = useState<string>(FEATURE_FLAG_DEFS[0].key);
 
@@ -136,8 +157,14 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                     <table className="w-full">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-200">
-                                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 w-24">
+                                <th className={`text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 w-24 ${STICKY_ID_HEAD}`}>
                                     Mã NV
+                                </th>
+                                <th
+                                    className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 w-40"
+                                    title={tActive.columnHint}
+                                >
+                                    {tActive.column}
                                 </th>
                                 {FEATURE_FLAG_DEFS.map(def => (
                                     <th
@@ -153,7 +180,7 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                         <tbody className="divide-y divide-gray-100">
                             {staffList.length === 0 ? (
                                 <tr>
-                                    <td colSpan={1 + FEATURE_FLAG_DEFS.length} className="text-center text-gray-400 py-12 text-sm">
+                                    <td colSpan={2 + FEATURE_FLAG_DEFS.length} className="text-center text-gray-400 py-12 text-sm">
                                         {searchQuery ? 'Không tìm thấy nhân viên' : 'Không có dữ liệu'}
                                     </td>
                                 </tr>
@@ -161,14 +188,47 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                                 staffList.map(staff => (
                                     <tr
                                         key={staff.id}
-                                        className="hover:bg-gray-50/50 transition-colors"
+                                        className="group hover:bg-gray-50 transition-colors"
                                         style={{ height: TABLE_ROW_HEIGHT }}
                                     >
-                                        <td className="px-4 py-2">
+                                        <td className={`px-4 py-2 ${STICKY_ID_CELL}`}>
                                             <span className="text-sm font-mono font-semibold text-indigo-600">
                                                 {staff.id}
                                             </span>
                                         </td>
+                                        {(() => {
+                                            // Same state as Office's "Mở khóa" button: ON = not locked.
+                                            const active = isAccountActive(staff);
+                                            const isUpdatingActive = updating === `${staff.id}-active`;
+                                            return (
+                                                <td className="px-4 py-2 text-center">
+                                                    <button
+                                                        onClick={() => setActiveDialog({ staffId: staff.id, name: staff.full_name, turningOn: !active })}
+                                                        disabled={!!updating}
+                                                        className="inline-flex flex-col items-center gap-0.5 cursor-pointer disabled:cursor-wait"
+                                                        style={{ transitionDuration: ANIMATION_DURATION }}
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            {isUpdatingActive ? (
+                                                                <Loader2 size={20} className="animate-spin text-gray-400" />
+                                                            ) : active ? (
+                                                                <ToggleRight size={28} className="text-emerald-500" />
+                                                            ) : (
+                                                                <ToggleLeft size={28} className="text-rose-400" />
+                                                            )}
+                                                            <span className={`text-xs font-medium ${active ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                                {active ? 'ON' : 'OFF'}
+                                                            </span>
+                                                        </span>
+                                                        {!active && (
+                                                            <span className="text-[10px] font-bold text-rose-500">
+                                                                {staff.lock_source === 'MANUAL' ? tActive.lockedManual : tActive.lockedByDiscipline}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                </td>
+                                            );
+                                        })()}
                                         {FEATURE_FLAG_DEFS.map(def => {
                                             // Dùng chung bộ giải mã với app KTV: cờ THIẾU không
                                             // mặc nhiên là TẮT (ví tua thiếu cờ = ĐANG BẬT).
@@ -203,6 +263,18 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                         </tbody>
                     </table>
                 </div>
+
+                <AccountActiveDialog
+                    key={activeDialog ? `${activeDialog.staffId}-${activeDialog.turningOn}` : 'closed'}
+                    open={!!activeDialog}
+                    staffId={activeDialog?.staffId || ''}
+                    staffName={activeDialog?.name || ''}
+                    turningOn={!!activeDialog?.turningOn}
+                    isSubmitting={activeSubmitting}
+                    loadUnlockInfo={getUnlockInfo}
+                    onConfirm={confirmActive}
+                    onCancel={() => setActiveDialog(null)}
+                />
 
                 {/* Footer */}
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">

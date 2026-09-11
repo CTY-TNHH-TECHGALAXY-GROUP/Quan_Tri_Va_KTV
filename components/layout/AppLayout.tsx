@@ -9,6 +9,7 @@ import { AIAssistant } from '@/components/AIAssistant';
 import { useNotifications } from '@/components/NotificationProvider';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { AccountLockedScreen } from '@/components/shared/AccountLockedScreen';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 import { isServingLockedScreen } from '@/lib/ktv-screen';
 
 interface AppLayoutProps {
@@ -28,7 +29,7 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // Desktop sidebar state
   const [mounted, setMounted] = useState(false);
   const [lockInfo, setLockInfo] = useState<any>(null);
-  const { user, lockedInfo: contextLockedInfo } = useAuth();
+  const { user, lockedInfo: contextLockedInfo, logout } = useAuth();
   const { unlockAudio, ktvScreen, ktvOrderLocked } = useNotifications();
   // 🔒 KTV đang trong một đơn (làm → đánh giá → bàn giao) → không cho mở menu 3 gạch.
   const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
@@ -44,39 +45,56 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
     if (isServingLocked) setIsSidebarOpen(false);
   }, [isServingLocked]);
 
-  React.useEffect(() => {
-    if (contextLockedInfo) {
-      setLockInfo(contextLockedInfo);
-    }
-  }, [contextLockedInfo]);
-
-  React.useEffect(() => {
-    const handleAccountLocked = async (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail?.isLocked && user?.id) {
-        // Fetch lock info from status route
-        try {
-          const res = await fetch(`/api/ktv/attendance/status?employeeId=${user.id}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.lockInfo) {
-              setLockInfo(data.lockInfo);
-            } else {
-              setLockInfo({ reason: 'Tài khoản bị khóa kỷ luật', lockedAt: new Date().toISOString(), adminContact: 'Quản lý' });
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch lock info:', error);
-          setLockInfo({ reason: 'Tài khoản bị khóa kỷ luật', lockedAt: new Date().toISOString(), adminContact: 'Quản lý' });
-        }
-      } else {
-        setLockInfo(null);
+  /**
+   * Load what the lock screen shows. A MANUAL lock (admin switched "Hoạt động"
+   * off) needs nothing: it only ever shows the maintenance sentence. A
+   * disciplinary lock needs its reason from the status route.
+   *
+   * `knownKind` comes from the global session-check state; when the status
+   * route cannot be reached we fall back to it instead of assuming
+   * "discipline" — a manual lock must never be shown as a disciplinary one.
+   */
+  const userId = user?.id;
+  const loadLockInfo = React.useCallback(async (knownKind?: string) => {
+    if (knownKind === 'MANUAL') { setLockInfo({ kind: 'MANUAL' }); return; }
+    if (!userId) return;
+    const disciplineFallback = { kind: 'DISCIPLINE', reason: 'Tài khoản bị khóa kỷ luật', lockedAt: new Date().toISOString(), adminContact: 'Quản lý' };
+    try {
+      const res = await fetch(`/api/ktv/attendance/status?employeeId=${userId}`);
+      if (!res.ok) {
+        setLockInfo(knownKind === 'DISCIPLINE' ? disciplineFallback : null);
+        return;
       }
+      const data = await res.json();
+      setLockInfo(data.lockInfo ?? (knownKind === 'DISCIPLINE' ? disciplineFallback : null));
+    } catch (error) {
+      console.error('Failed to fetch lock info:', error);
+      setLockInfo(knownKind === 'DISCIPLINE' ? disciplineFallback : null);
+    }
+  }, [userId]);
+
+  // Global lock state (session-check poll: every 60s, on focus, on app reopen).
+  // It is the source of truth for CLEARING the screen too — the Realtime
+  // "unlocked" branch reads payload.old, which needs REPLICA IDENTITY FULL.
+  React.useEffect(() => {
+    if (contextLockedInfo === undefined) return; // not checked yet
+    if (contextLockedInfo === null) { setLockInfo(null); return; }
+    loadLockInfo(contextLockedInfo.kind);
+  }, [contextLockedInfo, loadLockInfo]);
+
+  // Immediate path: an API answered ACCOUNT_LOCKED / Realtime saw the flip.
+  React.useEffect(() => {
+    const handleAccountLocked = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.isLocked) {
+        loadLockInfo(contextLockedInfo?.kind);
+      }
+      // "Unlocked" is decided by the session-check state above, not here.
     };
 
     window.addEventListener('account_locked', handleAccountLocked);
     return () => window.removeEventListener('account_locked', handleAccountLocked);
-  }, [user?.id]);
+  }, [loadLockInfo, contextLockedInfo]);
 
   React.useEffect(() => {
     if (mounted && !user) {
@@ -93,6 +111,10 @@ export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', d
   }
 
   if (lockInfo) {
+    // Manual lock → the one shared maintenance notice, above toasts.
+    if (lockInfo.kind === 'MANUAL') {
+      return <FeatureMaintenanceNotice variant="fullscreen" onLogout={logout} />;
+    }
     return <AccountLockedScreen lockInfo={lockInfo} />;
   }
 

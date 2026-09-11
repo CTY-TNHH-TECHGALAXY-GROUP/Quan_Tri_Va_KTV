@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import { resolveAttendanceStatus } from '@/lib/attendance/resolveAttendanceStatus';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -71,7 +72,11 @@ export async function GET(request: Request) {
         // ─── Fetch Work Type & Available Until ───
         let workType = 'TYPE_A';
         let availableUntil = null;
-        let lockInfo = null;
+        let lockInfo: any = null;
+        // TUA wallet switched off → the check-in form shows the maintenance
+        // notice instead of the "Yêu cầu rút tiền" box (the POST refuses the
+        // intent anyway; this only keeps the form honest).
+        let withdrawWalletOff = false;
         const { data: userRow } = await supabase
             .from('Users')
             .select('code')
@@ -81,11 +86,15 @@ export async function GET(request: Request) {
         if (userRow?.code) {
              const { data: staffRow } = await supabase
                  .from('Staff')
-                 .select('work_type, available_until, status')
+                 .select('work_type, available_until, status, lock_source')
                  .eq('id', userRow.code)
                  .maybeSingle();
              
-             if (staffRow?.status === 'KHÓA_TÀI_KHOẢN') {
+             if (staffRow?.status === 'KHÓA_TÀI_KHOẢN' && staffRow?.lock_source === 'MANUAL') {
+                // Admin switched "Hoạt động" off → no reason, no discipline wording:
+                // the client renders the maintenance notice for kind MANUAL.
+                lockInfo = { kind: 'MANUAL' };
+             } else if (staffRow?.status === 'KHÓA_TÀI_KHOẢN') {
                 const { data: auditLog } = await supabase
                     .from('SecurityAuditLogs')
                     .select('created_at, details, employee_name')
@@ -96,17 +105,22 @@ export async function GET(request: Request) {
                     .maybeSingle();
                 if (auditLog) {
                     lockInfo = {
+                        kind: 'DISCIPLINE',
                         lockedAt: auditLog.created_at,
                         reason: auditLog.details?.reason || 'Vắng mặt không phép (Cron)',
                         adminContact: 'Hotline/Zalo Quản lý: 0987654321', 
                     };
                 } else {
-                    lockInfo = { lockedAt: new Date().toISOString(), reason: 'Bị khóa kỷ luật', adminContact: 'Quản lý' };
+                    lockInfo = { kind: 'DISCIPLINE', lockedAt: new Date().toISOString(), reason: 'Bị khóa kỷ luật', adminContact: 'Quản lý' };
                 }
              }
 
              if (staffRow?.work_type) {
                  workType = staffRow.work_type;
+             }
+             if (staffRow) {
+                 const { ok } = await WalletAccessService.isEnabled(supabase, userRow.code, 'TUA');
+                 withdrawWalletOff = !ok;
              }
              if (staffRow?.available_until) {
                  availableUntil = staffRow.available_until;
@@ -244,11 +258,11 @@ export async function GET(request: Request) {
                     await KtvOnlineService.goOffline(supabase, userRow.code);
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay, withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay, withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

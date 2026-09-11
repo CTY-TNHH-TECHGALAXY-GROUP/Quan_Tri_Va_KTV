@@ -30,9 +30,19 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, mustLogout: false });
         }
 
-        const result = await SessionEpochService.check(supabase, staffId, issuedAt);
+        const [result, { data: staff }] = await Promise.all([
+            SessionEpochService.check(supabase, staffId, issuedAt),
+            supabase.from('Staff').select('status, lock_source').eq('id', staffId).maybeSingle(),
+        ]);
 
-        return NextResponse.json({ success: true, ...result });
+        // Lock state rides on this poll so the lock / maintenance screen is
+        // GLOBAL: it survives page navigation, shows up when the app is
+        // reopened, and clears on unlock — without relying on Realtime
+        // (payload.old needs REPLICA IDENTITY FULL, which is not set).
+        const locked = staff?.status === 'KHÓA_TÀI_KHOẢN';
+        const lockKind = !locked ? null : (staff as any)?.lock_source === 'MANUAL' ? 'MANUAL' : 'DISCIPLINE';
+
+        return NextResponse.json({ success: true, ...result, locked, lockKind });
     } catch (err: any) {
         console.error('❌ [session-check]', err);
         return NextResponse.json({ success: true, mustLogout: false });

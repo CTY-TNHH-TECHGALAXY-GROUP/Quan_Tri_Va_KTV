@@ -20,6 +20,7 @@ import { API } from '@/lib/api-endpoints';
 import { HistoryCalendar } from './_components/HistoryCalendar';
 import { HoursLedgerSheet } from '@/components/shared/HoursLedgerSheet';
 import { fmtHours } from '@/lib/hours-format';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /** 'YYYY-MM' -> '09/2026'. */
 const fmtMonthLabel = (m: string) => {
@@ -472,7 +473,7 @@ export default function KTVHistoryPage() {
   const { hasPermission } = useAuth();
   const {
     user,
-    history, isLoading,
+    history, isLoading, maintenance,
     selectedDates, setSelectedDates,
     summary,
     getStatusLabel,
@@ -499,6 +500,18 @@ export default function KTVHistoryPage() {
           <ShieldAlert size={48} className="text-red-500 mb-4" />
           <h2 className="text-xl font-bold text-gray-900">Không có quyền truy cập</h2>
         </div>
+      </AppLayout>
+    );
+  }
+
+  // Permission ON but the History switch OFF (server answered FEATURE_MAINTENANCE)
+  // → only the maintenance notice: no 0đ tiles, no calendar, no empty list.
+  // AppLayout's own pull-to-refresh reloads the page, which re-asks the server,
+  // so switching it back on shows the data again without logging out.
+  if (maintenance || hours.maintenance) {
+    return (
+      <AppLayout title="Lịch Sử">
+        <FeatureMaintenanceNotice />
       </AppLayout>
     );
   }

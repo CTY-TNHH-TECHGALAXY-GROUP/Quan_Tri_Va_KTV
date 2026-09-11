@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 import { fmtHours } from '@/lib/hours-format';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /**
  * Giao diện một dòng trong danh sách chuông, theo NHÓM thông báo.
@@ -645,6 +646,12 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                    </div>
                  )}
                </button>
+             )}
+
+             {/* Points wallet switched off while the wallet permission is on →
+                 the tile says so instead of vanishing. No permission → hidden. */}
+             {logic.officeScoreDisabled && logic.canViewWallet && (
+               <FeatureMaintenanceNotice variant="compact" />
              )}
 
              {/* ĐIỂM OFFICE HÔM NAY — chỉ KTV Loại D mới có */}

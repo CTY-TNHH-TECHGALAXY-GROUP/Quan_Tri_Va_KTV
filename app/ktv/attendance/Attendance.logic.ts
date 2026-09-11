@@ -60,6 +60,9 @@ export const useKTVAttendance = () => {
     const [todayRegistration, setTodayRegistration] = useState<any>(null);
     // Ô rút tiền chỉ hiện ở lần điểm danh ĐẦU TIÊN trong ngày.
     const [canRequestWithdraw, setCanRequestWithdraw] = useState(true);
+    // TUA wallet switched off (server truth). Only meaningful for KTVs who
+    // hold the wallet permission — see `withdrawShowsMaintenance` below.
+    const [withdrawWalletOff, setWithdrawWalletOff] = useState(false);
     const [currentRecord, setCurrentRecord] = useState<AttendanceRecord | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
@@ -118,6 +121,7 @@ export const useKTVAttendance = () => {
                     if (statusRes.guestArrivalLock) setGuestArrivalLock(statusRes.guestArrivalLock);
                     if (statusRes.todayRegistration) setTodayRegistration(statusRes.todayRegistration);
                     setCanRequestWithdraw(statusRes.canRequestWithdraw !== false);
+                    setWithdrawWalletOff(statusRes.withdrawWalletOff === true);
                 }
                 
                 if (settingsRes.success && settingsRes.data) {
@@ -334,6 +338,11 @@ export const useKTVAttendance = () => {
             if (!result.success) throw new Error(result.error || 'Lỗi gửi yêu cầu');
 
             setCurrentRecord(result.data);
+            // Check-in succeeded but the withdrawal intent was refused because the
+            // TUA wallet is off (switched off after the form was opened).
+            if (result.withdrawIntentBlocked && result.withdrawIntentMessage) {
+                addToast(result.withdrawIntentMessage, 'error');
+            }
             if (result.status === 'CONFIRMED') {
                 setCheckStatus(checkType === 'CHECK_OUT' ? 'CHECKED_OUT' : 'CONFIRMED');
             } else {
@@ -349,7 +358,7 @@ export const useKTVAttendance = () => {
                 setCheckStatus('CONFIRMED');
             }
         }
-    }, [user?.id]);
+    }, [user?.id, addToast]);
 
     
     const handleAdjustmentSubmit = async () => {
@@ -431,6 +440,10 @@ export const useKTVAttendance = () => {
     return {
         todayRegistration,
         canRequestWithdraw,
+        // Permission ON + TUA wallet OFF → notice instead of the checkbox.
+        // No permission → keep the old behaviour (checkbox rules unchanged).
+        withdrawShowsMaintenance: withdrawWalletOff && hasPermission('ktv_wallet'),
+        withdrawWalletOff,
         isAdjusting,
         setIsAdjusting,
         adjustmentType,

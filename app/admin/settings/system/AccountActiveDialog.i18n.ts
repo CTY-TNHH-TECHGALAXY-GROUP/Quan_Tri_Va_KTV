@@ -1,0 +1,18 @@
+export const t = {
+    column: '🟢 Hoạt động',
+    columnHint: 'TẮT = khoá tài khoản (cùng trạng thái với nút Mở khóa bên Office). KTV chỉ thấy "Tính năng của bạn đang bảo trì".',
+    lockedByDiscipline: 'Khoá kỷ luật',
+    lockedManual: 'Đã tắt',
+    turnOffTitle: 'Tắt hoạt động tài khoản',
+    turnOnTitle: 'Bật lại hoạt động tài khoản',
+    turnOffBody: 'KTV sẽ bị đá khỏi app và chỉ thấy "Tính năng của bạn đang bảo trì". Office sẽ hiện nút Mở khóa cho người này.',
+    turnOnBody: 'Mở khoá bằng đúng quy trình như bên Office.',
+    currentReason: 'Lý do khoá hiện tại',
+    reasonLabel: 'Lý do (bắt buộc)',
+    reasonPlaceholder: 'VD: nghỉ phép dài ngày',
+    feeLabel: 'Phí kích hoạt lại (tối thiểu)',
+    cancel: 'Huỷ',
+    confirmOff: 'Tắt tài khoản',
+    confirmOn: 'Bật lại',
+    loading: 'Đang tải…',
+};

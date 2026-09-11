@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { MODULES } from './constants';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
 type BusinessUserRecord = {
     id: string;
@@ -307,7 +308,7 @@ export async function requireActiveStaff() {
 
     const { data: staff, error } = await supabase
         .from('Staff')
-        .select('status')
+        .select('status, lock_source')
         .eq('id', staffId)
         .single();
 
@@ -316,7 +317,14 @@ export async function requireActiveStaff() {
     }
 
     if (staff.status === 'KHÓA_TÀI_KHOẢN') {
-        return Response.json({ error: 'ACCOUNT_LOCKED', message: 'Tài khoản của bạn đã bị khóa kỷ luật.' }, { status: 403 });
+        // Admin switched "Hoạt động" off → maintenance sentence, never the
+        // discipline wording. Disciplinary locks keep their message.
+        const manual = (staff as any).lock_source === 'MANUAL';
+        return Response.json({
+            error: 'ACCOUNT_LOCKED',
+            lockKind: manual ? 'MANUAL' : 'DISCIPLINE',
+            message: manual ? FEATURE_MAINTENANCE_MESSAGE : 'Tài khoản của bạn đã bị khóa kỷ luật.',
+        }, { status: 403 });
     }
 
     return null; 

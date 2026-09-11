@@ -1,11 +1,40 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useToast } from '@/components/ui/Toast';
+import { isFeatureMaintenanceError } from '@/lib/featureMaintenance';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
+import {
+    DEFAULT_FEATURE_FLAGS_TYPE_A,
+    DEFAULT_FEATURE_FLAGS_TYPE_B,
+    DEFAULT_FEATURE_FLAGS_TYPE_C,
+    DEFAULT_FEATURE_FLAGS_TYPE_D,
+} from '@/lib/constants/staff.constants';
+
+/**
+ * Is the BONUS wallet part of this work type's normal package?
+ *
+ * The "maintenance" rule is: feature OFF while the permission is still ON. The
+ * wallet permission (`ktv_wallet`) covers the whole page, not each wallet, so
+ * it cannot tell "admin switched Ví Bonus off" from "this type never had Ví
+ * Bonus" (Types B/C are created with bonus_wallet=false). Listing a Ví Bonus
+ * entry that says "đang bảo trì" forever to people who never had one would be
+ * misleading, so the type's default package is the proxy for "was granted".
+ * Ví Tua is in every package, so it is always listed.
+ */
+const bonusInPackage = (workType?: string | null): boolean => {
+    const defaults: Record<string, any> = {
+        TYPE_A: DEFAULT_FEATURE_FLAGS_TYPE_A,
+        TYPE_B: DEFAULT_FEATURE_FLAGS_TYPE_B,
+        TYPE_C: DEFAULT_FEATURE_FLAGS_TYPE_C,
+        TYPE_D: DEFAULT_FEATURE_FLAGS_TYPE_D,
+    };
+    return defaults[workType || 'TYPE_A']?.bonus_wallet === true;
+};
 
 export const useKTVWallet = () => {
     const { user, hasPermission } = useAuth();
@@ -16,6 +45,13 @@ export const useKTVWallet = () => {
     const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS'>('TUA');
     const [canViewTua, setCanViewTua] = useState(true);
     const [canViewBonus, setCanViewBonus] = useState(false);
+    // The access check itself failed (network/server). Must NOT be shown as
+    // "maintenance" — that would claim the admin switched the wallet off.
+    const [accessError, setAccessError] = useState(false);
+    // Land on a working wallet ONCE, on first load. Doing it on every fetch
+    // would bounce the KTV off a switched-off wallet they just tapped, so they
+    // would never see the maintenance notice for it.
+    const initialTabResolvedRef = useRef(false);
 
     // Ví Tua
     const [walletBalance, setWalletBalance] = useState<any>(null);
@@ -36,19 +72,24 @@ export const useKTVWallet = () => {
             // Quyền xem ví do SERVER quyết (công tắc cả loại VÀ cờ cá nhân).
             // Trước đây chỗ này tự đọc feature_flags và tự chế mặc định, lệch
             // hẳn với bảng admin: cờ thiếu thì admin thấy OFF mà KTV vẫn xem được.
+            let accessFailed = false;
             const accessRes = await apiClient
                 .get<any>(API.KTV.WALLET.ACCESS(ktvId))
-                .catch(() => ({ data: null }));
+                .catch(() => { accessFailed = true; return { data: null }; });
             const access = accessRes?.data;
+            setAccessError(accessFailed);
 
             // Không hỏi được server thì đóng hết — các route ví đằng nào cũng
             // trả 403, mở tab ra chỉ để báo lỗi thì thà đừng mở.
             const hasTuaFlag = access?.TUA === true;
             const hasBonusFlag = access?.BONUS === true;
             
-            // If the user doesn't have TUA wallet flag, but TUA is active, switch tab
-            if (activeTab === 'TUA' && !hasTuaFlag) {
-                if (hasBonusFlag) setActiveTab('BONUS');
+            // First load only: TUA is off but BONUS is on → open on BONUS.
+            if (!initialTabResolvedRef.current && !accessFailed) {
+                initialTabResolvedRef.current = true;
+                if (activeTab === 'TUA' && !hasTuaFlag && hasBonusFlag) {
+                    setActiveTab('BONUS');
+                }
             }
 
             setCanViewTua(hasTuaFlag);
@@ -93,7 +134,14 @@ export const useKTVWallet = () => {
             fetchWallet();
             return true;
         } catch (e: any) {
-            addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh rút tiền.'), 'error');
+            if (isFeatureMaintenanceError(e)) {
+                // Wallet was switched off after the page loaded: say so plainly
+                // (no "Lỗi:" prefix) and refresh so the tab shows the notice.
+                addToast(FEATURE_MAINTENANCE_MESSAGE, 'error');
+                fetchWallet();
+            } else {
+                addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh rút tiền.'), 'error');
+            }
             return false;
         }
     };
@@ -127,7 +175,12 @@ export const useKTVWallet = () => {
             fetchWallet();
             return true;
         } catch (e: any) {
-            addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh quy đổi.'), 'error');
+            if (isFeatureMaintenanceError(e)) {
+                addToast(FEATURE_MAINTENANCE_MESSAGE, 'error');
+                fetchWallet();
+            } else {
+                addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh quy đổi.'), 'error');
+            }
             return false;
         }
     };
@@ -139,6 +192,11 @@ export const useKTVWallet = () => {
         setActiveTab,
         canViewTua,
         canViewBonus,
+        // Entries listed in the selector even when switched off (tapping one
+        // shows the maintenance notice instead of the wallet silently vanishing).
+        showTuaEntry: true,
+        showBonusEntry: canViewBonus || bonusInPackage(user?.work_type),
+        accessError,
         walletBalance,
         walletTimeline,
         bonusBalance,

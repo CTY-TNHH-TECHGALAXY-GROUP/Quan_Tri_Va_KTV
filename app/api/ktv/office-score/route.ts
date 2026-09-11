@@ -39,8 +39,15 @@ export async function GET(request: Request) {
         // Office. Cùng một cửa với trang Ví — xem `canSeeOfficePoints`. Không
         // qua cửa thì trả null để Dashboard ẩn hẳn ô này, thay vì hiện một nút
         // dẫn tới thứ mà trang Ví lại không có.
-        if (!staff || staff.work_type !== 'TYPE_D' || !(await canSeeOfficePoints(supabase, staffId))) {
+        if (!staff || staff.work_type !== 'TYPE_D') {
             return NextResponse.json({ success: true, applicable: false, data: null });
+        }
+        // Type D whose points wallet is switched off (per-staff flag or the
+        // type-wide switch): say "disabled" instead of "not applicable", so the
+        // dashboard shows the maintenance notice in the tile rather than the
+        // tile silently disappearing. Still no data — nothing leaks.
+        if (!(await canSeeOfficePoints(supabase, staffId))) {
+            return NextResponse.json({ success: true, applicable: true, disabled: true, data: null });
         }
 
         const today = vnToday();

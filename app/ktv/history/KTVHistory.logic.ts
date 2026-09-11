@@ -6,6 +6,7 @@ import { format, subDays } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { getVnDateStr } from '@/lib/time.logic';
+import { isFeatureMaintenanceError } from '@/lib/featureMaintenance';
 
 export interface HistoryRecord {
   id: string;
@@ -66,6 +67,10 @@ export const useKTVHistory = () => {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState({ totalCommission: 0, totalGross: 0, totalOrders: 0, disciplinePoints: 100, totalNet: 0 });
+  // Server said the History page is switched off for this KTV. Must be its own
+  // state: swallowing the 403 renders "Chưa có đơn hàng nào." and 0đ, which
+  // reads as "you had no orders" instead of "this feature is off".
+  const [maintenance, setMaintenance] = useState(false);
 
   const fetchHistory = useCallback(async (dates: string[]) => {
     if (!user?.id || dates.length === 0) return;
@@ -118,8 +123,15 @@ export const useKTVHistory = () => {
         return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : b.billCode;
       }));
       setSummary({ totalCommission, totalGross, totalOrders: uniqueBookings.size, disciplinePoints, totalNet });
+      setMaintenance(false);
     } catch (err: any) {
-      console.error('[KTVHistory]', err.message || err);
+      if (isFeatureMaintenanceError(err)) {
+        setMaintenance(true);
+        setHistory([]);
+        setSummary({ totalCommission: 0, totalGross: 0, totalOrders: 0, disciplinePoints: 100, totalNet: 0 });
+      } else {
+        console.error('[KTVHistory]', err.message || err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -144,7 +156,7 @@ export const useKTVHistory = () => {
 
   return {
     user, hasPermission,
-    history, isLoading,
+    history, isLoading, maintenance,
     selectedDates, setSelectedDates,
     summary,
     getStatusLabel,
@@ -188,6 +200,7 @@ export const useKtvHoursLedger = (selectedDates: string[]) => {
   const [applicable, setApplicable] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
 
   // Tập tháng cần tải — chuỗi ổn định để useEffect không chạy lại vì mảng mới.
   const monthsKey = useMemo(
@@ -219,8 +232,10 @@ export const useKtvHoursLedger = (selectedDates: string[]) => {
         penalty: results.reduce((s, r) => s + (r?.monthPenalty || 0), 0),
         net: results.reduce((s, r) => s + (r?.monthNet || 0), 0),
       });
+      setMaintenance(false);
     } catch (err: any) {
-      console.error('[KTVHoursLedger]', err?.message || err);
+      if (isFeatureMaintenanceError(err)) setMaintenance(true);
+      else console.error('[KTVHoursLedger]', err?.message || err);
       setRows([]);
       setMonthTotals({ earned: 0, penalty: 0, net: 0 });
     } finally {
@@ -246,7 +261,7 @@ export const useKtvHoursLedger = (selectedDates: string[]) => {
   const months = useMemo(() => (monthsKey ? monthsKey.split(',') : []), [monthsKey]);
 
   return {
-    applicable, enabled, isLoading,
+    applicable, enabled, isLoading, maintenance,
     rows: rangeRows, totals: rangeTotals, monthTotals, months,
     refetch: fetchLedger,
   };

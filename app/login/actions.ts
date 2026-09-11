@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
 
@@ -108,11 +109,12 @@ export async function authenticateUser(username: string, password?: string) {
         let featureFlags = undefined;
         let workType = undefined;
         let staffStatus: string | null = null;
+        let lockSource: string | null = null;
         let staffLookupFailed = false;
         try {
             const { data: staffData, error: staffErr } = await supabaseAdmin
                 .from('Staff')
-                .select('avatar_url, feature_flags, work_type, status')
+                .select('avatar_url, feature_flags, work_type, status, lock_source')
                 .eq('id', user.code || user.id)
                 .maybeSingle();
             if (staffErr) staffLookupFailed = true;
@@ -121,6 +123,7 @@ export async function authenticateUser(username: string, password?: string) {
                 featureFlags = staffData.feature_flags;
                 workType = staffData.work_type;
                 staffStatus = staffData.status;
+                lockSource = (staffData as any).lock_source ?? null;
             }
         } catch (e) {
             staffLookupFailed = true;
@@ -134,6 +137,12 @@ export async function authenticateUser(username: string, password?: string) {
         //
         // Tra hỏng (mất mạng, DB lỗi) thì KHÔNG chặn: thà cho vào rồi lớp che phía
         // trong bắt lại, còn hơn khoá nhầm cả tiệm vì một lỗi mạng.
+        // Admin switched "Hoạt động" off → only the maintenance sentence; no
+        // disciplinary reason (the penalty ledger may hold an OLD one).
+        if (!staffLookupFailed && staffStatus === 'KHÓA_TÀI_KHOẢN' && lockSource === 'MANUAL') {
+            return { success: false, error: 'ACCOUNT_LOCKED', message: FEATURE_MAINTENANCE_MESSAGE, lockDate: null };
+        }
+
         if (!staffLookupFailed && staffStatus === 'KHÓA_TÀI_KHOẢN') {
             let lockReason: string | null = null;
             let lockDate: string | null = null;

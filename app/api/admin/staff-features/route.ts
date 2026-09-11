@@ -64,10 +64,14 @@ export async function GET() {
         // gì trên máy họ, nên dòng nào không có tài khoản thì bật/tắt cũng vô nghĩa.
         // Tiêu chí này bền hơn đoán theo tiền tố mã (`NH…` / `T0…`).
         const [{ data: staffRaw, error }, { data: users }] = await Promise.all([
+            // LOCKED too: the "Hoạt động" switch turns an account into
+            // KHÓA_TÀI_KHOẢN. Filtering on WORKING only would make the row vanish
+            // the moment it is switched off — with no way to switch it back on
+            // from this table. `lock_source` tells the table who locked it.
             supabase
                 .from('Staff')
-                .select('id, full_name, status, feature_flags, work_type')
-                .eq('status', STAFF_STATUS.WORKING)
+                .select('id, full_name, status, lock_source, feature_flags, work_type')
+                .in('status', [STAFF_STATUS.WORKING, STAFF_STATUS.LOCKED])
                 .order('id', { ascending: true }),
             supabase.from('Users').select('code, role'),
         ]);

@@ -20,6 +20,7 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_A: FeatureFlagsTypeA = {
     tua_wallet: true,
     bonus_wallet: true,
     maintenance_fee: true,
+    history_page: true,
 };
 
 export const DEFAULT_FEATURE_FLAGS_TYPE_B: FeatureFlagsTypeB = {
@@ -33,6 +34,7 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_B: FeatureFlagsTypeB = {
     tua_wallet: true,
     bonus_wallet: false,
     maintenance_fee: true,
+    history_page: true,
 };
 
 export const DEFAULT_FEATURE_FLAGS_TYPE_C = {
@@ -43,6 +45,7 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_C = {
     tua_wallet: true,
     bonus_wallet: false,
     maintenance_fee: true,
+    history_page: true,
 };
 
 export const DEFAULT_FEATURE_FLAGS_TYPE_D: FeatureFlagsTypeD = {
@@ -53,6 +56,7 @@ export const DEFAULT_FEATURE_FLAGS_TYPE_D: FeatureFlagsTypeD = {
     tua_wallet: true,
     bonus_wallet: true,
     maintenance_fee: true,
+    history_page: true,
     withdraw_morning_only: true
 };
 

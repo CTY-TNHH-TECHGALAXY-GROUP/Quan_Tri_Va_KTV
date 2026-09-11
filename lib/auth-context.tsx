@@ -37,7 +37,15 @@ function clearAuthStorage() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
-  const [lockedInfo, setLockedInfo] = useState<any>(null);
+  /**
+   * GLOBAL lock state, fed by the session-check poll below.
+   *   undefined         → not checked yet (AppLayout keeps whatever it has)
+   *   null              → server says NOT locked (AppLayout clears the screen)
+   *   { kind: 'MANUAL' | 'DISCIPLINE' } → locked
+   * Before this, lock state lived per page in AppLayout and was lost on every
+   * navigation / app reopen.
+   */
+  const [lockedInfo, setLockedInfo] = useState<any>(undefined);
   // Dùng ref chứ không dùng state: trang login đọc ngay sau `await login()`,
   // mà state lúc đó chưa kịp về tới closure của hàm xử lý submit.
   const loginErrorRef = useRef<string | null>(null);
@@ -171,10 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // cũ. Hỏi server định kỳ + mỗi lần quay lại tab để bắt được thay đổi.
   useEffect(() => {
     if (!user?.id) return;
-    // Session cũ cấp trước khi có tính năng này thì không có mốc — bỏ qua,
-    // không đá họ ra oan lúc vừa deploy.
-    if (!sessionIssuedAt) return;
-    const issuedAt = sessionIssuedAt;
+    // Sessions issued before the epoch feature have no issuedAt. They still
+    // get polled — for the LOCK state — but the server never tells them to
+    // log out (SessionEpochService.check returns mustLogout:false without a
+    // timestamp), so nobody is kicked out unfairly right after a deploy.
+    const issuedAt = sessionIssuedAt || '';
 
     let stopped = false;
 
@@ -184,6 +193,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await fetch(API.AUTH.SESSION_CHECK(user.id, issuedAt), { cache: 'no-store' });
         if (!res.ok) return;
         const json = await res.json();
+        if (!stopped && typeof json?.locked === 'boolean') {
+          const nextKind: string | null = json.locked ? (json.lockKind || 'DISCIPLINE') : null;
+          // Only swap the object when the kind actually changes, so a 60s poll
+          // does not re-render every page for nothing.
+          setLockedInfo((prev: any) => {
+            const prevKind = prev === undefined ? undefined : (prev?.kind ?? null);
+            if (prevKind === nextKind) return prev;
+            return nextKind ? { kind: nextKind } : null;
+          });
+        }
         if (json?.mustLogout && !stopped) {
           stopped = true;
           console.warn('⚠️ Cấu hình tài khoản đã thay đổi. Đang ép đăng nhập lại...');
@@ -200,12 +219,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', check);
+    // An API just answered ACCOUNT_LOCKED (or Realtime saw the status flip):
+    // re-ask right away so the global state gets the lock KIND, not a guess.
+    window.addEventListener('account_locked', check);
 
     return () => {
       stopped = true;
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', check);
+      window.removeEventListener('account_locked', check);
+      setLockedInfo(undefined);
     };
   }, [user?.id, sessionIssuedAt]);
 

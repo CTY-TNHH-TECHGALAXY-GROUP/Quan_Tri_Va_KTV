@@ -316,7 +316,8 @@
 |-----|------|-----------------|
 | `id` | text PK | Mã nhân viên (VD: "NH016") |
 | `full_name` | text | Họ tên đầy đủ |
-| `status` | text | Trạng thái làm việc (ĐANG LÀM / NGHỈ VIỆC) |
+| `status` | text | Trạng thái: `ĐANG LÀM` / `ĐÃ NGHỈ` / `KHÓA_TÀI_KHOẢN` / `HỆ THỐNG`. CHECK constraint (`check_staff_status`). |
+| `lock_source` | text | **[NEW 11/09/2026]** Ai khoá tài khoản — ghi cùng câu UPDATE với `status`. `MANUAL` = admin tắt công tắc "Hoạt động" (KTV thấy "Tính năng của bạn đang bảo trì"); `NULL` / `DISCIPLINE` = khoá kỷ luật hoặc dữ liệu cũ (KTV thấy lý do). CHECK `IN ('MANUAL','DISCIPLINE')`. Trigger `staff_clear_lock_source_trigger` tự xoá về NULL khi `status` rời `KHÓA_TÀI_KHOẢN`. Migration `20260911100000_add_staff_lock_source.sql`. |
 | `birthday` | date | Ngày sinh |
 | `gender` | text | Giới tính |
 | `id_card` | text | Số CCCD/CMND |

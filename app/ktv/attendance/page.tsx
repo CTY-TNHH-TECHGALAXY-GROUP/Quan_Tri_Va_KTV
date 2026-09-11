@@ -16,6 +16,7 @@ import { OnCallWidget } from './_components/OnCallWidget';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { fmtGioBuoi } from '@/lib/hours-format';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 const KTVAttendancePage = () => {
     const { addToast } = useToast();
@@ -51,6 +52,7 @@ const KTVAttendancePage = () => {
         guestArrivalLock,
         todayRegistration,
         canRequestWithdraw,
+        withdrawShowsMaintenance,
         isAdjusting,
         setIsAdjusting,
         adjustmentType,
@@ -899,6 +901,12 @@ const KTVAttendancePage = () => {
                                 Từ lần thứ hai trở đi thì ẩn hẳn — không quan tâm lần đầu
                                 có tích hay không. */}
                             {formType === 'CHECK_IN' && selectedShiftType !== 'SUDDEN_OFF' && canRequestWithdraw && user?.roleId !== 'support' && user?.roleId !== 'dev' && (
+                                withdrawShowsMaintenance ? (
+                                    /* TUA wallet switched off → say so where the box used to be. */
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <FeatureMaintenanceNotice variant="compact" />
+                                    </div>
+                                ) :
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
                                     <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
                                         <div className="flex items-center h-5 mt-0.5">

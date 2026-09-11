@@ -11,6 +11,7 @@
  * phía tiêu thụ (server/app), không phải theo DEFAULT_FEATURE_FLAGS_* — mấy
  * hằng đó chỉ dùng lúc TẠO nhân viên mới.
  */
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
 /** Cờ thiếu trong `Staff.feature_flags` thì hiểu là gì. */
 export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
@@ -28,6 +29,10 @@ export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
     // type then wipes the stale key from `Staff.feature_flags` instead of
     // preserving it forever as an "unknown" runtime key.
     internal_fund_enabled: false,
+    // Screen switches. MUST default to ON: every KTV created before the switch
+    // existed has no key, and a missing key resolving to OFF would show the
+    // maintenance notice to the whole shop.
+    history_page: true,
     // Quyền thao tác
     allow_on_call: false,
     enable_employee_tasks: false,
@@ -179,6 +184,14 @@ export function walletLabel(wallet: WalletType, workType: string | null | undefi
     return (workType === 'TYPE_D' && meta.TYPE_D) ? meta.TYPE_D : meta.default;
 }
 
-export function walletDisabledMessage(wallet: WalletType, workType?: string | null): string {
-    return `${walletLabel(wallet, workType)} của bạn hiện đang tắt. Vui lòng liên hệ quản lý.`;
+/**
+ * Text returned by every wallet route when a wallet is switched off (per-staff
+ * flag or type-wide switch). Only reached by KTVs who HAVE the `ktv_wallet`
+ * permission — the wallet page checks that first — so this is exactly the
+ * "feature off while permission on" case: the shared maintenance sentence.
+ *
+ * Signature kept so the single caller (`WalletAccessService`) is unchanged.
+ */
+export function walletDisabledMessage(_wallet: WalletType, _workType?: string | null): string {
+    return FEATURE_MAINTENANCE_MESSAGE;
 }

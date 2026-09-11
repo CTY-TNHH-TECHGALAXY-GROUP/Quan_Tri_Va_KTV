@@ -5,6 +5,8 @@ import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionServ
 import { KtvHistoryTipSchema } from '@/lib/schemas/ktv.schema';
 import { parseDbDate } from '@/lib/utils';
 import { coWorkersOfItems } from '@/lib/co-workers';
+import { resolveStaffFlag } from '@/lib/featureFlags';
+import { featureMaintenanceBody } from '@/lib/featureMaintenance';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -59,7 +61,15 @@ export async function GET(request: Request) {
                 workType = s.work_type || 'TYPE_A';
             }
         });
-        
+
+        // History page switched off for this KTV → the maintenance answer, not
+        // data. The server decides (the client's flags are a login-time
+        // snapshot), so turning it back on works on the very next request.
+        const target = (allStaffData || []).find(s => String(s.id).toLowerCase() === techCode.toLowerCase());
+        if (target && !resolveStaffFlag(target.feature_flags, 'history_page')) {
+            return NextResponse.json(featureMaintenanceBody(), { status: 403 });
+        }
+
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);
 

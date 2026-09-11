@@ -2,6 +2,8 @@ import { NextResponse, after } from 'next/server';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOfficeScoreService, HOURS_PENALTY_VI, currentMonthVn } from '@/lib/services/KtvOfficeScoreService';
+import { resolveStaffFlag } from '@/lib/featureFlags';
+import { featureMaintenanceBody } from '@/lib/featureMaintenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,9 +52,16 @@ export async function GET(request: Request) {
         const meId = bUser.techCode;
         const { data: me } = await supabase
             .from('Staff')
-            .select('id, work_type')
+            .select('id, work_type, feature_flags')
             .eq('id', meId)
             .maybeSingle();
+
+        // Only caller is the History page ("Giờ tích luỹ" tile). History off →
+        // same maintenance answer as /api/ktv/history, so the page never shows
+        // a half-rendered screen with 0h.
+        if (me && !resolveStaffFlag(me.feature_flags, 'history_page')) {
+            return NextResponse.json(featureMaintenanceBody(), { status: 403 });
+        }
 
         // Sổ giờ chỉ ghi cho Loại D — loại A/B/C chia tua theo SỐ TUA nên sẽ toàn 0h.
         if (!me || me.work_type !== 'TYPE_D') {

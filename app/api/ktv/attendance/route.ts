@@ -7,6 +7,8 @@ import { KtvTypeDOnlineService } from '@/lib/services/KtvTypeDOnlineService';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
 import sharp from 'sharp';
 import { requireActiveStaff } from '@/lib/auth-server';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -681,8 +683,18 @@ export async function POST(request: Request) {
         const autoSuffix = isAutoApprove ? ' [AUTO]' : '';
         
         let notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
-        
+
+        // The withdrawal intent is a TUA-wallet action. With the TUA wallet
+        // switched off (per-staff flag or type-wide switch) it used to go
+        // through anyway and the cashier got "chuẩn bị tiền mặt". Now: skip the
+        // intent, keep the check-in itself successful, and tell the KTV.
+        let withdrawIntentBlocked = false;
         if (wantsToWithdraw && staffCode) {
+            const { ok } = await WalletAccessService.isEnabled(supabase, staffCode, 'TUA');
+            withdrawIntentBlocked = !ok;
+        }
+
+        if (wantsToWithdraw && staffCode && !withdrawIntentBlocked) {
             notifMessage += `\n💰 Báo Thu ngân chuẩn bị tiền mặt.`;
             
             // Chỉ là TÍN HIỆU báo Thu ngân chuẩn bị tiền mặt, không phải số tiền.
@@ -740,7 +752,10 @@ export async function POST(request: Request) {
         return NextResponse.json({
             success: true,
             data: record,
-            status: finalStatus
+            status: finalStatus,
+            ...(withdrawIntentBlocked
+                ? { withdrawIntentBlocked: true, withdrawIntentMessage: FEATURE_MAINTENANCE_MESSAGE }
+                : {}),
         });
 
     } catch (error: any) {

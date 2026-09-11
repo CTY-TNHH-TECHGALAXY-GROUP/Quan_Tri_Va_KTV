@@ -4,6 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { walletLabel } from '@/lib/featureFlags';
 import { useKTVWallet } from './KTVWallet.logic';
+import { t } from './KTVWallet.i18n';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
@@ -24,6 +26,7 @@ export default function KTVWalletPage() {
     const { addToast } = useToast();
     const { 
         user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus,
+        showTuaEntry, showBonusEntry, accessError,
         walletBalance, walletTimeline, bonusBalance, bonusTimeline,
         isLoading, submitWithdraw, submitRedeemBonus 
     } = useKTVWallet();
@@ -168,7 +171,7 @@ export default function KTVWalletPage() {
 
                     {isDropdownOpen && (
                         <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2">
-                            {canViewTua && (
+                            {showTuaEntry && (
                                 <button 
                                     onClick={() => { setActiveTab('TUA'); setIsDropdownOpen(false); }}
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TUA' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -177,7 +180,7 @@ export default function KTVWalletPage() {
                                     <span className="font-bold">{walletLabel('TUA', user?.work_type)}</span>
                                 </button>
                             )}
-                            {canViewBonus && (
+                            {showBonusEntry && (
                                 <button 
                                     onClick={() => { setActiveTab('BONUS'); setIsDropdownOpen(false); }}
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -194,18 +197,22 @@ export default function KTVWalletPage() {
                     <div className="flex justify-center items-center py-20">
                         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                ) : (!canViewTua && !canViewBonus) ? (
-                    /* Tắt sạch mọi ví thì nói thẳng, đừng để màn hình trống hay
-                       hiện 0đ — KTV sẽ tưởng mất tiền chứ không nghĩ là bị tắt. */
+                ) : accessError ? (
+                    /* The access check itself failed — a network problem, not a
+                       switched-off wallet. Saying "maintenance" here would be false. */
                     <div className="text-center py-20 px-6">
                         <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Wallet size={32} />
                         </div>
-                        <h2 className="text-xl font-black text-slate-800 mb-2">Ví đang bảo trì</h2>
-                        <p className="text-slate-500 text-sm max-w-xs mx-auto">
-                            Hệ thống đang bảo trì ví. Số dư của bạn vẫn được giữ nguyên.
-                        </p>
+                        <h2 className="text-xl font-black text-slate-800 mb-2">{t.accessErrorTitle}</h2>
+                        <p className="text-slate-500 text-sm max-w-xs mx-auto">{t.accessErrorHint}</p>
                     </div>
+                ) : ((activeTab === 'TUA' && !canViewTua) || (activeTab === 'BONUS' && !canViewBonus)) ? (
+                    /* The selected wallet is switched off (per-staff flag or the
+                       type-wide switch) while the wallet permission is on → the one
+                       shared maintenance notice. Never a blank screen or 0đ — the
+                       KTV would think money is gone, not that it is switched off. */
+                    <FeatureMaintenanceNotice />
                 ) : (
                     <>
                         {/* Ví Thu Nhập (KTV Wallet) */}

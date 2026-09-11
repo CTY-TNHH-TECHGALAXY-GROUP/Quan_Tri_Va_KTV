@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/Toast';
 import { roomLabel } from '@/lib/room-label';
 import { fmtHours } from '@/lib/hours-format';
 import { THEME } from '../_shared/ui';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /** Các hộp thoại của KTV Dashboard. Mỗi cái tự quản state riêng, nhận dữ liệu qua props. */
 
@@ -543,6 +544,9 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
   const initialMonth = data.month || today.slice(0, 7);
   const [month, setMonth] = useState<string>(initialMonth);
   const [view, setView] = useState<any>(data);
+  // Points wallet switched off while the modal is open (server says disabled):
+  // show the maintenance notice instead of keeping the previous month's numbers.
+  const [disabled, setDisabled] = useState(false);
   const [selected, setSelected] = useState<string>(today);
   const [showCalendar, setShowCalendar] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -557,7 +561,11 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
     let alive = true;
     setLoading(true);
     apiClient.get<any>(`/api/ktv/office-score?month=${month}`)
-      .then(res => { if (alive && res?.data) setView(res.data); })
+      .then(res => {
+        if (!alive) return;
+        if (res?.disabled) { setDisabled(true); setView(null); return; }
+        if (res?.data) setView(res.data);
+      })
       .catch(() => { if (alive) setView(null); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -616,6 +624,7 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
         </div>
 
         <div className="p-5 overflow-y-auto space-y-4">
+          {disabled ? <FeatureMaintenanceNotice /> : <>
           {showCalendar && (
             <div className="bg-slate-50 rounded-2xl p-3">
               <div className="flex items-center justify-between mb-2">
@@ -752,6 +761,7 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
             Mỗi ngày đi làm bắt đầu từ 100 điểm, trừ dần theo lỗi trong ngày đó. Điểm tháng là trung bình các ngày đi làm.
             Cùng một lỗi bị trừ từ 3 lần trong tháng sẽ bị trừ thêm một lần nữa vào điểm tháng.
           </p>
+          </>}
         </div>
       </motion.div>
 
