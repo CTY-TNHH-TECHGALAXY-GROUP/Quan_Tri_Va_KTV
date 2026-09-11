@@ -122,7 +122,14 @@ const OrderCard = ({ order, getStatusLabel }: {
 }) => {
   const [expanded, setExpanded] = React.useState(false);
 
-  const statusInfo = getStatusLabel(order.status);
+  // Đơn bị tước quyền lợi: với KTV này đơn ĐÃ KẾT THÚC, bất kể người vào thay còn
+  // đang làm. Ghi "Đang làm" là sai — họ không còn làm gì ở đơn đó nữa.
+  const biTuoc = !!order.voidedKind;
+  const statusInfo = biTuoc
+    ? (order.voidedKind === 'CHANGED'
+        ? { label: 'Đã đổi', color: 'text-rose-600 bg-rose-50' }
+        : { label: 'Huỷ không công', color: 'text-rose-600 bg-rose-50' })
+    : getStatusLabel(order.status);
   const isDone = order.status === 'DONE' || order.status === 'COMPLETED';
   const ratingCfg = order.rating ? RATING_CONFIG[order.rating] : null;
 
@@ -182,9 +189,17 @@ const OrderCard = ({ order, getStatusLabel }: {
               {/* Đơn bị tước quyền lợi: đổi KTV, hoặc huỷ không tính công.
                   Không có dòng này thì đơn hiện y như đơn thường mà tiền bằng 0 —
                   KTV không hiểu vì sao, quầy không giải thích được. */}
-              {order.voidedNote && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-                  <span className="text-[13px] font-semibold text-rose-700">{order.voidedNote}</span>
+              {biTuoc && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 space-y-0.5">
+                  <p className="text-[13px] font-semibold text-rose-700 leading-snug">
+                    {order.voidedKind === 'CHANGED' ? 'Lý do đổi' : 'Lý do huỷ'}:{' '}
+                    {order.voidedReason ? <>&ldquo;{order.voidedReason}&rdquo;</> : <span className="italic font-medium">quầy không ghi lý do</span>}
+                  </p>
+                  <p className="text-[11px] font-medium text-rose-500">
+                    {order.voidedKind === 'CHANGED'
+                      ? 'Bạn đã được đổi ra — không tính tiền tua, giờ tích luỹ và lượt tua. Không phải dọn phòng.'
+                      : 'Đơn huỷ không tính công — không tính tiền tua, giờ tích luỹ và lượt tua.'}
+                  </p>
                 </div>
               )}
 
@@ -230,7 +245,13 @@ const OrderCard = ({ order, getStatusLabel }: {
                 </div>
               )}
 
-              {/* Tiền tua */}
+              {/* Tiền tua — đơn bị tước thì ĐÃ CHỐT 0đ, không có "Chờ FB" */}
+              {biTuoc ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Tiền tua</span>
+                  <span className="text-sm font-black text-gray-500">0đ</span>
+                </div>
+              ) : (
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Tiền tua</span>
                 <div className="flex items-center gap-1.5">
@@ -251,7 +272,12 @@ const OrderCard = ({ order, getStatusLabel }: {
                   )}
                 </div>
               </div>
+              )}
 
+              {/* Từ đây xuống: đánh giá của khách, bàn giao phòng, phản ánh, thưởng và
+                  bảng thu nhập — KHÔNG cái nào áp dụng cho người bị tước. Khách chấm
+                  người vào thay; người vào thay dọn phòng; tiền đã chốt 0đ ở trên. */}
+              {!biTuoc && (<>
               {/* Đánh giá + Bonus */}
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Đánh giá</span>
@@ -391,6 +417,7 @@ const OrderCard = ({ order, getStatusLabel }: {
                   </div>
                 </div>
               )}
+              </>)}
 
 
             </div>

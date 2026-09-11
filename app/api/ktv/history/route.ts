@@ -373,6 +373,34 @@ export async function GET(request: Request) {
                 // KTV bị đổi cần biết VÌ SAO tua đó 0đ, chứ số phút họ tự biết. Lý do
                 // đổi người lưu ở chặng bị tước (`lyDoDoi`, quầy nhập lúc đổi); lý do
                 // huỷ lưu ở `options.cancelReason` của dịch vụ.
+                // Loại tước + lý do, trả CÓ CẤU TRÚC để màn hình tự dựng câu và biết
+                // phải ẩn những dòng nào (tiền chờ FB, đánh giá, bàn giao…).
+                const voidedInfo: { kind: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER'; reason: string | null } | null = (() => {
+                    if (groupItems.length === 0 || coItemConQuyenLoi) return null;
+                    let loai = '';
+                    let lyDo = '';
+                    for (const i of groupItems) {
+                        let segs: any[] = [];
+                        try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []); } catch { }
+                        for (const s of (Array.isArray(segs) ? segs : [])) {
+                            if (s?.voided !== true) continue;
+                            if (!s.ktvId || !String(s.ktvId).toLowerCase().includes(techCode.toLowerCase())) continue;
+                            if (!loai) loai = String(s.note || '');
+                            if (!lyDo && s.lyDoDoi) lyDo = String(s.lyDoDoi);
+                        }
+                        if (!lyDo) {
+                            try {
+                                const o = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
+                                if (o?.cancelReason) lyDo = String(o.cancelReason);
+                            } catch { }
+                        }
+                    }
+                    const kind = loai === 'CHANGED' ? 'CHANGED'
+                        : loai === 'CANCELLED_NO_CREDIT' ? 'CANCELLED_NO_CREDIT'
+                        : 'OTHER';
+                    return { kind, reason: lyDo.trim() || null };
+                })();
+
                 const voidedNote: string | null = (() => {
                     if (groupItems.length === 0 || coItemConQuyenLoi) return null;
                     let loai = '';
@@ -631,6 +659,25 @@ export async function GET(request: Request) {
                     ratingDeductionAmount: isFeedbackDone ? Math.max(0, commissionBeforeDeduction - commission) : 0,
                     mixedTeamNote,
                     voidedNote,
+                    voidedKind: voidedInfo?.kind ?? null,
+                    voidedReason: voidedInfo?.reason ?? null,
+                    // ⚠️ Bị tước quyền lợi thì kết quả ĐÃ CHỐT từ lúc quầy bấm: 0đ. Khách
+                    // chấm mấy sao cũng không đổi được con số đó, nên KHÔNG được để
+                    // màn hình ghi "Chờ FB" hay "Tạm tính" — đọc ra như còn hy vọng.
+                    ...(voidedInfo ? {
+                        isFeedbackDone: true,
+                        isProvisional: false,
+                        commission: 0,
+                        commissionBeforeDeduction: 0,
+                        grossIncome: 0,
+                        netIncome: 0,
+                        taxAmount: 0,
+                        bonusPoints: 0,
+                        bonusValue: 0,
+                        tip: 0,
+                        ratingDeductionRate: 0,
+                        ratingDeductionAmount: 0,
+                    } : {}),
                     handover_status,
                     handover_submitted,
                     handover_comment,

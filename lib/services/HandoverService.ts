@@ -1,4 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { createNotification } from '@/lib/notification-helper';
 import { KtvDisciplineService } from './KtvDisciplineService';
 
@@ -299,7 +301,7 @@ export class HandoverService {
         const { data, error } = await supabase
             .from('BookingItems')
             .select(`
-                id, bookingId, roomName, serviceId, handover_status, handover_skipped,
+                id, bookingId, roomName, serviceId, handover_status, handover_skipped, segments,
                 Bookings!fk_bookingitems_booking(billCode)
             `)
             .in('handover_status', ['SKIPPED', 'REJECTED'])
@@ -310,7 +312,13 @@ export class HandoverService {
             console.error('[HandoverService] getPendingHandovers lỗi:', error);
             return { items: [], count: 0 };
         }
-        return { items: data || [], count: data?.length || 0 };
+        // ⚠️ Bỏ những phòng mà KTV này bị ĐỔI RA: họ vẫn nằm trong technicianCodes
+        // (cố ý, để truy vết) nhưng người vào thay mới là người bàn giao. Không bỏ
+        // là người bị đổi thấy "Nợ bàn giao" một phòng mình không hề phải bàn giao.
+        const items = (data || [])
+            .filter((it: any) => !laNguoiBiDoiRaKhoiDon([it], ktvCode, ktvMatchesSeg))
+            .map(({ segments, ...rest }: any) => rest);
+        return { items, count: items.length };
     }
 
     /**

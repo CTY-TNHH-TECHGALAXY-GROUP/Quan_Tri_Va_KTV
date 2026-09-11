@@ -344,6 +344,23 @@ export class KtvCommissionService {
          * +20đ → 20.000đ, trừ thuế còn 18.000đ thực nhận.
          */
         const daHuy = (i: any) => String(i?.status || '').toUpperCase() === 'CANCELLED';
+
+        /**
+         * KTV `code` có THẬT SỰ tham gia item này không.
+         *
+         * ⚠️ `technicianCodes` KHÔNG đủ: người BỊ ĐỔI RA vẫn nằm trong đó (cố ý, để
+         * truy vết ai từng làm cho khách), nhưng chặng của họ bị tước (`voided`).
+         * Dựa vào technicianCodes là hai lỗi tiền cùng lúc:
+         *   · khách chấm Xuất sắc cho người VÀO THAY → người bị đổi CŨNG ăn thưởng;
+         *   · người bị đổi được đếm vào số KTV để CHIA điểm → người vào thay mất
+         *     nửa suất thưởng của chính mình.
+         * Hàm này là nguồn chung của mọi nơi tính thưởng (ví, sổ cái ngày, lịch sử,
+         * báo cáo), nên sửa ở đây là đúng hết.
+         */
+        const thamGia = (item: any, code: string): boolean =>
+            Array.isArray(item?.technicianCodes)
+            && item.technicianCodes.some((tc: string) => String(tc).toLowerCase() === String(code).toLowerCase())
+            && !this.isKtvVoidedOnItem(item, code);
         // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
         if (staffBonusMap[techCode.toLowerCase()] === false) return 0;
 
@@ -354,7 +371,10 @@ export class KtvCommissionService {
         const allKtvCodes = new Set<string>();
         for (const item of (booking.BookingItems || [])) {
             if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+                // Người bị đổi ra không được tính vào số người chia thưởng.
+                item.technicianCodes
+                    .filter((tc: string) => thamGia(item, tc))
+                    .forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
             }
         }
         if (allKtvCodes.size === 0 && booking.technicianCode) {
@@ -371,7 +391,7 @@ export class KtvCommissionService {
         for (const item of (booking.BookingItems || [])) {
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
-                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                isTechInvolved = thamGia(item, techCode);
             } else {
                 const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
                 isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
@@ -414,7 +434,7 @@ export class KtvCommissionService {
             // Kiểm tra KTV có tham gia item này không
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
-                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                isTechInvolved = thamGia(item, techCode);
             }
 
             if (!isTechInvolved) continue;
@@ -495,7 +515,9 @@ export class KtvCommissionService {
                     const ktvsForThisGuest = new Set<string>();
                     for (const item of (booking.BookingItems || [])) {
                         if (item.guest_id === gId && item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                            item.technicianCodes.forEach((tc: string) => ktvsForThisGuest.add(tc.toLowerCase()));
+                            item.technicianCodes
+                                .filter((tc: string) => thamGia(item, tc))
+                                .forEach((tc: string) => ktvsForThisGuest.add(tc.toLowerCase()));
                         }
                     }
                     const ktvsCount = ktvsForThisGuest.size || 1;

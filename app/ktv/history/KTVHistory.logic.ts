@@ -44,6 +44,10 @@ export interface HistoryRecord {
    * tính công): "Đã đổi KTV · đã làm 25p · 0đ". `null` với đơn bình thường.
    */
   voidedNote?: string | null;
+  /** Loại tước quyền lợi — có giá trị thì đơn này với KTV đã CHỐT 0đ. */
+  voidedKind?: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER' | null;
+  /** Lý do quầy nhập lúc đổi người / huỷ. */
+  voidedReason?: string | null;
   ktv_comment?: string | null;
   guestCount?: number;
   coWorkers?: string[];

@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import { resolveAttendanceStatus } from '@/lib/attendance/resolveAttendanceStatus';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -198,7 +200,7 @@ export async function GET(request: Request) {
 
             const { data: debtRows, error: debtErr } = await supabase
                 .from('BookingItems')
-                .select('id, roomName, status, handover_status, timeStart')
+                .select('id, roomName, status, handover_status, timeStart, segments')
                 .contains('technicianCodes', [userRow.code])
                 .or(`handover_status.in.(SKIPPED,REJECTED),status.eq.CLEANING`);
 
@@ -206,6 +208,12 @@ export async function GET(request: Request) {
                 console.error('[Attendance] Không đọc được nợ phòng:', debtErr);
             } else {
                 for (const it of (debtRows || [])) {
+                    // ⚠️ Người BỊ ĐỔI RA vẫn nằm trong `technicianCodes` (cố ý, để truy
+                    // vết) nhưng KHÔNG nợ phòng đó: người vào thay mới là người dọn và
+                    // bàn giao. Không bỏ qua ở đây là họ bị CHẶN TAN CA vì một phòng
+                    // mình không phải dọn, ngay khi người thay làm xong và đơn sang
+                    // CLEANING — hoặc khi người thay bấm bỏ qua / bị quầy trả lại.
+                    if (laNguoiBiDoiRaKhoiDon([it], userRow.code, ktvMatchesSeg)) continue;
                     const owesHandover = ['SKIPPED', 'REJECTED'].includes(String(it.handover_status || '').toUpperCase());
                     const owesCleaning = it.status === 'CLEANING'
                         && String(it.timeStart || '').slice(0, 10) === bizDate;
