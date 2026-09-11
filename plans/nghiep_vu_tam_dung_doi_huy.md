@@ -45,7 +45,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | 2 | **Giờ tích luỹ (D)** | theo giờ gán | theo giờ làm thực | 0 | theo giờ làm thực | **0** | số phút quầy chốt |
 | 3 | **Lượt tua (A/B/C)** | giữ | giữ | mất (`is_punished`) | giữ | **mất** | +1 (`TurnLedger` source `SWAP_KTV`) |
 | 3b | Lượt tua (D) | — | — | không đụng `TurnLedger` | — | **không đụng** (giờ đã mất ở dòng 2) | **không ghi** `TurnLedger` |
-| 4 | **Thưởng Xuất sắc** | bình thường | bình thường | 0 | cần xác nhận | **0, không tính vào số người chia** | **trọn suất** — đơn tính như 1 người |
+| 4 | **Thưởng Xuất sắc** | bình thường | 0 (khách về sớm, không có sao) | 0 | **0** — đã huỷ là không có gì | **0, không tính vào số người chia** | **trọn suất** — đơn tính như 1 người |
 | 5 | **Đánh giá khách tính cho ai** | KTV đó | KTV đó | — | KTV đó | **không** | người vào thay |
 | 6 | **Dọn phòng / bàn giao** | có | có | **có** (đang làm dở, phòng vẫn bẩn) | có | **KHÔNG** | có |
 | 7 | **Nợ phòng / chặn tan ca** | tính | tính | tính | tính | **KHÔNG tính** | tính |
@@ -71,6 +71,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | ĐR/VT dòng 1, 2, 3, 3b, 9, 11, 16, 17 | `scripts/qa/qa_swap_ktv_e2e.ts` — 50/50, cả dưới `TZ=UTC` |
 | ĐR dòng 1 ở ví, lịch sử, sổ cái ngày, báo cáo, giờ D | đối chiếu 6 cặp KTV-dịch vụ thật (600.000đ tính sai → 0) |
 | ĐR/VT dòng 4 | mô phỏng: trước 10/10 → sau 0/20; đơn 4 tay thường giữ 10/10 |
+| HK/HC dòng 4 | mô phỏng: huỷ có công và không công, khách 4 sao → thưởng 0 (bản vá 08/09) |
 | ĐR dòng 10 | điều kiện `laNguoiBiDoiRaKhoiDon` trên đơn thật `WB-11092026-002` |
 | ĐR dòng 15 | route lịch sử trên đơn thật `WB-11092026-003` |
 | VT dòng 14 | `coWorkersOf` trên đơn thật trả `[]` |
@@ -82,8 +83,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | ĐR dòng 8 | Hàm SQL `skip_handover_with_quota` (migration `20260908120000`) và `HandoverService.getSkipQuota` đếm theo `technicianCodes` → người thay bấm bỏ qua là trừ lượt người bị đổi | migration sửa hàm SQL + TS cùng lúc (Mức 2) |
 | Toàn hệ thống | `/api/finance/reports/ktv-ranking` đếm `TurnLedger` KHÔNG lọc `is_punished` → người mất tua vẫn hiện đủ tua trong báo cáo | lọc `is_punished` (Mức 2) |
 | Toàn hệ thống | 3 báo cáo tài chính + `TurnQueue.estimated_end_time` dựng giờ bằng `getHours()` phía server → lệch 7 tiếng trên Vercel | dùng `gioDongHoVN` (Mức 2) |
-| HC dòng 4 | Chưa rà thưởng của đơn huỷ có công | xác nhận nghiệp vụ trước |
-| KS dòng 10 | Plan gốc (L5) muốn "hoàn tất, không qua đánh giá"; hiện đi CLEANING | xác nhận nghiệp vụ trước |
+| KS dòng 5, 10, 15 | Chốt 11/09: đi thẳng Hoàn tất, không chờ đánh giá. Quầy đã đúng; còn `handleFinishService` rơi `FEEDBACK` và lịch sử hiện "Chờ FB" | `plans/plan_ket_thuc_som_hoan_tat.md` — chờ chốt: KTV còn dọn phòng không |
 | Triển khai | Mọi bản sửa hôm nay chỉ ở máy local — nhánh chưa push, bản Vercel vẫn chạy code cũ | user quyết push |
 | Chuẩn code | Một phần code viết hôm nay đặt tên biến tiếng Việt và chữ cứng trong `.tsx` — trái `CLAUDE.md` mục 1, 6 | dọn khi đụng lại các file đó |
 
