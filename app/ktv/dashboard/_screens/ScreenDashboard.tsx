@@ -16,7 +16,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 import { fmtHours } from '@/lib/hours-format';
-import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /**
  * Giao diện một dòng trong danh sách chuông, theo NHÓM thông báo.
@@ -336,7 +335,9 @@ export function ScreenDashboard({ logic }: { logic: any }) {
           
           <div className="flex items-center gap-3">
             {/* Wallet Icon */}
-            {canViewWallet && (
+            {/* Mọi ví đều đang tắt thì giấu luôn nút, khỏi dẫn vào một trang chỉ có
+                chữ "đang bảo trì". `null` (chưa biết) thì vẫn hiện như trước. */}
+            {canViewWallet && logic.walletAnyOn !== false && (
                <Link href="/ktv/wallet" className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 active:scale-95 transition-transform">
                   <Wallet size={18} className="text-emerald-600" />
                </Link>
@@ -648,11 +649,10 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                </button>
              )}
 
-             {/* Points wallet switched off while the wallet permission is on →
-                 the tile says so instead of vanishing. No permission → hidden. */}
-             {logic.officeScoreDisabled && logic.canViewWallet && (
-               <FeatureMaintenanceNotice variant="compact" />
-             )}
+             {/* Tính năng đang bảo trì thì ẨN HẲN khỏi trang chủ, không đặt một ô
+                 "Tính năng của bạn đang bảo trì" vào chỗ đó. Trang chủ là nơi KTV
+                 làm việc: một ô không bấm được, không làm được gì, chỉ tổ chiếm
+                 chỗ và khiến họ đi hỏi "bảo trì cái gì". */}
 
              {/* ĐIỂM OFFICE HÔM NAY — chỉ KTV Loại D mới có */}
              {logic.officeScore && (() => {

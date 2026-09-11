@@ -195,6 +195,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // Type D whose points wallet is switched off: the tile shows the maintenance
     // notice instead of disappearing (server answers applicable + disabled).
     const [officeScoreDisabled, setOfficeScoreDisabled] = useState(false);
+    /**
+     * Có ví nào đang mở không. `null` = chưa biết (đang nạp hoặc nạp hỏng).
+     *
+     * Quyền `ktv_wallet` chỉ nói NGƯỜI NÀY được có ví; còn ví có đang chạy hay
+     * bảo trì là do công tắc. Chỉ dựa vào quyền thì nút Ví trên đầu trang vẫn
+     * hiện dù mọi ví đã tắt — bấm vào chỉ thấy "Ví đang bảo trì".
+     */
+    const [walletAnyOn, setWalletAnyOn] = useState<boolean | null>(null);
 
     const [workType, setWorkType] = useState('TYPE_A');
     useEffect(() => {
@@ -338,6 +346,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 } catch {
                     setOfficeScore(null); // không có điểm Office thì ẩn ô, không chặn dashboard
                     setOfficeScoreDisabled(false);
+                }
+
+                // Cùng một nguồn với trang Ví (WalletAccessService) để hai màn không
+                // nói hai chuyện. Trang Ví coi là "bảo trì" khi cả ví Tua lẫn ví
+                // Bonus đều tắt — ở đây dùng đúng điều kiện đó.
+                try {
+                    const acc = await apiClient.get<any>(API.KTV.WALLET.ACCESS(ktvId));
+                    if (acc?.success && acc.data) setWalletAnyOn(!!(acc.data.TUA || acc.data.BONUS));
+                } catch {
+                    setWalletAnyOn(null); // nạp hỏng thì giữ nút như cũ, đừng giấu nhầm
                 }
             } catch (e) {
                 console.error('Error fetching KPI/Discipline state:', e);
@@ -2754,6 +2772,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         turnData,
         officeScore,
         officeScoreDisabled,
+        walletAnyOn,
         kpiData,
         disciplineStatus,
         canViewWallet,
