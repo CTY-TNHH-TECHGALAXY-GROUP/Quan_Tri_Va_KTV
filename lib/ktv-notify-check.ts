@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { fmtClock } from '@/lib/hours-format';
 
 /**
  * ================================================================
@@ -33,6 +34,12 @@ export interface KtvNotifyStatus {
     luc?: string | null;
     /** Nội dung đã gửi về quầy. */
     noiDung?: string | null;
+    /**
+     * Từng KTV đã bấm (lần bấm gần nhất của mỗi người). Đơn con có thể có
+     * nhiều KTV, mà thẻ chỉ ghi "T007, T069" — phải nói rõ AI bấm, không thì
+     * quầy tưởng cả hai cùng báo.
+     */
+    nguoiBao?: { ktv: string | null; loai: string; luc: string | null }[];
 }
 
 /**
@@ -50,11 +57,11 @@ export async function layTrangThaiBaoCuaKtv(
 
     const { data, error } = await supabase
         .from('StaffNotifications')
-        .select('type, message, createdAt')
+        .select('type, message, createdAt, employeeId')
         .in('bookingId', ids)
         .in('type', LOAI_BAO)
         .order('createdAt', { ascending: false })
-        .limit(1);
+        .limit(50);
 
     if (error) {
         // Không chặn thao tác vì một truy vấn cảnh báo hỏng — chỉ mất cảnh báo.
@@ -65,11 +72,19 @@ export async function layTrangThaiBaoCuaKtv(
     const row = (data || [])[0];
     if (!row) return { daBao: false };
 
+    // Mới nhất trước → gặp KTV lần đầu là lần bấm gần nhất của người đó.
+    const theoKtv = new Map<string, { ktv: string | null; loai: string; luc: string | null }>();
+    for (const r of data as any[]) {
+        const key = r.employeeId || '';
+        if (!theoKtv.has(key)) theoKtv.set(key, { ktv: r.employeeId || null, loai: r.type, luc: r.createdAt || null });
+    }
+
     return {
         daBao: true,
         loai: row.type,
         luc: (row as any).createdAt,
         noiDung: row.message,
+        nguoiBao: Array.from(theoKtv.values()),
     };
 }
 
@@ -83,8 +98,16 @@ export function canhBaoLechKichBan(
         return 'KTV chưa bấm báo. Kết thúc vẫn tính tiền và giờ — bỏ khách thì phải bấm Huỷ.';
     }
     if (thaoTac === 'CANCEL' && tt.daBao) {
-        const nhan = tt.loai === 'EMERGENCY' ? 'khẩn cấp' : 'khách xuống sớm';
-        return `KTV đã bấm "${nhan}". Huỷ là mất sạch tiền, giờ và tua.`;
+        const nhanCua = (loai?: string | null) => (loai === 'EMERGENCY' ? 'khẩn cấp' : 'khách xuống sớm');
+        const ds = tt.nguoiBao && tt.nguoiBao.length > 0
+            ? tt.nguoiBao
+            : [{ ktv: null, loai: tt.loai || '', luc: tt.luc || null }];
+        // Vd: 'T069 đã bấm "khẩn cấp" lúc 20:17' — ghi đúng người bấm, cũ nhất trước.
+        const ai = ds.slice().reverse().map(n => {
+            const gio = fmtClock(n.luc);
+            return `${n.ktv || 'KTV'} đã bấm "${nhanCua(n.loai)}"${gio ? ` lúc ${gio}` : ''}`;
+        }).join('; ');
+        return `${ai}. Huỷ là mất sạch tiền, giờ và tua.`;
     }
     return null;
 }
