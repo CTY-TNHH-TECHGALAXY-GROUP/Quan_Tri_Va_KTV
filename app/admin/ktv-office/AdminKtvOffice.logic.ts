@@ -100,6 +100,10 @@ export const useAdminKtvOfficeLogic = () => {
 
   // Sửa quy chế và thu hồi phiếu là quyết định quản lý — lễ tân chỉ chấm điểm.
   const isManager = role?.id === 'admin' || role?.id === 'dev' || role?.id === 'branch_manager';
+  // Thu hồi phiếu (hoàn điểm đã trừ) hẹp hơn `isManager`: quản lý chi nhánh chấm
+  // và sửa được phiếu, nhưng hoàn điểm là quyết định của cấp quản trị. Server
+  // chặn bằng `canRevokeOfficeLog`; đây chỉ là lớp ẩn nút cho khỏi bấm rồi ăn 403.
+  const canRevoke = role?.id === 'admin' || role?.id === 'dev';
 
   const now = new Date(Date.now() + 7 * 60 * 60 * 1000); // giờ VN
   const [month, setMonth] = useState<number>(now.getUTCMonth() + 1);
@@ -743,6 +747,7 @@ export const useAdminKtvOfficeLogic = () => {
 
   return {
     isManager,
+    canRevoke,
     month, year, monthStr, changeMonth,
     searchQuery, setSearchQuery,
     filterMode, toggleFilter,

@@ -580,6 +580,9 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
   // từ 100, trừ dần". Ngày không đi làm thì không có điểm để hiện.
   const dayScore = entry ? entry.dayScore : (isToday ? (view?.todayScore ?? 100) : null);
   const hits = entry ? entry.hits : (isToday ? (view?.todayHits || []) : []);
+  // Phiếu đã được quản lý hoàn điểm trong đúng ngày đang xem. Giữ lại cho KTV
+  // thấy "trừ rồi hoàn", chứ phiếu tự biến mất thì họ không biết đã được xử lý.
+  const revokedHits = (view?.revokedHits || []).filter((h: any) => h.workDate === selected);
 
   const changeMonth = (delta: number) => {
     const next = shiftMonth(month, delta);
@@ -740,6 +743,28 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
                         Ảnh dùng chung cho các lỗi cùng ngày (phiếu chấm đợt cũ).
                       </p>
                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {revokedHits.length > 0 && (
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                Đã hoàn điểm
+              </p>
+              <div className="space-y-2">
+                {revokedHits.map((h: any, i: number) => (
+                  <div key={i} className="bg-slate-50 border border-slate-100 rounded-2xl p-3">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-sm font-bold text-slate-500 line-through">{h.label}</span>
+                      <span className="text-sm font-black text-emerald-600 shrink-0">+{h.points}đ</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 font-bold mt-1">
+                      Đã hoàn lại {h.points}đ — phiếu này được thu hồi
+                    </p>
+                    {h.revokeReason && <p className="text-[11px] text-slate-500 mt-0.5">Lý do: {h.revokeReason}</p>}
                   </div>
                 ))}
               </div>

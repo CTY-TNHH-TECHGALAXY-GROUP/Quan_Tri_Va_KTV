@@ -823,3 +823,44 @@
 | released_at | timestamptz | Th?i di?m t?t |
 | released_by | text | Ngu?i t?t |
 | note | text | Ghi ch� |
+
+### KTVOfficeCriteria
+**Nhiệm vụ**: Bộ tiêu chí chấm điểm Office cho KTV Loại D. Quản lý sửa được ngay trên trang `/admin/ktv-office` (tab Cài đặt), không cần deploy.
+
+| Cột | Kiểu | Mô tả |
+|---|---|---|
+| id | text PK | Mã tiêu chí ('P1', 'T1', 'A1'...) |
+| grp | text | Nhóm ('I' \| 'II' \| 'III') |
+| grp_label | text | Tên nhóm hiển thị |
+| label | text | Tên lỗi |
+| points | numeric | Số điểm bị trừ khi dính lỗi |
+| requires_photo | boolean | Bắt buộc có ảnh minh chứng mới chấm được |
+| sort_order | int | Thứ tự hiển thị |
+| is_active | boolean | Còn áp dụng hay đã ngừng |
+
+### KTVOfficeScoreLog
+**Nhiệm vụ**: Từng phiếu trừ điểm Office. Mỗi ngày đi làm bắt đầu từ 100 điểm, trừ dần theo phiếu trong ngày đó.
+
+⚠️ **Thu hồi là XOÁ MỀM** — không xoá dòng. Mọi phép tính điểm phải lọc `revoked_at IS NULL`; lịch sử thì đọc cả dòng đã thu hồi để giữ dấu vết "trừ rồi hoàn".
+
+| Cột | Kiểu | Mô tả |
+|---|---|---|
+| id | uuid PK | Mã phiếu |
+| staff_id | text FK → Staff(id) | KTV bị trừ |
+| work_date | date | NGÀY VI PHẠM (không phải ngày chấm) |
+| criteria_id | text FK → KTVOfficeCriteria(id) | Lỗi bị chấm |
+| criteria_label | text | Snapshot tên lỗi lúc chấm — quy chế đổi tên không làm sai lịch sử |
+| points_deducted | numeric | Snapshot số điểm trừ |
+| note | text | Ghi chú của người chấm |
+| photo_urls | jsonb | Mảng link ảnh minh chứng (bucket `attendance`) |
+| created_by | text FK → Staff(id) | Người chấm |
+| created_by_name | text | Snapshot tên người chấm |
+| created_at | timestamptz | Lúc chấm |
+| revoked_at | timestamptz | Lúc thu hồi. NULL = phiếu còn hiệu lực |
+| revoked_by | text | Mã người thu hồi (chỉ ADMIN/DEV thu hồi được) |
+| revoked_by_name | text | Snapshot tên người thu hồi |
+| revoke_reason | text | Lý do thu hồi (bắt buộc, ≥ 5 ký tự) |
+
+**Index**:
+- `ux_office_once_per_day` — unique `(staff_id, work_date, criteria_id)` **WHERE `revoked_at IS NULL`**: mỗi lỗi chỉ trừ 1 lần/ngày, nhưng thu hồi xong thì chấm lại được.
+- `ix_office_staff_month` — `(staff_id, work_date)`.

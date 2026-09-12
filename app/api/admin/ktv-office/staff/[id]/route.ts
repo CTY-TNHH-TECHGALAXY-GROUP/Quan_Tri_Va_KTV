@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
         const [scores, ledger] = await Promise.all([
-            KtvOfficeScoreService.computeMonth(supabase, [id], month),
+            KtvOfficeScoreService.computeMonth(supabase, [id], month, { withRevoked: true }),
             KtvOfficeScoreService.hoursLedger(supabase, id, month),
         ]);
         const m = scores.get(id)!;
@@ -75,6 +75,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 exemptPct: m.exemptPct,
                 fundDue: m.fundDue,
                 days: m.days,
+                /** Phiếu đã thu hồi — giữ trong lịch sử, không tính vào điểm nào. */
+                revokedHits: m.revokedHits,
             },
             hours: {
                 total: ledger.total,

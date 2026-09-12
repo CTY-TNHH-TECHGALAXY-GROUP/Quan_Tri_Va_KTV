@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { vnDate } from '@/lib/vn-time';
 import { createNotification } from '@/lib/notification-helper';
 import { getBusinessToday, shiftBusinessDate } from '@/lib/business-date';
-import { isOfficeManager } from '@/lib/services/KtvOfficeScoreService';
+import { isOfficeManager, canRevokeOfficeLog } from '@/lib/services/KtvOfficeScoreService';
 import {
     resolvePhotosPerCriteria, resolveNotesPerCriteria, buildDeductRows, MAX_PHOTOS_PER_CRITERIA,
 } from '@/lib/services/KtvOfficeEvidenceService';
@@ -26,6 +26,23 @@ const MAX_PHOTOS = 5;
  * thật thì hiện sạch 100đ, và luật "mỗi lỗi chỉ trừ 1 lần/ngày" bị lách được —
  * trừ lúc 23:00 rồi trừ lại đúng lỗi đó lúc 01:00 cùng ca vẫn lọt.
  */
+/**
+ * Tên thật của người đang thao tác, để lịch sử hiện tên chứ không hiện mã.
+ * `bUser.techCode` có thể là UUID (tài khoản admin không gắn mã NV) nên phải tra
+ * `Staff`, và vẫn có đường lui khi tài khoản đó không nằm trong bảng nhân viên.
+ */
+async function actorName(supabase: any, bUser: any): Promise<string> {
+    const { data: actor } = await supabase
+        .from('Staff')
+        .select('full_name')
+        .eq('id', bUser.techCode)
+        .maybeSingle();
+    return actor?.full_name
+        || (bUser.role ? `Quản lý (${bUser.role})` : null)
+        || bUser.techCode
+        || 'Không rõ';
+}
+
 async function officeToday(supabase: any): Promise<string> {
     return getBusinessToday(supabase);
 }
@@ -241,17 +258,7 @@ export async function POST(request: Request) {
         }
         const photoUrls = Object.values(urlsOf).flat();
 
-        // bUser.techCode có thể là UUID (tài khoản admin không gắn mã NV) — tra tên thật
-        // để KTV nhìn lịch sử biết ai chấm, chứ không phải một chuỗi UUID vô nghĩa.
-        const { data: actor } = await supabase
-            .from('Staff')
-            .select('full_name')
-            .eq('id', bUser.techCode)
-            .maybeSingle();
-        const createdByName = actor?.full_name
-            || (bUser.role ? `Quản lý (${bUser.role})` : null)
-            || bUser.techCode
-            || 'Không rõ';
+        const createdByName = await actorName(supabase, bUser);
         // Ghi chú cũng gắn THEO TỪNG LỖI, không dùng chung — xem
         // `resolveNotesPerCriteria`.
         const notesOf = resolveNotesPerCriteria(criteria as any, notesByCriteria, note);
@@ -508,7 +515,8 @@ export async function PATCH(request: Request) {
  * Thu hồi một phiếu đã gửi — KHÔNG xoá cứng.
  * Điểm hoàn lại ngay (mọi phép tính đều lọc `revoked_at IS NULL`), nhưng dòng vẫn
  * nằm đó kèm người thu hồi và lý do, để tranh chấp sau này còn tra được.
- * Chỉ Quản lý: thu hồi là quyết định quản lý, không phải thao tác của người chấm.
+ * Chỉ ADMIN/DEV: chấm và sửa phiếu là việc của quản lý chi nhánh, nhưng hoàn lại
+ * điểm đã trừ là quyết định của cấp quản trị.
  */
 export async function DELETE(request: Request) {
     try {
@@ -517,8 +525,8 @@ export async function DELETE(request: Request) {
         if (!bUser) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
-        if (!isOfficeManager(bUser.role)) {
-            return NextResponse.json({ success: false, error: 'Chỉ Quản lý mới thu hồi được phiếu trừ điểm.' }, { status: 403 });
+        if (!canRevokeOfficeLog(bUser.role)) {
+            return NextResponse.json({ success: false, error: 'Chỉ Admin hoặc Dev mới thu hồi được phiếu trừ điểm.' }, { status: 403 });
         }
 
         const supabase = getSupabaseAdmin();
@@ -556,6 +564,7 @@ export async function DELETE(request: Request) {
             .update({
                 revoked_at: new Date().toISOString(),
                 revoked_by: bUser.techCode,
+                revoked_by_name: await actorName(supabase, bUser),
                 revoke_reason: reason,
             })
             .eq('id', logId)

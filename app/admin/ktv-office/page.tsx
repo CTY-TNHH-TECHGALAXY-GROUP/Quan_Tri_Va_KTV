@@ -30,6 +30,10 @@ const CSS_VARS = {
 
 const fmtNum = (n: number) => Number(n ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 
+/** Mốc thời gian ngắn gọn cho lịch sử: 23:33 08/09. */
+const fmtStamp = (at: string) =>
+  new Date(at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+
 /**
  * Một phiếu trừ điểm trong timeline, kèm hai thao tác sửa sai:
  *  - Sửa: chấm nhầm tiêu chí, thiếu ghi chú hoặc thiếu ảnh thì vá tại chỗ.
@@ -125,7 +129,7 @@ const HitRow = ({ hit, logic }: { hit: any; logic: any }) => {
           </a>
         ))}
         <span className="text-xs text-[var(--muted)]">
-          {hit.byName} · {new Date(hit.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+          Trừ bởi: {hit.byName} · {fmtStamp(hit.at)}
         </span>
       </div>
 
@@ -158,7 +162,7 @@ const HitRow = ({ hit, logic }: { hit: any; logic: any }) => {
             onClick={() => logic.startEditLog(hit)}
             className="h-8 px-3 rounded-lg text-xs font-bold btn-ghost flex items-center gap-1"
           ><Pencil size={13} /> Sửa</button>
-          {logic.isManager && (
+          {logic.canRevoke && (
             <button
               onClick={() => logic.startRevokeLog(hit.logId)}
               className="h-8 px-3 rounded-lg text-xs font-bold btn-danger flex items-center gap-1"
@@ -166,6 +170,108 @@ const HitRow = ({ hit, logic }: { hit: any; logic: any }) => {
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * Một phiếu ĐÃ THU HỒI trong timeline.
+ *
+ * Vẫn nằm nguyên chỗ cũ, chỉ đổi trạng thái: điểm gạch ngang vì đã hoàn, và hiện
+ * đủ người trừ — người hoàn — lý do. Xoá khỏi lịch sử thì tháng sau tranh chấp
+ * không còn gì để tra. Không có nút Sửa / Thu hồi vì phiếu đã đóng.
+ */
+const RevokedHitRow = ({ hit }: { hit: any }) => (
+  <div className="bg-[var(--surface-soft)] rounded-xl p-3 mb-2 opacity-70">
+    <div className="flex justify-between gap-3 items-start">
+      <div className="min-w-0">
+        <span className="inline-block text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] border border-[var(--line)] rounded px-1.5 py-0.5 mb-1">
+          Đã thu hồi
+        </span>
+        <strong className="text-sm block line-through">{hit.label}</strong>
+      </div>
+      <b className="text-[var(--muted)] text-sm whitespace-nowrap line-through">−{fmtNum(hit.points)}đ</b>
+    </div>
+    {hit.note && <p className="text-xs text-[var(--muted)] mt-1">{hit.note}</p>}
+    {hit.photoUrls?.length > 0 && (
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {hit.photoUrls.map((u: string, i: number) => (
+          <a key={i} href={u} target="_blank" rel="noreferrer"
+             className="w-7 h-7 rounded border border-[var(--line)] flex items-center justify-center bg-white">
+            <ImageIcon size={13} className="text-[var(--muted)]" />
+          </a>
+        ))}
+      </div>
+    )}
+    <div className="text-xs text-[var(--muted)] mt-2 pt-2 border-t border-[var(--line)] space-y-0.5">
+      <p>Trừ bởi: {hit.byName} · {fmtStamp(hit.at)}</p>
+      <p className="text-[var(--green)]">Hoàn bởi: {hit.revokedByName} · {fmtStamp(hit.revokedAt)}</p>
+      {hit.revokeReason && <p>Lý do: {hit.revokeReason}</p>}
+    </div>
+  </div>
+);
+
+/** Ngày kiểu "Thứ 3, 08/09" cho timeline. */
+const fmtDay = (iso: string) => {
+  try { return new Date(iso + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }); }
+  catch { return iso; }
+};
+
+/**
+ * Timeline "Chi tiết vi phạm" — gộp phiếu còn hiệu lực và phiếu đã thu hồi theo
+ * từng ngày.
+ *
+ * Ngày lấy từ HỢP của hai nguồn: phiếu đã thu hồi có thể rơi vào ngày KTV không
+ * đi làm (chấm nhầm ngày rồi hoàn), ngày đó không nằm trong `days` nhưng vẫn
+ * phải hiện ra, nếu không thì dấu vết chấm nhầm biến mất.
+ */
+const ViolationTimeline = ({ office, logic }: { office: any; logic: any }) => {
+  const daysWithHits = (office.days || []).filter((d: any) => d.hits.length > 0);
+  const revoked: any[] = office.revokedHits || [];
+
+  const revokedByDate = new Map<string, any[]>();
+  revoked.forEach(h => {
+    if (!revokedByDate.has(h.workDate)) revokedByDate.set(h.workDate, []);
+    revokedByDate.get(h.workDate)!.push(h);
+  });
+  // Điểm ngày chỉ có với ngày đi làm; ngày không đi làm để trống chứ không bịa 100.
+  const scoreByDate = new Map<string, number>((office.days || []).map((d: any) => [d.workDate, d.dayScore]));
+
+  const dates = [...new Set([
+    ...daysWithHits.map((d: any) => d.workDate),
+    ...revokedByDate.keys(),
+  ])].sort((a, b) => String(b).localeCompare(String(a)));
+
+  if (dates.length === 0) {
+    return <p className="py-8 text-center text-[var(--muted)] text-sm">Tháng này chưa có phiếu trừ điểm nào.</p>;
+  }
+
+  const hitsOf = new Map<string, any[]>(daysWithHits.map((d: any) => [d.workDate, d.hits]));
+
+  return (
+    <div className="pl-6 border-l-2 border-[var(--line)] ml-2">
+      <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)] mb-3 -ml-6">Chi tiết vi phạm</p>
+      {dates.map(date => {
+        const hits = hitsOf.get(date) || [];
+        const score = scoreByDate.get(date);
+        return (
+          <div key={date} className="relative pb-6">
+            <div className={`absolute w-3.5 h-3.5 rounded-full border-2 bg-white -left-[32px] top-1 ${
+              hits.length > 0 ? 'border-[var(--rust)]' : 'border-[var(--line)]'
+            }`}></div>
+            <div className="flex justify-between items-baseline mb-2">
+              <span className="text-xs text-[var(--muted)]">{fmtDay(date)}</span>
+              <b className="text-sm">{score === undefined ? '—' : `${fmtNum(score)} / 100`}</b>
+            </div>
+            {hits.map((h: any) => (
+              <HitRow key={h.logId} hit={h} logic={logic} />
+            ))}
+            {(revokedByDate.get(date) || []).map((h: any) => (
+              <RevokedHitRow key={h.logId} hit={h} />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -1188,26 +1294,9 @@ const AdminKtvOfficePage = () => {
                                 </p>
                               </div>
 
-                              {/* Timeline chỉ liệt kê ngày CÓ vi phạm — bảng phía trên đã liệt kê đủ mọi ngày. */}
-                              {o.days.filter((d: any) => d.hits.length > 0).length === 0 ? (
-                                <p className="py-8 text-center text-[var(--muted)] text-sm">Tháng này chưa có phiếu trừ điểm nào.</p>
-                              ) : (
-                                <div className="pl-6 border-l-2 border-[var(--line)] ml-2">
-                                  <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)] mb-3 -ml-6">Chi tiết vi phạm</p>
-                                  {o.days.filter((d: any) => d.hits.length > 0).map((d: any) => (
-                                    <div key={d.workDate} className="relative pb-6">
-                                      <div className="absolute w-3.5 h-3.5 rounded-full border-2 border-[var(--rust)] bg-white -left-[32px] top-1"></div>
-                                      <div className="flex justify-between items-baseline mb-2">
-                                        <span className="text-xs text-[var(--muted)]">{fmtDate(d.workDate)}</span>
-                                        <b className="text-sm">{fmtNum(d.dayScore)} / 100</b>
-                                      </div>
-                                      {d.hits.map((h: any) => (
-                                        <HitRow key={h.logId} hit={h} logic={logic} />
-                                      ))}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                              {/* Timeline chỉ liệt kê ngày CÓ phiếu (còn hiệu lực hoặc đã thu hồi)
+                                  — bảng phía trên đã liệt kê đủ mọi ngày. */}
+                              <ViolationTimeline office={o} logic={logic} />
                             </>
                           )}
 

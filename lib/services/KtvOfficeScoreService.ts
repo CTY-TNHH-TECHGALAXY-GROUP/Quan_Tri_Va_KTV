@@ -52,6 +52,17 @@ export interface OfficeDay {
     hits: OfficeHit[];
 }
 
+/**
+ * Một phiếu ĐÃ THU HỒI. Không tham gia bất kỳ phép tính điểm nào — chỉ để lịch
+ * sử giữ lại dấu vết "đã trừ rồi hoàn", kèm ai trừ, ai hoàn và vì sao.
+ */
+export interface OfficeRevokedHit extends OfficeHit {
+    workDate: string;
+    revokedAt: string;
+    revokedByName: string;
+    revokeReason: string | null;
+}
+
 export interface RepeatPenalty {
     criteriaId: string;
     label: string;
@@ -82,6 +93,13 @@ export interface OfficeMonth {
     exemptPct: number;
     fundDue: number;
     days: OfficeDay[];
+    /**
+     * Phiếu đã thu hồi trong tháng — CHỈ có khi gọi `computeMonth` với
+     * `withRevoked: true`. Để riêng, không trộn vào `days[].hits`, vì mảng đó là
+     * nguồn tính điểm ngày, lỗi lặp, màu lịch và số bị trừ ở Ví: lẫn phiếu đã
+     * hoàn vào đó là trừ điểm oan cho KTV.
+     */
+    revokedHits: OfficeRevokedHit[];
 }
 
 export interface HoursAggregate {
@@ -107,6 +125,17 @@ export interface HoursAggregate {
  */
 export function isOfficeManager(role?: string | null): boolean {
     return ['ADMIN', 'DEV', 'MANAGER'].includes(String(role || '').toUpperCase());
+}
+
+/**
+ * Ai được BỒI HOÀN — thu hồi phiếu đã chấm, hoàn điểm cho KTV.
+ *
+ * Hẹp hơn `isOfficeManager` có chủ đích: Quản lý chi nhánh vẫn chấm điểm, sửa
+ * phiếu và sửa quy chế, nhưng hoàn lại điểm đã trừ là quyết định của cấp quản
+ * trị. Nhận `Staff.role` thô (chữ hoa như trong DB).
+ */
+export function canRevokeOfficeLog(role?: string | null): boolean {
+    return ['ADMIN', 'DEV'].includes(String(role || '').toUpperCase());
 }
 
 /** 'YYYY-MM' của tháng hiện tại theo giờ VN. */
@@ -221,7 +250,8 @@ export class KtvOfficeScoreService {
     static async computeMonth(
         supabase: SupabaseClient,
         staffIds: string[],
-        month: string
+        month: string,
+        opts?: { withRevoked?: boolean }
     ): Promise<Map<string, OfficeMonth>> {
         const out = new Map<string, OfficeMonth>();
         if (staffIds.length === 0) return out;
@@ -261,8 +291,46 @@ export class KtvOfficeScoreService {
             logsOf.get(l.staff_id)!.push(l);
         });
 
+        // 3. Phiếu ĐÃ THU HỒI — query RIÊNG, chỉ chạy khi màn hình cần.
+        //    Cố ý không gộp vào query (1) rồi tách trong code: giữ query tính điểm
+        //    nguyên vẹn thì không có đường nào phiếu đã hoàn lọt vào phép tính.
+        const revokedOf = new Map<string, OfficeRevokedHit[]>();
+        if (opts?.withRevoked) {
+            const { data: revoked, error: revErr } = await supabase
+                .from('KTVOfficeScoreLog')
+                .select('id, staff_id, work_date, criteria_id, criteria_label, points_deducted, note, photo_urls, created_by_name, created_at, revoked_at, revoked_by, revoked_by_name, revoke_reason')
+                .in('staff_id', staffIds)
+                .gte('work_date', from)
+                .lte('work_date', to)
+                .not('revoked_at', 'is', null)
+                .order('revoked_at', { ascending: false });
+            if (revErr) throw revErr;
+
+            (revoked || []).forEach((l: any) => {
+                if (!revokedOf.has(l.staff_id)) revokedOf.set(l.staff_id, []);
+                revokedOf.get(l.staff_id)!.push({
+                    criteriaId: l.criteria_id,
+                    label: l.criteria_label,
+                    points: Number(l.points_deducted) || 0,
+                    note: l.note,
+                    photoUrls: Array.isArray(l.photo_urls) ? l.photo_urls : [],
+                    byName: l.created_by_name,
+                    at: l.created_at,
+                    logId: l.id,
+                    workDate: l.work_date,
+                    revokedAt: l.revoked_at,
+                    // Phiếu thu hồi từ trước khi có cột tên thì chỉ còn mã, mà mã
+                    // UUID hiện ra thì vô nghĩa với người đọc.
+                    revokedByName: l.revoked_by_name || 'Quản lý (không rõ tên)',
+                    revokeReason: l.revoke_reason,
+                });
+            });
+        }
+
         for (const staffId of staffIds) {
-            out.set(staffId, this.buildMonth(staffId, logsOf.get(staffId) || [], workDaysOf.get(staffId) || new Set()));
+            const m = this.buildMonth(staffId, logsOf.get(staffId) || [], workDaysOf.get(staffId) || new Set());
+            m.revokedHits = revokedOf.get(staffId) || [];
+            out.set(staffId, m);
         }
         return out;
     }
@@ -335,6 +403,9 @@ export class KtvOfficeScoreService {
             final: Math.round(final * 10) / 10,
             exemptPct, fundDue,
             days,
+            // Người gọi không hỏi phiếu thu hồi thì để rỗng — `computeMonth` sẽ
+            // thay bằng danh sách thật khi `withRevoked: true`.
+            revokedHits: [],
         };
     }
 

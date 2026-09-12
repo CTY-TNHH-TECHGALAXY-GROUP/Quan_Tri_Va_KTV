@@ -55,7 +55,7 @@ export async function GET(request: Request) {
         const monthParam = searchParams.get('month');
         const month = /^\d{4}-\d{2}$/.test(monthParam || '') ? monthParam! : today.slice(0, 7);
 
-        const scores = await KtvOfficeScoreService.computeMonth(supabase, [staffId], month);
+        const scores = await KtvOfficeScoreService.computeMonth(supabase, [staffId], month, { withRevoked: true });
         const m = scores.get(staffId)!;
 
         const todayEntry = m.days.find(d => d.workDate === today);
@@ -90,6 +90,16 @@ export async function GET(request: Request) {
                     workDate: d.workDate,
                     dayScore: d.dayScore,
                     hits: mapHits(d.hits),
+                })),
+                // Phiếu ĐÃ ĐƯỢC HOÀN — giữ lại để KTV thấy "trừ rồi hoàn" thay vì
+                // thấy phiếu tự biến mất rồi nghi hệ thống ăn gian. Không trả tên
+                // người hoàn: modal này cũng không hiện tên người trừ.
+                revokedHits: m.revokedHits.map(h => ({
+                    workDate: h.workDate,
+                    label: h.label,
+                    points: h.points,
+                    revokedAt: h.revokedAt,
+                    revokeReason: h.revokeReason,
                 })),
                 monthScore: m.final,
                 /**
