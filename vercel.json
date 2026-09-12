@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/reset-type-d-hours",
       "schedule": "0 17 1 * *"
+    },
+    {
+      "path": "/api/cron/daily-absence-check",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/daily-absence-check?mode=lock-unregistered",
+      "schedule": "0 17 * * *"
     }
   ]
 }
