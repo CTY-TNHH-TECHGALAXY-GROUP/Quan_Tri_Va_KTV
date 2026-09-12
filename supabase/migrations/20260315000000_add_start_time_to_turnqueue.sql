@@ -1,0 +1,1 @@
+ALTER TABLE public."TurnQueue" ADD COLUMN IF NOT EXISTS "start_time" TIME WITHOUT TIME ZONE;

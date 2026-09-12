@@ -1,0 +1,33 @@
+# Tổng hợp các loại thông báo trong hệ thống
+
+Bảng tổng hợp này giúp bạn xác định các loại âm thanh phù hợp cho từng ứng dụng.
+
+## 1. Ứng dụng Quầy (Reception / Dispatcher)
+*Máy tính tại quầy - Cần âm thanh rõ ràng, phân biệt được độ quan trọng.*
+
+| Loại thông báo | Mã (Type) | Ý nghĩa | Mức độ ưu tiên |
+| :--- | :--- | :--- | :--- |
+| **Đơn hàng mới** | `NEW_ORDER` | Có lịch đặt mới từ khách hoặc admin. | Trung bình |
+| **Khách về sớm** | `EARLY_EXIT` | KTV báo khách đang xuống, quầy cần chuẩn bị đón. | Cao |
+| **Yêu cầu Nước** | `WATER` | Mang nước/trà lên phòng cho khách. | Thấp |
+| **Mua thêm DV** | `BUY_MORE` | Khách muốn làm thêm, cần lễ tân lên tư vấn. | Trung bình |
+| **Cần hỗ trợ** | `SUPPORT` | Vấn đề kỹ thuật, thiếu đồ dùng trong phòng. | Thấp |
+| **Báo khẩn cấp** | `EMERGENCY` | 🆘 Sự cố lớn hoặc khách cực kỳ khó chịu. | **Rất Cao** |
+| **Đánh giá tệ** | `COMPLAINT` | 🚨 Khách đánh giá 1-2 sao (Cần xử lý ngay). | **Rất Cao** |
+
+---
+
+## 2. Ứng dụng KTV (Mobile)
+*Điện thoại cá nhân - Cần âm thanh thông báo công việc, dễ nghe.*
+
+| Loại thông báo | Ý nghĩa | Cảm xúc gợi ý |
+| :--- | :--- | :--- |
+| **Nhận ca mới** | Lễ tân vừa gán đơn hàng cho bạn và xếp phòng. | Chuyên nghiệp, rõ ràng |
+| **Nhận thưởng** | 🎁 Khách đánh giá 4-5 sao hoặc được tặng điểm. | Vui tươi, chúc mừng |
+
+---
+
+## Gợi ý về âm thanh
+- **EMERGENCY / COMPLAINT**: Nên dùng âm thanh còi báo động hoặc chuông reo liên tục để bắt buộc quầy phải chú ý.
+- **REWARD**: Nên dùng âm thanh "Ding" vui tai hoặc tiếng tiền xu rơi.
+- **NEW_ORDER**: Nên dùng âm thanh chuông cửa hoặc thông báo chuyên nghiệp.
