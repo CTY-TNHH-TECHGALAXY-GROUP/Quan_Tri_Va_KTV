@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { KtvRosterService } from '@/lib/services/KtvRosterService';
+import { KtvTypeDWalletService } from '@/lib/services/KtvTypeDWalletService';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,13 +39,12 @@ export async function GET(request: Request) {
         const bonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
         // 2. Fetch KTVs
-        const { data: ktvs } = await supabase
-            .from('Staff')
-            .select('id, full_name, position, work_type, feature_flags')
-            .eq('status', 'ĐANG LÀM')
-            .ilike('id', 'NH%')
-            .order('id');
-            
+        //
+        // ⚠️ Bộ lọc cũ ở đây là `ilike('id', 'NH%')` — chặn sạch KTV loại D
+        // (mã `T001`, `T016`…) khỏi bảng thu ngân, dù lệnh rút tiền của họ vẫn
+        // hiện ở khối "chờ ra quầy". Xem KtvRosterService.
+        const ktvs = await KtvRosterService.getActiveKtvs(supabase);
+
         if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, data: [] });
 
         const ktvWorkTypeMap: Record<string, string> = {};
@@ -179,18 +180,58 @@ export async function GET(request: Request) {
             .filter((k: any) => (ktvWorkTypeMap[k.id] || 'TYPE_A') === 'TYPE_D')
             .map((k: any) => k.id);
         let netHoursMap: Record<string, number> = {};
+        let typeDSummaries: Record<string, any> = {};
         if (typeDIds.length > 0) {
-            const nowVn = new Date();
+            // ⚠️ Tháng/năm lấy từ `todayStr` (đã +7h), KHÔNG dùng `new Date().getMonth()`:
+            // server chạy UTC nên từ 17h ngày cuối tháng giờ VN đã sang tháng mới
+            // mà getMonth() vẫn trả tháng cũ (CLAUDE.md 13.5).
+            const [vnYear, vnMonth] = todayStr.split('-').map(Number);
             const { KtvTypeDTurnService } = await import('@/lib/services/KtvTypeDTurnService');
-            netHoursMap = await KtvTypeDTurnService.getMonthlyNetHours(
-                supabase as any, typeDIds, nowVn.getMonth() + 1, nowVn.getFullYear()
-            );
+            [netHoursMap, typeDSummaries] = await Promise.all([
+                KtvTypeDTurnService.getMonthlyNetHours(supabase as any, typeDIds, vnMonth, vnYear),
+                // Tiền của loại D đọc thẳng sổ cái tua — CÙNG NGUỒN với ví KTV.
+                // Không được để rơi xuống vòng lặp quét `Bookings` bên dưới:
+                // công thức đó không biết rate/trừ sao/thuế của loại D.
+                KtvTypeDWalletService.getFinanceSummaries(supabase as any, typeDIds, fromDate, toDate),
+            ]);
         }
 
         // 6. Calculate per KTV
         const summaries = [];
         for (const ktv of ktvs) {
             const techCode = ktv.id;
+
+            // ─── LOẠI D: lấy nguyên số liệu từ sổ cái tua ──────────────────
+            // Dừng ở đây, không đi tiếp xuống phần quét `Bookings` bên dưới.
+            if ((ktvWorkTypeMap[techCode] || 'TYPE_A') === 'TYPE_D') {
+                // Thiếu số liệu thì vẫn phải có DÒNG: thu ngân cần thấy tên để
+                // bấm Thưởng/Phạt, biến mất khỏi bảng mới là lỗi đang phải chữa.
+                const d = typeDSummaries[techCode] || {};
+                summaries.push({
+                    id: ktv.id,
+                    name: ktv.full_name,
+                    position: ktv.position,
+                    work_type: 'TYPE_D',
+                    total_commission: 0,
+                    total_tip: 0,
+                    total_bonus: 0,
+                    total_penalty: 0,
+                    total_adjustment: 0,
+                    total_withdrawn: 0,
+                    total_pending: 0,
+                    gross_income: 0,
+                    previous_balance: 0,
+                    net_balance: 0,
+                    available_balance: 0,
+                    effective_balance: 0,
+                    internal_fund: 0,
+                    ...d,
+                    accumulated_hours: netHoursMap[techCode] ?? 0,
+                    rating_deduction: 0,
+                });
+                continue;
+            }
+
             let at_rt_commission = 0;
             let at_rt_tip = 0;
             let at_rt_bonus = 0;
@@ -329,23 +370,17 @@ export async function GET(request: Request) {
             const available_balance = Math.max(0, net_balance - min_deposit);
             const effective_balance = Math.max(0, net_balance);
 
-            let accumulated_hours = 0;
-            let rating_deduction = 0;
-            let internal_fund = 0;
-
-            if (workType === 'TYPE_D') {
-                accumulated_hours = netHoursMap[ktv.id] ?? 0;
-
-                // Fetch bonus wallet total
-                const { data: hw } = await supabase.from('WalletAdjustments')
-                    .select('amount').eq('staff_id', ktv.id).eq('wallet_type', 'BONUS');
-                internal_fund = (hw || []).reduce((sum, r) => sum + Number(r.amount), 0);
-            }
+            // Giờ tích luỹ và quỹ nội bộ chỉ có ở loại D — nhánh đó đã thoát
+            // từ đầu vòng lặp, nên tới đây luôn bằng 0.
+            const accumulated_hours = 0;
+            const rating_deduction = 0;
+            const internal_fund = 0;
 
             summaries.push({
                 id: ktv.id,
                 name: ktv.full_name,
                 position: ktv.position,
+                work_type: workType,
                 total_commission,
                 total_tip,
                 total_bonus,

@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { KTV_WORK_TYPES, type KtvWorkType } from '@/lib/services/KtvRosterService';
+
+export type WorkTypeFilter = 'ALL' | KtvWorkType;
+
+/**
+ * Loại D KHÔNG có ví điểm — thưởng 4★ của họ nằm thẳng trong tiền tua, nên
+ * `/api/finance/ktv-bonus-summary` không trả dòng nào cho loại D. Cờ này để
+ * giao diện nói rõ lý do thay vì hiện bảng trống khó hiểu.
+ */
+export const BONUS_WALLET_EXCLUDED_TYPES: KtvWorkType[] = ['TYPE_D'];
 
 export function useFinanceKTV() {
     const { user, hasPermission } = useAuth();
@@ -20,6 +30,7 @@ export function useFinanceKTV() {
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [filterStaffId, setFilterStaffId] = useState('ALL');
+    const [filterWorkType, setFilterWorkType] = useState<WorkTypeFilter>('ALL');
 
     // Adjustment Modal State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
@@ -172,22 +183,55 @@ export function useFinanceKTV() {
         }
     };
 
+    /** Số KTV mỗi loại — hiện ngay trên nhãn bộ lọc để biết loại nào rỗng. */
+    const countsByType = useMemo(() => {
+        const counts: Record<string, number> = { ALL: summaries.length };
+        KTV_WORK_TYPES.forEach(t => { counts[t] = 0; });
+        summaries.forEach(ktv => {
+            const t = ktv.work_type || 'TYPE_A';
+            if (counts[t] !== undefined) counts[t] += 1;
+        });
+        return counts;
+    }, [summaries]);
+
+    const matchWorkType = useCallback(
+        (ktv: any) => filterWorkType === 'ALL' || (ktv.work_type || 'TYPE_A') === filterWorkType,
+        [filterWorkType]
+    );
+
+    // Danh sách chọn KTV bám theo loại đang lọc: chọn "Loại D" thì dropdown chỉ
+    // còn KTV loại D, khỏi phải dò trong cả trăm mã.
     const staffList = useMemo(() => {
         const list = new Map<string, string>();
-        summaries.forEach(ktv => list.set(ktv.id, ktv.name));
-        bonusSummaries.forEach(ktv => list.set(ktv.id, ktv.name));
+        summaries.filter(matchWorkType).forEach(ktv => list.set(ktv.id, ktv.name));
+        bonusSummaries.filter(matchWorkType).forEach(ktv => list.set(ktv.id, ktv.name));
         return Array.from(list.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id));
-    }, [summaries, bonusSummaries]);
+    }, [summaries, bonusSummaries, matchWorkType]);
+
+    // Đổi loại mà KTV đang chọn không thuộc loại mới → bảng sẽ rỗng và người
+    // dùng không hiểu vì sao. Thả về "Tất cả KTV".
+    useEffect(() => {
+        if (filterStaffId === 'ALL') return;
+        if (!staffList.some(s => s.id === filterStaffId)) setFilterStaffId('ALL');
+    }, [staffList, filterStaffId]);
 
     const filteredSummaries = useMemo(() => {
-        if (filterStaffId === 'ALL') return summaries;
-        return summaries.filter(k => k.id === filterStaffId);
-    }, [summaries, filterStaffId]);
+        return summaries
+            .filter(matchWorkType)
+            .filter(k => filterStaffId === 'ALL' || k.id === filterStaffId);
+    }, [summaries, filterStaffId, matchWorkType]);
 
     const filteredBonusSummaries = useMemo(() => {
-        if (filterStaffId === 'ALL') return bonusSummaries;
-        return bonusSummaries.filter(k => k.id === filterStaffId);
-    }, [bonusSummaries, filterStaffId]);
+        return bonusSummaries
+            .filter(matchWorkType)
+            .filter(k => filterStaffId === 'ALL' || k.id === filterStaffId);
+    }, [bonusSummaries, filterStaffId, matchWorkType]);
+
+    /** Tab Ví Bonus đang lọc đúng loại không dùng ví điểm → giải thích, không để bảng trống. */
+    const isBonusWalletExcluded = useMemo(
+        () => filterWorkType !== 'ALL' && BONUS_WALLET_EXCLUDED_TYPES.includes(filterWorkType),
+        [filterWorkType]
+    );
 
     return {
         user,
@@ -226,6 +270,10 @@ export function useFinanceKTV() {
         refresh: fetchData,
         filterStaffId,
         setFilterStaffId,
+        filterWorkType,
+        setFilterWorkType,
+        countsByType,
+        isBonusWalletExcluded,
         staffList,
         filteredSummaries,
         filteredBonusSummaries

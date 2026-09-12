@@ -366,7 +366,7 @@
 | `certificate_url` | text | Link ảnh bằng cấp của nhân viên |
 | `feature_flags` | jsonb | Cờ bật/tắt tính năng per-staff (VD: `{"laundry_deduction": true, "is_on_call": true, "travel_time_mins": 30}`). Default: `{}` |
 | `skills` | jsonb | Kỹ năng chuyên môn |
-| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Freelance/Nhập tay). Default: `TYPE_A`. CHECK constraint. |
+| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Freelance/Nhập tay), `TYPE_D` (ăn theo giờ tích luỹ — mã `T001`, `T016`…, tiền tính ở `KTVDTurnLedger`). Default: `TYPE_A`. CHECK constraint. |
 | `online_status` | text | Trạng thái online của KTV Type B: `OFFLINE`, `ONLINE`, `AT_VENUE`. Default: `OFFLINE`. CHECK constraint. |
 | `travel_minutes` | integer | Thời gian di chuyển đến Spa (phút). Default: `0`. Chỉ dùng cho Type B khi online. |
 | `available_from` | time | Giờ bắt đầu sẵn sàng nhận đơn (HH:mm). Null khi offline. |

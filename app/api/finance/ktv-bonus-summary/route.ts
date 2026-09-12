@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { KtvRosterService } from '@/lib/services/KtvRosterService';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,14 +20,13 @@ export async function GET(request: Request) {
         if (!supabase) return NextResponse.json({ success: false, error: 'No admin client' }, { status: 500 });
 
         // 1. Fetch Staff (only active ones)
-        const { data: staffList, error: staffError } = await supabase
-            .from('Staff')
-            .select('id, full_name, status, feature_flags, work_type')
-            .eq('status', 'ĐANG LÀM')
-            .ilike('id', 'NH%')
-            .order('id', { ascending: true });
-
-        if (staffError) throw staffError;
+        //
+        // ⚠️ LOẠI D KHÔNG CÓ VÍ ĐIỂM. Thưởng 4★ của loại D được cộng THẲNG vào
+        // tiền tua (`KtvDLedgerEngine.applyBonusAndTax`), `KtvTypeDWalletService`
+        // trả `total_bonus = 0` đúng theo thiết kế. Liệt kê họ ở bảng này chỉ
+        // sinh ra một loạt dòng 0 pts, dễ bị đọc thành "chưa được thưởng".
+        const staffList = (await KtvRosterService.getActiveKtvs(supabase))
+            .filter(s => s.work_type !== 'TYPE_D');
 
         // 1.5 Fetch Bonus config per shift via Service
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
@@ -191,6 +191,7 @@ export async function GET(request: Request) {
             return {
                 id: s.id,
                 name: s.full_name,
+                work_type: s.work_type,
                 totalEarned: stats.totalEarned,
                 totalRedeemed: stats.totalRedeemed,
                 totalDeducted: stats.totalDeducted,

@@ -3,6 +3,8 @@
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceKTV } from './FinanceKTV.logic';
+import { t, workTypeLabel } from './FinanceKTV.i18n';
+import { KTV_WORK_TYPES } from '@/lib/services/KtvRosterService';
 import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -14,7 +16,8 @@ export default function FinanceKTVPage() {
         filterType, setFilterType, fromDate, setFromDate, toDate, setToDate,
         handleApprove, handleReject, refresh,
         isAdjustmentModalOpen, selectedKtv, adjAmount, setAdjAmount, adjType, setAdjType, adjWalletType, setAdjWalletType, adjReason, setAdjReason, setIsAdjustmentModalOpen, handleOpenAdjustment, handleSubmitAdjustment,
-        handleAcknowledgeIntent, filterStaffId, setFilterStaffId, staffList, filteredSummaries, filteredBonusSummaries
+        handleAcknowledgeIntent, filterStaffId, setFilterStaffId, staffList, filteredSummaries, filteredBonusSummaries,
+        filterWorkType, setFilterWorkType, countsByType, isBonusWalletExcluded
     } = useFinanceKTV();
     
     const [isWalletDropdownOpen, setIsWalletDropdownOpen] = React.useState(false);
@@ -302,9 +305,23 @@ export default function FinanceKTVPage() {
                             )}
                         </div>
 
-                        {/* BỘ LỌC NGÀY VÀ NHÂN VIÊN */}
-                        <div className="flex items-center gap-2">
-                            <select 
+                        {/* BỘ LỌC LOẠI KTV, NGÀY VÀ NHÂN VIÊN */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                                value={filterWorkType}
+                                onChange={(e) => setFilterWorkType(e.target.value as any)}
+                                title={t.workTypeFilter.label}
+                                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="ALL">{t.workTypeFilter.all} ({countsByType.ALL || 0})</option>
+                                {KTV_WORK_TYPES.map(type => (
+                                    <option key={type} value={type}>
+                                        {t.workTypeName[type]} ({countsByType[type] || 0})
+                                    </option>
+                                ))}
+                            </select>
+
+                            <select
                                 value={filterStaffId}
                                 onChange={(e) => setFilterStaffId(e.target.value)}
                                 className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 max-w-[150px] truncate"
@@ -365,14 +382,21 @@ export default function FinanceKTVPage() {
                                 <tbody className="divide-y divide-slate-50 font-medium">
                                     {filteredSummaries.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="px-6 py-8 text-center text-slate-400">Chưa có dữ liệu thống kê KTV</td>
+                                            <td colSpan={9} className="px-6 py-8 text-center text-slate-400">
+                                                {filterWorkType === 'ALL' ? 'Chưa có dữ liệu thống kê KTV' : t.emptyByFilter}
+                                            </td>
                                         </tr>
                                     ) : (
                                         filteredSummaries.map((ktv) => (
                                             <tr key={ktv.id} className="hover:bg-indigo-50/30 whitespace-nowrap">
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-slate-800 block">{ktv.name}</span>
-                                                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md inline-block mt-1">{ktv.id}</span>
+                                                    <span className="inline-flex items-center gap-1.5 mt-1">
+                                                        <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">{ktv.id}</span>
+                                                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${ktv.work_type === 'TYPE_D' ? 'text-purple-600 bg-purple-50' : 'text-slate-500 bg-slate-100'}`}>
+                                                            {workTypeLabel(ktv.work_type)}
+                                                        </span>
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right text-slate-500 font-bold">{Number(ktv.previous_balance || 0).toLocaleString()}đ</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_commission || 0).toLocaleString()}đ</td>
@@ -423,7 +447,15 @@ export default function FinanceKTVPage() {
                             </table>
                             )}
 
-                            {activeTab === 'BONUS' && (
+                            {activeTab === 'BONUS' && isBonusWalletExcluded && (
+                                <div className="px-6 py-10 text-center">
+                                    <Star size={40} className="text-purple-200 mx-auto mb-3" />
+                                    <p className="font-black text-slate-700">{t.bonusTab.excludedTitle}</p>
+                                    <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">{t.bonusTab.excludedNote}</p>
+                                </div>
+                            )}
+
+                            {activeTab === 'BONUS' && !isBonusWalletExcluded && (
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-amber-50 text-amber-800 text-xs uppercase font-black whitespace-nowrap">
                                     <tr>
