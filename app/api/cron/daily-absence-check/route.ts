@@ -17,10 +17,9 @@ export const dynamic = 'force-dynamic';
  * nên KTV phải nhớ hai mốc giờ, còn người đã lặn cả ngày thì tới sáng hôm sau
  * mới biết.
  *
- * Năm tình huống, CHẾ TÀI DO QUẢN LÝ ĐẶT ở Cài đặt → Loại D (không còn viết
+ * Bốn tình huống, CHẾ TÀI DO QUẢN LÝ ĐẶT ở Cài đặt → Loại D (không còn viết
  * cứng ở đây):
  *
- *   UNREGISTERED_NEXT_DAY    — chưa đăng ký lịch cho ngày vừa sang
  *   NO_REGISTRATION          — hôm qua không đăng ký gì và cũng không đi làm
  *   NO_SHOW_NO_NOTICE        — đăng ký làm, không báo, không đến
  *   LATE_REPORTED_NO_SHOW    — đã báo trễ nhưng vẫn không đến
@@ -70,10 +69,10 @@ async function run(dry = false) {
     // không cần deploy.
     const enabled = !dry && await KtvTypeDDisciplineService.isEnabled(supabase);
 
-    const ngayMoi = ngayVnHomNay();
-    const ngayVuaQua = luiMotNgay(ngayMoi);
+    // Chạy lúc 00:00 nên "hôm nay" đã là ngày mới; ngày cần chốt là ngày vừa qua.
+    const ngayVuaQua = luiMotNgay(ngayVnHomNay());
 
-    console.log(`[Kỷ luật D] Chốt sổ ngày ${ngayVuaQua}, xét đăng ký ngày ${ngayMoi} (${enabled ? 'ĐANG BẬT' : dry ? 'CHẠY THỬ' : 'đang TẮT — chỉ ghi log'})`);
+    console.log(`[Kỷ luật D] Chốt sổ ngày ${ngayVuaQua} (${enabled ? 'ĐANG BẬT' : dry ? 'CHẠY THỬ' : 'đang TẮT — chỉ ghi log'})`);
 
     const { data: staffList, error: staffError } = await supabase
         .from('Staff')
@@ -84,12 +83,10 @@ async function run(dry = false) {
 
     const ids = (staffList || []).map((s: any) => s.id);
     if (ids.length === 0) {
-        return NextResponse.json({ success: true, enabled, dry, targetDate: ngayMoi, previousDate: ngayVuaQua, results: [] });
+        return NextResponse.json({ success: true, enabled, dry, targetDate: ngayVuaQua, results: [] });
     }
 
-    const [regMoi, regCu, diemDanh] = await Promise.all([
-        supabase.from('KTVTypeDDailyRegistration')
-            .select('staff_id').eq('work_date', ngayMoi).in('staff_id', ids),
+    const [regCu, diemDanh] = await Promise.all([
         supabase.from('KTVTypeDDailyRegistration')
             .select('*').eq('work_date', ngayVuaQua).in('staff_id', ids),
         supabase.from('KTVAttendance')
@@ -97,16 +94,15 @@ async function run(dry = false) {
             .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']),
     ]);
 
-    const daDangKyNgayMoi = new Set((regMoi.data || []).map((r: any) => r.staff_id));
     const regCuTheoNguoi = new Map((regCu.data || []).map((r: any) => [r.staff_id, r]));
     const daDiLam = new Set((diemDanh.data || []).map((r: any) => r.employeeId));
 
     const results: KetQuaXuLy[] = [];
 
-    /** Gọi service xử, ghi lại kết quả. Trả về true nếu người này vừa bị khoá. */
+    /** Gọi service xử rồi ghi lại kết quả. */
     const xuLy = async (
         staff: any, caseKey: TypeDDisciplineCaseKey, workDate: string, lyDo: string,
-    ): Promise<boolean> => {
+    ): Promise<void> => {
         const r = await KtvTypeDDisciplineService.applyCasePenalty(supabase, {
             staffId: staff.id,
             staffName: staff.full_name,
@@ -122,25 +118,12 @@ async function run(dry = false) {
                 ketQua: r.ketQua, hours: r.hours, netHours: r.netHours,
             });
         }
-        return r.ketQua === 'LOCK';
     };
 
     for (const staff of staffList || []) {
         // KTV mới tạo hôm qua hoặc hôm nay → chưa kịp làm quen, bỏ qua.
         if (staff.created_at && String(staff.created_at).slice(0, 10) >= ngayVuaQua) continue;
 
-        // ── 1. Chưa đăng ký lịch cho NGÀY VỪA SANG ──────────────────────────
-        // Nửa đêm là hạn chót quyết định lịch, cùng mốc với hạn đổi lịch miễn
-        // phạt. Sang ngày mới mà chưa đăng ký gì thì xử luôn, không đợi hết ngày.
-        if (!daDangKyNgayMoi.has(staff.id)) {
-            const biKhoa = await xuLy(
-                staff, 'UNREGISTERED_NEXT_DAY', ngayMoi,
-                `Chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${vnDate(ngayMoi)}`);
-            // Đã khoá thì thôi, không chồng thêm án của ngày hôm qua lên nữa.
-            if (biKhoa) continue;
-        }
-
-        // ── 2. Chốt sổ NGÀY VỪA QUA ─────────────────────────────────────────
         const reg: any = regCuTheoNguoi.get(staff.id);
         const coDiLam = daDiLam.has(staff.id) || !!reg?.check_in_at;
 
@@ -198,8 +181,7 @@ async function run(dry = false) {
         success: true,
         enabled,
         dry,
-        targetDate: ngayMoi,
-        previousDate: ngayVuaQua,
+        targetDate: ngayVuaQua,
         lockedCount: biKhoa.length,
         deductedCount: biTruGio.length,
         results,

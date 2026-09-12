@@ -17,7 +17,6 @@ const CHE_TAI = [
 
 /** Thứ tự hiện trên bảng — theo dòng thời gian một ngày làm việc. */
 const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
-    'UNREGISTERED_NEXT_DAY',
     'NO_REGISTRATION',
     'NO_SHOW_NO_NOTICE',
     'LATE_REPORTED_NO_SHOW',

@@ -87,7 +87,6 @@ export const TYPE_D_DISCIPLINE_PENALTIES = {
 export type TypeDDisciplineAction = 'NONE' | 'DEDUCT' | 'LOCK' | 'DEDUCT_OR_LOCK';
 
 export type TypeDDisciplineCaseKey =
-    | 'UNREGISTERED_NEXT_DAY'
     | 'NO_REGISTRATION'
     | 'NO_SHOW_NO_NOTICE'
     | 'LATE_REPORTED_NO_SHOW'
@@ -98,21 +97,12 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
     { action: TypeDDisciplineAction; hours: number; label: string; moTa: string }
 > = {
     /**
-     * ⚠️ Luật này KHÔNG có trong quy chế, nên mặc định TẮT.
-     *
-     * Quy chế chỉ xét ngày ĐÃ QUA: hết ngày mà không đăng ký gì và cũng không
-     * đến làm thì mới phạt. Luật "nhìn tới trước" này do code tự thêm, và bật
-     * nó lên thì nó nuốt luôn luật đúng: sau một đêm, mọi người còn dùng được
-     * app đều đã có đăng ký cho ngày mới, nên `NO_REGISTRATION` không bao giờ
-     * chạy tới — thành code chết.
-     *
-     * Muốn buộc KTV đăng ký trước thì bật ở Cài đặt → Loại D.
+     * ⚠️ Từng có thêm một luật "chưa đăng ký lịch cho NGÀY MỚI" chạy song song,
+     * hỏi về ngày vừa sang thay vì ngày vừa qua. Đã bỏ hẳn 12/09: nó hỏi cùng
+     * một chuyện với luật dưới đây, mà lại hỏi sớm hơn 24 tiếng — nên sau một
+     * đêm, mọi người còn dùng được app đều đã có đăng ký, và luật dưới đây
+     * không bao giờ chạy tới. Quy chế cũng chỉ xét ngày ĐÃ QUA.
      */
-    UNREGISTERED_NEXT_DAY: {
-        action: 'NONE', hours: 0,
-        label: 'Chưa đăng ký lịch cho ngày mới (ngoài quy chế)',
-        moTa: 'Lúc 00:00 hỏi về NGÀY VỪA SANG: đã đăng ký đi làm hoặc OFF cho hôm nay chưa. Quy chế không có luật này nên mặc định bỏ qua — bật lên thì nó nuốt luôn luật ngay bên dưới.',
-    },
     NO_REGISTRATION: {
         action: 'DEDUCT_OR_LOCK', hours: 10,
         label: 'Không đăng ký gì và không đi làm',

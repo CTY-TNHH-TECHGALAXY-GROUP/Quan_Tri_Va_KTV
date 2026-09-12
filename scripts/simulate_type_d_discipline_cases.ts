@@ -44,7 +44,7 @@ function fakeSupabase(rules: any, gioLamPhut: number, gioPhat: number) {
 }
 
 const CASES: TypeDDisciplineCaseKey[] = [
-    'UNREGISTERED_NEXT_DAY', 'NO_REGISTRATION', 'NO_SHOW_NO_NOTICE',
+    'NO_REGISTRATION', 'NO_SHOW_NO_NOTICE',
     'LATE_REPORTED_NO_SHOW', 'ABSENT_REPORTED_NO_SHOW',
 ];
 
