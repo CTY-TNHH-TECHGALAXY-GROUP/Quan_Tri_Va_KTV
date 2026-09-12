@@ -47,7 +47,6 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         externalTurns,
         allExternalStaffs,
         toggleExternalStaff,
-        deleteExternalStaff,
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,
@@ -421,20 +420,20 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
             </div>
             )}
 
-            {/* 🔥 Bảng KTV Ngoài (Tab C) */}
+            {/* Tab C — cộng tác viên có tài khoản thật. Quầy bật/tắt tay ở đây; bật rồi mới chọn được ở Điều phối. */}
             {activeTab === 'TYPE_C' && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
                     <h3 className="font-bold text-amber-800 text-sm flex items-center gap-2">
                         <span className="w-2 h-2 bg-amber-500 rounded-full" />
-                        Danh sách KTV Ngoài
+                        Cộng tác viên (loại C)
                     </h3>
-                    <span className="text-[10px] text-amber-500 font-bold">Bật để hiện gợi ý trên Sổ Tua</span>
+                    <span className="text-[10px] text-amber-500 font-bold">Bật để quầy chọn được ở Điều phối</span>
                 </div>
                 <div className="divide-y divide-amber-50 min-h-[80px]">
                     {allExternalStaffs.length === 0 ? (
                         <div className="p-8 text-center text-gray-400 text-sm">
-                            Chưa có KTV ngoài nào trong hệ thống
+                            Chưa có cộng tác viên nào — tạo ở Admin → Nhân viên (loại C)
                         </div>
                     ) : allExternalStaffs.map((staff, idx) => {
                         const turn = externalTurns.find(t => t.employee_id === staff.id);
@@ -540,13 +539,6 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer hover:opacity-90 ${!isOff ? 'bg-amber-500' : 'bg-gray-300'}`}
                                 >
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${!isOff ? 'translate-x-6' : 'translate-x-1'}`} />
-                                </button>
-                                <button
-                                    onClick={() => deleteExternalStaff(staff.id)}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-1"
-                                    title="Xóa KTV ngoài"
-                                >
-                                    <X size={14} strokeWidth={3} />
                                 </button>
                             </div>
                         </div>

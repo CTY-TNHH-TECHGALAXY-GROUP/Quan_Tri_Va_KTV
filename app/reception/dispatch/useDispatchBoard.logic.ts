@@ -4,7 +4,7 @@ import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
-import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
 const getCurrentTime = () => {
@@ -98,26 +98,32 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
      * Tách riêng để `refreshStaffOnly` dùng lại được mà không đụng tới `orders`.
      */
     /**
-     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho người KHÔNG điểm danh mà
-     * quầy vẫn được phân đơn: loại B on-call và loại C (cộng tác viên — không
-     * bắt buộc điểm danh, quyết định 12/09/2026). Dùng chung cho cả hai chỗ set
-     * turns trong fetchData; trước đây chỗ thứ hai ghép lại từ đầu nên làm rơi
-     * on-call.
+     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho loại B on-call (không điểm
+     * danh mà quầy vẫn phân được). Dùng chung cho cả hai chỗ set turns trong
+     * fetchData; trước đây chỗ thứ hai ghép lại từ đầu nên làm rơi on-call.
+     *
+     * Loại C (cộng tác viên) KHÔNG có tua ảo: quầy bật/tắt tay ở Sổ tua (tab
+     * Cộng tác viên → `toggleExternalStaff` ghi `TurnQueue` waiting/off), bật rồi
+     * mới xuất hiện ở ô chọn KTV — quyết định 12/09/2026.
+     *
+     * Mã placeholder cũ (EXT_/C_, đã ĐÃ NGHỈ) bị loại khỏi danh sách chọn:
+     * `syncTurnsForDate` vẫn có thể dựng lại dòng TurnQueue cho chúng từ
+     * TurnLedger ngày cũ, không được để lọt lên picker.
      */
     function mergeTurnsWithStaff(sData: StaffData[], tData: TurnQueueData[]) {
-        const merged = tData.map((t: TurnQueueData) => ({
-            ...t,
-            staff: sData.find(s => s.id === t.employee_id)
-        }));
+        const merged = tData
+            .filter(t => !isPlaceholderStaffId(t.employee_id))
+            .map((t: TurnQueueData) => ({
+                ...t,
+                staff: sData.find(s => s.id === t.employee_id)
+            }));
 
-        const walkInStaffs = sData.filter(s => {
+        const onCallStaffs = sData.filter(s => {
             const flags = s.feature_flags as any;
-            const isOnCall = !!flags && flags.is_on_call === true;
-            const isActiveTypeC = isTypeCWorkType(s.work_type) && s.status === 'ĐANG LÀM' && !isPlaceholderStaffId(s.id);
-            return isOnCall || isActiveTypeC;
+            return !!flags && flags.is_on_call === true;
         });
 
-        walkInStaffs.forEach(staff => {
+        onCallStaffs.forEach(staff => {
             if (!merged.some(m => m.employee_id === staff.id)) {
                 merged.push({
                     id: `fake-${staff.id}`,

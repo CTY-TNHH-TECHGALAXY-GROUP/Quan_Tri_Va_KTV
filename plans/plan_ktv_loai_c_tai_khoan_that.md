@@ -97,7 +97,7 @@ Tôi hiểu là: ô nhập tay ở bảng điều phối **đổi từ gõ tên 
 
 ## 6. Kết quả thực hiện (12/09/2026)
 
-**Chốt với user:** soft-delete · loại C ưu tiên hiện TÊN · không bắt buộc điểm danh · tay nghề admin tick trên form.
+**Chốt với user:** soft-delete · loại C ưu tiên hiện TÊN · không bắt buộc điểm danh · tay nghề admin tick trên form · **trạng thái hoạt động loại C bật/tắt TAY ở Sổ tua như cũ**, bật rồi mới hoạt động ở các menu đã cho phép (menu khách là app khác, đọc thẳng `Staff` — repo này không có code đọc 3 cờ menu).
 
 | Mục | Trạng thái | Ghi chú |
 |---|---|---|
@@ -106,7 +106,7 @@ Tôi hiểu là: ô nhập tay ở bảng điều phối **đổi từ gõ tên 
 | B1. Admin thấy/tạo loại C | ✅ | Bỏ lọc TYPE_C ở `api/staff/list`, `Employees.logic`, `getStaffList`; thay bằng `isPlaceholderStaffId` (gom về `lib/constants/staff.constants.ts`, `staff-features/route.ts` dùng chung). `createStaffMember` dùng `DEFAULT_FEATURE_FLAGS_TYPE_C`. Nhãn `WORK_TYPE_LABELS.TYPE_C` = "Cộng tác viên". |
 | B2. Ba công tắc | ✅ (migration đã chạy lên DB 12/09) | Phát hiện `is_active_therapy_menu` **chưa có trong DB** dù doc ghi có → migration `20260912150000_add_staff_is_active_therapy_menu.sql`. Thêm checkbox ở `AddEmployeeModal`, `EmployeeDetailModal`, badge ở `employees/page.tsx`, ghi ở `createStaffMember`/`updateStaffMember`. Sửa luôn bug cũ: tạo mới không ghi VIP/Home Spa. |
 | B3. Tay nghề | ✅ | Dùng `Staff.skills` + form sẵn có, không đổi. |
-| B4. Dispatch chọn loại C | ✅ | `useDispatchBoard.logic.ts`: `mergeTurnsWithStaff` thêm "tua ảo" cho loại C `ĐANG LÀM` (như on-call), dùng cho cả 2 chỗ set turns (chỗ thứ 2 trước đây làm rơi on-call). Hiển thị tên qua `ktvDisplayLabel` ở DispatchStaffRow / QuickDispatchTable / DispatchServiceBlock / KanbanBoard / feedback / customers API. Loại C xong việc → TurnQueue `off`. |
+| B4. Dispatch chọn loại C | ✅ (sửa lại 12/09 tối) | **Không có tua ảo.** Quầy bật/tắt tay ở Sổ tua tab "Cộng tác viên (loại C)" (`toggleExternalStaff` → `TurnQueue` waiting/off) — bật rồi mới xuất hiện ở ô chọn KTV. `processDispatch` chặn loại C chưa bật ("chưa được bật ở Sổ tua"). Xong việc → `waiting` (bật một lần dùng cả ngày, quầy tắt tay). Tab C chỉ hiện tài khoản thật `ĐANG LÀM`, ẩn 138 mã nhập tay; bỏ nút "Xóa KTV ngoài" (từng `DELETE Staff`). `mergeTurnsWithStaff` dùng cho cả 2 chỗ set turns (chỗ thứ 2 trước đây làm rơi on-call) và loại mã placeholder khỏi picker (vì `syncTurnsForDate` có thể dựng lại TurnQueue cho chúng từ TurnLedger ngày cũ). Hiển thị tên qua `ktvDisplayLabel` ở dispatch / Kanban / feedback / customers API. |
 | B5. Hàng đợi tua | Không đổi | `api/turns` vẫn ẩn C khỏi "Tất cả". |
 | B6. Tiền | Không đổi | |
 | B7. App KTV loại C | ⏳ Chưa rà | Cần tạo 1 tài khoản C thật rồi đăng nhập thử. |

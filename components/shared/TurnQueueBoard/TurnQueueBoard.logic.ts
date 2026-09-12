@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
 import { STAFF_STATUS } from '@/lib/constants/staffStatus';
+import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 
 export const useTurnQueueBoard = (staffs: StaffData[]) => {
     // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
@@ -55,9 +56,10 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
                     ...t,
                     staff: staffs.find(s => s.id === t.employee_id)
                 }));
-                // 🔥 Tách bằng work_type (KHÔNG dùng tiền tố mã nữa)
-                const internal = merged.filter((t: TurnQueueData) => t.work_type !== 'TYPE_C');
-                const external = merged.filter((t: TurnQueueData) => t.work_type === 'TYPE_C');
+                // Tách bằng work_type. Mã placeholder cũ (EXT_/C_, đã ĐÃ NGHỈ) bỏ hẳn —
+                // syncTurnsForDate vẫn dựng lại TurnQueue cho chúng từ TurnLedger ngày cũ.
+                const internal = merged.filter((t: TurnQueueData) => !isTypeCWorkType(t.work_type));
+                const external = merged.filter((t: TurnQueueData) => isTypeCWorkType(t.work_type) && !isPlaceholderStaffId(t.employee_id));
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -69,8 +71,11 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
 
     useEffect(() => {
         if (staffs.length > 0) {
-            // 🔥 Dùng work_type thay vì tiền tố mã
-            setAllExternalStaffs(staffs.filter(s => s.work_type === 'TYPE_C'));
+            // Chỉ cộng tác viên có tài khoản thật, đang làm. Từ dispatch, `staffs` còn
+            // lẫn 138 mã nhập tay cũ (ĐÃ NGHỈ) — không được lòi ra đây.
+            setAllExternalStaffs(staffs.filter(s =>
+                isTypeCWorkType(s.work_type) && s.status === STAFF_STATUS.WORKING && !isPlaceholderStaffId(s.id)
+            ));
             fetchTurns();
             fetchExtras();
         }
@@ -231,28 +236,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const deleteExternalStaff = async (staffId: string) => {
-        if (!confirm(`Bạn có chắc muốn xóa KTV ${staffId} khỏi danh sách?`)) return;
-        try {
-            // Xóa khỏi TurnQueue hôm nay
-            await supabase.from('TurnQueue').delete().eq('employee_id', staffId).eq('date', selectedDate);
-            // Xóa khỏi Staff
-            const { error } = await supabase.from('Staff').delete().eq('id', staffId);
-            if (error) {
-                // Nếu có liên kết khóa ngoại (BookingItems), chuyển sang ẩn
-                console.warn('Lỗi khóa ngoại, chuyển sang ẩn nhân viên', error);
-                // ⚠️ Chỗ này từng ghi 'NGHỈ VIỆC' — một biến thể KHÔNG nơi nào đọc,
-                // nên người bị ẩn khỏi mọi danh sách mà không hệ thống nào coi là
-                // đã nghỉ. Dùng đúng giá trị chuẩn.
-                await supabase.from('Staff').update({ status: STAFF_STATUS.RESIGNED }).eq('id', staffId);
-            }
-            setAllExternalStaffs(prev => prev.filter(s => s.id !== staffId));
-            setExternalTurns(prev => prev.filter(t => t.employee_id !== staffId));
-        } catch (err) {
-            console.error('Delete external staff error:', err);
-            alert('Lỗi khi xóa nhân viên!');
-        }
-    };
+    // Nút "Xóa KTV ngoài" (DELETE Staff / ép ĐÃ NGHỈ) đã bỏ 12/09/2026: loại C giờ
+    // là tài khoản thật, cho nghỉ việc phải qua Admin → Nhân viên như mọi loại khác.
 
     const sortedTurns = localOrder;
     const readyCount = turns.filter(t => t.status === 'waiting' && !suddenOffs.has(t.employee_id)).length;
@@ -382,7 +367,6 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         externalTurns,
         allExternalStaffs: sortedExternalStaffs,
         toggleExternalStaff,
-        deleteExternalStaff,
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,

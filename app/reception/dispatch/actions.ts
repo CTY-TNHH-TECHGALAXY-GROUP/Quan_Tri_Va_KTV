@@ -633,8 +633,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
 
         const { data: knownStaffs } = uniqueKtvIds.length > 0
-            ? await supabase.from('Staff').select('id, work_type').in('id', uniqueKtvIds)
-            : { data: [] as { id: string; work_type: string | null }[] };
+            ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
+            : { data: [] as { id: string; full_name: string | null; work_type: string | null }[] };
         const knownStaffById = new Map((knownStaffs || []).map(st => [st.id, st]));
         const unknownKtvIds = uniqueKtvIds.filter(id => !knownStaffById.has(id));
         if (unknownKtvIds.length > 0) {
@@ -644,28 +644,36 @@ export async function processDispatch(bookingId: string, dispatchData: {
             };
         }
 
-        // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
-        // Chặn KTV cơ hữu chưa chấm công. Loại C (cộng tác viên) KHÔNG bắt buộc
-        // điểm danh — quyết định 12/09/2026 — nên bỏ qua như EXT/C_ trước đây.
-        const coreKtvIds = uniqueKtvIds.filter(id => !isTypeCWorkType(knownStaffById.get(id)?.work_type));
-        
-        if (coreKtvIds.length > 0) {
-            const { data: activeTurns } = await supabase
+        // 🔥 KIỂM TRA ĐIỂM DANH / BẬT SỔ TUA
+        // Mọi KTV trên đơn phải có dòng TurnQueue hôm đó ≠ 'off':
+        //   · loại A/B/D — do điểm danh (hoặc on-call) tạo ra;
+        //   · loại C — do quầy bật tay ở Sổ tua (tab Cộng tác viên), không điểm danh.
+        // Tách hai câu lỗi để quầy biết phải làm gì.
+        const { data: activeTurns } = uniqueKtvIds.length > 0
+            ? await supabase
                 .from('TurnQueue')
                 .select('employee_id')
                 .eq('date', dispatchData.date)
-                .in('employee_id', coreKtvIds)
-                .neq('status', 'off');
-                
-            const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
-            const missingCheckins = coreKtvIds.filter(id => !activeKtvIds.has(id));
-            
-            if (missingCheckins.length > 0) {
-                return { 
-                    success: false, 
-                    error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!` 
-                };
-            }
+                .in('employee_id', uniqueKtvIds)
+                .neq('status', 'off')
+            : { data: [] as { employee_id: string }[] };
+        const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
+        const inactiveKtvIds = uniqueKtvIds.filter(id => !activeKtvIds.has(id));
+        const inactiveTypeC = inactiveKtvIds.filter(id => isTypeCWorkType(knownStaffById.get(id)?.work_type));
+        const missingCheckins = inactiveKtvIds.filter(id => !inactiveTypeC.includes(id));
+
+        if (missingCheckins.length > 0) {
+            return {
+                success: false,
+                error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!`
+            };
+        }
+        if (inactiveTypeC.length > 0) {
+            const names = inactiveTypeC.map(id => knownStaffById.get(id)?.full_name || id);
+            return {
+                success: false,
+                error: `Không thể điều phối: cộng tác viên [${names.join(', ')}] chưa được bật ở Sổ tua (tab Cộng tác viên). Bật lên rồi chọn lại.`
+            };
         }
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
@@ -1761,12 +1769,6 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             }
 
             const { data: turnsToRelease } = await queryToRelease;
-            // Loại C không điểm danh nên xong việc là rời hàng đợi ('off'), không về 'waiting'.
-            const releaseIds = (turnsToRelease || []).map(t => t.employee_id).filter(Boolean);
-            const { data: releaseStaffs } = releaseIds.length > 0
-                ? await supabase.from('Staff').select('id, work_type').in('id', releaseIds)
-                : { data: [] as { id: string; work_type: string | null }[] };
-            const typeCReleaseIds = new Set((releaseStaffs || []).filter(st => isTypeCWorkType(st.work_type)).map(st => st.id));
 
             if (turnsToRelease && turnsToRelease.length > 0) {
                 for (const turn of turnsToRelease) {
@@ -1785,7 +1787,9 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     } else {
                         // KTV đã xong tất cả item của họ
                         let newTurnsCompleted = turn.turns_completed || 0;
-                        const newStatus = (turn.status === 'off' || isPlaceholderStaffId(turn.employee_id) || typeCReleaseIds.has(turn.employee_id)) ? 'off' : 'waiting';
+                        // Loại C (tài khoản thật) về 'waiting' như mọi người — quầy bật một lần dùng cả
+                        // ngày, tắt tay ở Sổ tua khi họ về. Chỉ mã placeholder cũ mới bị đá về 'off'.
+                        const newStatus = (turn.status === 'off' || isPlaceholderStaffId(turn.employee_id)) ? 'off' : 'waiting';
                         await supabase
                             .from('TurnQueue')
                             .update({
