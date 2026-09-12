@@ -155,3 +155,25 @@ với Supabase giả, 4 mức quỹ giờ × 5 tình huống, 5 cách cấu hìn
 
 **🐞 Lỗi phát hiện khi làm:** `deductDailyViolation` lấy số giờ từ HẰNG SỐ, không đọc cấu hình.
 Ba ô "Giờ" trên trang Cài đặt chỉ để trang trí — sửa 10 thành 8 thì hệ thống vẫn trừ 10. Đã sửa.
+
+
+---
+
+## Sửa tiếp 12/09 (tối) — bỏ luật "nhìn tới trước"
+
+Chủ Dự Án chỉ ra: nếu cron khoá người chưa đăng ký cho NGÀY MỚI, thì sau một đêm, mọi người
+còn dùng được app đều đã có đăng ký cho ngày đó — nên luật "hôm qua không đăng ký gì" **không
+bao giờ chạy tới**. Code chết.
+
+Và luật nuốt mất luật kia lại chính là luật **không có trong quy chế**.
+
+**Xử lý:** thêm chế tài thứ tư `NONE` (Bỏ qua — không xử lý), và đặt
+`UNREGISTERED_NEXT_DAY` mặc định `NONE`. Quy chế chỉ xét ngày ĐÃ QUA. Muốn buộc KTV đăng ký
+trước thì bật lại ở Cài đặt.
+
+**Thêm công tắc tổng vào trang Cài đặt.** Trên main khối "Kỷ luật trễ giờ tích lũy" hoàn toàn
+không có công tắc — `ktv_type_d_discipline_enabled` chỉ sửa được bằng tay trong DB.
+
+**Dự đoán đêm 12/09 với luật mới** (chạy trên dữ liệu thật, chỉ đọc): 12 KTV bị khoá vì hôm nay
+không đăng ký gì và cũng không đến làm, quỹ giờ 0h < 10h nên khoá thay vì trừ. T007 thoát vì có
+đi làm thật. Cùng con số với luật cũ nhưng **đúng lý do**.

@@ -47,7 +47,8 @@ export const TYPE_D_DISCIPLINE_PENALTIES = {
  * `SystemConfigs.ktv_type_d_discipline_rules.CASES`. Hằng số ở đây là lưới an
  * toàn khi cấu hình trống hoặc hỏng.
  *
- * Ba chế tài:
+ * Bốn chế tài:
+ *   · NONE            — bỏ qua, chỉ ghi log
  *   · DEDUCT          — chỉ trừ giờ, không bao giờ khoá
  *   · LOCK            — khoá thẳng, không trừ giờ
  *   · DEDUCT_OR_LOCK  — quỹ giờ đủ thì trừ; không đủ thì khoá và KHÔNG trừ
@@ -56,7 +57,7 @@ export const TYPE_D_DISCIPLINE_PENALTIES = {
  * 13–14) cộng quyết định 12/09: mọi lỗi vắng mặt đều quy ra giờ, khoá tài khoản
  * chỉ là chế tài cuối khi quỹ giờ không gánh nổi.
  */
-export type TypeDDisciplineAction = 'DEDUCT' | 'LOCK' | 'DEDUCT_OR_LOCK';
+export type TypeDDisciplineAction = 'NONE' | 'DEDUCT' | 'LOCK' | 'DEDUCT_OR_LOCK';
 
 export type TypeDDisciplineCaseKey =
     | 'UNREGISTERED_NEXT_DAY'
@@ -69,9 +70,20 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
     TypeDDisciplineCaseKey,
     { action: TypeDDisciplineAction; hours: number; label: string }
 > = {
+    /**
+     * ⚠️ Luật này KHÔNG có trong quy chế, nên mặc định TẮT.
+     *
+     * Quy chế chỉ xét ngày ĐÃ QUA: hết ngày mà không đăng ký gì và cũng không
+     * đến làm thì mới phạt. Luật "nhìn tới trước" này do code tự thêm, và bật
+     * nó lên thì nó nuốt luôn luật đúng: sau một đêm, mọi người còn dùng được
+     * app đều đã có đăng ký cho ngày mới, nên `NO_REGISTRATION` không bao giờ
+     * chạy tới — thành code chết.
+     *
+     * Muốn buộc KTV đăng ký trước thì bật ở Cài đặt → Loại D.
+     */
     UNREGISTERED_NEXT_DAY: {
-        action: 'LOCK', hours: 0,
-        label: 'Chưa đăng ký lịch cho ngày mới',
+        action: 'NONE', hours: 0,
+        label: 'Chưa đăng ký lịch cho ngày mới (ngoài quy chế)',
     },
     NO_REGISTRATION: {
         action: 'DEDUCT_OR_LOCK', hours: 10,

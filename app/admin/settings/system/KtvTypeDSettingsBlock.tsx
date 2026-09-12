@@ -9,10 +9,22 @@ import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/cons
  * bên `staff.constants.ts` — cron đọc đúng mấy chuỗi này.
  */
 const CHE_TAI = [
+    { value: 'NONE',           label: 'Bỏ qua — không xử lý' },
     { value: 'DEDUCT',         label: 'Chỉ trừ giờ' },
     { value: 'LOCK',           label: 'Khoá tài khoản' },
     { value: 'DEDUCT_OR_LOCK', label: 'Trừ giờ, không đủ thì khoá' },
 ] as const;
+
+/**
+ * `SystemConfigs.value` là jsonb — cùng một công tắc có thể về `true`, `"true"`
+ * hoặc `'"true"'` tuỳ nó được ghi từ đâu. So `=== true` là hỏng thầm lặng.
+ * Giống hệt hàm `toBool` mà cron đang dùng, để hai bên đọc ra cùng một kết quả.
+ */
+const doiSangBool = (raw: any, macDinh = false): boolean => {
+    if (raw === undefined || raw === null || raw === '') return macDinh;
+    if (typeof raw === 'boolean') return raw;
+    return String(raw).replace(/"/g, '').trim().toLowerCase() === 'true';
+};
 
 /** Thứ tự hiện trên bảng — theo dòng thời gian một ngày làm việc. */
 const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
@@ -213,10 +225,36 @@ export function KtvTypeDSettingsBlock() {
                         </div>
                         <h2 className="text-lg font-black text-gray-900">Kỷ luật trễ giờ tích lũy</h2>
                     </div>
-                    <SaveButton group="discipline" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_discipline_rules'], 'discipline')} />
+                    <SaveButton group="discipline" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_discipline_enabled', 'ktv_type_d_discipline_rules'], 'discipline')} />
                 </div>
                 
                 <div className="space-y-5 max-w-3xl">
+                    {/* ─── CÔNG TẮC TỔNG ─────────────────────────────────────────
+                        Tắt là tắt SẠCH: không khoá ai, không trừ giờ ai, không
+                        chặn từ chối tua. Cron vẫn chạy và vẫn ghi log "sẽ đụng
+                        vào ai" để quản lý soi trước — chỉ không ghi vào sổ.
+
+                        Mặc định TẮT: mất cấu hình thì không phạt ai còn hơn phạt
+                        nhầm cả nhóm. */}
+                    {(() => {
+                        const dangBat = doiSangBool(configs.ktv_type_d_discipline_enabled, false);
+                        return (
+                            <div className={`flex items-center justify-between gap-4 p-4 rounded-2xl border ${dangBat ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="min-w-0">
+                                    <p className={`font-black ${dangBat ? 'text-red-700' : 'text-gray-500'}`}>
+                                        {dangBat ? '⚠️ Kỷ luật đang BẬT — phạt và khoá thật' : 'Kỷ luật đang TẮT'}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                                        {dangBat
+                                            ? 'Cron nửa đêm sẽ trừ giờ và khoá tài khoản theo bảng bên dưới.'
+                                            : 'Cron vẫn chạy và vẫn ghi log sẽ đụng vào ai, nhưng không trừ giờ, không khoá ai, và không chặn từ chối tua.'}
+                                    </p>
+                                </div>
+                                <Toggle value={dangBat} onChange={(v: any) => handleChange('ktv_type_d_discipline_enabled', v)} />
+                            </div>
+                        );
+                    })()}
+
                     {/* ─── Bảng chế tài: mỗi tình huống một dòng ─────────────────
                         Trước đây chỉ chỉnh được SỐ GIỜ, còn "khoá hay trừ" thì
                         viết cứng trong cron — muốn đổi phải sửa code rồi deploy.
@@ -259,7 +297,7 @@ export function KtvTypeDSettingsBlock() {
                                         </div>
                                         <div className="col-span-2">
                                             {/* Khoá thẳng thì số giờ vô nghĩa — khoá ô lại cho khỏi hiểu nhầm. */}
-                                            {cai.action === 'LOCK' ? (
+                                            {cai.action === 'LOCK' || cai.action === 'NONE' ? (
                                                 <p className="text-right text-sm text-gray-300 font-bold">—</p>
                                             ) : (
                                                 <input
@@ -280,7 +318,7 @@ export function KtvTypeDSettingsBlock() {
                     <div className="pt-1">
                         <p className="text-xs font-black uppercase tracking-wider text-gray-500 mb-3">Phạt ngay khi vi phạm</p>
                         <div className="space-y-4">
-                            <NumberInput label="Đi trễ không cập nhật" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
+                            <NumberInput label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
                             <NumberInput label="Bỏ ca đã đăng ký sau 00:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
                             <NumberInput label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
                             <NumberInput label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />

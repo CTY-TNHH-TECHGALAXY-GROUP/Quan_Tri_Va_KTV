@@ -236,10 +236,9 @@ export class KtvTypeDDisciplineService {
         const mac_dinh = TYPE_D_DISCIPLINE_CASES[caseKey];
         const raw = (await readRules(supabase))?.CASES?.[caseKey];
 
+        const HOP_LE: TypeDDisciplineAction[] = ['NONE', 'DEDUCT', 'LOCK', 'DEDUCT_OR_LOCK'];
         const action: TypeDDisciplineAction =
-            raw?.action === 'DEDUCT' || raw?.action === 'LOCK' || raw?.action === 'DEDUCT_OR_LOCK'
-                ? raw.action
-                : mac_dinh.action;
+            HOP_LE.includes(raw?.action) ? raw.action : mac_dinh.action;
 
         const hours = Number(raw?.hours);
         return {
@@ -282,7 +281,9 @@ export class KtvTypeDDisciplineService {
         let ketQua: 'LOCK' | 'DEDUCT' | 'NONE' = 'NONE';
         let netHours: number | null = null;
 
-        if (policy.action === 'LOCK') {
+        if (policy.action === 'NONE') {
+            ketQua = 'NONE';
+        } else if (policy.action === 'LOCK') {
             ketQua = 'LOCK';
         } else if (policy.hours <= 0) {
             // Cấu hình 0 giờ = tắt riêng lỗi này. Trừ 0 giờ thì chỉ tạo rác trong sổ.
