@@ -142,3 +142,42 @@ User chốt: **cắt luôn phần lẻ ở trần rút**.
 Hai định nghĩa "số dư" khác nhau trên cùng màn. Cần user chốt: số dư luỹ kế dưới
 mỗi dòng nên tính cả tua chờ khách đánh giá, hay chỉ tính tua đã chốt? Tách việc
 riêng — đụng ý nghĩa con số chứ không phải cách hiển thị.
+
+---
+
+## 10. Bổ sung — số dư luỹ kế CHỈ tính tua đã chốt (12/09/2026)
+
+User chốt mục 9: **chỉ tính tua đã chốt**.
+
+**Nguyên nhân gốc rễ.** `KtvWalletService.getBalance` và `attachRunningBalance`
+định nghĩa "số dư" khác nhau:
+
+| | Số dư lớn (`getBalance`) | Số dư luỹ kế (`attachRunningBalance`) |
+|---|---|---|
+| Tua loại D `is_provisional` | **bỏ** (trả riêng `pending_review_amount`) | **cộng vào** |
+| Thuế của tua đó | **bỏ** | **cộng vào** (dòng thuế đang mang `status: 'APPROVED'`) |
+| Tua A/B/C `HELD` (đang tạm giữ) | **bỏ** (chỉ cộng tua qua `checkIsItemPassed`) | **cộng vào** |
+| Lệnh rút `PENDING` | **trừ** (`total_pending`) | **trừ** |
+
+Vì vậy **không được chặn theo `status === 'PENDING'` chung chung** — làm thế là
+bỏ luôn lệnh rút đang chờ duyệt, số dư lại sai theo hướng khác.
+
+**Code** — 2 file:
+- `app/api/ktv/wallet/timeline/route.ts`: thêm hàm `countsTowardBalance(item)` làm
+  **một chỗ duy nhất** định nghĩa "dòng này có vào số dư chưa" (bỏ TIP, dòng bị từ
+  chối, `is_provisional`, `HELD`; vẫn tính lệnh rút `PENDING`). Dòng tua loại D và
+  dòng thuế đi kèm nay mang cờ `is_provisional`.
+- `app/ktv/wallet/page.tsx`: dòng chưa chốt **không hiện chip "Số dư"** — hiện thì
+  hai dòng liền nhau ra cùng một con số, đọc như lỗi.
+
+**Kiểm chứng**
+- Số dư lớn = số dư ở dòng **đã chốt** mới nhất: **7/7 KTV khớp tuyệt đối**, gồm
+  T069 (`−30.000đ`, còn `10.500đ` tạm tính nằm ngoài) và một KTV loại C
+  (`C_9HPU96`, `9.266.000đ` — có trừ tiền cọc).
+- 4 dòng tạm tính của T069 giữ nguyên số dư của dòng chốt trước đó, không đội lên.
+- `npm run test:qa` (16 bộ): ĐẠT. Typecheck sạch, eslint không thêm lỗi mới,
+  `/ktv/wallet` trả 200.
+
+**Còn lại**: dữ liệu hiện tại **không có dòng `HELD` nào** nên nhánh A/B/C chưa
+được dữ liệu thật soi tới — logic đối xứng với nhánh loại D và khớp định nghĩa của
+`getBalance`, nhưng nên để mắt khi có đơn A/B/C bị tạm giữ.

@@ -99,6 +99,30 @@ function attachBusinessDate(timeline: any[], cutoffHours: number): void {
  * thiếu `running_balance`, giao diện đổ về 0 — KTV vừa được cộng 33.333đ mà
  * dòng nào cũng ghi "Số dư: 0đ".
  */
+/**
+ * Dòng này có được tính vào SỐ DƯ chưa.
+ *
+ * Phải khớp đúng định nghĩa của `KtvWalletService.getBalance` — hai bên lệch
+ * nhau là màn Ví hiện hai con số khác nhau (T069 từng lệch 10.500đ vì số dư lớn
+ * bỏ tua tạm tính còn số dư luỹ kế thì cộng vào).
+ *
+ * KHÔNG tính:
+ *  · TIP — không nằm trong ví
+ *  · dòng bị từ chối
+ *  · tua CHƯA CHỐT: loại D `is_provisional` (chờ khách đánh giá), A/B/C `HELD`
+ *    (đang tạm giữ). `getBalance` cũng chỉ cộng tua đã qua `checkIsItemPassed`.
+ *
+ * ⚠️ Lệnh rút tiền `PENDING` thì VẪN TÍNH — số dư lớn đã trừ `total_pending`.
+ * Nên không được chặn theo `status === 'PENDING'` chung chung.
+ */
+function countsTowardBalance(item: any): boolean {
+    if (item.type === 'TIP') return false;
+    if (item.status === 'REJECTED') return false;
+    if (item.is_provisional === true) return false;
+    if (item.status === 'HELD') return false;
+    return true;
+}
+
 function attachRunningBalance(timeline: any[], minDeposit = 0): void {
     const asc = timeline.slice().sort((a, b) => {
         const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
@@ -108,7 +132,7 @@ function attachRunningBalance(timeline: any[], minDeposit = 0): void {
 
     let balance = 0;
     for (const item of asc) {
-        if (item.type !== 'TIP' && item.status !== 'REJECTED') {
+        if (countsTowardBalance(item)) {
             balance += Number(item.amount);
         }
         item.running_balance = balance - minDeposit;
@@ -288,6 +312,7 @@ export async function GET(request: Request) {
                             + (g.is_provisional ? ' · tạm tính' : ''),
                         created_at: at,
                         status: g.is_provisional ? 'PENDING' : 'APPROVED',
+                        is_provisional: g.is_provisional,
                     });
                 }
                 if (g.tax_amount > 0) {
@@ -299,6 +324,9 @@ export async function GET(request: Request) {
                         note: 'Khấu trừ 10%',
                         created_at: at,
                         status: 'APPROVED',
+                        // Thuế của tua tạm tính cũng là tạm tính: khách đổi mức
+                        // đánh giá là tiền tua đổi, thuế đổi theo.
+                        is_provisional: g.is_provisional,
                     });
                 }
                 if (g.tip > 0) {

@@ -445,6 +445,11 @@ export default function KTVWalletPage() {
                                                     const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : item.type === 'WITHDRAWAL';
                                                     const isPending = item.status === 'PENDING';
                                                     const isRejected = item.status === 'REJECTED';
+                                                    // Tua CHƯA CHỐT không có trong số dư (server bỏ qua khi
+                                                    // cộng), nên cũng không hiện chip "Số dư" — hiện thì hai dòng
+                                                    // liền nhau ra cùng một con số, đọc như lỗi.
+                                                    const daChot = item.type !== 'TIP' && !isRejected
+                                                        && !item.is_provisional && item.status !== 'HELD';
                                                     
                                                     let Icon = Zap;
                                                     let iconColor = 'text-slate-500';
@@ -484,12 +489,12 @@ export default function KTVWalletPage() {
                                                                         <span className="text-[10px] text-slate-400 font-medium">
                                                                             {fmtClockOnDate(item.created_at || item.date, group.businessDate)}
                                                                         </span>
-                                                                        {activeTab === 'TUA' && item.type !== 'TIP' && !isRejected && (
+                                                                        {activeTab === 'TUA' && daChot && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
                                                                                 Số dư: <span className="font-bold text-slate-600">{formatVnd(item.running_balance)}</span>
                                                                             </span>
                                                                         )}
-                                                                        {activeTab === 'BONUS' && !isRejected && (
+                                                                        {activeTab === 'BONUS' && daChot && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
                                                                                 Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()} điểm</span>
                                                                             </span>
