@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { formatVnd } from '@/lib/format.logic';
 import { createClient } from '@supabase/supabase-js';
 import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
@@ -77,7 +78,10 @@ export async function POST(request: Request) {
 
             // `available_balance` đã là max(0, số dư ròng − cọc tối thiểu), tức
             // đúng bằng số được phép rút mà KHÔNG chạm vào tiền cọc.
-            const availableBalance = Number(balanceData.available_balance || 0);
+            // CẮT phần lẻ: KTV nhìn thấy "86.971đ" trên ví thì trần rút đúng
+            // bằng đó. Không cắt thì hệ thống cho rút 86.971,719đ — số mà màn
+            // hình chưa bao giờ hiện, và cũng không tiêu được.
+            const availableBalance = Math.trunc(Number(balanceData.available_balance || 0));
             const minDeposit = Number(balanceData.min_deposit || 0);
             const netBalance = Number(balanceData.net_balance || 0);
 
@@ -86,8 +90,8 @@ export async function POST(request: Request) {
                 return NextResponse.json({
                     success: false,
                     error: availableBalance <= 0
-                        ? `Chưa thể rút tiền. Số dư ${netBalance.toLocaleString('vi-VN')}đ chưa vượt mức cọc tối thiểu ${minDeposit.toLocaleString('vi-VN')}đ.`
-                        : `Chỉ được rút tối đa ${availableBalance.toLocaleString('vi-VN')}đ. Rút ${requestAmount.toLocaleString('vi-VN')}đ sẽ làm số dư còn ${conLai.toLocaleString('vi-VN')}đ, thấp hơn mức cọc tối thiểu ${minDeposit.toLocaleString('vi-VN')}đ.`,
+                        ? `Chưa thể rút tiền. Số dư ${formatVnd(netBalance)} chưa vượt mức cọc tối thiểu ${formatVnd(minDeposit)}.`
+                        : `Chỉ được rút tối đa ${formatVnd(availableBalance)}. Rút ${formatVnd(requestAmount)} sẽ làm số dư còn ${formatVnd(conLai)}, thấp hơn mức cọc tối thiểu ${formatVnd(minDeposit)}.`,
                 }, { status: 400 });
             }
         }

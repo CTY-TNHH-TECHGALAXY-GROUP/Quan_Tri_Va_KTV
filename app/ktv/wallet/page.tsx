@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { walletLabel } from '@/lib/featureFlags';
 import { fmtWeekday, fmtFullDate, fmtClockOnDate } from '@/lib/hours-format';
+import { formatVnd } from '@/lib/format.logic';
 import { useKTVWallet } from './KTVWallet.logic';
 import { t } from './KTVWallet.i18n';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
@@ -47,7 +48,9 @@ export default function KTVWalletPage() {
             //     alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
             //     return;
             // }
-            setWithdrawModal({ isOpen: true, type, maxAmount: Math.max(0, max) });
+            // Trần rút CẮT phần lẻ: KTV nhìn thấy "86.971đ" thì chỉ được rút
+            // tối đa đúng bằng đó, không phải 86.971,719đ. Server cắt lần nữa.
+            setWithdrawModal({ isOpen: true, type, maxAmount: Math.trunc(Math.max(0, max)) });
         } else {
             if (!bonusBalance || bonusBalance.points <= 0) {
                 addToast('Bạn chưa có điểm thưởng nào để quy đổi.', 'error');
@@ -69,6 +72,8 @@ export default function KTVWalletPage() {
 
     const handleWithdrawAll = () => {
         if (!withdrawModal) return;
+        // Giữ định dạng en-US: chuỗi này được parse lại bằng replace(/,/g,'').
+        // Dùng dấu chấm kiểu Việt ở đây là biến 86.971đ thành 86,971đ.
         setWithdrawAmountStr(withdrawModal.maxAmount.toLocaleString('en-US'));
     };
 
@@ -236,17 +241,17 @@ export default function KTVWalletPage() {
                                 <div className="mb-5">
                                     <p className="text-[10px] text-emerald-200 uppercase tracking-widest mb-1">Số dư khả dụng</p>
                                     <p className="text-4xl font-black tracking-tight drop-shadow-sm">
-                                        {Number(walletBalance.available_balance || 0).toLocaleString()}đ
+                                        {formatVnd(walletBalance.available_balance)}
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
                                     <div>
                                         <p className="text-emerald-200/70 text-[10px] uppercase mb-0.5">Số dư hiện tại</p>
-                                        <p className="font-bold">{Number(walletBalance.net_balance || 0).toLocaleString()}đ</p>
+                                        <p className="font-bold">{formatVnd(walletBalance.net_balance)}</p>
                                     </div>
                                     <div>
                                         <p className="text-emerald-200/70 text-[10px] uppercase mb-0.5">Đang chờ duyệt</p>
-                                        <p className="font-bold text-amber-300">{Number(walletBalance.total_pending || 0).toLocaleString()}đ</p>
+                                        <p className="font-bold text-amber-300">{formatVnd(walletBalance.total_pending)}</p>
                                     </div>
                                 </div>
                                 <button 
@@ -291,9 +296,9 @@ export default function KTVWalletPage() {
                                             <span className="text-xl font-bold">/ 100</span>
                                         </p>
                                         <p className="text-xs text-amber-100/90 font-medium mt-1">
-                                            Trung bình {Number(bonusBalance.avg ?? 0).toLocaleString('vi-VN')}đ/ngày
+                                            Trung bình {formatVnd(bonusBalance.avg)}/ngày
                                             {Number(bonusBalance.repeatPenalty) > 0
-                                                && ` · trừ thêm ${Number(bonusBalance.repeatPenalty).toLocaleString('vi-VN')}đ do lỗi lặp`}
+                                                && ` · trừ thêm ${formatVnd(bonusBalance.repeatPenalty)} do lỗi lặp`}
                                         </p>
                                     </div>
 
@@ -315,9 +320,9 @@ export default function KTVWalletPage() {
                                             Quỹ nội bộ tháng này còn phải đóng
                                         </p>
                                         <p className="text-2xl font-black">
-                                            {Number(bonusBalance.fundDue ?? 0).toLocaleString('vi-VN')}đ
+                                            {formatVnd(bonusBalance.fundDue)}
                                             <span className="text-xs font-bold text-amber-100/70">
-                                                {' '}/ {Number(bonusBalance.fundBase ?? 250000).toLocaleString('vi-VN')}đ
+                                                {' '}/ {formatVnd(bonusBalance.fundBase ?? 250000)}
                                             </span>
                                         </p>
                                         <p className="text-[11px] font-medium text-amber-100/90 mt-1">
@@ -402,7 +407,7 @@ export default function KTVWalletPage() {
                                         </p>
                                     </div>
                                     <p className="text-xs text-amber-100/90 font-medium">
-                                        (Tương đương <span className="font-bold text-white">{Number(bonusBalance.vnd_value || 0).toLocaleString()}đ</span>)
+                                        (Tương đương <span className="font-bold text-white">{formatVnd(bonusBalance.vnd_value)}</span>)
                                     </p>
                                 </div>
                                 
@@ -470,7 +475,7 @@ export default function KTVWalletPage() {
                                                                 <div className="flex items-center justify-between mb-1">
                                                                     <span className={`font-bold text-xs line-clamp-2 pr-2 ${isRejected ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{titleText}</span>
                                                                     <span className={`font-black text-sm whitespace-nowrap ${isRejected ? 'text-slate-400 line-through' : isWithdrawal ? 'text-rose-600' : isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                        {isPositive ? '+' : '-'}{displayAmount.toLocaleString()}{activeTab === 'BONUS' ? ' điểm' : 'đ'}
+                                                                        {isPositive ? '+' : '-'}{activeTab === 'BONUS' ? `${displayAmount.toLocaleString('vi-VN')} điểm` : formatVnd(displayAmount)}
                                                                     </span>
                                                                 </div>
                                                                 {noteText && <div className={`mt-1.5 text-[10px] p-2 rounded-lg ${isRejected ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>{noteText}</div>}
@@ -481,7 +486,7 @@ export default function KTVWalletPage() {
                                                                         </span>
                                                                         {activeTab === 'TUA' && item.type !== 'TIP' && !isRejected && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
-                                                                                Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()}đ</span>
+                                                                                Số dư: <span className="font-bold text-slate-600">{formatVnd(item.running_balance)}</span>
                                                                             </span>
                                                                         )}
                                                                         {activeTab === 'BONUS' && !isRejected && (

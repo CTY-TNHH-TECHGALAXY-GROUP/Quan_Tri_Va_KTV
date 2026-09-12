@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { formatVnd } from '@/lib/format.logic';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceKTV } from './FinanceKTV.logic';
 import { t, workTypeLabel } from './FinanceKTV.i18n';
@@ -136,7 +137,7 @@ export default function FinanceKTVPage() {
 
                                     <div className={`rounded-2xl p-4 mb-6 flex items-center justify-between ${isBonus ? 'bg-amber-50' : 'bg-rose-50'}`}>
                                         <span className={`text-xs font-black uppercase tracking-widest ${isBonus ? 'text-amber-800' : 'text-rose-800'}`}>Số tiền cần đưa</span>
-                                        <span className={`text-2xl font-black tracking-tight ${isBonus ? 'text-amber-600' : 'text-rose-600'}`}>{req.amount.toLocaleString()}đ</span>
+                                        <span className={`text-2xl font-black tracking-tight ${isBonus ? 'text-amber-600' : 'text-rose-600'}`}>{formatVnd(req.amount)}</span>
                                     </div>
                                     
                                     {req.note && !isBonus && (
@@ -217,7 +218,7 @@ export default function FinanceKTVPage() {
                                                         <span className="font-bold text-slate-400 uppercase text-[10px] tracking-widest bg-slate-100 px-2 py-1 rounded">Báo trước</span>
                                                     ) : (
                                                         <>
-                                                            <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{req.amount.toLocaleString()}đ</span>
+                                                            <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{formatVnd(req.amount)}</span>
                                                             {isBonus && <span className="ml-2 text-[9px] font-bold text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded uppercase">Bonus</span>}
                                                         </>
                                                     )}
@@ -398,36 +399,36 @@ export default function FinanceKTVPage() {
                                                         </span>
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-slate-500 font-bold">{Number(ktv.previous_balance || 0).toLocaleString()}đ</td>
-                                                <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_commission || 0).toLocaleString()}đ</td>
-                                                <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_tip || 0).toLocaleString()}đ</td>
+                                                <td className="px-6 py-4 text-right text-slate-500 font-bold">{formatVnd(ktv.previous_balance)}</td>
+                                                <td className="px-6 py-4 text-right text-slate-600">{formatVnd(ktv.total_commission)}</td>
+                                                <td className="px-6 py-4 text-right text-slate-600">{formatVnd(ktv.total_tip)}</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">
-                                                    {(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0)).toLocaleString()}đ
+                                                    {formatVnd(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0))}
                                                     {Number(ktv.total_bonus || 0) > 0 && (
                                                         <span className="block text-[9px] text-indigo-400 font-bold mt-0.5">
-                                                            ★ {Number(ktv.total_bonus).toLocaleString()}đ
+                                                            ★ {formatVnd(ktv.total_bonus)}
                                                         </span>
                                                     )}
                                                     {Number(ktv.total_adjustment || 0) !== 0 && (
                                                         <span className={`block text-[9px] font-bold mt-0.5 ${Number(ktv.total_adjustment) > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                            {Number(ktv.total_adjustment) > 0 ? '+' : ''}{Number(ktv.total_adjustment).toLocaleString()}đ
+                                                            {Number(ktv.total_adjustment) > 0 ? '+' : ''}{formatVnd(ktv.total_adjustment)}
                                                         </span>
                                                     )}
                                                     {Number(ktv.total_penalty || 0) > 0 && (
                                                         <span className="block text-[9px] font-bold mt-0.5 text-rose-600">
-                                                            - Phạt {Number(ktv.total_penalty).toLocaleString()}đ
+                                                            - Phạt {formatVnd(ktv.total_penalty)}
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-black text-slate-800">{Number(ktv.gross_income || 0).toLocaleString()}đ</td>
+                                                <td className="px-6 py-4 text-right font-black text-slate-800">{formatVnd(ktv.gross_income)}</td>
                                                 <td className="px-6 py-4 text-right text-rose-600">
-                                                    <span className="font-bold">{Number(ktv.total_withdrawn || 0).toLocaleString()}đ</span>
+                                                    <span className="font-bold">{formatVnd(ktv.total_withdrawn)}</span>
                                                     {Number(ktv.total_pending || 0) > 0 && (
-                                                        <span className="block text-[10px] text-amber-500 mt-0.5">(+{Number(ktv.total_pending).toLocaleString()}đ)</span>
+                                                        <span className="block text-[10px] text-amber-500 mt-0.5">(+{formatVnd(ktv.total_pending)})</span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-black text-emerald-600">
-                                                    {Number(ktv.available_balance || 0).toLocaleString()}đ
+                                                    {formatVnd(ktv.available_balance)}
                                                     <span className="block text-[9px] text-slate-400 font-bold mt-0.5" title="Bao gồm cọc">
                                                         - Cọc {(Number(ktv.min_deposit || 500000) / 1000)}k
                                                     </span>

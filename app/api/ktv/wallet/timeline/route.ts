@@ -274,11 +274,15 @@ export async function GET(request: Request) {
                         return '';
                     })();
 
+                    // ⚠️ KHÔNG làm tròn số tiền ở đây. Làm tròn TỪNG DÒNG rồi
+                    // mới cộng thì tổng lệch với số dư thật — T016 lệch +1,28đ
+                    // giữa ô "Số dư hiện tại" và số dư dưới dòng timeline.
+                    // Phần lẻ được cắt ở tầng hiển thị bằng `formatVnd`.
                     timeline.push({
                         id: `${g.key}_comm`,
                         type: 'COMMISSION',
                         title: `Tiền tua đơn ${g.bill}`,
-                        amount: Math.round(tienTua),
+                        amount: tienTua,
                         note: `${g.service_name} · ${Math.round(g.paid_minutes)} phút`
                             + ketQuaDanhGia
                             + (g.is_provisional ? ' · tạm tính' : ''),
@@ -291,7 +295,7 @@ export async function GET(request: Request) {
                         id: `${g.key}_tax`,
                         type: 'ADJUSTMENT',
                         title: `Thuế TNCN đơn ${g.bill}`,
-                        amount: -Math.round(g.tax_amount),
+                        amount: -g.tax_amount,
                         note: 'Khấu trừ 10%',
                         created_at: at,
                         status: 'APPROVED',
@@ -302,7 +306,7 @@ export async function GET(request: Request) {
                         id: `${g.key}_tip`,
                         type: 'TIP',
                         title: `Tiền Tip đơn ${g.bill}`,
-                        amount: Math.round(g.tip),
+                        amount: g.tip,
                         note: '',
                         created_at: at,
                         status: 'APPROVED',
