@@ -40,6 +40,57 @@ export const TYPE_D_DISCIPLINE_PENALTIES = {
     ORDER_REJECT_MULTIPLIER: 3
 } as const;
 
+/**
+ * Chế tài cho từng tình huống vắng mặt của KTV Loại D.
+ *
+ * `hours` chỉ là mặc định ban đầu — quản lý chỉnh ở Cài đặt → Loại D, ghi vào
+ * `SystemConfigs.ktv_type_d_discipline_rules.CASES`. Hằng số ở đây là lưới an
+ * toàn khi cấu hình trống hoặc hỏng.
+ *
+ * Ba chế tài:
+ *   · DEDUCT          — chỉ trừ giờ, không bao giờ khoá
+ *   · LOCK            — khoá thẳng, không trừ giờ
+ *   · DEDUCT_OR_LOCK  — quỹ giờ đủ thì trừ; không đủ thì khoá và KHÔNG trừ
+ *
+ * Mặc định theo quy chế Phase 5.5 (plans/plan_type_d_bao_vang_bao_tre.md mục
+ * 13–14) cộng quyết định 12/09: mọi lỗi vắng mặt đều quy ra giờ, khoá tài khoản
+ * chỉ là chế tài cuối khi quỹ giờ không gánh nổi.
+ */
+export type TypeDDisciplineAction = 'DEDUCT' | 'LOCK' | 'DEDUCT_OR_LOCK';
+
+export type TypeDDisciplineCaseKey =
+    | 'UNREGISTERED_NEXT_DAY'
+    | 'NO_REGISTRATION'
+    | 'NO_SHOW_NO_NOTICE'
+    | 'LATE_REPORTED_NO_SHOW'
+    | 'ABSENT_REPORTED_NO_SHOW';
+
+export const TYPE_D_DISCIPLINE_CASES: Record<
+    TypeDDisciplineCaseKey,
+    { action: TypeDDisciplineAction; hours: number; label: string }
+> = {
+    UNREGISTERED_NEXT_DAY: {
+        action: 'LOCK', hours: 0,
+        label: 'Chưa đăng ký lịch cho ngày mới',
+    },
+    NO_REGISTRATION: {
+        action: 'DEDUCT_OR_LOCK', hours: 10,
+        label: 'Không đăng ký gì và không đi làm',
+    },
+    NO_SHOW_NO_NOTICE: {
+        action: 'DEDUCT_OR_LOCK', hours: 10,
+        label: 'Đăng ký làm, không báo, không đến',
+    },
+    LATE_REPORTED_NO_SHOW: {
+        action: 'DEDUCT_OR_LOCK', hours: 10,
+        label: 'Báo trễ rồi vẫn không đến',
+    },
+    ABSENT_REPORTED_NO_SHOW: {
+        action: 'DEDUCT', hours: 5,
+        label: 'Báo vắng trước 07:00, không đến',
+    },
+};
+
 export const TYPE_D_RATING_DEDUCTION = {
     4: 0,
     3: 0.25,
