@@ -669,7 +669,7 @@ export default function KTVHistoryPage() {
 
       {showHours && showHoursTile && (
         <HoursLedgerSheet
-          subtitle={`${selectedDates.length} ngày đã chọn · Tháng ${monthLabel}`}
+          subtitle={`${nhanNgay(selectedDates)} · Tháng ${monthLabel}`}
           earned={hours.totals.earned}
           penalty={hours.totals.penalty}
           net={hours.totals.net}

@@ -131,7 +131,13 @@ export function ScreenReview({ logic }: { logic: any }) {
           disabled={logic.isLoading}
           className="w-full py-4 rounded-2xl font-black text-base shadow-lg transition-all active:scale-[0.97] bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50"
         >
-          {logic.isLoading ? 'Đang lưu...' : `Lưu hồ sơ${selectedTraits.length > 0 ? ` (${selectedTraits.length})` : ''}`}
+          {/* Chọn tính cách khách là TUỲ Ý. Nút ghi "Lưu hồ sơ" lúc chưa chọn gì
+              khiến KTV tưởng bắt buộc phải tích mới đi tiếp được. */}
+          {logic.isLoading
+            ? 'Đang lưu...'
+            : selectedTraits.length > 0
+              ? `Lưu hồ sơ (${selectedTraits.length})`
+              : 'Đánh giá KH hoặc bỏ qua'}
         </button>
       </div>
     </div>
