@@ -211,6 +211,118 @@ const RevokedHitRow = ({ hit }: { hit: any }) => (
   </div>
 );
 
+// 🔧 UI CONFIGURATION — bộ chọn tháng
+const MONTH_LABELS = ['Th 1', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7', 'Th 8', 'Th 9', 'Th 10', 'Th 11', 'Th 12'];
+
+/**
+ * Ô chọn "Kỳ xem" của sheet Lịch sử.
+ *
+ * Trước đây là `<input type="month">` thuần: Windows tự vẽ một hộp đen tháng
+ * tiếng Anh kèm hai dòng "Clear / This month" chẳng ăn nhập gì với trang, và
+ * cho chọn cả tháng tương lai. Tự vẽ để đúng tông màu, đúng tiếng Việt, và
+ * khoá thẳng những tháng chưa tới.
+ *
+ * `max` là tháng hiện tại ('YYYY-MM'). So sánh chuỗi 'YYYY-MM' là đủ vì định
+ * dạng này sắp theo thứ tự từ điển trùng với thứ tự thời gian.
+ */
+const MonthPicker = ({ value, max, onPick, onStep }: {
+  value: string;
+  max: string;
+  onPick: (month: string) => void;
+  onStep: (delta: number) => void;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [year, setYear] = React.useState(() => Number(value.slice(0, 4)));
+
+  // Mở lại là về đúng năm đang xem, không giữ năm của lần mở trước.
+  React.useEffect(() => { if (open) setYear(Number(value.slice(0, 4))); }, [open, value]);
+
+  const monthOf = (m: number) => `${year}-${String(m).padStart(2, '0')}`;
+  const maxYear = Number(max.slice(0, 4));
+  const atMax = value >= max;
+
+  return (
+    <div className="relative">
+      <div className="flex items-center justify-between gap-2 bg-[var(--surface-soft)] p-2 rounded-2xl">
+        <button
+          onClick={() => onStep(-1)}
+          className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white"
+          aria-label="Tháng trước"
+        ><ChevronLeft size={20} /></button>
+
+        <button
+          onClick={() => setOpen(v => !v)}
+          className={`flex-1 py-1 rounded-xl transition-colors ${open ? 'bg-white shadow-sm' : 'hover:bg-white'}`}
+        >
+          <span className="block text-[10px] uppercase tracking-widest text-[var(--muted)]">Kỳ xem</span>
+          <span className="flex items-center justify-center gap-1.5 font-bold text-sm">
+            Tháng {Number(value.slice(5))}/{value.slice(0, 4)}
+            <CalendarDays size={14} className="text-[var(--green)]" />
+          </span>
+        </button>
+
+        <button
+          onClick={() => onStep(1)}
+          disabled={atMax}
+          title={atMax ? 'Đây là tháng hiện tại' : 'Tháng sau'}
+          className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent"
+          aria-label="Tháng sau"
+        ><ChevronRight size={20} /></button>
+      </div>
+
+      {open && (
+        <div className="absolute z-20 left-0 right-0 mt-2 p-3 bg-[var(--surface)] rounded-2xl border border-[var(--line)] shadow-[var(--shadow)]">
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setYear(y => y - 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--surface-soft)]"
+              aria-label="Năm trước"
+            ><ChevronLeft size={16} /></button>
+            <b className="text-sm">Năm {year}</b>
+            <button
+              onClick={() => setYear(y => y + 1)}
+              disabled={year >= maxYear}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--surface-soft)] disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label="Năm sau"
+            ><ChevronRight size={16} /></button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5">
+            {MONTH_LABELS.map((label, i) => {
+              const m = monthOf(i + 1);
+              const disabled = m > max;
+              const active = m === value;
+              return (
+                <button
+                  key={label}
+                  disabled={disabled}
+                  onClick={() => { onPick(m); setOpen(false); }}
+                  title={disabled ? 'Tháng này chưa tới' : undefined}
+                  className={`h-9 rounded-xl text-xs font-bold transition-colors ${
+                    active
+                      ? 'bg-[var(--green)] text-white'
+                      : disabled
+                        ? 'text-[var(--muted)] opacity-30'
+                        : 'bg-[var(--surface-soft)] hover:bg-[var(--green-2)]'
+                  }`}
+                >{label}</button>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-between items-center mt-3 pt-2 border-t border-[var(--line)]">
+            <button
+              onClick={() => { onPick(max); setOpen(false); }}
+              className="text-xs font-bold text-[var(--green)]"
+            >Tháng này</button>
+            <button onClick={() => setOpen(false)} className="text-xs font-bold text-[var(--muted)]">Đóng</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** Ngày kiểu "Thứ 3, 08/09" cho timeline. */
 const fmtDay = (iso: string) => {
   try { return new Date(iso + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }); }
@@ -1191,26 +1303,13 @@ const AdminKtvOfficePage = () => {
                   <>
                     {/* Tháng của sheet tách khỏi tháng bảng danh sách — tra ngược tháng cũ
                         của một KTV mà không phải đóng sheet rồi đổi tháng cả trang. */}
-                    <div className="flex items-center justify-between gap-3 bg-[var(--surface-soft)] p-2 rounded-2xl mb-5">
-                      <button
-                        onClick={() => logic.changeDetailMonth(-1)}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white"
-                        aria-label="Tháng trước"
-                      ><ChevronLeft size={20}/></button>
-                      <div className="text-center">
-                        <span className="block text-[10px] uppercase tracking-widest text-[var(--muted)]">Kỳ xem</span>
-                        <input
-                          type="month"
-                          value={logic.detailMonth}
-                          onChange={e => logic.setDetailMonth(e.target.value)}
-                          className="bg-transparent font-bold text-sm text-center focus:outline-none"
-                        />
-                      </div>
-                      <button
-                        onClick={() => logic.changeDetailMonth(1)}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white"
-                        aria-label="Tháng sau"
-                      ><ChevronRight size={20}/></button>
+                    <div className="mb-5">
+                      <MonthPicker
+                        value={logic.detailMonth}
+                        max={logic.thisMonthStr}
+                        onPick={logic.setDetailMonth}
+                        onStep={logic.changeDetailMonth}
+                      />
                     </div>
 
                     {logic.detailLoading && (
@@ -1226,10 +1325,35 @@ const AdminKtvOfficePage = () => {
                       const hrs = logic.detail.hours;
                       return (
                         <>
+                          {/* `hasData === false` là CHƯA CÓ NGÀY CÔNG, không phải điểm tuyệt
+                              đối. Thẻ KTV ở danh sách đã hiện "Chưa có dữ liệu" từ lâu; sheet
+                              này trước đây vẫn hiện 100 điểm và quỹ 0đ, tức hai chỗ nói hai
+                              điều khác nhau về cùng một người. */}
                           <div className="grid grid-cols-2 gap-3 mb-5">
                             <div className="bg-[var(--surface-soft)] p-4 rounded-2xl">
                               <span className="block text-xs text-[var(--muted)]">Điểm tháng {Number(logic.detailMonth.slice(5))}</span>
-                              <strong className="text-lg">{fmtNum(o.score)} điểm</strong>
+                              <strong className={`text-lg ${o.hasData === false ? 'text-[var(--muted)]' : ''}`}>
+                                {o.hasData === false ? 'Chưa có dữ liệu' : `${fmtNum(o.score)} điểm`}
+                              </strong>
+                            </div>
+                            <div className="bg-[var(--surface-soft)] p-4 rounded-2xl">
+                              <span className="block text-xs text-[var(--muted)]">
+                                Quỹ phải đóng{o.hasData !== false && o.exemptPct > 0 ? ` · miễn ${o.exemptPct}%` : ''}
+                              </span>
+                              <strong className={`text-lg ${
+                                o.hasData === false ? 'text-[var(--muted)]' : (o.fundDue === 0 ? 'text-[var(--green)]' : 'text-[var(--rust)]')
+                              }`}>
+                                {o.hasData === false ? '—' : fmtMoney(o.fundDue)}
+                              </strong>
+                            </div>
+                            <div className="bg-[var(--surface-soft)] p-4 rounded-2xl">
+                              <span className="block text-xs text-[var(--muted)]">Ngày đi làm</span>
+                              <strong className="text-lg">
+                                {o.workDays} ngày
+                                {o.workDays > 0 && (
+                                  <span className="text-xs font-bold text-[var(--muted)] ml-1.5">{o.cleanDays} ngày sạch</span>
+                                )}
+                              </strong>
                             </div>
                             <div className="bg-[var(--surface-soft)] p-4 rounded-2xl">
                               <span className="block text-xs text-[var(--muted)]">Giờ tích lũy</span>
@@ -1248,7 +1372,17 @@ const AdminKtvOfficePage = () => {
                             >Giờ tích lũy</button>
                           </div>
 
-                          {logic.historyTab === 'office' && (
+                          {logic.historyTab === 'office' && o.hasData === false && (
+                            <div className="bg-[var(--surface-soft)] p-4 rounded-2xl mb-5 text-sm">
+                              <p className="font-bold mb-1">Chưa có ngày công nào trong tháng này</p>
+                              <p className="text-xs text-[var(--muted)] leading-relaxed">
+                                Điểm tháng là trung bình các ngày đi làm, chưa đi làm buổi nào thì chưa có
+                                mẫu số để tính — không phải đạt 100 điểm. Mức quỹ cũng chưa xét được.
+                              </p>
+                            </div>
+                          )}
+
+                          {logic.historyTab === 'office' && o.hasData !== false && (
                             <>
                               {/* Bóc từng bước ra để KTV không thắc mắc vì sao ra con số này */}
                               <div className="bg-[var(--surface-soft)] p-4 rounded-2xl mb-5 text-sm">
@@ -1258,9 +1392,13 @@ const AdminKtvOfficePage = () => {
                                   <p className="py-3 text-xs text-[var(--muted)]">Chưa có ngày đi làm nào trong tháng.</p>
                                 ) : o.days.map((d: any) => (
                                   <div key={d.workDate} className="flex justify-between items-baseline py-1.5 border-b border-[var(--line)]">
-                                    <span>
+                                    <span className="flex items-baseline gap-2">
+                                      {/* Chấm màu để quét mắt qua cả tháng là thấy ngay ngày nào sạch. */}
+                                      <i className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                        d.hits.length === 0 ? 'bg-[var(--green)]' : 'bg-[var(--rust)]'
+                                      }`} />
                                       {fmtDate(d.workDate)}
-                                      <span className="text-xs text-[var(--muted)] ml-2">
+                                      <span className="text-xs text-[var(--muted)]">
                                         {d.hits.length === 0 ? 'không vi phạm' : `${d.hits.length} lỗi`}
                                       </span>
                                     </span>
@@ -1294,11 +1432,13 @@ const AdminKtvOfficePage = () => {
                                 </p>
                               </div>
 
-                              {/* Timeline chỉ liệt kê ngày CÓ phiếu (còn hiệu lực hoặc đã thu hồi)
-                                  — bảng phía trên đã liệt kê đủ mọi ngày. */}
-                              <ViolationTimeline office={o} logic={logic} />
                             </>
                           )}
+
+                          {/* Timeline chỉ liệt kê ngày CÓ phiếu (còn hiệu lực hoặc đã thu hồi)
+                              — bảng phía trên đã liệt kê đủ mọi ngày. Vẫn hiện khi chưa có
+                              ngày công, vì có thể tồn tại phiếu đã bị thu hồi. */}
+                          {logic.historyTab === 'office' && <ViolationTimeline office={o} logic={logic} />}
 
                           {logic.historyTab === 'hours' && (
                             hrs.rows.length === 0 ? (

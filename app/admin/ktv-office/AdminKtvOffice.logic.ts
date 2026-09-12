@@ -125,9 +125,9 @@ export const useAdminKtvOfficeLogic = () => {
   const [historyTab, setHistoryTab] = useState<'office' | 'hours'>('office');
   // Tháng xem lịch sử tách riêng khỏi tháng của bảng danh sách: đang xem tháng này
   // vẫn phải tra ngược được tháng trước của một KTV mà không phải đóng sheet.
-  const [detailMonth, setDetailMonth] = useState<string>(
-    `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
-  );
+  /** 'YYYY-MM' của tháng hiện tại theo giờ VN — trần của mọi ô chọn tháng. */
+  const thisMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const [detailMonth, setDetailMonth] = useState<string>(thisMonthStr);
 
   // 18 tiêu chí đọc từ DB — không hard-code ở UI để Admin sửa quy chế khỏi phải deploy.
   const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
@@ -268,15 +268,22 @@ export const useAdminKtvOfficeLogic = () => {
     setYear(y);
   };
 
-  /** Đổi tháng ngay trong sheet Lịch sử, không đụng tới tháng của bảng danh sách. */
+  /**
+   * Đổi tháng ngay trong sheet Lịch sử, không đụng tới tháng của bảng danh sách.
+   *
+   * Chặn ở tháng hiện tại: tháng sau chưa phát sinh gì, cho bấm tới thì người
+   * xem nhận về một màn trống và tưởng mất dữ liệu. Bảng của KTV và trang Giờ
+   * tích lũy đều đã chặn, chỗ này trước đây sót.
+   */
   const changeDetailMonth = (delta: number) => {
     const next = shiftMonth(detailMonth, delta);
+    if (next > thisMonthStr) return;
     setDetailMonth(next);
     if (sheetState.code) fetchDetail(sheetState.code, next);
   };
 
   const setDetailMonthDirect = (m: string) => {
-    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    if (!/^\d{4}-\d{2}$/.test(m) || m > thisMonthStr) return;
     setDetailMonth(m);
     if (sheetState.code) fetchDetail(sheetState.code, m);
   };
@@ -755,6 +762,7 @@ export const useAdminKtvOfficeLogic = () => {
     today: businessToday, yesterday,
     detail, detailLoading, historyTab, setHistoryTab,
     detailMonth, changeDetailMonth, setDetailMonth: setDetailMonthDirect,
+    thisMonthStr,
     sheetState, openSheet, closeSheet, setSheetState,
     criteriaGroups, allCriteria, toggleCriteria,
     photosOf, addPhotosFor, removePhotoFor, missingPhotoFor,
