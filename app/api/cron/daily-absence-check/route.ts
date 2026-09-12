@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
-import { getBusinessToday, previousBusinessDate } from '@/lib/business-date';
+import type { TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
 import { createNotification } from '@/lib/notification-helper';
 import { vnDate } from '@/lib/vn-time';
 
@@ -11,257 +11,201 @@ export const dynamic = 'force-dynamic';
  * ================================================================
  * CHỐT SỔ KỶ LUẬT CUỐI NGÀY — LOẠI D
  * ================================================================
- * Ba tình huống, ba mức khác nhau (theo quy chế):
+ * MỘT lượt duy nhất, chạy lúc 00:00 giờ VN. Quy chế Phase 5.5
+ * (plans/plan_type_d_bao_vang_bao_tre.md mục 14) chốt sổ lúc 23:59 — tức là
+ * đúng thời khắc này. Trước đây việc bị xé làm hai lượt (00:00 và 06:30/07:00)
+ * nên KTV phải nhớ hai mốc giờ, còn người đã lặn cả ngày thì tới sáng hôm sau
+ * mới biết.
  *
- *   1. Không đăng ký gì (không OFF, không LÀM)  → KHOÁ TÀI KHOẢN
- *   2. Đăng ký LÀM rồi không đến, không báo gì  → −10 giờ
- *   3. Đăng ký LÀM, có báo vắng muộn            →  −5 giờ
- *   4. Đăng ký OFF                              → không sao
+ * Năm tình huống, CHẾ TÀI DO QUẢN LÝ ĐẶT ở Cài đặt → Loại D (không còn viết
+ * cứng ở đây):
  *
- * ⚠️ Trước đây tình huống 2 bị KHOÁ TÀI KHOẢN thay vì trừ 10 giờ — nặng hơn
- * quy chế rất nhiều (khoá thì không đăng nhập được cho tới khi admin mở).
+ *   UNREGISTERED_NEXT_DAY    — chưa đăng ký lịch cho ngày vừa sang
+ *   NO_REGISTRATION          — hôm qua không đăng ký gì và cũng không đi làm
+ *   NO_SHOW_NO_NOTICE        — đăng ký làm, không báo, không đến
+ *   LATE_REPORTED_NO_SHOW    — đã báo trễ nhưng vẫn không đến
+ *   ABSENT_REPORTED_NO_SHOW  — báo vắng trước 07:00 rồi không đến
  *
- * ⚠️ Và cả cron này CHƯA BAO GIỜ CHẠY: nó chỉ export POST, trong khi Vercel
- * Cron gọi bằng GET → 405. Toàn bộ kỷ luật loại D là luật trên giấy.
+ * Mỗi tình huống chọn được: chỉ trừ giờ · khoá thẳng · trừ giờ, quỹ không đủ
+ * thì khoá. Xem `KtvTypeDDisciplineService.applyCasePenalty`.
  *
- * Chốt theo NGÀY LÀM VIỆC liền trước, không phải "hôm nay theo lịch": chạy
- * lúc 06:30 (sau cutoff 06:00) thì ngày làm việc hôm qua vừa đóng.
+ * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff 06:00. Bảng
+ * `KTVTypeDDailyRegistration.work_date` và `KTVAttendance.date` đều được ghi
+ * bằng ngày lịch; tra bằng business date sẽ lệch một ngày và phạt nhầm.
+ *
+ * ⚠️ Ngày làm việc của spa đóng lúc 06:00 chứ không phải 00:00, nên trên lý
+ * thuyết ai điểm danh trong khoảng 00:00–06:00 cho ngày hôm qua sẽ bị chấm oan.
+ * Đã cân nhắc và chấp nhận (12/09): spa đóng cửa trước nửa đêm.
  */
-/**
- * ================================================================
- * KHOÁ NGAY LÚC 00:00 — chưa đăng ký lịch cho ngày vừa sang
- * ================================================================
- * Nửa đêm là hạn chót quyết định lịch — cùng mốc với hạn đổi lịch miễn phạt
- * (được đổi thoải mái đến hết ngày hôm trước). Sang ngày mới mà chưa đăng ký
- * gì thì khoá luôn, không đợi hết ngày mới biết.
- *
- * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff. Bảng
- * `KTVTypeDDailyRegistration.work_date` được ghi bằng `vnToday()` (ngày lịch),
- * nên tra bằng business date lúc 00:00 sẽ ra ngày HÔM TRƯỚC và khoá nhầm.
- */
-async function runLockUnregistered() {
+
+/** Một dòng kết quả để trả về và in log — đủ để đối chiếu khi có khiếu nại. */
+interface KetQuaXuLy {
+    staff: string;
+    ten: string | null;
+    caseKey: TypeDDisciplineCaseKey;
+    lyDo: string;
+    ketQua: 'LOCK' | 'DEDUCT' | 'NONE';
+    hours: number;
+    /** Quỹ giờ tại thời điểm xử — chỉ có khi chế tài là "không đủ thì khoá". */
+    netHours: number | null;
+}
+
+/** Ngày lịch VN hôm nay, 'YYYY-MM-DD'. */
+function ngayVnHomNay(): string {
+    return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function luiMotNgay(ngay: string): string {
+    return new Date(new Date(ngay + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
+}
+
+async function run(dry = false) {
     const supabase = getSupabaseAdmin();
     if (!supabase) {
         return NextResponse.json({ success: false, error: 'Supabase admin not configured' }, { status: 500 });
     }
 
-    // Ngày LỊCH VN vừa sang — khớp với cách `KTVTypeDDailyRegistration.work_date`
-    // được ghi (vnToday()), không dùng business date.
-    const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // ⚠️ CÔNG TẮC AN TOÀN. Tắt thì vẫn chạy và vẫn liệt kê, chỉ không ghi gì —
+    // để quản lý soi trước xem luật sẽ quét ai. Bật/tắt ở Cài đặt → Loại D,
+    // không cần deploy.
+    const enabled = !dry && await KtvTypeDDisciplineService.isEnabled(supabase);
 
-    const enabled = await KtvTypeDDisciplineService.isEnabled(supabase);
+    const ngayMoi = ngayVnHomNay();
+    const ngayVuaQua = luiMotNgay(ngayMoi);
 
-    const { data: staffList } = await supabase
+    console.log(`[Kỷ luật D] Chốt sổ ngày ${ngayVuaQua}, xét đăng ký ngày ${ngayMoi} (${enabled ? 'ĐANG BẬT' : dry ? 'CHẠY THỬ' : 'đang TẮT — chỉ ghi log'})`);
+
+    const { data: staffList, error: staffError } = await supabase
         .from('Staff')
         .select('id, full_name, created_at')
         .eq('work_type', 'TYPE_D')
         .neq('status', 'KHÓA_TÀI_KHOẢN');
-
-    const ids = (staffList || []).map((s: any) => s.id);
-    const { data: regs } = await supabase
-        .from('KTVTypeDDailyRegistration')
-        .select('staff_id').eq('work_date', today).in('staff_id', ids);
-    const daDangKy = new Set((regs || []).map((r: any) => r.staff_id));
-
-    const locked: string[] = [];
-    for (const staff of staffList || []) {
-        if (daDangKy.has(staff.id)) continue;
-        // Bỏ qua KTV mới tạo hôm nay — chưa kịp làm quen.
-        if (staff.created_at && String(staff.created_at).slice(0, 10) >= today) continue;
-
-        locked.push(staff.full_name ? `${staff.full_name} (${staff.id})` : staff.id);
-        if (!enabled) continue;
-
-        const lyDo = `Chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${today}`;
-        await supabase.from('SecurityAuditLogs').insert({
-            employee_id: staff.id,
-            employee_name: staff.full_name || staff.id,
-            event_type: 'AUTO_LOCK_NO_REGISTRATION',
-            ip_address: '127.0.0.1',
-            user_agent: 'CRON',
-            details: { source: 'CRON_MIDNIGHT', targetDate: today, reason: lyDo },
-        });
-        await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staff.id);
-        await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, today, lyDo);
-        // Khoá tài khoản là tin CÁ NHÂN gửi chính chủ, không phải tin khẩn của quầy.
-        // Để chung type EMERGENCY thì rule của nó (admin/reception/dev, cờ 🎯 tắt)
-        // đẩy câu "Tài khoản của bạn đã bị khoá" cho Admin/Lễ tân đọc, còn KTV bị
-        // khoá thì không hay biết gì.
-        await createNotification({
-            type: 'ACCOUNT_LOCK',
-            message: `Tài khoản đã bị khoá. Lý do: Chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${today}. Liên hệ admin Oria Spa để mở lại.`,
-            employeeId: staff.id,
-        });
-    }
-
-    console.log(`[Kỷ luật D 00:00] ${locked.length} KTV chưa đăng ký ${today} (${enabled ? 'ĐÃ KHOÁ' : 'đang TẮT'})`);
-    return NextResponse.json({
-        success: true, mode: 'lock-unregistered', enabled,
-        targetDate: today, lockedCount: locked.length, locked,
-        note: enabled ? undefined : 'Kỷ luật đang TẮT — danh sách chỉ là dự kiến.',
-    });
-}
-
-async function run() {
-    const supabase = getSupabaseAdmin();
-    if (!supabase) {
-        return NextResponse.json({ success: false, error: 'Supabase admin not configured' }, { status: 500 });
-    }
-
-    const targetDate = previousBusinessDate(await getBusinessToday(supabase));
-
-    // ⚠️ CÔNG TẮC AN TOÀN — mặc định TẮT.
-    // Chạy thử trên dữ liệu thật cho thấy nếu bật ngay thì 9/12 KTV loại D bị
-    // khoá tài khoản trong đêm đầu tiên, chỉ vì chưa ai có thói quen đăng ký
-    // lịch hằng ngày (giai đoạn test). Luật đúng, nhưng áp lên dữ liệu hiện
-    // tại thì quét sạch.
-    //
-    // Bật bằng cách đặt SystemConfigs.ktv_type_d_discipline_enabled = true,
-    // SAU KHI KTV đã quen đăng ký. Không cần deploy lại.
-    //
-    // `?dry=1` để xem trước sẽ đụng vào ai mà không ghi gì.
-    const enabled = await KtvTypeDDisciplineService.isEnabled(supabase);
-
-    console.log(`[Kỷ luật D] Chốt sổ ngày làm việc ${targetDate} (${enabled ? 'ĐANG BẬT' : 'đang TẮT — chỉ ghi log'})`);
-
-    const { data: staffList, error: staffError } = await supabase
-        .from('Staff')
-        .select('id, status, work_type, created_at, full_name')
-        .eq('work_type', 'TYPE_D')
-        .neq('status', 'KHÓA_TÀI_KHOẢN');
-
     if (staffError) throw staffError;
 
-    const locked: string[] = [];
-    const penalised: { staff: string; hours: number; ly_do: string }[] = [];
-    let processed = 0;
-
-    for (const staff of staffList || []) {
-        // Bỏ qua KTV mới tạo trong chính ngày đang chốt.
-        if (staff.created_at && String(staff.created_at).slice(0, 10) >= targetDate) continue;
-
-        const [{ data: registration }, { data: attendance }] = await Promise.all([
-            supabase.from('KTVTypeDDailyRegistration')
-                .select('*').eq('staff_id', staff.id).eq('work_date', targetDate).maybeSingle(),
-            supabase.from('KTVAttendance')
-                .select('id').eq('employeeId', staff.id).eq('date', targetDate)
-                .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']).limit(1),
-        ]);
-
-        const daDiLam = !!(attendance && attendance.length > 0);
-        processed++;
-
-        // ── 1. KHÔNG ĐĂNG KÝ GÌ → khoá tài khoản ────────────────────
-        if (!registration) {
-            if (daDiLam) continue;   // quên đăng ký nhưng vẫn đến làm → bỏ qua
-
-            const lyDo = 'Không đăng ký lịch và không điểm danh';
-            locked.push(staff.full_name ? `${staff.full_name} (${staff.id})` : staff.id);
-            if (!enabled) continue;
-
-            await supabase.from('SecurityAuditLogs').insert({
-                employee_id: staff.id,
-                employee_name: staff.full_name || staff.id,
-                event_type: 'AUTO_LOCK_ABSENCE',
-                ip_address: '127.0.0.1',
-                user_agent: 'CRON',
-                details: { source: 'CRON', violationDate: targetDate, reason: lyDo },
-            });
-            await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staff.id);
-            await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, targetDate, lyDo);
-            await createNotification({
-                type: 'ACCOUNT_LOCK',
-                message: `Tài khoản đã bị khoá. Lý do: Không đăng ký lịch và không đi làm ngày ${vnDate(targetDate)}. Liên hệ admin Oria Spa để mở lại.`,
-                employeeId: staff.id,
-            });
-            continue;
-        }
-
-        // ── 4. ĐĂNG KÝ OFF → không sao ──────────────────────────────
-        if (registration.status === 'OFF_REGISTERED') {
-            if (enabled) {
-                await supabase.from('KTVTypeDDailyRegistration')
-                    .update({ status: 'COMPLETED' }).eq('id', registration.id);
-            }
-            continue;
-        }
-
-        // Có đến làm → xong, không phạt gì.
-        if (daDiLam || registration.check_in_at) {
-            if (enabled) {
-                await supabase.from('KTVTypeDDailyRegistration')
-                    .update({ status: 'COMPLETED' }).eq('id', registration.id);
-            }
-            continue;
-        }
-
-        // ── 2 & 3. ĐĂNG KÝ LÀM NHƯNG KHÔNG ĐẾN ──────────────────────
-        // Có báo vắng đúng quy trình (trước 07:00) → −5h.
-        // Không báo gì (REGISTERED lặn luôn, hoặc đã báo trễ rồi vẫn không đến) → KHÓA TÀI KHOẢN.
-        // Theo quy chế mới (chốt 2026-09-03): đăng ký làm mà lặn nặng ngang không đăng ký gì.
-        const coBaoVang = registration.status === 'ABSENT_REPORTED' && !!registration.absent_reported_at;
-
-        if (coBaoVang) {
-            if (registration.penalty_applied !== 'ABSENT_EARLY_NOTICE') {
-                const lyDo = 'Đã báo vắng nhưng không đi làm';
-                penalised.push({ staff: staff.id, hours: 5, ly_do: lyDo });
-                if (!enabled) continue;
-
-                const hours = await KtvTypeDDisciplineService.deductDailyViolation(
-                    supabase, staff.id, targetDate, 'ABSENT_EARLY_NOTICE', `Chốt sổ cuối ngày: ${lyDo}`, 'CRON',
-                );
-                await supabase.from('KTVTypeDDailyRegistration')
-                    .update({ penalty_applied: 'ABSENT_EARLY_NOTICE', status: 'COMPLETED' })
-                    .eq('id', registration.id);
-                await createNotification({
-                    type: 'WARNING',
-                    message: `Bạn bị trừ ${hours} giờ tích lũy ngày ${vnDate(targetDate)}. Lý do: ${lyDo}.`,
-                    employeeId: staff.id,
-                });
-            }
-            continue;
-        }
-
-        // Không báo gì → KHÓA TÀI KHOẢN
-        const lyDoKhoa = registration.status === 'LATE_REPORTED'
-            ? 'Đã báo trễ nhưng không đến làm'
-            : 'Đăng ký làm nhưng không đến và không báo';
-        locked.push(staff.full_name ? `${staff.full_name} (${staff.id})` : staff.id);
-        if (!enabled) continue;
-
-        await supabase.from('SecurityAuditLogs').insert({
-            employee_id: staff.id,
-            employee_name: staff.full_name || staff.id,
-            event_type: 'AUTO_LOCK_ABSENCE',
-            ip_address: '127.0.0.1',
-            user_agent: 'CRON',
-            details: { source: 'CRON', violationDate: targetDate, reason: lyDoKhoa },
-        });
-        await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staff.id);
-        await KtvTypeDDisciplineService.markAccountLock(supabase, staff.id, targetDate, lyDoKhoa);
-        await supabase.from('KTVTypeDDailyRegistration')
-            .update({ status: 'COMPLETED' }).eq('id', registration.id);
-        await createNotification({
-            type: 'ACCOUNT_LOCK',
-            message: `Tài khoản đã bị khoá. Lý do: ${lyDoKhoa} ngày ${vnDate(targetDate)}. Liên hệ admin Oria Spa để mở lại.`,
-            employeeId: staff.id,
-        });
+    const ids = (staffList || []).map((s: any) => s.id);
+    if (ids.length === 0) {
+        return NextResponse.json({ success: true, enabled, dry, targetDate: ngayMoi, previousDate: ngayVuaQua, results: [] });
     }
 
-    if (locked.length > 0 && enabled) {
-        // Bản tổng hợp này viết ở ngôi thứ ba và gửi cho quản lý, nên vẫn là EMERGENCY.
+    const [regMoi, regCu, diemDanh] = await Promise.all([
+        supabase.from('KTVTypeDDailyRegistration')
+            .select('staff_id').eq('work_date', ngayMoi).in('staff_id', ids),
+        supabase.from('KTVTypeDDailyRegistration')
+            .select('*').eq('work_date', ngayVuaQua).in('staff_id', ids),
+        supabase.from('KTVAttendance')
+            .select('employeeId').eq('date', ngayVuaQua).in('employeeId', ids)
+            .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']),
+    ]);
+
+    const daDangKyNgayMoi = new Set((regMoi.data || []).map((r: any) => r.staff_id));
+    const regCuTheoNguoi = new Map((regCu.data || []).map((r: any) => [r.staff_id, r]));
+    const daDiLam = new Set((diemDanh.data || []).map((r: any) => r.employeeId));
+
+    const results: KetQuaXuLy[] = [];
+
+    /** Gọi service xử, ghi lại kết quả. Trả về true nếu người này vừa bị khoá. */
+    const xuLy = async (
+        staff: any, caseKey: TypeDDisciplineCaseKey, workDate: string, lyDo: string,
+    ): Promise<boolean> => {
+        const r = await KtvTypeDDisciplineService.applyCasePenalty(supabase, {
+            staffId: staff.id,
+            staffName: staff.full_name,
+            workDate,
+            caseKey,
+            reason: lyDo,
+            source: 'CRON_MIDNIGHT',
+        }, !enabled);
+
+        if (r.ketQua !== 'NONE') {
+            results.push({
+                staff: staff.id, ten: staff.full_name, caseKey, lyDo,
+                ketQua: r.ketQua, hours: r.hours, netHours: r.netHours,
+            });
+        }
+        return r.ketQua === 'LOCK';
+    };
+
+    for (const staff of staffList || []) {
+        // KTV mới tạo hôm qua hoặc hôm nay → chưa kịp làm quen, bỏ qua.
+        if (staff.created_at && String(staff.created_at).slice(0, 10) >= ngayVuaQua) continue;
+
+        // ── 1. Chưa đăng ký lịch cho NGÀY VỪA SANG ──────────────────────────
+        // Nửa đêm là hạn chót quyết định lịch, cùng mốc với hạn đổi lịch miễn
+        // phạt. Sang ngày mới mà chưa đăng ký gì thì xử luôn, không đợi hết ngày.
+        if (!daDangKyNgayMoi.has(staff.id)) {
+            const biKhoa = await xuLy(
+                staff, 'UNREGISTERED_NEXT_DAY', ngayMoi,
+                `Chưa đăng ký lịch (đi làm hoặc OFF) cho ngày ${vnDate(ngayMoi)}`);
+            // Đã khoá thì thôi, không chồng thêm án của ngày hôm qua lên nữa.
+            if (biKhoa) continue;
+        }
+
+        // ── 2. Chốt sổ NGÀY VỪA QUA ─────────────────────────────────────────
+        const reg: any = regCuTheoNguoi.get(staff.id);
+        const coDiLam = daDiLam.has(staff.id) || !!reg?.check_in_at;
+
+        if (!reg) {
+            // Không đăng ký gì. Có đến làm thì chỉ là quên đăng ký → bỏ qua.
+            if (!coDiLam) {
+                await xuLy(staff, 'NO_REGISTRATION', ngayVuaQua, 'Không đăng ký lịch và không đi làm');
+            }
+            continue;
+        }
+
+        // Đăng ký OFF, hoặc có đến làm → xong việc, đóng sổ ngày đó.
+        if (reg.status === 'OFF_REGISTERED' || coDiLam) {
+            if (enabled) {
+                await supabase.from('KTVTypeDDailyRegistration')
+                    .update({ status: 'COMPLETED' }).eq('id', reg.id);
+            }
+            continue;
+        }
+
+        // Đăng ký làm nhưng không đến. Ba đường, ba mức.
+        const daPhat = reg.penalty_applied;
+        if (daPhat) continue;   // lượt trước đã xử rồi, không phạt hai lần
+
+        const { caseKey, lyDo } = reg.status === 'ABSENT_REPORTED' && reg.absent_reported_at
+            ? { caseKey: 'ABSENT_REPORTED_NO_SHOW' as const, lyDo: 'Đã báo vắng nhưng không đi làm' }
+            : reg.status === 'LATE_REPORTED'
+                ? { caseKey: 'LATE_REPORTED_NO_SHOW' as const, lyDo: 'Đã báo trễ nhưng không đến làm' }
+                : { caseKey: 'NO_SHOW_NO_NOTICE' as const, lyDo: 'Đăng ký làm nhưng không đến và không báo' };
+
+        await xuLy(staff, caseKey, ngayVuaQua, lyDo);
+
+        if (enabled) {
+            await supabase.from('KTVTypeDDailyRegistration')
+                .update({ penalty_applied: caseKey, status: 'COMPLETED' }).eq('id', reg.id);
+        }
+    }
+
+    const biKhoa = results.filter(r => r.ketQua === 'LOCK');
+    const biTruGio = results.filter(r => r.ketQua === 'DEDUCT');
+
+    if (biKhoa.length > 0 && enabled) {
+        // Bản tổng hợp viết ở ngôi thứ ba và gửi cho quản lý, nên là EMERGENCY.
+        const ten = biKhoa.map(r => (r.ten ? `${r.ten} (${r.staff})` : r.staff)).join(', ');
         await createNotification({
             type: 'EMERGENCY',
-            message: `Hệ thống vừa khóa ${locked.length} KTV do không đăng ký lịch ngày ${vnDate(targetDate)}: ${locked.join(', ')}`,
+            message: `Hệ thống vừa khoá ${biKhoa.length} KTV Loại D khi chốt sổ ngày ${vnDate(ngayVuaQua)}: ${ten}`,
             employeeId: null,
         });
     }
 
-    console.log(`[Kỷ luật D] ${processed} KTV · ${penalised.length} bị trừ giờ · ${locked.length} bị khoá`);
+    console.log(`[Kỷ luật D] ${results.length} lượt xử · ${biTruGio.length} bị trừ giờ · ${biKhoa.length} bị khoá`);
+
     return NextResponse.json({
-        success: true, enabled, targetDate, processed,
-        penalised, lockedCount: locked.length, locked,
-        note: enabled ? undefined : 'Kỷ luật đang TẮT — danh sách bên dưới chỉ là dự kiến, chưa ghi gì.',
+        success: true,
+        enabled,
+        dry,
+        targetDate: ngayMoi,
+        previousDate: ngayVuaQua,
+        lockedCount: biKhoa.length,
+        deductedCount: biTruGio.length,
+        results,
+        note: enabled ? undefined
+            : dry ? 'CHẠY THỬ (dry=1) — danh sách chỉ là dự kiến, chưa ghi gì.'
+                : 'Kỷ luật đang TẮT — danh sách chỉ là dự kiến, chưa ghi gì.',
     });
 }
 
@@ -273,10 +217,13 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     try {
-        // ?mode=lock-unregistered → khoá ngay lúc 12h nếu chưa đăng ký ngày mai.
-        // Không có tham số → chốt sổ cuối ngày (phạt trừ giờ).
-        const mode = new URL(request.url).searchParams.get('mode');
-        return mode === 'lock-unregistered' ? await runLockUnregistered() : await run();
+        // Chỉ còn MỘT lượt. `?mode=lock-unregistered` giữ lại cho lịch cron cũ
+        // và cho link mà quản lý đã lưu — gọi vào cùng một chỗ.
+        //
+        // ?dry=1 → chỉ liệt kê sẽ đụng vào ai, KHÔNG ghi gì. Dùng để soi trước
+        //          khi bật kỷ luật, khỏi khoá nhầm cả tiệm rồi mới biết.
+        const dry = new URL(request.url).searchParams.get('dry') === '1';
+        return await run(dry);
     } catch (error: any) {
         console.error('Lỗi daily-absence-check:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -21,10 +21,6 @@
       "schedule": "0 17 1 * *"
     },
     {
-      "path": "/api/cron/daily-absence-check",
-      "schedule": "30 23 * * *"
-    },
-    {
       "path": "/api/cron/daily-absence-check?mode=lock-unregistered",
       "schedule": "0 17 * * *"
     }

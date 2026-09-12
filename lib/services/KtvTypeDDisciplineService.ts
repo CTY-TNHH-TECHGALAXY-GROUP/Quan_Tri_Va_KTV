@@ -1,5 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { TYPE_D_DISCIPLINE_PENALTIES } from '../constants/staff.constants';
+import {
+    TYPE_D_DISCIPLINE_PENALTIES,
+    TYPE_D_DISCIPLINE_CASES,
+    type TypeDDisciplineAction,
+    type TypeDDisciplineCaseKey,
+} from '../constants/staff.constants';
 
 /**
  * ================================================================
@@ -120,7 +125,10 @@ export class KtvTypeDDisciplineService {
             return 0;
         }
 
-        const hoursPenalty = TYPE_D_DISCIPLINE_PENALTIES[violationType];
+        // ⚠️ Trước đây dòng này lấy thẳng hằng số, KHÔNG đọc cấu hình. Nghĩa là
+        // ba ô "Giờ" trên trang Cài đặt → Loại D chỉ để trang trí: quản lý sửa
+        // 10 thành 8 thì hệ thống vẫn trừ 10. Nay cấu hình có tiếng nói thật.
+        const hoursPenalty = await KtvTypeDDisciplineService.getPenaltyHours(supabase, violationType);
 
         const { error } = await supabase
             .from('KTVDPenaltyLedger')
@@ -197,6 +205,228 @@ export class KtvTypeDDisciplineService {
             throw error;
         }
         return thisPenalty;
+    }
+
+    /**
+     * Số giờ bị trừ cho một loại lỗi ngày. Cấu hình trước, hằng số quy chế sau.
+     *
+     * Đặt 0 là bỏ hẳn hình phạt đó — cố ý cho phép, vì quản lý có thể muốn tắt
+     * riêng một lỗi mà không tắt cả hệ kỷ luật.
+     */
+    static async getPenaltyHours(
+        supabase: SupabaseClient,
+        violationType: DailyViolationType,
+    ): Promise<number> {
+        const n = Number((await readRules(supabase))[violationType]);
+        if (Number.isFinite(n) && n >= 0) return n;
+        return TYPE_D_DISCIPLINE_PENALTIES[violationType];
+    }
+
+    /**
+     * Chế tài đang áp cho một tình huống vắng mặt.
+     *
+     * Cấu hình nằm ở `ktv_type_d_discipline_rules.CASES`; thiếu hoặc hỏng thì
+     * lùi về mặc định quy chế. Không bao giờ ném lỗi — cấu hình rác không được
+     * phép làm sập cron chốt sổ.
+     */
+    static async getCasePolicy(
+        supabase: SupabaseClient,
+        caseKey: TypeDDisciplineCaseKey,
+    ): Promise<{ action: TypeDDisciplineAction; hours: number }> {
+        const mac_dinh = TYPE_D_DISCIPLINE_CASES[caseKey];
+        const raw = (await readRules(supabase))?.CASES?.[caseKey];
+
+        const HOP_LE: TypeDDisciplineAction[] = ['NONE', 'DEDUCT', 'LOCK', 'DEDUCT_OR_LOCK'];
+        const action: TypeDDisciplineAction =
+            HOP_LE.includes(raw?.action) ? raw.action : mac_dinh.action;
+
+        const hours = Number(raw?.hours);
+        return {
+            action,
+            hours: Number.isFinite(hours) && hours >= 0 ? hours : mac_dinh.hours,
+        };
+    }
+
+    /**
+     * ⭐ MỘT CỬA DUY NHẤT để xử một tình huống vắng mặt.
+     *
+     * Trước đây mỗi nhánh trong cron tự quyết "khoá hay trừ giờ", tự ghi
+     * SecurityAuditLogs, tự đổi `Staff.status`, tự gửi thông báo — bốn bản sao
+     * của cùng một thủ tục, và chế tài thì viết cứng nên muốn đổi phải deploy.
+     *
+     * Nay mọi nhánh gọi vào đây. Muốn biết hệ thống xử thế nào thì đọc đúng một
+     * hàm, và quản lý đổi được chế tài ngay trên trang Cài đặt.
+     *
+     * `dry = true` → chỉ trả về QUYẾT ĐỊNH, không ghi một dòng nào. Dùng cho
+     * `?dry=1` và cho lúc kỷ luật đang tắt.
+     */
+    static async applyCasePenalty(
+        supabase: SupabaseClient,
+        opts: {
+            staffId: string;
+            staffName?: string | null;
+            /** Ngày bị ghi sổ, 'YYYY-MM-DD'. */
+            workDate: string;
+            caseKey: TypeDDisciplineCaseKey;
+            reason: string;
+            /** Ghi vào SecurityAuditLogs.details.source. */
+            source?: string;
+        },
+        dry = false,
+    ): Promise<{ ketQua: 'LOCK' | 'DEDUCT' | 'NONE'; hours: number; netHours: number | null }> {
+        const { staffId, staffName, workDate, caseKey, reason, source } = opts;
+        const policy = await KtvTypeDDisciplineService.getCasePolicy(supabase, caseKey);
+
+        // Quyết định khoá hay trừ.
+        let ketQua: 'LOCK' | 'DEDUCT' | 'NONE' = 'NONE';
+        let netHours: number | null = null;
+
+        if (policy.action === 'NONE') {
+            ketQua = 'NONE';
+        } else if (policy.action === 'LOCK') {
+            ketQua = 'LOCK';
+        } else if (policy.hours <= 0) {
+            // Cấu hình 0 giờ = tắt riêng lỗi này. Trừ 0 giờ thì chỉ tạo rác trong sổ.
+            ketQua = 'NONE';
+        } else if (policy.action === 'DEDUCT') {
+            ketQua = 'DEDUCT';
+        } else {
+            // DEDUCT_OR_LOCK — quỹ giờ không đủ để gánh mức phạt thì khoá, và
+            // KHÔNG trừ (chốt 12/09). Trừ để quỹ âm rồi vẫn khoá là phạt hai lần.
+            //
+            // Đọc đúng nguồn mà KTV đang nhìn trên dashboard và mà thứ tự nhận
+            // tua đang dùng, để không có chuyện "app ghi còn 12h mà hệ thống bảo
+            // không đủ 10h".
+            netHours = await KtvTypeDDisciplineService.quyGioThang(supabase, staffId, workDate);
+            ketQua = netHours < policy.hours ? 'LOCK' : 'DEDUCT';
+        }
+
+        const hours = ketQua === 'DEDUCT' ? policy.hours : 0;
+
+        if (dry || ketQua === 'NONE') return { ketQua, hours, netHours };
+        if (!(await KtvTypeDDisciplineService.isEnabled(supabase))) {
+            return { ketQua, hours, netHours };
+        }
+
+        if (ketQua === 'DEDUCT') {
+            await KtvTypeDDisciplineService.ghiPhatGio(supabase, staffId, workDate, caseKey, hours, reason, source);
+            const { createNotification } = await import('../notification-helper');
+            const { vnDate } = await import('../vn-time');
+            await createNotification({
+                type: 'WARNING',
+                message: `Bạn bị trừ ${hours} giờ tích lũy ngày ${vnDate(workDate)}. Lý do: ${reason}.`,
+                employeeId: staffId,
+            });
+        } else {
+            await KtvTypeDDisciplineService.khoaTaiKhoan(supabase, staffId, staffName, workDate, reason, source, netHours);
+        }
+
+        return { ketQua, hours, netHours };
+    }
+
+    /**
+     * Quỹ giờ tích luỹ của KTV trong THÁNG của `workDate`.
+     *
+     *     giờ ròng = Σ KTVDTurnLedger.actual_minutes/60 − Σ KTVDPenaltyLedger.hours_penalty
+     *
+     * Đúng công thức mà bảng xếp hạng giờ và thứ tự nhận tua đang dùng, nên KTV
+     * nhìn con số nào trên app thì bị xử theo đúng con số đó.
+     *
+     * Dòng `entry_status = 'VOID'` là tua đã bị gỡ (huỷ, đổi KTV) — không tính.
+     *
+     * 📌 Khi `KtvDLedgerReader` được đưa lên main, hàm này nên gọi thẳng
+     * `netHoursByStaff()` thay vì tự truy vấn, để chỉ còn MỘT chỗ giữ công thức.
+     */
+    static async quyGioThang(
+        supabase: SupabaseClient,
+        staffId: string,
+        workDate: string,
+    ): Promise<number> {
+        const [y, m] = workDate.split('-').map(Number);
+        const dauThang = `${y}-${String(m).padStart(2, '0')}-01`;
+        const cuoiThang = `${y}-${String(m).padStart(2, '0')}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+
+        const [turns, penalties] = await Promise.all([
+            supabase.from('KTVDTurnLedger')
+                .select('actual_minutes')
+                .eq('staff_id', staffId)
+                .gte('work_date', dauThang).lte('work_date', cuoiThang)
+                .neq('entry_status', 'VOID'),
+            supabase.from('KTVDPenaltyLedger')
+                .select('hours_penalty')
+                .eq('staff_id', staffId)
+                .gte('work_date', dauThang).lte('work_date', cuoiThang),
+        ]);
+
+        const gioLam = (turns.data || []).reduce((t: number, r: any) => t + (Number(r.actual_minutes) || 0), 0) / 60;
+        const gioPhat = (penalties.data || []).reduce((t: number, r: any) => t + (Number(r.hours_penalty) || 0), 0);
+        return Math.round((gioLam - gioPhat) * 100) / 100;
+    }
+
+    /**
+     * Ghi phiếu trừ giờ với số giờ do CHẾ TÀI quyết, không lấy theo hằng số của
+     * loại lỗi — cùng một tình huống mà quản lý đặt mức khác nhau thì phải theo
+     * mức đó.
+     */
+    private static async ghiPhatGio(
+        supabase: SupabaseClient,
+        staffId: string,
+        workDate: string,
+        caseKey: TypeDDisciplineCaseKey,
+        hours: number,
+        reason: string,
+        createdBy?: string,
+    ) {
+        // Sổ phạt phân loại theo `penalty_type` cũ để báo cáo và màn Office đang
+        // đọc không phải sửa theo.
+        const violationType: DailyViolationType =
+            caseKey === 'ABSENT_REPORTED_NO_SHOW' ? 'ABSENT_EARLY_NOTICE' : 'ABSENT_NO_NOTICE';
+
+        const { error } = await supabase
+            .from('KTVDPenaltyLedger')
+            .upsert({
+                staff_id: staffId,
+                work_date: workDate,
+                penalty_type: violationType,
+                hours_penalty: hours,
+                money_penalty: 0,
+                note: reason,
+                created_by: createdBy || 'CRON',
+            }, { onConflict: 'staff_id,work_date,penalty_type' });
+
+        if (error) console.error('[Type D] Lỗi ghi phạt giờ:', error);
+    }
+
+    /** Khoá tài khoản + để lại đủ vết: nhật ký bảo mật, dấu mốc trong sổ, thông báo. */
+    private static async khoaTaiKhoan(
+        supabase: SupabaseClient,
+        staffId: string,
+        staffName: string | null | undefined,
+        workDate: string,
+        reason: string,
+        source?: string,
+        netHours?: number | null,
+    ) {
+        const { createNotification } = await import('../notification-helper');
+        const { vnDate } = await import('../vn-time');
+
+        await supabase.from('SecurityAuditLogs').insert({
+            employee_id: staffId,
+            employee_name: staffName || staffId,
+            event_type: 'AUTO_LOCK_ABSENCE',
+            ip_address: '127.0.0.1',
+            user_agent: 'CRON',
+            details: { source: source || 'CRON', violationDate: workDate, reason, netHours },
+        });
+        await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staffId);
+        await KtvTypeDDisciplineService.markAccountLock(supabase, staffId, workDate, reason);
+
+        // Khoá tài khoản là tin CÁ NHÂN gửi chính chủ, không phải tin khẩn của quầy.
+        await createNotification({
+            type: 'ACCOUNT_LOCK',
+            message: `Tài khoản đã bị khoá. Lý do: ${reason} ngày ${vnDate(workDate)}. Liên hệ admin Oria Spa để mở lại.`,
+            employeeId: staffId,
+        });
     }
 
     /**

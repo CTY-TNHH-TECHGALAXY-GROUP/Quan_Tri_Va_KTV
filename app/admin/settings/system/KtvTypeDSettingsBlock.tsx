@@ -2,6 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, ShieldCheck, Trophy } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
+
+/**
+ * Ba chế tài, viết bằng tiếng người. Giá trị phải khớp `TypeDDisciplineAction`
+ * bên `staff.constants.ts` — cron đọc đúng mấy chuỗi này.
+ */
+const CHE_TAI = [
+    { value: 'NONE',           label: 'Bỏ qua — không xử lý' },
+    { value: 'DEDUCT',         label: 'Chỉ trừ giờ' },
+    { value: 'LOCK',           label: 'Khoá tài khoản' },
+    { value: 'DEDUCT_OR_LOCK', label: 'Trừ giờ, không đủ thì khoá' },
+] as const;
+
+/** Thứ tự hiện trên bảng — theo dòng thời gian một ngày làm việc. */
+const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
+    'UNREGISTERED_NEXT_DAY',
+    'NO_REGISTRATION',
+    'NO_SHOW_NO_NOTICE',
+    'LATE_REPORTED_NO_SHOW',
+    'ABSENT_REPORTED_NO_SHOW',
+];
+
 
 export function KtvTypeDSettingsBlock() {
     const [configs, setConfigs] = useState<any>({});
@@ -31,6 +53,15 @@ export function KtvTypeDSettingsBlock() {
                     parsed.ktv_type_d_rating_deduction = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
                 }
                 if (!parsed.ktv_type_d_discipline_rules) { parsed.ktv_type_d_discipline_rules = { "ABSENT_NO_NOTICE":10, "ABSENT_EARLY_NOTICE":5, "LATE_NO_UPDATE":5, "ORDER_REJECT_MULTIPLIER":3, "MIN_HOURS_TO_REJECT":3 }; }
+                // Cấu hình cũ chưa có khối CASES → điền mặc định quy chế, để bảng
+                // bên dưới hiện đúng thứ hệ thống đang áp chứ không hiện ô trống.
+                if (!parsed.ktv_type_d_discipline_rules.CASES) {
+                    parsed.ktv_type_d_discipline_rules = {
+                        ...parsed.ktv_type_d_discipline_rules,
+                        CASES: Object.fromEntries(Object.entries(TYPE_D_DISCIPLINE_CASES)
+                            .map(([k, v]) => [k, { action: v.action, hours: v.hours }])),
+                    };
+                }
                 setConfigs(parsed);
             }
         } catch (error) {
@@ -221,15 +252,91 @@ export function KtvTypeDSettingsBlock() {
                         />
                     </div>
 
-                    <NumberInput label="Bỏ lịch / báo trễ (từ 07:00)" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
-                    <NumberInput label="Báo vắng hoặc trễ (trước 06:59)" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
-                    <NumberInput label="Đi trễ không cập nhật" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
-                    <NumberInput label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
-                    <NumberInput label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
-                    <p className="text-xs text-gray-400 italic">
-                        Quỹ giờ tích lũy trong tháng phải <b>nhiều hơn</b> hạn mức thì KTV mới được bấm từ chối
-                        (đặt 3: có đúng 3 giờ là chưa được, phải trên 3 giờ). Bấm tiếp dù đã có cảnh báo
-                        thì <b>khoá tài khoản</b>. Đặt 0 để bỏ cửa chặn.
+                    {/* ─── Bảng chế tài: mỗi tình huống một dòng ─────────────────
+                        Trước đây chỉ chỉnh được SỐ GIỜ, còn "khoá hay trừ" thì
+                        viết cứng trong cron — muốn đổi phải sửa code rồi deploy.
+                        Tệ hơn: ba ô số này cron KHÔNG hề đọc, sửa xong hệ thống
+                        vẫn trừ theo hằng số. Nay cả hai đều thật. */}
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Chốt sổ cuối ngày</p>
+                        <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+                            Cron chạy <b>00:00 mỗi đêm</b>, chốt lại ngày vừa qua — KTV không bị phạt
+                            giữa ngày. Mỗi người chỉ dính <b>một</b> trong các dòng dưới đây.
+                            &ldquo;Không đủ thì khoá&rdquo; nghĩa là quỹ giờ tích luỹ tháng ít hơn số giờ
+                            phạt thì khoá tài khoản và KHÔNG trừ giờ.
+                        </p>
+
+                        <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                            <div className="grid grid-cols-12 gap-2 bg-gray-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                                <div className="col-span-6">Trường hợp</div>
+                                <div className="col-span-4">Chế tài</div>
+                                <div className="col-span-2 text-right">Số giờ</div>
+                            </div>
+
+                            {THU_TU_CASE.map((key) => {
+                                const rules = configs.ktv_type_d_discipline_rules || {};
+                                const cai = rules.CASES?.[key] || TYPE_D_DISCIPLINE_CASES[key];
+                                const doiCase = (patch: any) => handleChange('ktv_type_d_discipline_rules', {
+                                    ...rules,
+                                    CASES: { ...(rules.CASES || {}), [key]: { ...cai, ...patch } },
+                                });
+                                return (
+                                    <div key={key} className="grid grid-cols-12 gap-2 items-start px-4 py-3 border-t border-gray-50">
+                                        <div className="col-span-6">
+                                            <p className="text-sm font-bold text-gray-700 leading-snug">
+                                                {TYPE_D_DISCIPLINE_CASES[key].label}
+                                            </p>
+                                            <p className="text-[11px] text-gray-400 leading-relaxed mt-1">
+                                                {TYPE_D_DISCIPLINE_CASES[key].moTa}
+                                            </p>
+                                        </div>
+                                        <div className="col-span-4">
+                                            <select
+                                                value={cai.action}
+                                                onChange={(e) => doiCase({ action: e.target.value })}
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            >
+                                                {CHE_TAI.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                            {/* Khoá thẳng thì số giờ vô nghĩa — khoá ô lại cho khỏi hiểu nhầm. */}
+                                            {cai.action === 'LOCK' || cai.action === 'NONE' ? (
+                                                <p className="text-right text-sm text-gray-300 font-bold">—</p>
+                                            ) : (
+                                                <input
+                                                    type="number" min={0}
+                                                    value={cai.hours ?? 0}
+                                                    onChange={(e) => doiCase({ hours: Number(e.target.value) || 0 })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm font-black text-gray-800 text-right focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* ─── Các lỗi phạt ngay lúc KTV bấm, không đợi chốt sổ ────── */}
+                    <div className="pt-1">
+                        <p className="text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Phạt ngay khi vi phạm</p>
+                        <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+                            Trừ vào đúng lúc KTV thao tác, không đợi chốt sổ. Mỗi loại lỗi trong cùng
+                            một ngày chỉ trừ một lần (riêng từ chối tua tính từng tua).
+                        </p>
+                        <div className="space-y-4">
+                            <NumberInput hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
+                            <NumberInput hint="Trừ NGAY lúc KTV đổi lịch từ Đi làm sang OFF. Đổi khi ngày làm còn ở tương lai thì miễn phí; từ 07:00 sáng ngày làm trở đi thì không cho đổi nữa." label="Bỏ ca đã đăng ký sau 00:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
+                            <NumberInput hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
+                        </div>
+                    </div>
+
+                    <p className="text-[11px] text-gray-400 leading-relaxed bg-gray-50 rounded-xl px-3 py-2.5">
+                        Đổi ở đây là có hiệu lực ngay, không cần deploy. Riêng <b>giờ chạy</b> của cron nằm
+                        trong <code>vercel.json</code>, đổi phải deploy lại.
                     </p>
                 </div>
             </div>
