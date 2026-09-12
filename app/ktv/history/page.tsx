@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, History, Clock, Star, TrendingUp,
   Gift, CalendarDays, ChevronRight, ChevronDown,
-  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X, ListTree,
+  Loader2, CheckCircle2, AlertCircle, FileImage, X, ListTree,
   ArrowRight, ArrowUpRight
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -20,6 +20,7 @@ import { API } from '@/lib/api-endpoints';
 import { HistoryCalendar } from './_components/HistoryCalendar';
 import { HoursLedgerSheet } from '@/components/shared/HoursLedgerSheet';
 import { fmtHours } from '@/lib/hours-format';
+import { ratingLabel } from '@/lib/rating-label';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /** 'YYYY-MM' -> '09/2026'. */
@@ -31,12 +32,14 @@ const fmtMonthLabel = (m: string) => {
 // 🔧 UI CONFIGURATION
 const HINT_NUDGE_DURATION = 1.2;   // seconds per arrow nudge cycle
 const HINT_NUDGE_DISTANCE = 4;     // px the arrow travels toward the calendar button
-const RATING_CONFIG: Record<number, { label: string; color: string; bg: string }> = {
-  1: { label: 'Tệ',          color: 'text-red-600',     bg: 'bg-red-50'     },
-  2: { label: 'Bình thường',  color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
-  3: { label: 'Tốt',          color: 'text-emerald-700', bg: 'bg-emerald-50' },
-  4: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
-  5: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+// Chỉ giữ MÀU ở đây; chữ lấy từ `lib/rating-label` để ví và Lịch Sử gọi tên
+// một mức sao giống hệt nhau.
+const RATING_COLOR: Record<number, { color: string; bg: string }> = {
+  1: { color: 'text-red-600',     bg: 'bg-red-50'     },
+  2: { color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
+  3: { color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  4: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+  5: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
 };
 
 // ─── Image Modal ──────────────────────────────────────────────────────────────
@@ -128,10 +131,42 @@ const OrderCard = ({ order, getStatusLabel }: {
   const statusInfo = biTuoc
     ? (order.voidedKind === 'CHANGED'
         ? { label: 'Đã đổi', color: 'text-rose-600 bg-rose-50' }
-        : { label: 'Huỷ không công', color: 'text-rose-600 bg-rose-50' })
+        : { label: 'Huỷ', color: 'text-rose-600 bg-rose-50' })
     : getStatusLabel(order.status);
   const isDone = order.status === 'DONE' || order.status === 'COMPLETED';
-  const ratingCfg = order.rating ? RATING_CONFIG[order.rating] : null;
+  const ratingText = ratingLabel(order.rating);
+  const ratingCfg = order.rating ? RATING_COLOR[order.rating] : null;
+
+  /**
+   * Thẻ tiền đi kèm mức đánh giá.
+   *
+   * Trước đây dòng này chỉ ghi "Xuất sắc" / "Tốt", còn tiền thì nằm rải rác:
+   * thưởng ở một dòng riêng tuốt bên dưới, khoản trừ thì lẫn trong khung tổng.
+   * KTV bị chấm Tốt thấy tiền tua hụt mà không biết hụt vì cái gì.
+   *
+   * ⚠️ KHÔNG tính lại tiền ở đây — cả hai con số đều do server trả, lấy thẳng từ
+   * sổ cái, nên khớp tuyệt đối với ví.
+   */
+  const ratingMoney = (() => {
+    const bonus = Number(order.ratingBonusAmount) || 0;
+    if (bonus > 0) {
+      return { text: `+${bonus.toLocaleString('vi-VN')}đ`, cls: 'text-emerald-700 bg-emerald-50' };
+    }
+    const deduction = Number(order.ratingDeductionAmount) || 0;
+    if (deduction > 0) {
+      const pct = Math.round((Number(order.ratingDeductionRate) || 0) * 100);
+      return {
+        text: `−${pct}% · −${deduction.toLocaleString('vi-VN')}đ`,
+        cls: 'text-orange-700 bg-orange-50',
+      };
+    }
+    // Tỉ lệ quy đổi điểm = 0 thì thưởng chưa ra tiền được; hiện điểm còn hơn im.
+    const points = Number(order.bonusPoints) || 0;
+    if (points > 0) {
+      return { text: `+${points.toLocaleString('vi-VN')} điểm`, cls: 'text-amber-700 bg-amber-50' };
+    }
+    return null;
+  })();
 
   return (
     <motion.div
@@ -273,22 +308,35 @@ const OrderCard = ({ order, getStatusLabel }: {
                   bảng thu nhập — KHÔNG cái nào áp dụng cho người bị tước. Khách chấm
                   người vào thay; người vào thay dọn phòng; tiền đã chốt 0đ ở trên. */}
               {!biTuoc && (<>
-              {/* Đánh giá + Bonus */}
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Đánh giá</span>
-                <div className="flex items-center gap-2">
-                  {ratingCfg ? (
-                    <div className="flex items-center gap-1.5">
-                      <Star size={12} className="text-amber-400 fill-amber-400" />
-                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${ratingCfg.color} ${ratingCfg.bg}`}>
-                        {ratingCfg.label}
+              {/* Đánh giá — kèm luôn tiền được thưởng / bị trừ */}
+              <div className="flex justify-between items-start gap-2">
+                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider shrink-0 pt-0.5">Đánh giá</span>
+                {ratingText && ratingCfg ? (
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${ratingCfg.color} ${ratingCfg.bg}`}>
+                      {ratingText}
+                    </span>
+                    {ratingMoney && (
+                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-full whitespace-nowrap ${ratingMoney.cls}`}>
+                        {ratingMoney.text}
                       </span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-300">—</span>
-                  )}
-                </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-300">—</span>
+                )}
               </div>
+
+              {/* Được chấm cao mà không có thưởng thì phải nói vì sao. Không có
+                  dòng này, KTV chỉ thấy "Xuất sắc" trơ trọi cạnh đồng nghiệp có
+                  thẻ "+20.000đ" và sẽ đi hỏi quầy. Chỉ hiện khi thật sự KHÔNG có
+                  thưởng — có thưởng rồi mà vẫn ghi là tự mâu thuẫn. */}
+              {order.mixedTeamNote && !Number(order.ratingBonusAmount) && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 -mt-1 leading-snug">
+                  {order.mixedTeamNote}
+                </p>
+              )}
 
               {/* Bàn giao phòng */}
               <div className="flex justify-between items-center">
@@ -342,34 +390,6 @@ const OrderCard = ({ order, getStatusLabel }: {
                       • {v.text || v.id}
                     </p>
                   ))}
-                </div>
-              )}
-
-              {/* Bonus Points */}
-              {order.bonusPoints > 0 && (
-                <div className="flex justify-between items-center bg-amber-50 rounded-xl px-3 py-2 -mx-1">
-                  <div className="flex items-center gap-1.5">
-                    <Award size={14} className="text-amber-500" />
-                    <span className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Bonus Xuất Sắc</span>
-                  </div>
-                  {/* ⚠️ `bonusPoints` là ĐIỂM, không phải tiền. Trước đây in thẳng
-                      `+{bonusPoints}đ` nên thưởng 20 điểm hiện ra "+20đ" trong khi
-                      thực nhận là 20.000đ — KTV đọc tưởng được thưởng có 20 đồng.
-                      Số tiền lên trước, số điểm xuống dòng phụ. */}
-                  <div className="text-right leading-tight">
-                    {/* Chưa quy đổi được ra tiền (tỉ lệ quy đổi = 0) thì hiện
-                        thẳng số điểm, đừng in "+0đ". */}
-                    <span className="text-sm font-black text-amber-600">
-                      {Number(order.bonusValue) > 0
-                        ? `+${Number(order.bonusValue).toLocaleString('vi-VN')}đ`
-                        : `+${Number(order.bonusPoints).toLocaleString('vi-VN')} điểm`}
-                    </span>
-                    {Number(order.bonusValue) > 0 && (
-                      <p className="text-[10px] text-amber-500 font-semibold">
-                        {Number(order.bonusPoints).toLocaleString('vi-VN')} điểm
-                      </p>
-                    )}
-                  </div>
                 </div>
               )}
 

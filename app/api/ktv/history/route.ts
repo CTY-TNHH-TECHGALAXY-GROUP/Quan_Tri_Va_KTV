@@ -487,6 +487,7 @@ export async function GET(request: Request) {
                 let commissionBeforeDeduction = commission;
                 let ratingDeductionRate = 0;
                 let ledgerRating: number | null = null;
+                let ledgerBonus: number | null = null;
                 let ledgerTax: number | null = null;
                 let ledgerActualDuration: number | null = null;
                 let mixedTeamNote: string | null = null;
@@ -501,6 +502,10 @@ export async function GET(request: Request) {
                         commissionBeforeDeduction = Math.round(led.commission_gross);
                         ratingDeductionRate = led.deduction_rate;
                         ledgerRating = led.rating;
+                        // Thưởng 4★ đã nằm trong `commission`, nhưng màn Lịch Sử
+                        // cần chỉ mặt được nó: KTV nhìn "tiền tua 168.333đ" mà
+                        // "tổng thu nhập 188.333đ" thì không biết 20.000đ ở đâu ra.
+                        ledgerBonus = Math.round(led.bonus_amount);
                         ledgerTax = Math.round(led.tax_amount);
                         ledgerActualDuration = Math.round(led.actual_minutes);
                         totalDuration = Math.round(led.assigned_minutes) || totalDuration;
@@ -657,6 +662,11 @@ export async function GET(request: Request) {
                     commissionBeforeDeduction: isFeedbackDone ? commissionBeforeDeduction : null,
                     ratingDeductionRate: isFeedbackDone ? ratingDeductionRate : 0,
                     ratingDeductionAmount: isFeedbackDone ? Math.max(0, commissionBeforeDeduction - commission) : 0,
+                    // Tiền thưởng do khách chấm Xuất sắc. Loại D lấy thẳng từ sổ cái
+                    // (thưởng đã gộp trong `commission`); A/B/C là điểm quy ra tiền.
+                    ratingBonusAmount: isFeedbackDone
+                        ? (workType === 'TYPE_D' ? (ledgerBonus ?? 0) : bonusValue)
+                        : 0,
                     mixedTeamNote,
                     voidedNote,
                     voidedKind: voidedInfo?.kind ?? null,
@@ -677,6 +687,7 @@ export async function GET(request: Request) {
                         tip: 0,
                         ratingDeductionRate: 0,
                         ratingDeductionAmount: 0,
+                        ratingBonusAmount: 0,
                     } : {}),
                     handover_status,
                     handover_submitted,

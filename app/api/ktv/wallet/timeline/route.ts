@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { ratingLabel } from '@/lib/rating-label';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
@@ -225,13 +226,36 @@ export async function GET(request: Request) {
                 // nói "gồm thưởng X" là lại gợi ý đây là hai khoản ghép lại.
                 const tienTua = g.commission_net + g.bonus_amount;
                 if (tienTua > 0) {
+                    /**
+                     * Kết quả đánh giá, kèm SỐ TIỀN nó làm ra hoặc lấy đi.
+                     *
+                     * ⚠️ Trước đây chỗ này chỉ mở miệng khi BỊ TRỪ, và cũng chỉ ghi
+                     * "3★ trừ 25%" — không có số tiền. Được thưởng thì im hẳn, nên
+                     * tua 4★ hiện lên ví với một con số to hơn bình thường mà không
+                     * dòng nào nói vì sao. Gọi tên mức sao bằng `ratingLabel` để ví
+                     * và màn Lịch Sử đọc ra cùng một chữ.
+                     */
+                    const ketQuaDanhGia = (() => {
+                        const ten = ratingLabel(g.rating);
+                        if (!ten) return '';
+                        if (g.bonus_amount > 0) {
+                            return ` · ${ten} +${Math.round(g.bonus_amount).toLocaleString('vi-VN')}đ`;
+                        }
+                        if (g.deduction_rate > 0) {
+                            const truTien = Math.round(g.commission_gross - g.commission_net);
+                            const pct = Math.round(g.deduction_rate * 100);
+                            return ` · ${ten} −${pct}%` + (truTien > 0 ? ` (−${truTien.toLocaleString('vi-VN')}đ)` : '');
+                        }
+                        return '';
+                    })();
+
                     timeline.push({
                         id: `${g.key}_comm`,
                         type: 'COMMISSION',
                         title: `Tiền tua đơn ${g.bill}`,
                         amount: Math.round(tienTua),
                         note: `${g.service_name} · ${Math.round(g.paid_minutes)} phút`
-                            + (g.deduction_rate > 0 ? ` · ${g.rating}★ trừ ${Math.round(g.deduction_rate * 100)}%` : '')
+                            + ketQuaDanhGia
                             + (g.is_provisional ? ' · tạm tính' : ''),
                         created_at: at,
                         status: g.is_provisional ? 'PENDING' : 'APPROVED',

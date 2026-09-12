@@ -31,6 +31,7 @@ export interface HistoryRecord {
   commissionBeforeDeduction?: number; // tiền tua trước khi trừ theo sao
   ratingDeductionRate?: number;       // 0 / 0.25 / 0.5 / 0.75
   ratingDeductionAmount?: number;     // số tiền bị trừ do đánh giá
+  ratingBonusAmount?: number;         // tiền thưởng do khách chấm Xuất sắc
   /** Tên hoặc nhãn khách của dòng này — "HIEU", "Khách 1"… */
   guestLabel?: string | null;
   handover_status?: string;
@@ -44,6 +45,8 @@ export interface HistoryRecord {
    * tính công): "Đã đổi KTV · đã làm 25p · 0đ". `null` với đơn bình thường.
    */
   voidedNote?: string | null;
+  /** Lý do tua được chấm cao mà vẫn không có thưởng (đội hỗn hợp chế độ). */
+  mixedTeamNote?: string | null;
   /** Loại tước quyền lợi — có giá trị thì đơn này với KTV đã CHỐT 0đ. */
   voidedKind?: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER' | null;
   /** Lý do quầy nhập lúc đổi người / huỷ. */
