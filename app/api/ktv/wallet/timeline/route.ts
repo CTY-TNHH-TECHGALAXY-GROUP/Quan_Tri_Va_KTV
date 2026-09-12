@@ -5,6 +5,7 @@ import { ratingLabel } from '@/lib/rating-label';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { getDayCutoffHours, toBusinessDate } from '@/lib/business-date';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,30 @@ function asUtcIso(raw: any): string | null {
     const v = String(raw);
     // Đã mang sẵn múi giờ (`...Z` hoặc `...+07:00`) thì để nguyên.
     return /[Z+]|-\d{2}:\d{2}$/.test(v.slice(10)) ? v : `${v.replace(' ', 'T')}Z`;
+}
+
+/**
+ * Gắn NGÀY LÀM VIỆC cho từng dòng, để màn Ví gom nhóm theo đúng ngày của spa.
+ *
+ * Spa chốt ngày lúc `cutoffHours` (mặc định 6h sáng), nên tua chạy sau nửa đêm
+ * vẫn thuộc ngày làm việc hôm trước.
+ *
+ * ⚠️ Trước đây trang Ví tự dựng khoá nhóm bằng
+ * `new Date(created_at).toLocaleDateString(...)` — tức NGÀY LỊCH, không xét
+ * cutoff. Ca thật: đơn `007-10092026-A` làm lúc 00:57 sáng 11/09 thuộc ngày làm
+ * việc 10/09 (sổ cái ghi `work_date = 2026-09-10`), nhưng Ví xếp nó vào nhóm
+ * 11/09 — một nhóm trộn hai ngày làm việc, lệch hẳn với sổ giờ và màn Office.
+ *
+ * Suy từ `created_at` là đủ cho MỌI loại dòng, kể cả dòng tua loại D: sổ cái
+ * cũng tính `work_date` bằng chính `toBusinessDate` trên cùng mốc giờ đó, nên
+ * hai con số luôn trùng nhau. Quét một lượt cuối như đây thì dòng nào thêm về
+ * sau cũng tự có, khỏi phải nhớ gắn ở từng chỗ `push`.
+ */
+function attachBusinessDate(timeline: any[], cutoffHours: number): void {
+    for (const item of timeline) {
+        const ms = Date.parse(String(item.created_at ?? item.date ?? ''));
+        item.business_date = Number.isFinite(ms) ? toBusinessDate(new Date(ms), cutoffHours) : null;
+    }
 }
 
 /**
@@ -286,6 +311,7 @@ export async function GET(request: Request) {
             }
 
             await appendAdjustmentsAndWithdrawals(supabase, techCode, workType, START_DATE, timeline);
+            attachBusinessDate(timeline, await getDayCutoffHours(supabase));
             attachRunningBalance(timeline);
             sortForDisplay(timeline);
             return NextResponse.json({ success: true, data: timeline });
@@ -536,6 +562,7 @@ export async function GET(request: Request) {
         // A/B/C trừ thêm tiền cọc khỏi số dư hiển thị — quy chế của các chế độ
         // này. Loại D không trừ, nên dòng trên cùng khớp thẳng số dư thẻ ví.
         const activeConfig = commConfigs[workType] || commConfigs['TYPE_A'];
+        attachBusinessDate(timeline, await getDayCutoffHours(supabase));
         attachRunningBalance(timeline, activeConfig.minDeposit);
 
         // Sort timeline desc for display

@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { walletLabel } from '@/lib/featureFlags';
+import { fmtWeekday, fmtFullDate, fmtClockOnDate } from '@/lib/hours-format';
 import { useKTVWallet } from './KTVWallet.logic';
 import { t } from './KTVWallet.i18n';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
@@ -112,19 +113,26 @@ export default function KTVWalletPage() {
         if (activeTab === 'BONUS' && isOfficeBonus) return [];
         const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : []);
         if (!sourceData) return [];
+        // Gom theo NGÀY LÀM VIỆC do server gắn sẵn (`business_date`), không tự
+        // dựng ngày ở đây.
+        //
+        // ⚠️ Trước đây chỗ này lấy `toLocaleDateString(created_at)` — tức ngày
+        // LỊCH. Spa chốt ngày lúc 6h sáng, nên tua sau nửa đêm bị xếp sang hôm
+        // sau: đơn làm 00:57 sáng 11/09 thuộc ngày làm việc 10/09 mà lại nằm
+        // trong nhóm 11/09, lệch với sổ giờ và màn Office của quầy.
         const groups: Record<string, any[]> = {};
         sourceData.forEach((item: any) => {
-            const itemDate = item.created_at || item.date;
-            const dateStr = new Date(itemDate).toLocaleDateString('vi-VN', {
-                weekday: 'long',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-            if (!groups[dateStr]) groups[dateStr] = [];
-            groups[dateStr].push(item);
+            const key = item.business_date || String(item.created_at || item.date || '').slice(0, 10);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
         });
-        return Object.entries(groups).map(([date, items]) => ({ date, items }));
+        return Object.entries(groups)
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([businessDate, items]) => ({
+                businessDate,
+                date: `${fmtWeekday(businessDate)}, ${fmtFullDate(businessDate)}`,
+                items,
+            }));
     }, [activeTab, isOfficeBonus, walletTimeline, bonusTimeline]);
 
     if (!user || !canViewWallet) {
@@ -469,7 +477,7 @@ export default function KTVWalletPage() {
                                                                 <div className="flex items-center justify-between mt-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-[10px] text-slate-400 font-medium">
-                                                                            {new Date(item.created_at || item.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                                                            {fmtClockOnDate(item.created_at || item.date, group.businessDate)}
                                                                         </span>
                                                                         {activeTab === 'TUA' && item.type !== 'TIP' && !isRejected && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
