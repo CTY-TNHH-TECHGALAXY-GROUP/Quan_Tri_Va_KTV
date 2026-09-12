@@ -56,6 +56,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        isActiveTherapyMenu: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
         baseSalaryPerHour: 180000,
@@ -106,6 +107,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                 join_date: new Date().toISOString().split('T')[0], height: '', weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        isActiveTherapyMenu: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
         baseSalaryPerHour: 180000,
@@ -256,7 +258,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                             {/* Skills Info - Only show for TECHNICIAN */}
                             {formData.role === 'TECHNICIAN' && (
                                 <div className="space-y-6">
-                                    <div className="flex items-center gap-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
                                             <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên VIP Menu</span>
@@ -264,6 +266,10 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
                                             <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Home Spa</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isActiveTherapyMenu" checked={formData.isActiveTherapyMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveTherapyMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Menu Điều trị</span>
                                         </label>
                                     </div>
                                     <div className="space-y-4">
