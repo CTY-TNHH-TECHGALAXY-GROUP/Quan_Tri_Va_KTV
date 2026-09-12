@@ -362,11 +362,11 @@
 | `weight` | integer | Cân nặng (kg) |
 | `is_active_vip_menu` | boolean | Hiển thị lên VIP Menu (true/false) |
 | `is_home_spa` | boolean | Đi được Home Spa (true/false) |
-| `is_active_therapy_menu` | boolean | Hiển thị lên Therapy Menu (true/false) |
+| `is_active_therapy_menu` | boolean | Hiển thị lên Therapy Menu (true/false). Default `false`. **Cột chỉ thật sự có trong DB từ migration `20260912150000_add_staff_is_active_therapy_menu.sql` (12/09/2026)** — trước đó doc ghi nhưng DB không có. Admin → Nhân viên bật/tắt cùng VIP / Home Spa. |
 | `certificate_url` | text | Link ảnh bằng cấp của nhân viên |
 | `feature_flags` | jsonb | Cờ bật/tắt tính năng per-staff (VD: `{"laundry_deduction": true, "is_on_call": true, "travel_time_mins": 30}`). Default: `{}` |
 | `skills` | jsonb | Kỹ năng chuyên môn |
-| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Freelance/Nhập tay), `TYPE_D` (ăn theo giờ tích luỹ — mã `T001`, `T016`…, tiền tính ở `KTVDTurnLedger`). Default: `TYPE_A`. CHECK constraint. |
+| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Cộng tác viên — **tài khoản thật từ 12/09/2026**, tạo ở Admin → Nhân viên, không bắt buộc điểm danh; 138 mã placeholder cũ `EXT_…`/`C_…` do dispatch tự sinh đã chuyển `ĐÃ NGHỈ`, xem `scripts/cleanup_type_c_placeholders.ts`), `TYPE_D` (ăn theo giờ tích luỹ — mã `T001`, `T016`…, tiền tính ở `KTVDTurnLedger`). Default: `TYPE_A`. CHECK constraint. |
 | `online_status` | text | Trạng thái online của KTV Type B: `OFFLINE`, `ONLINE`, `AT_VENUE`. Default: `OFFLINE`. CHECK constraint. |
 | `travel_minutes` | integer | Thời gian di chuyển đến Spa (phút). Default: `0`. Chỉ dùng cho Type B khi online. |
 | `available_from` | time | Giờ bắt đầu sẵn sàng nhận đơn (HH:mm). Null khi offline. |

@@ -5,6 +5,7 @@ import { ChildBookingForFeedback } from '../FeedbackDashboard.logic';
 import { useKioskFeedback } from './KioskFeedback.logic';
 import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
     const [currentBooking, setCurrentBooking] = useState(initialBooking);
@@ -23,7 +24,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
     const getKtvDisplay = (child: any) => {
         if (!child.ktvList || child.ktvList.length === 0) return 'Chưa có KTV';
         const parts = child.ktvList.map((k: any) => {
-            const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+            const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
             const displayName = isTypeC ? k.ktvName : k.ktvId;
             const svcs = k.serviceNames && k.serviceNames.length > 0 ? ` (${k.serviceNames.join(', ')})` : '';
             return `${displayName}${svcs}`;
@@ -261,7 +262,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                             <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-2">{t.experienceTitle || 'Trải nghiệm của bạn'}</h3>
                                             <p className="text-sm text-[#7C3AED] bg-[#F3E8FF] inline-block px-3 py-1 rounded-md font-medium">
                                                 {t.staffLbl || 'Nhân viên phục vụ'}: {mergedKtvGroups.map(g => {
-                                                    const isTypeC = (g as any).workType === 'C' || (g as any).workType === 'c' || (g.ktvId && (g.ktvId.toUpperCase().startsWith('C_') || g.ktvId.toUpperCase().startsWith('EXT_')));
+                                                    const isTypeC = isTypeCWorkType((g as any).workType) || isPlaceholderStaffId(g.ktvId);
                                                     return isTypeC ? g.ktvName : g.ktvId;
                                                 }).join(', ')}
                                             </p>

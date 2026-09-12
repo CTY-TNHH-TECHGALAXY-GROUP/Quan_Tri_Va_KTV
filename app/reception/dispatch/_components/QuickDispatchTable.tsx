@@ -1,11 +1,12 @@
 'use client';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Printer, X, ChevronDown, ChevronUp, Plus, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
+import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
+import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // 🛠 UI CONFIGURATION
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
@@ -1371,14 +1372,14 @@ const ServiceGroupCard = ({
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
             <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(t?.staff?.work_type ?? (isPlaceholderStaffId(ktvId) || !t ? 'TYPE_C' : null), ktvId, t?.staff?.full_name || state.ktvDisplayNames?.[ktvId]); return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">Ca {idx + 1}</span>}
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
                 </span>); })}
               <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const m = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term); if (m) addKtv(m.employee_id); else addKtv(ktvSearch.trim()); setKtvSearch(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const m = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term); if (m) addKtv(m.employee_id); setKtvSearch(''); } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
@@ -1423,10 +1424,10 @@ const ServiceGroupCard = ({
                       <span className={`text-[10px] font-semibold ${isUsed ? 'text-indigo-500' : turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>{isUsed ? '🔄 Đã gán ở DV khác' : turn.status === 'working' ? `⌛ Đến ${fmtTime(turn.estimated_end_time)}` : turn.status === 'assigned' ? `🔒 Đã xếp lịch${turn.estimated_end_time ? ` • Rảnh ${fmtTime(turn.estimated_end_time)}` : ''}` : '✅ Sẵn sàng'}</span>
                     </div>); 
                   })}
-                  {ktvSearch.trim() && !availableTurns.some(t => t.employee_id.toLowerCase() === ktvSearch.trim().toLowerCase() || t.staff?.full_name?.toLowerCase() === ktvSearch.trim().toLowerCase()) && (
-                    <div onClick={() => { addKtv(ktvSearch.trim()); setKtvSearch(''); }} className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-emerald-50 text-emerald-700 active:scale-[0.98] border border-dashed border-emerald-200 mt-2">
-                      <Plus size={16} className="text-emerald-500" /><span>Nhập tên ngoài: <strong className="text-emerald-800">{ktvSearch.trim()}</strong></span>
-                    </div>)}
+                  {/* Không còn "Nhập tên ngoài": cộng tác viên phải có tài khoản loại C, chọn từ danh sách */}
+                  {ktvSearch.trim() && filteredTurns.length === 0 && (
+                    <p className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">Không có KTV tên này. Cộng tác viên mới → Admin → Nhân viên tạo tài khoản loại C rồi chọn lại.</p>
+                  )}
                   {filteredTurns.length === 0 && !ktvSearch.trim() && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
                 </div>
               </div>)}
@@ -1439,8 +1440,7 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t;
-                const name = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId;
+                const name = ktvDisplayLabel(t?.staff?.work_type ?? (isPlaceholderStaffId(ktvId) || !t ? 'TYPE_C' : null), ktvId, t?.staff?.full_name || state.ktvDisplayNames?.[ktvId]);
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';

@@ -9,6 +9,7 @@ import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
+import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
@@ -98,7 +99,8 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        // 1. Fetch Staff (Only KTVs based on Users role)
+        // 1. Fetch Staff (Only KTVs based on Users role). Mã placeholder EXT_/C_ (đã
+        //    ĐÃ NGHỈ) vẫn lấy để thẻ đơn cũ còn hiện tên; chúng không vào hàng đợi.
         const { data: techUsers, error: tuError } = await supabase.from('Users').select('code').eq('role', 'TECHNICIAN');
         if (tuError) throw tuError;
         const techCodes = new Set((techUsers || []).map(u => u.code));
@@ -107,7 +109,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         if (sError) throw sError;
         
         const staffs = (allStaffs || []).filter(s => 
-            (techCodes.has(s.id) || s.id.startsWith('EXT') || s.id.startsWith('C_')) && 
+            (techCodes.has(s.id) || isPlaceholderStaffId(s.id)) && 
             s.status !== 'KHÓA_TÀI_KHOẢN'
         );
 
@@ -609,7 +611,11 @@ export async function processDispatch(bookingId: string, dispatchData: {
             });
         }
 
-        // 🔥 XỬ LÝ KTV NHẬP NGOÀI (FREELANCE)
+        // 🔥 MỌI MÃ KTV PHẢI CÓ SẴN TRONG Staff — không còn tự sinh tài khoản
+        // Trước 12/09/2026, tên lạ gõ vào ô KTV được tự INSERT thành `Staff`
+        // TYPE_C mã `EXT_xxxxxx` → 138 dòng rác không ai đăng nhập được (xem
+        // `scripts/cleanup_type_c_placeholders.ts`). Giờ loại C là tài khoản thật,
+        // quầy chọn từ danh sách; mã lạ → trả lỗi để tạo ở Admin → Nhân viên.
         const allKtvIds = new Set<string>();
         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
@@ -626,84 +632,22 @@ export async function processDispatch(bookingId: string, dispatchData: {
         });
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
 
-        console.log('🔍 [EXT-MAP] uniqueKtvIds:', uniqueKtvIds);
-
-        if (uniqueKtvIds.length > 0) {
-            const { data: existingStaff } = await supabase.from('Staff').select('id').in('id', uniqueKtvIds);
-            const existingIds = (existingStaff || []).map(s => s.id);
-            const missingIds = uniqueKtvIds.filter(id => !existingIds.includes(id));
-            
-            console.log('🔍 [EXT-MAP] existingIds:', existingIds, 'missingIds:', missingIds);
-
-            if (missingIds.length > 0) {
-                const idReplacements: Record<string, string> = {};
-                
-                for (const missingName of missingIds) {
-                    // 1. Tìm KTV TYPE_C trùng tên
-                    const { data: existingTypeC } = await supabase
-                        .from('Staff')
-                        .select('id')
-                        .eq('work_type', 'TYPE_C')
-                        .ilike('full_name', missingName)
-                        .limit(1);
-                    
-                    if (existingTypeC && existingTypeC.length > 0) {
-                        idReplacements[missingName] = existingTypeC[0].id;
-                        // Cập nhật lại status ĐANG LÀM
-                        await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existingTypeC[0].id);
-                    } else {
-                        // Insert mới TYPE_C
-                        // Tự generate 1 ID ngẫu nhiên định dạng EXT_xxxxx
-                        const newId = `EXT_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-                        const { error: insertError } = await supabase
-                            .from('Staff')
-                            .insert({
-                                id: newId,
-                                full_name: missingName,
-                                work_type: 'TYPE_C',
-                                status: 'ĐANG LÀM'
-                            });
-                            
-                        if (insertError) throw new Error(`Lỗi tạo KTV Nhập tay: ${insertError.message}`);
-                        idReplacements[missingName] = newId;
-                    }
-                }
-                
-                console.log('✅ [EXT-MAP] idReplacements:', idReplacements);
-
-                // Rewrite IDs in dispatchData
-                const replaceId = (id: string) => idReplacements[id] || id;
-                if (dispatchData.technicianCode) dispatchData.technicianCode = replaceId(dispatchData.technicianCode);
-                if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) a.ktvId = replaceId(a.ktvId) });
-                if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
-                    if (u.technicianCodes) {
-                        if (Array.isArray(u.technicianCodes)) u.technicianCodes = u.technicianCodes.map(c => replaceId(c));
-                        else if (typeof u.technicianCodes === 'string') u.technicianCodes = replaceId(u.technicianCodes as string);
-                    }
-                    if (u.segments && Array.isArray(u.segments)) {
-                        u.segments.forEach(seg => { if (seg.ktvId) seg.ktvId = replaceId(seg.ktvId) });
-                    }
-                });
-
-                console.log('✅ [EXT-MAP] Final technicianCodes:', dispatchData.itemUpdates?.map(u => u.technicianCodes));
-                console.log('✅ [EXT-MAP] Final staffAssignments ktvIds:', dispatchData.staffAssignments?.map(a => a.ktvId));
-            }
+        const { data: knownStaffs } = uniqueKtvIds.length > 0
+            ? await supabase.from('Staff').select('id, work_type').in('id', uniqueKtvIds)
+            : { data: [] as { id: string; work_type: string | null }[] };
+        const knownStaffById = new Map((knownStaffs || []).map(st => [st.id, st]));
+        const unknownKtvIds = uniqueKtvIds.filter(id => !knownStaffById.has(id));
+        if (unknownKtvIds.length > 0) {
+            return {
+                success: false,
+                error: `Không thể điều phối: KTV [${unknownKtvIds.join(', ')}] chưa có tài khoản. Vào Admin → Nhân viên tạo KTV (loại C nếu là cộng tác viên) rồi chọn lại từ danh sách.`
+            };
         }
 
         // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
-        // Chặn lọt KTV cơ hữu chưa chấm công thông qua chức năng nhập tay
-        const finalKtvIds = new Set<string>();
-        if (dispatchData.technicianCode) finalKtvIds.add(dispatchData.technicianCode);
-        if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) finalKtvIds.add(a.ktvId) });
-        if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
-            if (u.technicianCodes) {
-                if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) finalKtvIds.add(c) });
-                else if (typeof u.technicianCodes === 'string') u.technicianCodes.split(',').forEach(c => { if (c.trim()) finalKtvIds.add(c.trim()) });
-            }
-        });
-
-        // Chỉ kiểm tra các KTV cơ hữu (không bắt đầu bằng EXT hoặc C_)
-        const coreKtvIds = Array.from(finalKtvIds).filter(id => !id.startsWith('C_') && !id.startsWith('EXT'));
+        // Chặn KTV cơ hữu chưa chấm công. Loại C (cộng tác viên) KHÔNG bắt buộc
+        // điểm danh — quyết định 12/09/2026 — nên bỏ qua như EXT/C_ trước đây.
+        const coreKtvIds = uniqueKtvIds.filter(id => !isTypeCWorkType(knownStaffById.get(id)?.work_type));
         
         if (coreKtvIds.length > 0) {
             const { data: activeTurns } = await supabase
@@ -1817,6 +1761,12 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             }
 
             const { data: turnsToRelease } = await queryToRelease;
+            // Loại C không điểm danh nên xong việc là rời hàng đợi ('off'), không về 'waiting'.
+            const releaseIds = (turnsToRelease || []).map(t => t.employee_id).filter(Boolean);
+            const { data: releaseStaffs } = releaseIds.length > 0
+                ? await supabase.from('Staff').select('id, work_type').in('id', releaseIds)
+                : { data: [] as { id: string; work_type: string | null }[] };
+            const typeCReleaseIds = new Set((releaseStaffs || []).filter(st => isTypeCWorkType(st.work_type)).map(st => st.id));
 
             if (turnsToRelease && turnsToRelease.length > 0) {
                 for (const turn of turnsToRelease) {
@@ -1835,7 +1785,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     } else {
                         // KTV đã xong tất cả item của họ
                         let newTurnsCompleted = turn.turns_completed || 0;
-                        const newStatus = (turn.status === 'off' || turn.employee_id.startsWith('EXT') || turn.employee_id.startsWith('C_')) ? 'off' : 'waiting';
+                        const newStatus = (turn.status === 'off' || isPlaceholderStaffId(turn.employee_id) || typeCReleaseIds.has(turn.employee_id)) ? 'off' : 'waiting';
                         await supabase
                             .from('TurnQueue')
                             .update({

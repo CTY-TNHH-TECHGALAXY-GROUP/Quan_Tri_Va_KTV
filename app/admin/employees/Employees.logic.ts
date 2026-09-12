@@ -35,8 +35,7 @@ export const useEmployeeManagement = () => {
         setIsLoading(true);
         const res = await getStaffList();
         if (res.success && res.data) {
-            const filteredData = res.data.filter((s: any) => s.work_type !== 'TYPE_C');
-            const mapped: Employee[] = filteredData.map((s: any) => ({
+            const mapped: Employee[] = res.data.map((s: any) => ({
                 id: s.id,
                 code: s.id,
                 name: s.full_name,
@@ -62,6 +61,7 @@ export const useEmployeeManagement = () => {
                 rating: 5.0,
                 isActiveVipMenu: s.is_active_vip_menu || false,
                 isHomeSpa: s.is_home_spa || false,
+                isActiveTherapyMenu: s.is_active_therapy_menu || false,
                 work_type: s.work_type || 'TYPE_A',
                 baseSalaryPerHour: s.base_salary_per_hour || 180000,
                 targetHoursPerMonth: s.target_hours_per_month || 80,

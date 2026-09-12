@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { StaffData, TurnQueueData, WorkSegment } from '../types';
 import { DispatchSegmentRow } from './DispatchSegmentRow';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { ktvDisplayLabel, isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 
 interface StaffAssignment {
     id: string;
@@ -217,6 +218,15 @@ export const DispatchStaffRow = ({
         handleChange({ segments: newSegments });
     };
 
+    // Loại C hiện TÊN (quầy không quen mã C001); mã placeholder cũ EXT_/C_ trên
+    // đơn lịch sử không còn trong hàng đợi nên suy ra loại từ mẫu mã.
+    const workTypeOf = (ktvId?: string) =>
+        availableTurns.find(t => t.employee_id === ktvId)?.staff?.work_type ?? (isPlaceholderStaffId(ktvId) ? 'TYPE_C' : null);
+    const selectedKtvLabel = row.ktvId ? ktvDisplayLabel(workTypeOf(row.ktvId), row.ktvId, row.ktvName) : '';
+    const isKtvSearchMiss = (term: string) => !availableTurns.some(t =>
+        t.status !== 'off' && (t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term))
+    );
+
     const handleSelectKtv = (ktvId: string, ktvName: string) => {
         handleChange({ 
             ktvId, 
@@ -238,7 +248,7 @@ export const DispatchStaffRow = ({
                             <input
                                 type="text"
                                 placeholder="👉 Nhập tên hoặc mã KTV 👈"
-                                value={isDropdownOpen ? searchQuery : ((row.ktvId?.startsWith('EXT') || row.ktvId?.startsWith('C_')) ? (row.ktvName || row.ktvId) : (row.ktvId || ''))}
+                                value={isDropdownOpen ? searchQuery : selectedKtvLabel}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
                                     if (!isDropdownOpen) setIsDropdownOpen(true);
@@ -248,10 +258,9 @@ export const DispatchStaffRow = ({
                                     if (e.key === 'Enter' && searchQuery.trim()) {
                                         const term = searchQuery.toLowerCase().trim();
                                         const match = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term);
+                                        // Không khớp thì KHÔNG nhận chữ tự do — hết thời tự sinh mã EXT_.
                                         if (match) {
                                             handleSelectKtv(match.employee_id, match.staff?.full_name || '');
-                                        } else {
-                                            handleSelectKtv(searchQuery.trim(), searchQuery.trim());
                                         }
                                         setSearchQuery('');
                                         setIsDropdownOpen(false);
@@ -285,8 +294,8 @@ export const DispatchStaffRow = ({
                                                 return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
                                             })
                                             .sort((a, b) => {
-                                                const isAExt = a.employee_id.startsWith('EXT') || a.employee_id.startsWith('C_');
-                                                const isBExt = b.employee_id.startsWith('EXT') || b.employee_id.startsWith('C_');
+                                                const isAExt = isTypeCWorkType(a.staff?.work_type) || isPlaceholderStaffId(a.employee_id);
+                                                const isBExt = isTypeCWorkType(b.staff?.work_type) || isPlaceholderStaffId(b.employee_id);
                                                 if (isAExt && !isBExt) return 1;
                                                 if (!isAExt && isBExt) return -1;
                                                 return 0;
@@ -316,11 +325,7 @@ export const DispatchStaffRow = ({
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
                                                                 <span>
-                                                                    {turn.employee_id.startsWith('C_') && turn.staff?.full_name
-                                                                        ? turn.staff.full_name
-                                                                        : turn.employee_id.startsWith('EXT') && turn.staff?.full_name
-                                                                            ? `${turn.employee_id} - ${turn.staff.full_name}`
-                                                                            : turn.employee_id}
+                                                                    {ktvDisplayLabel(workTypeOf(turn.employee_id), turn.employee_id, turn.staff?.full_name)}
                                                                 </span>
                                                                 <WorkTypeBadge workType={turn.staff?.work_type} />
                                                                 {turn.staff?.online_status === 'ONLINE' && (
@@ -348,19 +353,10 @@ export const DispatchStaffRow = ({
                                                 );
                                             })}
                                         
-                                        {/* Nhập ngoài custom text */}
-                                        {searchQuery.trim() && !availableTurns.some(t => t.employee_id.toLowerCase() === searchQuery.trim().toLowerCase() || t.staff?.full_name?.toLowerCase() === searchQuery.trim().toLowerCase()) && (
-                                            <div
-                                                onClick={() => {
-                                                    const customText = searchQuery.trim();
-                                                    handleSelectKtv(customText, customText);
-                                                    setSearchQuery('');
-                                                    setIsDropdownOpen(false);
-                                                }}
-                                                className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-emerald-50 text-emerald-700 active:scale-[0.98] border border-dashed border-emerald-200 mt-2"
-                                            >
-                                                <Plus size={16} className="text-emerald-500" />
-                                                <span>Nhập tên ngoài: <strong className="text-emerald-800">{searchQuery.trim()}</strong></span>
+                                        {/* Không còn ô "Nhập tên ngoài": cộng tác viên phải có tài khoản loại C */}
+                                        {searchQuery.trim() && isKtvSearchMiss(searchQuery.toLowerCase().trim()) && (
+                                            <div className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">
+                                                Không có KTV tên này. Cộng tác viên mới → Admin → Nhân viên tạo tài khoản loại C rồi chọn lại.
                                             </div>
                                         )}
 

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
 import { isDummyEmail, isDummyPhone } from '@/lib/customer.logic';
+import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,17 +63,16 @@ export async function GET() {
         // Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
             supabase!.from('Services').select('id, nameVN, duration'),
-            supabase!.from('Staff').select('id, full_name')
+            supabase!.from('Staff').select('id, full_name, work_type')
         ]);
         
         const serviceMap = new Map((services || []).map(s => [s.id, s.nameVN || 'Unknown']));
         const serviceDurationMap = new Map((services || []).map(s => [s.id, s.duration || 0]));
-        const staffMap = new Map((staff || []).map(s => {
-            if (s.id && (s.id.startsWith('C_') || s.id.startsWith('EXT'))) {
-                return [s.id, s.full_name || s.id];
-            }
-            return [s.id, s.id];
-        }));
+        // Loại C (và mã placeholder cũ EXT_/C_) hiện TÊN, loại khác hiện MÃ.
+        const staffMap = new Map((staff || []).map(s => [
+            s.id,
+            ktvDisplayLabel(s.work_type ?? (isPlaceholderStaffId(s.id) ? 'TYPE_C' : null), s.id, s.full_name)
+        ]));
 
         // 3. Create Maps for grouping bookings by customerId AND email
         const bookingsByCustomerId = new Map<string, any[]>();

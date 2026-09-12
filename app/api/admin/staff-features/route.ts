@@ -5,6 +5,7 @@ import { StaffFeaturePatchSchema } from '@/lib/schemas/admin.schema';
 import { SessionEpochService } from '@/lib/services/SessionEpochService';
 import { STAFF_STATUS } from '@/lib/constants/staffStatus';
 import { MANAGED_FLAG_KEYS } from '@/lib/featureFlags';
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,10 +20,8 @@ export const dynamic = 'force-dynamic';
  * trên bảng Tính năng: muốn tắt ví hay tắt nhận đơn ngoài giờ cho họ thì không
  * có dòng nào để bấm.
  */
-const PLACEHOLDER_ID = /^(EXT|C_)/i;
-
 function isAppAccount(id: string): boolean {
-    return !PLACEHOLDER_ID.test(String(id || ''));
+    return !isPlaceholderStaffId(id);
 }
 
 /**

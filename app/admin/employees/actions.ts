@@ -2,7 +2,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
-import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_D } from '@/lib/constants/staff.constants';
+import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
@@ -13,10 +13,11 @@ export async function getStaffList() {
         if (!supabase) throw new Error("Supabase admin client not initialized");
         // Tài khoản hệ thống (admin/dev) không phải nhân sự. Trước đây chúng vẫn
         // nằm trong danh sách này và bị hiển thị là "Đã nghỉ" — sai và gây rối.
+        // Loại C từ 12/09/2026 là tài khoản thật nên KHÔNG lọc theo work_type
+        // nữa; chỉ giấu mã placeholder cũ (EXT_/C_) — xem `isPlaceholderStaffId`.
         const { data: staff, error } = await supabase
             .from('Staff')
             .select('*')
-            .neq('work_type', 'TYPE_C')
             .neq('status', STAFF_STATUS.SYSTEM)
             .order('created_at', { ascending: false });
 
@@ -40,7 +41,7 @@ export async function getStaffList() {
                 userRole: authInfo?.role || 'TECHNICIAN',
                 enableBonus: s.feature_flags?.enable_bonus ?? true
             };
-        }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !s.id.startsWith('EXT') && s.work_type !== 'TYPE_C');
+        }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !isPlaceholderStaffId(s.id));
 
         return { success: true, data: staffWithAuth };
     } catch (error: any) {
@@ -134,7 +135,14 @@ export async function createStaffMember(formData: any) {
             weight: formData.weight ? parseInt(formData.weight) : null,
             work_type: formData.work_type || 'TYPE_A',
             skills: formData.skills || {},
-            feature_flags: formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B : DEFAULT_FEATURE_FLAGS_TYPE_A
+            // Ba công tắc menu — trước đây form có tick nhưng tạo mới không ghi xuống.
+            is_active_vip_menu: !!formData.isActiveVipMenu,
+            is_home_spa: !!formData.isHomeSpa,
+            is_active_therapy_menu: !!formData.isActiveTherapyMenu,
+            feature_flags: formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
+                : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
+                : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
+                : DEFAULT_FEATURE_FLAGS_TYPE_A
         };
 
         const { data: staffData, error: staffError } = await supabase
@@ -178,6 +186,7 @@ export async function updateStaffMember(id: string, updates: any) {
             if (staffPayload.status === STAFF_STATUS.RESIGNED) {
                 staffPayload.is_active_vip_menu = false;
                 staffPayload.is_home_spa = false;
+                staffPayload.is_active_therapy_menu = false;
                 
                 // Remove from TurnQueue
                 const { error: turnQueueError } = await supabase
@@ -226,6 +235,7 @@ export async function updateStaffMember(id: string, updates: any) {
         }
         if (updates.isActiveVipMenu !== undefined) staffPayload.is_active_vip_menu = updates.isActiveVipMenu;
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
+        if (updates.isActiveTherapyMenu !== undefined) staffPayload.is_active_therapy_menu = updates.isActiveTherapyMenu;
 
         const { error: staffError } = await supabase
             .from('Staff')

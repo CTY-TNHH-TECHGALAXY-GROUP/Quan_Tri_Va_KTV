@@ -95,6 +95,7 @@ export interface Employee {
   targetHoursPerMonth?: number;
   isActiveVipMenu?: boolean;
   isHomeSpa?: boolean;
+  isActiveTherapyMenu?: boolean;
   role?: string;
   work_type?: string;
   featureFlags?: any;

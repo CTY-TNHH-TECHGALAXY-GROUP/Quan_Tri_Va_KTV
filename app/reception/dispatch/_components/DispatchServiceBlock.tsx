@@ -3,6 +3,7 @@
 import React from 'react';
 import { Plus, AlertTriangle, UserCheck, Trash2, Pencil, SplitSquareHorizontal, Bed as BedIcon } from 'lucide-react';
 import { DispatchStaffRow } from './DispatchStaffRow';
+import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { ReminderData, ServiceBlock, StaffAssignment, StaffData, TurnQueueData } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
@@ -101,7 +102,7 @@ export const DispatchServiceBlock = ({
                                     return (
                                         <span key={`${row.id || 'row'}-${ktvCode || 'none'}-${i}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-black rounded-lg whitespace-nowrap shadow-sm">
                                             <UserCheck size={14} className="text-indigo-500" />
-                                            {ktvCode ? ((ktvCode.startsWith('EXT') || ktvCode.startsWith('C_')) ? (row.ktvName || ktvCode) : ktvCode) : 'Chưa gán'}
+                                            {ktvCode ? ktvDisplayLabel(availableTurns.find(t => t.employee_id === ktvCode)?.staff?.work_type ?? (isPlaceholderStaffId(ktvCode) ? 'TYPE_C' : null), ktvCode, row.ktvName) : 'Chưa gán'}
                                             {handoverPhotoUrls && handoverPhotoUrls.length > 0 && onViewPhoto && (
                                                 <button
                                                     onClick={(e) => {

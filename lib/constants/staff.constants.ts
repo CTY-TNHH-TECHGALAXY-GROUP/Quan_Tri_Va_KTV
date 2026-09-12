@@ -6,9 +6,23 @@ export const DEFAULT_TRAVEL_MINUTES = 15;
 export const WORK_TYPE_LABELS = {
     TYPE_A: 'Cơ bản',
     TYPE_B: 'Hợp tác',
-    TYPE_C: 'Nhập tay',
+    TYPE_C: 'Cộng tác viên',
     TYPE_D: 'Khoán'
 };
+
+/**
+ * Mã `Staff` do bảng điều phối TỰ SINH trước 12/09/2026 mỗi khi quầy gõ một tên
+ * lạ vào ô KTV (`EXT_xxxxxx`, `C_xxxxxx`). Không có tài khoản đăng nhập; đã
+ * chuyển `ĐÃ NGHỈ` bằng `scripts/cleanup_type_c_placeholders.ts`, giữ dòng lại
+ * chỉ để lịch sử đơn/tua tháng 8–9 còn đọc được tên. Mọi danh sách nhân sự /
+ * vận hành phải lọc chúng ra. Từ nay loại C là tài khoản thật (`work_type =
+ * TYPE_C`, tạo ở Admin → Nhân viên), KHÔNG tạo mã mới theo mẫu này nữa.
+ */
+export const PLACEHOLDER_STAFF_ID = /^(EXT|C_)/i;
+export const isPlaceholderStaffId = (id: string | null | undefined): boolean =>
+    PLACEHOLDER_STAFF_ID.test(String(id || ''));
+export const isTypeCWorkType = (workType: string | null | undefined): boolean =>
+    String(workType || '').toUpperCase() === 'TYPE_C';
 
 export const DEFAULT_FEATURE_FLAGS_TYPE_A: FeatureFlagsTypeA = {
     overtime_enabled: true,
@@ -151,15 +165,15 @@ export const TYPE_D_BONUS = {
  *
  * Loại A / B / D là nhân sự nội bộ, quầy gọi nhau bằng MÃ (T079, NH016) nên
  * hiện tên đầy đủ vừa dài vừa khó đối chiếu với bảng điều phối.
- * Riêng loại C ("Nhập tay") là người nhập thủ công, mã chỉ là chuỗi sinh tự động
- * (EXT_G6AMZG…) không ai đọc được — nhóm này phải hiện TÊN.
+ * Riêng loại C (cộng tác viên) quầy gọi bằng TÊN — mã `C001` mới đặt chưa ai
+ * quen, còn mã placeholder cũ (`EXT_G6AMZG…`) thì không ai đọc được.
  */
 export function ktvDisplayLabel(
     workType: string | null | undefined,
     code: string,
     fullName?: string | null
 ): string {
-    if (String(workType || '').toUpperCase() === 'TYPE_C') {
+    if (isTypeCWorkType(workType)) {
         return fullName?.trim() || code;
     }
     return code;

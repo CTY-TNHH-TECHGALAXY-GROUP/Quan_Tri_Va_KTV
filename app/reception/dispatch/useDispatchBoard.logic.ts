@@ -4,6 +4,7 @@ import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
 const getCurrentTime = () => {
@@ -96,22 +97,27 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
      * Áp danh sách nhân viên + sổ tua vào state.
      * Tách riêng để `refreshStaffOnly` dùng lại được mà không đụng tới `orders`.
      */
-    function applyStaffAndTurns(sData: any, tData: any) {
-        if (sData) setStaffs(sData as unknown as StaffData[]);
-        if (!tData || !sData) return;
-
-        const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
+    /**
+     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho người KHÔNG điểm danh mà
+     * quầy vẫn được phân đơn: loại B on-call và loại C (cộng tác viên — không
+     * bắt buộc điểm danh, quyết định 12/09/2026). Dùng chung cho cả hai chỗ set
+     * turns trong fetchData; trước đây chỗ thứ hai ghép lại từ đầu nên làm rơi
+     * on-call.
+     */
+    function mergeTurnsWithStaff(sData: StaffData[], tData: TurnQueueData[]) {
+        const merged = tData.map((t: TurnQueueData) => ({
             ...t,
-            staff: (sData as unknown as StaffData[]).find(s => s.id === t.employee_id)
+            staff: sData.find(s => s.id === t.employee_id)
         }));
 
-        // Thêm các KTV on_call vào merged nếu chưa có (Type B đang rảnh)
-        const onCallStaffs = (sData as unknown as StaffData[]).filter(s => {
+        const walkInStaffs = sData.filter(s => {
             const flags = s.feature_flags as any;
-            return flags && flags.is_on_call === true;
+            const isOnCall = !!flags && flags.is_on_call === true;
+            const isActiveTypeC = isTypeCWorkType(s.work_type) && s.status === 'ĐANG LÀM' && !isPlaceholderStaffId(s.id);
+            return isOnCall || isActiveTypeC;
         });
 
-        onCallStaffs.forEach(staff => {
+        walkInStaffs.forEach(staff => {
             if (!merged.some(m => m.employee_id === staff.id)) {
                 merged.push({
                     id: `fake-${staff.id}`,
@@ -125,8 +131,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 } as any);
             }
         });
+        return merged;
+    }
 
-        setTurns(merged);
+    function applyStaffAndTurns(sData: any, tData: any) {
+        if (sData) setStaffs(sData as unknown as StaffData[]);
+        if (!tData || !sData) return;
+        setTurns(mergeTurnsWithStaff(sData as unknown as StaffData[], tData as TurnQueueData[]));
     }
 
     /**
@@ -429,7 +440,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 mappedOrders.forEach(order => {
                     order.services.forEach(svc => {
                         svc.staffList?.forEach(st => {
-                            if ((st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) && st.ktvName && st.ktvName !== st.ktvId) {
+                            if (isPlaceholderStaffId(st.ktvId) && st.ktvName && st.ktvName !== st.ktvId) {
                                 ktvDisplayNames[st.ktvId] = st.ktvName;
                             }
                         });
@@ -448,13 +459,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     });
                     setStaffs(patchedStaffs);
                     
-                    if (tData) {
-                        const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
-                            ...t,
-                            staff: patchedStaffs.find(s => s.id === t.employee_id)
-                        }));
-                        setTurns(merged);
-                    }
+                    if (tData) setTurns(mergeTurnsWithStaff(patchedStaffs, tData as TurnQueueData[]));
                 }
                 
                 setOrders(mappedOrders);

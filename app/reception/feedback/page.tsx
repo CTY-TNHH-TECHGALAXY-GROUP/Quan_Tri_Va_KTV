@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useFeedbackDashboard, ChildBookingForFeedback } from './FeedbackDashboard.logic';
 import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
 import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star, ChevronDown, ChevronUp } from 'lucide-react';
+import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChild: (child: any) => void }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -12,7 +13,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
     const ktvMap = new Map();
     group.childBookings.forEach((c: any) => {
         c.ktvList?.forEach((k: any) => {
-            const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+            const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
             const name = isTypeC ? k.ktvName : k.ktvId;
             const currentMax = ktvMap.get(name);
             if (!currentMax || (k.timeEnd && k.timeEnd > (currentMax.timeEnd || ''))) {
@@ -22,7 +23,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
     });
 
     const allKtvs = Array.from(ktvMap.values()).map((k: any) => {
-        const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+        const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
         const name = isTypeC ? k.ktvName : k.ktvId;
         const time = k.timeEnd ? (k.timeEnd.includes(':') && k.timeEnd.length <= 5 ? k.timeEnd : new Date(k.timeEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })) : '';
         return time ? `${name} (${time})` : name;

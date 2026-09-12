@@ -199,6 +199,10 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                         <input type="checkbox" checked={editedEmployee.isHomeSpa || false} onChange={(e) => updateField('isHomeSpa', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
                         <span className="text-sm font-medium text-gray-700">Đi Home Spa</span>
                       </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editedEmployee.isActiveTherapyMenu || false} onChange={(e) => updateField('isActiveTherapyMenu', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
+                        <span className="text-sm font-medium text-gray-700">Hiển thị trên Menu Điều trị</span>
+                      </label>
                         <label className="flex items-center gap-2 cursor-pointer mt-2">
                           <input type="checkbox" checked={editedEmployee.enableKpiDemo || false} onChange={(e) => updateField('enableKpiDemo', e.target.checked)} className="w-4 h-4 text-amber-500 rounded border-amber-300 focus:ring-amber-500" />
                           <span className="text-sm font-medium text-amber-700">Hiển thị Demo KPI</span>
@@ -217,6 +221,10 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Home Spa:</span>
                         <span className="text-sm font-medium text-gray-900">{editedEmployee.isHomeSpa ? 'Có' : 'Không'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Menu Điều trị:</span>
+                        <span className="text-sm font-medium text-gray-900">{editedEmployee.isActiveTherapyMenu ? 'Có' : 'Không'}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Nhận điểm Bonus:</span>

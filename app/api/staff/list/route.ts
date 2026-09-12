@@ -5,6 +5,9 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
  * GET /api/staff/list
  * Returns a simple list of all active staff members (id + full_name)
  * for use in dropdown selectors.
+ *
+ * Loại C có mặt ở đây từ 12/09/2026 (tài khoản thật). Mã placeholder cũ
+ * (EXT_/C_) đã `ĐÃ NGHỈ` nên bộ lọc status tự loại chúng.
  */
 export async function GET() {
     try {
@@ -17,7 +20,6 @@ export async function GET() {
             .from('Staff')
             .select('id, full_name')
             .eq('status', 'ĐANG LÀM')
-            .neq('work_type', 'TYPE_C')
             .order('full_name', { ascending: true });
 
         if (error) {

@@ -8,6 +8,7 @@ import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
 import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
 import { KtvCommentModal } from './KtvCommentModal';
+import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -1032,7 +1033,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
                                                                         return (
                                                                             <span key={idx} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' : 'bg-gray-100 text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>
-                                                                                <span className="flex items-center gap-0.5">👤 {(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                <span className="flex items-center gap-0.5">👤 {st.ktvId ? ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName) : 'Chưa gán'} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                 <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                 {startPhotoUrl && (
                                                                                     <button
@@ -1071,7 +1072,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                    ngoài thẻ. */
                                                                                 <div key={stIdx} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                        <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
                                                                                             const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);

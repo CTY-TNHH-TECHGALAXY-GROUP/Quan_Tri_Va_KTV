@@ -141,6 +141,7 @@ export default function EmployeeManagementPage() {
                                                 {emp.position}
                                                 {emp.isActiveVipMenu && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full border border-amber-200">VIP</span>}
                                                 {emp.isHomeSpa && <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full border border-sky-200">Home Spa</span>}
+                                                {emp.isActiveTherapyMenu && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full border border-emerald-200">Điều trị</span>}
                                             </div>
                                             <div className="text-xs text-gray-500">{emp.experience} {t.experienceSuffix}</div>
                                         </td>
