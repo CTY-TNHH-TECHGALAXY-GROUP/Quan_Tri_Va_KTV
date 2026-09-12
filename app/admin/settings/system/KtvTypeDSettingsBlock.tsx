@@ -267,8 +267,9 @@ export function KtvTypeDSettingsBlock() {
 
                         <div className="rounded-2xl border border-gray-100 overflow-hidden">
                             <div className="grid grid-cols-12 gap-2 bg-gray-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-gray-400">
-                                <div className="col-span-6">Trường hợp</div>
-                                <div className="col-span-4">Chế tài</div>
+                                <div className="col-span-5">Trường hợp</div>
+                                <div className="col-span-2">Xét lúc nào</div>
+                                <div className="col-span-3">Chế tài</div>
                                 <div className="col-span-2 text-right">Số giờ</div>
                             </div>
 
@@ -281,7 +282,7 @@ export function KtvTypeDSettingsBlock() {
                                 });
                                 return (
                                     <div key={key} className="grid grid-cols-12 gap-2 items-start px-4 py-3 border-t border-gray-50">
-                                        <div className="col-span-6">
+                                        <div className="col-span-5">
                                             <p className="text-sm font-bold text-gray-700 leading-snug">
                                                 {TYPE_D_DISCIPLINE_CASES[key].label}
                                             </p>
@@ -289,7 +290,15 @@ export function KtvTypeDSettingsBlock() {
                                                 {TYPE_D_DISCIPLINE_CASES[key].moTa}
                                             </p>
                                         </div>
-                                        <div className="col-span-4">
+                                        <div className="col-span-2">
+                                            <p className="text-[11px] font-black text-indigo-600 leading-tight">
+                                                {TYPE_D_DISCIPLINE_CASES[key].quetLuc}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+                                                {TYPE_D_DISCIPLINE_CASES[key].quetBoi}
+                                            </p>
+                                        </div>
+                                        <div className="col-span-3">
                                             <select
                                                 value={cai.action}
                                                 onChange={(e) => doiCase({ action: e.target.value })}
@@ -325,11 +334,11 @@ export function KtvTypeDSettingsBlock() {
                             một ngày chỉ trừ một lần (riêng từ chối tua tính từng tua).
                         </p>
                         <div className="space-y-4">
-                            <NumberInput hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc KTV đổi lịch từ Đi làm sang OFF. Đổi khi ngày làm còn ở tương lai thì miễn phí; từ 07:00 sáng ngày làm trở đi thì không cho đổi nữa." label="Bỏ ca đã đăng ký sau 00:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
-                            <NumberInput hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc điểm danh" hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc đổi lịch" hint="Trừ NGAY lúc KTV đổi lịch từ Đi làm sang OFF. Đổi khi ngày làm còn ở tương lai thì miễn phí; từ 07:00 sáng ngày làm trở đi thì không cho đổi nữa." label="Bỏ ca đã đăng ký sau 00:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc bấm Nghỉ đột xuất" hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
+                            <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
                         </div>
                     </div>
 
@@ -400,7 +409,7 @@ function SaveButton({ group, savingGroup, saveStatus, onClick }: any) {
     );
 }
 
-function NumberInput({ label, value, onChange, suffix = 'VNĐ' }: any) {
+function NumberInput({ label, value, onChange, suffix = 'VNĐ', hint, khiNao }: any) {
     const [displayValue, setDisplayValue] = useState('');
 
     useEffect(() => {
@@ -419,7 +428,18 @@ function NumberInput({ label, value, onChange, suffix = 'VNĐ' }: any) {
 
     return (
         <div>
-            {label && <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2">{label}</label>}
+            {label && (
+                <div className="flex items-baseline flex-wrap gap-x-2 gap-y-1 mb-1">
+                    <label className="text-xs font-black uppercase tracking-wider text-gray-500">{label}</label>
+                    {/* Cùng vai trò với cột "Xét lúc nào" của bảng bên trên. */}
+                    {khiNao && (
+                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                            {khiNao}
+                        </span>
+                    )}
+                </div>
+            )}
+            {hint && <p className="text-[11px] text-gray-400 leading-relaxed mb-2">{hint}</p>}
             <div className="relative">
                 <input
                     type="text"

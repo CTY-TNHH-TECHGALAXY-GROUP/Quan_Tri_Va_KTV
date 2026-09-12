@@ -94,7 +94,12 @@ export type TypeDDisciplineCaseKey =
 
 export const TYPE_D_DISCIPLINE_CASES: Record<
     TypeDDisciplineCaseKey,
-    { action: TypeDDisciplineAction; hours: number; label: string; moTa: string }
+    {
+        action: TypeDDisciplineAction; hours: number; label: string; moTa: string;
+        /** Ai quét, quét lúc nào — để đọc bảng là biết ngay, khỏi mò trong code. */
+        quetBoi: string;
+        quetLuc: string;
+    }
 > = {
     /**
      * ⚠️ Từng có thêm một luật "chưa đăng ký lịch cho NGÀY MỚI" chạy song song,
@@ -107,21 +112,25 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
         action: 'DEDUCT_OR_LOCK', hours: 10,
         label: 'Không đăng ký gì và không đi làm',
         moTa: 'Chốt NGÀY VỪA QUA: cả ngày không có dòng đăng ký nào, mà cũng không điểm danh. Có đến làm thì chỉ là quên đăng ký → bỏ qua.',
+        quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
     NO_SHOW_NO_NOTICE: {
         action: 'DEDUCT_OR_LOCK', hours: 10,
         label: 'Đăng ký làm, không báo, không đến',
         moTa: 'Đã đăng ký đi làm nhưng hết ngày không điểm danh, và cũng không bấm Báo vắng hay Báo trễ lần nào.',
+        quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
     LATE_REPORTED_NO_SHOW: {
         action: 'DEDUCT_OR_LOCK', hours: 10,
         label: 'Báo trễ rồi vẫn không đến',
         moTa: 'Đã bấm Báo trễ và hẹn giờ mới, nhưng hết ngày vẫn không điểm danh lần nào.',
+        quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
     ABSENT_REPORTED_NO_SHOW: {
         action: 'DEDUCT', hours: 5,
         label: 'Báo vắng trước 07:00, không đến',
         moTa: 'Đã bấm Báo vắng đúng quy trình. Từ 07:00 trở đi hệ thống không cho báo vắng nữa, nên mọi phiếu báo vắng đều thuộc diện này.',
+        quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
 };
 
