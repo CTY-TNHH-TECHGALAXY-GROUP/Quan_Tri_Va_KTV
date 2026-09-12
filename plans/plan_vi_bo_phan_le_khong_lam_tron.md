@@ -181,3 +181,50 @@ bỏ luôn lệnh rút đang chờ duyệt, số dư lại sai theo hướng kh�
 **Còn lại**: dữ liệu hiện tại **không có dòng `HELD` nào** nên nhánh A/B/C chưa
 được dữ liệu thật soi tới — logic đối xứng với nhánh loại D và khớp định nghĩa của
 `getBalance`, nhưng nên để mắt khi có đơn A/B/C bị tạm giữ.
+
+---
+
+## 11. Rà nhánh `HELD` của A/B/C (12/09/2026)
+
+**Kết luận: `HELD` là nhánh NGỦ — không dòng nào sinh ra được nữa.**
+
+`KtvCommissionService.checkIsItemPassed` đã bị rút ruột thành `return { isPassed:
+true }` ở commit **`bddf3272`** — *"loại bỏ hoàn toàn cơ chế Hold Salary (giam
+tiền) theo yêu cầu khách hàng"*. Hệ quả dây chuyền trong
+`app/api/ktv/wallet/timeline/route.ts`:
+
+- Vòng lặp item không bao giờ vào nhánh `else` → `heldCommission` luôn `0`.
+- Nhánh dự phòng `heldCommission === 0 && relevantItems.length > passedCount &&
+  passedCount === 0` cũng không với tới: mọi item đều `passed` nên
+  `passedCount === relevantItems.length`.
+- Khối `if (heldCommission > 0) timeline.push({ status: 'HELD' })` là code chết.
+
+Cả `getBalance` lẫn timeline đều gọi **cùng cái stub đó**, nên hai bên khớp nhau
+theo cấu tạo — không có đường nào lệch.
+
+**Đo trên dữ liệu thật**: 25 tài khoản A/B/C/D (8 đang tắt ví) → **17 khớp, 0
+lệch**; **0 dòng `HELD`**; và **0 dòng tua theo từng đơn** — nhánh realtime (nơi
+`HELD` nằm) không có dữ liệu nào chạm tới, vì `KTVDailyLedger` đã chốt hết các
+ngày trước hôm nay.
+
+**Vì vậy phải mô phỏng.** Tách 2 hàm thuần ra
+`lib/services/KtvWalletBalanceRules.ts` (`countsTowardBalance`,
+`attachRunningBalance`) — vừa đúng mục 4.2 (công thức ở `lib/services/*`), vừa
+test được. Thêm `scripts/qa/qa_18_so_du_chi_tua_da_chot.ts`, đã nối vào
+`npm run test:qa`:
+
+| Ca | Kiểm | Kết quả |
+|---|---|---|
+| R1 | Dòng `HELD` không đẩy số dư lên, dòng chốt sau vẫn đúng | ĐẠT |
+| R2 | Tua loại D tạm tính **và thuế đi kèm** đều bị bỏ | ĐẠT |
+| R3 | Lệnh rút `PENDING` **vẫn trừ**; bị từ chối thì không; TIP không vào ví | ĐẠT |
+| R4 | `checkIsItemPassed` luôn trả `true` → `HELD` là nhánh ngủ | ĐẠT |
+| R5 | Tiền cọc chỉ trừ một lần ở mỗi dòng, dòng `HELD` không cộng vào | ĐẠT |
+| R6 | Cùng mốc giờ thì cộng trước trừ sau | ĐẠT |
+
+**Giữ lại nhánh `HELD`** thay vì xoá: nếu quy chế giam tiền quay lại thì số dư
+không âm thầm sai. Đã ghi rõ trong docstring của `countsTowardBalance`.
+
+**Kiểm chứng sau khi tách hàm**: đo lại API thật — **17 khớp, 0 lệch** (đúng như
+trước khi tách, chứng minh việc tách không đổi hành vi). Typecheck sạch, eslint
+không thêm lỗi mới, `/ktv/wallet` trả 200, `npm run test:qa` (nay 17 bộ) ĐẠT.
