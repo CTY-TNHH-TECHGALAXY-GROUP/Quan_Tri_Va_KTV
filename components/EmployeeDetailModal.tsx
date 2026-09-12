@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2 } from 'lucide-react';
 import { Employee, SkillLevel } from '@/lib/types';
+import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
 import { updateStaffMember } from '@/app/admin/employees/actions';
 
 interface EmployeeDetailModalProps {
@@ -72,27 +73,6 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
       if (!prev) return null;
       return { ...prev, [field]: value };
     });
-  };
-
-  const skillLabels: Record<keyof Employee['skills'], string> = {
-    hairCut: 'Cắt Tóc',
-    shampoo: 'Gội đầu',
-    hairExtensionShampoo: 'Gội Tóc Nối',
-    earCombo: 'Ráy Combo',
-    earChuyen: 'Ráy Chuyên',
-    machineShave: 'Cạo Máy',
-    razorShave: 'Cạo Dao',
-    facial: 'Facial',
-    thaiBody: 'Body Thái',
-    shiatsuBody: 'Body Shiatsu',
-    oilBody: 'Body Dầu',
-    hotStoneBody: 'Body Đá Nóng',
-    scrubBody: 'Scrub Body',
-    bodyMix: 'Body Mix',
-    foot: 'Foot',
-    heelScrub: 'Bào Gót',
-    nailCombo: 'Nail Combo',
-    nailChuyen: 'Nail Chuyên',
   };
 
   const levelInfo: Record<string, { label: string, color: string, icon: React.ReactNode }> = {
@@ -341,7 +321,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                 )}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {(Object.keys(skillLabels) as (keyof Employee['skills'])[]).map((key) => {
+                {SKILL_KEYS.map((key) => {
                   const rawLevel = editedEmployee.skills?.[key];
                   const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
                   const info = levelInfo[String(isSkilled)];
@@ -352,7 +332,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       disabled={!isEditing}
                       className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
                     >
-                      <span className="text-xs font-bold truncate">{skillLabels[key]}</span>
+                      <span className="text-xs font-bold truncate">{SKILL_LABELS[key]}</span>
                       {info.icon}
                     </button>
                   );

@@ -5,22 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X, Save, User, UserPlus, Award } from 'lucide-react';
 import { createStaffMember } from '@/app/admin/employees/actions';
 import { SkillLevel } from '@/lib/types';
-
-const DEFAULT_SKILLS = {
-    hairCut: false, shampoo: false, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
-    machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: false, hotStoneBody: false, scrubBody: false, bodyMix: false,
-    foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
-};
-
-const skillLabels: Record<string, string> = {
-    hairCut: 'Cắt Tóc', shampoo: 'Gội đầu', hairExtensionShampoo: 'Gội Tóc Nối',
-    earCombo: 'Ráy Combo', earChuyen: 'Ráy Chuyên', machineShave: 'Cạo Máy', razorShave: 'Cạo Dao',
-    facial: 'Facial', thaiBody: 'Body Thái', shiatsuBody: 'Body Shiatsu',
-    oilBody: 'Body Dầu', hotStoneBody: 'Body Đá Nóng', scrubBody: 'Scrub Body', bodyMix: 'Body Mix',
-    foot: 'Foot',
-    heelScrub: 'Bào Gót', nailCombo: 'Nail Combo', nailChuyen: 'Nail Chuyên',
-};
+import { DEFAULT_SKILLS, SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
 
 const levelInfo: Record<string, { label: string, color: string }> = {
     'false': { label: 'Chưa có', color: 'text-gray-400 bg-gray-50 border-gray-100 opacity-50' },
@@ -282,7 +267,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.keys(skillLabels).map((key) => {
+                                    {SKILL_KEYS.map((key) => {
                                         const level = formData.skills[key] ?? false;
                                         const info = levelInfo[String(level)];
                                         return (
@@ -292,7 +277,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                                 onClick={() => toggleSkill(key)}
                                                 className={`flex items-center justify-center p-2.5 rounded-lg border text-center transition-all hover:border-indigo-400 hover:shadow-sm cursor-pointer ${info.color}`}
                                             >
-                                                <span className="text-xs font-bold truncate w-full">{skillLabels[key]}</span>
+                                                <span className="text-xs font-bold truncate w-full">{SKILL_LABELS[key]}</span>
                                             </button>
                                         );
                                     })}

@@ -16,6 +16,7 @@ import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
 import { AddEmployeeModal } from '@/components/AddEmployeeModal';
 import { useEmployeeManagement } from './Employees.logic';
 import { t } from './Employees.i18n';
+import { SKILL_LABELS } from '@/lib/constants/staff.constants';
 
 // 🔧 UI CONFIGURATION
 const SKILL_LEVEL_STYLES = {
@@ -155,22 +156,22 @@ export default function EmployeeManagementPage() {
                                             <div className="flex flex-wrap gap-1">
                                                 {emp.skills.shampoo && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillShampoo}
+                                                        {SKILL_LABELS.shampoo}
                                                     </span>
                                                 )}
                                                 {emp.skills.oilBody && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillOilBody}
+                                                        {SKILL_LABELS.oilBody}
                                                     </span>
                                                 )}
                                                 {emp.skills.facial && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillFacial}
+                                                        {SKILL_LABELS.facial}
                                                     </span>
                                                 )}
                                                 {emp.skills.bodyMix && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillBodyMix}
+                                                        {SKILL_LABELS.bodyMix}
                                                     </span>
                                                 )}
                                                 <span className="px-2 py-0.5 bg-gray-50 text-gray-500 text-[10px] rounded border border-gray-100">...</span>

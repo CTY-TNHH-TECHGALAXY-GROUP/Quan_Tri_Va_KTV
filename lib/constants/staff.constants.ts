@@ -1,3 +1,4 @@
+import type { EmployeeSkills } from '@/lib/types';
 import { FeatureFlagsTypeA, FeatureFlagsTypeB, FeatureFlagsTypeD } from '../types/staff.types';
 
 export const DEFAULT_KPI_TARGET_HOURS = 80;
@@ -178,3 +179,50 @@ export function ktvDisplayLabel(
     }
     return code;
 }
+
+/**
+ * Kỹ năng chuyên môn — cột `Staff.skills` (jsonb, dạng `{ key: boolean }`).
+ *
+ * NGUỒN DUY NHẤT của danh sách kỹ năng và nhãn hiển thị. Form thêm nhân viên,
+ * modal chi tiết, bảng danh sách Admin và KTV Hub đều import từ đây. Thêm kỹ
+ * năng mới: thêm key vào `EmployeeSkills` (lib/types.ts) rồi điền nhãn ở đây —
+ * TypeScript sẽ báo lỗi nếu thiếu nhãn. Thứ tự khai báo = thứ tự hiện trên lưới.
+ */
+export const SKILL_LABELS: Record<keyof EmployeeSkills, string> = {
+    hairCut: 'Cắt Tóc',
+    shampoo: 'Gội đầu',
+    hairExtensionShampoo: 'Gội Tóc Nối',
+    earCombo: 'Ráy Combo',
+    earChuyen: 'Ráy Chuyên',
+    machineShave: 'Cạo Máy',
+    razorShave: 'Cạo Dao',
+    facial: 'Facial',
+    thaiBody: 'Body Thái',
+    shiatsuBody: 'Body Shiatsu',
+    oilBody: 'Body Dầu',
+    hotStoneBody: 'Body Đá Nóng',
+    scrubBody: 'Scrub Body',
+    bodyMix: 'Body Mix',
+    foot: 'Foot',
+    heelScrub: 'Bào Gót',
+    nailCombo: 'Nail Combo',
+    nailChuyen: 'Nail Chuyên',
+};
+
+export const SKILL_KEYS = Object.keys(SKILL_LABELS) as (keyof EmployeeSkills)[];
+
+/** Nhãn cho key đọc từ DB — key cũ không còn trong danh sách thì trả về chính key. */
+export const getSkillLabel = (key: string): string =>
+    (SKILL_LABELS as Record<string, string>)[key] ?? key;
+
+/** Bộ kỹ năng trống — dùng khi tạo nhân viên mới. */
+export const DEFAULT_SKILLS: EmployeeSkills = SKILL_KEYS.reduce(
+    (acc, key) => ({ ...acc, [key]: false }),
+    {} as EmployeeSkills
+);
+
+/**
+ * Bộ kỹ năng DỰ PHÒNG khi `Staff.skills` trong DB rỗng: mặc định biết Gội đầu
+ * và Body Dầu — giữ nguyên hành vi cũ của trang Nhân viên và KTV Hub.
+ */
+export const FALLBACK_SKILLS: EmployeeSkills = { ...DEFAULT_SKILLS, shampoo: true, oilBody: true };

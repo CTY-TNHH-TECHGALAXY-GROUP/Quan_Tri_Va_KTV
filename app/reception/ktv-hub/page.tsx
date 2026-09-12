@@ -23,6 +23,7 @@ import { useLeaveManagement, useShiftManagement } from '@/app/reception/leave-ma
 import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
 import { getStaffList, updateStaffMember } from '@/app/admin/employees/actions';
 import { Employee } from '@/lib/types';
+import { FALLBACK_SKILLS, getSkillLabel } from '@/lib/constants/staff.constants';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -679,12 +680,6 @@ const KTVListTab = ({ staffs, onEdit }: { staffs: any[], onEdit: (staff: any) =>
     const skillEntries = (skills: any) =>
         Object.entries(skills || {}).filter(([, v]) => typeofSkillValue(v) === 'expert' || typeofSkillValue(v) === 'basic');
 
-    const SKILL_LABELS: Record<string, string> = {
-        shampoo: 'Gội đầu', thaiBody: 'Massage Thái', oilBody: 'Massage Dầu',
-        hotStoneBody: 'Đá Nóng', foot: 'Foot',
-        facial: 'Chăm Sóc Da', hairCut: 'Cắt Tóc', earCleaning: 'Ráy Tai',
-    };
-
     return (
         <div className="space-y-3">
             {staffs.map(emp => {
@@ -723,7 +718,7 @@ const KTVListTab = ({ staffs, onEdit }: { staffs: any[], onEdit: (staff: any) =>
                                     <div className="flex flex-wrap gap-1.5 mt-2.5">
                                         {expertSkills.slice(0, 4).map(([key]) => (
                                             <span key={key} className="text-[10px] px-2 py-1 bg-indigo-50/80 text-indigo-700 rounded-lg font-bold border border-indigo-100/50">
-                                                {SKILL_LABELS[key] || key}
+                                                {getSkillLabel(key)}
                                             </span>
                                         ))}
                                         {expertSkills.length > 4 && (
@@ -1422,12 +1417,7 @@ export default function KTVHubPage() {
             baseSalary: 0,
             commissionRate: 0,
             rating: 5.0,
-            skills: staff.skills && Object.keys(staff.skills).length > 0 ? staff.skills : {
-                hairCut: false, shampoo: true, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
-                machineShave: false, razorShave: false, facial: false, thaiBody: false,
-                shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false, bodyMix: false,
-                foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
-            }
+            skills: staff.skills && Object.keys(staff.skills).length > 0 ? staff.skills : FALLBACK_SKILLS
         };
         setSelectedEmployee(emp);
         setIsDetailOpen(true);

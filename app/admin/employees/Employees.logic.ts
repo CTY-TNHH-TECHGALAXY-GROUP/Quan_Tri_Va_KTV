@@ -4,14 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Employee } from '@/lib/types';
 import { useAuth } from '@/lib/auth-context';
 import { getStaffList, deleteStaffMember } from './actions';
-
-// 🔧 CONFIGURATION
-const DEFAULT_SKILLS = {
-    hairCut: false, shampoo: true, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
-    machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false, bodyMix: false,
-    foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
-};
+import { FALLBACK_SKILLS } from '@/lib/constants/staff.constants';
 
 // Legacy foot skill keys to merge into unified 'foot'
 const LEGACY_FOOT_KEYS = ['oilFoot', 'hotStoneFoot', 'acupressureFoot'];
@@ -79,9 +72,9 @@ export const useEmployeeManagement = () => {
                     return (flags.kpi_target_hours || 0) > 0;
                 })(),
                 skills: (() => {
-                    const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : DEFAULT_SKILLS;
+                    const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : FALLBACK_SKILLS;
                     const parsedSkills: any = {};
-                    for (const key in DEFAULT_SKILLS) {
+                    for (const key in FALLBACK_SKILLS) {
                         const val = dbSkills[key];
                         // Nếu DB cũ chứa 'basic', 'expert', 'training' hoặc `true` -> true
                         parsedSkills[key] = val === true || val === 'basic' || val === 'expert' || val === 'training';
