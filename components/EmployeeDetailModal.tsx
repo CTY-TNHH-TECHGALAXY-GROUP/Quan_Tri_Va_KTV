@@ -84,7 +84,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     razorShave: 'Cạo Dao',
     facial: 'Facial',
     thaiBody: 'Body Thái',
-    shiatsuBody: 'Shiatsu',
+    shiatsuBody: 'Body Shiatsu',
     oilBody: 'Body Dầu',
     hotStoneBody: 'Body Đá Nóng',
     scrubBody: 'Scrub Body',

@@ -1423,11 +1423,10 @@ export default function KTVHubPage() {
             commissionRate: 0,
             rating: 5.0,
             skills: staff.skills && Object.keys(staff.skills).length > 0 ? staff.skills : {
-                hairCut: 'none', hairExtensionShampoo: 'none', earCleaning: 'none',
-                machineShave: 'none', razorShave: 'none', facial: 'none', thaiBody: 'none',
-                shiatsuBody: 'none', oilBody: 'basic', hotStoneBody: 'none', scrubBody: 'none',
-                foot: 'none', heelScrub: 'none', maniPedi: 'none',
-                shampoo: 'basic'
+                hairCut: false, shampoo: true, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
+                machineShave: false, razorShave: false, facial: false, thaiBody: false,
+                shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false, bodyMix: false,
+                foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
             }
         };
         setSelectedEmployee(emp);

@@ -9,15 +9,15 @@ import { SkillLevel } from '@/lib/types';
 const DEFAULT_SKILLS = {
     hairCut: false, shampoo: false, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
     machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: false, hotStoneBody: false, scrubBody: false,
+    shiatsuBody: false, oilBody: false, hotStoneBody: false, scrubBody: false, bodyMix: false,
     foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
 };
 
 const skillLabels: Record<string, string> = {
     hairCut: 'Cắt Tóc', shampoo: 'Gội đầu', hairExtensionShampoo: 'Gội Tóc Nối',
     earCombo: 'Ráy Combo', earChuyen: 'Ráy Chuyên', machineShave: 'Cạo Máy', razorShave: 'Cạo Dao',
-    facial: 'Facial', thaiBody: 'Body Thái', shiatsuBody: 'Shiatsu',
-    oilBody: 'Body Dầu', hotStoneBody: 'Body Đá Nóng', scrubBody: 'Scrub Body',
+    facial: 'Facial', thaiBody: 'Body Thái', shiatsuBody: 'Body Shiatsu',
+    oilBody: 'Body Dầu', hotStoneBody: 'Body Đá Nóng', scrubBody: 'Scrub Body', bodyMix: 'Body Mix',
     foot: 'Foot',
     heelScrub: 'Bào Gót', nailCombo: 'Nail Combo', nailChuyen: 'Nail Chuyên',
 };
@@ -282,7 +282,8 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.entries(formData.skills).map(([key, level]) => {
+                                    {Object.keys(skillLabels).map((key) => {
+                                        const level = formData.skills[key] ?? false;
                                         const info = levelInfo[String(level)];
                                         return (
                                             <button
