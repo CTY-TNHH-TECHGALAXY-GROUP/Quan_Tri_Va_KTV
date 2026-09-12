@@ -7,6 +7,7 @@ import { parseDbDate } from '@/lib/utils';
 import { coWorkersOfItems } from '@/lib/co-workers';
 import { resolveStaffFlag } from '@/lib/featureFlags';
 import { featureMaintenanceBody } from '@/lib/featureMaintenance';
+import { getDayCutoffHours, toBusinessDate, shiftBusinessDate } from '@/lib/business-date';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -120,6 +121,34 @@ export async function GET(request: Request) {
         const fromFilter = `${minDate}T00:00:00`;
         const toFilter = `${maxDate}T23:59:59`;
 
+        /**
+         * NGÀY LÀM VIỆC của spa (chốt lúc `cutoff`, mặc định 6h sáng) — cùng
+         * trục ngày mà Ví và sổ cái đang dùng.
+         *
+         * ⚠️ `Bookings.bookingDate` KHÔNG dùng làm trục ngày được: cùng một cột
+         * mà ba đường ghi ba kiểu — có đơn lưu giờ UTC (`005-02092026`), có đơn
+         * lưu giờ VN (`TEST-260902-JRYL`), đơn web thì lưu giờ HẸN của khách
+         * (`WB-001-02092026` → 03/09 03:30 dù tạo tối 02/09). Nay nó chỉ còn
+         * dùng để QUÉT RỘNG, còn ngày thật do sổ cái / mốc giờ thật quyết.
+         */
+        const cutoffHours = await getDayCutoffHours(supabase);
+        const queryFrom = shiftBusinessDate(minDate, -1);
+        const queryTo = shiftBusinessDate(maxDate, 1);
+        const bookingFromFilter = `${queryFrom}T00:00:00`;
+        const bookingToFilter = `${queryTo}T23:59:59`;
+
+        /** Dòng này thuộc ngày làm việc nào — sổ cái nói trước, không có thì suy từ mốc giờ thật. */
+        const businessDateOf = (ledgerWorkDate: string | null, b: any): string =>
+            ledgerWorkDate
+                ? String(ledgerWorkDate).slice(0, 10)
+                : toBusinessDate(parseDbDate(b.timeStart || b.createdAt), cutoffHours);
+
+        /** Ngày làm việc này có nằm trong khoảng KTV đang chọn không. */
+        const isPickedDay = (bd: string): boolean =>
+            (targetDates && targetDates.length > 0)
+                ? targetDates.includes(bd)
+                : (bd >= minDate && bd <= maxDate);
+
         // ─── Fetch KTVShifts ─────────────────────────────────────────────
         const { data: shiftsData } = await supabase
             .from('KTVShifts')
@@ -143,8 +172,10 @@ export async function GET(request: Request) {
         let currentShift = 'SHIFT_1';
         
         // Tạo map cho tất cả các ngày từ minDate tới maxDate
-        const startD = new Date(minDate);
-        const endD = new Date(maxDate);
+        // Phủ trọn cửa sổ quét (±1 ngày): đơn kéo vào từ ngày sát biên cũng phải
+        // tra được ca của nó, thiếu thì rơi về SHIFT_1 và tính sai thưởng A/B/C.
+        const startD = new Date(queryFrom);
+        const endD = new Date(queryTo);
         
         for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
             const dateStr = d.toISOString().split('T')[0];
@@ -170,8 +201,8 @@ export async function GET(request: Request) {
         const { data: rawBookings, error: bErr } = await supabase
             .from('Bookings')
             .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, guestCount, BookingItems!fk_bookingitems_booking(technicianCodes)')
-            .gte('bookingDate', fromFilter)
-            .lte('bookingDate', toFilter)
+            .gte('bookingDate', bookingFromFilter)
+            .lte('bookingDate', bookingToFilter)
             // 'CANCELLED' phải có trong danh sách: thiếu nó thì đơn quầy đã huỷ
             // BIẾN MẤT khỏi lịch sử KTV — người đã vào làm rồi mà tra lại không thấy
             // đâu, không biết đơn đi đâu về đâu.
@@ -187,14 +218,10 @@ export async function GET(request: Request) {
                 item.technicianCodes?.some((c: string) => c.toLowerCase() === techCode.toLowerCase())
             );
             
-            if (targetDates && targetDates.length > 0) {
-                // Đảm bảo lấy đúng ngày theo múi giờ VN (nếu createdAt đang là UTC)
-                const vnDate = new Date(new Date(b.createdAt).getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
-                const bDate = b.bookingDate ? String(b.bookingDate).slice(0, 10) : vnDate;
-                if (!targetDates.includes(bDate)) {
-                    return false;
-                }
-            }
+            // KHÔNG lọc ngày ở đây nữa. Một bill tách nhiều khách có thể rơi vào
+            // HAI ngày làm việc khác nhau (`WB-001-02092026`: khách A ngày 02/09,
+            // khách B ngày 03/09), nên ngày phải quyết ở CẤP DÒNG, sau khi đã biết
+            // sổ cái nói gì. Lọc ở cuối hàm bằng `isPickedDay`.
             
             return hasInString || hasInArray;
         });
@@ -222,7 +249,9 @@ export async function GET(request: Request) {
             // quét cả hàng đợi — để KTV thấy tua vừa làm mà không phải chờ.
             try { await drainQueueFor(supabase as any, bookingIds); } catch { /* không chặn hiển thị */ }
 
-            const rows = await getRows(supabase as any, { staffIds: [techCode], from: minDate, to: maxDate });
+            // Cửa sổ rộng bằng đúng cửa sổ đơn: đơn bị kéo vào từ ngày sát biên
+            // vẫn phải tra được dòng sổ cái của nó, nếu không lại ra 0đ.
+            const rows = await getRows(supabase as any, { staffIds: [techCode], from: queryFrom, to: queryTo });
             for (const g of groupForHistory(rows)) {
                 ledgerByGroup.set(`${g.booking_id}|${g.rows[0].group_id}`, g);
             }
@@ -297,7 +326,7 @@ export async function GET(request: Request) {
             id: i.id, bookingId: i.bookingId, technicianCodes: i.technicianCodes, tip: i.tip
         }))));
 
-        const result = bookings.flatMap((b: any) => {
+        const rawResult = bookings.flatMap((b: any) => {
             const allItems = (items || []).filter((i: any) => i.bookingId === b.id);
             
             // Re-construct booking with nested items to use service methods
@@ -490,6 +519,7 @@ export async function GET(request: Request) {
                 let ledgerBonus: number | null = null;
                 let ledgerTax: number | null = null;
                 let ledgerActualDuration: number | null = null;
+                let ledgerWorkDate: string | null = null;
                 let mixedTeamNote: string | null = null;
 
                 if (workType === 'TYPE_D') {
@@ -508,6 +538,7 @@ export async function GET(request: Request) {
                         ledgerBonus = Math.round(led.bonus_amount);
                         ledgerTax = Math.round(led.tax_amount);
                         ledgerActualDuration = Math.round(led.actual_minutes);
+                        ledgerWorkDate = led.work_date ?? null;
                         totalDuration = Math.round(led.assigned_minutes) || totalDuration;
                         // Giải thích vì sao tua này không có thưởng dù được chấm cao.
                         if (led.rows.some((r: any) => r.has_other_type_coworker)) {
@@ -641,6 +672,10 @@ export async function GET(request: Request) {
                     guestLabel,
                     createdAt: b.createdAt,
                     bookingDate: b.bookingDate,
+                    // NGÀY LÀM VIỆC — trục ngày duy nhất của màn này, cùng trục
+                    // với Ví và sổ giờ. `bookingDate` ở trên giữ lại chỉ để tra
+                    // cứu, KHÔNG dùng để gom nhóm hay lọc.
+                    business_date: businessDateOf(ledgerWorkDate, b),
                     status: itemBasedStatus,
                     rating: workType === 'TYPE_D' ? (ledgerRating ?? itemRating) : itemRating,
                     tip: isFeedbackDone ? ktvTip : 0,
@@ -667,6 +702,16 @@ export async function GET(request: Request) {
                     ratingBonusAmount: isFeedbackDone
                         ? (workType === 'TYPE_D' ? (ledgerBonus ?? 0) : bonusValue)
                         : 0,
+                    // Cùng khoản thưởng đó tính bằng ĐIỂM — đơn vị mà trang cài
+                    // đặt dùng ("Điểm cơ bản mỗi tua = 20 Điểm", "Tỉ lệ quy đổi
+                    // = 1000 VNĐ/1đ"). Màn Lịch Sử hiện theo điểm; tiền ở trên
+                    // vẫn là nguồn duy nhất cho mọi phép tính.
+                    // Loại D suy ngược từ tiền để không lệch khi tua bị chia
+                    // đôi giữa 2 KTV (20.000đ / 2 → 10đ).
+                    ratingBonusPoints: !isFeedbackDone ? 0
+                        : (workType === 'TYPE_D'
+                            ? (pointRate > 0 ? Math.round((ledgerBonus ?? 0) / pointRate) : 0)
+                            : bonusPoints),
                     mixedTeamNote,
                     voidedNote,
                     voidedKind: voidedInfo?.kind ?? null,
@@ -688,6 +733,7 @@ export async function GET(request: Request) {
                         ratingDeductionRate: 0,
                         ratingDeductionAmount: 0,
                         ratingBonusAmount: 0,
+                        ratingBonusPoints: 0,
                     } : {}),
                     handover_status,
                     handover_submitted,
@@ -710,6 +756,12 @@ export async function GET(request: Request) {
                 };
             });
         });
+
+        // ─── Lọc theo NGÀY LÀM VIỆC ────────────────────────────────────────
+        // Tới đây mỗi dòng đã biết ngày làm việc thật của nó (sổ cái, hoặc mốc
+        // giờ thật). Cửa sổ đơn ở trên cố tình quét rộng ±1 ngày; chỗ này cắt
+        // lại đúng những ngày KTV đang chọn.
+        const result = rawResult.filter((r: any) => isPickedDay(r.business_date));
 
         // ─── Fetch KTV Discipline Data ─────────────────────────────────────
         const currentMonth = new Date(minDate).getMonth() + 1;

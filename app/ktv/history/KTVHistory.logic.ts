@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { format, subDays } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
-import { getVnDateStr } from '@/lib/time.logic';
+import { toBusinessDate, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 import { isFeatureMaintenanceError } from '@/lib/featureMaintenance';
 
 export interface HistoryRecord {
@@ -32,6 +32,8 @@ export interface HistoryRecord {
   ratingDeductionRate?: number;       // 0 / 0.25 / 0.5 / 0.75
   ratingDeductionAmount?: number;     // số tiền bị trừ do đánh giá
   ratingBonusAmount?: number;         // tiền thưởng do khách chấm Xuất sắc
+  ratingBonusPoints?: number;         // cùng khoản đó tính bằng điểm (20đ × 1.000 = 20.000 VNĐ)
+  business_date?: string;            // ngày làm việc của dòng này (server tính)
   /** Tên hoặc nhãn khách của dòng này — "HIEU", "Khách 1"… */
   guestLabel?: string | null;
   handover_status?: string;
@@ -68,7 +70,18 @@ export type DatePreset = 'today' | 'yesterday' | '7days' | 'custom';
 export const useKTVHistory = () => {
   const { hasPermission, user } = useAuth();
 
-  const today = getVnDateStr();
+  /**
+   * Ngày mặc định là NGÀY LÀM VIỆC, không phải ngày lịch.
+   *
+   * `getVnDateStr()` trả ngày lịch thuần, nên KTV mở màn này lúc 00:30 thấy
+   * ngày MỚI trống trơn trong khi đang giữa ca. Ví và sổ giờ đều đã gom theo
+   * ngày làm việc; màn này phải cùng trục.
+   *
+   * Mốc cắt lấy mặc định (6h) chứ không đọc `SystemConfigs` — đây chỉ là ngày
+   * ĐƯỢC CHỌN SẴN, KTV bấm lịch đổi được; còn ngày của từng đơn thì server đã
+   * tính bằng cutoff thật rồi.
+   */
+  const today = toBusinessDate(new Date(), DEFAULT_DAY_CUTOFF_HOURS);
   const [selectedDates, setSelectedDates] = useState<string[]>([today]);
 
   const [history, setHistory] = useState<HistoryRecord[]>([]);

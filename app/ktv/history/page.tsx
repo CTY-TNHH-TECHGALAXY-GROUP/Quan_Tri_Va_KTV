@@ -148,9 +148,11 @@ const OrderCard = ({ order, getStatusLabel }: {
    * sổ cái, nên khớp tuyệt đối với ví.
    */
   const ratingMoney = (() => {
-    const bonus = Number(order.ratingBonusAmount) || 0;
-    if (bonus > 0) {
-      return { text: `+${bonus.toLocaleString('vi-VN')}đ`, cls: 'text-emerald-700 bg-emerald-50' };
+    // Thưởng hiện theo ĐIỂM (đơn vị của trang cài đặt: 20đ × 1.000 = 20.000 VNĐ).
+    // Tiền vẫn do sổ cái quyết định và nằm trong "tiền tua" bên dưới.
+    const bonusPts = Number(order.ratingBonusPoints) || 0;
+    if (bonusPts > 0) {
+      return { text: `+${bonusPts.toLocaleString('vi-VN')}đ`, cls: 'text-emerald-700 bg-emerald-50' };
     }
     const deduction = Number(order.ratingDeductionAmount) || 0;
     if (deduction > 0) {
@@ -159,11 +161,6 @@ const OrderCard = ({ order, getStatusLabel }: {
         text: `−${pct}% · −${deduction.toLocaleString('vi-VN')}đ`,
         cls: 'text-orange-700 bg-orange-50',
       };
-    }
-    // Tỉ lệ quy đổi điểm = 0 thì thưởng chưa ra tiền được; hiện điểm còn hơn im.
-    const points = Number(order.bonusPoints) || 0;
-    if (points > 0) {
-      return { text: `+${points.toLocaleString('vi-VN')} điểm`, cls: 'text-amber-700 bg-amber-50' };
     }
     return null;
   })();
@@ -330,7 +327,7 @@ const OrderCard = ({ order, getStatusLabel }: {
 
               {/* Được chấm cao mà không có thưởng thì phải nói vì sao. Không có
                   dòng này, KTV chỉ thấy "Xuất sắc" trơ trọi cạnh đồng nghiệp có
-                  thẻ "+20.000đ" và sẽ đi hỏi quầy. Chỉ hiện khi thật sự KHÔNG có
+                  thẻ "+20đ" và sẽ đi hỏi quầy. Chỉ hiện khi thật sự KHÔNG có
                   thưởng — có thưởng rồi mà vẫn ghi là tự mâu thuẫn. */}
               {order.mixedTeamNote && !Number(order.ratingBonusAmount) && (
                 <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 -mt-1 leading-snug">

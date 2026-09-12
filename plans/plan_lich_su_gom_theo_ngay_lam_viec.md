@@ -86,3 +86,69 @@ thưởng; chỉ đổi *đơn thuộc ngày nào*.
   7 ngày thì chỉ +2/9. Chấp nhận được, nhưng nên đo lại thời gian trả về.
 - Mục #4 (`bDateStr`) là chỗ duy nhất có thể **đổi tiền** của A/B/C. Nếu mô phỏng
   cho thấy có đổi, tách riêng, không gộp vào lần sửa này.
+
+---
+
+## 7. Kết quả thực hiện (12/09/2026)
+
+**Phát hiện thêm khi làm — `bookingDate` còn tệ hơn plan tưởng.** Cùng một cột mà
+ba đường ghi ba kiểu:
+
+| Đơn | `createdAt` (UTC) | `bookingDate` | Đang lưu cái gì |
+|---|---|---|---|
+| `005-02092026` | 14:48:11 | `2026-09-02 14:48:11` | giờ **UTC** |
+| `TEST-260902-JRYL` | 13:37:13 | `2026-09-02 20:37:13` | giờ **VN** |
+| `WB-001-02092026` | 13:49:08 | `2026-09-03 03:30:00` | giờ **HẸN** của khách |
+
+Nên **bỏ hẳn `bookingDate` khỏi mọi phép tính ngày**, chỉ dùng để quét rộng. Ngày
+thật lấy từ `work_date` của sổ cái, không có thì suy từ `timeStart ?? createdAt`
+(cả hai đều là UTC thật).
+
+**Code** — 3 file:
+- `app/api/ktv/history/route.ts`: cửa sổ quét `Bookings` nới ±1 ngày; `getRows` và
+  `shiftMap` nới theo cho khớp; mỗi dòng trả thêm `business_date`; lọc lại ở cuối
+  bằng `isPickedDay`. Bỏ khối lọc theo `bookingDate` trong `.filter()`.
+- `app/ktv/history/KTVHistory.logic.ts`: ngày mặc định dùng `toBusinessDate` thay
+  cho `getVnDateStr()`; thêm `business_date` vào `HistoryRecord`.
+- `app/ktv/history/page.tsx`: (việc riêng cùng lượt) thẻ thưởng hiện **+20đ** theo
+  điểm thay vì `+20.000đ`.
+
+**Lệch so với plan:**
+1. **Mục #4 (`bDateStr`) KHÔNG làm.** Đó là chỗ duy nhất đụng được tiền thưởng
+   A/B/C. Giữ nguyên để lần sửa này zero-risk về tiền; tách việc riêng.
+2. **Ngày quyết ở CẤP DÒNG, không phải cấp đơn.** Plan viết như thể mỗi đơn một
+   ngày, nhưng `WB-001-02092026` có khách A ngày 02/09 và khách B ngày 03/09 —
+   một bill nằm trên hai ngày làm việc. Nên `business_date` tính trong vòng lặp
+   nhóm khách, sau khi đã tra sổ cái.
+3. **`shiftMap` nới thêm** (plan không nhắc). Không nới thì đơn kéo vào từ ngày
+   sát biên rơi về `SHIFT_1` mặc định và tính sai thưởng A/B/C. Đã đo: nới vào
+   **không đổi dòng nào** trong 144 dòng thử.
+
+**Kiểm chứng**
+- Hai ca hỏng ở mục 1 đã đúng: `005-02092026-B` → ngày 01/09 · **100.000đ**;
+  `WB-001-02092026-A` → ngày 02/09 · **3.262đ**. Khách B cùng bill vẫn ở 03/09 —
+  chứng minh ngày quyết ở cấp dòng.
+- **Đối chiếu Ví ↔ Lịch Sử**: 17 cặp (KTV × ngày làm việc), **0 lệch**.
+- **Trước/sau trên 144 dòng** (10 KTV × 12 ngày, đủ cả A/B/C/D): 3 dòng đổi ngày,
+  **2 dòng đổi tiền** — đúng hai ca hỏng, từ 0đ về số đúng. Không dòng nào biến
+  mất, không dòng nào tự hiện ra.
+- Dòng A/B/C đổi ngày duy nhất: `007-10092026-B` (TYPE_C) từ 10/09 → 09/09. Kiểm
+  lại `timeStart` = 21:21 UTC 09/09 = **04:21 sáng 10/09 giờ VN** → đúng là ngày
+  làm việc 09/09. **Tiền không đổi** (117.000đ).
+- Mô phỏng 7 mốc biên (22:02, 23:59, 00:00, 00:57, 05:59, 06:00, 06:01) + biên
+  tháng/năm + cửa sổ ±1 ngày: đạt; chạy lại dưới `TZ=UTC` cũng đạt (mục 13.5).
+- `npm run test:qa` (16 bộ): ĐẠT. Typecheck sạch, eslint không thêm lỗi mới,
+  `/ktv/history` trả 200.
+
+## 8. Còn lại — ngoài phạm vi lần này
+
+- **`bDateStr` vẫn suy từ `bookingDate`** (mục #4 chưa làm) → tra ca cho thưởng
+  A/B/C vẫn có thể lệch một ngày với đơn tạo sau 17h. Việc riêng, đụng tiền A/B/C.
+- **Sổ kỷ luật (`KTVDisciplineLedger`)** vẫn lọc theo `created_at` ngày lịch, chưa
+  đổi sang ngày làm việc. Cố ý để ngoài phạm vi — khác sổ, khác trục.
+- **Ngày mặc định phía client dùng cutoff mặc định 6**, không đọc `SystemConfigs`.
+  Chỉ ảnh hưởng ngày được chọn sẵn; ngày của từng đơn do server tính bằng cutoff thật.
+- Nhánh `bookings.length === 0` trả `data: []` (mảng) trong khi nhánh thường trả
+  object `{bookings, disciplines, disciplinePoints}` → ngày không có đơn thì phiếu
+  phạt cũng không hiện. Lỗi sẵn có, chưa sửa.
+- Sau khi deploy, đơn sẽ nhảy ngày trên Lịch Sử — nên báo KTV cùng lượt với Ví.
