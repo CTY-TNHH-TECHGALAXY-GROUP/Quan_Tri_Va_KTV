@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Image as ImageIcon, Plus, Trash2, Globe, Sparkles, Sliders } from 'lucide-react';
+import { X, Save, Image as ImageIcon, Plus, Trash2, Globe, Sparkles } from 'lucide-react';
 import { getDeepBodyConfig, updateDeepBodyConfig } from './actions';
 
 interface Props {
@@ -207,9 +207,9 @@ export function DeepBodySettingsModal({ isOpen, onClose }: Props) {
                     </div>
                   </div>
                   
-                  {/* MEDIA & SETTINGS (GLOBAL PER ITEM) */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50/60 rounded-xl border border-gray-100">
-                    <div className="md:col-span-2 space-y-1">
+                  {/* MEDIA (THUMBNAIL) */}
+                  <div className="p-4 bg-gray-50/60 rounded-xl border border-gray-100">
+                    <div className="space-y-1">
                       <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide">Ảnh Thumbnail (URL)</label>
                       <div className="flex gap-2">
                         <input 
@@ -227,23 +227,6 @@ export function DeepBodySettingsModal({ isOpen, onClose }: Props) {
                           </div>
                         )}
                       </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1">
-                        <Sliders size={12} /> Cường độ (1-5)
-                      </label>
-                      <select 
-                        value={item.intensity ?? 3} 
-                        onChange={e => handleItemChange(index, ['intensity'], Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-xs bg-white font-medium"
-                      >
-                        <option value={1}>1 - Rất nhẹ (Thư giãn)</option>
-                        <option value={2}>2 - Nhẹ</option>
-                        <option value={3}>3 - Vừa phải</option>
-                        <option value={4}>4 - Mạnh (Chuyên sâu)</option>
-                        <option value={5}>5 - Rất mạnh (Trị liệu sâu)</option>
-                      </select>
                     </div>
                   </div>
 
