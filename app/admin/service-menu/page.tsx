@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
-import { ShieldAlert, Plus, Edit2, Trash2, Image as ImageIcon, Star, TrendingUp } from 'lucide-react';
+import { ShieldAlert, Plus, Edit2, Trash2, Image as ImageIcon, Star, TrendingUp, Settings2 } from 'lucide-react';
 import { getServices, updateService } from './actions';
 
 import { Service } from '@/lib/types';
 
 import { EditServiceDrawer } from './EditServiceDrawer';
+import { DeepBodySettingsModal } from './DeepBodySettingsModal';
 
 export default function ServiceMenuPage() {
   const { hasPermission } = useAuth();
@@ -21,6 +22,9 @@ export default function ServiceMenuPage() {
   // Drawer states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  
+  // Deep Body modal state
+  const [isDeepBodyModalOpen, setIsDeepBodyModalOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -128,10 +132,19 @@ export default function ServiceMenuPage() {
           <div>
             <p className="text-sm text-gray-500">Thiết lập danh sách dịch vụ, giá tiền và thời lượng.</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
-            <Plus size={16} />
-            Thêm Dịch Vụ Mới
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsDeepBodyModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-sm transition-colors border border-purple-200"
+            >
+              <Settings2 size={16} />
+              Cấu Hình Deep Body
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
+              <Plus size={16} />
+              Thêm Dịch Vụ Mới
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -264,6 +277,11 @@ export default function ServiceMenuPage() {
         onSuccess={() => {
           fetchData(); // reload on success
         }}
+      />
+      
+      <DeepBodySettingsModal 
+        isOpen={isDeepBodyModalOpen}
+        onClose={() => setIsDeepBodyModalOpen(false)}
       />
     </AppLayout>
   );

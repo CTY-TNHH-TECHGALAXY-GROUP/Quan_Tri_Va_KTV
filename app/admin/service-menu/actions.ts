@@ -98,3 +98,44 @@ export async function updateServiceBulkSync(originalNameVN: string, payload: Par
     }
 }
 
+
+export async function getDeepBodyConfig() {
+    try {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const { data, error } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'menu_deep_body_config')
+            .single();
+
+        if (error) throw error;
+
+        return { success: true, data: data.value };
+    } catch (error: any) {
+        console.error('❌ [Server] getDeepBodyConfig error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+export async function updateDeepBodyConfig(payload: any) {
+    try {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const { data, error } = await supabase
+            .from('SystemConfigs')
+            .update({ value: payload, updated_at: new Date().toISOString() })
+            .eq('key', 'menu_deep_body_config')
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return { success: true, data: data.value };
+    } catch (error: any) {
+        console.error('❌ [Server] updateDeepBodyConfig error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
