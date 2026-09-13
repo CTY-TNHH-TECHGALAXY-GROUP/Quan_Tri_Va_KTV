@@ -115,3 +115,17 @@ Tôi hiểu là: ô nhập tay ở bảng điều phối **đổi từ gõ tên 
 
 **Việc user cần làm:**
 1. Tạo 1 KTV loại C (mã tự đặt, VD `C001`) → vào Dispatch tìm theo tên → phân 1KTV-1DV và 2KTV-1DV (C + A) → hoàn tất → so ví KTV vs `finance/ktv`.
+
+## 7. Điều chỉnh 13/09/2026 — điều phối loại C không xét gì
+
+**User chốt:** không merge `main`; màn điều phối với loại C **không xét** bật/tắt Sổ tua lẫn điểm danh.
+
+| Chỗ | Hành vi mới |
+|---|---|
+| `useDispatchBoard.logic.ts` `mergeTurnsWithStaff` | Loại C `ĐANG LÀM` (tài khoản thật) luôn có "tua ảo" `waiting` khi chưa có dòng TurnQueue → luôn hiện ở ô chọn KTV. Đã có dòng thì giữ nguyên: quầy cố ý gạt `off` ở Sổ tua thì vẫn ẩn. |
+| `actions.ts` `processDispatch` | Cổng TurnQueue ≠ off chỉ áp cho A/B/D. Loại C bỏ qua hoàn toàn; RPC `dispatch_confirm_booking` tự tạo dòng TurnQueue `assigned` nếu chưa có (đã đọc SQL `20260830_add_dispatch_booking_guard.sql`: xử lý từng assignment độc lập, không rẽ nhánh theo `work_type`). |
+| Sổ tua tab C | Giữ công tắc bật/tắt nhưng chữ mô tả đổi: "Điều phối không cần bật — gạt Tắt nếu muốn ẩn khỏi ô chọn". |
+
+**Loại C có điểm danh được không?** Được, không hỏng gì: `api/ktv/attendance` xử lý C theo nhánh loại A (form "Oria Xin Chào", chọn ca; không GPS). Check-in tự duyệt → `TurnQueue` `waiting` + `check_in_order`, `KTVShiftRecords`; check-out → `off`. Tiền: `KtvCommissionService` có nhánh `_TYPE_C` (rate, shift bonus) nhưng `enableBonus` chỉ bật cho TYPE_B và `DEFAULT_FEATURE_FLAGS_TYPE_C.bonus_wallet = false` → điểm danh không sinh thưởng ca cho C trừ khi cấu hình hệ thống `enable_ktv_bonus_TYPE_C = true` (Cài đặt → tab Loại C).
+
+**Vận hành:** bản chạy ở quầy vẫn là code cũ tới khi deploy nhánh này — code cũ đã bật lại 2 placeholder (`EXT_4EA0CD`, `C_3ML9PY`) ngày 13/09 vì quầy gõ tên "NH09"/"HIỆP". Sau deploy + hết ca, chạy lại `scripts/cleanup_type_c_placeholders.ts --apply`.

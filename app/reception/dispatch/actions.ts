@@ -633,8 +633,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
 
         const { data: knownStaffs } = uniqueKtvIds.length > 0
-            ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
-            : { data: [] as { id: string; full_name: string | null; work_type: string | null }[] };
+            ? await supabase.from('Staff').select('id, work_type').in('id', uniqueKtvIds)
+            : { data: [] as { id: string; work_type: string | null }[] };
         const knownStaffById = new Map((knownStaffs || []).map(st => [st.id, st]));
         const unknownKtvIds = uniqueKtvIds.filter(id => !knownStaffById.has(id));
         if (unknownKtvIds.length > 0) {
@@ -644,36 +644,30 @@ export async function processDispatch(bookingId: string, dispatchData: {
             };
         }
 
-        // 🔥 KIỂM TRA ĐIỂM DANH / BẬT SỔ TUA
-        // Mọi KTV trên đơn phải có dòng TurnQueue hôm đó ≠ 'off':
-        //   · loại A/B/D — do điểm danh (hoặc on-call) tạo ra;
-        //   · loại C — do quầy bật tay ở Sổ tua (tab Cộng tác viên), không điểm danh.
-        // Tách hai câu lỗi để quầy biết phải làm gì.
-        const { data: activeTurns } = uniqueKtvIds.length > 0
-            ? await supabase
+        // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
+        // Loại A/B/D phải có dòng TurnQueue hôm đó ≠ 'off' (điểm danh hoặc on-call).
+        // Loại C (cộng tác viên) KHÔNG xét gì — quyết định 13/09/2026: quầy chọn là
+        // phân được, không cần điểm danh, không cần bật ở Sổ tua. RPC
+        // dispatch_confirm_booking tự tạo dòng TurnQueue 'assigned' nếu chưa có.
+        const coreKtvIds = uniqueKtvIds.filter(id => !isTypeCWorkType(knownStaffById.get(id)?.work_type));
+
+        if (coreKtvIds.length > 0) {
+            const { data: activeTurns } = await supabase
                 .from('TurnQueue')
                 .select('employee_id')
                 .eq('date', dispatchData.date)
-                .in('employee_id', uniqueKtvIds)
-                .neq('status', 'off')
-            : { data: [] as { employee_id: string }[] };
-        const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
-        const inactiveKtvIds = uniqueKtvIds.filter(id => !activeKtvIds.has(id));
-        const inactiveTypeC = inactiveKtvIds.filter(id => isTypeCWorkType(knownStaffById.get(id)?.work_type));
-        const missingCheckins = inactiveKtvIds.filter(id => !inactiveTypeC.includes(id));
+                .in('employee_id', coreKtvIds)
+                .neq('status', 'off');
 
-        if (missingCheckins.length > 0) {
-            return {
-                success: false,
-                error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!`
-            };
-        }
-        if (inactiveTypeC.length > 0) {
-            const names = inactiveTypeC.map(id => knownStaffById.get(id)?.full_name || id);
-            return {
-                success: false,
-                error: `Không thể điều phối: cộng tác viên [${names.join(', ')}] chưa được bật ở Sổ tua (tab Cộng tác viên). Bật lên rồi chọn lại.`
-            };
+            const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
+            const missingCheckins = coreKtvIds.filter(id => !activeKtvIds.has(id));
+
+            if (missingCheckins.length > 0) {
+                return {
+                    success: false,
+                    error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!`
+                };
+            }
         }
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)

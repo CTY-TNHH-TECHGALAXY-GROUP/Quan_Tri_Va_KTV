@@ -420,7 +420,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
             </div>
             )}
 
-            {/* Tab C — cộng tác viên có tài khoản thật. Quầy bật/tắt tay ở đây; bật rồi mới chọn được ở Điều phối. */}
+            {/* Tab C — cộng tác viên có tài khoản thật. Điều phối KHÔNG cần bật ở đây (13/09/2026); công tắc chỉ để theo dõi / gạt 'off' khi muốn ẩn khỏi ô chọn. */}
             {activeTab === 'TYPE_C' && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
@@ -428,7 +428,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         <span className="w-2 h-2 bg-amber-500 rounded-full" />
                         Cộng tác viên (loại C)
                     </h3>
-                    <span className="text-[10px] text-amber-500 font-bold">Bật để quầy chọn được ở Điều phối</span>
+                    <span className="text-[10px] text-amber-500 font-bold">Điều phối không cần bật — gạt Tắt nếu muốn ẩn khỏi ô chọn</span>
                 </div>
                 <div className="divide-y divide-amber-50 min-h-[80px]">
                     {allExternalStaffs.length === 0 ? (
