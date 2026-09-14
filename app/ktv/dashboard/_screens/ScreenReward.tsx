@@ -42,6 +42,15 @@ export function ScreenReward({ logic }: { logic: any }) {
     }
   };
 
+  // One button does both: send the reception review (default 5 stars even if
+  // untouched), then move on. A failed review must NEVER block the KTV from the
+  // next order (Continuous Receiving) — show a toast and continue anyway.
+  const submitAndContinue = async () => {
+    if (isSubmitting || uploading) return;
+    if (!isSubmitted) await submitReview();
+    goToDashboard(booking?.nextBookingId);
+  };
+
   const submitReview = async () => {
     if (!booking?.id || !ktvId) return;
     setIsSubmitting(true);
@@ -58,13 +67,14 @@ export function ScreenReward({ logic }: { logic: any }) {
         })
       });
       const data = await res.json();
-      if (data.success) {
+      // "Already reviewed" (e.g. re-opened this screen) counts as done, no toast.
+      if (data.success || res.status === 400 && /đã đánh giá/i.test(data.error || '')) {
         setIsSubmitted(true);
       } else {
-        addToast(data.error || 'Có lỗi xảy ra', 'error');
+        addToast(`Chưa gửi được đánh giá quầy: ${data.error || 'có lỗi xảy ra'}`, 'error');
       }
     } catch (err) {
-      addToast('Không thể gửi đánh giá', 'error');
+      addToast('Chưa gửi được đánh giá quầy', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -146,14 +156,6 @@ export function ScreenReward({ logic }: { logic: any }) {
                 </label>
               )}
             </div>
-
-            <button
-              onClick={submitReview}
-              disabled={isSubmitting}
-              className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest shadow-md active:scale-95 transition-all flex justify-center items-center gap-2"
-            >
-              {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} GỬI ĐÁNH GIÁ
-            </button>
           </>
         ) : (
           <div className="py-4 flex flex-col items-center">
@@ -168,19 +170,27 @@ export function ScreenReward({ logic }: { logic: any }) {
 
       <div className="w-full max-w-xs sm:max-w-sm mt-4 pb-safe">
         <button
-          onClick={() => goToDashboard(booking?.nextBookingId)}
-          className={`w-full py-4 rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2
-            ${booking?.nextBookingId 
-              ? 'bg-amber-600 text-white shadow-amber-200' 
+          onClick={submitAndContinue}
+          disabled={isSubmitting || uploading}
+          className={`w-full py-4 rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60
+            ${booking?.nextBookingId
+              ? 'bg-amber-600 text-white shadow-amber-200'
             : 'bg-slate-900 text-white'}`}
       >
-        {booking?.nextBookingId ? (
+        {isSubmitting ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Đang gửi đánh giá...
+          </>
+        ) : booking?.nextBookingId ? (
           <>
             <BellRing size={16} className="animate-bounce" />
             Nhận đơn tiếp theo
           </>
-        ) : (
+        ) : isSubmitted ? (
           'Tiếp tục làm việc'
+        ) : (
+          'Gửi đánh giá & tiếp tục'
         )}
       </button>
       </div>
