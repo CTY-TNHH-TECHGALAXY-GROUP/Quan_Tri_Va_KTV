@@ -47,6 +47,11 @@ export interface WebBooking {
   source: string;
   items: WebBookingItem[];
   isReturningCustomer?: boolean;
+  guestCount?: number;
+  customerGender?: string | null;
+  nationality?: string | null;
+  paymentMethod?: string | null;
+  focusAreaNote?: string | null;
 }
 
 // ─── SERVER ACTIONS ───────────────────────────────────────────────────────────
@@ -211,6 +216,11 @@ export async function getWebBookings(startDate: string, endDate: string) {
         source: b.source || 'WEB_BOOKING',
         items: bookingItems,
         isReturningCustomer: returningMap.get(b.id) || false,
+        guestCount: b.guestCount || 1,
+        customerGender: b.customerGender || null,
+        nationality: b.nationality || null,
+        paymentMethod: b.paymentMethod || null,
+        focusAreaNote: b.focusAreaNote || null,
       };
     });
 
@@ -256,6 +266,28 @@ export async function confirmWebBooking(bookingId: string) {
       newSource = 'VIP_WALK_IN';
     } else if (bData?.source === 'MIXED_BOOKING' || bData?.source === 'MIXED_WALK_IN' || bData?.source === 'MIXED_MENU') {
       newSource = 'MIXED_WALK_IN';
+    } else if (bData?.source === 'WEB_BOOKING') {
+      // Xác định tự động dựa trên dịch vụ bên trong (Phương án 2)
+      let hasVip = false;
+      let hasStandard = false;
+      
+      const items = bData.BookingItems || [];
+      for (const item of items) {
+         const svcId = (item.serviceId || '').toUpperCase();
+         if (svcId.startsWith('NHP') || svcId.startsWith('VIP_')) {
+            hasVip = true;
+         } else {
+            hasStandard = true;
+         }
+      }
+      
+      if (hasVip && hasStandard) {
+         newSource = 'MIXED_WALK_IN';
+      } else if (hasVip) {
+         newSource = 'VIP_WALK_IN';
+      } else {
+         newSource = 'STANDARD_WALK_IN';
+      }
     }
 
     // 🛡️ SANITIZE: Thay thế dummy email bằng mã ngẫu nhiên để không bị trùng

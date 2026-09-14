@@ -168,6 +168,32 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
                       <span className="font-medium truncate">{booking.customerEmail}</span>
                     </div>
                   )}
+                  <div className="flex items-center gap-4 mt-2 pt-2 border-t border-gray-200">
+                    {booking.guestCount && booking.guestCount > 1 && (
+                        <div className="flex flex-col text-xs text-gray-600">
+                            <span className="text-[10px] uppercase text-gray-400 font-bold mb-0.5">Số khách</span>
+                            <span className="font-medium text-gray-900">{booking.guestCount} người</span>
+                        </div>
+                    )}
+                    {booking.customerGender && (
+                        <div className="flex flex-col text-xs text-gray-600">
+                            <span className="text-[10px] uppercase text-gray-400 font-bold mb-0.5">Giới tính</span>
+                            <span className="font-medium text-gray-900">{booking.customerGender === 'male' || booking.customerGender === 'M' ? 'Nam' : 'Nữ'}</span>
+                        </div>
+                    )}
+                    {booking.nationality && (
+                        <div className="flex flex-col text-xs text-gray-600">
+                            <span className="text-[10px] uppercase text-gray-400 font-bold mb-0.5">Quốc tịch</span>
+                            <span className="font-medium text-gray-900">{booking.nationality.toUpperCase()}</span>
+                        </div>
+                    )}
+                    {booking.paymentMethod && (
+                        <div className="flex flex-col text-xs text-gray-600">
+                            <span className="text-[10px] uppercase text-gray-400 font-bold mb-0.5">Thanh toán</span>
+                            <span className="font-medium text-gray-900">{booking.paymentMethod}</span>
+                        </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -259,14 +285,24 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               </div>
 
               {/* Notes */}
-              {finalNote && (
+              {(finalNote || booking.focusAreaNote) && (
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">
                     Ghi chú từ khách
                   </p>
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
-                    <MessageSquare size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-sm text-amber-800">{finalNote}</p>
+                  <div className="flex flex-col gap-2">
+                      {finalNote && (
+                          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                            <MessageSquare size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                            <p className="text-sm text-amber-800">{finalNote}</p>
+                          </div>
+                      )}
+                      {booking.focusAreaNote && (
+                          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex gap-2">
+                            <MessageSquare size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+                            <p className="text-sm text-indigo-800"><span className="font-bold">Vùng tập trung:</span> {booking.focusAreaNote}</p>
+                          </div>
+                      )}
                   </div>
                 </div>
               )}
