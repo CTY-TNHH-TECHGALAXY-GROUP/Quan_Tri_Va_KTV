@@ -295,6 +295,13 @@ const HANDOVER_KEYS = [
         desc: 'Trên cùng một đơn, quầy trả lại được tối đa ngần này lần. Hết lượt thì phải chọn trừ tiền hoặc tước tua thay vì bắt dọn mãi.',
         suffix: 'lần',
     },
+    {
+        key: 'customer_rating_timeout_minutes',
+        fallback: 5,
+        label: '⭐ Thời gian chờ khách đánh giá',
+        desc: 'KTV bàn giao xong, đơn chờ khách chấm sao ngần này phút. Quá hạn hệ thống tự Hoàn tất để KTV thấy tiền; khách vẫn chấm muộn được và tiền tự tính lại. Đặt 0 để hoàn tất ngay khi bàn giao.',
+        suffix: 'phút',
+    },
 ];
 
 const HandoverSettingsSection = () => {

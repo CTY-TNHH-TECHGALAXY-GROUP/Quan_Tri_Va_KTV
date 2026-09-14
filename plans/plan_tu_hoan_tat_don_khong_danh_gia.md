@@ -109,6 +109,10 @@ Hàm `auto_complete_unrated_feedback()`, pg_cron **mỗi phút** (`* * * * *`); 
 
 Chỉ tự chốt item vào Chờ đánh giá **từ 01/09/2026 (giờ VN)**. Đo lúc code: 134 item đang chờ, **121 item trước 01/09** (tháng 5–8, 28 KTV, chưa từng tính tiền) → **không đụng**, quản lý xem và xử lý tay. Chốt vào sẽ cộng tiền cho những tháng đã quyết toán.
 
+## 7c. Chốt thêm 14/09 — số phút chờ cài đặt được
+
+Số phút chờ đọc từ `SystemConfigs.customer_rating_timeout_minutes` (key có sẵn từ 22/07, giá trị 30, chưa code nào đọc) → migration đổi 30 thành **5** (không ghi đè nếu quản lý đã đổi). Sửa ở admin **Cài đặt tính năng → Bàn giao phòng** ("⭐ Thời gian chờ khách đánh giá"). Thiếu / hỏng / âm → 5; `0` = hoàn tất ngay khi bàn giao. Test 41/41.
+
 ## 8. Không làm
 
 55 dịch vụ cũ bị job 24h đóng khi chưa bàn giao: **để nguyên** — phòng không dọn lại được, mở lại sẽ đảo tiền đã vào ví.

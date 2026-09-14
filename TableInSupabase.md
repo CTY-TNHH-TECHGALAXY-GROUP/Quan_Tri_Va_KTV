@@ -124,7 +124,8 @@
 **Cron (pg_cron) — tự Hoàn tất khi khách không chấm** (migration `20260914120000_auto_complete_feedback_after_5m.sql`):
 - Job `auto_complete_feedback_job` chạy **mỗi phút** → `auto_complete_unrated_feedback()`.
 - Chỉ xét item vào `FEEDBACK` **từ 01/09/2026 (giờ VN)** — item kẹt trước mốc này để quản lý xử lý tay.
-- Item `FEEDBACK` quá **5 phút** (mốc: `feedbackTime` muộn nhất trong `segments` → `handover_submitted_at` → `timeEnd` → `Bookings.updatedAt`) → `DONE`. Item đã có sao mà vẫn `FEEDBACK` → `DONE` ngay lượt kế.
+- Số phút chờ = `SystemConfigs.customer_rating_timeout_minutes` (mặc định **5**; sửa ở admin **Cài đặt tính năng → Bàn giao phòng**; thiếu/hỏng/âm → 5; `0` = hoàn tất ngay khi bàn giao).
+- Item `FEEDBACK` quá **số phút chờ** (mốc: `feedbackTime` muộn nhất trong `segments` → `handover_submitted_at` → `timeEnd` → `Bookings.updatedAt`) → `DONE`. Item đã có sao mà vẫn `FEEDBACK` → `DONE` ngay lượt kế.
 - Không chấm: `itemRating` **giữ NULL** (không ghi 0), `options.autoCompletedNoRating = true`, `options.autoCompletedAt` (ISO). Khách vẫn chấm muộn được.
 - Không đụng `CLEANING` / `IN_PROGRESS` / `PAUSED` / `CANCELLED` / `DONE`. Booking tính lại theo `lib/dispatch-status.ts → recomputeBookingStatus` (bỏ dịch vụ tiện ích), không lùi booking đã `DONE`.
 - Hàm phụ: `jsonb_unwrap_string(jsonb)` (bóc jsonb dạng chuỗi, lỗi → NULL), `booking_item_last_feedback_time(jsonb)`.

@@ -4,8 +4,9 @@
 -- Owner decision 14/09/2026 — plans/plan_tu_hoan_tat_don_khong_danh_gia.md
 --
 --  · An item waiting for the customer's rating (status FEEDBACK: the KTV has
---    already cleaned and handed over) is closed to DONE 5 minutes after it
---    entered FEEDBACK, so the KTV sees settled money.
+--    already cleaned and handed over) is closed to DONE N minutes after it
+--    entered FEEDBACK, so the KTV sees settled money. N is editable by the
+--    manager (SystemConfigs.customer_rating_timeout_minutes, default 5).
 --  · Already rated but still FEEDBACK → closed on the next run (≤ 1 minute).
 --  · The customer may still rate later: the rating is recorded and the ledger
 --    trigger (trg_ktvd_enqueue_item) recomputes the money.
@@ -72,10 +73,26 @@ RETURNS integer
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_items       integer := 0;
-    v_booking_ids text[];
-    v_now_iso     text := to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+    v_items        integer := 0;
+    v_booking_ids  text[];
+    v_now_iso      text := to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+    v_wait_minutes numeric;
 BEGIN
+    -- Waiting time is set by the manager: admin "Cài đặt tính năng → Bàn giao
+    -- phòng" (SystemConfigs.customer_rating_timeout_minutes). Missing,
+    -- unreadable or negative → 5 minutes. 0 = close right after handover.
+    BEGIN
+        SELECT (value #>> '{}')::numeric
+          INTO v_wait_minutes
+          FROM "SystemConfigs"
+         WHERE key = 'customer_rating_timeout_minutes';
+    EXCEPTION WHEN OTHERS THEN
+        v_wait_minutes := NULL;
+    END;
+    IF v_wait_minutes IS NULL OR v_wait_minutes < 0 THEN
+        v_wait_minutes := 5;
+    END IF;
+
     WITH candidates AS (
         SELECT i.id,
                (i."itemRating" IS NULL AND g.rating IS NULL) AS no_rating,
@@ -108,7 +125,7 @@ BEGIN
            -- (VN time). Older stuck items (May–Aug, never paid) would add money to
            -- months already settled — the manager reviews those by hand.
            AND c.entered_feedback_at >= TIMESTAMPTZ '2026-09-01 00:00:00+07'
-           AND (NOT c.no_rating OR c.entered_feedback_at < now() - INTERVAL '5 minutes')
+           AND (NOT c.no_rating OR c.entered_feedback_at < now() - v_wait_minutes * INTERVAL '1 minute')
         RETURNING i."bookingId"
     )
     SELECT count(*), array_agg(DISTINCT "bookingId")
@@ -157,6 +174,21 @@ BEGIN
     RETURN v_items;
 END;
 $$;
+
+-- Waiting time setting. The key already existed (seeded 30 on 22/07/2026 by
+-- 20260722000006, never read by any code). Owner decision 14/09: 5 minutes.
+-- Only the untouched seed value 30 is replaced, so re-running this file never
+-- overwrites a value the manager has set.
+INSERT INTO "SystemConfigs" (key, value, description)
+VALUES (
+    'customer_rating_timeout_minutes',
+    '5'::jsonb,
+    'Số phút chờ khách đánh giá sau khi KTV bàn giao. Quá hạn hệ thống tự Hoàn tất đơn (khách vẫn chấm muộn được). 0 = hoàn tất ngay.'
+)
+ON CONFLICT (key) DO UPDATE
+    SET value = CASE WHEN "SystemConfigs".value = '30'::jsonb THEN EXCLUDED.value ELSE "SystemConfigs".value END,
+        description = EXCLUDED.description,
+        updated_at = now();
 
 -- @@CRON_SECTION@@ (scripts/qa/qa_auto_complete_feedback.cjs runs only the part above)
 DO $$

@@ -76,7 +76,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | ĐR dòng 15 | route lịch sử trên đơn thật `WB-11092026-003` |
 | VT dòng 14 | `coWorkersOf` trên đơn thật trả `[]` |
 | VT dòng 3, 9 — người vào thay **loại C không có dòng TurnQueue** (14/09) | `scripts/qa/qa_swap_ktv_e2e.ts` — 121/121, cả dưới `TZ=UTC`: tạo dòng `working` (không `assigned`), 2KTV-1DV không bị đụng, 3 bộ lọc huỷ đơn / huỷ dịch vụ / Hoàn tất đều tìm thấy C, huỷ không công → C mất tua như A/B, C bị đổi ra lại → về `waiting` + phiếu CANCELLED, D on-call không bị tạo dòng, race 2 lệnh → 1 dòng |
-| Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 35/35 trên DB thật trong transaction ROLLBACK (10 đơn giả, gồm biên 31/08 23:30 ↔ 01/09 00:10 giờ VN + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). ⚠️ Migration `20260914120000` **chưa áp** lên DB |
+| Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 41/41 trên DB thật trong transaction ROLLBACK (13 đơn giả, gồm biên 31/08 23:30 ↔ 01/09 00:10 giờ VN và số phút chờ đổi được: 20 / 8 / 0 / giá trị hỏng / âm + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). ⚠️ Migration `20260914120000` **chưa áp** lên DB |
 
 ### ⚠️ Còn lỗ — chưa sửa
 

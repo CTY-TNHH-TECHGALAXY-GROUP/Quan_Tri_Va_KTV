@@ -46,6 +46,9 @@ const DEFAULT_CONFIGS = {
     reception_auto_approve_minutes: 15,
     // Số lần quầy được trả lại (bắt dọn lại) trên cùng một đơn.
     max_handover_reject: 2,
+    // Minutes an order waits for the customer's rating after handover; past it the
+    // DB job auto-completes the order (migration 20260914120000). 0 = right away.
+    customer_rating_timeout_minutes: 5,
     ktv_discipline_rules: [
         { code: 'ORDER_REJECT', name: 'Từ chối đơn', points: 10 },
         { code: 'LATE', name: 'Đi làm trễ', points: 5 },

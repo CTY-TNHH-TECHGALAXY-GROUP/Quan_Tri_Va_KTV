@@ -46,6 +46,8 @@ const check = (name, cond, detail = '') => {
         await c.query('SET LOCAL session_replication_role = replica');
 
         await c.query(FUNCTION_SQL);
+        // Baseline 5 minutes regardless of what the manager has set (rolled back).
+        await c.query(`UPDATE "SystemConfigs" SET value = '5'::jsonb WHERE key = 'customer_rating_timeout_minutes'`);
 
         // ── Real-row snapshot (dry run) ─────────────────────────────
         const realFeedback = await c.query(`
@@ -194,6 +196,32 @@ const check = (name, cond, detail = '') => {
             check(`real ${s}: ${before[s] || 0} → ${after[s] || 0}`, (after[s] || 0) === expected, `expected ${expected}`);
         }
         check('real items closed = dry-run estimate', realClosed === wouldClose.length, `closed ${realClosed} vs estimate ${wouldClose.length}`);
+
+        // Runs after the real-row comparison: changing the wait could close more real rows.
+        console.log('\nConfigurable wait (SystemConfigs.customer_rating_timeout_minutes)');
+        const setWait = v => c.query(`UPDATE "SystemConfigs" SET value = $1::jsonb WHERE key = 'customer_rating_timeout_minutes'`, [JSON.stringify(v)]);
+        const runJob = () => c.query('SELECT auto_complete_unrated_feedback()');
+
+        await addBooking(B(11), 'FEEDBACK');
+        await addItem(`${B(11)}-i1`, B(11), { status: 'FEEDBACK', segments: [seg(10)] });
+        await setWait(20); await runJob();
+        check('wait 20m: entered 10m ago → still FEEDBACK', (await item(`${B(11)}-i1`)).status === 'FEEDBACK');
+        await setWait(8); await runJob();
+        check('wait 8m: entered 10m ago → DONE', (await item(`${B(11)}-i1`)).status === 'DONE');
+
+        await addBooking(B(12), 'FEEDBACK');
+        await addItem(`${B(12)}-i1`, B(12), { status: 'FEEDBACK', segments: [seg(1)] });
+        await setWait(0); await runJob();
+        check('wait 0: entered 1m ago → DONE right away', (await item(`${B(12)}-i1`)).status === 'DONE');
+
+        await addBooking(B(13), 'FEEDBACK');
+        await addItem(`${B(13)}-i1`, B(13), { status: 'FEEDBACK', segments: [seg(6)] });
+        await addItem(`${B(13)}-i2`, B(13), { status: 'FEEDBACK', segments: [seg(3)] });
+        await setWait('abc'); await runJob();
+        check('unreadable value → fallback 5m: 6m ago DONE', (await item(`${B(13)}-i1`)).status === 'DONE');
+        check('unreadable value → fallback 5m: 3m ago still FEEDBACK', (await item(`${B(13)}-i2`)).status === 'FEEDBACK');
+        await setWait(-3); await runJob();
+        check('negative value → fallback 5m: 3m ago still FEEDBACK', (await item(`${B(13)}-i2`)).status === 'FEEDBACK');
     } catch (e) {
         failed++;
         console.error('💥', e.message);
