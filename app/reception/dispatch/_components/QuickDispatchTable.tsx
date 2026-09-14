@@ -490,7 +490,7 @@ export const QuickDispatchTable = ({
           if (svcIdx === -1) return;
           const ktvId = state.selectedKtvIds[idx] || '';
           const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvId;
+          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
           const roomId = state.selectedRoomIds?.[idx] || null;
           let bedId: string | null = state.ktvBedIds?.[idx] || null;
           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
@@ -538,7 +538,7 @@ export const QuickDispatchTable = ({
             
             const ktvId = state.selectedKtvIds[ki] || '';
             const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvId;
+            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
             const roomId = state.selectedRoomIds?.[ki] || null;
             let bedId: string | null = state.ktvBedIds?.[ki] || null;
             
@@ -1711,7 +1711,8 @@ const ServiceGroupCard = ({
       const ticketDur = (state.ktvDurations || [])[idx] || duration;
       const ticketNote = (state.ktvNotes || [])[idx] || '';
       const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-      const ktvNameDisplay = ktvTurn?.staff?.full_name || ktvId;
+      // KTV ngoài vừa thêm (NEW_EXT:<TÊN>) chưa có trong sổ tua lẫn danh sách → ktvDisplayLabel trả tên đã gõ.
+      const ktvNameDisplay = ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
       return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setShowTicketForIdx(null)}>
           <motion.div

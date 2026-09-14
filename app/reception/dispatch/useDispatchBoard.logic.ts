@@ -82,6 +82,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
     const selectedOrderIdRef = useRef(selectedOrderId);
     const needsRefreshRef = useRef(false);
+    // Latest turns/orders for realtime callbacks. Deciding "must we reload?" has to
+    // happen OUTSIDE a setState updater: updaters run during render, and calling a
+    // server action there makes React throw "Cannot update a component (Router)
+    // while rendering DispatchBoardPage" (15/09/2026).
+    const turnsRef = useRef(turns);
+    const ordersRef = useRef(orders);
+    useEffect(() => { turnsRef.current = turns; }, [turns]);
+    useEffect(() => { ordersRef.current = orders; }, [orders]);
 
     useEffect(() => {
         const wasEditing = !!selectedOrderIdRef.current;
@@ -501,14 +509,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 const newBooking = payload.new;
                 const validSources = ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'];
                 
-                setOrders(prev => {
-                    const exists = prev.some(o => o.id === newBooking.id);
-                    if (!exists && validSources.includes(newBooking?.source) && newBooking.status !== 'CANCELLED') {
-                        // Bắt sự kiện đơn từ Web Booking vừa được xác nhận (đổi source thành WALK_IN)
-                        debouncedFetchData();
-                        return prev;
-                    }
-                    
+                const exists = ordersRef.current.some(o => o.id === newBooking.id);
+                if (!exists && validSources.includes(newBooking?.source) && newBooking.status !== 'CANCELLED') {
+                    // Bắt sự kiện đơn từ Web Booking vừa được xác nhận (đổi source thành WALK_IN).
+                    // Gọi NGOÀI setOrders — xem ghi chú ở ordersRef.
+                    debouncedFetchData();
+                } else setOrders(prev => {
                     return prev.map(o => {
                         if (o.id === newBooking.id) {
                             const newStatus = newBooking.status;
@@ -529,15 +535,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, (payload: any) => {
                 if (payload.eventType === 'UPDATE') {
-                    setTurns(prev => {
-                        // KTV chưa có trong state (tua tạo sau lần tải gần nhất) thì patch
-                        // không ăn vào đâu cả — phải kéo lại danh sách.
-                        if (!prev.some(t => t.employee_id === payload.new.employee_id)) {
-                            refreshStaffOnly();
-                            return prev;
-                        }
-                        return prev.map(t => t.employee_id === payload.new.employee_id ? { ...t, ...payload.new } : t);
-                    });
+                    // KTV chưa có trong state (tua tạo sau lần tải gần nhất) thì patch
+                    // không ăn vào đâu cả — phải kéo lại danh sách. Quyết định NGOÀI
+                    // setTurns: gọi server action trong updater là lỗi setState-in-render.
+                    if (!turnsRef.current.some(t => t.employee_id === payload.new.employee_id)) {
+                        refreshStaffOnly();
+                    } else {
+                        setTurns(prev => prev.map(t => t.employee_id === payload.new.employee_id ? { ...t, ...payload.new } : t));
+                    }
                 } else if (payload.eventType === 'DELETE') {
                     setTurns(prev => prev.filter(t => t.id !== payload.old.id));
                 } else {

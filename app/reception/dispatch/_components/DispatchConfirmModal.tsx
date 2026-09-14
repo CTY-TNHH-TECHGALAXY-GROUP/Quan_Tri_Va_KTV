@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Plus, Send } from 'lucide-react';
 import { isUtilityService } from '@/lib/booking.logic';
 import { getDisplayCustomerName } from '../dispatch-display';
+import { isNewExternalKtvToken } from '@/lib/constants/staff.constants';
 
 /** Số KTV tối thiểu của một dịch vụ; thiếu field thì coi như cần 1 người. */
 const minKtvOf = (svc: any) =>
@@ -130,7 +131,7 @@ export function DispatchConfirmModal({
                         <div className="flex items-center gap-2">
                           <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold">KTV</span>
                           <span className="text-sm font-black text-gray-800">
-                            {st.ktvName || 'Chưa gán'} {st.ktvId ? `[${st.ktvId}]` : ''}
+                            {st.ktvName || 'Chưa gán'} {st.ktvId ? (isNewExternalKtvToken(st.ktvId) ? '[KTV ngoài mới]' : `[${st.ktvId}]`) : ''}
                           </span>
                         </div>
                         <div className="text-xs text-gray-600 flex flex-col gap-1">
