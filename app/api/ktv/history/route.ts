@@ -259,7 +259,7 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, guest_id, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations')
+            .select('id, bookingId, guest_id, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations, timeEnd')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
@@ -458,7 +458,20 @@ export async function GET(request: Request) {
                     return lyDo ? `${nhan} — ${lyDo}` : `${nhan} · 0đ`;
                 })();
 
+                // When THIS KTV finished the row — the history list sorts on it.
+                // Guests of one bill share `createdAt`, so sorting on that left
+                // B/C in random order. DB timestamps without a zone are UTC.
+                const toMs = (v: any): number => {
+                    if (!v) return 0;
+                    const raw = String(v);
+                    const hasZone = raw.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(raw);
+                    const t = new Date(hasZone ? raw : raw.replace(' ', 'T') + 'Z').getTime();
+                    return Number.isFinite(t) ? t : 0;
+                };
+                let finishedMs = 0;
+
                 for (const item of groupItems) {
+                    finishedMs = Math.max(finishedMs, toMs(item.timeEnd));
                     const biTuoc = KtvCommissionService.isKtvVoidedOnItem(item, techCode);
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
@@ -472,6 +485,9 @@ export async function GET(request: Request) {
                     try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch { }
                     const mySegs = segs.filter((s: any) => s.ktvId && s.ktvId.toLowerCase() === techCode.toLowerCase());
                     for (const seg of mySegs) {
+                        if (seg.actualEndTime && seg.voided !== true) {
+                            finishedMs = Math.max(finishedMs, toMs(seg.actualEndTime));
+                        }
                         if (seg.actualStartTime && seg.actualEndTime) {
                             const t1 = new Date(seg.actualStartTime).getTime();
                             const t2 = new Date(seg.actualEndTime).getTime();
@@ -673,6 +689,9 @@ export async function GET(request: Request) {
                     billCode: `${b.billCode}${billSuffix}`,
                     guestLabel,
                     createdAt: b.createdAt,
+                    // Finish time (else start, else bill creation) as ISO — sort key
+                    // for the history list, newest finished first.
+                    finishedAt: new Date(finishedMs || toMs(b.timeStart) || toMs(b.createdAt) || 0).toISOString(),
                     bookingDate: b.bookingDate,
                     // NGÀY LÀM VIỆC — trục ngày duy nhất của màn này, cùng trục
                     // với Ví và sổ giờ. `bookingDate` ở trên giữ lại chỉ để tra

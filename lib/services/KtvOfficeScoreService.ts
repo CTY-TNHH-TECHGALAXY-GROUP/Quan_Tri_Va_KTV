@@ -434,6 +434,18 @@ export class KtvOfficeScoreService {
              * giờ làm trước, phạt sau", không sắp lại theo mốc này.
              */
             at: string | null;
+            /** Real moment in ms, only for ordering. Stripped before returning. */
+            sortMs: number;
+        };
+
+        // DB timestamps without a zone (booking_time_start, ledger created_at via
+        // PostgREST) are UTC — add 'Z', same rule as fmtClock in lib/hours-format.
+        const toMs = (v: any): number => {
+            if (!v) return 0;
+            const raw = String(v);
+            const hasZone = raw.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(raw);
+            const t = new Date(hasZone ? raw : raw.replace(' ', 'T') + 'Z').getTime();
+            return Number.isFinite(t) ? t : 0;
         };
 
         const entries: Entry[] = [
@@ -447,6 +459,8 @@ export class KtvOfficeScoreService {
                 bookingId: r.bill_code || r.booking_id || null,
                 note: r.service_name,
                 at: r.booking_time_start || null,
+                // No order start (manual/admin rows) → when it was written to the ledger.
+                sortMs: toMs(r.booking_time_start) || toMs((r as any).created_at),
             })),
             // Khoản chỉ trừ TIỀN (phí kích hoạt lại) không thuộc sổ giờ — để lại
             // sẽ thành một dòng '0 giờ' vô nghĩa giữa các tua.
@@ -459,6 +473,7 @@ export class KtvOfficeScoreService {
                 bookingId: null,
                 note: p.note,
                 at: p.created_at || null,
+                sortMs: toMs(p.created_at),
             })),
         ];
 
@@ -472,18 +487,22 @@ export class KtvOfficeScoreService {
         // 03/09 có tua 18:57 rồi 00:54, 00:57, 01:01 (rạng sáng 04/09 — ngày làm việc
         // chốt lúc 6h sáng), mà bảng lại xếp 00:54 trên 01:01 nên cột "Còn lại" chạy
         // ngược: dòng dưới giờ muộn hơn mà số dư nhỏ hơn.
+        //
+        // Chốt 14/09: bỏ luật "cùng ngày giờ làm trước, phạt sau". Màn hình xếp
+        // mới-nhất-trên, nên luật đó đẩy phiếu phạt 20:36 lên trên cả tua 23:20 —
+        // timeline sai. Nay cùng ngày thì theo MỐC GIỜ THẬT, tính ra mili-giây:
+        // so chuỗi không được vì tua lưu '2026-09-14 16:01:10' (UTC, không múi)
+        // còn phiếu phạt lưu '...T13:36:09+00:00'. Tổng tháng không đổi, chỉ số
+        // "Còn" của từng dòng đi đúng diễn biến.
         entries.sort((a, b) => {
             if (a.date !== b.date) return a.date.localeCompare(b.date);
-            const aPen = a.penalty > 0 ? 1 : 0;
-            const bPen = b.penalty > 0 ? 1 : 0;
-            if (aPen !== bPen) return aPen - bPen;
-            return String(a.at || '').localeCompare(String(b.at || ''));
+            return a.sortMs - b.sortMs;
         });
 
         let balance = 0;
         let earnedTotal = 0;
         let penaltyTotal = 0;
-        const rows = entries.map(e => {
+        const rows = entries.map(({ sortMs: _sortMs, ...e }) => {
             balance += e.earned - e.penalty;
             earnedTotal += e.earned;
             penaltyTotal += e.penalty;

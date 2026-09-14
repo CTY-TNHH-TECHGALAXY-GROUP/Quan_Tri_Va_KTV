@@ -127,9 +127,10 @@ export const useKTVHistory = () => {
         commissionBeforeDeduction: 0, ratingDeductionRate: 0, ratingDeductionAmount: 0
       }));
 
-      const combined = [...bkList, ...dcList].sort((a, b) => {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
+      // Newest FINISHED first. Guests of one bill share `createdAt`, so orders use
+      // `finishedAt` from the API; discipline entries only have `createdAt`.
+      const sortTime = (r: any) => new Date(r.finishedAt || r.createdAt).getTime() || 0;
+      const combined = [...bkList, ...dcList].sort((a, b) => sortTime(b) - sortTime(a));
 
       setHistory(combined);
       // Chỉ cộng tiền cho đơn đã được khách FB (isFeedbackDone = true)
