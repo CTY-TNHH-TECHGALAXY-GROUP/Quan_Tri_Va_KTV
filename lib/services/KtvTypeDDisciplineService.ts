@@ -271,9 +271,20 @@ export class KtvTypeDDisciplineService {
             reason: string;
             /** Ghi vào SecurityAuditLogs.details.source. */
             source?: string;
+            /**
+             * Tìm đơn KTV còn đang dở (trả mã bill). Có đơn thì KHOÁ được HOÃN tới
+             * khi xong đơn. Bỏ trống = `timDonDangLam` thật; mô phỏng truyền vào
+             * để khỏi cần DB.
+             */
+            timDonDangLam?: (staffId: string) => Promise<string[]>;
         },
         dry = false,
-    ): Promise<{ ketQua: 'LOCK' | 'DEDUCT' | 'NONE'; hours: number; netHours: number | null }> {
+    ): Promise<{
+        ketQua: 'LOCK' | 'DEDUCT' | 'NONE'; hours: number; netHours: number | null;
+        /** Khoá đã quyết nhưng hoãn vì KTV còn đơn — ghi `Staff.pending_lock`. */
+        hoan: boolean;
+        donDangLam: string[];
+    }> {
         const { staffId, staffName, workDate, caseKey, reason, source } = opts;
         const policy = await KtvTypeDDisciplineService.getCasePolicy(supabase, caseKey);
 
@@ -303,12 +314,27 @@ export class KtvTypeDDisciplineService {
 
         const hours = ketQua === 'DEDUCT' ? policy.hours : 0;
 
-        if (dry || ketQua === 'NONE') return { ketQua, hours, netHours };
+        // Khoá mà KTV còn đơn dở → HOÃN tới khi xong đơn, không đá người ta ra
+        // giữa lúc làm / dọn phòng / chờ quầy duyệt bàn giao (plan §9).
+        let donDangLam: string[] = [];
+        if (ketQua === 'LOCK') {
+            donDangLam = opts.timDonDangLam
+                ? await opts.timDonDangLam(staffId)
+                : await KtvTypeDDisciplineService.timDonDangLam(supabase, staffId);
+        }
+        const hoan = donDangLam.length > 0;
+        const ketQuaDu = { ketQua, hours, netHours, hoan, donDangLam };
+
+        if (dry || ketQua === 'NONE') return ketQuaDu;
         if (!(await KtvTypeDDisciplineService.isEnabled(supabase))) {
-            return { ketQua, hours, netHours };
+            return ketQuaDu;
         }
 
-        if (ketQua === 'DEDUCT') {
+        if (ketQua === 'LOCK' && hoan) {
+            await KtvTypeDDisciplineService.ghiChoKhoa(supabase, {
+                staffId, staffName, workDate, caseKey, reason, source, donDangLam,
+            });
+        } else if (ketQua === 'DEDUCT') {
             await KtvTypeDDisciplineService.ghiPhatGio(supabase, staffId, workDate, caseKey, hours, reason, source);
             const { createNotification } = await import('../notification-helper');
             const { vnDate } = await import('../vn-time');
@@ -321,7 +347,132 @@ export class KtvTypeDDisciplineService {
             await KtvTypeDDisciplineService.khoaTaiKhoan(supabase, staffId, staffName, workDate, reason, source, netHours);
         }
 
-        return { ketQua, hours, netHours };
+        return ketQuaDu;
+    }
+
+    /**
+     * Mã bill các đơn KTV còn dở trong NGÀY LÀM VIỆC hiện tại, tính cả khúc chờ
+     * khách đánh giá và chờ quầy duyệt bàn giao. Qua mốc cắt 06:00 thì đơn đêm
+     * qua tự rơi khỏi danh sách — nên khoá hoãn muộn nhất tới đó là áp.
+     */
+    static async timDonDangLam(supabase: SupabaseClient, staffId: string): Promise<string[]> {
+        const { findUnfinishedWorkToday } = await import('../unfinished-work');
+        const busy = await findUnfinishedWorkToday(supabase, staffId, { tinhCaChoDuyet: true });
+        return Array.from(new Set(busy.map(b => b.billCode)));
+    }
+
+    /**
+     * Ghi "CHỜ KHOÁ" — KTV còn đơn nên chưa đổi `status`, vẫn làm tiếp bình
+     * thường. Cron `type-d-pending-lock` áp khoá khi hết đơn.
+     *
+     * Không ghi được (VD chưa áp migration `pending_lock`) thì khoá luôn như cũ:
+     * thà đá ra giữa đơn còn hơn lặng lẽ bỏ qua hình phạt.
+     */
+    private static async ghiChoKhoa(
+        supabase: SupabaseClient,
+        p: {
+            staffId: string; staffName?: string | null; workDate: string;
+            caseKey: TypeDDisciplineCaseKey; reason: string; source?: string; donDangLam: string[];
+        },
+    ) {
+        const { error } = await supabase
+            .from('Staff')
+            .update({
+                pending_lock: {
+                    caseKey: p.caseKey,
+                    workDate: p.workDate,
+                    reason: p.reason,
+                    source: p.source || 'CRON',
+                    decidedAt: new Date().toISOString(),
+                    billCodes: p.donDangLam,
+                },
+            })
+            .eq('id', p.staffId);
+
+        if (error) {
+            console.error('[Type D] Không ghi được chờ khoá — khoá ngay:', error);
+            await KtvTypeDDisciplineService.khoaTaiKhoan(supabase, p.staffId, p.staffName, p.workDate, p.reason, p.source, null);
+            return;
+        }
+
+        const { createNotification } = await import('../notification-helper');
+        const { vnDate } = await import('../vn-time');
+
+        await supabase.from('SecurityAuditLogs').insert({
+            employee_id: p.staffId,
+            employee_name: p.staffName || p.staffId,
+            event_type: 'PENDING_LOCK',
+            ip_address: '127.0.0.1',
+            user_agent: 'CRON',
+            details: { source: p.source || 'CRON', violationDate: p.workDate, reason: p.reason, caseKey: p.caseKey, billCodes: p.donDangLam },
+        });
+        await createNotification({
+            type: 'WARNING',
+            message: `Tài khoản của bạn sẽ bị khoá ngay khi xong đơn đang làm. Lý do: ${p.reason} ngày ${vnDate(p.workDate)}. Liên hệ quầy để mở lại.`,
+            employeeId: p.staffId,
+        });
+    }
+
+    /**
+     * Áp một khoá đang hoãn: khoá thật (đủ vết như khoá thường) rồi xoá
+     * `pending_lock`. Bên gọi phải kiểm tra trước là KTV đã hết đơn.
+     */
+    static async apDungKhoaDangCho(
+        supabase: SupabaseClient,
+        staffId: string,
+        staffName: string | null | undefined,
+        pending: { workDate: string; reason: string },
+    ) {
+        await KtvTypeDDisciplineService.khoaTaiKhoan(
+            supabase, staffId, staffName, pending.workDate, pending.reason, 'CRON_PENDING_LOCK', null);
+        await supabase.from('Staff').update({ pending_lock: null }).eq('id', staffId);
+    }
+
+    /**
+     * Thứ tự xử MỘT KTV trong lượt chốt sổ 00:00 — hàm THUẦN, không đọc DB, để
+     * mô phỏng được đúng thứ cron chạy.
+     *
+     * Trả về các lỗi theo thứ tự xét. Cron xử lần lượt và DỪNG ngay khi có một
+     * lượt khoá: mỗi người tối đa một lần khoá mỗi đêm, khoá rồi thì không chồng
+     * thêm án trừ giờ (plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md §2.1).
+     *
+     *   1. Ngày vừa qua không có dòng đăng ký     → NO_REGISTRATION (kể cả có đi làm)
+     *   2. Ngày mới chưa có dòng đăng ký          → UNREGISTERED_NEXT_DAY
+     *   3. Ngày vừa qua đăng ký làm mà không đến  → 3 luật báo vắng / báo trễ / im lặng
+     */
+    static xetChotSoDem(input: {
+        regNgayVuaQua: { status: string; absent_reported_at?: string | null; penalty_applied?: string | null } | null;
+        coRegNgayMoi: boolean;
+        coDiLamNgayVuaQua: boolean;
+    }): {
+        /** Ngày vừa qua đã xong việc (OFF hoặc có đi làm) → đóng sổ dòng đăng ký. */
+        dongSoNgayVuaQua: boolean;
+        loi: { caseKey: TypeDDisciplineCaseKey; ngay: 'VUA_QUA' | 'MOI'; lyDo: string; danhDauDangKy: boolean }[];
+    } {
+        const { regNgayVuaQua: reg, coRegNgayMoi, coDiLamNgayVuaQua: coDiLam } = input;
+        const loi: { caseKey: TypeDDisciplineCaseKey; ngay: 'VUA_QUA' | 'MOI'; lyDo: string; danhDauDangKy: boolean }[] = [];
+
+        if (!reg) {
+            loi.push({ caseKey: 'NO_REGISTRATION', ngay: 'VUA_QUA', lyDo: 'Không đăng ký lịch', danhDauDangKy: false });
+        }
+        if (!coRegNgayMoi) {
+            loi.push({ caseKey: 'UNREGISTERED_NEXT_DAY', ngay: 'MOI', lyDo: 'Chưa đăng ký lịch (đi làm hoặc OFF)', danhDauDangKy: false });
+        }
+
+        const dongSoNgayVuaQua = !!reg && (reg.status === 'OFF_REGISTERED' || coDiLam);
+
+        // `penalty_applied` có rồi = lượt trước đã xử, không phạt hai lần.
+        if (reg && !dongSoNgayVuaQua && !reg.penalty_applied) {
+            if (reg.status === 'ABSENT_REPORTED' && reg.absent_reported_at) {
+                loi.push({ caseKey: 'ABSENT_REPORTED_NO_SHOW', ngay: 'VUA_QUA', lyDo: 'Đã báo vắng nhưng không đi làm', danhDauDangKy: true });
+            } else if (reg.status === 'LATE_REPORTED') {
+                loi.push({ caseKey: 'LATE_REPORTED_NO_SHOW', ngay: 'VUA_QUA', lyDo: 'Đã báo trễ nhưng không đến làm', danhDauDangKy: true });
+            } else {
+                loi.push({ caseKey: 'NO_SHOW_NO_NOTICE', ngay: 'VUA_QUA', lyDo: 'Đăng ký làm nhưng không đến và không báo', danhDauDangKy: true });
+            }
+        }
+
+        return { dongSoNgayVuaQua, loi };
     }
 
     /**

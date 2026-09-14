@@ -71,25 +71,25 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
     { action: TypeDDisciplineAction; hours: number; label: string; moTa: string }
 > = {
     /**
-     * ⚠️ Luật này KHÔNG có trong quy chế, nên mặc định TẮT.
+     * Hai luật đăng ký đi thành cặp (quyết định 14/09,
+     * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md):
      *
-     * Quy chế chỉ xét ngày ĐÃ QUA: hết ngày mà không đăng ký gì và cũng không
-     * đến làm thì mới phạt. Luật "nhìn tới trước" này do code tự thêm, và bật
-     * nó lên thì nó nuốt luôn luật đúng: sau một đêm, mọi người còn dùng được
-     * app đều đã có đăng ký cho ngày mới, nên `NO_REGISTRATION` không bao giờ
-     * chạy tới — thành code chết.
+     *   · UNREGISTERED_NEXT_DAY — 00:00 mà NGÀY VỪA SANG chưa có dòng đăng ký
+     *     → khoá. Đăng ký trước là nghĩa vụ, quên là khoá.
+     *   · NO_REGISTRATION — NGÀY VỪA QUA không có dòng đăng ký → khoá, kể cả có
+     *     đi làm. Bắt người được quầy mở khoá giữa ngày mà vẫn không đăng ký.
      *
-     * Muốn buộc KTV đăng ký trước thì bật ở Cài đặt → Loại D.
+     * KTV còn đơn dở thì khoá được HOÃN tới khi xong đơn (Staff.pending_lock).
      */
     UNREGISTERED_NEXT_DAY: {
-        action: 'NONE', hours: 0,
-        label: 'Chưa đăng ký lịch cho ngày mới (ngoài quy chế)',
-        moTa: 'Lúc 00:00 hỏi về NGÀY VỪA SANG: đã đăng ký đi làm hoặc OFF cho hôm nay chưa. Quy chế không có luật này nên mặc định bỏ qua — bật lên thì nó nuốt luôn luật ngay bên dưới.',
+        action: 'LOCK', hours: 10,
+        label: 'Chưa đăng ký lịch cho ngày mới',
+        moTa: 'Lúc 00:00, ngày vừa sang chưa có dòng đăng ký nào (đi làm hoặc OFF). Đang có đơn dở thì khoá sau khi xong đơn.',
     },
     NO_REGISTRATION: {
-        action: 'DEDUCT_OR_LOCK', hours: 10,
-        label: 'Không đăng ký gì và không đi làm',
-        moTa: 'Chốt NGÀY VỪA QUA: cả ngày không có dòng đăng ký nào, mà cũng không điểm danh. Có đến làm thì chỉ là quên đăng ký → bỏ qua.',
+        action: 'LOCK', hours: 10,
+        label: 'Ngày vừa qua không có đăng ký',
+        moTa: 'Chốt NGÀY VỪA QUA: cả ngày không có dòng đăng ký nào, kể cả có đi làm. Thường là người được quầy mở khoá mà vẫn không đăng ký.',
     },
     NO_SHOW_NO_NOTICE: {
         action: 'DEDUCT_OR_LOCK', hours: 10,
