@@ -11,6 +11,7 @@ import { useKTVAttendance } from './Attendance.logic';
 import { t } from './Attendance.i18n';
 import AttendanceTypeB from './_components/AttendanceTypeB';
 import { OnCallWidget } from './_components/OnCallWidget';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 const KTVAttendancePage = () => {
     const {
@@ -39,7 +40,8 @@ const KTVAttendancePage = () => {
         workType,
         availableUntil,
         refreshAttendanceStatus,
-        incompleteTasksCount
+        incompleteTasksCount,
+        withdrawShowsMaintenance
     } = useKTVAttendance();
 
     // 🔧 UI CONFIGURATION
@@ -774,6 +776,12 @@ const KTVAttendancePage = () => {
                             )}
 
                             {formType === 'CHECK_IN' && selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'FREE' && user?.roleId !== 'support' && user?.roleId !== 'dev' && (
+                                withdrawShowsMaintenance ? (
+                                    /* Ví Tua switched off → say so where the box used to be. */
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <FeatureMaintenanceNotice variant="compact" />
+                                    </div>
+                                ) :
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-gray-100">
                                     <label className="flex items-start gap-3 cursor-pointer p-3 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-xl transition-colors">
                                         <div className="flex items-center h-5 mt-0.5">

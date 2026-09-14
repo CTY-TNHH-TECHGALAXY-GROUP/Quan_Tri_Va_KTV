@@ -1,6 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { resolveStaffFlag } from '@/lib/featureFlags';
+
+// Flags whose "missing" value is NOT simply OFF (a KTV created before
+// `tua_wallet` existed still has Ví Tua). They must be read through the same
+// resolver the server uses, or the table shows OFF while the KTV has it ON.
+const RESOLVED_FLAG_KEYS = ['tua_wallet', 'bonus_wallet', 'history_page'];
+
+export const isFlagOn = (flags: Record<string, any> | null | undefined, key: string): boolean =>
+    RESOLVED_FLAG_KEYS.includes(key) ? resolveStaffFlag(flags, key) : flags?.[key] === true;
 
 // 🔧 FEATURE FLAG DEFINITIONS
 export const FEATURE_FLAG_DEFS = [
@@ -25,9 +34,19 @@ export const FEATURE_FLAG_DEFS = [
         description: 'Hiển thị tab Công Việc / Bàn Giao trên ứng dụng của nhân viên',
     },
     {
+        key: 'tua_wallet',
+        label: '💵 Ví Tua',
+        description: 'Xem số dư tua và rút tiền trên app. TẮT = KTV thấy "Tính năng của bạn đang bảo trì" (tiền vẫn ghi sổ).',
+    },
+    {
         key: 'bonus_wallet',
         label: '💰 Ví Bonus',
-        description: 'Tích điểm thưởng ca, tua vào ví Bonus',
+        description: 'Xem điểm Bonus và quy đổi trên app (chỉ Loại A/B). TẮT = KTV thấy "Tính năng của bạn đang bảo trì".',
+    },
+    {
+        key: 'history_page',
+        label: '📜 Trang Lịch sử',
+        description: 'Trang Lịch sử đơn trên app. TẮT = KTV thấy "Tính năng của bạn đang bảo trì".',
     },
     {
         key: 'savings_wallet',

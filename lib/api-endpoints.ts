@@ -14,6 +14,7 @@ export const API = {
       PIGGY_BANK: (techCode: string) => `/api/ktv/wallet/piggy-bank?techCode=${techCode}`,
       BONUS_BALANCE: (techCode: string) => `/api/ktv/wallet/bonus/balance?techCode=${techCode}`,
       BONUS_TIMELINE: (techCode: string) => `/api/ktv/wallet/bonus/timeline?techCode=${techCode}`,
+      ACCESS: (techCode: string) => `/api/ktv/wallet/access?techCode=${techCode}`,
     },
     ATTENDANCE: '/api/ktv/attendance',
     ATTENDANCE_STATUS: (employeeId: string) => `/api/ktv/attendance/status?employeeId=${employeeId}`,

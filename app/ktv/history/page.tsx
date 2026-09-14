@@ -12,6 +12,7 @@ import {
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useKTVHistory, HistoryRecord } from './KTVHistory.logic';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -337,6 +338,7 @@ export default function KTVHistoryPage() {
     summary,
     getStatusLabel,
     refetch,
+    maintenance,
   } = useKTVHistory();
 
   React.useEffect(() => { setMounted(true); }, []);
@@ -349,6 +351,15 @@ export default function KTVHistoryPage() {
           <ShieldAlert size={48} className="text-red-500 mb-4" />
           <h2 className="text-xl font-bold text-gray-900">Không có quyền truy cập</h2>
         </div>
+      </AppLayout>
+    );
+  }
+
+  // Permission on, page switched off by an admin → the shared maintenance notice.
+  if (maintenance) {
+    return (
+      <AppLayout title="Lịch Sử">
+        <FeatureMaintenanceNotice />
       </AppLayout>
     );
   }

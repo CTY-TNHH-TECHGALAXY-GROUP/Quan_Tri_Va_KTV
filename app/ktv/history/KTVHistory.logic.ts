@@ -6,6 +6,7 @@ import { format, subDays } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { getVnDateStr } from '@/lib/time.logic';
+import { isFeatureMaintenanceError } from '@/lib/featureMaintenance';
 
 export interface HistoryRecord {
   id: string;
@@ -45,13 +46,18 @@ export const useKTVHistory = () => {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState({ totalCommission: 0, totalTip: 0, totalOrders: 0, totalBonus: 0, disciplinePoints: 100 });
+  // History page switched off by an admin (`history_page` flag) while the
+  // permission is still on → the page shows the maintenance notice, never an
+  // empty list with 0đ (the KTV would think their orders vanished).
+  const [maintenance, setMaintenance] = useState(false);
 
   const fetchHistory = useCallback(async (from: string, to: string) => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
       const result = await apiClient.get<any>(API.KTV.HISTORY(user.id, from, to));
-      
+      setMaintenance(false);
+
       const resData = result.data || {};
       const bookings = Array.isArray(resData) ? resData : (resData.bookings || []);
       const disciplines = resData.disciplines || [];
@@ -59,7 +65,7 @@ export const useKTVHistory = () => {
 
       // Chuẩn hoá bookings
       const bkList = bookings.map((b: any) => ({ ...b, type: 'BOOKING' as const }));
-      
+
       // Chuẩn hoá disciplines
       const dcList = disciplines.map((d: any) => ({
         id: d.id,
@@ -90,6 +96,10 @@ export const useKTVHistory = () => {
       }));
       setSummary({ totalCommission, totalTip, totalOrders: uniqueBookings.size, totalBonus, disciplinePoints });
     } catch (err: any) {
+      if (isFeatureMaintenanceError(err)) {
+        setMaintenance(true);
+        setHistory([]);
+      }
       console.error('[KTVHistory]', err.message || err);
     } finally {
       setIsLoading(false);
@@ -131,6 +141,7 @@ export const useKTVHistory = () => {
   return {
     user, hasPermission,
     history, isLoading,
+    maintenance,
     datePreset, setDatePreset,
     dateFrom, setDateFrom,
     dateTo, setDateTo,

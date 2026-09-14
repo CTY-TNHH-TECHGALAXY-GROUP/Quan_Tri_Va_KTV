@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvHistoryTipSchema } from '@/lib/schemas/ktv.schema';
 import { parseDbDate } from '@/lib/utils';
+import { resolveStaffFlag } from '@/lib/featureFlags';
+import { featureMaintenanceBody } from '@/lib/featureMaintenance';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -39,6 +41,12 @@ export async function GET(request: Request) {
                 workType = s.work_type || 'TYPE_A';
             }
         });
+
+        // History page switched off by an admin (`history_page`) → maintenance, no data.
+        const targetStaff = (allStaffData || []).find(s => s.id === techCode);
+        if (targetStaff && !resolveStaffFlag(targetStaff.feature_flags, 'history_page')) {
+            return NextResponse.json(featureMaintenanceBody(), { status: 403 });
+        }
         
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);

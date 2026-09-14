@@ -74,6 +74,9 @@ export const useKTVAttendance = () => {
     const [availableUntil, setAvailableUntil] = useState<string | null>(null);
     const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
     const [incompleteTasksCount, setIncompleteTasksCount] = useState(0);
+    // Ví Tua switched off (server truth). Only meaningful for KTVs who hold
+    // the wallet permission — see `withdrawShowsMaintenance` below.
+    const [withdrawWalletOff, setWithdrawWalletOff] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -94,6 +97,7 @@ export const useKTVAttendance = () => {
                     if (statusRes.workType) setWorkType(statusRes.workType);
                     if (statusRes.availableUntil) setAvailableUntil(statusRes.availableUntil);
                     if (statusRes.incompleteTasksCount !== undefined) setIncompleteTasksCount(statusRes.incompleteTasksCount);
+                    setWithdrawWalletOff(statusRes.withdrawWalletOff === true);
                 }
                 
                 if (settingsRes.success && settingsRes.data) {
@@ -295,6 +299,11 @@ export const useKTVAttendance = () => {
             if (!result.success) throw new Error(result.error || 'Lỗi gửi yêu cầu');
 
             setCurrentRecord(result.data);
+            // Check-in succeeded but the withdrawal intent was refused because
+            // Ví Tua is off (switched off after the form was opened).
+            if (result.withdrawIntentBlocked && result.withdrawIntentMessage) {
+                alert(result.withdrawIntentMessage);
+            }
             if (result.status === 'CONFIRMED') {
                 setCheckStatus(checkType === 'CHECK_OUT' ? 'CHECKED_OUT' : 'CONFIRMED');
             } else {
@@ -397,5 +406,8 @@ export const useKTVAttendance = () => {
         availableUntil,
         refreshAttendanceStatus,
         incompleteTasksCount,
+        // Permission ON + Ví Tua OFF → maintenance notice instead of the
+        // withdraw checkbox. No permission → checkbox rules unchanged.
+        withdrawShowsMaintenance: withdrawWalletOff && hasPermission('ktv_wallet'),
     };
 };

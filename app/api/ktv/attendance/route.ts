@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { AttendanceSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 import sharp from 'sharp';
 
 // 🔧 CONFIG
@@ -540,7 +542,16 @@ export async function POST(request: Request) {
         
         let notifMessage = `📍 ${displayName} ${actionText}${mapsLink} [AID:${record.id}]${autoSuffix}`;
         
+        // The withdrawal intent is a Ví Tua action. With Ví Tua switched off it
+        // used to go through anyway and the cashier got "chuẩn bị tiền mặt".
+        // Now: skip the intent, keep the check-in itself successful, tell the KTV.
+        let withdrawIntentBlocked = false;
         if (wantsToWithdraw && staffCode) {
+            const { ok } = await WalletAccessService.isEnabled(supabase as any, staffCode, 'TUA');
+            withdrawIntentBlocked = !ok;
+        }
+
+        if (wantsToWithdraw && staffCode && !withdrawIntentBlocked) {
             notifMessage += `\n💰 Báo Thu ngân chuẩn bị tiền mặt.`;
             
             // Insert intent to KTVWithdrawals
@@ -562,7 +573,10 @@ export async function POST(request: Request) {
         return NextResponse.json({
             success: true,
             data: record,
-            status: finalStatus
+            status: finalStatus,
+            ...(withdrawIntentBlocked
+                ? { withdrawIntentBlocked: true, withdrawIntentMessage: FEATURE_MAINTENANCE_MESSAGE }
+                : {}),
         });
 
     } catch (error: any) {

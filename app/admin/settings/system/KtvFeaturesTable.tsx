@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, ToggleLeft, ToggleRight, Loader2, RefreshCw, Zap, ZapOff } from 'lucide-react';
-import { useStaffFeatures, FEATURE_FLAG_DEFS } from './KtvFeatures.logic';
+import { useStaffFeatures, FEATURE_FLAG_DEFS, isFlagOn } from './KtvFeatures.logic';
+import { workTypeHasWallet } from '@/lib/featureFlags';
 
 const ANIMATION_DURATION = '200ms';
 const TABLE_ROW_HEIGHT = '52px';
@@ -18,7 +19,14 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
         refetch,
     } = useStaffFeatures(activeTab);
 
-    const [selectedBulkFeature, setSelectedBulkFeature] = useState<string>(FEATURE_FLAG_DEFS[0].key);
+    // Ví Bonus only exists for Types A/B — no column and no bulk option elsewhere.
+    const flagDefs = FEATURE_FLAG_DEFS.filter(
+        def => def.key !== 'bonus_wallet' || workTypeHasWallet('BONUS', activeTab)
+    );
+
+    const [selectedBulkFeature, setSelectedBulkFeature] = useState<string>(flagDefs[0].key);
+    // Switching tab can leave a selection that has no column on the new tab.
+    const bulkKey = flagDefs.some(def => def.key === selectedBulkFeature) ? selectedBulkFeature : flagDefs[0].key;
 
     if (loading) {
         return (
@@ -62,18 +70,18 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                 {/* Bulk Toggle Dropdown & Buttons */}
                 <div className="flex items-center gap-2">
                     <select
-                        value={selectedBulkFeature}
+                        value={bulkKey}
                         onChange={(e) => setSelectedBulkFeature(e.target.value)}
                         className="py-2 px-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 bg-white min-w-[200px]"
                     >
-                        {FEATURE_FLAG_DEFS.map(def => (
+                        {flagDefs.map(def => (
                             <option key={def.key} value={def.key}>{def.label}</option>
                         ))}
                     </select>
-                    
+
                     <button
-                        onClick={() => bulkToggle(selectedBulkFeature, true)}
-                        disabled={updating === `bulk-${selectedBulkFeature}`}
+                        onClick={() => bulkToggle(bulkKey, true)}
+                        disabled={updating === `bulk-${bulkKey}`}
                         className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 whitespace-nowrap"
                         title="Bật tính năng này cho tất cả"
                     >
@@ -81,8 +89,8 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                         Bật hết
                     </button>
                     <button
-                        onClick={() => bulkToggle(selectedBulkFeature, false)}
-                        disabled={updating === `bulk-${selectedBulkFeature}`}
+                        onClick={() => bulkToggle(bulkKey, false)}
+                        disabled={updating === `bulk-${bulkKey}`}
                         className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 whitespace-nowrap"
                         title="Tắt tính năng này cho tất cả"
                     >
@@ -101,7 +109,7 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 w-24">
                                     Mã NV
                                 </th>
-                                {FEATURE_FLAG_DEFS.map(def => (
+                                {flagDefs.map(def => (
                                     <th
                                         key={def.key}
                                         className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 w-40"
@@ -115,7 +123,7 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                         <tbody className="divide-y divide-gray-100">
                             {staffList.length === 0 ? (
                                 <tr>
-                                    <td colSpan={1 + FEATURE_FLAG_DEFS.length} className="text-center text-gray-400 py-12 text-sm">
+                                    <td colSpan={1 + flagDefs.length} className="text-center text-gray-400 py-12 text-sm">
                                         {searchQuery ? 'Không tìm thấy nhân viên' : 'Không có dữ liệu'}
                                     </td>
                                 </tr>
@@ -131,8 +139,10 @@ export const KtvFeaturesTable = ({ activeTab }: { activeTab: 'TYPE_A' | 'TYPE_B'
                                                 {staff.id}
                                             </span>
                                         </td>
-                                        {FEATURE_FLAG_DEFS.map(def => {
-                                            const isEnabled = staff.feature_flags?.[def.key] === true;
+                                        {flagDefs.map(def => {
+                                            // Same resolver as the server, so a missing flag shows
+                                            // what the KTV actually gets.
+                                            const isEnabled = isFlagOn(staff.feature_flags, def.key);
                                             const isUpdating = updating === `${staff.id}-${def.key}`;
 
                                             return (

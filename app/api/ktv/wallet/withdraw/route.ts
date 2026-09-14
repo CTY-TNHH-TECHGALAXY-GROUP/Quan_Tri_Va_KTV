@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,6 +16,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         const { techCode, amount, walletType } = parseResult.data;
+
+        // Withdraw (TUA) / redeem (BONUS) from a switched-off wallet → 403 maintenance.
+        const deniedWallet = await WalletAccessService.denyIfDisabled(
+            supabase, techCode, walletType === 'BONUS' ? 'BONUS' : 'TUA'
+        );
+        if (deniedWallet) return deniedWallet;
 
         
         const requestAmount = Number(amount);

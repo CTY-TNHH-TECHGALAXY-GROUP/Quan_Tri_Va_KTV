@@ -2,8 +2,10 @@
 
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 import { useKTVWallet } from './KTVWallet.logic';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info } from 'lucide-react';
+import { t } from './KTVWallet.i18n';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const THEME = {
@@ -20,7 +22,8 @@ const THEME = {
 
 export default function KTVWalletPage() {
     const { 
-        user, canViewWallet, activeTab, setActiveTab, canViewBonus, canViewPiggyBank,
+        user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus, canViewPiggyBank,
+        showBonusEntry, accessError,
         walletBalance, walletTimeline, bonusBalance, bonusTimeline, 
         piggyBankBalance, piggyBankTimeline, piggyBankTotalWeeks,
         isLoading, submitWithdraw, submitRedeemBonus 
@@ -158,7 +161,7 @@ export default function KTVWalletPage() {
                                 <Zap size={20} className={activeTab === 'TUA' ? 'text-emerald-500' : 'text-slate-400'} />
                                 <span className="font-bold">Ví Tua</span>
                             </button>
-                            {canViewBonus && (
+                            {showBonusEntry && (
                                 <button 
                                     onClick={() => { setActiveTab('BONUS'); setIsDropdownOpen(false); }}
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -184,6 +187,22 @@ export default function KTVWalletPage() {
                     <div className="flex justify-center items-center py-20">
                         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                     </div>
+                ) : accessError ? (
+                    /* The access check itself failed — a network problem, not a
+                       switched-off wallet. Saying "maintenance" here would be false. */
+                    <div className="text-center py-20 px-6">
+                        <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Wallet size={32} />
+                        </div>
+                        <h2 className="text-xl font-black text-slate-800 mb-2">{t.accessErrorTitle}</h2>
+                        <p className="text-slate-500 text-sm max-w-xs mx-auto">{t.accessErrorHint}</p>
+                    </div>
+                ) : ((activeTab === 'TUA' && !canViewTua) || (activeTab === 'BONUS' && !canViewBonus)) ? (
+                    /* The selected wallet is switched off (per-staff flag or the
+                       type-wide switch) while the wallet permission is on → the one
+                       shared maintenance notice. Never a blank screen or 0đ — the
+                       KTV would think the money is gone. */
+                    <FeatureMaintenanceNotice />
                 ) : (
                     <>
                         {/* Ví Thu Nhập (KTV Wallet) */}

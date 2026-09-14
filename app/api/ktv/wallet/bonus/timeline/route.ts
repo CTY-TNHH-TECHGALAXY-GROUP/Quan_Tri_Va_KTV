@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -15,6 +16,10 @@ export async function GET(request: Request) {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'Lỗi máy chủ' }, { status: 500 });
+
+        // Ví Bonus switched off, or the work type has no Ví Bonus (C/D) → 403.
+        const denied = await WalletAccessService.denyIfDisabled(supabase as any, techCode, 'BONUS');
+        if (denied) return denied;
 
         const START_DATE = '2026-06-01';
         let workType = await KtvWalletService.getWorkTypeSnapshot(supabase as any, techCode);
