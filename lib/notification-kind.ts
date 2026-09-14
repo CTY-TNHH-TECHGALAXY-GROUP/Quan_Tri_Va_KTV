@@ -108,7 +108,6 @@ export const NOTIFICATION_TITLE: Record<NotificationKind, string> = {
 const SILENT_TYPES = new Set<string>([
     'REQUEST_CONFIRMED',   // quầy phản hồi yêu cầu nước/hỗ trợ/mua thêm
     'ATTENDANCE_RESPONSE', // xác nhận điểm danh / tan ca
-    'KTV_OFF_CALL',        // KTV tắt nhận đơn — tin nền cho quầy
     'SYSTEM_LOG',
 ]);
 

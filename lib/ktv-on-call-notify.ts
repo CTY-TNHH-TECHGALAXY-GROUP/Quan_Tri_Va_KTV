@@ -15,11 +15,8 @@ import { createNotification } from '@/lib/notification-helper';
  * subscribe sẵn INSERT trên StaffNotifications), nên danh sách "KTV Đang
  * Online" tự cập nhật mà không phải đụng tới subscription của bảng `Staff`.
  *
- * BẬT thì kêu, TẮT thì im:
- *   - KTV_ON_CALL  → rule cho phép admin/reception/dev ⇒ có toast + push.
- *   - KTV_OFF_CALL → rule để allowed_roles rỗng ⇒ KHÔNG toast, KHÔNG push,
- *     nhưng dòng dữ liệu vẫn được ghi nên bảng điều phối vẫn tự làm mới và
- *     lịch sử thông báo của admin vẫn tra được.
+ * Cả KTV_ON_CALL và KTV_OFF_CALL đều gửi admin/reception/dev, có chuông —
+ * quầy cần biết ngay khi KTV rảnh ra hoặc thôi nhận đơn.
  *
  * `employeeId` để trống (tin chung) vì đây là tin quầy cần, không phải tin
  * riêng của KTV — cùng khuôn với KTV_ACCEPT_ORDER / KTV_REJECT_ORDER.
