@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useToast } from '@/components/ui/Toast';
+import { t } from './AttendanceTypeD.i18n';
 import { fmtGioBuoi } from '@/lib/hours-format';
 import { vnNow } from '@/lib/vn-time';
 import { format } from 'date-fns';
@@ -212,6 +213,11 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   const isAtVenue = onlineStatus === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
   const isOffline = !isOnline && !isAtVenue;
 
+  // OFF day + has on-call permission: turn on-call FIRST, then "Oria Xin chào" appears.
+  // Without on-call permission there is no "Bật Nhận Đơn" button, so hiding
+  // "Oria Xin chào" too would leave no way to work extra — keep it for them.
+  const hideCheckInUntilOnCall = !!state?.isOffToday && canOnCall;
+
   const getPreviewTime = () => {
     const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     vnTime.setMinutes(vnTime.getMinutes() + tempMins);
@@ -224,11 +230,9 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
         <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex items-start gap-3">
           <AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
           <div className="text-left">
-            <p className="text-amber-800 font-bold">Hôm nay bạn đã đăng ký nghỉ</p>
+            <p className="text-amber-800 font-bold">{t.offTodayTitle}</p>
             <p className="text-sm text-amber-600">
-              {canOnCall
-                ? 'Nếu đổi ý, bấm bật nhận đơn để đi làm bình thường.'
-                : 'Nếu đổi ý, bấm "Oria Xin chào" để đi làm bình thường.'}
+              {canOnCall ? t.offTodayCanOnCall : t.offTodayNoOnCall}
             </p>
           </div>
         </div>
@@ -299,6 +303,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
         {/* Nếu đang tắt -> Hiện Bật nhận đơn VÀ Tới tiệm luôn */}
         {isOffline && (
             <div className="space-y-4">
+                {!hideCheckInUntilOnCall && (
                 <button
                     onClick={() => onCheckIn()}
                     disabled={actionLoading}
@@ -306,6 +311,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
                 >
                     <LogIn size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin chào'}
                 </button>
+                )}
                 {/* CHỈ nút này thuộc cờ nhận đơn ngoài giờ. Điểm danh ở trên không dính. */}
                 {canOnCall && (
                   <button

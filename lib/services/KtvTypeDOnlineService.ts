@@ -49,19 +49,11 @@ export class KtvTypeDOnlineService {
             const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
             const businessDateStr = businessNow.toISOString().slice(0, 10);
 
-            const { vnToday } = await import('@/lib/vn-time');
-            const todayStr = vnToday();
-
-            const { data: dailyReg } = await supabase
-                .from('KTVTypeDDailyRegistration')
-                .select('status')
-                .eq('staff_id', staffId)
-                .eq('work_date', todayStr)
-                .maybeSingle();
-
-            if (dailyReg?.status === 'OFF_REGISTERED') {
-                return { success: false, error: 'Hôm nay bạn đã đăng ký nghỉ, không thể nhận đơn.' };
-            }
+            // Registered OFF but wants to earn extra → allowed (business rule, 14/09/2026).
+            // Turning on-call does NOT touch KTVTypeDDailyRegistration: the day stays
+            // OFF_REGISTERED, so the absence cron neither penalises nor locks someone who
+            // turned it on and never came. Only "Oria Xin chào" (attendance route) flips
+            // OFF_REGISTERED -> REGISTERED. See plans/plan_ngay_off_bat_nhan_don_truoc.md.
 
             const { error } = await supabase
                 .from('Staff')
