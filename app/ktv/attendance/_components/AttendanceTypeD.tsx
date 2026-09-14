@@ -278,7 +278,10 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
         </div>
       )}
 
-      {hienNutBaoTre && (
+      {/* Already at the spa → nothing to report late. Registration rows use the
+          CALENDAR date, so after 00:00 a KTV still on last night's shift would
+          otherwise see "Báo đi muộn" for the next day's registration. */}
+      {hienNutBaoTre && !isAtVenue && (
         <button
           onClick={() => { if (coTheBaoTre) setShowLateModal(true); }}
           disabled={actionLoading || !coTheBaoTre}

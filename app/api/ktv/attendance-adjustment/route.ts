@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const username = (user.email || '').split('@')[0];
     const { data: dbUser } = await supabase.from('Users').select('code').ilike('username', username).single();
-    const { data: staff } = dbUser ? await supabase.from('Staff').select('id, work_type').eq('id', dbUser.code).single() : { data: null };
+    const { data: staff } = dbUser ? await supabase.from('Staff').select('id, work_type, online_status').eq('id', dbUser.code).single() : { data: null };
 
     if (!staff || staff.work_type !== 'TYPE_D') {
       return NextResponse.json({ error: 'Chỉ áp dụng cho KTV TYPE_D' }, { status: 403 });
@@ -51,6 +51,12 @@ export async function POST(request: Request) {
     
     if (registration.check_in_at) {
         return NextResponse.json({ error: 'Bạn đã điểm danh, không thể điều chỉnh nữa.' }, { status: 400 });
+    }
+
+    // Still at the spa (e.g. last night's shift running past 00:00): today's row
+    // has no check-in yet, but reporting late/absent makes no sense.
+    if ((staff as any).online_status === 'AT_VENUE') {
+        return NextResponse.json({ error: 'Bạn đang ở tiệm, không cần báo đi muộn hay báo vắng.' }, { status: 400 });
     }
 
     if (action === 'REPORT_ABSENT') {
