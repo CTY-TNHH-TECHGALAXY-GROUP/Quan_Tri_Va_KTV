@@ -1,3 +1,4 @@
+import { isWithdrawIntentAllowed } from '@/lib/attendance/withdrawIntent';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { AttendanceSchema } from '@/lib/schemas/ktv.schema';
@@ -694,7 +695,10 @@ export async function POST(request: Request) {
         let withdrawIntentBlocked = false;
         if (wantsToWithdraw && staffCode) {
             const { ok } = await WalletAccessService.isEnabled(supabase, staffCode, 'TUA');
-            withdrawIntentBlocked = !ok;
+            // Cờ "Rút tiền buổi sáng" (bảng Tính năng) TẮT → không báo rút tiền. Form đã ẩn ô,
+            // nhưng ẩn nút không phải là chặn (14/09/2026).
+            const { data: withdrawFlagRow } = await supabase.from('Staff').select('feature_flags').eq('id', staffCode).maybeSingle();
+            withdrawIntentBlocked = !ok || !isWithdrawIntentAllowed((withdrawFlagRow as any)?.feature_flags);
         }
 
         if (wantsToWithdraw && staffCode && !withdrawIntentBlocked) {

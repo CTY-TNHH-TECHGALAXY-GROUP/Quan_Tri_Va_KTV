@@ -1,3 +1,4 @@
+import { canRequestWithdrawIntent } from '@/lib/attendance/withdrawIntent';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
@@ -79,6 +80,8 @@ export async function GET(request: Request) {
         // notice instead of the "Yêu cầu rút tiền" box (the POST refuses the
         // intent anyway; this only keeps the form honest).
         let withdrawWalletOff = false;
+        // Cờ "Rút tiền buổi sáng" của KTV — xem lib/attendance/withdrawIntent.
+        let withdrawFlags: unknown = null;
         const { data: userRow } = await supabase
             .from('Users')
             .select('code')
@@ -88,7 +91,7 @@ export async function GET(request: Request) {
         if (userRow?.code) {
              const { data: staffRow } = await supabase
                  .from('Staff')
-                 .select('work_type, available_until, status, lock_source')
+                 .select('work_type, available_until, status, lock_source, feature_flags')
                  .eq('id', userRow.code)
                  .maybeSingle();
              
@@ -123,6 +126,7 @@ export async function GET(request: Request) {
              if (staffRow) {
                  const { ok } = await WalletAccessService.isEnabled(supabase, userRow.code, 'TUA');
                  withdrawWalletOff = !ok;
+                 withdrawFlags = staffRow.feature_flags;
              }
              if (staffRow?.available_until) {
                  availableUntil = staffRow.available_until;
@@ -281,11 +285,11 @@ export async function GET(request: Request) {
                     }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay, withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay, withdrawWalletOff });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

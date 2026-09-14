@@ -60,7 +60,7 @@ export const FEATURE_FLAG_DEFS = [
     {
         key: 'withdraw_morning_only',
         label: 'Rút tiền buổi sáng',
-        description: 'Chỉ cho phép đăng ký rút tiền buổi sáng TYPE_D',
+        description: 'Bật = KTV thấy ô "Yêu cầu rút tiền" khi điểm danh (báo Thu ngân chuẩn bị tiền mặt). Tắt = ẩn ô, không gửi được.',
     }
 ] as const;
 
