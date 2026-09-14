@@ -55,6 +55,13 @@ kase('NH021 xong sau cùng (người 1 đã xong trước)', [a('EXT_4EA0CD', { 
 kase('quầy kéo CẢ thẻ (không targetKtvIds) — chủ động chốt', [a('EXT_4EA0CD'), nh021({ actualStartTime: T('2026-09-14T09:20:44Z') })], 'DONE', undefined, false);
 kase('bắt đầu làm (IN_PROGRESS) không bao giờ bị giữ', [a('EXT_4EA0CD'), nh021()], 'IN_PROGRESS', ['NH021'], false);
 
+console.log('\n2KTV-1DV song song (cùng giờ bắt đầu → một thẻ Kanban chung)');
+const par = (ktvId: string, extra: any = {}) => ({ ktvId, startTime: '15:00', endTime: '16:00', duration: 60, actualStartTime: T('2026-09-14T08:00:00Z'), ...extra });
+kase('thẻ chung chốt cả hai người', [par('T011'), par('T014')], 'CLEANING', ['T011', 'T014'], false);
+kase('chỉ chốt người A, B còn đang làm', [par('T011'), par('T014')], 'FEEDBACK', ['T011'], true);
+kase('A đã tự xong trên app, thẻ chung chốt nốt B', [par('T011', { actualEndTime: T('2026-09-14T08:55:00Z') }), par('T014')], 'CLEANING', ['T011', 'T014'], false);
+kase('B đã bị đổi ra (voided), chốt A', [par('T011'), par('T014', { voided: true, note: 'CHANGED' })], 'FEEDBACK', ['T011'], false);
+
 console.log('\nCa qua nửa đêm');
 kase('người 1 23:30–00:10, người 2 00:10–01:10 đang làm', [
     { ktvId: 'T011', startTime: '23:30', endTime: '00:10', actualStartTime: T('2026-09-14T16:30:00Z') },

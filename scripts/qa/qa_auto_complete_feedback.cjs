@@ -67,6 +67,11 @@ const check = (name, cond, detail = '') => {
         const tplB = (await c.query(`SELECT id FROM "Bookings" WHERE status = 'DONE' ORDER BY "createdAt" DESC LIMIT 1`)).rows[0].id;
         const tplI = (await c.query(`SELECT id FROM "BookingItems" WHERE "bookingId" = $1 LIMIT 1`, [tplB])).rows[0].id;
         const tplG = (await c.query(`SELECT id FROM "BookingGuests" ORDER BY created_at DESC LIMIT 1`)).rows[0]?.id;
+        // The template item may be a utility service (private room NHS0900), which the job
+        // ignores — pin every fixture to a normal service unless a case asks otherwise.
+        const normalService = (await c.query(`SELECT id FROM "Services" WHERE COALESCE(is_utility, false) = false ORDER BY id LIMIT 1`)).rows[0].id;
+        const tplIsUtility = (await c.query(`SELECT COALESCE(s.is_utility, false) u FROM "BookingItems" i LEFT JOIN "Services" s ON s.id = i."serviceId" WHERE i.id = $1`, [tplI])).rows[0]?.u;
+        console.log(`Templates: booking ${tplB} · item ${tplI}${tplIsUtility ? ' (utility — overridden)' : ''} · normal service ${normalService}`);
 
         await c.query(`CREATE TEMP TABLE qa_b AS SELECT * FROM "Bookings" WITH NO DATA`);
         await c.query(`CREATE TEMP TABLE qa_i AS SELECT * FROM "BookingItems" WITH NO DATA`);
@@ -83,7 +88,7 @@ const check = (name, cond, detail = '') => {
                                options = $6::jsonb, handover_submitted_at = $7, "timeEnd" = $8, guest_id = $9,
                                "serviceId" = COALESCE($10, "serviceId"), "technicianCodes" = ARRAY['T011']`,
                 [id, bookingId, f.status, f.rating ?? null, JSON.stringify(f.segments ?? null), JSON.stringify(f.options ?? {}),
-                 f.handoverAt ?? null, f.timeEnd ?? null, f.guestId ?? null, f.serviceId ?? null]);
+                 f.handoverAt ?? null, f.timeEnd ?? null, f.guestId ?? null, f.serviceId ?? normalService]);
             await c.query(`INSERT INTO "BookingItems" SELECT * FROM qa_i`);
         };
         const asString = v => JSON.stringify(v); // jsonb string scalar, like JSON.stringify writes
@@ -150,6 +155,15 @@ const check = (name, cond, detail = '') => {
         await addItem(`${B(23)}-i1`, B(23), { status: 'FEEDBACK', segments: [seg(10)] });
         await addItem(`${B(23)}-i2`, B(23), { status: 'PAUSED', segments: working() });
 
+        // One service, two KTVs in PARALLEL (same start time, one card on Kanban)
+        const parallelB = extra => ({ id: 'seg2', ktvId: 'T014', startTime: '15:00', endTime: '16:00', duration: 60, actualStartTime: minsAgo(80), ...extra });
+        await addBooking(B(26), 'IN_PROGRESS');                               // A done 10m, B still working → wait
+        await addItem(`${B(26)}-i1`, B(26), { status: 'FEEDBACK', segments: [seg(10, { startTime: '15:00' }), parallelB({})] });
+        await addBooking(B(27), 'FEEDBACK');                                  // A done 10m, B done 7m → DONE
+        await addItem(`${B(27)}-i1`, B(27), { status: 'FEEDBACK', segments: asString([seg(10, { startTime: '15:00' }), parallelB({ actualEndTime: minsAgo(8), feedbackTime: minsAgo(7) })]) });
+        await addBooking(B(28), 'FEEDBACK');                                  // A done 10m, B done 2m → wait from B
+        await addItem(`${B(28)}-i1`, B(28), { status: 'FEEDBACK', segments: [seg(10, { startTime: '15:00' }), parallelB({ actualEndTime: minsAgo(3), feedbackTime: minsAgo(2) })] });
+
         // ── Run ────────────────────────────────────────────────────
         const run1 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
         const run2 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
@@ -204,11 +218,16 @@ const check = (name, cond, detail = '') => {
         check('  booking → DONE', (await bk(B(22))) === 'DONE');
         check('KTV B PAUSED → A waits', (await st(`${B(23)}-i1`)) === 'FEEDBACK');
 
+        console.log('\nOne service, two KTVs in parallel');
+        check('A done 10m, B still working → still FEEDBACK', (await st(`${B(26)}-i1`)) === 'FEEDBACK');
+        check('A done 10m, B done 7m → DONE', (await st(`${B(27)}-i1`)) === 'DONE');
+        check('A done 10m, B done 2m → waits for B', (await st(`${B(28)}-i1`)) === 'FEEDBACK');
+
         check('run 2 is a no-op', run2 === 0, `run2=${run2}`);
 
         console.log('\nReal rows');
-        // Fixture items closed by run 1: B1,B5,B8,B18,B16,B25,B4,B6,B22×2 (+ B7 guest)
-        const fixturesClosed = 10 + (guestCloned ? 1 : 0);
+        // Fixture items closed by run 1: B1,B5,B8,B18,B16,B25,B4,B6,B22×2,B27 (+ B7 guest)
+        const fixturesClosed = 11 + (guestCloned ? 1 : 0);
         const realClosed = run1 - fixturesClosed;
         const realOtherAfter = await c.query(`SELECT status, count(*)::int n FROM "BookingItems" WHERE status <> 'FEEDBACK' AND id NOT LIKE '${PREFIX}%' GROUP BY status ORDER BY status`);
         const before = Object.fromEntries(realOtherBefore.rows.map(x => [x.status, x.n]));
