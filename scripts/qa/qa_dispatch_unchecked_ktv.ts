@@ -20,7 +20,7 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
-import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
+import { findKtvsNeedingCheckinConfirm, isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 import { buildCheckinConfirmMessage } from '@/app/reception/dispatch/CheckinConfirm.i18n';
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { applyArrivalToTurnQueue, ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
@@ -82,6 +82,16 @@ function part1() {
     check('Xác nhận người khác không áp sang C', r.length === 1);
     r = gate(['ZZ99'], [], {});
     check('Không có trong danh sách KTV → tên dự phòng = mã', r[0]?.name === 'ZZ99' && r[0]?.workType === null);
+
+    console.log('\n═══ Phần 1a: ô chọn KTV hiện ai ═══');
+    check('đã điểm danh, đang chờ → hiện', isVisibleInKtvPicker({ status: 'waiting', checked_in_today: true, turns_completed: 0 }));
+    check('tua ảo on-call chưa điểm danh (#999) → ẨN', !isVisibleInKtvPicker({ status: 'waiting', checked_in_today: false, turns_completed: 0 }));
+    check('quầy bật tay, chưa điểm danh, chưa làm đơn → ẨN', !isVisibleInKtvPicker({ status: 'waiting', checked_in_today: false, turns_completed: 0 }));
+    check('chưa điểm danh, đang được phân đơn → hiện', isVisibleInKtvPicker({ status: 'assigned', checked_in_today: false, turns_completed: 0 }));
+    check('chưa điểm danh, đang làm → hiện', isVisibleInKtvPicker({ status: 'working', checked_in_today: false, turns_completed: 0 }));
+    check('chưa điểm danh, xong 1 đơn (đã có tua) → hiện', isVisibleInKtvPicker({ status: 'waiting', checked_in_today: false, turns_completed: 1 }));
+    check('đã điểm danh nhưng tắt → ẨN', !isVisibleInKtvPicker({ status: 'off', checked_in_today: true, turns_completed: 2 }));
+    check('dòng mới chưa có cờ điểm danh → hiện (không giấu nhầm)', isVisibleInKtvPicker({ status: 'waiting', turns_completed: 0 }));
 
     console.log('\n═══ Phần 1b: nội dung popup ═══');
     const msgD = buildCheckinConfirmMessage([

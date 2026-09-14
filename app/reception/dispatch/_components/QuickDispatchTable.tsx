@@ -8,6 +8,7 @@ import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { t as tCheckin } from '../CheckinConfirm.i18n';
+import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 
 // 🛠 UI CONFIGURATION
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
@@ -1205,7 +1206,8 @@ const ServiceGroupCard = ({
   };
 
   const filteredTurns = useMemo(() => {
-    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+    // Chưa điểm danh mà chưa làm đơn nào hôm nay → ẩn (gõ đúng mã/tên vẫn chọn được).
+    const filtered = availableTurns.filter(isVisibleInKtvPicker).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
       if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
       return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
     });

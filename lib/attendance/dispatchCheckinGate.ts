@@ -43,3 +43,25 @@ export const findKtvsNeedingCheckinConfirm = (input: {
     }
     return result;
 };
+
+/**
+ * Ô chọn KTV ở điều phối hiện ai (chốt 14/09/2026, sau khi thấy tua ảo on-call chưa
+ * điểm danh lọt đầy danh sách):
+ *   · đã điểm danh hôm nay → hiện;
+ *   · chưa điểm danh nhưng hôm nay ĐÃ được phân đơn (đang được phân / đang làm / đã
+ *     có tua) → hiện, kèm nhãn "Chưa điểm danh";
+ *   · còn lại (tua ảo on-call, quầy bật tay ở Sổ tua mà chưa làm đơn nào) → ẨN.
+ * Người bị ẩn vẫn chọn được bằng cách gõ ĐÚNG mã/tên; server hỏi xác nhận khi gửi.
+ * `checked_in_today` chưa có (dòng mới vừa vào qua realtime) → hiện, tránh giấu nhầm.
+ */
+export const isVisibleInKtvPicker = (turn: {
+    status?: string | null;
+    checked_in_today?: boolean;
+    turns_completed?: number | null;
+}): boolean =>
+    turn.status !== 'off' && (
+        turn.checked_in_today !== false
+        || turn.status === 'assigned'
+        || turn.status === 'working'
+        || (Number(turn.turns_completed) || 0) > 0
+    );
