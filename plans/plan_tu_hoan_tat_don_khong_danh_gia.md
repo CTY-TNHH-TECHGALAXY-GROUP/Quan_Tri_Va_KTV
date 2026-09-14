@@ -1,7 +1,7 @@
 # Plan: Chờ đánh giá quá 5 phút thì tự Hoàn tất
 
 **Mức:** 2 — hàm SQL + pg_cron, chốt tiền KTV (`CLAUDE.md` mục 3, 13).
-**Lập:** 2026-09-14 · **Trạng thái:** ĐÃ CODE (chốt **(A)** 14/09) — test 31/31; migration **chưa áp** lên DB, chờ deploy code.
+**Lập:** 2026-09-14 · **Trạng thái:** ĐÃ ÁP LÊN DB 14/09 16:24 (VN) — job `auto_complete_feedback_job` chạy lần đầu 16:25 thành công, chốt 13 dịch vụ (FEEDBACK 135 → 122, còn lại là 121 dịch vụ trước 01/09 + đơn chưa đủ số phút chờ). Code chờ merge `main`.
 **Bảng tra:** `plans/nghiep_vu_tam_dung_doi_huy.md`.
 
 ---
