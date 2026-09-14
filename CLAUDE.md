@@ -113,6 +113,34 @@ Thay đổi công thức (Mức 2) → mô phỏng bằng mock data (mục 10) v
 - **Không bao giờ tự push.** Không commit nếu user chưa yêu cầu.
 - Làm xong: nhắc user kiểm tra code rồi commit, kèm gợi ý commit message (xem mục 1).
 
+### 5.1. Cảnh báo vận hành trước khi commit (BẮT BUỘC)
+
+Commit **ảnh hưởng vận hành** = sau khi deploy, người dùng thật (quầy, KTV, admin, khách) phải **làm khác đi** hoặc **thấy khác đi**. Gồm:
+- Đổi luồng / điều kiện ở màn dùng hằng ngày: điều phối, sổ tua, chấm công, đổi KTV, huỷ đơn, bàn giao, ví / rút tiền.
+- Thêm, bỏ, đổi nghĩa nút / popup / nhãn / thông báo; ẩn hoặc hiện KTV trong danh sách chọn.
+- Đổi tiền, tua, giờ, thưởng, phạt, kỷ luật, khoá tài khoản, cron.
+- Migration, script ghi dữ liệu thật, dọn / soft-delete dữ liệu.
+- Đổi quyền, đăng nhập.
+
+Không tính: sửa comment, refactor không đổi hành vi, script QA chỉ đọc, tài liệu trong `plans/`.
+
+**Trước khi commit** — kể cả khi user đã nói "commit đi" — trình bảng này trong chat:
+
+> ⚠️ **Ảnh hưởng vận hành — `<tóm tắt commit>`**
+>
+> | Ai | Khác gì so với hôm nay | Cần báo / hướng dẫn gì |
+> |---|---|---|
+> | Quầy | … | … |
+> | KTV | … | … |
+> | Admin / khác | … | … |
+>
+> **Rủi ro & cách lùi:** … (revert commit nào; dữ liệu đã ghi có lùi được không)
+> **Deploy:** nhánh này đã / chưa lên bản đang chạy; cần làm kèm gì (migration, script, cấu hình).
+
+- Bảng **chưa từng hiện** cho đúng thay đổi này → hiện bảng rồi **dừng, chờ user xác nhận** mới commit. Đã hiện và user đã đồng ý → commit luôn.
+- Không ảnh hưởng vận hành → ghi một dòng *"Không ảnh hưởng vận hành — vì …"* rồi commit.
+- Commit message thêm đoạn cuối `Van hanh: <1–3 dòng tiếng Việt không dấu>` để tra lại bằng `git log`.
+
 ---
 
 ## 6. Chuẩn code
