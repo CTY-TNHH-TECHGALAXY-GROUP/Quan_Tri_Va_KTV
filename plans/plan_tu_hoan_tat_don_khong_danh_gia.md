@@ -120,7 +120,7 @@ Số phút chờ đọc từ `SystemConfigs.customer_rating_timeout_minutes` (ke
 **Chốt 14/09 (owner):** người sau trong chuỗi cũng phải xong; chờ **cả đơn con** xong, giờ chờ tính từ người xong cuối, chốt cả đơn một lần để khách chấm 1 lần cho mọi người.
 - Migration `20260914180000_auto_complete_require_all_segments_done.sql` — user tự chạy trên SQL Editor 14/09.
 - Sửa dữ liệu: `scripts/repair_auto_complete_14092026.sql` — item2 → IN_PROGRESS (booking B → IN_PROGRESS), item3 → FEEDBACK; user chạy 14/09.
-- Test `qa_auto_complete_feedback.cjs`: 53/53 (thêm: người sau đang làm / chưa bắt đầu / bị tước / đã xong; 2 KTV song song một dịch vụ: một người còn làm / vừa xong 2 phút / cả hai xong đủ giờ; nhiều dịch vụ trong đơn: còn CLEANING, IN_PROGRESS, PAUSED, xong lệch giờ, xong đủ giờ). Dịch vụ giả ghim mã dịch vụ thường — mẫu lấy từ đơn thật có thể là phòng riêng (tiện ích), job bỏ qua.
+- Test `qa_auto_complete_feedback.cjs`: 71/71 (thêm: đổi KTV / kết thúc sớm / huỷ có công – không công × nối tiếp / song song; người sau đang làm / chưa bắt đầu / bị tước / đã xong; 2 KTV song song một dịch vụ: một người còn làm / vừa xong 2 phút / cả hai xong đủ giờ; nhiều dịch vụ trong đơn: còn CLEANING, IN_PROGRESS, PAUSED, xong lệch giờ, xong đủ giờ). Dịch vụ giả ghim mã dịch vụ thường — mẫu lấy từ đơn thật có thể là phòng riêng (tiện ích), job bỏ qua.
 
 ## 8. Không làm
 

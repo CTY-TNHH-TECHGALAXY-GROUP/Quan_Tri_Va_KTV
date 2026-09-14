@@ -164,6 +164,62 @@ const check = (name, cond, detail = '') => {
         await addBooking(B(28), 'FEEDBACK');                                  // A done 10m, B done 2m → wait from B
         await addItem(`${B(28)}-i1`, B(28), { status: 'FEEDBACK', segments: [seg(10, { startTime: '15:00' }), parallelB({ actualEndTime: minsAgo(3), feedbackTime: minsAgo(2) })] });
 
+        // ── Counter events × sequence / parallel ─────────────────────────
+        // Segment shapes copied from real rows (inspected 14/09):
+        //  swap        → old: actualEndTime + voided + note CHANGED (voidSegment);
+        //                new: note TAKEOVER, no actualStartTime until the KTV starts
+        //  early finish→ started segments closed at pauseStart, note FINISHED_EARLY_ON_PAUSE;
+        //                never-started segments are left untouched (finish-early-paused/route.ts)
+        //  cancel NONE → started segments closed + voided + CANCELLED_NO_CREDIT;
+        //  cancel WORKED → started segments closed only; never-started left untouched
+        //                (BookingModificationService.cancelBookingItem)
+        const done = (ktvId, fbMin, extra = {}) => ({ id: `s-${ktvId}`, ktvId, startTime: '15:00', duration: 60, actualStartTime: minsAgo(90), actualEndTime: minsAgo(fbMin + 1), feedbackTime: minsAgo(fbMin), ...extra });
+        const swappedOut = ktvId => ({ id: `s-${ktvId}`, ktvId, startTime: '15:00', duration: 60, actualStartTime: minsAgo(90), actualEndTime: minsAgo(60), voided: true, note: 'CHANGED', customCommissionDuration: 30 });
+        const takeover = (ktvId, extra = {}) => ({ id: `s-${ktvId}`, ktvId, startTime: '15:30', endTime: null, duration: 30, customCommissionDuration: 30, note: 'TAKEOVER', ...extra });
+        const early = (ktvId, fbMin) => done(ktvId, fbMin, { note: 'FINISHED_EARLY_ON_PAUSE', customCommissionDuration: 20 });
+        const neverStarted = (ktvId, startTime = '16:00') => ({ id: `s-${ktvId}`, ktvId, startTime, endTime: '17:00', duration: 60 });
+        const cancelledNone = ktvId => ({ id: `s-${ktvId}`, ktvId, startTime: '15:00', duration: 60, actualStartTime: minsAgo(90), actualEndTime: minsAgo(70), voided: true, note: 'CANCELLED_NO_CREDIT', customCommissionDuration: 20 });
+        const cancelledWorked = ktvId => ({ id: `s-${ktvId}`, ktvId, startTime: '15:00', duration: 60, actualStartTime: minsAgo(90), actualEndTime: minsAgo(70), customCommissionDuration: 20 });
+
+        // Swap
+        await addBooking(B(30), 'FEEDBACK');   // seq: A done, B swapped out, C takeover not started → wait
+        await addItem(`${B(30)}-i1`, B(30), { status: 'FEEDBACK', segments: [done('T011', 10), swappedOut('T014'), takeover('T079')] });
+        await addBooking(B(31), 'FEEDBACK');   // seq: A done, B swapped out, C takeover finished 7m → DONE
+        await addItem(`${B(31)}-i1`, B(31), { status: 'FEEDBACK', segments: asString([done('T011', 10), swappedOut('T014'), takeover('T079', { actualStartTime: minsAgo(40), actualEndTime: minsAgo(8), feedbackTime: minsAgo(7) })]) });
+        await addBooking(B(32), 'FEEDBACK');   // par: A done, B swapped out, C takeover not started → wait
+        await addItem(`${B(32)}-i1`, B(32), { status: 'FEEDBACK', segments: [done('T011', 10), swappedOut('T014'), takeover('T079', { startTime: '15:00' })] });
+        await addBooking(B(33), 'FEEDBACK');   // par: A done, B swapped out, C takeover finished 6m → DONE
+        await addItem(`${B(33)}-i1`, B(33), { status: 'FEEDBACK', segments: [done('T011', 10), swappedOut('T014'), takeover('T079', { startTime: '15:00', actualStartTime: minsAgo(50), actualEndTime: minsAgo(7), feedbackTime: minsAgo(6) })] });
+
+        // Early finish (item reached FEEDBACK after handover)
+        const earlyOpts = { earlyLeave: true };
+        await addBooking(B(34), 'FEEDBACK');   // single KTV finished early 10m → DONE
+        await addItem(`${B(34)}-i1`, B(34), { status: 'FEEDBACK', segments: [early('T011', 10)], options: earlyOpts });
+        await addBooking(B(35), 'FEEDBACK');   // seq: A done, B finished early 10m → DONE
+        await addItem(`${B(35)}-i1`, B(35), { status: 'FEEDBACK', segments: [done('T011', 30), early('T014', 10)], options: earlyOpts });
+        await addBooking(B(36), 'FEEDBACK');   // seq: A finished early, B never started → wait (⚠️ known gap)
+        await addItem(`${B(36)}-i1`, B(36), { status: 'FEEDBACK', segments: [early('T011', 10), neverStarted('T014')], options: earlyOpts });
+        await addBooking(B(37), 'FEEDBACK');   // par: both finished early 10m → DONE
+        await addItem(`${B(37)}-i1`, B(37), { status: 'FEEDBACK', segments: asString([early('T011', 10), early('T014', 10)]), options: earlyOpts });
+        await addBooking(B(38), 'FEEDBACK');   // par: A finished early, partner never started → wait (⚠️ known gap)
+        await addItem(`${B(38)}-i1`, B(38), { status: 'FEEDBACK', segments: [early('T011', 10), neverStarted('T014', '15:00')], options: earlyOpts });
+
+        // Cancel
+        await addBooking(B(39), 'FEEDBACK');   // svc1 done 10m + svc2 cancelled NO credit (seq, voided) → svc1 DONE
+        await addItem(`${B(39)}-i1`, B(39), { status: 'FEEDBACK', segments: [done('T011', 10)] });
+        await addItem(`${B(39)}-i2`, B(39), { status: 'CANCELLED', segments: [cancelledNone('T014'), cancelledNone('T079')], options: { cancelCredit: 'NONE' } });
+        await addBooking(B(40), 'FEEDBACK');   // svc1 done 10m + svc2 cancelled WITH credit (par, closed) → svc1 DONE
+        await addItem(`${B(40)}-i1`, B(40), { status: 'FEEDBACK', segments: [done('T011', 10)] });
+        await addItem(`${B(40)}-i2`, B(40), { status: 'CANCELLED', segments: [cancelledWorked('T014'), cancelledWorked('T079')], options: { cancelCredit: 'WORKED' } });
+        await addBooking(B(41), 'FEEDBACK');   // svc1 done 10m + svc2 cancelled, next KTV never started (open) → svc1 DONE
+        await addItem(`${B(41)}-i1`, B(41), { status: 'FEEDBACK', segments: [done('T011', 10)] });
+        await addItem(`${B(41)}-i2`, B(41), { status: 'CANCELLED', segments: [cancelledNone('T014'), neverStarted('T079')], options: { cancelCredit: 'NONE' } });
+        await addBooking(B(42), 'IN_PROGRESS'); // only svc cancelled mid-sequence → untouched
+        await addItem(`${B(42)}-i1`, B(42), { status: 'CANCELLED', segments: [cancelledNone('T011'), neverStarted('T014')], options: { cancelCredit: 'NONE' } });
+        await addBooking(B(43), 'FEEDBACK');   // svc1 cancelled WITH credit (par) + svc2 par both done 10m → svc2 DONE
+        await addItem(`${B(43)}-i1`, B(43), { status: 'CANCELLED', segments: [cancelledWorked('T011'), cancelledWorked('T014')], options: { cancelCredit: 'WORKED' } });
+        await addItem(`${B(43)}-i2`, B(43), { status: 'FEEDBACK', segments: [done('T079', 10), done('T016', 10)] });
+
         // ── Run ────────────────────────────────────────────────────
         const run1 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
         const run2 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
@@ -223,11 +279,36 @@ const check = (name, cond, detail = '') => {
         check('A done 10m, B done 7m → DONE', (await st(`${B(27)}-i1`)) === 'DONE');
         check('A done 10m, B done 2m → waits for B', (await st(`${B(28)}-i1`)) === 'FEEDBACK');
 
+        console.log('\nSwap KTV × sequence / parallel');
+        check('seq: B swapped out, takeover C not started → still FEEDBACK', (await st(`${B(30)}-i1`)) === 'FEEDBACK');
+        check('seq: B swapped out, takeover C finished 7m → DONE', (await st(`${B(31)}-i1`)) === 'DONE');
+        check('par: B swapped out, takeover C not started → still FEEDBACK', (await st(`${B(32)}-i1`)) === 'FEEDBACK');
+        check('par: B swapped out, takeover C finished 6m → DONE', (await st(`${B(33)}-i1`)) === 'DONE');
+
+        console.log('\nEarly finish × sequence / parallel');
+        check('single KTV finished early 10m → DONE', (await st(`${B(34)}-i1`)) === 'DONE');
+        check('seq: A done, B finished early 10m → DONE', (await st(`${B(35)}-i1`)) === 'DONE');
+        check('seq: A finished early, B never started → still FEEDBACK (⚠️ known gap)', (await st(`${B(36)}-i1`)) === 'FEEDBACK');
+        check('par: both finished early 10m → DONE', (await st(`${B(37)}-i1`)) === 'DONE');
+        check('par: A finished early, partner never started → still FEEDBACK (⚠️ known gap)', (await st(`${B(38)}-i1`)) === 'FEEDBACK');
+
+        console.log('\nCancel × sequence / parallel');
+        check('svc2 cancelled NO credit (seq) → svc1 DONE', (await st(`${B(39)}-i1`)) === 'DONE');
+        check('  svc2 stays CANCELLED', (await st(`${B(39)}-i2`)) === 'CANCELLED');
+        check('  booking → DONE', (await bk(B(39))) === 'DONE');
+        check('svc2 cancelled WITH credit (par) → svc1 DONE', (await st(`${B(40)}-i1`)) === 'DONE');
+        check('svc2 cancelled with a never-started KTV → svc1 DONE (cancelled ignored)', (await st(`${B(41)}-i1`)) === 'DONE');
+        check('only svc cancelled mid-sequence → stays CANCELLED', (await st(`${B(42)}-i1`)) === 'CANCELLED');
+        check('  booking untouched IN_PROGRESS', (await bk(B(42))) === 'IN_PROGRESS');
+        check('svc1 cancelled WITH credit (par) + svc2 par both done → svc2 DONE', (await st(`${B(43)}-i2`)) === 'DONE');
+        check('  svc1 stays CANCELLED', (await st(`${B(43)}-i1`)) === 'CANCELLED');
+
         check('run 2 is a no-op', run2 === 0, `run2=${run2}`);
 
         console.log('\nReal rows');
-        // Fixture items closed by run 1: B1,B5,B8,B18,B16,B25,B4,B6,B22×2,B27 (+ B7 guest)
-        const fixturesClosed = 11 + (guestCloned ? 1 : 0);
+        // Fixture items closed by run 1: B1,B5,B8,B18,B16,B25,B4,B6,B22×2,B27
+        //   + swap B31,B33 · early B34,B35,B37 · cancel B39,B40,B41,B43 (+ B7 guest)
+        const fixturesClosed = 20 + (guestCloned ? 1 : 0);
         const realClosed = run1 - fixturesClosed;
         const realOtherAfter = await c.query(`SELECT status, count(*)::int n FROM "BookingItems" WHERE status <> 'FEEDBACK' AND id NOT LIKE '${PREFIX}%' GROUP BY status ORDER BY status`);
         const before = Object.fromEntries(realOtherBefore.rows.map(x => [x.status, x.n]));
