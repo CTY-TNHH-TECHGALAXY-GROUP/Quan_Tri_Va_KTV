@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { X, AlertTriangle } from 'lucide-react';
-import { fmtHours, fmtShortDate } from '@/lib/hours-format';
+import { fmtHours, fmtShortDate, fmtClockOnDate } from '@/lib/hours-format';
 
 /**
  * Một dòng sổ giờ. Cùng hình dạng ở mọi nơi vì đều lấy từ
@@ -17,6 +17,8 @@ export interface HoursLedgerEntry {
   /** Số dư dồn của cả tháng tính tới dòng này. */
   balance: number;
   note: string | null;
+  /** Order start for turns, write time for penalties. Null on manual rows → date only. */
+  at?: string | null;
   /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
   penaltyLabel: string | null;
   orderCode: string | null;
@@ -112,6 +114,8 @@ export const HoursLedgerSheet = ({
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                           {fmtShortDate(r.date)}
+                          {/* After-midnight turns print their real date: "00:54 (04/09)". */}
+                          {fmtClockOnDate(r.at, r.date) && ` · ${fmtClockOnDate(r.at, r.date)}`}
                         </p>
                         <p className={`text-sm font-bold leading-snug mt-0.5 ${isPenalty ? 'text-rose-700' : 'text-slate-800'}`}>
                           {isPenalty ? r.penaltyLabel : (r.note || 'Tua phục vụ')}

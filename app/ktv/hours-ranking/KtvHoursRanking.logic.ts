@@ -30,6 +30,7 @@ export interface LedgerRow {
   penalty: number;
   balance: number;
   note: string | null;
+  at: string | null;
   /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
   penaltyLabel: string | null;
   orderCode: string | null;
