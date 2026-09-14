@@ -3,6 +3,73 @@ import { closeOpenPause, voidSegment, parseTimeMs, gioDongHoVN } from '@/lib/seg
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
 import { logCounterAction, currentCounterActor, type CounterAction } from '@/lib/counter-action-log';
+import { isTypeCWorkType } from '@/lib/constants/staff.constants';
+
+/**
+ * Kéo người vào thay (Đổi KTV) lên `working` trong TurnQueue.
+ *
+ * A/B/D đã có dòng TurnQueue hôm đó (điểm danh / online) → chỉ update như trước.
+ *
+ * Loại C (cộng tác viên) không điểm danh nên thường KHÔNG có dòng — update khớp
+ * 0 dòng, không báo lỗi. Hậu quả trước 14/09/2026: quầy vẫn thấy C "Sẵn sàng"
+ * dù đang làm; huỷ đơn không công thì C giữ tua trong khi A/B bị tước; C bị đổi
+ * ra lại thì không được kéo đơn kế tiếp — mọi luồng đó tìm KTV qua TurnQueue.
+ * Nên với C: tạo đúng dòng A/B có sau lệnh update (`working`).
+ *
+ * ⚠️ KHÔNG dùng `assigned`: `cancelBooking` xoá TurnLedger của mọi dòng
+ * `assigned` kể cả khi quầy chọn "có công" → C mất tua còn A/B thì không.
+ *
+ * ⚠️ Không tạo dòng cho D / B on-call chưa có dòng: đưa họ vào Sổ tua như đã có
+ * mặt cả ngày → lệch hàng giờ tích luỹ D và luật kỷ luật D. Giữ hành vi cũ.
+ *
+ * Plan: plans/plan_swap_ktv_c_turnqueue_va_queue_position.md
+ */
+export async function pullIncomingKtvToWorking(
+    supabase: SupabaseClient,
+    opts: { employeeId: string; businessDate: string; bookingId: string; bookingItemId: string; isTypeC: boolean }
+): Promise<'updated' | 'inserted' | 'skipped'> {
+    const { employeeId, businessDate, bookingId, bookingItemId, isTypeC } = opts;
+
+    const { data: updated, error: updateError } = await supabase
+        .from('TurnQueue')
+        .update({ status: 'working', current_order_id: bookingId, booking_item_id: bookingItemId })
+        .eq('employee_id', employeeId)
+        .eq('date', businessDate)
+        .select('id');
+    if (updateError) console.error('[swapKtv] khong keo duoc KTV moi len working:', updateError.message);
+    if ((updated || []).length > 0 || !isTypeC) return (updated || []).length > 0 ? 'updated' : 'skipped';
+
+    const { data: maxRow } = await supabase
+        .from('TurnQueue')
+        .select('queue_position')
+        .eq('date', businessDate)
+        .order('queue_position', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+
+    // ignoreDuplicates: hai lệnh đổi cùng lúc cho cùng một C thì lệnh sau không
+    // ghi đè dòng lệnh trước vừa tạo (UNIQUE employee_id, date).
+    const { error: insertError } = await supabase
+        .from('TurnQueue')
+        .upsert({
+            employee_id: employeeId,
+            date: businessDate,
+            status: 'working',
+            current_order_id: bookingId,
+            booking_item_id: bookingItemId,
+            // Có mảng này thì quầy bấm Hoàn tất nhả được dòng kể cả khi KTV chưa
+            // bấm Bắt đầu (updateBookingItemStatus lọc overlaps booking_item_ids).
+            booking_item_ids: [bookingItemId],
+            queue_position: (Number((maxRow as any)?.queue_position) || 0) + 1,
+            turns_completed: 0,
+            last_served_at: new Date().toISOString(),
+        }, { onConflict: 'employee_id,date', ignoreDuplicates: true });
+    if (insertError) {
+        console.error('[swapKtv] khong tao duoc dong TurnQueue cho KTV loai C:', insertError.message);
+        return 'skipped';
+    }
+    return 'inserted';
+}
 
 export class BookingItemPauseService {
     /**
@@ -496,12 +563,15 @@ export class BookingItemPauseService {
                     if (errTua) console.error('[swapKtv] khong ghi duoc tua cho KTV moi:', errTua.message);
                 }
 
-                // Kéo KTV mới lên working
-                await supabase
-                    .from('TurnQueue')
-                    .update({ status: 'working', current_order_id: item.bookingId, booking_item_id: item.id })
-                    .eq('employee_id', newKtvId)
-                    .eq('date', businessDate);
+                // Kéo KTV mới lên working. Loại C chưa có dòng TurnQueue thì tạo dòng —
+                // xem `pullIncomingKtvToWorking`.
+                await pullIncomingKtvToWorking(supabase, {
+                    employeeId: newKtvId,
+                    businessDate,
+                    bookingId: item.bookingId,
+                    bookingItemId: item.id,
+                    isTypeC: isTypeCWorkType((staffTypes || []).find((s: any) => s.id === newKtvId)?.work_type),
+                });
 
                 // Phiếu phân công cho KTV mới.
                 // ⚠️ Trước 09/09/2026 luồng này chỉ đẩy TurnQueue sang 'working' mà

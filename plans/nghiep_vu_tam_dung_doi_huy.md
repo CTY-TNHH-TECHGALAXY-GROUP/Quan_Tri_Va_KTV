@@ -62,7 +62,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 
 ---
 
-## 3. Trạng thái triển khai (11/09/2026)
+## 3. Trạng thái triển khai (11/09/2026 · cập nhật 14/09/2026)
 
 ### ✅ Đúng và đã kiểm bằng dữ liệu / mô phỏng
 
@@ -75,6 +75,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | ĐR dòng 10 | điều kiện `laNguoiBiDoiRaKhoiDon` trên đơn thật `WB-11092026-002` |
 | ĐR dòng 15 | route lịch sử trên đơn thật `WB-11092026-003` |
 | VT dòng 14 | `coWorkersOf` trên đơn thật trả `[]` |
+| VT dòng 3, 9 — người vào thay **loại C không có dòng TurnQueue** (14/09) | `scripts/qa/qa_swap_ktv_e2e.ts` — 121/121, cả dưới `TZ=UTC`: tạo dòng `working` (không `assigned`), 2KTV-1DV không bị đụng, 3 bộ lọc huỷ đơn / huỷ dịch vụ / Hoàn tất đều tìm thấy C, huỷ không công → C mất tua như A/B, C bị đổi ra lại → về `waiting` + phiếu CANCELLED, D on-call không bị tạo dòng, race 2 lệnh → 1 dòng |
 
 ### ⚠️ Còn lỗ — chưa sửa
 
@@ -86,6 +87,8 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | KS dòng 5, 10, 15 | Chốt 11/09: đi thẳng Hoàn tất, không chờ đánh giá. Quầy đã đúng; còn `handleFinishService` rơi `FEEDBACK` và lịch sử hiện "Chờ FB" | `plans/plan_ket_thuc_som_hoan_tat.md` — chờ chốt: KTV còn dọn phòng không |
 | Triển khai | Mọi bản sửa hôm nay chỉ ở máy local — nhánh chưa push, bản Vercel vẫn chạy code cũ | user quyết push |
 | Chuẩn code | Một phần code viết hôm nay đặt tên biến tiếng Việt và chữ cứng trong `.tsx` — trái `CLAUDE.md` mục 1, 6 | dọn khi đụng lại các file đó |
+| VT dòng 3 — **A/B** vào thay, chưa bấm Bắt đầu (có sẵn, thấy 14/09) | `swapKtvOnPausedItem` update dòng A/B thành `working` nhưng KHÔNG set `booking_item_ids` → `cancelBookingItem` (lọc `contains booking_item_ids`) không tìm thấy họ → huỷ 1 dịch vụ không công mà A/B vẫn giữ tua; quầy Hoàn tất cũng không nhả được dòng. Loại C không dính (dòng tạo mới có `booking_item_ids`) | set `booking_item_ids: [item.id]` trong lệnh update của `pullIncomingKtvToWorking` (Mức 2) |
+| VT loại C khi D/B on-call không dòng | Cố ý KHÔNG tạo dòng cho D / B on-call vào thay (lệch hàng giờ D, luật kỷ luật D) → với họ các lỗ "quầy thấy Sẵn sàng", "huỷ không công vẫn giữ tua" vẫn còn như trước | cần chốt nghiệp vụ riêng cho D on-call |
 
 ---
 

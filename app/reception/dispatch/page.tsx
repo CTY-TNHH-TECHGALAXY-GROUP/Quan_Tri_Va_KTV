@@ -1439,7 +1439,12 @@ if (!hasPermission('dispatch_board')) {
                   let queuePos = currentTurn?.queue_position || 0;
                   
                   if (!currentTurn || currentTurn.current_order_id !== group.bookingId) {
-                      const currentMax = Math.max(...turns.map(t => t.queue_position), 0);
+                      // Bỏ tua ảo (`fake-…`, queue_position 999 — on-call B, loại C chưa có dòng)
+                      // khỏi mốc max: tính cả nó là KTV phân mới nhận 1000+ và phình dây chuyền.
+                      // `Number(...) || 0` chặn NaN khi cột null.
+                      const currentMax = Math.max(0, ...turns
+                          .filter(t => !String(t.id).startsWith('fake-'))
+                          .map(t => Number(t.queue_position) || 0));
                       const existingAssignment = allStaffAssignments.find(a => a.ktvId === row.ktvId);
                       if (existingAssignment) {
                           queuePos = existingAssignment.queuePos;
