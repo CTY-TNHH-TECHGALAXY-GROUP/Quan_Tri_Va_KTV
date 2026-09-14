@@ -290,7 +290,7 @@ const KTVSchedulePage = () => {
                                                             return;
                                                         }
                                                         setOffError(null);
-                                                        setEditingReg({ date: dateStr, expected_time: myWorkReg.expected_time || "", status: myWorkReg.status });
+                                                        setEditingReg({ date: dateStr, expected_time: (myWorkReg.expected_time || "").slice(0, 5), status: myWorkReg.status });
                                                     } else {
                                                         handleDateClick(dateStr);
                                                     }
@@ -410,7 +410,7 @@ const KTVSchedulePage = () => {
                                                     return;
                                                 }
                                                 setOffError(null);
-                                                setEditingReg({ date: reg.work_date, expected_time: reg.expected_time || '', status: reg.status });
+                                                setEditingReg({ date: reg.work_date, expected_time: (reg.expected_time || '').slice(0, 5), status: reg.status });
                                             }}
                                             className="w-full flex items-center justify-between py-3 text-left group"
                                         >

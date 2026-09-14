@@ -45,6 +45,16 @@ export async function POST(request: Request) {
       }));
     }
 
+    // Postgres `time` reads back as 'HH:mm:ss'. A client that re-sends the stored
+    // value (the "Sửa lịch" dialog did) was rejected as "không hợp lệ (HH:mm)".
+    // Accept it and cut to 'HH:mm' — the minute is the same.
+    processedEntries = processedEntries.map(e => ({
+      ...e,
+      expected_time: typeof e.expected_time === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(e.expected_time)
+        ? e.expected_time.slice(0, 5)
+        : e.expected_time,
+    }));
+
     if (processedEntries.length === 0 || !type) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }

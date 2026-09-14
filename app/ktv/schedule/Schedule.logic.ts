@@ -251,7 +251,8 @@ export const useKTVSchedule = () => {
             await apiClient.post(API.KTV.DAILY_REGISTRATION, {
                 type: "WORKING",
                 entries: [
-                    { work_date: editingReg.date, expected_time: editingReg.expected_time }
+                    // DB `time` comes back as 'HH:mm:ss'; the API only takes 'HH:mm'.
+                    { work_date: editingReg.date, expected_time: (editingReg.expected_time || '').slice(0, 5) }
                 ]
             });
             fetchLeaveList();
