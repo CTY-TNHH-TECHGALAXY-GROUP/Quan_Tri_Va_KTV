@@ -1,7 +1,8 @@
 import type { CheckinGateKtv } from '@/lib/attendance/dispatchCheckinGate';
 
 /**
- * Chữ cho luồng phân đơn cho KTV chưa điểm danh (chốt 14/09/2026).
+ * Chữ cho luồng phân đơn cho KTV chưa điểm danh (chốt 14/09/2026) và KTV ngoài
+ * không tài khoản (mở lại 15/09/2026).
  */
 export const t = {
     notCheckedInTag: 'Chưa điểm danh',
@@ -10,6 +11,9 @@ export const t = {
     reasonTurnedOff: 'đang tắt nhận đơn / đã tan ca',
     typeDPenaltyNote: 'Loại D: không điểm danh trong ngày vẫn bị phạt vắng theo quy định.',
     confirmQuestion: 'OK để tiếp tục gửi đơn?',
+    externalGroup: 'KTV ngoài (không tài khoản)',
+    externalNoAccount: 'Không cần điểm danh',
+    addExternal: 'Thêm KTV ngoài:',
 };
 
 /** Nội dung popup xác nhận, mỗi KTV một dòng. */

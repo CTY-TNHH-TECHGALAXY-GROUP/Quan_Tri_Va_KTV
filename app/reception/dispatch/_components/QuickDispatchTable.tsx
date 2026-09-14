@@ -6,11 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
-import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalKtvNameProblem, externalKtvNameKey, newExternalKtvToken, normalizeExternalKtvName } from '@/lib/constants/staff.constants';
 import { t as tCheckin } from '../CheckinConfirm.i18n';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 
 // 🛠 UI CONFIGURATION
+const MAX_EXTERNAL_SUGGESTIONS = 8;
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
 
 const FOURHAND_SERVICES = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'];
@@ -84,7 +85,10 @@ const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: Sta
   const hit = turns.find(t => t.status !== 'off' && (same(t.employee_id) || same(t.staff?.full_name)));
   if (hit) return hit.employee_id;
   const staff = staffs.find(st => st.status === 'ĐANG LÀM' && !isPlaceholderStaffId(st.id) && (same(st.id) || same(st.full_name)));
-  return staff?.id ?? null;
+  if (staff) return staff.id;
+  // KTV ngoài không tài khoản đã có (15/09/2026), so không dấu — kể cả ĐÃ NGHỈ:
+  // gửi đơn sẽ bật lại, không sinh thêm dòng trùng tên.
+  return findExternalKtvByName(term, staffs)?.id ?? null;
 };
 
 /** Loại KTV để hiện nhãn: sổ tua → danh sách KTV → mã placeholder cũ coi như loại C. */
@@ -1215,6 +1219,21 @@ const ServiceGroupCard = ({
     return filtered;
   }, [availableTurns, state.selectedKtvIds, ktvSearch]);
 
+  // KTV ngoài không tài khoản đang dùng (ĐANG LÀM): nhóm gợi ý cuối danh sách, so không dấu.
+  const externalSuggestions = useMemo(() => {
+    const key = externalKtvNameKey(ktvSearch);
+    return staffs
+      .filter(st => isPlaceholderStaffId(st.id) && st.status === 'ĐANG LÀM' && !state.selectedKtvIds.includes(st.id))
+      .filter(st => !key || externalKtvNameKey(st.full_name).includes(key))
+      .slice(0, MAX_EXTERNAL_SUGGESTIONS);
+  }, [staffs, ktvSearch, state.selectedKtvIds]);
+
+  // Gõ một tên chưa khớp ai → được thêm KTV ngoài mới không (problem = lý do không).
+  const typedName = ktvSearch.trim();
+  const typedMatchesSomeone = typedName ? !!pickKtvByExactInput(typedName.toLowerCase(), availableTurns, staffs) : false;
+  const newExternalProblem = typedName && !typedMatchesSomeone ? externalKtvNameProblem(typedName, staffs) : null;
+  const canAddNewExternal = !!typedName && !typedMatchesSomeone && !newExternalProblem;
+
   const dateFormatted = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const getBadgeBg = (i: number) => ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500'][i % 5];
   
@@ -1404,7 +1423,7 @@ const ServiceGroupCard = ({
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
                 </span>); })}
               <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) addKtv(picked); setKtvSearch(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) { addKtv(picked); setKtvSearch(''); } else if (!externalKtvNameProblem(ktvSearch, staffs)) { addKtv(newExternalKtvToken(ktvSearch)); setKtvSearch(''); } } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
@@ -1452,11 +1471,35 @@ const ServiceGroupCard = ({
                       <span className={`text-[10px] font-semibold ${isUsed ? 'text-indigo-500' : turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>{isUsed ? '🔄 Đã gán ở DV khác' : turn.status === 'working' ? `⌛ Đến ${fmtTime(turn.estimated_end_time)}` : turn.status === 'assigned' ? `🔒 Đã xếp lịch${turn.estimated_end_time ? ` • Rảnh ${fmtTime(turn.estimated_end_time)}` : ''}` : '✅ Sẵn sàng'}</span>
                     </div>); 
                   })}
-                  {/* Không còn "Nhập tên ngoài": cộng tác viên phải có tài khoản loại C, chọn từ danh sách */}
-                  {ktvSearch.trim() && filteredTurns.length === 0 && (
+                  {/* KTV ngoài không tài khoản (mở lại 15/09/2026) — luôn nằm dưới KTV nhà */}
+                  {externalSuggestions.length > 0 && (
+                    <>
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">{tCheckin.externalGroup}</p>
+                      {externalSuggestions.map(st => (
+                        <div key={st.id} onClick={() => { addKtv(st.id); setKtvSearch(''); }}
+                          className="px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] text-gray-700">
+                          <div className="flex items-center gap-2">
+                            <span>{st.full_name || st.id}</span>
+                            <span className="px-1 py-0.5 text-[8px] font-black rounded border leading-none bg-gray-100 text-gray-500 border-gray-200">C</span>
+                          </div>
+                          <span className="text-[10px] font-semibold text-gray-400">{tCheckin.externalNoAccount}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {canAddNewExternal && (
+                    <div onClick={() => { addKtv(newExternalKtvToken(typedName)); setKtvSearch(''); }}
+                      className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-emerald-50 text-emerald-700 active:scale-[0.98] border border-dashed border-emerald-200 mt-2">
+                      <span aria-hidden="true">➕</span><span>{tCheckin.addExternal} <strong className="text-emerald-800">{normalizeExternalKtvName(typedName)}</strong></span>
+                    </div>
+                  )}
+                  {newExternalProblem && filteredTurns.length === 0 && (
+                    <p className="px-3 py-3 text-xs font-bold text-amber-600 leading-relaxed">{newExternalProblem}</p>
+                  )}
+                  {typedName && filteredTurns.length === 0 && externalSuggestions.length === 0 && !canAddNewExternal && !newExternalProblem && (
                     <p className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">{tCheckin.pickerMissHint}</p>
                   )}
-                  {filteredTurns.length === 0 && !ktvSearch.trim() && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
+                  {filteredTurns.length === 0 && externalSuggestions.length === 0 && !typedName && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
                 </div>
               </div>)}
           </div>

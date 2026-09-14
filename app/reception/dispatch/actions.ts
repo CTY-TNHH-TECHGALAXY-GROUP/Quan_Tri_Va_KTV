@@ -9,7 +9,7 @@ import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
-import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { isPlaceholderStaffId, isNewExternalKtvToken, externalNameOfToken, externalKtvNameProblem, findExternalKtvByName } from '@/lib/constants/staff.constants';
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
 import { ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
@@ -649,11 +649,13 @@ export async function processDispatch(bookingId: string, dispatchData: {
             });
         }
 
-        // 🔥 MỌI MÃ KTV PHẢI CÓ SẴN TRONG Staff — không còn tự sinh tài khoản
-        // Trước 12/09/2026, tên lạ gõ vào ô KTV được tự INSERT thành `Staff`
-        // TYPE_C mã `EXT_xxxxxx` → 138 dòng rác không ai đăng nhập được (xem
-        // `scripts/cleanup_type_c_placeholders.ts`). Giờ loại C là tài khoản thật,
-        // quầy chọn từ danh sách; mã lạ → trả lỗi để tạo ở Admin → Nhân viên.
+        // 🔥 KTV NGOÀI KHÔNG TÀI KHOẢN (mở lại 15/09/2026)
+        // Ô chọn gửi `NEW_EXT:<TÊN>` cho người ngoài chưa có dòng Staff → đổi thành mã
+        // `EXT_` (dùng lại dòng cùng tên nếu có). Sau bước này MỌI mã phải có trong
+        // Staff; mã lạ KHÔNG mang tiền tố vẫn bị trả lỗi như từ 12/09.
+        const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
+        if (extError) return { success: false, error: extError };
+
         const allKtvIds = new Set<string>();
         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
@@ -918,6 +920,96 @@ export async function processDispatch(bookingId: string, dispatchData: {
     }
 }
 
+/**
+ * Đổi mọi `NEW_EXT:<TÊN>` (KTV ngoài chưa có dòng Staff, quầy vừa thêm ở ô chọn)
+ * thành mã `EXT_xxxxxx` thật, ghi thẳng vào `data`. Trả câu lỗi, hoặc `null`.
+ *
+ * Mở lại 15/09/2026 (plans/plan_mo_lai_ktv_ngoai_khong_tai_khoan.md) sau khi
+ * 12/09 tắt vì tự sinh không kiểm soát. Nay có kiểm soát:
+ *   · kiểm lại tên ở máy chủ (không tin client) — trùng KTV nhà thì từ chối;
+ *   · cùng tên (so không dấu) → dùng lại dòng cũ và bật `ĐANG LÀM`, không sinh thêm;
+ *   · hai máy quầy cùng thêm một tên → cùng chốt về một dòng, dòng thừa vừa tạo bị xoá.
+ * Dùng chung cho `processDispatch` và `saveDraftDispatch` (lưu nháp ghi thẳng
+ * `technicianCodes`, không qua kiểm tra nào khác).
+ */
+async function resolveNewExternalKtvIds(
+    supabase: any,
+    data: {
+        technicianCode?: string | null;
+        staffAssignments?: { ktvId?: string | null; ktvName?: string | null }[];
+        itemUpdates?: { technicianCodes?: string[] | string | null; segments?: any[] }[];
+    }
+): Promise<string | null> {
+    const tokens = new Set<string>();
+    const scan = (id?: string | null) => { if (id && isNewExternalKtvToken(id)) tokens.add(String(id)); };
+    scan(data.technicianCode);
+    (data.staffAssignments || []).forEach(a => scan(a.ktvId));
+    (data.itemUpdates || []).forEach(u => {
+        if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => scan(c));
+        else if (typeof u.technicianCodes === 'string') u.technicianCodes.split(',').forEach(c => scan(c.trim()));
+        (u.segments || []).forEach((s: any) => scan(s?.ktvId));
+    });
+    if (tokens.size === 0) return null;
+
+    const { data: staffRows, error: staffErr } = await supabase.from('Staff').select('id, full_name, status');
+    if (staffErr) return `Không đọc được danh sách KTV: ${staffErr.message}`;
+    type StaffRow = { id: string; full_name?: string | null; status?: string | null };
+    const rows: StaffRow[] = staffRows || [];
+
+    const idByToken: Record<string, string> = {};
+    const nameById: Record<string, string> = {};
+    for (const token of Array.from(tokens)) {
+        const name = externalNameOfToken(token);
+        const problem = externalKtvNameProblem(name, rows);
+        if (problem) return `Không thể thêm KTV ngoài "${name}": ${problem}`;
+
+        let resolved: StaffRow;
+        const existing = findExternalKtvByName(name, rows);
+        if (existing) {
+            if (existing.status !== 'ĐANG LÀM') {
+                await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existing.id);
+                existing.status = 'ĐANG LÀM';
+            }
+            resolved = existing;
+        } else {
+            const newId = `EXT_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            const { error: insErr } = await supabase.from('Staff')
+                .insert({ id: newId, full_name: name, work_type: 'TYPE_C', status: 'ĐANG LÀM' });
+            if (insErr) return `Không thêm được KTV ngoài "${name}": ${insErr.message}`;
+
+            // Hai máy quầy cùng thêm một tên: đọc lại, cùng chốt dòng theo luật findExternalKtvByName.
+            const { data: sameType } = await supabase.from('Staff').select('id, full_name, status').eq('work_type', 'TYPE_C');
+            const winner = findExternalKtvByName(name, (sameType || []) as StaffRow[]);
+            if (winner && winner.id !== newId) {
+                await supabase.from('Staff').delete().eq('id', newId);
+                resolved = winner;
+            } else {
+                resolved = { id: newId, full_name: name, status: 'ĐANG LÀM' };
+            }
+            rows.push(resolved);
+        }
+        idByToken[token] = resolved.id;
+        nameById[resolved.id] = resolved.full_name || name;
+    }
+
+    const swap = (id: string) => idByToken[id] || id;
+    if (data.technicianCode) data.technicianCode = swap(data.technicianCode);
+    (data.staffAssignments || []).forEach(a => {
+        if (a.ktvId && idByToken[a.ktvId]) { a.ktvId = idByToken[a.ktvId]; a.ktvName = nameById[a.ktvId]; }
+    });
+    (data.itemUpdates || []).forEach(u => {
+        if (Array.isArray(u.technicianCodes)) u.technicianCodes = u.technicianCodes.map(c => swap(c));
+        else if (typeof u.technicianCodes === 'string') u.technicianCodes = u.technicianCodes.split(',').map(c => swap(c.trim())).join(',');
+        (u.segments || []).forEach((s: any) => {
+            if (s?.ktvId && idByToken[s.ktvId]) {
+                s.ktvId = idByToken[s.ktvId];
+                if (!s.ktvName || isNewExternalKtvToken(s.ktvName)) s.ktvName = nameById[s.ktvId];
+            }
+        });
+    });
+    return null;
+}
+
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
     technicianCode?: string | null;
     bedId: string | null;
@@ -958,6 +1050,10 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 }
             });
         }
+
+        // KTV ngoài vừa thêm ở ô chọn (`NEW_EXT:<TÊN>`) → mã EXT_ thật trước khi ghi xuống đơn.
+        const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
+        if (extError) return { success: false, error: extError };
 
         let currentItems: any[] | null = null;
         let currentGuests: any[] | null = null;

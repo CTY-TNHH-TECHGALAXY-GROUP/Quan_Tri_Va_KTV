@@ -12,18 +12,80 @@ export const WORK_TYPE_LABELS = {
 };
 
 /**
- * Mã `Staff` do bảng điều phối TỰ SINH trước 12/09/2026 mỗi khi quầy gõ một tên
- * lạ vào ô KTV (`EXT_xxxxxx`, `C_xxxxxx`). Không có tài khoản đăng nhập; đã
- * chuyển `ĐÃ NGHỈ` bằng `scripts/cleanup_type_c_placeholders.ts`, giữ dòng lại
- * chỉ để lịch sử đơn/tua tháng 8–9 còn đọc được tên. Mọi danh sách nhân sự /
- * vận hành phải lọc chúng ra. Từ nay loại C là tài khoản thật (`work_type =
- * TYPE_C`, tạo ở Admin → Nhân viên), KHÔNG tạo mã mới theo mẫu này nữa.
+ * KTV ngoài KHÔNG có tài khoản (cộng tác viên vãng lai): mã `Staff` do bảng điều
+ * phối tự sinh khi quầy thêm một tên mới (`EXT_xxxxxx`; `C_xxxxxx` là mẫu cũ).
+ * Không đăng nhập, không điểm danh. Danh sách nhân sự Admin lọc chúng ra.
+ *
+ * 12/09/2026 từng tắt tự sinh (138 dòng rác) và chuyển 132 dòng sang `ĐÃ NGHỈ`;
+ * 15/09/2026 mở lại có kiểm soát vì tiệm vẫn dùng KTV ngoài hằng ngày —
+ * plans/plan_mo_lai_ktv_ngoai_khong_tai_khoan.md. Tài khoản loại C thật (`C001`…)
+ * KHÔNG khớp mẫu này.
  */
 export const PLACEHOLDER_STAFF_ID = /^(EXT|C_)/i;
 export const isPlaceholderStaffId = (id: string | null | undefined): boolean =>
     PLACEHOLDER_STAFF_ID.test(String(id || ''));
 export const isTypeCWorkType = (workType: string | null | undefined): boolean =>
     String(workType || '').toUpperCase() === 'TYPE_C';
+
+// ── KTV ngoài không tài khoản: một nguồn luật tên cho ô chọn KTV và máy chủ ──
+
+/**
+ * Ô chọn KTV giữ tạm KTV ngoài CHƯA có dòng `Staff` dưới dạng `NEW_EXT:<TÊN>`;
+ * `processDispatch` / `saveDraftDispatch` đổi thành mã `EXT_` thật lúc lưu.
+ */
+export const NEW_EXTERNAL_KTV_PREFIX = 'NEW_EXT:';
+export const EXTERNAL_KTV_NAME_MAX = 60;
+
+export const isNewExternalKtvToken = (id: string | null | undefined): boolean =>
+    String(id || '').toUpperCase().startsWith(NEW_EXTERNAL_KTV_PREFIX);
+
+/** Tên KTV ngoài như lưu: gộp khoảng trắng, IN HOA (dữ liệu cũ đều in hoa). */
+export const normalizeExternalKtvName = (raw: string | null | undefined): string =>
+    String(raw || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('vi-VN');
+
+export const newExternalKtvToken = (name: string): string =>
+    NEW_EXTERNAL_KTV_PREFIX + normalizeExternalKtvName(name);
+
+export const externalNameOfToken = (token: string): string =>
+    normalizeExternalKtvName(String(token || '').slice(NEW_EXTERNAL_KTV_PREFIX.length));
+
+/** Khoá so khớp tên: bỏ dấu, Đ→D — "nguyen anh" và "NGUYÊN ANH" là một người. */
+export const externalKtvNameKey = (raw: string | null | undefined): string =>
+    normalizeExternalKtvName(raw).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/Đ/g, 'D');
+
+type StaffNameRow = { id: string; full_name?: string | null; status?: string | null };
+
+/**
+ * KTV ngoài (mã placeholder) cùng tên, so không dấu. Ưu tiên người `ĐANG LÀM`,
+ * rồi mã nhỏ nhất — hai máy quầy cùng thêm một tên thì cùng chọn một dòng.
+ */
+export function findExternalKtvByName<T extends StaffNameRow>(name: string, staffs: T[]): T | null {
+    const key = externalKtvNameKey(name);
+    if (!key) return null;
+    const hits = (staffs || []).filter(s => isPlaceholderStaffId(s.id) && externalKtvNameKey(s.full_name) === key);
+    hits.sort((a, b) =>
+        ((a.status === 'ĐANG LÀM' ? 0 : 1) - (b.status === 'ĐANG LÀM' ? 0 : 1))
+        || String(a.id).localeCompare(String(b.id)));
+    return hits[0] || null;
+}
+
+/**
+ * Vì sao không thêm được KTV ngoài tên này (`null` = thêm được).
+ * Tên ghép nhiều người ("LISA - LUNA") ĐƯỢC PHÉP — chốt 15/09/2026 "để nhanh hơn".
+ * Trùng mã hoặc tên một KTV nhà còn làm → phải chọn đúng người đó.
+ */
+export function externalKtvNameProblem(name: string, staffs: StaffNameRow[]): string | null {
+    const normalized = normalizeExternalKtvName(name);
+    if (!normalized) return 'Chưa nhập tên KTV ngoài.';
+    if (normalized.length > EXTERNAL_KTV_NAME_MAX) return `Tên KTV ngoài dài quá ${EXTERNAL_KTV_NAME_MAX} ký tự.`;
+    if (isNewExternalKtvToken(normalized)) return 'Tên KTV ngoài không hợp lệ.';
+    const key = externalKtvNameKey(normalized);
+    const house = (staffs || []).find(s =>
+        !isPlaceholderStaffId(s.id) && s.status !== 'ĐÃ NGHỈ'
+        && (externalKtvNameKey(s.id) === key || externalKtvNameKey(s.full_name) === key));
+    if (house) return `Trùng KTV nhà ${house.id} — chọn người đó, không thêm KTV ngoài.`;
+    return null;
+}
 
 export const DEFAULT_FEATURE_FLAGS_TYPE_A: FeatureFlagsTypeA = {
     overtime_enabled: true,
@@ -189,6 +251,8 @@ export function ktvDisplayLabel(
     code: string,
     fullName?: string | null
 ): string {
+    // KTV ngoài vừa thêm, chưa gửi đơn: hiện tên đã gõ.
+    if (isNewExternalKtvToken(code)) return externalNameOfToken(code);
     if (isTypeCWorkType(workType)) {
         return fullName?.trim() || code;
     }

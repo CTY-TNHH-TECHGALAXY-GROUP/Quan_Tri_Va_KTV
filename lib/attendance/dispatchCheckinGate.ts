@@ -9,7 +9,11 @@
  *   · Dòng TurnQueue hôm đó đang `off` (tắt nhận đơn / tan ca / quầy gạt tắt)
  *     → TURNED_OFF, kể cả khi đã điểm danh.
  *   · Chưa có bản ghi điểm danh hôm nay → NOT_CHECKED_IN.
+ *   · KTV ngoài KHÔNG tài khoản (mã EXT_/C_) → không bao giờ hỏi: họ không có app
+ *     để bấm Oria xin chào (chốt 15/09/2026). Loại C có tài khoản thật vẫn bị hỏi.
  */
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+
 export type CheckinGateReason = 'NOT_CHECKED_IN' | 'TURNED_OFF';
 
 export interface CheckinGateKtv {
@@ -31,6 +35,7 @@ export const findKtvsNeedingCheckinConfirm = (input: {
 
     for (const id of Array.from(new Set(input.ktvIds.filter(Boolean)))) {
         if (confirmed.has(String(id).toUpperCase())) continue;
+        if (isPlaceholderStaffId(id)) continue;
 
         const reason: CheckinGateReason | null =
             input.turnStatusById.get(id) === 'off' ? 'TURNED_OFF'
