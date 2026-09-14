@@ -137,7 +137,7 @@ export function ScreenReview({ logic }: { logic: any }) {
             ? 'Đang lưu...'
             : selectedTraits.length > 0
               ? `Lưu hồ sơ (${selectedTraits.length})`
-              : 'Đánh giá KH hoặc bỏ qua'}
+              : 'Đánh giá hoặc bỏ qua'}
         </button>
       </div>
     </div>
