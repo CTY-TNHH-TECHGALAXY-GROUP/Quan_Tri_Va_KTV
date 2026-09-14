@@ -23,6 +23,14 @@
     {
       "path": "/api/cron/daily-absence-check?mode=lock-unregistered",
       "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/type-d-registration-reminder",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/type-d-pending-lock",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

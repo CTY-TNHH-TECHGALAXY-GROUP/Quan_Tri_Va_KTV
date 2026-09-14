@@ -890,8 +890,8 @@ const KTVAttendancePage = () => {
                                             <p className="text-sm font-bold text-amber-600">
                                                 Bạn chưa đăng ký lịch hôm nay
                                             </p>
-                                            <p className="text-xs text-gray-500 mt-1 italic">
-                                                Hãy tiếp tục điểm danh để sẵn sàng làm việc nhé!
+                                            <p className="text-xs text-rose-600 mt-1 font-semibold">
+                                                Vào Lịch Làm Việc → Đăng Ký Làm để đăng ký ngay. Hết ngày chưa đăng ký, tài khoản sẽ bị khoá.
                                             </p>
                                         </div>
                                     )}

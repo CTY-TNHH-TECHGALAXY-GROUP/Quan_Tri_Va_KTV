@@ -188,6 +188,12 @@ export async function POST(request: Request) {
       if (feeErr) console.error('[Unlock] Không ghi được phí kích hoạt lại:', feeErr);
     }
 
+    // 3c. Bỏ luôn "chờ khoá" còn sót — không thì cron 5 phút khoá lại ngay sau
+    // khi quầy vừa mở (plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md §9).
+    const { error: pendingErr } = await supabase
+      .from('Staff').update({ pending_lock: null }).eq('id', staffId);
+    if (pendingErr) console.error('[Unlock] Không xoá được pending_lock:', pendingErr);
+
     // Xoá bộ nhớ đệm danh sách khoá, nếu không người vừa được mở vẫn bị chặn
     // thêm tối đa 20 giây nữa.
     const { invalidateLockedStaffCache } = await import('@/lib/auth-server');

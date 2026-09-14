@@ -282,6 +282,13 @@ Lý do đặt trước Phase 6: chưa có phần này thì `KtvTypeDDisciplineSe
 - Hết ngày làm việc (23:59 - tức là sau 24h) mà KTV vẫn không có bất kỳ thông báo hay hành động nào (Không đăng ký làm, không đăng ký Off, không đi làm) -> **Hệ thống tự động KHÓA TÀI KHOẢN (Deactivate App)**.
 - Trạng thái: Buộc đóng phí kích hoạt lại (1.000.000đ - 2.000.000đ) để mở khóa app.
 
+> **Cập nhật 14/09/2026 (Chủ Dự Án)** — thay cho ý trên và quyết định 12/09:
+> - 00:00 mà **ngày vừa sang chưa có dòng đăng ký** (đi làm hoặc OFF) → **khoá thẳng**, không miễn người đang làm dở đơn.
+> - **Ngày vừa qua không có dòng đăng ký** → khoá, **kể cả có đi làm** (bắt người được quầy mở khoá mà vẫn không đăng ký).
+> - Hôm nay chưa có dòng thì KTV tạo đăng ký được mọi lúc trong ngày (đường đăng ký bù sau khi mở khoá).
+> - 21:00 nhắc KTV chưa đăng ký, công tắc ở Quản lý tính năng.
+> Chi tiết: `plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md`.
+
 **2. Hủy lịch đã đăng ký:**
 - Cho phép KTV tự do HỦY lịch làm việc trước 00:00.
 - Từ 00:01 trở đi: KHÔNG được hủy tự do. Bắt buộc dùng nút "Điều chỉnh" -> **Báo vắng**. 

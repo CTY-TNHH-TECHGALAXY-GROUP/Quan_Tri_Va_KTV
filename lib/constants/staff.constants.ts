@@ -98,10 +98,14 @@ export const TYPE_D_DISCIPLINE_PENALTIES = {
  * Mặc định theo quy chế Phase 5.5 (plans/plan_type_d_bao_vang_bao_tre.md mục
  * 13–14) cộng quyết định 12/09: mọi lỗi vắng mặt đều quy ra giờ, khoá tài khoản
  * chỉ là chế tài cuối khi quỹ giờ không gánh nổi.
+ *
+ * Riêng lỗi KHÔNG ĐĂNG KÝ LỊCH thì khoá thẳng (quyết định 14/09,
+ * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md): đăng ký trước là nghĩa vụ.
  */
 export type TypeDDisciplineAction = 'NONE' | 'DEDUCT' | 'LOCK' | 'DEDUCT_OR_LOCK';
 
 export type TypeDDisciplineCaseKey =
+    | 'UNREGISTERED_NEXT_DAY'
     | 'NO_REGISTRATION'
     | 'NO_SHOW_NO_NOTICE'
     | 'LATE_REPORTED_NO_SHOW'
@@ -117,16 +121,27 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
     }
 > = {
     /**
-     * ⚠️ Từng có thêm một luật "chưa đăng ký lịch cho NGÀY MỚI" chạy song song,
-     * hỏi về ngày vừa sang thay vì ngày vừa qua. Đã bỏ hẳn 12/09: nó hỏi cùng
-     * một chuyện với luật dưới đây, mà lại hỏi sớm hơn 24 tiếng — nên sau một
-     * đêm, mọi người còn dùng được app đều đã có đăng ký, và luật dưới đây
-     * không bao giờ chạy tới. Quy chế cũng chỉ xét ngày ĐÃ QUA.
+     * Hai luật đăng ký đi thành cặp (quyết định 14/09):
+     *
+     *   · UNREGISTERED_NEXT_DAY — 00:00 mà NGÀY VỪA SANG chưa có dòng đăng ký
+     *     → khoá. Không miễn người đang trong ca.
+     *   · NO_REGISTRATION — NGÀY VỪA QUA không có dòng đăng ký → khoá, kể cả có
+     *     đi làm. Sau lượt trên, chỉ còn người được quầy mở khoá giữa ngày mà
+     *     vẫn không đăng ký rơi vào đây — quyết định là khoá tiếp.
+     *
+     * Ngày 12/09 từng bỏ luật thứ nhất vì "nuốt" luật thứ hai. Nay luật thứ hai
+     * không còn là code chết: nó bắt đúng người vừa được mở khoá.
      */
+    UNREGISTERED_NEXT_DAY: {
+        action: 'LOCK', hours: 10,
+        label: 'Chưa đăng ký lịch cho ngày mới',
+        moTa: 'Lúc 00:00, ngày vừa sang chưa có dòng đăng ký nào (đi làm hoặc OFF). Không miễn người đang làm dở đơn.',
+        quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
+    },
     NO_REGISTRATION: {
-        action: 'DEDUCT_OR_LOCK', hours: 10,
-        label: 'Không đăng ký gì và không đi làm',
-        moTa: 'Chốt NGÀY VỪA QUA: cả ngày không có dòng đăng ký nào, mà cũng không điểm danh. Có đến làm thì chỉ là quên đăng ký → bỏ qua.',
+        action: 'LOCK', hours: 10,
+        label: 'Ngày vừa qua không có đăng ký',
+        moTa: 'Chốt NGÀY VỪA QUA: cả ngày không có dòng đăng ký nào, kể cả có đi làm. Thường là người được quầy mở khoá mà vẫn không đăng ký.',
         quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
     NO_SHOW_NO_NOTICE: {

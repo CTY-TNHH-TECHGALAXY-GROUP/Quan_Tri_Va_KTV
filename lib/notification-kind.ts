@@ -51,6 +51,7 @@ const BY_TYPE: Record<string, NotificationKind> = {
     REACTIVATION_FEE: 'penalty',
     INVALID_WIFI_IP: 'penalty',
     INVALID_LOGIN: 'penalty',
+    REGISTRATION_REMINDER: 'penalty',
 
     REWARD: 'reward',
     REWARD_APPROVED: 'reward',

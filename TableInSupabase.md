@@ -363,6 +363,7 @@
 | `full_name` | text | Họ tên đầy đủ |
 | `status` | text | Trạng thái: `ĐANG LÀM` / `ĐÃ NGHỈ` / `KHÓA_TÀI_KHOẢN` / `HỆ THỐNG`. CHECK constraint (`check_staff_status`). |
 | `lock_source` | text | **[NEW 11/09/2026]** Ai khoá tài khoản — ghi cùng câu UPDATE với `status`. `MANUAL` = admin tắt công tắc "Hoạt động" (KTV thấy "Tính năng của bạn đang bảo trì"); `NULL` / `DISCIPLINE` = khoá kỷ luật hoặc dữ liệu cũ (KTV thấy lý do). CHECK `IN ('MANUAL','DISCIPLINE')`. Trigger `staff_clear_lock_source_trigger` tự xoá về NULL khi `status` rời `KHÓA_TÀI_KHOẢN`. Migration `20260911100000_add_staff_lock_source.sql`. |
+| `pending_lock` | jsonb | **[NEW 14/09/2026]** Khoá kỷ luật ĐÃ QUYẾT nhưng ĐANG HOÃN vì KTV còn đơn chưa xong (đang làm / dọn phòng / chờ quầy duyệt bàn giao). `{caseKey, workDate, reason, source, decidedAt, billCodes}`; `NULL` = không có gì chờ. Cron `daily-absence-check` ghi; cron `/api/cron/type-d-pending-lock` (5 phút) áp khoá khi hết đơn rồi xoá; tắt kỷ luật hoặc mở khoá cũng xoá. Index một phần `idx_staff_pending_lock`. Migration `20260914200000_add_staff_pending_lock.sql`. |
 | `birthday` | date | Ngày sinh |
 | `gender` | text | Giới tính |
 | `id_card` | text | Số CCCD/CMND |

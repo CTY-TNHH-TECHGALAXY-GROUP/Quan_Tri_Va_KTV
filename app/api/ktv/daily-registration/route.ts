@@ -49,10 +49,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { canEditRegistration, getRegistrationEditWindow, registrationLockedMessage, vnNow } = await import('@/lib/vn-time');
+    const { canEditRegistration, canCreateRegistration, getRegistrationEditWindow, registrationLockedMessage, vnNow, vnToday } = await import('@/lib/vn-time');
+
+    // Lấy các ngày đã đăng ký TRƯỚC khi kiểm quyền: SỬA dòng có sẵn và TẠO dòng
+    // mới theo hai luật khác nhau. Hôm nay chưa có dòng thì tạo được mọi lúc —
+    // đường duy nhất để KTV vừa được quầy mở khoá đăng ký bù, không thì đêm đó
+    // bị khoá lại (plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md §2.2).
+    const datesToUpdate = processedEntries.map(e => e.work_date);
+    const { data: existingRecords } = await supabase
+      .from('KTVTypeDDailyRegistration')
+      .select('work_date, status, check_in_at, penalty_applied')
+      .eq('staff_id', staff.id)
+      .in('work_date', datesToUpdate);
+    const daCoDong = new Set((existingRecords || []).map((r: any) => r.work_date));
+    const homNay = vnToday();
+    const gioHienTai = format(vnNow(), 'HH:mm');
 
     for (const entry of processedEntries) {
-      if (!canEditRegistration(entry.work_date)) {
+      const coDong = daCoDong.has(entry.work_date);
+      const duocPhep = coDong ? canEditRegistration(entry.work_date) : canCreateRegistration(entry.work_date);
+      if (!duocPhep) {
         return NextResponse.json(
           { error: registrationLockedMessage(entry.work_date) },
           { status: 400 });
@@ -65,16 +81,15 @@ export async function POST(request: Request) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.expected_time)) {
           return NextResponse.json({ error: `Giờ đến tiệm ngày ${vnDate(entry.work_date)} không hợp lệ (HH:mm)` }, { status: 400 });
         }
+        // Đăng ký bù cho hôm nay mà hẹn giờ đã qua thì vừa điểm danh là dính
+        // −5h đi trễ — chặn ngay từ đây.
+        if (!coDong && entry.work_date === homNay && entry.expected_time <= gioHienTai) {
+          return NextResponse.json({ error: `Giờ đến tiệm hôm nay phải sau ${gioHienTai}` }, { status: 400 });
+        }
       }
     }
 
-    // Lấy thông tin các ngày đã đăng ký để kiểm tra check_in_at
-    const datesToUpdate = processedEntries.map(e => e.work_date);
-    const { data: existingRecords } = await supabase
-      .from('KTVTypeDDailyRegistration')
-      .select('work_date, status, check_in_at, penalty_applied')
-      .eq('staff_id', staff.id)
-      .in('work_date', datesToUpdate);
+    // Ngày đã check-in hoặc đã bị phạt thì không cho sửa.
       
     if (existingRecords) {
       for (const rec of existingRecords) {

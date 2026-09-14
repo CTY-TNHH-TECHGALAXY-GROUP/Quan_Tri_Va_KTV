@@ -53,6 +53,21 @@ export function canEditRegistration(workDateStr: string): boolean {
 }
 
 /**
+ * TẠO MỚI đăng ký cho ngày chưa có dòng nào.
+ *
+ * Khác `canEditRegistration` ở đúng một chỗ: hôm nay chưa có dòng thì tạo được
+ * MỌI LÚC trong ngày. Người rơi vào đây chỉ có KTV bị khoá lúc 00:00 vì chưa
+ * đăng ký rồi được quầy mở khoá (hoặc KTV mới) — mọi người khác đã có dòng từ
+ * trước. Không mở chỗ này thì người vừa được mở khoá sau 07:00 không cách nào
+ * đăng ký, và đêm đó chắc chắn bị khoá lại.
+ *
+ * @param workDateStr 'yyyy-MM-dd'
+ */
+export function canCreateRegistration(workDateStr: string): boolean {
+  return workDateStr >= vnToday();
+}
+
+/**
  * Câu giải thích khi KHÔNG được sửa lịch ngày D — app KTV và API dùng chung,
  * để hai bên nói cùng một câu.
  *

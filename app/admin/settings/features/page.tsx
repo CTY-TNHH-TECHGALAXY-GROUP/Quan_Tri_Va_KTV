@@ -18,6 +18,14 @@ const SYSTEM_TOGGLES = [
         key: 'auto_demote_type_b_to_a',
         label: '⏬ Tự động giáng chức KTV Loại B',
         description: 'Tự động chuyển KTV Loại B xuống Loại A nếu không đạt đủ chỉ tiêu.',
+    },
+    {
+        // ⚠️ Tên khoá cố ý KHÔNG có chữ "enabled": SessionEpochService coi khoá
+        // `*_enabled` + `type_d` là công tắc tính năng và đăng xuất cả nhóm Loại D
+        // mỗi lần lưu.
+        key: 'ktv_type_d_registration_reminder',
+        label: '🔔 Nhắc KTV Loại D đăng ký lịch (21:00)',
+        description: 'Lúc 21:00 gửi tin cho KTV Loại D chưa đăng ký lịch (đi làm hoặc OFF) cho ngày mai hoặc hôm nay. Chỉ gửi khi kỷ luật Loại D đang bật — 00:00 ai chưa đăng ký sẽ bị khoá.',
     }
 ] as const;
 

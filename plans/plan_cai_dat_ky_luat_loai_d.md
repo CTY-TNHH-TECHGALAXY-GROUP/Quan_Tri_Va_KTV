@@ -177,3 +177,16 @@ không có công tắc — `ktv_type_d_discipline_enabled` chỉ sửa được 
 **Dự đoán đêm 12/09 với luật mới** (chạy trên dữ liệu thật, chỉ đọc): 12 KTV bị khoá vì hôm nay
 không đăng ký gì và cũng không đến làm, quỹ giờ 0h < 10h nên khoá thay vì trừ. T007 thoát vì có
 đi làm thật. Cùng con số với luật cũ nhưng **đúng lý do**.
+
+
+---
+
+## Đổi lại 14/09 — không đăng ký là khoá thẳng
+
+Chủ Dự Án chốt: đăng ký trước là **nghĩa vụ**, quên là khoá. Luật "chưa đăng ký lịch cho ngày mới"
+được đưa lại (`UNREGISTERED_NEXT_DAY`, mặc định `LOCK`); `NO_REGISTRATION` đổi sang `LOCK` và
+**bỏ** ngoại lệ "có đến làm thì bỏ qua". Hai luật không còn nuốt nhau: luật ngày vừa qua bắt đúng
+người được quầy mở khoá giữa ngày mà vẫn không đăng ký.
+
+Thứ tự xét và luật dừng khi khoá: `KtvTypeDDisciplineService.xetChotSoDem`.
+Chi tiết, bẫy cấu hình production và thứ tự bật: `plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md`.

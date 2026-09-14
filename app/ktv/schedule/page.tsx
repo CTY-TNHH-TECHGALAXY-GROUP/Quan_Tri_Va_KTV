@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useKTVSchedule, LeaveRequest, ScheduleTab } from './Schedule.logic';
 import { getRegistrationEditWindow } from '@/lib/vn-time';
-import { canEditRegistration, registrationLockedMessage, vnToday } from '@/lib/vn-time';
+import { canCreateRegistration, canEditRegistration, registrationLockedMessage, vnToday } from '@/lib/vn-time';
 import { t } from './Schedule.i18n';
 
 // 🔧 UI CONFIGURATION
@@ -157,7 +157,13 @@ const KTVSchedulePage = () => {
             const isSelected = selectedDates.includes(dateStr);
             
             if (!isSelected) {
-                if (!canEditRegistration(dateStr)) {
+                // Loại D chưa có dòng đăng ký ngày này → luật TẠO MỚI: hôm nay tạo
+                // được mọi lúc, để KTV vừa được quầy mở khoá đăng ký bù. Nghỉ phép
+                // của loại khác vẫn theo hạn 07:00 như cũ.
+                const duocChon = user?.work_type === 'TYPE_D' && !myWorkReg
+                    ? canCreateRegistration(dateStr)
+                    : canEditRegistration(dateStr);
+                if (!duocChon) {
                     setOffError(registrationLockedMessage(dateStr));
                     return;
                 }

@@ -19,6 +19,18 @@ const STILL_NEEDS_KTV: Record<string, string> = {
     CLEANING: 'đang dọn phòng',
 };
 
+/**
+ * Thêm các khúc KTV KHÔNG còn phải làm gì nhưng đơn vẫn CHƯA ĐÓNG: chờ khách
+ * đánh giá và chờ quầy duyệt ảnh bàn giao (item chỉ lên DONE sau khi duyệt —
+ * cron/ktv-auto-approve). Chỉ dùng khi HOÃN KHOÁ kỷ luật: khoá ở khúc này thì
+ * quầy trả lại ảnh là KTV không vào app dọn lại được.
+ * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md §9.3
+ */
+const WAITING_FOR_CLOSE: Record<string, string> = {
+    FEEDBACK: 'chờ đánh giá / duyệt bàn giao',
+    COMPLETED: 'chờ duyệt bàn giao',
+};
+
 export interface UnfinishedWork {
     billCode: string;
     status: string;
@@ -45,7 +57,12 @@ export interface UnfinishedWork {
 export async function findUnfinishedWorkToday(
     supabase: SupabaseClient,
     staffId: string,
+    opts: {
+        /** Tính cả khúc chờ đánh giá / chờ quầy duyệt bàn giao. Mặc định KHÔNG. */
+        tinhCaChoDuyet?: boolean;
+    } = {},
 ): Promise<UnfinishedWork[]> {
+    const labels = opts.tinhCaChoDuyet ? { ...STILL_NEEDS_KTV, ...WAITING_FOR_CLOSE } : STILL_NEEDS_KTV;
     const today = await getBusinessToday(supabase);
 
     const { data: assignments } = await supabase
@@ -66,7 +83,7 @@ export async function findUnfinishedWorkToday(
     const me = staffId.toUpperCase();
     const stillMine = (items || []).filter((it: any) => {
         const status = String(it.status || '').toUpperCase();
-        if (!STILL_NEEDS_KTV[status]) return false;
+        if (!labels[status]) return false;
         const onItem = (it.technicianCodes || []).some((c: any) => String(c).toUpperCase() === me);
         if (!onItem) return false;
         return !laNguoiBiDoiRaKhoiDon([it], staffId, ktvMatchesSeg);
@@ -82,6 +99,6 @@ export async function findUnfinishedWorkToday(
 
     return stillMine.map((it: any) => {
         const status = String(it.status || '').toUpperCase();
-        return { billCode: billOf(it.bookingId), status, statusLabel: STILL_NEEDS_KTV[status] };
+        return { billCode: billOf(it.bookingId), status, statusLabel: labels[status] };
     });
 }
