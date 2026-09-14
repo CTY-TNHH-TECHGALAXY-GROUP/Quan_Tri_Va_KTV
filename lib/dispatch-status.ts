@@ -84,6 +84,39 @@ export function mapDispatchToRawStatus(dispatchStatus: string): RawStatus {
 /**
  * Tính toán trạng thái tổng của Booking dựa trên trạng thái của các Items.
  */
+/**
+ * True when a segment that has a KTV, is not voided (swapped out / cancelled no
+ * credit), still has no real end time — i.e. someone in the service has not
+ * finished (still working, or the next KTV in a sequence has not started).
+ *
+ * Same definition as SQL `booking_item_has_open_segment`
+ * (migration 20260914180000). Keep both in sync.
+ */
+export function hasOpenKtvSegment(segments: any[]): boolean {
+    return (Array.isArray(segments) ? segments : []).some((s: any) =>
+        !!s && typeof s === 'object'
+        && !!s.ktvId
+        && s.voided !== true && s.voided !== 'true'
+        && !s.actualEndTime);
+}
+
+const FINISHING_ITEM_STATUSES = ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'];
+
+/**
+ * The counter / Kanban finishes ONE KTV's card (`targetKtvIds`) of a service
+ * that other KTVs still work on → keep the service's own status; only that
+ * KTV's segments are closed. Call it with the segments AFTER closing them.
+ *
+ * Incident 14/09/2026 (order 11NDK-005-14092026-B): the first KTV's card moved
+ * the whole service to FEEDBACK while NH021 was mid-service. Moving the whole
+ * card (no `targetKtvIds`) is a deliberate counter override and is not held.
+ */
+export function shouldHoldItemStatus(segments: any[], newStatus: string, targetKtvIds?: string[]): boolean {
+    if (!targetKtvIds || targetKtvIds.length === 0) return false;
+    if (!FINISHING_ITEM_STATUSES.includes(newStatus)) return false;
+    return hasOpenKtvSegment(segments);
+}
+
 export function recomputeBookingStatus(itemStatuses: string[]): string {
     if (!itemStatuses || itemStatuses.length === 0) return 'NEW';
     

@@ -1589,7 +1589,9 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
 
         // Lấy trạng thái hiện tại của items để check rule
         const { data: itemsCurrent } = await supabase.from('BookingItems').select('id, status, segments').in('id', itemIds);
-        const { canTransition } = await import('@/lib/dispatch-status');
+        const { canTransition, shouldHoldItemStatus } = await import('@/lib/dispatch-status');
+        // Items whose status really changed below — merged children follow only these.
+        const statusChangedIds: string[] = [];
         
         // Filter: chỉ update items CÓ THỂ chuyển trạng thái, skip items đã ở bước cao hơn
         const updatableIds = (itemsCurrent || [])
@@ -1664,8 +1666,15 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 });
             }
             
-            // Chỉ update status nếu được phép chuyển đổi
-            const isUpdatable = updatableIds.includes(item.id);
+            // Chỉ update status nếu được phép chuyển đổi.
+            // One KTV's card finishing must not finish a service another KTV is still
+            // on (sequence / takeover): close that KTV's segments only, keep the status.
+            const holdStatus = shouldHoldItemStatus(segs, newStatus, targetKtvIds);
+            if (holdStatus) {
+                console.log(`🛡️ [updateBookingItemStatus] ${item.id}: ${targetKtvIds?.join(',')} → ${newStatus}, but another KTV segment is still open → keep status ${item.status}`);
+            }
+            const isUpdatable = updatableIds.includes(item.id) && !holdStatus;
+            if (isUpdatable) statusChangedIds.push(item.id);
             const payload: any = {};
             
             if (isUpdatable) {
@@ -1694,7 +1703,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 let opts: any = {};
                 try { opts = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {}); } catch {}
                 // If this item is a child merged into one of the items we just updated
-                if (opts.mergedIntoId && itemIds.includes(opts.mergedIntoId)) {
+                if (opts.mergedIntoId && statusChangedIds.includes(opts.mergedIntoId)) {
                     childIdsToSync.push(bi.id);
                 }
             }

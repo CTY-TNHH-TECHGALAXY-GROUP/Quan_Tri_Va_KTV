@@ -128,7 +128,9 @@
 - Item `FEEDBACK` quá **số phút chờ** (mốc: `feedbackTime` muộn nhất trong `segments` → `handover_submitted_at` → `timeEnd` → `Bookings.updatedAt`) → `DONE`. Item đã có sao mà vẫn `FEEDBACK` → `DONE` ngay lượt kế.
 - Không chấm: `itemRating` **giữ NULL** (không ghi 0), `options.autoCompletedNoRating = true`, `options.autoCompletedAt` (ISO). Khách vẫn chấm muộn được.
 - Không đụng `CLEANING` / `IN_PROGRESS` / `PAUSED` / `CANCELLED` / `DONE`. Booking tính lại theo `lib/dispatch-status.ts → recomputeBookingStatus` (bỏ dịch vụ tiện ích), không lùi booking đã `DONE`.
-- Hàm phụ: `jsonb_unwrap_string(jsonb)` (bóc jsonb dạng chuỗi, lỗi → NULL), `booking_item_last_feedback_time(jsonb)`.
+- **Chờ cả đơn con xong** (migration `20260914180000`, sau sự cố 14/09): chỉ chốt khi MỌI dịch vụ của booking (bỏ `CANCELLED` và dịch vụ tiện ích) đã `FEEDBACK`/`DONE` **và** không còn chặng mở. Giờ chờ tính từ dịch vụ xong **muộn nhất**; chốt các dịch vụ `FEEDBACK` của đơn cùng lúc → khách chấm 1 lần cho mọi người. Mốc 01/09 áp trên giờ xong của đơn.
+- Chặng mở = có `ktvId`, không `voided`, chưa có `actualEndTime` (đang làm, hoặc người sau trong chuỗi chưa bắt đầu). `segments` đọc không được → coi là mở (để yên cho quầy).
+- Hàm phụ: `jsonb_unwrap_string(jsonb)` (bóc jsonb dạng chuỗi, lỗi → NULL), `booking_item_last_feedback_time(jsonb)`, `booking_item_has_open_segment(jsonb)` (cùng định nghĩa với `hasOpenKtvSegment` ở `lib/dispatch-status.ts`), `auto_complete_feedback_candidates(p_wait_minutes numeric)` → bảng `(item_id, booking_id, no_rating, order_finished_at)` — nguồn duy nhất "dịch vụ nào được chốt", job và test cùng gọi.
 - Thay job cũ `auto_skip_rating_job` / `auto_skip_rating_after_24h()` (đã gỡ).
 
 **Quan hệ `itemRating` vs `ktvRatings`:**

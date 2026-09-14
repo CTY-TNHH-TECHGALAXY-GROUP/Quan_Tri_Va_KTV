@@ -113,6 +113,15 @@ Chỉ tự chốt item vào Chờ đánh giá **từ 01/09/2026 (giờ VN)**. Đ
 
 Số phút chờ đọc từ `SystemConfigs.customer_rating_timeout_minutes` (key có sẵn từ 22/07, giá trị 30, chưa code nào đọc) → migration đổi 30 thành **5** (không ghi đè nếu quản lý đã đổi). Sửa ở admin **Cài đặt tính năng → Bàn giao phòng** ("⭐ Thời gian chờ khách đánh giá"). Thiếu / hỏng / âm → 5; `0` = hoàn tất ngay khi bàn giao. Test 41/41.
 
+## 7d. Sự cố 14/09 16:27 — chốt khi người sau còn đang làm
+
+Đơn `11NDK-005-14092026-B`, dịch vụ BODY GỘI làm nối tiếp: người 1 xong 16:20, thẻ Kanban của người 1 kéo cả dịch vụ sang FEEDBACK (lỗi ở `updateBookingItemStatus` — xem `plan_kanban_noi_tiep_giu_dang_lam.md`) trong khi **NH021 làm 16:20–17:20**. Job chỉ nhìn trạng thái → chốt DONE lúc 16:27. Quét toàn bộ: 2/15 dịch vụ bị chốt sai (thêm `11NDK-008-07092026-item3`, chặng NH07 chưa từng bắt đầu).
+
+**Chốt 14/09 (owner):** người sau trong chuỗi cũng phải xong; chờ **cả đơn con** xong, giờ chờ tính từ người xong cuối, chốt cả đơn một lần để khách chấm 1 lần cho mọi người.
+- Migration `20260914180000_auto_complete_require_all_segments_done.sql` — user tự chạy trên SQL Editor 14/09.
+- Sửa dữ liệu: `scripts/repair_auto_complete_14092026.sql` — item2 → IN_PROGRESS (booking B → IN_PROGRESS), item3 → FEEDBACK; user chạy 14/09.
+- Test `qa_auto_complete_feedback.cjs`: 50/50 (thêm: người sau đang làm / chưa bắt đầu / bị tước / đã xong; nhiều dịch vụ trong đơn: còn CLEANING, IN_PROGRESS, PAUSED, xong lệch giờ, xong đủ giờ).
+
 ## 8. Không làm
 
 55 dịch vụ cũ bị job 24h đóng khi chưa bàn giao: **để nguyên** — phòng không dọn lại được, mở lại sẽ đảo tiền đã vào ví.
