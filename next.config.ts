@@ -29,9 +29,18 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   transpilePackages: ['motion'],
+  // nodemailer require() cac module con luc chay; de webpack bundle se sinh loi
+  // "Cannot find module" khi goi sendMail. Danh dau external de Next require native.
+  serverExternalPackages: ['nodemailer'],
 };
 
 export default nextConfig;

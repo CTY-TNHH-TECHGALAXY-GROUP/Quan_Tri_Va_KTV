@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-daily-ledger",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/ktvd-recompute",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-online",
+      "schedule": "0 2,4,8,10,12,14,17 * * *"
+    },
+    {
+      "path": "/api/cron/reset-type-d-hours",
+      "schedule": "0 17 1 * *"
+    },
+    {
+      "path": "/api/cron/daily-absence-check?mode=lock-unregistered",
+      "schedule": "0 17 * * *"
+    }
+  ]
+}
