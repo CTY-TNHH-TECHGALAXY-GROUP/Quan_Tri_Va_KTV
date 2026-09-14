@@ -870,7 +870,9 @@ const KTVAttendancePage = () => {
                                                     <p className={`text-center font-bold ${diMuon ? 'text-rose-600' : 'text-emerald-600'}`}>
                                                         {isOff
                                                             ? 'Nghỉ làm (OFF)'
-                                                            : `Giờ bạn đã đăng ký: ${fmtGioBuoi(gioHen) || '--:--'}`}
+                                                            : todayRegistration.late_expected_time
+                                                                ? `Đã báo trễ — hẹn có mặt: ${fmtGioBuoi(gioHen)}`
+                                                                : `Giờ bạn đã đăng ký: ${fmtGioBuoi(gioHen) || '--:--'}`}
                                                     </p>
                                                     {/* Nói thẳng lúc bấm điểm danh, đừng để cuối tháng chốt sổ
                                                         mới biết mình bị tính đi trễ.

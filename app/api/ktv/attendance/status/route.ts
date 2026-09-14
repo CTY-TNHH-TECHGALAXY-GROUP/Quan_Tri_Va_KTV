@@ -141,7 +141,10 @@ export async function GET(request: Request) {
 
             const { data: regData } = await supabase
                 .from('KTVTypeDDailyRegistration')
-                .select('status, expected_time, check_in_at, penalty_applied')
+                // late_expected_time is required: the check-in dialog shows the EFFECTIVE
+                // arrival time (late report wins). Without it the dialog fell back to the
+                // original expected_time and flagged "late" someone who reported late on time.
+                .select('status, expected_time, late_expected_time, check_in_at, penalty_applied')
                 .eq('staff_id', userRow.code)
                 .eq('work_date', todayStr)
                 .maybeSingle();
