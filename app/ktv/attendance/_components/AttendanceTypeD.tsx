@@ -218,12 +218,6 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   // "Oria Xin chào" too would leave no way to work extra — keep it for them.
   const hideCheckInUntilOnCall = !!state?.isOffToday && canOnCall;
 
-  const getPreviewTime = () => {
-    const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-    vnTime.setMinutes(vnTime.getMinutes() + tempMins);
-    return `${vnTime.getHours().toString().padStart(2, '0')}:${vnTime.getMinutes().toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {state?.isOffToday && (
@@ -503,13 +497,6 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
                     >
                       +5
                     </button>
-                  </div>
-
-                  <div className="mb-4 text-center">
-                    <p className="text-sm font-medium text-slate-600">
-                      Bạn sẽ rảnh lúc: <span className="font-bold text-emerald-600">{getPreviewTime()}</span>
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">(Bây giờ + {tempMins} phút)</p>
                   </div>
 
                   <div>
