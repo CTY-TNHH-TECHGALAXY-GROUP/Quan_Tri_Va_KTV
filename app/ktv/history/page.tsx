@@ -567,9 +567,11 @@ export default function KTVHistoryPage() {
               <CalendarDays size={15} className="text-indigo-500 shrink-0" />
               {/* Only Type D KTVs have the hours tile — don't promise it to others. */}
               <p className="flex-1 text-xs font-semibold text-indigo-700 leading-snug">
+                {/* Nói rõ chọn được NHIỀU ngày — nhiều KTV tưởng lịch chỉ cho một ngày
+                    nên muốn xem cả tuần phải bấm từng ngày một. */}
                 {showHoursTile
-                  ? 'Hãy chọn ngày trong lịch để xem thu nhập và giờ tích luỹ'
-                  : 'Hãy chọn ngày trong lịch để xem thu nhập'}
+                  ? 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập và giờ tích luỹ'
+                  : 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập'}
               </p>
               {/* Mobile: the button lives in the header above -> arrow points up-right.
                   Desktop: the button sits right beside this row -> arrow points right. */}
