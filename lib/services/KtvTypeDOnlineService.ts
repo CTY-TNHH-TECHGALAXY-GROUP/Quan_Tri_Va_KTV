@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { applyArrivalToTurnQueue } from '@/lib/services/TurnQueueRowService';
 
 // 🔧 CONFIGURATION
 const MAX_TRAVEL_MINUTES = 60;
@@ -206,27 +207,10 @@ export class KtvTypeDOnlineService {
             
             await supabase.from('Users').update({ isOnShift: true }).eq('id', user.id);
 
-            // 3. Cập nhật TurnQueue
-            const { data: existingTurn } = await supabase.from('TurnQueue').select('id').eq('employee_id', staffId).eq('date', businessDateStr).maybeSingle();
-
-            if (existingTurn) {
-                await supabase.from('TurnQueue').update({ status: 'waiting' }).eq('id', existingTurn.id);
-            } else {
-                const { data: maxPosRow } = await supabase.from('TurnQueue').select('queue_position').eq('date', businessDateStr).order('queue_position', { ascending: false }).limit(1).maybeSingle();
-                const { data: maxCheckInRow } = await supabase.from('TurnQueue').select('check_in_order').eq('date', businessDateStr).order('check_in_order', { ascending: false }).limit(1).maybeSingle();
-                
-                const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
-                const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
-
-                await supabase.from('TurnQueue').insert({
-                    employee_id: staffId,
-                    date: businessDateStr,
-                    queue_position: nextPosition,
-                    check_in_order: nextCheckIn,
-                    status: 'waiting',
-                    turns_completed: 0,
-                });
-            }
+            // 3. Lên tua. ⚠️ Trước 14/09/2026 dòng đã có bị đặt `waiting` vô điều kiện —
+            // KTV D được quầy phân đơn khi chưa điểm danh rồi mới bấm Oria xin chào là
+            // đơn đang làm bị ghi đè. Nay dòng đang bận giữ nguyên; D giữ chỗ cũ trong hàng.
+            await applyArrivalToTurnQueue(supabase, { staffId, businessDate: businessDateStr, moveToEndWhenIdle: false });
 
             // 4. Ghi check_in_at vào KTVTypeDDailyRegistration (phụ)
             try {

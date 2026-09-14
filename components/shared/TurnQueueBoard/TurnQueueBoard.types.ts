@@ -25,5 +25,7 @@ export type TurnQueueData = {
     last_served_at?: string | null;
     work_type?: string;
     net_hours?: number;
+    /** `KTVAttendance` CHECK_IN hôm nay — xem lib/attendance/checkedInToday. */
+    checked_in_today?: boolean;
 };
 

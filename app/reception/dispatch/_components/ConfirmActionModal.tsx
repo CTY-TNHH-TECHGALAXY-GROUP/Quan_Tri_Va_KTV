@@ -38,7 +38,7 @@ export function ConfirmActionModal({
                 </div>
                 <h3 className="text-[17px] font-black">Xác nhận</h3>
               </div>
-              <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1">
+              <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1 whitespace-pre-line">
                 {message}
               </p>
             </div>

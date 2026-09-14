@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vnNow } from '@/lib/vn-time';
-import { useKTVAttendance } from './Attendance.logic';
+import { useKTVAttendance, usesTypeBAttendanceFlow } from './Attendance.logic';
 import { t } from './Attendance.i18n';
 import AttendanceTypeB from './_components/AttendanceTypeB';
 import AttendanceTypeD from './_components/AttendanceTypeD';
@@ -62,6 +62,7 @@ const KTVAttendancePage = () => {
         isSubmittingAdjustment,
         handleAdjustmentSubmit
     } = useKTVAttendance();
+    const isTypeBFlow = usesTypeBAttendanceFlow(workType);
 
     // 🔧 UI CONFIGURATION
     const MAX_PHOTOS = 5;
@@ -291,7 +292,7 @@ const KTVAttendancePage = () => {
         if (type === 'CHECK_OUT' && isEarlyCheckout) {
             setSelectedShiftType('SUDDEN_OFF_CHECKOUT');
         } else {
-            if (workType === 'TYPE_B') {
+            if (isTypeBFlow) {
                 setSelectedShiftType('VIP');
             } else if (workType === 'TYPE_D') {
                 setSelectedShiftType('');
@@ -434,7 +435,7 @@ const KTVAttendancePage = () => {
             });
             return;
         }
-        if (formType === 'CHECK_IN' && !isOffToday && activeShiftType && (selectedShiftType === 'FREE' || workType === 'TYPE_B')) {
+        if (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'FREE' || isTypeBFlow)) {
             if (!estimatedEndTime) {
                 setFormError('Vui lòng chọn thời gian dự kiến kết thúc/về!');
                 return;
@@ -447,7 +448,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && !isOffToday && activeShiftType && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || workType === 'TYPE_B')) ? estimatedEndTime : null,
+            (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || isTypeBFlow)) ? estimatedEndTime : null,
             wantsToWithdraw,
             isLiveCaptureMode
         );
@@ -477,14 +478,14 @@ const KTVAttendancePage = () => {
                         Khối báo trạng thái LOADING_GPS bên dưới chỉ nằm trong luồng mặc
                         định, nên loại B/D bấm xong màn hình y nguyên — nhân viên tưởng
                         hỏng rồi bấm lại. Lớp phủ này vừa báo vừa chặn bấm trùng. */}
-                    {checkStatus === 'LOADING_GPS' && (workType === 'TYPE_B' || workType === 'TYPE_D') && (
+                    {checkStatus === 'LOADING_GPS' && (isTypeBFlow || workType === 'TYPE_D') && (
                         <div className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 flex items-center justify-center gap-3 mb-4">
                             <Loader2 size={20} className="animate-spin text-blue-500" />
                             <span className="text-blue-700 font-bold text-sm">Đang gửi điểm danh & tải ảnh…</span>
                         </div>
                     )}
 
-                    {workType === 'TYPE_B' && user?.code ? (
+                    {isTypeBFlow && user?.code ? (
                         <div className={`w-full ${checkStatus === 'LOADING_GPS' ? 'opacity-40 pointer-events-none' : ''}`}>
                             <AttendanceTypeB ktvId={user.code} checkStatus={checkStatus} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} roomDebt={roomDebt} />
                         </div>
@@ -759,8 +760,8 @@ const KTVAttendancePage = () => {
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
-                                {formType === 'CHECK_IN' ? (workType === 'TYPE_B' ? 'Báo Cáo Đến Tiệm' : 'Oria Xin Chào') :
-                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (workType === 'TYPE_B' ? 'Báo Cáo Tan Ca' : 'Oria Xin Cảm ơn') :
+                                {formType === 'CHECK_IN' ? (isTypeBFlow ? 'Báo Cáo Đến Tiệm' : 'Oria Xin Chào') :
+                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (isTypeBFlow ? 'Báo Cáo Tan Ca' : 'Oria Xin Cảm ơn') :
                                  'Điểm danh bổ sung'}
                             </h3>
 
@@ -795,7 +796,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && workType !== 'TYPE_B' && workType !== 'TYPE_D' && (
+                            {formType === 'CHECK_IN' && !isTypeBFlow && workType !== 'TYPE_D' && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-gray-700 block">Ca làm việc hôm nay</label>
                                     {activeShiftType && !isOffToday ? (
@@ -924,7 +925,7 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && !isOffToday && activeShiftType && (workType === 'TYPE_B' || selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && (
+                            {formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (isTypeBFlow || selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -933,9 +934,9 @@ const KTVAttendancePage = () => {
                                         type="time" 
                                         value={estimatedEndTime} 
                                         onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${workType === 'TYPE_B' && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
+                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${isTypeBFlow && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
                                         required
-                                        disabled={workType === 'TYPE_B' && !!availableUntil}
+                                        disabled={isTypeBFlow && !!availableUntil}
                                     />
                                     <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>
@@ -1005,9 +1006,9 @@ const KTVAttendancePage = () => {
                                         )}
                                     </div>
 
-                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
+                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && !isTypeBFlow) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
                                         <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                            {formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B' && (
+                                            {formType === 'CHECK_IN' && isLate && !isTypeBFlow && (
                                                 <div className="text-xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 mb-2">
                                                     {t.lateWarning}
                                                 </div>
@@ -1038,7 +1039,7 @@ const KTVAttendancePage = () => {
                                     <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                     <button 
                                        onClick={handleSubmitForm}
-                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && !isOffToday && activeShiftType && (selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
+                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && !isTypeBFlow) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && !isOffToday && activeShiftType && (selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && !isTypeBFlow && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                        className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                         <CheckCircle2 size={18} /> Gửi
                                     </button>

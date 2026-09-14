@@ -8,6 +8,8 @@ const DEFAULT_DURATION = 60; // Phút mặc định cho mỗi KTV
 import React, { useState, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ConfirmActionModal } from './_components/ConfirmActionModal';
+import { buildCheckinConfirmMessage } from './CheckinConfirm.i18n';
+import type { CheckinGateKtv } from '@/lib/attendance/dispatchCheckinGate';
 import { PhotoViewerModal } from './_components/PhotoViewerModal';
 import { QrJourneyModal } from './_components/QrJourneyModal';
 import { StartServiceModal } from './_components/StartServiceModal';
@@ -260,6 +262,8 @@ export default function DispatchBoardPage() {
     isOpen: boolean;
     message: string;
     onConfirm: () => void;
+    /** Gọi khi bấm Hủy bỏ (vd popup chưa điểm danh cần biết quầy đã từ chối). */
+    onCancel?: () => void;
   }>({ isOpen: false, message: '', onConfirm: () => {} });
 
   const [webBookingCount, setWebBookingCount] = useState(0);
@@ -1547,16 +1551,41 @@ if (!hasPermission('dispatch_board')) {
       }
 
       // 🚀 BƯỚC 3: GỌI API CHO TỪNG PAYLOAD
+      // KTV chưa điểm danh / đang tắt nhận đơn: server trả NEED_CHECKIN_CONFIRM → hỏi quầy
+      // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
+      // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
+      const confirmedUncheckedKtvIds: string[] = [];
+      const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
+          setConfirmModal({
+              isOpen: true,
+              message: buildCheckinConfirmMessage(ktvs),
+              onConfirm: () => {
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  resolve(true);
+              },
+              onCancel: () => resolve(false),
+          });
+      });
       for (const payload of dispatchPayloads) {
-          const res = await processDispatch(payload.dbBookingId, {
+          const sendPayload = () => processDispatch(payload.dbBookingId, {
               status: bookingStatus as any,
               bedId: payload.bedId,
               roomName: payload.roomName,
               staffAssignments: payload.mergedAssignments,
               date: selectedDate,
               notes: isPartial ? undefined : finalNotesToSave,
-              itemUpdates: payload.itemUpdates
+              itemUpdates: payload.itemUpdates,
+              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds],
           });
+          let res: any = await sendPayload();
+          if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
+              const confirmed = await askCheckinConfirm(res.ktvs);
+              if (!confirmed) return;
+              res.ktvs.forEach((k: CheckinGateKtv) => {
+                  if (!confirmedUncheckedKtvIds.includes(k.id)) confirmedUncheckedKtvIds.push(k.id);
+              });
+              res = await sendPayload();
+          }
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
               return; 
@@ -2679,6 +2708,7 @@ if (!hasPermission('dispatch_board')) {
                     rooms={rooms}
                     beds={beds}
                     availableTurns={turns}
+                    staffs={staffs}
                     busyBedIds={orders
                       .filter(o => o.id !== selectedSubOrder.bookingId && (o.dispatchStatus === 'IN_PROGRESS' || o.dispatchStatus === 'PREPARING'))
                       .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
@@ -3230,7 +3260,7 @@ Vẫn kết thúc sớm?`)) return;
         open={confirmModal.isOpen}
         message={confirmModal.message}
         onConfirm={confirmModal.onConfirm}
-        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        onCancel={() => { confirmModal.onCancel?.(); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
       />
       {/* Custom Start Service Modal */}
       <StartServiceModal

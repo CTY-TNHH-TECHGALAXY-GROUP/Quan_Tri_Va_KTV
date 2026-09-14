@@ -4,7 +4,7 @@ import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
-import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
 const getCurrentTime = () => {
@@ -98,16 +98,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
      * Tách riêng để `refreshStaffOnly` dùng lại được mà không đụng tới `orders`.
      */
     /**
-     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho người KHÔNG điểm danh mà
-     * quầy vẫn phân được: loại B on-call và loại C (cộng tác viên). Dùng chung
-     * cho cả hai chỗ set turns trong fetchData; trước đây chỗ thứ hai ghép lại
-     * từ đầu nên làm rơi on-call.
+     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho KTV đang BẬT NHẬN ĐƠN (on-call,
+     * chưa tới tiệm) để quầy thấy "Rảnh lúc HH:mm". Dùng chung cho cả hai chỗ set
+     * turns trong fetchData; trước đây chỗ thứ hai ghép lại từ đầu nên làm rơi on-call.
      *
-     * Loại C — quyết định 13/09/2026: quầy chọn là phân được, KHÔNG xét điểm
-     * danh, KHÔNG xét bật ở Sổ tua. Chưa có dòng TurnQueue → tua ảo 'waiting';
-     * đã có dòng thì giữ nguyên — quầy cố ý gạt 'off' ở Sổ tua thì vẫn ẩn.
-     * Server (`processDispatch`) cũng không chặn loại C; RPC tự tạo dòng
-     * TurnQueue 'assigned' khi cần.
+     * 14/09/2026: bỏ tua ảo "luôn có" cho loại C (huỷ quyết định 13/09). KTV chưa
+     * điểm danh không nằm trong danh sách — quầy gõ ĐÚNG mã/tên để chọn, và
+     * `processDispatch` hỏi xác nhận. Tua ảo on-call mang `checked_in_today: false`.
      *
      * Mã placeholder cũ (EXT_/C_, đã ĐÃ NGHỈ) bị loại khỏi danh sách chọn:
      * `syncTurnsForDate` vẫn có thể dựng lại dòng TurnQueue cho chúng từ
@@ -121,14 +118,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 staff: sData.find(s => s.id === t.employee_id)
             }));
 
-        const walkInStaffs = sData.filter(s => {
+        const onCallStaffs = sData.filter(s => {
             const flags = s.feature_flags as any;
-            const isOnCall = !!flags && flags.is_on_call === true;
-            const isActiveTypeC = isTypeCWorkType(s.work_type) && s.status === 'ĐANG LÀM' && !isPlaceholderStaffId(s.id);
-            return isOnCall || isActiveTypeC;
+            return !!flags && flags.is_on_call === true;
         });
 
-        walkInStaffs.forEach(staff => {
+        onCallStaffs.forEach(staff => {
             if (!merged.some(m => m.employee_id === staff.id)) {
                 merged.push({
                     id: `fake-${staff.id}`,
@@ -138,6 +133,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     status: 'waiting',
                     date: selectedDate,
                     queue_position: 999,
+                    checked_in_today: false,
                     staff: staff
                 } as any);
             }
@@ -554,6 +550,11 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         debouncedFetchData();
                     }
                 }
+            })
+            // KTV bấm "Oria xin chào" trên dòng TurnQueue đang bận thì TurnQueue không đổi →
+            // không có event. Nghe KTVAttendance để nhãn "Chưa điểm danh" tự mất (14/09/2026).
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'KTVAttendance' }, () => {
+                refreshStaffOnly();
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'StaffNotifications' }, (payload) => {
                 if (selectedOrderIdRef.current) {

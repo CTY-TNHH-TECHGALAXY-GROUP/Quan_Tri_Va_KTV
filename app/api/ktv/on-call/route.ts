@@ -101,7 +101,8 @@ export async function POST(req: NextRequest) {
       const { data: config } = await supabase
           .from('SystemConfigs')
           .select('value')
-          .eq('key', 'block_checkout_incomplete_tasks_TYPE_B')
+          // Loại C đọc cấu hình chặn của chính nó; loại khác giữ key TYPE_B như trước.
+          .eq('key', data?.work_type === 'TYPE_C' ? 'block_checkout_incomplete_tasks_TYPE_C' : 'block_checkout_incomplete_tasks_TYPE_B')
           .maybeSingle();
 
       if (config?.value) {

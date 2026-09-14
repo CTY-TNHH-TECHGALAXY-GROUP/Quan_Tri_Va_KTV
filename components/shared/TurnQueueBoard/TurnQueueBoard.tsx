@@ -5,6 +5,7 @@ import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
 import { useTurnQueueBoard } from './TurnQueueBoard.logic';
 import { getVnTimeStr } from '@/lib/time-helper';
 import { fmtHours } from '@/lib/hours-format';
+import { t as tBoard } from './TurnQueueBoard.i18n';
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
@@ -202,6 +203,11 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         {shifts[turn.employee_id]?.type === 'FREE' && shifts[turn.employee_id]?.end && (
                             <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold border border-orange-100 flex items-center gap-1">
                                 <Clock size={10} /> Tự do (Về: {shifts[turn.employee_id].end})
+                            </span>
+                        )}
+                        {turn.checked_in_today === false && turn.status !== 'off' && !suddenOffs.has(turn.employee_id) && (
+                            <span title={tBoard.notCheckedInTitle} className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold border border-amber-200">
+                                {tBoard.notCheckedIn}
                             </span>
                         )}
                     </div>
@@ -420,7 +426,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
             </div>
             )}
 
-            {/* Tab C — cộng tác viên có tài khoản thật. Điều phối KHÔNG cần bật ở đây (13/09/2026); công tắc chỉ để theo dõi / gạt 'off' khi muốn ẩn khỏi ô chọn. */}
+            {/* Tab C — cộng tác viên có tài khoản thật. Bật ở đây = điểm danh hộ để hiện ở ô chọn KTV; chưa bật thì quầy gõ đúng mã và xác nhận khi gửi đơn (14/09/2026). */}
             {activeTab === 'TYPE_C' && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
@@ -428,7 +434,7 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         <span className="w-2 h-2 bg-amber-500 rounded-full" />
                         Cộng tác viên (loại C)
                     </h3>
-                    <span className="text-[10px] text-amber-500 font-bold">Điều phối không cần bật — gạt Tắt nếu muốn ẩn khỏi ô chọn</span>
+                    <span className="text-[10px] text-amber-500 font-bold">{tBoard.typeCSubtitle}</span>
                 </div>
                 <div className="divide-y divide-amber-50 min-h-[80px]">
                     {allExternalStaffs.length === 0 ? (
@@ -465,6 +471,11 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                             className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${allowEditTurns ? 'cursor-pointer hover:bg-amber-100' : ''} bg-amber-50 text-amber-600 border-amber-100`}
                                         >
                                             Đã làm {turn.turns_completed} tua
+                                        </span>
+                                    )}
+                                    {turn && turn.status !== 'off' && turn.checked_in_today === false && (
+                                        <span title={tBoard.notCheckedInTitle} className="text-[10px] px-1.5 py-0.5 rounded font-bold border bg-amber-50 text-amber-700 border-amber-200">
+                                            {tBoard.notCheckedIn}
                                         </span>
                                     )}
                                 </div>

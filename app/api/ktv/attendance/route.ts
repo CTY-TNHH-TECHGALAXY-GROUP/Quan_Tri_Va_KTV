@@ -73,7 +73,10 @@ export async function POST(request: Request) {
             .select('work_type')
             .eq('id', staffCode)
             .maybeSingle();
-        const isTypeB = staffData?.work_type === 'TYPE_B';
+        // Loại C (cộng tác viên) điểm danh y như loại B: Oria xin chào = arriveAtVenue (lên
+        // tua), Oria xin cảm ơn = goOffline — chốt 14/09/2026. Trước đó C rơi vào nhánh
+        // loại A, bị bắt chọn ca mà không có ca nào → không gửi được điểm danh.
+        const usesOnCallFlow = staffData?.work_type === 'TYPE_B' || staffData?.work_type === 'TYPE_C';
 
         const { data: configData, error: configError } = await supabase
             .from('SystemConfigs')
@@ -345,7 +348,7 @@ export async function POST(request: Request) {
 
         // ─── Step 4: TurnQueue & User Shift Update (if auto-approved) ─────
         if (isAutoApprove) {
-            if (isTypeB) {
+            if (usesOnCallFlow) {
                 if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
                     const res = await KtvOnlineService.arriveAtVenue(supabase, staffCode);
                     if (!res.success) {

@@ -7,6 +7,7 @@ import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } fro
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { t as tCheckin } from '../CheckinConfirm.i18n';
 
 // 🛠 UI CONFIGURATION
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
@@ -37,6 +38,8 @@ interface QuickDispatchTableProps {
   rooms: Room[];
   beds: Bed[];
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
+  /** Mọi KTV (kể cả chưa điểm danh) — để gõ ĐÚNG mã/tên chọn người không có trong sổ tua. */
+  staffs?: StaffData[];
   busyBedIds: string[];
   onUpdateServices: (updatedServices: ServiceBlock[]) => void;
   onPrintGroup: (group: ServiceGroup) => void;
@@ -69,8 +72,26 @@ const getCurrentTime = () => {
 
 const genId = () => Math.random().toString(36).substring(2, 9);
 
+/**
+ * Gõ ĐÚNG mã hoặc ĐÚNG tên rồi Enter (chốt 14/09/2026): ưu tiên người đang có trong
+ * sổ tua; không có (hoặc đang tắt) thì tra toàn bộ KTV đang làm — kể cả CHƯA điểm
+ * danh. Gõ một phần thì dropdown vẫn chỉ hiện người đã có trong sổ tua.
+ * `processDispatch` sẽ hỏi xác nhận "chưa điểm danh" khi gửi đơn.
+ */
+const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: StaffData })[], staffs: StaffData[]): string | null => {
+  const same = (v?: string | null) => (v || '').toLowerCase().trim() === term;
+  const hit = turns.find(t => t.status !== 'off' && (same(t.employee_id) || same(t.staff?.full_name)));
+  if (hit) return hit.employee_id;
+  const staff = staffs.find(st => st.status === 'ĐANG LÀM' && !isPlaceholderStaffId(st.id) && (same(st.id) || same(st.full_name)));
+  return staff?.id ?? null;
+};
+
+/** Loại KTV để hiện nhãn: sổ tua → danh sách KTV → mã placeholder cũ coi như loại C. */
+const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffData }) | undefined, staffs: StaffData[]) =>
+  turn?.staff?.work_type ?? staffs.find(st => st.id === ktvId)?.work_type ?? (isPlaceholderStaffId(ktvId) ? 'TYPE_C' : null);
+
 export const QuickDispatchTable = ({
-  services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
+  services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
   onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc, billCode, subOrderCodeProp
 }: QuickDispatchTableProps) => {
 
@@ -464,7 +485,7 @@ export const QuickDispatchTable = ({
           if (svcIdx === -1) return;
           const ktvId = state.selectedKtvIds[idx] || '';
           const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
+          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvId;
           const roomId = state.selectedRoomIds?.[idx] || null;
           let bedId: string | null = state.ktvBedIds?.[idx] || null;
           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
@@ -512,7 +533,7 @@ export const QuickDispatchTable = ({
             
             const ktvId = state.selectedKtvIds[ki] || '';
             const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
+            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvId;
             const roomId = state.selectedRoomIds?.[ki] || null;
             let bedId: string | null = state.ktvBedIds?.[ki] || null;
             
@@ -797,6 +818,7 @@ export const QuickDispatchTable = ({
                           duration={duration}
                           state={state}
                           availableTurns={availableTurns}
+                          staffs={staffs}
                           allSelectedKtvIds={allSelectedKtvIds}
                           rooms={rooms}
                           beds={beds}
@@ -873,6 +895,7 @@ interface ServiceGroupCardProps {
     workMode?: 'parallel' | 'sequential'; 
   };
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
+  staffs: StaffData[];
   allSelectedKtvIds: string[];
   rooms: Room[];
   beds: Bed[];
@@ -905,7 +928,7 @@ const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state,
-  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
+  availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
   allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc,
   orderId,
   subOrderCode,
@@ -1372,14 +1395,14 @@ const ServiceGroupCard = ({
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
             <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(t?.staff?.work_type ?? (isPlaceholderStaffId(ktvId) || !t ? 'TYPE_C' : null), ktvId, t?.staff?.full_name || state.ktvDisplayNames?.[ktvId]); return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">Ca {idx + 1}</span>}
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
                 </span>); })}
               <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const m = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term); if (m) addKtv(m.employee_id); setKtvSearch(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) addKtv(picked); setKtvSearch(''); } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
@@ -1407,6 +1430,9 @@ const ServiceGroupCard = ({
                           <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
                         )}
                         <span>{displayName}</span>
+                        {turn.checked_in_today === false && (
+                          <span className="px-1 py-0.5 text-[8px] font-black rounded border leading-none bg-amber-50 text-amber-700 border-amber-200">{tCheckin.notCheckedInTag}</span>
+                        )}
                         {workType !== 'TYPE_A' && (
                           <span className={`px-1 py-0.5 text-[8px] font-black rounded border leading-none ${workType === 'TYPE_B' ? 'bg-purple-100 text-purple-700 border-purple-200' : workType === 'TYPE_D' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
                             {workType === 'TYPE_B' ? 'B' : workType === 'TYPE_D' ? 'D' : 'C'}
@@ -1426,7 +1452,7 @@ const ServiceGroupCard = ({
                   })}
                   {/* Không còn "Nhập tên ngoài": cộng tác viên phải có tài khoản loại C, chọn từ danh sách */}
                   {ktvSearch.trim() && filteredTurns.length === 0 && (
-                    <p className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">Không có KTV tên này. Cộng tác viên mới → Admin → Nhân viên tạo tài khoản loại C rồi chọn lại.</p>
+                    <p className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">{tCheckin.pickerMissHint}</p>
                   )}
                   {filteredTurns.length === 0 && !ktvSearch.trim() && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
                 </div>
@@ -1440,7 +1466,7 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const name = ktvDisplayLabel(t?.staff?.work_type ?? (isPlaceholderStaffId(ktvId) || !t ? 'TYPE_C' : null), ktvId, t?.staff?.full_name || state.ktvDisplayNames?.[ktvId]);
+                const name = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]);
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';

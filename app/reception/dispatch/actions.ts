@@ -9,7 +9,10 @@ import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
-import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
+import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
+import { ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
@@ -192,6 +195,11 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         }
 
         const turns = [...typeA, ...typeB, ...typeC, ...typeD];
+
+        // Cờ "đã điểm danh hôm nay" cho nhãn "Chưa điểm danh" ở ô chọn KTV (cùng nguồn với
+        // cổng processDispatch và Sổ tua — lib/attendance/checkedInToday).
+        const checkedInToday = await checkedInStaffIds(supabase, turns.map(t => t.employee_id), date);
+        turns.forEach(t => { (t as any).checked_in_today = checkedInToday.has(t.employee_id); });
 
         // Dọn phần hàng đợi CÒN LẠI sau khi đã trả dữ liệu — không làm chậm bảng.
         // Bảng điều phối mở suốt ca ở quầy và tự tải lại theo realtime, nên đây là
@@ -579,6 +587,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         focusArea?: string | null;
     }[];
     guestCount?: number;
+    /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
+    confirmedUncheckedKtvIds?: string[];
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -633,8 +643,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
 
         const { data: knownStaffs } = uniqueKtvIds.length > 0
-            ? await supabase.from('Staff').select('id, work_type').in('id', uniqueKtvIds)
-            : { data: [] as { id: string; work_type: string | null }[] };
+            ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
+            : { data: [] as { id: string; full_name: string | null; work_type: string | null }[] };
         const knownStaffById = new Map((knownStaffs || []).map(st => [st.id, st]));
         const unknownKtvIds = uniqueKtvIds.filter(id => !knownStaffById.has(id));
         if (unknownKtvIds.length > 0) {
@@ -644,31 +654,32 @@ export async function processDispatch(bookingId: string, dispatchData: {
             };
         }
 
-        // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
-        // Loại A/B/D phải có dòng TurnQueue hôm đó ≠ 'off' (điểm danh hoặc on-call).
-        // Loại C (cộng tác viên) KHÔNG xét gì — quyết định 13/09/2026: quầy chọn là
-        // phân được, không cần điểm danh, không cần bật ở Sổ tua. RPC
-        // dispatch_confirm_booking tự tạo dòng TurnQueue 'assigned' nếu chưa có.
-        const coreKtvIds = uniqueKtvIds.filter(id => !isTypeCWorkType(knownStaffById.get(id)?.work_type));
-
-        if (coreKtvIds.length > 0) {
-            const { data: activeTurns } = await supabase
-                .from('TurnQueue')
-                .select('employee_id')
-                .eq('date', dispatchData.date)
-                .in('employee_id', coreKtvIds)
-                .neq('status', 'off');
-
-            const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
-            const missingCheckins = coreKtvIds.filter(id => !activeKtvIds.has(id));
-
-            if (missingCheckins.length > 0) {
-                return {
-                    success: false,
-                    error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!`
-                };
-            }
+        // 🔥 KIỂM TRA ĐIỂM DANH — HỎI XÁC NHẬN thay vì chặn (chốt 14/09/2026, mọi loại KTV)
+        // KTV chưa điểm danh hôm nay (`KTVAttendance`) hoặc đang `off` trong sổ tua → trả
+        // `NEED_CHECKIN_CONFIRM`; quầy bấm OK thì gửi lại kèm `confirmedUncheckedKtvIds`.
+        // Hỏi lại ở MỖI lần gửi cho tới khi KTV bấm "Oria xin chào". Loại D không điểm
+        // danh vẫn bị cron phạt vắng như cũ — popup nhắc quầy điều đó.
+        // Trước 14/09: A/B/D không có dòng TurnQueue ≠ off là chặn cứng; loại C được miễn.
+        const { data: turnRowsToday } = uniqueKtvIds.length > 0
+            ? await supabase.from('TurnQueue').select('employee_id, status').eq('date', dispatchData.date).in('employee_id', uniqueKtvIds)
+            : { data: [] as { employee_id: string; status: string }[] };
+        const checkedInIds = await checkedInStaffIds(supabase, uniqueKtvIds, dispatchData.date);
+        const needCheckinConfirm = findKtvsNeedingCheckinConfirm({
+            ktvIds: uniqueKtvIds,
+            staffById: knownStaffById,
+            checkedInIds,
+            turnStatusById: new Map((turnRowsToday || []).map(t => [t.employee_id, t.status])),
+            confirmedIds: dispatchData.confirmedUncheckedKtvIds,
+        });
+        if (needCheckinConfirm.length > 0) {
+            return {
+                success: false,
+                code: 'NEED_CHECKIN_CONFIRM' as const,
+                ktvs: needCheckinConfirm,
+                error: `KTV [${needCheckinConfirm.map(k => k.id).join(', ')}] chưa điểm danh hoặc đang tắt nhận đơn — cần quầy xác nhận.`,
+            };
         }
+        const ktvIdsWithoutTurnRow = uniqueKtvIds.filter(id => !(turnRowsToday || []).some(t => t.employee_id === id));
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
@@ -770,6 +781,13 @@ export async function processDispatch(bookingId: string, dispatchData: {
             } catch (err) {
                 console.error('❌ [Sync Guest] Error:', err);
             }
+        }
+
+        // KTV chưa có dòng TurnQueue hôm đó (quầy vừa xác nhận): tạo trước ở CUỐI hàng.
+        // RPC không set check_in_order/queue_position → DB DEFAULT 1 → người chưa điểm
+        // danh chen lên #1 tua. RPC upsert dòng này thành 'assigned', giữ nguyên thứ tự.
+        if (ktvIdsWithoutTurnRow.length > 0) {
+            await ensureTurnRowsAtEnd(supabase, ktvIdsWithoutTurnRow, dispatchData.date);
         }
 
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION

@@ -8,6 +8,7 @@ import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
 import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Wallet, X } from 'lucide-react';
 import { ProcedureModal, RoomIssueModal, RejectOrderModal, TurnQueueTypeDModal, OfficeScoreModal } from '../_components/modals';
+import { CheckInReminder } from '../_components/CheckInReminder';
 import { ScreenTimer, WorkingTimeline } from './ScreenTimer';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
 import { apiClient } from '@/lib/apiClient';
@@ -425,6 +426,10 @@ export function ScreenDashboard({ logic }: { logic: any }) {
           </div>
         </div>
       
+      {/* Có đơn mà hôm nay chưa bấm Oria xin chào → nhắc (đặt TRÊN thẻ đơn chờ xác nhận,
+          vì lúc đó phần dưới bị giấu). Component tự lấy dữ liệu, không đụng logic lõi. */}
+      <CheckInReminder hasOrder={!!booking?.id} />
+
       {(!booking || !booking.id || needsAcceptance) ? (
         <div className="space-y-4">
           

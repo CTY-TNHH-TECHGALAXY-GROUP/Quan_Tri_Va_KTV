@@ -118,6 +118,8 @@ Tôi hiểu là: ô nhập tay ở bảng điều phối **đổi từ gõ tên 
 
 ## 7. Điều chỉnh 13/09/2026 — điều phối loại C không xét gì
 
+> ⛔ **BỊ THAY 14/09/2026** bởi `plans/plan_dieu_phoi_ktv_chua_diem_danh.md`: loại C điểm danh như B; KTV chưa điểm danh (mọi loại) phân được qua popup xác nhận.
+
 **User chốt:** không merge `main`; màn điều phối với loại C **không xét** bật/tắt Sổ tua lẫn điểm danh.
 
 | Chỗ | Hành vi mới |

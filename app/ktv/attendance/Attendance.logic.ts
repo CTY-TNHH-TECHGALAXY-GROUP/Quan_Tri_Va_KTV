@@ -7,6 +7,13 @@ import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useToast } from '@/components/ui/Toast';
 
+/**
+ * KTV đi luồng điểm danh của loại B (Bật nhận đơn → Oria xin chào → Oria xin cảm ơn),
+ * không chọn ca. Loại C dùng chung từ 14/09/2026.
+ */
+export const usesTypeBAttendanceFlow = (workType?: string | null): boolean =>
+    workType === 'TYPE_B' || workType === 'TYPE_C';
+
 // 🔧 CONFIGURATION
 const GPS_TIMEOUT_MS = 10000;
 const GPS_HIGH_ACCURACY = true;
@@ -257,7 +264,7 @@ export const useKTVAttendance = () => {
 
     // --- Handlers ---
     const checkIsLate = useCallback(() => {
-        if (user?.roleId === 'support' || workType === 'TYPE_B' || workType === 'TYPE_D') {
+        if (user?.roleId === 'support' || usesTypeBAttendanceFlow(workType) || workType === 'TYPE_D') {
             setIsLate(false);
             return false;
         }
@@ -466,7 +473,8 @@ export const useKTVAttendance = () => {
         // KTV Loại D làm theo đăng ký ngày, KHÔNG có ca cố định trong KTVShiftRecords.
         // Không tìm thấy ca là chuyện bình thường với họ — đừng báo "Không tải được ca làm việc",
         // vì màn hình sẽ nuốt mất ô chọn Ca tự do và khoá luôn nút Gửi.
-        shiftFetchError: workType === 'TYPE_D' ? false : shiftFetchError,
+        // Loại C cũng không có ca (đi luồng B) — trước 14/09/2026 C bị khoá nút gửi vì lỗi này.
+        shiftFetchError: (workType === 'TYPE_D' || workType === 'TYPE_C') ? false : shiftFetchError,
         retryFetchShift,
         isLate,
         checkIsLate,

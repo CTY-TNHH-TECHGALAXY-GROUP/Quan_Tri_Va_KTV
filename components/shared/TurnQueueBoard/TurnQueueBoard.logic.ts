@@ -49,7 +49,9 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
     const fetchTurns = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/turns?date=${selectedDate}`);
+            // `includeTypeC=1`: mặc định API loại C khỏi "Tất cả" → bảng Cộng tác viên chưa
+            // từng nhận được dòng tua của C (trạng thái, số tua, tag điểm danh). Tách C ở dưới.
+            const res = await fetch(`/api/turns?date=${selectedDate}&includeTypeC=1`);
             const json = await res.json();
             if (json.success && json.data) {
                 const merged = json.data.map((t: TurnQueueData) => ({

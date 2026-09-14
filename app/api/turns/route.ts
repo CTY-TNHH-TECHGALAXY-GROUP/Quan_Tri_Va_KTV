@@ -9,6 +9,8 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         let date = searchParams.get('date');
         const workType = searchParams.get('workType'); // TYPE_A | TYPE_B | TYPE_C | TYPE_D | null
+        // Sổ tua cần cả dòng loại C cho bảng "Cộng tác viên" (nó tự tách C khỏi danh sách chính).
+        const includeTypeC = searchParams.get('includeTypeC') === '1';
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {
@@ -46,6 +48,12 @@ export async function GET(request: Request) {
             Staff: undefined // Remove nested object from response
         }));
 
+        // Cờ "đã điểm danh hôm nay" cho tag "Chưa điểm danh · Oria xin chào" — theo NGÀY
+        // LÀM VIỆC của dòng (`date`), không theo ngày lịch. Nguồn: lib/attendance/checkedInToday.
+        const { checkedInStaffIds } = await import('@/lib/attendance/checkedInToday');
+        const checkedInToday = await checkedInStaffIds(supabase, allTurns.map((t: any) => t.employee_id), date);
+        allTurns.forEach((t: any) => { t.checked_in_today = checkedInToday.has(t.employee_id); });
+
         // --- Determine which types to include ---
         const VALID_TYPES = ['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D'];
         let filtered: any[];
@@ -54,8 +62,8 @@ export async function GET(request: Request) {
             // Specific type filter
             filtered = allTurns.filter((t: any) => t.work_type === workType);
         } else {
-            // Default "Tất cả" = A + B + D — ❗ EXCLUDE C
-            filtered = allTurns.filter((t: any) => t.work_type !== 'TYPE_C');
+            // Default "Tất cả" = A + B + D — ❗ EXCLUDE C (trừ khi Sổ tua xin `includeTypeC=1`)
+            filtered = includeTypeC ? allTurns : allTurns.filter((t: any) => t.work_type !== 'TYPE_C');
         }
 
         // --- Sort by type group ---

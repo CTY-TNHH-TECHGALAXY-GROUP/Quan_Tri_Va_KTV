@@ -192,6 +192,10 @@
 
 **Constraint**: `UNIQUE(employee_id, date)` — mỗi KTV chỉ 1 record/ngày
 
+> ⚠️ **DEFAULT (đọc `information_schema` 14/09/2026):** `check_in_order DEFAULT 1`, `queue_position DEFAULT 1`, `status DEFAULT 'waiting'`. RPC `dispatch_confirm_booking` KHÔNG set `check_in_order`/`queue_position` → dòng do RPC tự tạo nhận **#1** (chen đầu tua). Từ 14/09/2026 `processDispatch` tạo sẵn dòng ở cuối hàng trước khi gọi RPC (`lib/services/TurnQueueRowService.ts` `ensureTurnRowsAtEnd`).
+>
+> ⚠️ **"Đã điểm danh hôm nay" KHÔNG đọc từ bảng này** (`check_in_order` bị quầy bật tay / "Lưu thứ tự" / RPC ghi). Nguồn chuẩn: `KTVAttendance` CHECK_IN/LATE_CHECKIN CONFIRMED trong khoảng ngày làm việc — `lib/attendance/checkedInToday.ts`.
+
 ---
 
 ### 4.5. TurnLedger ✅ CHỦ LỰC

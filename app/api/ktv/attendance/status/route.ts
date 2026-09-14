@@ -262,8 +262,23 @@ export async function GET(request: Request) {
             if (userRow?.code) {
                 const { data: staffStatus } = await supabase.from('Staff').select('online_status').eq('id', userRow.code).maybeSingle();
                 if (staffStatus?.online_status === 'AT_VENUE') {
-                    console.log(`[Auto-Protect] KTV ${userRow.code} stuck AT_VENUE from previous day. Resetting to OFFLINE.`);
-                    await KtvOnlineService.goOffline(supabase, userRow.code);
+                    // ⚠️ goOffline đặt TurnQueue hôm nay = off. KTV chưa điểm danh nhưng ĐANG ôm
+                    // đơn (quầy xác nhận phân đơn, 14/09/2026) thì tắt là mất đơn khỏi bảng điều
+                    // phối — cảnh báo "chưa điểm danh" trên dashboard gọi API này mỗi phút.
+                    const { data: busyTurn } = await supabase
+                        .from('TurnQueue')
+                        .select('id')
+                        .eq('employee_id', userRow.code)
+                        .eq('date', businessDateStr)
+                        .in('status', ['assigned', 'working'])
+                        .limit(1)
+                        .maybeSingle();
+                    if (busyTurn) {
+                        console.log(`[Auto-Protect] KTV ${userRow.code} AT_VENUE nhưng đang có đơn — không reset.`);
+                    } else {
+                        console.log(`[Auto-Protect] KTV ${userRow.code} stuck AT_VENUE from previous day. Resetting to OFFLINE.`);
+                        await KtvOnlineService.goOffline(supabase, userRow.code);
+                    }
                 }
             }
             return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: !daDiemDanhHomNay, withdrawWalletOff });

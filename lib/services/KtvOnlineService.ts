@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { applyArrivalToTurnQueue } from '@/lib/services/TurnQueueRowService';
 
 // 🔧 CONFIGURATION
 const MAX_TRAVEL_MINUTES = 60;
@@ -201,21 +202,11 @@ export class KtvOnlineService {
                 await supabase.from('Users').update({ isOnShift: true }).eq('id', user.id);
             }
 
-            // 3. Thêm vào TurnQueue (Lên tua)
-            const { data: maxPosRow } = await supabase.from('TurnQueue').select('queue_position').eq('date', businessDateStr).order('queue_position', { ascending: false }).limit(1).maybeSingle();
-            const { data: maxCheckInRow } = await supabase.from('TurnQueue').select('check_in_order').eq('date', businessDateStr).order('check_in_order', { ascending: false }).limit(1).maybeSingle();
-            
-            const nextPosition = (maxPosRow?.queue_position ?? 0) + 1;
-            const nextCheckIn = (maxCheckInRow?.check_in_order ?? 0) + 1;
-
-            await supabase.from('TurnQueue').upsert({
-                employee_id: staffId,
-                date: businessDateStr,
-                queue_position: nextPosition,
-                check_in_order: nextCheckIn,
-                status: 'waiting',
-                turns_completed: 0,
-            }, { onConflict: 'employee_id,date' });
+            // 3. Lên tua. ⚠️ Trước 14/09/2026 là upsert `status:'waiting'` vô điều kiện:
+            // KTV được quầy phân đơn trước (dòng assigned/working) rồi mới bấm Oria xin
+            // chào thì đơn đang làm bị ghi đè thành "Sẵn sàng" → quầy phân chồng, phiếu
+            // ACTIVE bị đóng sớm. Nay dòng đang bận giữ nguyên; dòng rảnh vẫn dời cuối hàng.
+            await applyArrivalToTurnQueue(supabase, { staffId, businessDate: businessDateStr, moveToEndWhenIdle: true });
 
             return { success: true };
         } catch (e: any) {
