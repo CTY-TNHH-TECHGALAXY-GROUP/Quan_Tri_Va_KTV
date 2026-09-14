@@ -198,7 +198,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
                         timeStart: b.timeStart || null,
                         rawNotes: b.notes,
-                        isWebBooking: b.source === 'WEB_BOOKING' || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
+                        isWebBooking: b.source === 'WEB_BOOKING' || (b.billCode && b.billCode.startsWith('WB-')) || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
                         timeBooking: b.timeBooking,
                         isReturning: b.isReturning,
                         visitCount: b.visitCount,
