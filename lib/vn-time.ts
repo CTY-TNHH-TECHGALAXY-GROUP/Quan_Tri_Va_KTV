@@ -53,6 +53,21 @@ export function canEditRegistration(workDateStr: string): boolean {
 }
 
 /**
+ * Câu giải thích khi KHÔNG được sửa lịch ngày D — app KTV và API dùng chung,
+ * để hai bên nói cùng một câu.
+ *
+ * ⚠️ Trước đây app ghi "Chỉ có thể đăng ký/sửa lịch từ ngày mai trở đi", trong
+ * khi luật thật là sửa được tới 06:59 sáng CHÍNH NGÀY D. KTV đọc xong tưởng app
+ * hỏng, không biết là mình đã trễ mốc 7 giờ.
+ *
+ * @param workDateStr 'yyyy-MM-dd'
+ */
+export function registrationLockedMessage(workDateStr: string): string {
+  if (workDateStr < vnToday()) return 'Ngày này đã qua, không sửa lịch được nữa.';
+  return 'Đã qua 7 giờ sáng ngày làm việc, không đổi lịch được nữa. Bạn chỉ còn quyền báo đi trễ 1 lần.';
+}
+
+/**
  * Hạn chót đổi lịch MIỄN PHẠT: **00:00 nửa đêm** của ngày làm.
  * Tức là được đổi thoải mái đến hết ngày hôm trước.
  */

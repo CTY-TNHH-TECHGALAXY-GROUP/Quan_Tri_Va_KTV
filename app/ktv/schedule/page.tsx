@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useKTVSchedule, LeaveRequest, ScheduleTab } from './Schedule.logic';
 import { getRegistrationEditWindow } from '@/lib/vn-time';
-import { canEditRegistration, vnToday } from '@/lib/vn-time';
+import { canEditRegistration, registrationLockedMessage, vnToday } from '@/lib/vn-time';
 import { t } from './Schedule.i18n';
 
 // 🔧 UI CONFIGURATION
@@ -158,7 +158,7 @@ const KTVSchedulePage = () => {
             
             if (!isSelected) {
                 if (!canEditRegistration(dateStr)) {
-                    setOffError('Chỉ có thể đăng ký/chỉnh sửa lịch từ ngày mai trở đi.');
+                    setOffError(registrationLockedMessage(dateStr));
                     return;
                 }
             }
@@ -280,7 +280,7 @@ const KTVSchedulePage = () => {
                                                 onClick={() => {
                                                     if (myWorkReg) {
                                                         if (!canEditRegistration(dateStr)) {
-                                                            setOffError(`Chỉ có thể đăng ký/sửa lịch từ ngày mai trở đi.`);
+                                                            setOffError(registrationLockedMessage(dateStr));
                                                             return;
                                                         }
                                                         setOffError(null);
@@ -400,7 +400,7 @@ const KTVSchedulePage = () => {
                                             key={reg.work_date}
                                             onClick={() => {
                                                 if (!canEdit) {
-                                                    setOffError(`Chỉ có thể đăng ký/sửa lịch từ ngày mai trở đi.`);
+                                                    setOffError(registrationLockedMessage(reg.work_date));
                                                     return;
                                                 }
                                                 setOffError(null);
@@ -489,7 +489,7 @@ const KTVSchedulePage = () => {
                                             onClick={() => {
                                                 if (!isTypeD) return;
                                                 if (!canEdit) {
-                                                    setOffError(`Chỉ có thể đăng ký/sửa lịch từ ngày mai trở đi.`);
+                                                    setOffError(registrationLockedMessage(item.date));
                                                     return;
                                                 }
                                                 setOffError(null);

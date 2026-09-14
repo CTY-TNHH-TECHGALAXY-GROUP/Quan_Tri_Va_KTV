@@ -49,12 +49,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { canEditRegistration, getRegistrationEditWindow, vnNow } = await import('@/lib/vn-time');
+    const { canEditRegistration, getRegistrationEditWindow, registrationLockedMessage, vnNow } = await import('@/lib/vn-time');
 
     for (const entry of processedEntries) {
       if (!canEditRegistration(entry.work_date)) {
         return NextResponse.json(
-          { error: 'Từ 07:00 sáng ngày làm việc thì không đổi lịch được nữa. Bạn chỉ còn quyền BÁO ĐI MUỘN 1 lần.' },
+          { error: registrationLockedMessage(entry.work_date) },
           { status: 400 });
       }
       
@@ -107,9 +107,24 @@ export async function POST(request: Request) {
         if (!dangDangKyLam.has(entry.work_date)) continue;              // vốn đã OFF → không phạt
         if (getRegistrationEditWindow(entry.work_date) !== 'PENALTY') continue;
 
+        // ⚠️ Ghi sổ phạt PHẢI dùng client quản trị. `supabase` ở trên là phiên
+        // đăng nhập của KTV, mà KTVDPenaltyLedger bật RLS chỉ cho authenticated
+        // ĐỌC (migration 20260904120000). Trước đây truyền thẳng `supabase as any`
+        // vào đây → ghi phạt bị chặn (42501) → ném lỗi → cả request 500 → lịch
+        // vẫn là ĐI LÀM. Tức là đổi sang OFF lúc 00:00–06:59 chưa bao giờ chạy
+        // được, còn đổi ngày tương lai thì chạy vì không phải ghi phạt.
+        //
+        // Danh tính vẫn lấy từ phiên đăng nhập ở trên (`staff.id`), nên dùng
+        // khoá quản trị ở đây không mở thêm quyền nào: KTV chỉ phạt được chính mình.
+        const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+        const admin = getSupabaseAdmin();
+        if (!admin) {
+          return NextResponse.json({ error: 'Supabase admin chưa được cấu hình' }, { status: 500 });
+        }
+
         const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
         const hours = await KtvTypeDDisciplineService.deductDailyViolation(
-          supabase as any, staff.id, entry.work_date, 'ABSENT_EARLY_NOTICE',
+          admin, staff.id, entry.work_date, 'ABSENT_EARLY_NOTICE',
           'Bỏ ca đã đăng ký sau 00:00 ngày làm việc', staff.id,
         );
         // Kỷ luật tắt thì deductDailyViolation trả 0 và không ghi sổ — đừng
