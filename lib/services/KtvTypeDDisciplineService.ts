@@ -130,6 +130,16 @@ export class KtvTypeDDisciplineService {
         // 10 thành 8 thì hệ thống vẫn trừ 10. Nay cấu hình có tiếng nói thật.
         const hoursPenalty = await KtvTypeDDisciplineService.getPenaltyHours(supabase, violationType);
 
+        // Upsert is idempotent, so a repeat call (e.g. checking in twice) must not
+        // notify twice either — only notify when the ledger actually changes.
+        const { data: existing } = await supabase
+            .from('KTVDPenaltyLedger')
+            .select('hours_penalty')
+            .eq('staff_id', staffId)
+            .eq('work_date', workDate)
+            .eq('penalty_type', violationType)
+            .maybeSingle();
+
         const { error } = await supabase
             .from('KTVDPenaltyLedger')
             .upsert({
@@ -145,6 +155,12 @@ export class KtvTypeDDisciplineService {
         if (error) {
             console.error('[Type D] Lỗi ghi phạt ngày:', error);
             throw error;
+        }
+
+        const changed = !existing || Number((existing as any).hours_penalty) !== hoursPenalty;
+        if (hoursPenalty > 0 && changed) {
+            await KtvTypeDDisciplineService.notifyHoursDeducted(
+                staffId, workDate, hoursPenalty, note || `Vi phạm: ${violationType}`);
         }
         return hoursPenalty;
     }
@@ -204,7 +220,39 @@ export class KtvTypeDDisciplineService {
             console.error('[Type D] Lỗi ghi phạt từ chối tua:', error);
             throw error;
         }
+
+        // Every reject deducts more hours, so every reject gets its own notice
+        // (with this reject's hours, not the day's running total).
+        if (thisPenalty > 0) {
+            await KtvTypeDDisciplineService.notifyHoursDeducted(
+                staffId, workDate, Math.round(thisPenalty * 100) / 100, `Từ chối tua ${bookingItemId}`);
+        }
         return thisPenalty;
+    }
+
+    /**
+     * Personal notice to the KTV that hours were deducted. Every hours-deduction
+     * path goes through this so the wording stays identical everywhere.
+     *
+     * Never throws: a failed notice must not undo or break the deduction itself.
+     */
+    private static async notifyHoursDeducted(
+        staffId: string,
+        workDate: string,
+        hours: number,
+        reason: string,
+    ) {
+        try {
+            const { createNotification } = await import('../notification-helper');
+            const { vnDate } = await import('../vn-time');
+            await createNotification({
+                type: 'WARNING',
+                message: `Bạn bị trừ ${hours} giờ tích lũy ngày ${vnDate(workDate)}. Lý do: ${reason}.`,
+                employeeId: staffId,
+            });
+        } catch (e) {
+            console.error('[Type D] Không gửi được thông báo trừ giờ:', e);
+        }
     }
 
     /**
@@ -336,13 +384,7 @@ export class KtvTypeDDisciplineService {
             });
         } else if (ketQua === 'DEDUCT') {
             await KtvTypeDDisciplineService.ghiPhatGio(supabase, staffId, workDate, caseKey, hours, reason, source);
-            const { createNotification } = await import('../notification-helper');
-            const { vnDate } = await import('../vn-time');
-            await createNotification({
-                type: 'WARNING',
-                message: `Bạn bị trừ ${hours} giờ tích lũy ngày ${vnDate(workDate)}. Lý do: ${reason}.`,
-                employeeId: staffId,
-            });
+            await KtvTypeDDisciplineService.notifyHoursDeducted(staffId, workDate, hours, reason);
         } else {
             await KtvTypeDDisciplineService.khoaTaiKhoan(supabase, staffId, staffName, workDate, reason, source, netHours);
         }
