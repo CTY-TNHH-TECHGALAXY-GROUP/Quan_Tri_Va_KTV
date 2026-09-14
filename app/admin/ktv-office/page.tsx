@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useAdminKtvOfficeLogic } from './AdminKtvOffice.logic';
-import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2, Trash2, Plus, SlidersHorizontal, Timer, CalendarDays } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, Image as ImageIcon, Pencil, Undo2, Trash2, Plus, SlidersHorizontal, Timer, CalendarDays, History as HistoryIcon } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -385,6 +385,123 @@ const ViolationTimeline = ({ office, logic }: { office: any; logic: any }) => {
         );
       })}
     </div>
+  );
+};
+
+// 🔧 UI CONFIGURATION — lịch sử khoá
+const LOCK_FILTERS: Array<{ id: 'ALL' | 'LOCK' | 'UNLOCK'; label: string }> = [
+  { id: 'ALL', label: 'Tất cả' },
+  { id: 'LOCK', label: 'Bị khoá' },
+  { id: 'UNLOCK', label: 'Mở khoá' },
+];
+const LOCK_KIND_STYLE: Record<string, { dot: string; badge: string }> = {
+  LOCK: { dot: 'bg-[var(--rust)]', badge: 'bg-[var(--rust-2)] text-[var(--rust)]' },
+  PENDING: { dot: 'bg-[var(--amber)]', badge: 'bg-[var(--amber-2)] text-[var(--amber)]' },
+  UNLOCK: { dot: 'bg-[var(--green)]', badge: 'bg-[var(--green-2)] text-[var(--green)]' },
+};
+
+/** 14/09/2026, 00:00 — explicit VN zone so a manager abroad reads spa time. */
+const fmtLockStamp = (at: string) =>
+  new Date(at).toLocaleString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+
+/**
+ * Lock / unlock timeline of every account.
+ *
+ * The data already existed in SecurityAuditLogs; nothing showed it, so it
+ * looked like it was never stored. The server maps each raw row (who, why,
+ * fee) — see StaffLockHistoryService — so this panel only lays it out.
+ */
+const LockHistoryPanel = ({ logic }: { logic: any }) => {
+  const filtered = logic.lockQuery.trim() !== '' || logic.lockFilter !== 'ALL';
+  return (
+    <>
+      <div className="flex flex-col gap-3 mb-5">
+        <div className="flex items-center gap-3 px-4 h-12 bg-[var(--surface-soft)] rounded-2xl">
+          <Search size={18} className="text-[var(--muted)]" />
+          <input
+            type="search"
+            placeholder="Tìm theo tên hoặc mã KTV"
+            value={logic.lockQuery}
+            onChange={e => logic.setLockQuery(e.target.value)}
+            className="w-full bg-transparent border-none focus:outline-none text-sm text-[var(--ink)]"
+          />
+        </div>
+        <div className="flex gap-2">
+          {LOCK_FILTERS.map(f => (
+            <button
+              key={f.id}
+              onClick={() => logic.setLockFilter(f.id)}
+              className={`h-10 px-4 rounded-xl text-sm font-bold transition-colors ${
+                logic.lockFilter === f.id
+                  ? 'bg-[var(--green)] text-white'
+                  : 'bg-[var(--surface-soft)] text-[var(--muted)] hover:bg-[var(--green-2)]'
+              }`}
+            >{f.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {logic.lockError && (
+        <div className="bg-[var(--rust-2)] text-[var(--rust)] p-4 rounded-2xl text-sm font-bold mb-4">{logic.lockError}</div>
+      )}
+
+      {logic.lockLoading && logic.lockEvents.length === 0 && (
+        <p className="py-10 text-center text-[var(--muted)] text-sm">Đang tải lịch sử…</p>
+      )}
+
+      {!logic.lockLoading && !logic.lockError && logic.lockEvents.length === 0 && (
+        <p className="py-10 text-center text-[var(--muted)] text-sm">
+          {filtered ? 'Không có lần khoá / mở khoá nào khớp bộ lọc.' : 'Chưa có lần khoá / mở khoá nào.'}
+        </p>
+      )}
+
+      {logic.lockEvents.length > 0 && (
+        <div className={`pl-6 border-l-2 border-[var(--line)] ml-2 transition-opacity ${logic.lockLoading ? 'opacity-50' : ''}`}>
+          {logic.lockEvents.map((ev: any) => {
+            const st = LOCK_KIND_STYLE[ev.kind] || LOCK_KIND_STYLE.LOCK;
+            const isUnlock = ev.kind === 'UNLOCK';
+            return (
+              <div key={ev.id} className="relative pb-5">
+                <i className={`absolute w-3 h-3 rounded-full ring-4 ring-[var(--surface)] -left-[31px] top-1.5 ${st.dot}`} />
+                <div className="flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--muted)]">{fmtLockStamp(ev.at)}</p>
+                    <p className="text-sm font-bold truncate">{ev.staffId} · {ev.staffName}</p>
+                  </div>
+                  <span className={`shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-lg ${st.badge}`}>{ev.title}</span>
+                </div>
+                <div className="bg-[var(--surface-soft)] rounded-xl p-3 mt-2 text-sm">
+                  <p>
+                    <span className="text-[var(--muted)]">{isUnlock ? 'Lý do mở: ' : 'Lý do: '}</span>
+                    {ev.reason || <span className="italic text-[var(--muted)]">Không ghi lý do</span>}
+                  </p>
+                  {ev.details.length > 0 && (
+                    <p className="text-xs text-[var(--muted)] mt-1">{ev.details.join(' · ')}</p>
+                  )}
+                  <p className="text-xs mt-2 pt-2 border-t border-[var(--line)]">
+                    <span className="text-[var(--muted)]">{isUnlock ? 'Mở bởi: ' : 'Bởi: '}</span>
+                    <b>{ev.actor}</b>
+                    {ev.fee > 0 && (
+                      <span className="text-[var(--amber)] font-bold"> · Phí kích hoạt lại {Number(ev.fee).toLocaleString('vi-VN')}đ</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {logic.lockNextBefore && (
+        <button
+          onClick={logic.loadMoreLockHistory}
+          disabled={logic.lockLoadingMore}
+          className="w-full h-11 rounded-xl font-bold text-sm btn-ghost disabled:opacity-50"
+        >{logic.lockLoadingMore ? 'Đang tải…' : 'Xem thêm'}</button>
+      )}
+    </>
   );
 };
 
@@ -875,6 +992,10 @@ const AdminKtvOfficePage = () => {
               <button onClick={() => logic.changeMonth(1)} className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-xl"><ChevronRight size={20}/></button>
             </div>
             <button
+              onClick={() => logic.openSheet('lockHistory')}
+              className="h-12 px-5 rounded-2xl font-bold bg-[var(--surface)] shadow-sm flex items-center justify-center gap-2 text-sm hover:bg-[var(--green-2)]"
+            ><HistoryIcon size={17}/> Lịch sử khoá</button>
+            <button
               onClick={() => logic.openSheet('settings')}
               className="h-12 px-5 rounded-2xl font-bold bg-[var(--surface)] shadow-sm flex items-center justify-center gap-2 text-sm"
             ><SlidersHorizontal size={17}/> Cài đặt tiêu chí</button>
@@ -1031,12 +1152,15 @@ const AdminKtvOfficePage = () => {
                   <h2 className="text-xl font-bold tracking-tight">
                     {logic.sheetState.type === 'deduct' ? 'Trừ điểm' : 
                      logic.sheetState.type === 'unlock' ? 'Mở khóa tài khoản' :
-                     logic.sheetState.type === 'settings' ? 'Cài đặt tiêu chí chấm điểm' : 'Lịch sử điểm'}
+                     logic.sheetState.type === 'settings' ? 'Cài đặt tiêu chí chấm điểm' :
+                     logic.sheetState.type === 'lockHistory' ? 'Lịch sử khoá tài khoản' : 'Lịch sử điểm'}
                   </h2>
                   <p className="text-sm text-[var(--muted)] mt-1">
                     {logic.sheetState.type === 'settings'
                       ? 'Quy chế KTV Loại D · sửa nội dung và điểm trừ'
-                      : logic.sheetState.code + ' · ' + logic.sheetState.person}
+                      : logic.sheetState.type === 'lockHistory'
+                        ? 'Toàn bộ KTV · mới nhất trước'
+                        : logic.sheetState.code + ' · ' + logic.sheetState.person}
                   </p>
                 </div>
                 <button onClick={logic.closeSheet} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100">
@@ -1492,6 +1616,8 @@ const AdminKtvOfficePage = () => {
                 )}
 
                 {logic.sheetState.type === 'settings' && <CriteriaSettings logic={logic} />}
+
+                {logic.sheetState.type === 'lockHistory' && <LockHistoryPanel logic={logic} />}
               </div>
 
               {/* Sheet Footer */}
@@ -1529,7 +1655,7 @@ const AdminKtvOfficePage = () => {
                     </button>
                   </>
                 )}
-                {(logic.sheetState.type === 'history' || logic.sheetState.type === 'settings') && (
+                {(logic.sheetState.type === 'history' || logic.sheetState.type === 'settings' || logic.sheetState.type === 'lockHistory') && (
                   <button className="flex-1 h-12 rounded-xl font-bold btn-primary" onClick={logic.closeSheet}>Đóng</button>
                 )}
               </div>

@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { LockFilter } from '@/lib/services/StaffLockHistoryService';
 import { useToast } from '@/components/ui/Toast';
 import { apiClient } from '@/lib/apiClient';
 import { useAuth } from '@/lib/auth-context';
 
-export type SheetType = 'deduct' | 'unlock' | 'history' | 'settings' | null;
+export type SheetType = 'deduct' | 'unlock' | 'history' | 'settings' | 'lockHistory' | null;
 export type FilterMode = 'Tất cả' | 'Cần xử lý' | 'Điểm thấp';
 
 const FILTER_MODES: FilterMode[] = ['Tất cả', 'Cần xử lý', 'Điểm thấp'];
 
 const MAX_PHOTOS = 5;
+/** Wait this long after the last keystroke before searching the lock history. */
+const LOCK_SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * 'YYYY-MM-DD' theo giờ VN, lùi n ngày — chỉ là GIÁ TRỊ TẠM trước khi server
@@ -170,6 +173,18 @@ export const useAdminKtvOfficeLogic = () => {
   const [editState, setEditState] = useState<EditState | null>(null);
   const [revokeState, setRevokeState] = useState<{ logId: string; reason: string } | null>(null);
   const [logBusy, setLogBusy] = useState(false);
+
+  // Lock / unlock history of every account (sheet `lockHistory`), newest first.
+  const [lockEvents, setLockEvents] = useState<any[]>([]);
+  const [lockNextBefore, setLockNextBefore] = useState<string | null>(null);
+  const [lockLoading, setLockLoading] = useState(false);
+  const [lockLoadingMore, setLockLoadingMore] = useState(false);
+  const [lockError, setLockError] = useState<string | null>(null);
+  const [lockFilter, setLockFilter] = useState<LockFilter>('ALL');
+  const [lockQuery, setLockQuery] = useState('');
+  // Typing fast fires several requests; only the latest may write state, or an
+  // older, slower response would overwrite the newer result.
+  const lockReqRef = useRef(0);
 
   // Hộp thoại mở khoá: lý do khoá thật + mức phí đang cấu hình, nạp khi mở sheet.
   const [unlockInfo, setUnlockInfo] = useState<{
@@ -384,6 +399,14 @@ export const useAdminKtvOfficeLogic = () => {
     if (type === 'settings') {
       fetchSettings();
     }
+    if (type === 'lockHistory') {
+      // Always open on the full, unfiltered timeline.
+      setLockFilter('ALL');
+      setLockQuery('');
+      setLockEvents([]);
+      setLockNextBefore(null);
+      setLockError(null);
+    }
     if (type === 'unlock') {
       setUnlockInfo(null);
       setUnlockReason('');
@@ -454,6 +477,41 @@ export const useAdminKtvOfficeLogic = () => {
       fetchCalendar(sheetState.code, m);
     }
     pickCalendarDay(businessToday);
+  };
+
+  /** `before` = null starts over (new filter / search); a cursor appends the next page. */
+  const fetchLockHistory = useCallback(async (filter: LockFilter, q: string, before: string | null) => {
+    const reqId = ++lockReqRef.current;
+    if (before) setLockLoadingMore(true);
+    else { setLockLoading(true); setLockError(null); }
+    try {
+      const sp = new URLSearchParams({ filter });
+      if (q.trim()) sp.set('q', q.trim());
+      if (before) sp.set('before', before);
+      const res = await apiClient.get<any>(`/api/admin/staff/lock-history?${sp.toString()}`);
+      if (reqId !== lockReqRef.current) return;
+      const events = res?.events || [];
+      setLockEvents(prev => (before ? [...prev, ...events] : events));
+      setLockNextBefore(res?.nextBefore || null);
+    } catch (error: any) {
+      if (reqId !== lockReqRef.current) return;
+      setLockError(error?.message || 'Không tải được lịch sử khoá tài khoản.');
+    } finally {
+      if (reqId === lockReqRef.current) { setLockLoading(false); setLockLoadingMore(false); }
+    }
+  }, []);
+
+  // Opening the sheet, switching the filter chip or typing a search all reload
+  // from the first page. Debounced so a search does not fire per keystroke.
+  useEffect(() => {
+    if (!sheetState.isOpen || sheetState.type !== 'lockHistory') return;
+    const t = setTimeout(() => fetchLockHistory(lockFilter, lockQuery, null), LOCK_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [sheetState.isOpen, sheetState.type, lockFilter, lockQuery, fetchLockHistory]);
+
+  const loadMoreLockHistory = () => {
+    if (!lockNextBefore || lockLoadingMore) return;
+    fetchLockHistory(lockFilter, lockQuery, lockNextBefore);
   };
 
   const closeSheet = () => setSheetState(prev => ({ ...prev, isOpen: false }));
@@ -769,6 +827,8 @@ export const useAdminKtvOfficeLogic = () => {
     noteOf, setNoteFor,
     totalPoints, needPhoto, canSubmit, submitting, submitDeduct,
     unlockInfo, unlockReason, setUnlockReason, unlockFee, setUnlockFee, canUnlock, submitUnlock,
+    lockEvents, lockNextBefore, lockLoading, lockLoadingMore, lockError,
+    lockFilter, setLockFilter, lockQuery, setLockQuery, loadMoreLockHistory,
     existingHits, existingLoading, changeWorkDate,
     workday, blockedNotWorkday,
     calendarMonth, calendarDays, calendarLoading, canPickOld,

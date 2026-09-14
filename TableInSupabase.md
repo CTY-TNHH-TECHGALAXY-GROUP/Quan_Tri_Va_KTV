@@ -682,7 +682,7 @@
 | `id` | uuid PK | ID tự sinh |
 | `employee_id` | text | Mã nhân viên (nếu có) |
 | `employee_name` | text | Tên nhân viên hoặc username |
-| `event_type` | text | Loại sự kiện (VD: `INVALID_WIFI_IP`, `INVALID_LOGIN`) |
+| `event_type` | text | Loại sự kiện (VD: `INVALID_WIFI_IP`, `INVALID_LOGIN`). **Khoá / mở khoá tài khoản** (đọc lại ở `StaffLockHistoryService`, màn Chấm điểm KTV → Lịch sử khoá): `AUTO_LOCK_ABSENCE` (cron kỷ luật, cả khoá hoãn), `AUTO_LOCK_REJECT_NO_HOURS` (từ chối tua khi không đủ giờ — ⚠️ `details.reason` là câu KTV gõ, KHÔNG phải lý do khoá), `PENDING_LOCK` (chờ khoá vì còn đơn), `MANUAL_LOCK` (công tắc Hoạt động, `details.locked_by`), `MANUAL_UNLOCK` (`details.unlocked_by`, `reason`, `reactivation_fee`) |
 | `ip_address` | text | Địa chỉ IP của thiết bị vi phạm |
 | `user_agent` | text | Trình duyệt / Thiết bị |
 | `details` | jsonb | Thông tin chi tiết thêm |
