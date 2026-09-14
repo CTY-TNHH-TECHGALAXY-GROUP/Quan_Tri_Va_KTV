@@ -716,6 +716,12 @@ export async function GET(request: Request) {
                     voidedNote,
                     voidedKind: voidedInfo?.kind ?? null,
                     voidedReason: voidedInfo?.reason ?? null,
+                    // Settled without any customer rating (customer skipped, or the
+                    // 5-minute auto-complete job closed it) → history says so instead
+                    // of a bare "—". Cancelled/voided records have their own banner.
+                    noCustomerRating: !voidedInfo
+                        && itemBasedStatus === 'DONE'
+                        && !(Number(workType === 'TYPE_D' ? (ledgerRating ?? itemRating) : itemRating) > 0),
                     // ⚠️ Bị tước quyền lợi thì kết quả ĐÃ CHỐT từ lúc quầy bấm: 0đ. Khách
                     // chấm mấy sao cũng không đổi được con số đó, nên KHÔNG được để
                     // màn hình ghi "Chờ FB" hay "Tạm tính" — đọc ra như còn hy vọng.

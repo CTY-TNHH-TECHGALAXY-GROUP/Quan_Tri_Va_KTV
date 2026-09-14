@@ -181,9 +181,16 @@ export async function submitFeedbackAction(payload: {
         }
 
         // Cập nhật trạng thái Bookings
+        // A finished booking is never pulled back. Since 14/09 the DB job
+        // `auto_complete_unrated_feedback` closes an unrated order 5 minutes after
+        // it enters FEEDBACK, and the customer may still rate it afterwards (late
+        // rating is recorded, money recomputes via the ledger trigger).
+        const { data: currentBooking } = await supabase
+            .from('Bookings').select('status').eq('id', bookingId).maybeSingle();
+        const keepFinishedStatus = String(currentBooking?.status || '') === 'DONE';
         const bookingFeedback = globalComment.trim() || null;
         const { error: updateBookingErr } = await supabase.from('Bookings').update({
-            status: 'FEEDBACK',
+            ...(!keepFinishedStatus && { status: 'FEEDBACK' }),
             violations: bookingViolations,
             rating: globalRating,
             ...(bookingFeedback !== null && { feedbackNote: bookingFeedback }),

@@ -53,6 +53,8 @@ export interface HistoryRecord {
   voidedKind?: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER' | null;
   /** Lý do quầy nhập lúc đổi người / huỷ. */
   voidedReason?: string | null;
+  /** Settled (DONE) with no customer rating — shown as "Khách hàng không đánh giá". */
+  noCustomerRating?: boolean;
   ktv_comment?: string | null;
   guestCount?: number;
   coWorkers?: string[];

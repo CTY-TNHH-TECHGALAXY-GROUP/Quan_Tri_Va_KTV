@@ -1,7 +1,7 @@
 # Plan: Thời lượng dịch vụ dùng khi đổi KTV — một nguồn cho modal và máy chủ
 
 **Mức:** 2 — chạm `lib/services/BookingItemPauseService.ts` (quyết định số phút người vào thay được trả).
-**Lập:** 2026-09-11 · **Trạng thái:** CHỜ DUYỆT — cần chốt câu hỏi ở mục 1.
+**Lập:** 2026-09-11 · **Trạng thái:** ĐÃ CHỐT (C) + trần 240 phút — chờ lệnh code.
 **Bảng tra:** `plans/nghiep_vu_tam_dung_doi_huy.md`, cột **VT** dòng 1–2.
 
 ---
@@ -15,6 +15,11 @@ Hiện máy chủ dùng `Services.duration || 60` → coi là **60 phút**: ngư
 - (A) Giữ 60 như hiện tại.
 - (B) Dùng số khác cho nhóm này (VD thời lượng thực tế của gói).
 - (C) Bắt quầy **gán tay** khi đổi KTV ở dịch vụ thời lượng 0 — không cho "Làm phần còn lại".
+
+> **Chốt 14/09: (C).** Không hiện, không mặc định 60p nữa — theo số phút quầy gán. Hệ quả phải làm:
+> - Modal: dịch vụ không có thời lượng → **ẩn** "Làm phần còn lại", tự chọn "Quầy gán tay", dòng dịch vụ ghi *"theo giờ quầy gán"* thay vì "60 phút". Bỏ `|| 60` đã commit ở `99ac626e`.
+> - Máy chủ: dịch vụ không có thời lượng mà `assignedMins` = 0 → **từ chối** với lỗi rõ ràng, không lùi về 60.
+> - Trần số phút gán tay: không thể lấy thời lượng dịch vụ (= 0) làm trần → **trần cố định 240 phút** (chốt 14/09), cả modal lẫn máy chủ cùng chặn.
 
 ## 2. Lỗi kỹ thuật — nên sửa dù chọn gì ở mục 1
 

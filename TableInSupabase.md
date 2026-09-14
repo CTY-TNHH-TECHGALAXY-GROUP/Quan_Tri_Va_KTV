@@ -104,7 +104,7 @@
 | `options` | jsonb | Tùy chọn thêm (VD: áp lực mạnh/nhẹ) |
 | `roomName` | text | Phòng phục vụ riêng item (multi-room support) |
 | `technicianCodes` | text[] | **Mảng mã KTV** phục vụ item này (hỗ trợ 2+ KTV cùng 1 DV) |
-| `status` | text | Trạng thái item: WAITING → IN_PROGRESS → COMPLETED → DONE |
+| `status` | text | Trạng thái item: WAITING/PREPARING → IN_PROGRESS (⇄ PAUSED) → CLEANING (dọn phòng) → FEEDBACK (đã bàn giao, chờ khách chấm) → DONE; hoặc CANCELLED. Dữ liệu cũ còn COMPLETED |
 | `timeStart` | timestamptz | Thời điểm KTV bắt đầu làm item này — dùng cho timer per-service |
 | `timeEnd` | timestamptz | Thời điểm hoàn thành item |
 | `bedId` | text | Giường phục vụ riêng item |
@@ -120,6 +120,15 @@
 
 **Triggers:**
 - `tr_notify_ktv_on_item_rating` → Gửi thông báo thưởng/cảnh báo khi `itemRating` hoặc `ktvRatings` thay đổi
+
+**Cron (pg_cron) — tự Hoàn tất khi khách không chấm** (migration `20260914120000_auto_complete_feedback_after_5m.sql`):
+- Job `auto_complete_feedback_job` chạy **mỗi phút** → `auto_complete_unrated_feedback()`.
+- Chỉ xét item vào `FEEDBACK` **từ 01/09/2026 (giờ VN)** — item kẹt trước mốc này để quản lý xử lý tay.
+- Item `FEEDBACK` quá **5 phút** (mốc: `feedbackTime` muộn nhất trong `segments` → `handover_submitted_at` → `timeEnd` → `Bookings.updatedAt`) → `DONE`. Item đã có sao mà vẫn `FEEDBACK` → `DONE` ngay lượt kế.
+- Không chấm: `itemRating` **giữ NULL** (không ghi 0), `options.autoCompletedNoRating = true`, `options.autoCompletedAt` (ISO). Khách vẫn chấm muộn được.
+- Không đụng `CLEANING` / `IN_PROGRESS` / `PAUSED` / `CANCELLED` / `DONE`. Booking tính lại theo `lib/dispatch-status.ts → recomputeBookingStatus` (bỏ dịch vụ tiện ích), không lùi booking đã `DONE`.
+- Hàm phụ: `jsonb_unwrap_string(jsonb)` (bóc jsonb dạng chuỗi, lỗi → NULL), `booking_item_last_feedback_time(jsonb)`.
+- Thay job cũ `auto_skip_rating_job` / `auto_skip_rating_after_24h()` (đã gỡ).
 
 **Quan hệ `itemRating` vs `ktvRatings`:**
 - 1 KTV: `itemRating = 4`, `ktvRatings = {"NH016": 4}` → cả 2 giống nhau

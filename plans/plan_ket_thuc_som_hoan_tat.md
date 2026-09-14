@@ -1,7 +1,9 @@
 # Plan: Kết thúc sớm (khách xuống sớm) đi thẳng Hoàn tất
 
 **Mức:** 2 — chạm `app/api/ktv/booking/_handlers/handleFinishService.ts` (Dispatch, `CLAUDE.md` mục 9) và luật 9.6.
-**Lập:** 2026-09-11 · **Trạng thái:** CHỜ DUYỆT — cần chốt câu hỏi ở mục 1.
+**Lập:** 2026-09-11 · **Trạng thái:** CHỜ DUYỆT CODE — câu hỏi mục 1 đã chốt 14/09: **(A)**.
+
+> **Chốt 14/09:** khách xuống sớm thì KTV **VẪN dọn phòng và bàn giao ảnh**. Chỉ bỏ bước chờ khách đánh giá.
 **Bảng tra:** `plans/nghiep_vu_tam_dung_doi_huy.md`, cột **KS**.
 
 ---

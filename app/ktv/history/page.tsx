@@ -21,6 +21,7 @@ import { HistoryCalendar } from './_components/HistoryCalendar';
 import { HoursLedgerSheet } from '@/components/shared/HoursLedgerSheet';
 import { fmtHours } from '@/lib/hours-format';
 import { ratingLabel } from '@/lib/rating-label';
+import { t } from './KTVHistory.i18n';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
 /** 'YYYY-MM' -> '09/2026'. */
@@ -320,6 +321,8 @@ const OrderCard = ({ order, getStatusLabel }: {
                       </span>
                     )}
                   </div>
+                ) : order.noCustomerRating ? (
+                  <span className="text-[11px] font-bold text-gray-500 text-right">{t.noCustomerRating}</span>
                 ) : (
                   <span className="text-xs text-gray-300">—</span>
                 )}
