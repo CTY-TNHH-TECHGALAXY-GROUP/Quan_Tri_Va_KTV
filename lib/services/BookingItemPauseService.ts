@@ -143,7 +143,7 @@ export class BookingItemPauseService {
 
         const actorPause = await currentCounterActor();
         await logCounterAction(supabase, itemIdsToPause, {
-            action: 'PAUSE', by: actorPause.id, byName: actorPause.name, at: now,
+            action: 'PAUSE', by: actorPause.id, byName: actorPause.name, verified: actorPause.verified, at: now,
         });
 
         return { success: true, pauseStart: now, pausedItemIds: itemIdsToPause };
@@ -327,7 +327,7 @@ export class BookingItemPauseService {
         await logCounterAction(supabase, itemsToUpdate.map(i => i.id), {
             action: ghiNhatKy?.action || 'RESUME',
             note: ghiNhatKy?.note ?? null,
-            by: actorResume.id, byName: actorResume.name, at: resumeAt,
+            by: actorResume.id, byName: actorResume.name, verified: actorResume.verified, at: resumeAt,
         });
 
         return { success: true, resumedAt: resumeAt, resumedItemIds: itemsToUpdate.map(i => i.id) };
@@ -657,7 +657,7 @@ export class BookingItemPauseService {
 
         const actorSwap = await currentCounterActor();
         await logCounterAction(supabase, [bookingItemId], {
-            action: 'SWAP_KTV', by: actorSwap.id, byName: actorSwap.name,
+            action: 'SWAP_KTV', by: actorSwap.id, byName: actorSwap.name, verified: actorSwap.verified,
             note: `${oldKtvId} → ${newKtvId || '(rút, chưa có người thay)'}`
                 + (lyDoDoi.trim() ? ` · ${lyDoDoi.trim()}` : ''),
         });

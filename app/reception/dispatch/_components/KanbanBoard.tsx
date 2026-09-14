@@ -9,6 +9,7 @@ import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
 import { KtvCommentModal } from './KtvCommentModal';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -18,64 +19,6 @@ const STATUS_CONFIG = [
     { id: 'DONE' as RawStatus, dispatchModeId: ['DONE'], label: 'Hoàn Tất Dịch Vụ', shortLabel: 'Hoàn tất', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBg: 'bg-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500', next: null, nextLabel: null },
     { id: 'CANCELLED' as RawStatus, dispatchModeId: ['CANCELLED'], label: 'Đã Huỷ', shortLabel: 'Đã huỷ', color: 'text-rose-600', bg: 'bg-rose-50', activeBg: 'bg-rose-600', border: 'border-rose-200', dot: 'bg-rose-500', next: null, nextLabel: null },
 ];
-
-/** Nhãn tiếng Việt cho nhật ký thao tác quầy (lib/counter-action-log.ts). */
-const ACTION_LABEL: Record<string, string> = {
-    PAUSE: 'Tạm dừng',
-    RESUME: 'Tiếp tục',
-    FINISH_EARLY: 'Kết thúc sớm',
-    CANCEL: 'Huỷ',
-    SWAP_KTV: 'Đổi KTV',
-    SWAP_SEND: 'Gửi người mới',
-    KTV_EARLY_EXIT: 'Khách về sớm',
-    KTV_EMERGENCY: 'Khẩn cấp',
-};
-
-// 🔧 UI CONFIGURATION
-/** A KTV pause within this window of their own report is shown as the report only. */
-const KTV_REPORT_MERGE_WINDOW_MS = 120_000;
-/** Same report by the same KTV within this window is a double tap (real data: ≤ 13s). */
-const KTV_REPORT_REPEAT_WINDOW_MS = 30_000;
-const KTV_REPORT_ACTIONS = new Set(['KTV_EARLY_EXIT', 'KTV_EMERGENCY']);
-
-/**
- * Pressing "Khách về sớm" / "Khẩn cấp" on the app writes two entries: the pause
- * (often without an actor) and the report. Show one line — "T007 Khách về sớm" —
- * by hiding that KTV's pause next to the report, and collapse repeated taps.
- * A pause pressed at the counter (actor ≠ KTV) is always kept.
- */
-const mergeKtvReports = (log: any[]): any[] => {
-    const timeOf = (e: any) => new Date(e?.at).getTime() || 0;
-    const sameActor = (a: any, b: any) => String(a?.by || '').toUpperCase() === String(b?.by || '').toUpperCase();
-    const reports = log.filter(e => KTV_REPORT_ACTIONS.has(e?.action));
-    if (reports.length === 0) return log;
-
-    return log.filter((e, idx) => {
-        if (e?.action === 'PAUSE') {
-            return !reports.some(r =>
-                (!e.by || sameActor(e, r)) && Math.abs(timeOf(r) - timeOf(e)) <= KTV_REPORT_MERGE_WINDOW_MS);
-        }
-        if (KTV_REPORT_ACTIONS.has(e?.action)) {
-            return !log.slice(0, idx).some(p =>
-                p?.action === e.action && sameActor(p, e) && timeOf(e) - timeOf(p) <= KTV_REPORT_REPEAT_WINDOW_MS);
-        }
-        return true;
-    });
-};
-
-/**
- * Tên người bấm để HIỂN THỊ.
- *
- * ⚠️ `by` của tài khoản văn phòng là id kỹ thuật — cuid ('cmlxhhysl0000…') hoặc
- * uuid ('8de3f0a8-1783-…'), dài và vô nghĩa với quầy. Chỉ đổ `by` ra màn hình
- * khi nó là MÃ NHÂN VIÊN thật (T007, NH025…), tức chuỗi ngắn không có dấu gạch.
- */
-const counterActorName = (entry: any): string => {
-    if (entry?.byName) return String(entry.byName);
-    const by = entry?.by ? String(entry.by) : '';
-    if (by && by.length <= 12 && !by.includes('-')) return by;
-    return by ? 'tài khoản văn phòng' : 'không rõ người bấm';
-};
 
 /**
  * Danh sách KTV để HIỆN TRÊN THẺ.
@@ -665,12 +608,10 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     );
                                     const danhGiaQuay = (order.ktvReviewsOfReception || [])
                                         .filter((r: any) => ktvTrenThe.has(String(r.ktv_id).toLowerCase()));
-                                    // Nhật ký thao tác tại quầy — ai bấm gì, lúc nào.
-                                    // ⚠️ Sắp theo MỐC THỜI GIAN đã parse, đừng so chuỗi: `...Z` và
-                                    // `...+00:00` là cùng một thời điểm nhưng so chuỗi ra khác nhau.
-                                    const counterLog = mergeKtvReports(services
-                                        .flatMap((s: any) => Array.isArray(s.options?.counterLog) ? s.options.counterLog : [])
-                                        .sort((a: any, b: any) => (new Date(a?.at).getTime() || 0) - (new Date(b?.at).getTime() || 0)));
+                                    // Nhật ký thao tác — ai bấm gì, lúc nào. Trộn thêm các lần KTV bấm
+                                    // "Khách về sớm" / "Khẩn cấp" từ StaffNotifications (chỉ của KTV trên
+                                    // thẻ này), xem KanbanBoard.counterLog.logic.ts.
+                                    const counterLog = buildCounterLog(services, order.ktvReports, ktvTrenThe);
                                     // Gộp lỗi khách tích của mọi dịch vụ trong thẻ, khử trùng theo id.
                                     const subOrderViolations = Array.from(
                                         new Map(
@@ -1403,15 +1344,27 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             Thao tác
                                                         </summary>
                                                         <div className="mt-1 flex flex-col gap-0.5">
-                                                            {counterLog.map((c: any, k: number) => (
-                                                                <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
-                                                                    {/* Ghi chú là chỗ DUY NHẤT nói đơn đổi từ ai sang ai
-                                                                        ("T069 → T007"). Bỏ nó đi thì nhật ký chỉ còn
-                                                                        "Đổi KTV", không truy được ai ra ai vào. */}
-                                                                    {formatToHourMinute(c.at)} {counterActorName(c)} {ACTION_LABEL[c.action] || c.action}
-                                                                    {c.note ? <span className="font-bold text-gray-700"> {c.note}</span> : ''}
-                                                                </span>
-                                                            ))}
+                                                            {counterLog.map((c: any, k: number) => {
+                                                                const line = counterLogLine(c);
+                                                                return (
+                                                                    <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
+                                                                        {formatToHourMinute(c.at)}{' '}
+                                                                        {/* Dấu * = tên lấy theo tab đang mở vì request không mang
+                                                                            phiên máy chủ (lib/counter-action-log.ts). */}
+                                                                        {line.actor && (
+                                                                            <span title={line.unverified ? UNVERIFIED_ACTOR_TITLE : undefined}>
+                                                                                {line.actor}{line.unverified ? '*' : ''}{' '}
+                                                                            </span>
+                                                                        )}
+                                                                        {line.label}
+                                                                        {/* Ghi chú là chỗ DUY NHẤT nói đơn đổi từ ai sang ai
+                                                                            ("T069 → T007"). Bỏ nó đi thì nhật ký chỉ còn
+                                                                            "Đổi KTV", không truy được ai ra ai vào. */}
+                                                                        {line.note ? <span className="font-bold text-gray-700"> {line.note}</span> : ''}
+                                                                        {line.suffix ? <span className="text-gray-400"> · {line.suffix}</span> : ''}
+                                                                    </span>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </details>
                                                 )}

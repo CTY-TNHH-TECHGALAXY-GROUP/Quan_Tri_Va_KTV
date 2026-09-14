@@ -22,6 +22,36 @@ const DEFAULT_TIMEOUT = 15000;
 const DEFAULT_RETRIES = 0;
 
 /**
+ * Header tự khai "tab này đang mở tài khoản nào" — CHỈ để ghi nhật ký thao tác.
+ *
+ * Cookie JWT của Supabase khoá theo TÊN MÁY CHỦ, không theo tab, và có thể hết
+ * hạn trong khi tab vẫn nhớ người dùng. Khi đó API vẫn cho làm (Compatibility
+ * Phase) nhưng máy chủ không biết ai bấm → thẻ Kanban in "không rõ người bấm".
+ * Đọc từ sessionStorage (riêng từng tab) nên tab admin và tab KTV không lẫn nhau.
+ *
+ * ⚠️ Chỉ gửi `id` và `name`. KHÔNG BAO GIỜ gửi các trường khác của
+ * `spa_auth_user`. Máy chủ chỉ dùng khi thiếu JWT và đánh dấu `verified: false`
+ * (lib/counter-action-log.ts); không được dùng để kiểm tra quyền.
+ */
+export const ACTOR_HEADER = 'x-spa-actor';
+const ACTOR_FIELD_MAX_LEN = 64;
+
+export function getActorHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem('spa_auth_user') || localStorage.getItem('spa_auth_user');
+    if (!raw) return {};
+    const u = JSON.parse(raw);
+    const id = String(u?.code || u?.id || '').slice(0, ACTOR_FIELD_MAX_LEN);
+    const name = String(u?.name || '').slice(0, ACTOR_FIELD_MAX_LEN);
+    if (!id) return {};
+    return { [ACTOR_HEADER]: encodeURIComponent(JSON.stringify({ id, name })) };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * 🚀 Centralized API Client
  * - Tự động handle JSON parsing
  * - Tự động check res.ok và throw lỗi chuẩn
@@ -34,6 +64,10 @@ class ApiClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
 
+    const givenHeaders = fetchOptions.headers instanceof Headers
+      ? Object.fromEntries(fetchOptions.headers.entries())
+      : (fetchOptions.headers as Record<string, string> | undefined) || {};
+
     const response = await fetch(url, {
       // ⚠️ KHÔNG để trình duyệt cache. Mọi đường trong `/api` ở đây đều là dữ
       // liệu sống — điểm, ví, tua, cờ tính năng. Trước đây không đặt gì cả, mà
@@ -44,6 +78,7 @@ class ApiClient {
       // Vẫn cho ghi đè qua `options` nếu chỗ nào thật sự muốn cache.
       cache: 'no-store',
       ...fetchOptions,
+      headers: { ...getActorHeaders(), ...givenHeaders },
       signal: controller.signal
     });
     

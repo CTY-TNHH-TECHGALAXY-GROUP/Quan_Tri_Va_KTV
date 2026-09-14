@@ -246,6 +246,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         rating: calculatedRating,
                         feedbackNote: b.feedbackNote || null,
                         ktvReviewsOfReception: Array.isArray(b.ktvReviewsOfReception) ? b.ktvReviewsOfReception : [],
+                        ktvReports: Array.isArray(b.ktvReports) ? b.ktvReports : [],
                         vipWarnings: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.warnings : []; } catch { return []; } })() : [],
                         vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
                         timeStart: b.timeStart || null,

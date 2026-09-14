@@ -123,6 +123,13 @@ export interface PendingOrder {
     images: string[] | null;
     created_at: string;
   }[];
+  /** KTV bấm "Khách về sớm" / "Khẩn cấp" trên app (bảng StaffNotifications). */
+  ktvReports?: {
+    type: string;
+    employeeId: string | null;
+    createdAt: string;
+    message?: string | null;
+  }[];
   rawNotes?: any;
   guests?: GuestBlock[]; // Danh sách khách hàng trong đơn
 }

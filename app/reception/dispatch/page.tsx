@@ -22,7 +22,7 @@ import { OrderContextMenu } from './_components/OrderContextMenu';
 import { getDisplayCustomerName } from './dispatch-display';
 import { formatToHourMinute } from './dispatch-time.logic';
 import { useAuth } from '@/lib/auth-context';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getActorHeaders } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
@@ -3021,7 +3021,9 @@ if (!hasPermission('dispatch_board')) {
 Vẫn kết thúc sớm?`)) return;
                   const res = await fetch('/api/ktv/finish-early-paused', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    // fetch thô, không qua apiClient → phải tự gắn danh tính tab để
+                    // nhật ký không in "không ghi được người bấm" khi mất JWT.
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
                     body: JSON.stringify({
                       bookingId: orderId,
                       itemIds: subOrder.services.map((s: any) => s.id)

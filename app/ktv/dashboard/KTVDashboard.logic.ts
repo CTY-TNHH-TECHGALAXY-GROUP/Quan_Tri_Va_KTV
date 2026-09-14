@@ -2522,7 +2522,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         SUPPORT: '✅ Đã gọi hỗ trợ. Quầy đang tới.',
         EMERGENCY: '🚨 ĐÃ BÁO ĐỘNG. Quầy nhận được rồi, giữ bình tĩnh.',
         BUY_MORE: '✅ Đã báo quầy khách muốn mua thêm dịch vụ.',
-        EARLY_EXIT: '✅ Đã báo quầy khách về sớm.',
+        EARLY_EXIT: '✅ Đã báo quầy khách về sớm. Đợi quầy xác nhận để hoàn tất đơn.',
     };
 
     const handleInteraction = async (type: 'WATER' | 'SUPPORT' | 'EMERGENCY' | 'BUY_MORE' | 'EARLY_EXIT') => {
@@ -2556,12 +2556,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const handleEarlyExit = async () => {
         if (!booking || !ktvId) return;
         if (!confirm('Thông báo cho quầy khách muốn kết thúc sớm?')) return;
-        
-        // 🚀 THAY ĐỔI: Không tự ý PATCH status
-        // Thay vào đó gửi Interaction 'EARLY_EXIT' để Lễ tân xử lý
-        // Khi lễ tân xử lý xong (Hoàn tất trên Dispatch Board), Realtime sẽ tự đưa KTV qua trang REVIEW/REWARD
+
+        // Dừng đơn TRƯỚC rồi mới báo, TUẦN TỰ — giống nút Khẩn cấp (ScreenTimer).
+        // Trước 14/09/2026 màn đồng hồ gọi `handlePause()` và hàm này SONG SONG:
+        // hai request cùng đọc–sửa–ghi `options.counterLog`, request về sau đè mất
+        // dòng của request trước → thẻ Kanban chỉ còn "Tạm dừng", mất lý do.
+        // Đã dừng sẵn thì bỏ qua im lặng, chỉ gửi báo.
+        //
+        // Không tự ý PATCH status: gửi 'EARLY_EXIT' để lễ tân xử lý; khi họ bấm
+        // Hoàn tất trên bảng điều phối, Realtime tự đưa KTV qua REVIEW/REWARD.
+        await handlePause({ skipConfirm: true, silentIfPaused: true });
         await handleInteraction('EARLY_EXIT');
-        addToast('Đã gửi yêu cầu về sớm. Hãy đợi Lễ tân xác nhận để hoàn tất đơn hàng.', 'success');
     };
 
     /**

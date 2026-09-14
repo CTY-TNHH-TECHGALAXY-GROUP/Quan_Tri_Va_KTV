@@ -492,8 +492,8 @@ export function ScreenTimer({ logic }: { logic: any }) {
           className="flex flex-col gap-3 pb-safe"
         >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <ActionGridButton 
-                  onClick={() => { logic.handlePause(); handleEarlyExit(); }} 
+                <ActionGridButton
+                  onClick={handleEarlyExit}
                   icon={<LogOut size={20} />} 
                   label="KHÁCH VỀ SỚM" 
                   color="text-rose-600 border-rose-50" 

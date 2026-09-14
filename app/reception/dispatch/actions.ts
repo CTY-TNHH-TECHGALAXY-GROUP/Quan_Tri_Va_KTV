@@ -512,6 +512,34 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             }
         }
 
+        // 5c. KTV bấm "Khách về sớm" / "Khẩn cấp" trên app (StaffNotifications).
+        // `options.counterLog` chỉ ghi hai nút này từ 14/09/2026 — đơn trước đó
+        // trên thẻ chỉ còn "Tạm dừng", mất lý do. Bảng thông báo là nơi duy nhất
+        // còn giữ KTV đã bấm gì, nên gắn vào từng booking để thẻ trộn vào nhật ký
+        // (KanbanBoard.counterLog.logic.ts). Với đơn mới đây cũng là lưới an toàn:
+        // logKtvReport cố ý không throw, lỗi là mất dòng trong im lặng.
+        {
+            const bookingIds = bookings.map((b: any) => b.id).filter(Boolean);
+            if (bookingIds.length > 0) {
+                const { data: rpRows, error: rpErr } = await supabase
+                    .from('StaffNotifications')
+                    .select('bookingId, type, employeeId, createdAt, message')
+                    .in('bookingId', bookingIds)
+                    .in('type', ['EARLY_EXIT', 'EMERGENCY']);
+                if (rpErr) {
+                    console.error('[Dispatch] không đọc được báo của KTV:', rpErr.message);
+                } else {
+                    const theoBooking = new Map<string, any[]>();
+                    (rpRows || []).forEach((r: any) => {
+                        const k = String(r.bookingId);
+                        if (!theoBooking.has(k)) theoBooking.set(k, []);
+                        theoBooking.get(k)!.push({ type: r.type, employeeId: r.employeeId, createdAt: r.createdAt, message: r.message });
+                    });
+                    bookings.forEach((b: any) => { b.ktvReports = theoBooking.get(String(b.id)) || []; });
+                }
+            }
+        }
+
         // 6. Fetch Rooms, Beds, and Reminders — 🔧 EGRESS FIX: select specific columns
         const { data: rooms } = await supabase.from('Rooms').select('id, name, capacity, type, default_reminders, has_guests');
         const { data: beds } = await supabase.from('Beds').select('id, name, roomId');

@@ -140,6 +140,7 @@ export async function POST(req: Request) {
             action: 'FINISH_EARLY',
             by: actor.id,
             byName: actor.name,
+            verified: actor.verified,
             note: notStarted.length > 0
                 ? `chốt tại mốc tạm dừng · ${Array.from(new Set(notStarted.map(n => n.ktvId))).join(', ')} chưa bắt đầu, đã nhả`
                 : 'chốt tại mốc tạm dừng',

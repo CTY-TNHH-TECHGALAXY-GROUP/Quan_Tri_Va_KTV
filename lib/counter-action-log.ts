@@ -55,6 +55,39 @@ export interface CounterLogEntry {
     at: string;
     /** Ghi chú tự do: lý do huỷ, KTV mới khi đổi người… */
     note?: string | null;
+    /**
+     * `false` = người bấm lấy từ header tự khai của tab (request không mang JWT),
+     * thẻ Kanban in kèm dấu `*`. Thiếu / `true` = xác nhận bằng phiên máy chủ.
+     */
+    verified?: boolean;
+}
+
+export interface CounterActor {
+    id: string | null;
+    name: string | null;
+    verified: boolean;
+}
+
+const NO_ACTOR: CounterActor = { id: null, name: null, verified: false };
+const ACTOR_FIELD_MAX_LEN = 64;
+
+/**
+ * Người đang mở tab, do trình duyệt tự khai qua header `x-spa-actor`
+ * (lib/apiClient.ts). Chỉ đọc khi KHÔNG có JWT, và chỉ để ghi nhật ký.
+ */
+async function actorFromHeader(): Promise<CounterActor> {
+    try {
+        const { headers } = await import('next/headers');
+        const raw = (await headers()).get('x-spa-actor');
+        if (!raw) return NO_ACTOR;
+        const parsed = JSON.parse(decodeURIComponent(raw));
+        const id = typeof parsed?.id === 'string' ? parsed.id.trim().slice(0, ACTOR_FIELD_MAX_LEN) : '';
+        const name = typeof parsed?.name === 'string' ? parsed.name.trim().slice(0, ACTOR_FIELD_MAX_LEN) : '';
+        if (!id) return NO_ACTOR;
+        return { id, name: name || id, verified: false };
+    } catch {
+        return NO_ACTOR;
+    }
 }
 
 /**
@@ -64,12 +97,17 @@ export interface CounterLogEntry {
  * KHÔNG phải mã nhân viên. Thẻ Kanban rơi về hiển thị `id` khi thiếu `name`, nên
  * trước 09/09/2026 nhật ký hiện nguyên chuỗi cuid thay vì 'admin' / 'dev'.
  * Vì vậy `name` phải luôn có: username → tra bảng Users → cuối cùng là techCode.
+ *
+ * Không có JWT (hết hạn, hoặc máy dùng chung bị người khác đăng nhập đè cookie —
+ * cookie khoá theo tên máy chủ, không theo tab) → trước 14/09/2026 trả `null` và
+ * thẻ in "không rõ người bấm" dù quầy vẫn đang ngồi đó. Nay rơi về header tự
+ * khai của tab, đánh dấu `verified: false`.
  */
-export async function currentCounterActor(): Promise<{ id: string | null; name: string | null }> {
+export async function currentCounterActor(): Promise<CounterActor> {
     try {
         const { requireBusinessUser } = await import('@/lib/auth-server');
         const u = await requireBusinessUser();
-        if (!u) return { id: null, name: null };
+        if (!u) return actorFromHeader();
 
         const id = u.businessUserId || u.techCode || null;
         let name = u.username || null;
@@ -84,9 +122,9 @@ export async function currentCounterActor(): Promise<{ id: string | null; name: 
             }
         }
 
-        return { id, name: name || u.techCode || null };
+        return { id, name: name || u.techCode || null, verified: true };
     } catch {
-        return { id: null, name: null };
+        return actorFromHeader();
     }
 }
 

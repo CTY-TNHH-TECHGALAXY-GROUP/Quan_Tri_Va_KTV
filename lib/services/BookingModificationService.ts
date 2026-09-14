@@ -636,6 +636,7 @@ export class BookingModificationService {
                 action: 'CANCEL',
                 by: actor.id,
                 byName: actor.name,
+                verified: actor.verified,
                 note: `${cancelCredit === 'WORKED' ? 'có cộng giờ' : 'không cộng giờ'}${reason ? ' — ' + reason : ''}`,
             });
 
