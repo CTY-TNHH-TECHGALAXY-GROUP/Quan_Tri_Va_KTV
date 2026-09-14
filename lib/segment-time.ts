@@ -288,3 +288,47 @@ export function laNguoiBiDoiRaKhoiDon(
     });
     return segs.length > 0 && segs.every((sg: any) => sg?.voided === true && sg?.note === 'CHANGED');
 }
+
+/** Note on the segment of a KTV who had not started when the counter ended the order early. */
+export const NOTE_EARLY_LEAVE_NOT_STARTED = 'EARLY_LEAVE_NOT_STARTED';
+
+/**
+ * The customer left before this KTV's turn: the counter pressed "Kết thúc" on a
+ * paused order while the next KTV in a sequence / a parallel partner had not
+ * started. They did nothing → 0 minutes, no money, no hours (voided).
+ *
+ * `actualEndTime` is set too, so every reader of "is this segment closed" — the
+ * auto-complete job, Kanban cards, hasOpenKtvSegment — sees it closed.
+ * Owner decision 14/09/2026: plans/plan_ket_thuc_som_nguoi_chua_bat_dau.md.
+ */
+export function markNotStartedOnEarlyLeave(seg: any, endMark: string): void {
+    if (!seg) return;
+    seg.actualEndTime = endMark;
+    seg.customCommissionDuration = 0;
+    seg.voided = true;
+    seg.note = NOTE_EARLY_LEAVE_NOT_STARTED;
+}
+
+/**
+ * The KTV has no room duty on these items (no cleaning, no handover, no room debt,
+ * not "unfinished work"): every segment of theirs is voided because they were
+ * swapped out (CHANGED) or never started before the customer left
+ * (EARLY_LEAVE_NOT_STARTED).
+ *
+ * A KTV cancelled mid-service (CANCELLED_NO_CREDIT) is NOT included: they were in
+ * the room, so they still clean it.
+ */
+export function hasNoRoomDutyOnItems(
+    items: any[],
+    ktvId: string,
+    matchKtv: (segKtvId: any, ktvId: string) => boolean
+): boolean {
+    if (!Array.isArray(items) || !ktvId) return false;
+    const segs = items.flatMap((i: any) => {
+        let parsed: any = i?.segments;
+        if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = []; } }
+        return (Array.isArray(parsed) ? parsed : []).filter((sg: any) => matchKtv(sg?.ktvId, ktvId));
+    });
+    return segs.length > 0 && segs.every((sg: any) =>
+        sg?.voided === true && (sg?.note === 'CHANGED' || sg?.note === NOTE_EARLY_LEAVE_NOT_STARTED));
+}

@@ -13,8 +13,8 @@
  * Chạy:
  *   npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa/qa_kanban_sequential_hold.ts
  */
-import { shouldHoldItemStatus, hasOpenKtvSegment } from '@/lib/dispatch-status';
-import { voidSegment, closeOpenPause } from '@/lib/segment-time';
+import { shouldHoldItemStatus, hasOpenKtvSegment, segmentProgress } from '@/lib/dispatch-status';
+import { voidSegment, closeOpenPause, markNotStartedOnEarlyLeave } from '@/lib/segment-time';
 
 const T = (iso: string) => new Date(iso).toISOString();
 
@@ -78,9 +78,16 @@ function swap(segs: any[], oldKtv: string, newKtv: string, startTime: string) {
     segs.push({ ktvId: newKtv, startTime, endTime: null, duration: 30, customCommissionDuration: 30, note: 'TAKEOVER' });
     return segs;
 }
-/** finish-early-paused/route.ts: CHỈ chặng đã bắt đầu, chưa xong mới được đóng tại pauseStart. */
+/**
+ * finish-early-paused/route.ts (sửa 14/09/2026): người CHƯA bắt đầu → markNotStartedOnEarlyLeave
+ * (tước, 0 phút, có mốc đóng; route nhả họ + trừ tua); người đang làm → đóng tại pauseStart.
+ */
 function earlyFinish(segs: any[]) {
     for (const s of segs) {
+        if (s.ktvId && !s.actualStartTime && !s.actualEndTime && s.voided !== true) {
+            markNotStartedOnEarlyLeave(s, PAUSE_AT);
+            continue;
+        }
         if (!s.actualStartTime || s.actualEndTime) continue;
         closeOpenPause(s, PAUSE_AT, 'FINISH');
         s.actualEndTime = PAUSE_AT;
@@ -108,13 +115,42 @@ kase('song song: C đã vào làm, thẻ chung A + C xong',
 console.log('\nKết thúc sớm × nối tiếp / song song (sau đó thẻ Dọn phòng → Chờ đánh giá)');
 kase('1 người kết thúc sớm', earlyFinish([workSeg('T011')]), 'FEEDBACK', ['T011'], false);
 kase('nối tiếp: A xong, B đang làm bị kết thúc sớm; thẻ B', earlyFinish([doneSeg('T011'), workSeg('T014', '15:30')]), 'FEEDBACK', ['T014'], false);
-kase('nối tiếp: A bị kết thúc sớm, B CHƯA bắt đầu; thẻ A (⚠️ chặng B bỏ ngỏ)', earlyFinish([workSeg('T011'), idleSeg('T014', '16:00')]), 'FEEDBACK', ['T011'], true);
+kase('nối tiếp: A bị kết thúc sớm, B CHƯA bắt đầu (bị tước + nhả); thẻ A', earlyFinish([workSeg('T011'), idleSeg('T014', '16:00')]), 'FEEDBACK', ['T011'], false);
 kase('song song: cả hai đang làm bị kết thúc sớm; thẻ chung', earlyFinish([workSeg('T011'), workSeg('T014')]), 'FEEDBACK', ['T011', 'T014'], false);
-kase('song song: A kết thúc sớm, người kia CHƯA bắt đầu; thẻ A (⚠️ như đơn thật aa79c2d1)', earlyFinish([workSeg('T011'), idleSeg('T014', '15:00')]), 'FEEDBACK', ['T011'], true);
+kase('song song: A kết thúc sớm, người kia CHƯA vào (bị tước + nhả); thẻ A — ca đơn thật aa79c2d1', earlyFinish([workSeg('T011'), idleSeg('T014', '15:00')]), 'FEEDBACK', ['T011'], false);
 
 console.log('\nHuỷ');
 kase('huỷ đi qua cancelBookingItem (cả dịch vụ) — trạng thái CANCELLED không bao giờ bị giữ',
     [workSeg('T011'), idleSeg('T014', '16:00')], 'CANCELLED', ['T011'], false);
+
+// ── handleFinishService quyết trạng thái bằng segmentProgress (bỏ qua chặng bị tước) ──
+console.log('\nhandleFinishService — segmentProgress (mục 9.8)');
+const HO = T('2026-09-14T08:50:00Z');
+const withHandover = (s: any) => ({ ...s, handoverTime: HO });
+function prog(name: string, segs: any[], want: { allSegsDone: boolean; hasUnstartedSegs: boolean; allHandovered: boolean }) {
+    const got = segmentProgress(segs);
+    const ok = got.allSegsDone === want.allSegsDone && got.hasUnstartedSegs === want.hasUnstartedSegs && got.allHandovered === want.allHandovered;
+    ok ? pass++ : fail++;
+    console.log(`${ok ? '✅' : '❌'} ${name}\n     → xong=${got.allSegsDone} · còn người chưa bắt đầu=${got.hasUnstartedSegs} · đã bàn giao hết=${got.allHandovered}`);
+}
+prog('1KTV-1DV: xong + bàn giao', [withHandover(doneSeg('T011'))], { allSegsDone: true, hasUnstartedSegs: false, allHandovered: true });
+prog('1KTV-2DV gộp: mỗi dịch vụ một chặng, xong + bàn giao', [withHandover({ ...doneSeg('T011'), isMergedRun: true })], { allSegsDone: true, hasUnstartedSegs: false, allHandovered: true });
+prog('2KTV nối tiếp — dữ liệu CŨ: A xong + bàn giao, B chưa bắt đầu (→ trước đây lùi IN_PROGRESS)',
+    [withHandover(doneSeg('T011')), idleSeg('T014', '16:00')], { allSegsDone: true, hasUnstartedSegs: true, allHandovered: true });
+prog('2KTV nối tiếp — SAU sửa: A bị kết thúc sớm rồi bàn giao, B bị tước',
+    earlyFinish([workSeg('T011'), idleSeg('T014', '16:00')]).map(s => s.ktvId === 'T011' ? withHandover(s) : s),
+    { allSegsDone: true, hasUnstartedSegs: false, allHandovered: true });
+prog('2KTV song song — SAU sửa: A bị kết thúc sớm rồi bàn giao, người kia bị tước',
+    earlyFinish([workSeg('T011'), idleSeg('T014', '15:00')]).map(s => s.ktvId === 'T011' ? withHandover(s) : s),
+    { allSegsDone: true, hasUnstartedSegs: false, allHandovered: true });
+prog('2KTV song song: cả hai xong, mới A bàn giao', [withHandover(doneSeg('T011')), doneSeg('T014')], { allSegsDone: true, hasUnstartedSegs: false, allHandovered: false });
+prog('Đổi KTV: người cũ bị tước (không bàn giao), người thay xong + bàn giao',
+    [{ ...doneSeg('T014'), voided: true, note: 'CHANGED' }, withHandover({ ...doneSeg('T079', '15:40'), note: 'TAKEOVER' })],
+    { allSegsDone: true, hasUnstartedSegs: false, allHandovered: true });
+prog('Ca qua nửa đêm: A 23:30–00:10 xong + bàn giao, B 00:10 đang làm',
+    [withHandover({ ktvId: 'T011', startTime: '23:30', actualStartTime: T('2026-09-14T16:30:00Z'), actualEndTime: T('2026-09-14T17:10:00Z') }),
+     { ktvId: 'T014', startTime: '00:10', actualStartTime: T('2026-09-14T17:10:00Z') }],
+    { allSegsDone: false, hasUnstartedSegs: false, allHandovered: false });
 
 console.log('\nCa qua nửa đêm');
 kase('người 1 23:30–00:10, người 2 00:10–01:10 đang làm', [

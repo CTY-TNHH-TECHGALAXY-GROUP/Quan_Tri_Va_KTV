@@ -1,7 +1,7 @@
 # Plan: Dịch vụ nhiều KTV nối tiếp — người trước xong thì dịch vụ vẫn "Đang làm"
 
 **Mức:** 2 — `app/reception/dispatch/actions.ts` (Dispatch, `CLAUDE.md` mục 3, 9).
-**Lập:** 2026-09-14 · **Trạng thái:** ĐÃ DUYỆT 14/09, ĐÃ CODE — `shouldHoldItemStatus` / `hasOpenKtvSegment` (`lib/dispatch-status.ts`), dùng trong `updateBookingItemStatus`; mô phỏng `scripts/qa/qa_kanban_sequential_hold.ts` 28/28 (2 KTV song song; đổi KTV, kết thúc sớm, huỷ × nối tiếp / song song — chặng dựng bằng `voidSegment` / `closeOpenPause` thật). Chờ merge `main`. ⚠️ Lỗ còn lại: kết thúc sớm khi còn KTV chưa bắt đầu — xem `nghiep_vu_tam_dung_doi_huy.md` mục 3.
+**Lập:** 2026-09-14 · **Trạng thái:** ĐÃ DUYỆT 14/09, ĐÃ CODE — `shouldHoldItemStatus` / `hasOpenKtvSegment` (`lib/dispatch-status.ts`), dùng trong `updateBookingItemStatus`; mô phỏng `scripts/qa/qa_kanban_sequential_hold.ts` 36/36 (2 KTV song song; đổi KTV, kết thúc sớm, huỷ × nối tiếp / song song — chặng dựng bằng `voidSegment` / `closeOpenPause` thật). Chờ merge `main`. ⚠️ Lỗ còn lại: kết thúc sớm khi còn KTV chưa bắt đầu — xem `nghiep_vu_tam_dung_doi_huy.md` mục 3.
 **Liên quan:** `plans/plan_tu_hoan_tat_don_khong_danh_gia.md` (sự cố 14/09).
 
 ---

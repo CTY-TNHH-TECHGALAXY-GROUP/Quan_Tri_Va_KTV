@@ -4,8 +4,9 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { syncTurnsForDate } from '@/lib/turn-sync';
 import { recomputeBookingStatus } from '@/lib/dispatch-status';
 import { getBusinessDate } from '../booking/_shared/utils';
-import { workedMsOf, closeOpenPause } from '@/lib/segment-time';
+import { workedMsOf, closeOpenPause, markNotStartedOnEarlyLeave } from '@/lib/segment-time';
 import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
+import { releaseNotStartedKtvFromItem } from '@/lib/services/KtvReleaseService';
 
 /**
  * ============================================================
@@ -65,6 +66,8 @@ export async function POST(req: Request) {
 
         const affectedKtvIds = new Set<string>();
         const finishedItemIds: string[] = [];
+        // KTVs who had not started when the customer left — released after the items are saved.
+        const notStarted: { bookingId: string; itemId: string; ktvId: string }[] = [];
 
         for (const it of pausedItems) {
             // Mốc kết thúc = lúc bấm tạm dừng. Chỉ khi thiếu pauseStart (dữ liệu cũ) mới đành lấy giờ hiện tại.
@@ -92,6 +95,14 @@ export async function POST(req: Request) {
 
             if (Array.isArray(segs)) {
                 for (const seg of segs) {
+                    // Customer left before this KTV's turn (next in a sequence / parallel
+                    // partner not started yet): they did nothing → 0 minutes, voided,
+                    // released below and lose the turn. Owner decision 14/09/2026.
+                    if (seg.ktvId && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true) {
+                        markNotStartedOnEarlyLeave(seg, effectiveEnd);
+                        notStarted.push({ bookingId: it.bookingId, itemId: it.id, ktvId: String(seg.ktvId) });
+                        continue;
+                    }
                     if (!seg.actualStartTime || seg.actualEndTime) continue;
 
                     // ⚠️ Phải dùng workedMsOf: nó trừ các lần đã tạm dừng TRƯỚC ĐÓ trong
@@ -129,7 +140,9 @@ export async function POST(req: Request) {
             action: 'FINISH_EARLY',
             by: actor.id,
             byName: actor.name,
-            note: 'chốt tại mốc tạm dừng',
+            note: notStarted.length > 0
+                ? `chốt tại mốc tạm dừng · ${Array.from(new Set(notStarted.map(n => n.ktvId))).join(', ')} chưa bắt đầu, đã nhả`
+                : 'chốt tại mốc tạm dừng',
         });
 
         // ─── Tính lại trạng thái Booking (cả đơn cha lẫn đơn con) ───
@@ -175,6 +188,20 @@ export async function POST(req: Request) {
         // Trường hợp KTV bỏ khách, không có ai bàn giao → dùng luồng HUỶ đơn (luồng đó mới
         // giải phóng tua), xem plans/plan_tam_dung_huy_ket_thuc_som.md.
         const businessDate = getBusinessDate();
+
+        // The note above is about the KTV who WAS working. A KTV who never started
+        // never entered the room: nothing to clean, so release them now and remove
+        // their turn (A/B/C). Their segments were voided and saved above.
+        const releasedKeys = new Set<string>();
+        for (const n of notStarted) {
+            const key = `${n.itemId}|${n.ktvId}`;
+            if (releasedKeys.has(key)) continue;
+            releasedKeys.add(key);
+            await releaseNotStartedKtvFromItem(supabase, {
+                bookingId: n.bookingId, itemId: n.itemId, employeeId: n.ktvId, businessDate,
+            });
+        }
+
         await syncTurnsForDate(businessDate);
 
         return NextResponse.json({

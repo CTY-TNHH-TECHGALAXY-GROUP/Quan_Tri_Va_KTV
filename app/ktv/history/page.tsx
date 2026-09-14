@@ -132,6 +132,8 @@ const OrderCard = ({ order, getStatusLabel }: {
   const statusInfo = biTuoc
     ? (order.voidedKind === 'CHANGED'
         ? { label: 'Đã đổi', color: 'text-rose-600 bg-rose-50' }
+        : order.voidedKind === 'EARLY_LEAVE_NOT_STARTED'
+        ? { label: t.earlyLeaveNotStartedLabel, color: 'text-rose-600 bg-rose-50' }
         : { label: 'Huỷ', color: 'text-rose-600 bg-rose-50' })
     : getStatusLabel(order.status);
   const isDone = order.status === 'DONE' || order.status === 'COMPLETED';
@@ -224,10 +226,14 @@ const OrderCard = ({ order, getStatusLabel }: {
                   KTV không hiểu vì sao, quầy không giải thích được. */}
               {biTuoc && (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                  {order.voidedKind === 'EARLY_LEAVE_NOT_STARTED' ? (
+                    <p className="text-[13px] font-semibold text-rose-700 leading-snug">{t.earlyLeaveNotStartedBanner}</p>
+                  ) : (
                   <p className="text-[13px] font-semibold text-rose-700 leading-snug">
                     {order.voidedKind === 'CHANGED' ? 'Lý do đổi' : 'Lý do huỷ'}:{' '}
                     {order.voidedReason ? <>&ldquo;{order.voidedReason}&rdquo;</> : <span className="italic font-medium">quầy không ghi lý do</span>}
                   </p>
+                  )}
                 </div>
               )}
 

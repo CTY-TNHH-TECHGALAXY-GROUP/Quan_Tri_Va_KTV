@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { createNotification } from '@/lib/notification-helper';
 import { KtvDisciplineService } from './KtvDisciplineService';
@@ -316,7 +316,7 @@ export class HandoverService {
         // (cố ý, để truy vết) nhưng người vào thay mới là người bàn giao. Không bỏ
         // là người bị đổi thấy "Nợ bàn giao" một phòng mình không hề phải bàn giao.
         const items = (data || [])
-            .filter((it: any) => !laNguoiBiDoiRaKhoiDon([it], ktvCode, ktvMatchesSeg))
+            .filter((it: any) => !hasNoRoomDutyOnItems([it], ktvCode, ktvMatchesSeg))
             .map(({ segments, ...rest }: any) => rest);
         return { items, count: items.length };
     }

@@ -220,6 +220,14 @@ const check = (name, cond, detail = '') => {
         await addItem(`${B(43)}-i1`, B(43), { status: 'CANCELLED', segments: [cancelledWorked('T011'), cancelledWorked('T014')], options: { cancelCredit: 'WORKED' } });
         await addItem(`${B(43)}-i2`, B(43), { status: 'FEEDBACK', segments: [done('T079', 10), done('T016', 10)] });
 
+        // Early finish AFTER the 14/09 fix: the never-started KTV is marked
+        // (markNotStartedOnEarlyLeave → closed, voided, 0 minutes).
+        const notStartedMarked = (ktvId, startTime = '16:00') => ({ id: `s-${ktvId}`, ktvId, startTime, endTime: '17:00', duration: 60, actualEndTime: minsAgo(40), customCommissionDuration: 0, voided: true, note: 'EARLY_LEAVE_NOT_STARTED' });
+        await addBooking(B(44), 'FEEDBACK');   // seq: A finished early 10m, B marked not-started → DONE
+        await addItem(`${B(44)}-i1`, B(44), { status: 'FEEDBACK', segments: [early('T011', 10), notStartedMarked('T014')], options: earlyOpts });
+        await addBooking(B(45), 'FEEDBACK');   // par: A finished early 10m, partner marked not-started → DONE
+        await addItem(`${B(45)}-i1`, B(45), { status: 'FEEDBACK', segments: asString([early('T011', 10), notStartedMarked('T014', '15:00')]), options: earlyOpts });
+
         // ── Run ────────────────────────────────────────────────────
         const run1 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
         const run2 = Number((await c.query('SELECT auto_complete_unrated_feedback() AS n')).rows[0].n);
@@ -288,9 +296,9 @@ const check = (name, cond, detail = '') => {
         console.log('\nEarly finish × sequence / parallel');
         check('single KTV finished early 10m → DONE', (await st(`${B(34)}-i1`)) === 'DONE');
         check('seq: A done, B finished early 10m → DONE', (await st(`${B(35)}-i1`)) === 'DONE');
-        check('seq: A finished early, B never started → still FEEDBACK (⚠️ known gap)', (await st(`${B(36)}-i1`)) === 'FEEDBACK');
+        check('seq: A finished early, B never started (data before the 14/09 fix) → still FEEDBACK', (await st(`${B(36)}-i1`)) === 'FEEDBACK');
         check('par: both finished early 10m → DONE', (await st(`${B(37)}-i1`)) === 'DONE');
-        check('par: A finished early, partner never started → still FEEDBACK (⚠️ known gap)', (await st(`${B(38)}-i1`)) === 'FEEDBACK');
+        check('par: A finished early, partner never started (data before the 14/09 fix) → still FEEDBACK', (await st(`${B(38)}-i1`)) === 'FEEDBACK');
 
         console.log('\nCancel × sequence / parallel');
         check('svc2 cancelled NO credit (seq) → svc1 DONE', (await st(`${B(39)}-i1`)) === 'DONE');
@@ -303,12 +311,17 @@ const check = (name, cond, detail = '') => {
         check('svc1 cancelled WITH credit (par) + svc2 par both done → svc2 DONE', (await st(`${B(43)}-i2`)) === 'DONE');
         check('  svc1 stays CANCELLED', (await st(`${B(43)}-i1`)) === 'CANCELLED');
 
+        console.log('\nEarly finish after the 14/09 fix (never-started KTV marked)');
+        check('seq: B marked not-started → DONE', (await st(`${B(44)}-i1`)) === 'DONE');
+        check('par: partner marked not-started → DONE', (await st(`${B(45)}-i1`)) === 'DONE');
+
         check('run 2 is a no-op', run2 === 0, `run2=${run2}`);
 
         console.log('\nReal rows');
         // Fixture items closed by run 1: B1,B5,B8,B18,B16,B25,B4,B6,B22×2,B27
-        //   + swap B31,B33 · early B34,B35,B37 · cancel B39,B40,B41,B43 (+ B7 guest)
-        const fixturesClosed = 20 + (guestCloned ? 1 : 0);
+        //   + swap B31,B33 · early B34,B35,B37 · cancel B39,B40,B41,B43
+        //   + early after fix B44,B45 (+ B7 guest)
+        const fixturesClosed = 22 + (guestCloned ? 1 : 0);
         const realClosed = run1 - fixturesClosed;
         const realOtherAfter = await c.query(`SELECT status, count(*)::int n FROM "BookingItems" WHERE status <> 'FEEDBACK' AND id NOT LIKE '${PREFIX}%' GROUP BY status ORDER BY status`);
         const before = Object.fromEntries(realOtherBefore.rows.map(x => [x.status, x.n]));

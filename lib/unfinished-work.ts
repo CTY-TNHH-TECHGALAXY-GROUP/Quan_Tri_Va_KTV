@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getBusinessToday } from '@/lib/business-date';
-import { laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 
 /**
@@ -86,7 +86,7 @@ export async function findUnfinishedWorkToday(
         if (!labels[status]) return false;
         const onItem = (it.technicianCodes || []).some((c: any) => String(c).toUpperCase() === me);
         if (!onItem) return false;
-        return !laNguoiBiDoiRaKhoiDon([it], staffId, ktvMatchesSeg);
+        return !hasNoRoomDutyOnItems([it], staffId, ktvMatchesSeg);
     });
     if (stillMine.length === 0) return [];
 

@@ -100,6 +100,24 @@ export function hasOpenKtvSegment(segments: any[]): boolean {
         && !s.actualEndTime);
 }
 
+/**
+ * Progress of a service's KTV segments, used by handleFinishService to pick the
+ * item status. Voided segments (swapped out, never started before the customer
+ * left, cancelled no credit) are nobody's work any more and are ignored —
+ * otherwise a never-started KTV keeps the item IN_PROGRESS forever (14/09/2026),
+ * and a swapped-out KTV (who never hands over) blocks "all handed over".
+ */
+export function segmentProgress(segments: any[]): { allSegsDone: boolean; hasUnstartedSegs: boolean; allHandovered: boolean } {
+    const live = (Array.isArray(segments) ? segments : [])
+        .filter((s: any) => !!s && s.voided !== true && s.voided !== 'true');
+    const started = live.filter((s: any) => !!s.actualStartTime);
+    return {
+        allSegsDone: started.length > 0 && started.every((s: any) => !!s.actualEndTime),
+        hasUnstartedSegs: live.some((s: any) => !s.actualStartTime && !!s.ktvId),
+        allHandovered: started.length > 0 && started.every((s: any) => !!s.handoverTime),
+    };
+}
+
 const FINISHING_ITEM_STATUSES = ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'];
 
 /**

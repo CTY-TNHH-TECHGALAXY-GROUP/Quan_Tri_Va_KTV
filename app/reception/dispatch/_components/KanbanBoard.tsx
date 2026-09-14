@@ -1134,8 +1134,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                             </span>
                                                                                         )}
                                                                                         {seg?.voided && (
-                                                                                            <span className="text-[8px] font-black text-rose-500 bg-rose-50 border border-rose-100 px-1 py-0.5 rounded shrink-0" title="KTV bị đổi ra — không tính tiền, không tính giờ tích luỹ, mất lượt tua">
-                                                                                                ĐÃ ĐỔI{(Number(seg.customCommissionDuration) || 0) > 0 ? ` · ${Number(seg.customCommissionDuration)}p` : ''}
+                                                                                            <span className="text-[8px] font-black text-rose-500 bg-rose-50 border border-rose-100 px-1 py-0.5 rounded shrink-0" title={seg.note === 'EARLY_LEAVE_NOT_STARTED'
+                                                                                                ? 'Khách về sớm trước lượt KTV này — không tính tiền, không tính giờ tích luỹ, mất lượt tua'
+                                                                                                : 'KTV bị đổi ra — không tính tiền, không tính giờ tích luỹ, mất lượt tua'}>
+                                                                                                {seg.note === 'EARLY_LEAVE_NOT_STARTED'
+                                                                                                    ? 'CHƯA LÀM · KHÁCH VỀ SỚM'
+                                                                                                    : `ĐÃ ĐỔI${(Number(seg.customCommissionDuration) || 0) > 0 ? ` · ${Number(seg.customCommissionDuration)}p` : ''}`}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>

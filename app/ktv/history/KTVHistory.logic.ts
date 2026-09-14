@@ -50,7 +50,7 @@ export interface HistoryRecord {
   /** Lý do tua được chấm cao mà vẫn không có thưởng (đội hỗn hợp chế độ). */
   mixedTeamNote?: string | null;
   /** Loại tước quyền lợi — có giá trị thì đơn này với KTV đã CHỐT 0đ. */
-  voidedKind?: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER' | null;
+  voidedKind?: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'EARLY_LEAVE_NOT_STARTED' | 'OTHER' | null;
   /** Lý do quầy nhập lúc đổi người / huỷ. */
   voidedReason?: string | null;
   /** Settled (DONE) with no customer rating — shown as "Khách hàng không đánh giá". */

@@ -404,7 +404,7 @@ export async function GET(request: Request) {
                 // huỷ lưu ở `options.cancelReason` của dịch vụ.
                 // Loại tước + lý do, trả CÓ CẤU TRÚC để màn hình tự dựng câu và biết
                 // phải ẩn những dòng nào (tiền chờ FB, đánh giá, bàn giao…).
-                const voidedInfo: { kind: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'OTHER'; reason: string | null } | null = (() => {
+                const voidedInfo: { kind: 'CHANGED' | 'CANCELLED_NO_CREDIT' | 'EARLY_LEAVE_NOT_STARTED' | 'OTHER'; reason: string | null } | null = (() => {
                     if (groupItems.length === 0 || coItemConQuyenLoi) return null;
                     let loai = '';
                     let lyDo = '';
@@ -426,6 +426,7 @@ export async function GET(request: Request) {
                     }
                     const kind = loai === 'CHANGED' ? 'CHANGED'
                         : loai === 'CANCELLED_NO_CREDIT' ? 'CANCELLED_NO_CREDIT'
+                        : loai === 'EARLY_LEAVE_NOT_STARTED' ? 'EARLY_LEAVE_NOT_STARTED'
                         : 'OTHER';
                     return { kind, reason: lyDo.trim() || null };
                 })();
@@ -452,6 +453,7 @@ export async function GET(request: Request) {
                     }
                     const nhan = loai === 'CHANGED' ? 'Đã đổi KTV'
                         : loai === 'CANCELLED_NO_CREDIT' ? 'Huỷ không tính công'
+                        : loai === 'EARLY_LEAVE_NOT_STARTED' ? 'Khách về sớm trước lượt bạn'
                         : 'Không tính công';
                     return lyDo ? `${nhan} — ${lyDo}` : `${nhan} · 0đ`;
                 })();

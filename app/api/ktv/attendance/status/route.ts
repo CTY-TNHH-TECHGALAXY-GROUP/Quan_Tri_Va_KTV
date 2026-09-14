@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import { resolveAttendanceStatus } from '@/lib/attendance/resolveAttendanceStatus';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
-import { laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 
 // 🔧 CONFIG
@@ -217,7 +217,8 @@ export async function GET(request: Request) {
                     // bàn giao. Không bỏ qua ở đây là họ bị CHẶN TAN CA vì một phòng
                     // mình không phải dọn, ngay khi người thay làm xong và đơn sang
                     // CLEANING — hoặc khi người thay bấm bỏ qua / bị quầy trả lại.
-                    if (laNguoiBiDoiRaKhoiDon([it], userRow.code, ktvMatchesSeg)) continue;
+                    // Same for a KTV who never started before the customer left early (14/09/2026).
+                    if (hasNoRoomDutyOnItems([it], userRow.code, ktvMatchesSeg)) continue;
                     const owesHandover = ['SKIPPED', 'REJECTED'].includes(String(it.handover_status || '').toUpperCase());
                     const owesCleaning = it.status === 'CLEANING'
                         && String(it.timeStart || '').slice(0, 10) === bizDate;
