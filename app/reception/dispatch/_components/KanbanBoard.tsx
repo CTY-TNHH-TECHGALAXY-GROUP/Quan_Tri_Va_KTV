@@ -27,6 +27,40 @@ const ACTION_LABEL: Record<string, string> = {
     CANCEL: 'Huỷ',
     SWAP_KTV: 'Đổi KTV',
     SWAP_SEND: 'Gửi người mới',
+    KTV_EARLY_EXIT: 'Khách về sớm',
+    KTV_EMERGENCY: 'Khẩn cấp',
+};
+
+// 🔧 UI CONFIGURATION
+/** A KTV pause within this window of their own report is shown as the report only. */
+const KTV_REPORT_MERGE_WINDOW_MS = 120_000;
+/** Same report by the same KTV within this window is a double tap (real data: ≤ 13s). */
+const KTV_REPORT_REPEAT_WINDOW_MS = 30_000;
+const KTV_REPORT_ACTIONS = new Set(['KTV_EARLY_EXIT', 'KTV_EMERGENCY']);
+
+/**
+ * Pressing "Khách về sớm" / "Khẩn cấp" on the app writes two entries: the pause
+ * (often without an actor) and the report. Show one line — "T007 Khách về sớm" —
+ * by hiding that KTV's pause next to the report, and collapse repeated taps.
+ * A pause pressed at the counter (actor ≠ KTV) is always kept.
+ */
+const mergeKtvReports = (log: any[]): any[] => {
+    const timeOf = (e: any) => new Date(e?.at).getTime() || 0;
+    const sameActor = (a: any, b: any) => String(a?.by || '').toUpperCase() === String(b?.by || '').toUpperCase();
+    const reports = log.filter(e => KTV_REPORT_ACTIONS.has(e?.action));
+    if (reports.length === 0) return log;
+
+    return log.filter((e, idx) => {
+        if (e?.action === 'PAUSE') {
+            return !reports.some(r =>
+                (!e.by || sameActor(e, r)) && Math.abs(timeOf(r) - timeOf(e)) <= KTV_REPORT_MERGE_WINDOW_MS);
+        }
+        if (KTV_REPORT_ACTIONS.has(e?.action)) {
+            return !log.slice(0, idx).some(p =>
+                p?.action === e.action && sameActor(p, e) && timeOf(e) - timeOf(p) <= KTV_REPORT_REPEAT_WINDOW_MS);
+        }
+        return true;
+    });
 };
 
 /**
@@ -634,9 +668,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     // Nhật ký thao tác tại quầy — ai bấm gì, lúc nào.
                                     // ⚠️ Sắp theo MỐC THỜI GIAN đã parse, đừng so chuỗi: `...Z` và
                                     // `...+00:00` là cùng một thời điểm nhưng so chuỗi ra khác nhau.
-                                    const counterLog = services
+                                    const counterLog = mergeKtvReports(services
                                         .flatMap((s: any) => Array.isArray(s.options?.counterLog) ? s.options.counterLog : [])
-                                        .sort((a: any, b: any) => (new Date(a?.at).getTime() || 0) - (new Date(b?.at).getTime() || 0));
+                                        .sort((a: any, b: any) => (new Date(a?.at).getTime() || 0) - (new Date(b?.at).getTime() || 0)));
                                     // Gộp lỗi khách tích của mọi dịch vụ trong thẻ, khử trùng theo id.
                                     const subOrderViolations = Array.from(
                                         new Map(

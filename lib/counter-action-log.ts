@@ -35,7 +35,15 @@ export type CounterAction =
      * ra cảnh quầy bấm tạm dừng rồi tự bấm tiếp tục — không thấy đơn đã sang tay
      * ai. Tách riêng để dòng cuối nói đúng việc: gửi cho người mới, kèm mã họ.
      */
-    | 'SWAP_SEND';
+    | 'SWAP_SEND'
+    /**
+     * KTV reports sent from the app that stop the order ("Khách về sớm",
+     * "Báo động khẩn cấp"). The app pauses the order and notifies the counter as
+     * two separate calls; without these entries the card only showed "Tạm dừng"
+     * and the reason was lost. `by` is the KTV code.
+     */
+    | 'KTV_EARLY_EXIT'
+    | 'KTV_EMERGENCY';
 
 export interface CounterLogEntry {
     action: CounterAction;
@@ -114,5 +122,37 @@ export async function logCounterAction(
         }
     } catch (e: any) {
         console.error('[counterLog] không ghi được nhật ký thao tác quầy:', e?.message || e);
+    }
+}
+
+/**
+ * Log a KTV report ("Khách về sớm" / "Khẩn cấp") on the items that KTV is serving
+ * in this booking — preferring the ones still running or paused.
+ * Never throws: a lost log line must not break the report itself.
+ */
+export async function logKtvReport(
+    supabase: SupabaseClient,
+    bookingId: string,
+    techCode: string | null,
+    action: 'KTV_EARLY_EXIT' | 'KTV_EMERGENCY'
+): Promise<void> {
+    try {
+        const { data: items } = await supabase
+            .from('BookingItems')
+            .select('id, status, "technicianCodes"')
+            .eq('bookingId', bookingId);
+
+        const all = (items || []) as any[];
+        const code = String(techCode || '').trim().toUpperCase();
+        const mine = code
+            ? all.filter(i => (i.technicianCodes || []).some((c: string) => String(c).trim().toUpperCase() === code))
+            : [];
+        const pool = mine.length > 0 ? mine : all;
+        const live = pool.filter(i => ['IN_PROGRESS', 'PAUSED'].includes(String(i.status)));
+        const targetIds = (live.length > 0 ? live : pool).map(i => i.id);
+
+        await logCounterAction(supabase, targetIds, { action, by: techCode, byName: techCode });
+    } catch (e: any) {
+        console.error('[counterLog] không ghi được báo của KTV:', e?.message || e);
     }
 }
