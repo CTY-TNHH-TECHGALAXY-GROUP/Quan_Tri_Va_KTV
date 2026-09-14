@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ConfirmActionModal } from './_components/ConfirmActionModal';
 import { buildCheckinConfirmMessage } from './CheckinConfirm.i18n';
 import type { CheckinGateKtv } from '@/lib/attendance/dispatchCheckinGate';
+import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 import { PhotoViewerModal } from './_components/PhotoViewerModal';
 import { QrJourneyModal } from './_components/QrJourneyModal';
 import { StartServiceModal } from './_components/StartServiceModal';
@@ -3218,7 +3219,8 @@ Vẫn kết thúc sớm?`)) return;
         order={pauseModalOrder}
         subOrder={pauseModalSubOrder}
         availableKtvs={turns
-          .filter(t => t.status !== 'off' && t.staff)
+          // Cùng bộ lọc với ô chọn KTV: chưa điểm danh mà chưa làm đơn nào hôm nay thì ẩn (14/09/2026).
+          .filter(t => isVisibleInKtvPicker(t) && t.staff)
           .map(t => ({ ...(t.staff as any), turnStatus: t.status }))
           .sort((a: any, b: any) =>
             (a.turnStatus === 'waiting' ? 0 : 1) - (b.turnStatus === 'waiting' ? 0 : 1)
