@@ -3,7 +3,7 @@ import { requirePermission } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { syncTurnsForDate } from '@/lib/turn-sync';
 import { recomputeBookingStatus } from '@/lib/dispatch-status';
-import { getBusinessDate } from '../booking/_shared/utils';
+import { getBusinessDateFromConfig } from '../booking/_shared/utils';
 import { workedMsOf, closeOpenPause, markNotStartedOnEarlyLeave } from '@/lib/segment-time';
 import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
 import { releaseNotStartedKtvFromItem } from '@/lib/services/KtvReleaseService';
@@ -188,7 +188,7 @@ export async function POST(req: Request) {
         //
         // Trường hợp KTV bỏ khách, không có ai bàn giao → dùng luồng HUỶ đơn (luồng đó mới
         // giải phóng tua), xem plans/plan_tam_dung_huy_ket_thuc_som.md.
-        const businessDate = getBusinessDate();
+        const businessDate = await getBusinessDateFromConfig(supabase);
 
         // The note above is about the KTV who WAS working. A KTV who never started
         // never entered the room: nothing to clean, so release them now and remove

@@ -96,13 +96,8 @@ export async function GET(request: Request) {
     }
 
     try {
-        const { data: cutoffConfig } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .single();
-            
-        const cutoffHours = cutoffConfig?.value ? Number(cutoffConfig.value) : 0;
+        const { getDayCutoffHours } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase as any);
 
         const utcFrom = startOfVnDayToUtc(dateFrom, cutoffHours);
         const utcTo = endOfVnDayToUtc(dateTo, cutoffHours);

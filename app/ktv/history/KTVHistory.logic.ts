@@ -86,6 +86,25 @@ export const useKTVHistory = () => {
   const today = toBusinessDate(new Date(), DEFAULT_DAY_CUTOFF_HOURS);
   const [selectedDates, setSelectedDates] = useState<string[]>([today]);
 
+  // Mốc cắt thật nằm ở `SystemConfigs`, client không đọc thẳng được nên hỏi qua
+  // `/api/ktv/settings`. Chỉ đổi ngày chọn sẵn khi KTV CHƯA tự chọn ngày nào —
+  // không thì mỗi lần cấu hình về lại nhảy lịch dưới tay người ta.
+  useEffect(() => {
+    let huy = false;
+    (async () => {
+      try {
+        const res = await apiClient.get<any>('/api/ktv/settings');
+        const raw = res?.data?.spa_day_cutoff_hours;
+        const n = Number(typeof raw === 'string' ? raw.replace(/"/g, '').trim() : raw);
+        if (!Number.isFinite(n) || n < 0 || n >= 24 || n === DEFAULT_DAY_CUTOFF_HOURS) return;
+        const ngayThat = toBusinessDate(new Date(), n);
+        if (huy || ngayThat === today) return;
+        setSelectedDates(prev => (prev.length === 1 && prev[0] === today ? [ngayThat] : prev));
+      } catch { /* không lấy được cấu hình thì giữ mặc định */ }
+    })();
+    return () => { huy = true; };
+  }, [today]);
+
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState({ totalCommission: 0, totalGross: 0, totalOrders: 0, disciplinePoints: 100, totalNet: 0 });

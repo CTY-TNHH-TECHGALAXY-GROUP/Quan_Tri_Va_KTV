@@ -1,6 +1,7 @@
 'use client';
 import { isUtilityService } from '@/lib/booking.logic';
 import { parseDbDate } from "@/lib/utils";
+import { toBusinessDate, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 
 // 🔧 UI CONFIGURATION
 const DEFAULT_DURATION = 60; // Phút mặc định cho mỗi KTV
@@ -164,13 +165,10 @@ export default function DispatchBoardPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const vnTime = new Date(new Date().getTime() + 7 * 60 * 60 * 1000);
-    if (vnTime.getUTCHours() < 6) {
-        vnTime.setUTCDate(vnTime.getUTCDate() - 1);
-    }
-    return vnTime.toISOString().split('T')[0];
-  });
+  const [selectedDate, setSelectedDate] = useState(
+    // Ngày làm việc — dùng chung công thức với server, không tự viết mốc 6h nữa.
+    () => toBusinessDate(new Date(), DEFAULT_DAY_CUTOFF_HOURS)
+  );
 
   const {
     orders, setOrders,

@@ -31,7 +31,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvBookingPatchSchema } from '@/lib/schemas/ktv.schema';
-import { getBusinessDate, HandlerContext, HandlerResult } from './_shared/utils';
+import { getBusinessDateFromConfig, HandlerContext, HandlerResult } from './_shared/utils';
 import { handleGetBooking } from './_handlers/handleGetBooking';
 import { handleStartTimer } from './_handlers/handleStartTimer';
 import { handleFinishService } from './_handlers/handleFinishService';
@@ -73,7 +73,7 @@ export async function PATCH(request: Request) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        const today = getBusinessDate();
+        const today = await getBusinessDateFromConfig(supabase);
         const { data: turnForSync } = await supabase
             .from('TurnQueue')
             .select('id, booking_item_id, booking_item_ids, last_served_at, start_time, turns_completed, status, room_id')

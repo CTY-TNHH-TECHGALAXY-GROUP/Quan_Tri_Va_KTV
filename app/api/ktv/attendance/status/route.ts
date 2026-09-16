@@ -28,24 +28,12 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
 
-        // ─── Fetch Cut-off Time Config ───
-        const { data: configData } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .single();
-            
-        // Default to 6:00 AM if not set
-        const cutoffHours = (configData?.value != null) ? Number(configData.value) : 6;
-
-        // ─── Calculate Business Day date range (UTC+7) ───
+        // ─── Ngày làm việc — một nguồn duy nhất: lib/business-date ───
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
         const nowUtc = new Date();
         const vnNow = new Date(nowUtc.getTime() + VN_OFFSET_MS);
-        
-        // Subtract cutoff hours to determine the "Business Date"
-        // E.g., if cutoff is 6, 03:00 AM May 2 becomes 21:00 PM May 1 -> Business Date is May 1
-        const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessNow.toISOString().slice(0, 10);
+        const businessDateStr = toBusinessDate(nowUtc, cutoffHours);
         
         // Business Day starts at cutoff hours of the business date
         const startOfBusinessDayUtc = new Date(`${businessDateStr}T${String(cutoffHours).padStart(2, '0')}:00:00+07:00`).toISOString();
@@ -202,8 +190,9 @@ export async function GET(request: Request) {
         //                  viễn vì rác dữ liệu chứ không phải vì lỗi hôm nay.
         let roomDebt = { handover: 0, cleaning: 0, total: 0, items: [] as any[] };
         if (userRow?.code) {
-            const { getBusinessDate } = await import('@/app/api/ktv/booking/_shared/utils');
-            const bizDate = getBusinessDate();
+            // Cùng ngày làm việc đã tính ở đầu hàm — trước đây chỗ này gọi lại
+            // hàm của điều phối, vốn viết cứng mốc 6h.
+            const bizDate = businessDateStr;
 
             const { data: debtRows, error: debtErr } = await supabase
                 .from('BookingItems')

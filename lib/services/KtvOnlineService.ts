@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { applyArrivalToTurnQueue } from '@/lib/services/TurnQueueRowService';
+import { DEFAULT_DAY_CUTOFF_HOURS, getDayCutoffHours } from '@/lib/business-date';
 
 // 🔧 CONFIGURATION
 const MAX_TRAVEL_MINUTES = 60;
@@ -97,10 +98,10 @@ export class KtvOnlineService {
         try {
             // Lấy Business Date hiện tại
             const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-            const businessDateStr = businessNow.toISOString().slice(0, 10);
+            // Ngày làm việc — một nguồn duy nhất, không tự đọc cấu hình ở đây nữa.
+            const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+            const cutoffHours = await getDayCutoffHours(supabase);
+            const businessDateStr = toBusinessDate(new Date(), cutoffHours);
 
             // 1. Cập nhật Staff
             const { error: staffError } = await supabase
@@ -164,10 +165,10 @@ export class KtvOnlineService {
 
             // Lấy Business Date hiện tại
             const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-            const businessDateStr = businessNow.toISOString().slice(0, 10);
+            // Ngày làm việc — một nguồn duy nhất, không tự đọc cấu hình ở đây nữa.
+            const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+            const cutoffHours = await getDayCutoffHours(supabase);
+            const businessDateStr = toBusinessDate(new Date(), cutoffHours);
 
             // 1. Cập nhật Staff
             const { error: staffError } = await supabase
@@ -234,7 +235,7 @@ export class KtvOnlineService {
             if (!staff || staff.online_status === 'OFFLINE') return false;
             if (!staff.available_until) return false;
 
-            if (this.isTimeExpired(staff.available_until, 0)) {
+            if (this.isTimeExpired(staff.available_until, 0, await getDayCutoffHours(supabase))) {
                 await this.goOffline(supabase, staffId);
                 return true;
             }
@@ -274,6 +275,7 @@ export class KtvOnlineService {
             }
 
             // 2. Filter expired (with 1 hour buffer)
+            const cutoffForExpiry = await getDayCutoffHours(supabase);
             const expiredIds: string[] = [];
             for (const staff of onlineStaff) {
                 if (!staff.available_until) {
@@ -282,7 +284,7 @@ export class KtvOnlineService {
                     continue;
                 }
 
-                if (this.isTimeExpired(staff.available_until, EXPIRED_BUFFER_MINUTES)) {
+                if (this.isTimeExpired(staff.available_until, EXPIRED_BUFFER_MINUTES, cutoffForExpiry)) {
                     expiredIds.push(staff.id);
                 }
             }
@@ -336,7 +338,7 @@ export class KtvOnlineService {
      * Returns true if the time has expired (now > time + bufferMinutes).
      * Handles cross-midnight correctly (e.g., available_until = 01:00).
      */
-    private static isTimeExpired(timeStr: string, bufferMinutes: number): boolean {
+    private static isTimeExpired(timeStr: string, bufferMinutes: number, cutoffHours: number = DEFAULT_DAY_CUTOFF_HOURS): boolean {
         const parts = String(timeStr).split(':').map(Number);
         const h = parts[0];
         const m = parts[1] || 0;
@@ -347,7 +349,8 @@ export class KtvOnlineService {
         const untilMinutes = h * 60 + m + bufferMinutes;
 
         // Cross-midnight handling: if until < 06:00, it means early morning (next day)
-        const isCrossMidnight = (h * 60 + m) < 360; // before 6:00 AM
+        // Giờ nhỏ hơn mốc cắt ngày = rạng sáng hôm sau, không phải sáng hôm nay.
+        const isCrossMidnight = (h * 60 + m) < cutoffHours * 60;
 
         if (isCrossMidnight) {
             // e.g., available_until = 02:00 + buffer 60 = 03:00

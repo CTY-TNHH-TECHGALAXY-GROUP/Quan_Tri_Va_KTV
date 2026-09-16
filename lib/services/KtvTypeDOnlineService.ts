@@ -44,10 +44,10 @@ export class KtvTypeDOnlineService {
             }
 
             const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-            const businessDateStr = businessNow.toISOString().slice(0, 10);
+            // Ngày làm việc — một nguồn duy nhất, không tự đọc cấu hình ở đây nữa.
+            const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+            const cutoffHours = await getDayCutoffHours(supabase);
+            const businessDateStr = toBusinessDate(new Date(), cutoffHours);
 
             // Registered OFF but wants to earn extra → allowed (business rule, 14/09/2026).
             // Turning on-call does NOT touch KTVTypeDDailyRegistration: the day stays
@@ -83,10 +83,10 @@ export class KtvTypeDOnlineService {
     ): Promise<{ success: boolean; error?: string }> {
         try {
             const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-            const businessDateStr = businessNow.toISOString().slice(0, 10);
+            // Ngày làm việc — một nguồn duy nhất, không tự đọc cấu hình ở đây nữa.
+            const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+            const cutoffHours = await getDayCutoffHours(supabase);
+            const businessDateStr = toBusinessDate(new Date(), cutoffHours);
 
             // 1. Lấy thông tin user
             const { data: user, error: userError } = await supabase.from('Users').select('id').eq('code', staffId).maybeSingle();
@@ -154,10 +154,10 @@ export class KtvTypeDOnlineService {
             if (!staffData) return { success: false, error: 'Staff not found' };
 
             const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-            const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-            const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-            const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-            const businessDateStr = businessNow.toISOString().slice(0, 10);
+            // Ngày làm việc — một nguồn duy nhất, không tự đọc cấu hình ở đây nữa.
+            const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+            const cutoffHours = await getDayCutoffHours(supabase);
+            const businessDateStr = toBusinessDate(new Date(), cutoffHours);
 
             // 1. Lấy user
             const { data: user, error: userError } = await supabase.from('Users').select('id, fullName').eq('code', staffId).maybeSingle();

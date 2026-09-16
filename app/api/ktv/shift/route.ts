@@ -79,11 +79,9 @@ export async function GET(request: NextRequest) {
         }
 
         // ─── Lấy ngày Business Hôm Nay ───
-        const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-        const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-        const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-        const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessNow.toISOString().slice(0, 10);
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
+        const businessDateStr = toBusinessDate(new Date(), cutoffHours);
         
         const fetchDate = targetDate || businessDateStr;
 
@@ -189,8 +187,9 @@ export async function GET(request: NextRequest) {
         }
 
         if (employeeId) {
-            const tomorrow = new Date(businessNow.getTime() + 24 * 60 * 60 * 1000);
-            const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+            // Ngày làm việc kế tiếp, tính từ ngày làm việc hôm nay.
+            const { shiftBusinessDate } = await import('@/lib/business-date');
+            const tomorrowStr = shiftBusinessDate(businessDateStr, 1);
 
             // Fetch current active shift + history for a specific KTV
             let { data: allShifts, error: activeError } = await supabase

@@ -34,7 +34,7 @@ import { isUtilityService } from '@/lib/booking.logic';
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getBusinessDate, ktvMatchesSeg } from '../_shared/utils';
+import { getBusinessDateFromConfig, ktvMatchesSeg } from '../_shared/utils';
 import { HandoverService } from '@/lib/services/HandoverService';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
@@ -47,6 +47,10 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         const API_START = Date.now();
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // Ngày làm việc: tính MỘT lần theo mốc cắt đang cấu hình.
+        // Trước đây mỗi chỗ gọi lại hàm viết cứng mốc 6h.
+        const bizToday = await getBusinessDateFromConfig(supabase);
 
         let bookingId = bookingIdParam;
 
@@ -87,7 +91,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 bookingId = validActiveItem.bookingId;
             } else {
                 // 1.b Nếu không có item IN_PROGRESS, lấy từ TurnQueue (đơn mới gán)
-                const today = getBusinessDate();
+                const today = bizToday;
                 const { data: turn, error: tError } = await supabase
                     .from('TurnQueue')
                     .select('current_order_id, booking_item_id, booking_item_ids, status')
@@ -126,7 +130,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .select('id, status, booking_item_id, room_id, bed_id')
                     .eq('employee_id', technicianCode)
                     .eq('booking_id', bookingId)
-                    .eq('business_date', getBusinessDate())
+                    .eq('business_date', bizToday)
                     .maybeSingle()
                 : Promise.resolve({ data: null }),
         ]);
@@ -161,11 +165,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 if (foundChildId) {
                     console.warn(`🔄 [KTV] Chuyển hướng KTV ${technicianCode} sang Đơn con: ${foundChildId}`);
                     bookingId = foundChildId;
-                    await supabase.from('TurnQueue').update({ current_order_id: foundChildId }).eq('employee_id', technicianCode).eq('date', getBusinessDate());
+                    await supabase.from('TurnQueue').update({ current_order_id: foundChildId }).eq('employee_id', technicianCode).eq('date', bizToday);
                     await supabase.from('KtvAssignments')
                         .update({ booking_id: foundChildId, updated_at: new Date().toISOString() })
                         .eq('employee_id', technicianCode)
-                        .eq('business_date', getBusinessDate())
+                        .eq('business_date', bizToday)
                         .eq('booking_id', rawBooking.id)
                         .in('status', ['QUEUED', 'READY', 'ACTIVE']);
                 } else {
@@ -175,11 +179,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         booking_item_id: null,
                         booking_item_ids: [],
                         status: 'waiting'
-                    }).eq('employee_id', technicianCode).eq('date', getBusinessDate());
+                    }).eq('employee_id', technicianCode).eq('date', bizToday);
                     await supabase.from('KtvAssignments')
                         .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
                         .eq('employee_id', technicianCode)
-                        .eq('business_date', getBusinessDate())
+                        .eq('business_date', bizToday)
                         .eq('booking_id', rawBooking.id)
                         .in('status', ['QUEUED', 'READY', 'ACTIVE']);
                     return NextResponse.json({ success: true, data: null });
@@ -190,7 +194,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         // ─── 2. AUTO-ACTIVATE ASSIGNMENT ───
         // (PHẢI tuần tự - có write operations / side effects)
         if (bookingId && technicianCode) {
-            const today = getBusinessDate();
+            const today = bizToday;
             // Dùng lại kết quả đã bắn song song ở trên. Chỉ hỏi lại khi SPLIT GUARD
             // vừa chuyển hướng sang đơn con — lúc đó bản đã lấy thuộc về đơn cha.
             let assign = preAssignRes.data as any;
@@ -269,7 +273,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         // ⚡ NHÓM 2: PARALLEL FETCH CHÍNH (5 queries cùng lúc)
         // Tất cả chỉ cần bookingId + technicianCode → chạy song song
         // ═══════════════════════════════════════════════════════════════
-        const today = getBusinessDate();
+        const today = bizToday;
         
         const [bookingRes, turnInfoRes, itemsRes, rewardConfigRes, nextAssignsRes, guestsRes] = await Promise.all([
             // Q1: Fetch booking data

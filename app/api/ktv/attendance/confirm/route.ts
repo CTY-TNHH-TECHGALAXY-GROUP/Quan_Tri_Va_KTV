@@ -64,17 +64,11 @@ export async function PATCH(request: Request) {
         }
 
         // ─── Lấy cấu hình Day Cut-off để tính ngày Business Day ────────────
-        const { data: configData } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .maybeSingle();
-        const cutoffHours = (configData?.value != null) ? Number(configData.value) : 6;
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
 
-        // Tính ngày làm việc (Business Date) dựa trên thời điểm KTV bấm điểm danh (checkedAt)
-        const checkTimeVn = new Date(new Date(attendance.checkedAt).getTime() + VN_OFFSET_MS);
-        const businessDateObj = new Date(checkTimeVn.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessDateObj.toISOString().split('T')[0];
+        // Ngày làm việc tính theo đúng lúc KTV bấm điểm danh (checkedAt).
+        const businessDateStr = toBusinessDate(new Date(attendance.checkedAt), cutoffHours);
 
         // ─── If CONFIRMED CHECK_IN: upsert TurnQueue ────────────────────
         if (action === 'CONFIRM' && (attendance.checkType === 'CHECK_IN' || attendance.checkType === 'LATE_CHECKIN') && userRole === 'TECHNICIAN') {

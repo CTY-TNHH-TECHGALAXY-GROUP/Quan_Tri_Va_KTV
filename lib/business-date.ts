@@ -118,3 +118,30 @@ export function shiftBusinessDate(dateStr: string, days: number): string {
     d.setUTCDate(d.getUTCDate() + days);
     return d.toISOString().slice(0, 10);
 }
+
+/**
+ * 'HH:mm' → số phút tính từ lúc ngày làm việc bắt đầu.
+ *
+ * Cắt 06:00 thì 06:00 → 0, 20:00 → 840, 23:59 → 1079, 01:50 → 1190.
+ * Nhờ vậy so hai mốc giờ trong CÙNG một ngày làm việc là so hai số, không còn
+ * cảnh 23:00 bị coi là muộn hơn 01:50 chỉ vì chuỗi 'HH:mm' lớn hơn.
+ */
+export function phutTrongNgayLamViec(hhmm: string, cutoffHours: number): number | null {
+    const m = String(hhmm ?? '').match(/^(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return (h * 60 + min - cutoffHours * 60 + 1440) % 1440;
+}
+
+/**
+ * `moc` đã trôi qua so với `bayGio` chưa, tính trong cùng một ngày làm việc.
+ * Trả `null` khi một trong hai giá trị không phải 'HH:mm'.
+ */
+export function daQuaGio(moc: string, bayGio: string, cutoffHours: number): boolean | null {
+    const a = phutTrongNgayLamViec(moc, cutoffHours);
+    const b = phutTrongNgayLamViec(bayGio, cutoffHours);
+    if (a === null || b === null) return null;
+    return b > a;
+}

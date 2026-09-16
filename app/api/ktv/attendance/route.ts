@@ -309,18 +309,10 @@ export async function POST(request: Request) {
         const isAutoApprove = true;
         const finalStatus = 'CONFIRMED';
 
-        // Fetch day cutoff to determine the exact Business Date
-        const { data: cutoffConfig } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .maybeSingle();
-        
-        const cutoffHours = (cutoffConfig?.value != null) ? Number(cutoffConfig.value) : 6;
-        
-        // Calculate Business Date based on cutoff
-        const businessNow = new Date(nowVn.getTime() - cutoffHours * 60 * 60 * 1000);
-        const today = businessNow.toISOString().split('T')[0];
+        // Ngày làm việc — một nguồn duy nhất: lib/business-date
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
+        const today = toBusinessDate(nowUtc, cutoffHours);
 
         const { data: record, error: insertError } = await supabase
             .from('KTVAttendance')
