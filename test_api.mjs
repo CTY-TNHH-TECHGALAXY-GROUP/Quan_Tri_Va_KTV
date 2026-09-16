@@ -1,0 +1,1 @@
+﻿import { createClient } from '@supabase/supabase-js'; import dotenv from 'dotenv'; dotenv.config({ path: '.env.local' }); async function run() { const res = await fetch('http://localhost:3000/api/ktv/history?techCode=NH021&dateStr=2026-08-20'); const data = await res.json(); console.log(JSON.stringify(data.history, null, 2)); } run();
