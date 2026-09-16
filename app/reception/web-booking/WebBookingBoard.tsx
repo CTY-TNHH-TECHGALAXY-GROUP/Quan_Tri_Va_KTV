@@ -127,7 +127,7 @@ export function WebBookingBoard() {
         (payload: any) => {
           const newBooking = payload.new;
           // Only handle specific sources
-          const targetSources = ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
+          const targetSources = ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
           if (newBooking?.status === 'NEW' && targetSources.includes(newBooking?.source)) {
             console.log('📩 [WebBooking] New booking received:', newBooking.billCode);
             playSound?.('new_booking');
