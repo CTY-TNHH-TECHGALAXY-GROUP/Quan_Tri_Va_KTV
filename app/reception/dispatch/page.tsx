@@ -227,7 +227,7 @@ export default function DispatchBoardPage() {
                 .from('Bookings')
                 .select('*', { count: 'exact', head: true })
                 .neq('status', 'CANCELLED')
-                .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
+                .in('source', ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
                 .eq('status', 'NEW');
 
             if (count !== null && !error) {
