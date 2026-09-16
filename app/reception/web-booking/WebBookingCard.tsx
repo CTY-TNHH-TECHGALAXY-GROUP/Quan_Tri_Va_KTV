@@ -27,6 +27,7 @@ const LANG_FLAG: Record<string, string> = {
 
 const SOURCE_MAP: Record<string, { label: string; color: string; bg: string }> = {
   WEB_BOOKING: { label: 'Web Booking', color: 'text-blue-600', bg: 'bg-blue-50' },
+  WebBooking: { label: 'Web Booking', color: 'text-blue-600', bg: 'bg-blue-50' },
   HOME_BOOKING: { label: 'Đặt tại nhà', color: 'text-indigo-600', bg: 'bg-indigo-50' },
   VIP_BOOKING: { label: 'App VIP', color: 'text-amber-600', bg: 'bg-amber-50' },
   VIP_WALK_IN: { label: 'App VIP (Walk-in)', color: 'text-orange-600', bg: 'bg-orange-50' },
