@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { format } from 'date-fns';
 import { requireActiveStaff } from '@/lib/auth-server';
 import { vnDate } from '@/lib/vn-time';
+import { getBusinessToday } from '@/lib/business-date';
+
+// 🔧 KHUNG GIỜ ĐĂNG KÝ HỢP LỆ — ca Loại D luôn bắt đầu trong giờ mở cửa.
+const GIO_SOM_NHAT = '09:00';
+const GIO_MUON_NHAT = '23:59';
 
 export async function POST(request: Request) {
   try {
@@ -72,7 +77,8 @@ export async function POST(request: Request) {
       .eq('staff_id', staff.id)
       .in('work_date', datesToUpdate);
     const daCoDong = new Set((existingRecords || []).map((r: any) => r.work_date));
-    const homNay = vnToday();
+    // "Hôm nay" theo NGÀY LÀM VIỆC: 01:00 rạng sáng vẫn thuộc ca hôm trước.
+    const homNay = await getBusinessToday(supabase as any);
     const gioHienTai = format(vnNow(), 'HH:mm');
 
     for (const entry of processedEntries) {
@@ -90,6 +96,14 @@ export async function POST(request: Request) {
         }
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.expected_time)) {
           return NextResponse.json({ error: `Giờ đến tiệm ngày ${vnDate(entry.work_date)} không hợp lệ (HH:mm)` }, { status: 400 });
+        }
+        // Ca Loại D luôn bắt đầu trong giờ mở cửa. Giờ hẹn rơi vào 00:00–08:59 là
+        // giờ của ca HÔM TRƯỚC (tiệm đóng lúc 00:00), nhận vào thì không ai biết
+        // "00:10" là đêm nào — đã có KTV bị khoá oan vì chuyện này.
+        if (entry.expected_time < GIO_SOM_NHAT || entry.expected_time > GIO_MUON_NHAT) {
+          return NextResponse.json({
+            error: `Giờ đến tiệm ngày ${vnDate(entry.work_date)} phải trong khoảng ${GIO_SOM_NHAT} – ${GIO_MUON_NHAT}`,
+          }, { status: 400 });
         }
         // Đăng ký bù cho hôm nay mà hẹn giờ đã qua thì vừa điểm danh là dính
         // −5h đi trễ — chặn ngay từ đây.
@@ -163,7 +177,8 @@ export async function POST(request: Request) {
         work_date: entry.work_date,
         expected_time: effectiveType === 'WORKING' ? entry.expected_time : null,
         status,
-        registered_at: vnNow().toISOString()
+        // Mốc thật, KHÔNG cộng 7 tiếng rồi gắn nhãn UTC như trước.
+        registered_at: new Date().toISOString()
     }));
 
     const { data, error } = await supabase

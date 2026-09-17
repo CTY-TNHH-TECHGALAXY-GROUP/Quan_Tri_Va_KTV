@@ -206,12 +206,15 @@ export class KtvTypeDOnlineService {
 
             // 4. Ghi check_in_at vào KTVTypeDDailyRegistration (phụ)
             try {
-                const { vnToday } = await import('@/lib/vn-time');
-                const todayStr = vnToday();
+                // Dòng đăng ký của CA này — theo NGÀY LÀM VIỆC, cùng trục với
+                // KTVAttendance.date và sổ tua. Trước đây ghi theo ngày lịch nên
+                // bấm sau 00:00 là dấu điểm danh rơi sang dòng của ngày hôm sau.
+                const todayStr = businessDateStr;
                 const { data: currentReg } = await supabase.from('KTVTypeDDailyRegistration').select('check_in_at').eq('staff_id', staffId).eq('work_date', todayStr).maybeSingle();
                 if (currentReg && !currentReg.check_in_at) {
                     await supabase.from('KTVTypeDDailyRegistration')
-                        .update({ check_in_at: vnNow.toISOString() })
+                        // Mốc thật: trước đây lưu giờ VN nhưng gắn nhãn UTC nên lệch 7 tiếng.
+                        .update({ check_in_at: new Date().toISOString() })
                         .eq('staff_id', staffId)
                         .eq('work_date', todayStr);
                 }

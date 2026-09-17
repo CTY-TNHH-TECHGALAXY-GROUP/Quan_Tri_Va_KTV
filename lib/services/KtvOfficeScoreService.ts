@@ -434,6 +434,8 @@ export class KtvOfficeScoreService {
              * giờ làm trước, phạt sau", không sắp lại theo mốc này.
              */
             at: string | null;
+            /** Phiếu do cron chốt sổ cuối ngày ghi — không phải mốc giờ KTV làm gì. */
+            tuChotSo: boolean;
             /** Real moment in ms, only for ordering. Stripped before returning. */
             sortMs: number;
         };
@@ -459,6 +461,7 @@ export class KtvOfficeScoreService {
                 bookingId: r.bill_code || r.booking_id || null,
                 note: r.service_name,
                 at: r.booking_time_start || null,
+                tuChotSo: false,
                 // No order start (manual/admin rows) → when it was written to the ledger.
                 sortMs: toMs(r.booking_time_start) || toMs((r as any).created_at),
             })),
@@ -473,6 +476,8 @@ export class KtvOfficeScoreService {
                 bookingId: null,
                 note: p.note,
                 at: p.created_at || null,
+                // Cron ghi lúc 00:00 ngày HÔM SAU — hiện giờ đó ra chỉ làm người đọc rối.
+                tuChotSo: String((p as any).created_by || '').toUpperCase().startsWith('CRON'),
                 sortMs: toMs(p.created_at),
             })),
         ];

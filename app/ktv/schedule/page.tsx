@@ -12,6 +12,10 @@ import { getRegistrationEditWindow } from '@/lib/vn-time';
 import { canCreateRegistration, canEditRegistration, registrationLockedMessage, vnToday } from '@/lib/vn-time';
 import { t } from './Schedule.i18n';
 
+// 🔧 KHUNG GIỜ ĐĂNG KÝ HỢP LỆ — khớp với API daily-registration.
+const GIO_SOM_NHAT = '09:00';
+const GIO_MUON_NHAT = '23:59';
+
 // 🔧 UI CONFIGURATION
 const STATUS_COLORS = {
     PENDING: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: Clock },
@@ -557,7 +561,9 @@ const KTVSchedulePage = () => {
                                                 <span className="font-bold text-gray-700 text-sm uppercase">{fmt}</span>
                                                 {pendingSubmit.type === 'WORKING' && (
                                                     <input 
-                                                        type="time"
+                                                        type="time" 
+                                                        min={GIO_SOM_NHAT} 
+                                                        max={GIO_MUON_NHAT}
                                                         value={expectedTimes[d] || ""}
                                                         onChange={e => {
                                                             const val = e.target.value;
@@ -703,6 +709,8 @@ const KTVSchedulePage = () => {
                                             </label>
                                             <input
                                                 type="time"
+                                                min={GIO_SOM_NHAT}
+                                                max={GIO_MUON_NHAT}
                                                 value={editingReg.expected_time || ""}
                                                 onChange={e => setEditingReg({ ...editingReg, expected_time: e.target.value })}
                                                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold"

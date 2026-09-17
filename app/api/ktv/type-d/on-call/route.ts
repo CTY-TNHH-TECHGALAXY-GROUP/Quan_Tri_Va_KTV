@@ -33,8 +33,10 @@ export async function GET(req: NextRequest) {
     const allow_on_call = data?.work_type === 'TYPE_D' && featureFlags.allow_on_call === true;
     const is_on_call = data?.online_status === 'ONLINE' || data?.online_status === 'AT_VENUE';
 
-    const { vnToday } = await import('@/lib/vn-time');
-    const todayStr = vnToday();
+    // Ca hiện tại theo NGÀY LÀM VIỆC — 01:00 rạng sáng vẫn là ca hôm trước.
+    const { getBusinessToday, getDayCutoffHours } = await import('@/lib/business-date');
+    const cutoffHours = await getDayCutoffHours(supabase);
+    const todayStr = await getBusinessToday(supabase);
 
     const { data: dailyReg } = await supabase.from('KTVTypeDDailyRegistration').select('status').eq('staff_id', techCode).eq('work_date', todayStr).maybeSingle();
     const isOffToday = dailyReg?.status === 'OFF_REGISTERED';
@@ -46,6 +48,9 @@ export async function GET(req: NextRequest) {
         is_on_call,
         online_status: data?.online_status,
         travel_time_mins: data?.travel_minutes || featureFlags.travel_time_mins || 30,
+        // Client KHÔNG tự tính ngày làm việc nữa — server nói ngày nào thì theo ngày đó.
+        businessDate: todayStr,
+        cutoffHours,
         isOffToday
       }
     });

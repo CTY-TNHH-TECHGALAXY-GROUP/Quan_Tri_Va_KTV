@@ -138,6 +138,7 @@ export async function GET(request: Request) {
             balance: r.balance,
             note: r.note,
             at: r.at,
+            tuChotSo: (r as any).tuChotSo === true,
             penaltyLabel: r.penaltyType ? (HOURS_PENALTY_VI[r.penaltyType] || r.penaltyType) : null,
             orderCode: r.bookingId
                 ? (isUuid(r.bookingId) ? `#${r.bookingId.slice(0, 8)}` : r.bookingId)

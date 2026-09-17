@@ -19,6 +19,8 @@ export interface HoursLedgerEntry {
   note: string | null;
   /** Order start for turns, write time for penalties. Null on manual rows → date only. */
   at?: string | null;
+  /** Phiếu do cron chốt sổ ghi lúc 00:00 hôm sau — hiện "chốt sổ cuối ngày" thay cho giờ. */
+  tuChotSo?: boolean;
   /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
   penaltyLabel: string | null;
   orderCode: string | null;
@@ -114,8 +116,12 @@ export const HoursLedgerSheet = ({
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                           {fmtShortDate(r.date)}
-                          {/* After-midnight turns print their real date: "00:54 (04/09)". */}
-                          {fmtClockOnDate(r.at, r.date) && ` · ${fmtClockOnDate(r.at, r.date)}`}
+                          {/* Cron ghi phiếu chốt sổ lúc 00:00 ngày HÔM SAU — in giờ đó ra
+                              chỉ làm người đọc tưởng mình bị phạt vào ngày khác.
+                              Tua sau nửa đêm thì vẫn in ngày thật: "00:54 (04/09)". */}
+                          {r.tuChotSo
+                            ? ' · chốt sổ cuối ngày'
+                            : fmtClockOnDate(r.at, r.date) && ` · ${fmtClockOnDate(r.at, r.date)}`}
                         </p>
                         <p className={`text-sm font-bold leading-snug mt-0.5 ${isPenalty ? 'text-rose-700' : 'text-slate-800'}`}>
                           {isPenalty ? r.penaltyLabel : (r.note || 'Tua phục vụ')}

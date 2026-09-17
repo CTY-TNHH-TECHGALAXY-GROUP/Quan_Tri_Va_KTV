@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { t } from './AttendanceTypeD.i18n';
 import { fmtGioBuoi } from '@/lib/hours-format';
 import { vnNow } from '@/lib/vn-time';
+import { phutTrongNgayLamViec, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 import { format } from 'date-fns';
 
 interface OnCallState {
@@ -15,6 +16,9 @@ interface OnCallState {
   online_status: 'ONLINE' | 'AT_VENUE' | 'OFFLINE';
   travel_time_mins: number;
   isOffToday?: boolean;
+  /** Ngày làm việc hiện tại do SERVER tính. Client không tự suy ra nữa. */
+  businessDate?: string;
+  cutoffHours?: number;
 }
 
 interface Props {
@@ -62,14 +66,13 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   const [showLateModal, setShowLateModal] = useState(false);
   const [lateTime, setLateTime] = useState('');
 
-  const vnToday = () => {
-    const d = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    return d.toISOString().slice(0, 10);
-  };
-
-  const fetchRegistration = async () => {
+  // Ngày làm việc lấy từ server (mốc cắt nằm ở SystemConfigs). Trước đây client
+  // tự lấy ngày lịch, nên vừa qua 00:00 là nhảy sang ca ngày mới trong khi ca đêm
+  // hôm trước còn đang chạy.
+  const fetchRegistration = async (businessDate?: string) => {
     try {
-      const today = vnToday();
+      const today = businessDate || state?.businessDate;
+      if (!today) return;
       const res = await apiClient.get<any>(`/api/ktv/daily-registration?from=${today}&to=${today}`);
       setRegistration((res?.data || [])[0] || null);
     } catch { /* không chặn màn hình chấm công */ }
@@ -110,11 +113,14 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
    * "Báo đi muộn" là báo TRƯỚC — hẹn lại một mốc muộn hơn để khỏi bị tính lỗi.
    * Quá giờ rồi thì không còn gì để báo trước: người đó đang muộn thật. Cho bấm
    * lúc này là mở đường lách — cứ muộn xong mới báo thì luật đi trễ thành vô nghĩa.
-   *
-   * So sánh chuỗi 'HH:MM' được vì cùng định dạng 2 chữ số, không cần dựng Date.
    */
+  // So bằng PHÚT TRONG NGÀY LÀM VIỆC: ca chạy qua nửa đêm nên không so chuỗi
+  // 'HH:mm' trần được (23:00 không muộn hơn 01:50 của cùng ca).
+  const cutoffHours = state?.cutoffHours ?? DEFAULT_DAY_CUTOFF_HOURS;
   const gioHienTai = format(vnNow(), 'HH:mm');
-  const daQuaGioDangKy = !!gioDaDangKy && gioHienTai > gioDaDangKy;
+  const phutBayGio = phutTrongNgayLamViec(gioHienTai, cutoffHours) ?? 0;
+  const phutHenDangKy = gioDaDangKy ? phutTrongNgayLamViec(gioDaDangKy, cutoffHours) : null;
+  const daQuaGioDangKy = phutHenDangKy !== null && phutBayGio >= phutHenDangKy;
 
   const chuaDiemDanh = !!registration
     && registration.status !== 'OFF_REGISTERED'
@@ -133,6 +139,8 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
         if (res.data.travel_time_mins) {
             setTempMins(res.data.travel_time_mins);
         }
+        // Dòng đăng ký phải theo ĐÚNG ngày làm việc server vừa trả về.
+        fetchRegistration(res.data.businessDate);
       }
     } catch (e) {
       console.error('Lỗi khi lấy trạng thái on-call', e);
@@ -142,7 +150,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   };
 
   useEffect(() => {
-    if (ktvId) { fetchState(); fetchRegistration(); }
+    if (ktvId) { fetchState(); }
     const interval = setInterval(fetchState, 30000); // Polling every 30s
     return () => clearInterval(interval);
   }, [ktvId]);
@@ -155,7 +163,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   useEffect(() => {
     if (!ktvId) return;
     if (checkStatus === 'CONFIRMED' || checkStatus === 'CHECKED_OUT' || checkStatus === 'PENDING') {
-      fetchState(); fetchRegistration();
+      fetchState();
     }
   }, [checkStatus, ktvId]);
 

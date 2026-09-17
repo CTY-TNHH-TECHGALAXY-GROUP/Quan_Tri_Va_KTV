@@ -124,8 +124,8 @@ export async function GET(request: Request) {
         // ─── Fetch Today Registration (Only for TYPE_D) ───
         let todayRegistration = null;
         if (workType === 'TYPE_D' && userRow?.code) {
-            const { vnToday } = await import('@/lib/vn-time');
-            const todayStr = vnToday();
+            // Dòng đăng ký của CA hiện tại: theo ngày làm việc, không phải ngày lịch.
+            const todayStr = businessDateStr;
 
             const { data: regData } = await supabase
                 .from('KTVTypeDDailyRegistration')
@@ -278,11 +278,11 @@ export async function GET(request: Request) {
                     }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

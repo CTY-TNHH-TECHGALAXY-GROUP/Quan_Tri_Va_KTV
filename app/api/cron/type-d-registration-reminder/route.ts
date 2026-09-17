@@ -68,8 +68,8 @@ async function run(dry = false) {
     const { data: staffList, error: staffError } = await supabase
         .from('Staff')
         .select('id, full_name')
-        .eq('work_type', 'TYPE_D')
-        .neq('status', 'KHÓA_TÀI_KHOẢN');
+        .eq('work_type', 'TYPE_D');
+    // Người vừa được mở khoá cũng cần lời nhắc đăng ký, nên không lọc theo status.
     if (staffError) throw staffError;
 
     const ids = (staffList || []).map((s: any) => s.id);

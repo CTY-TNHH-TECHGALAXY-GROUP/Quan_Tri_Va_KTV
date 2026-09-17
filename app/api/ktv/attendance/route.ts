@@ -209,7 +209,8 @@ export async function POST(request: Request) {
             const { format } = await import('date-fns');
             // Ngày phạt phải theo NGÀY LÀM VIỆC (cutoff), không phải ngày lịch —
             // để khớp với sổ giờ tích lũy khi trừ giờ.
-            const { getBusinessToday } = await import('@/lib/business-date');
+            const { getBusinessToday, getDayCutoffHours: getCutoffHoursForTypeD, phutTrongNgayLamViec } = await import('@/lib/business-date');
+            const cutoffHoursD = await getCutoffHoursForTypeD(supabase);
             const todayStr = await getBusinessToday(supabase);
             const { data: registration } = await supabase
                 .from('KTVTypeDDailyRegistration')
@@ -229,7 +230,6 @@ export async function POST(request: Request) {
             //  - REGISTERED  : so với expected_time (giờ đăng ký gốc) — đến trễ mà KHÔNG báo
             if (registration) {
                 const now = vnNow();
-                const actualMinutes = now.getHours() * 60 + now.getMinutes();
                 let deadline: string | null = null;
                 let noteContext = '';
 
@@ -242,9 +242,11 @@ export async function POST(request: Request) {
                 }
 
                 if (deadline) {
-                    const [h, m] = String(deadline).split(':').map(Number);
-                    const expectedMinutes = h * 60 + m;
-                    if (actualMinutes > expectedMinutes) {
+                    // So theo PHÚT TRONG NGÀY LÀM VIỆC: ca chạy qua nửa đêm nên
+                    // đồng hồ trần sẽ tính oan (23:00 "muộn hơn" 01:50 cùng ca).
+                    const expectedMinutes = phutTrongNgayLamViec(String(deadline).slice(0, 5), cutoffHoursD) ?? 0;
+                    const phutThucTe = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
+                    if (phutThucTe > expectedMinutes) {
                         await KtvTypeDDisciplineService.deductDailyViolation(
                           supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
                         );

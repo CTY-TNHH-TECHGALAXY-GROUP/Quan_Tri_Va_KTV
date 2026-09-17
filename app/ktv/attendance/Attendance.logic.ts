@@ -446,6 +446,8 @@ export const useKTVAttendance = () => {
 
     return {
         todayRegistration,
+        // Mốc cắt ngày làm việc — màn hình cần để so giờ ca qua nửa đêm.
+        dayCutoffHours,
         canRequestWithdraw,
         // Permission ON + TUA wallet OFF → notice instead of the checkbox.
         // No permission → keep the old behaviour (checkbox rules unchanged).

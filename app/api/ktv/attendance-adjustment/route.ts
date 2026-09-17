@@ -26,12 +26,17 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, late_expected_time } = body; // action: 'REPORT_ABSENT' | 'REPORT_LATE'
 
-    const { vnNow, vnToday, vnHour } = await import('@/lib/vn-time');
+    const { vnNow, vnHour } = await import('@/lib/vn-time');
+    const { getBusinessToday, phutTrongNgayLamViec, getDayCutoffHours } = await import('@/lib/business-date');
     
-    // Ngày thao tác (hôm nay)
+    // NGÀY LÀM VIỆC, không phải ngày lịch: 01:00 rạng sáng vẫn thuộc ca hôm
+    // trước, nên báo muộn / báo vắng phải nhắm vào dòng đăng ký của ca đó.
     const now = vnNow();
-    const todayStr = vnToday();
+    const cutoffHours = await getDayCutoffHours(supabase as any);
+    const todayStr = await getBusinessToday(supabase as any);
     const hour = vnHour();
+    const phutBayGio = phutTrongNgayLamViec(format(now, 'HH:mm'), cutoffHours) ?? 0;
+    const phutCuaGio = (t: string | null) => phutTrongNgayLamViec(String(t || '').slice(0, 5), cutoffHours);
     
     // Lấy bản ghi đăng ký hôm nay
     const { data: registration, error: fetchError } = await supabase
@@ -65,12 +70,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Không thể báo vắng từ 07:00 trở đi. Chỉ có thể báo trễ.' }, { status: 400 });
       }
 
+      // Đã tới giờ hẹn rồi thì không còn gì để "báo vắng" — lúc đó là vắng thật,
+      // để cron chốt sổ xử. Cho bấm là mở đường lách sau khi đã trễ.
+      const phutHenVang = phutCuaGio(registration.expected_time);
+      if (phutHenVang !== null && phutBayGio >= phutHenVang) {
+        return NextResponse.json({ error: 'Đã tới giờ hẹn, không báo vắng được nữa.' }, { status: 400 });
+      }
+
       // Theo quy tắc Mục 14: Chỉ update DB, KHÔNG TRỪ GIỜ PHẠT NGAY. Chờ cron cuối ngày.
       const { error: updateError } = await supabase
         .from('KTVTypeDDailyRegistration')
         .update({
           status: 'ABSENT_REPORTED',
-          absent_reported_at: now.toISOString()
+          absent_reported_at: new Date().toISOString()
         })
         .eq('id', registration.id);
 
@@ -86,16 +98,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Bạn chỉ được báo trễ 1 lần trong ngày.' }, { status: 400 });
       }
 
-      const [regH, regM] = (registration.expected_time || '00:00').split(':').map(Number);
-      const regMinutes = regH * 60 + regM;
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
-      if (nowMinutes >= regMinutes) {
+      // So bằng PHÚT TRONG NGÀY LÀM VIỆC, không so đồng hồ trần: ca chạy qua
+      // nửa đêm nên 23:00 không được coi là muộn hơn 01:50 của cùng ca.
+      const phutHen = phutCuaGio(registration.expected_time);
+      if (phutHen !== null && phutBayGio >= phutHen) {
         return NextResponse.json({ error: 'Đã qua giờ đăng ký gốc, không thể báo trễ.' }, { status: 400 });
       }
 
-      const [lateH, lateM] = late_expected_time.split(':').map(Number);
-      const lateMinutes = lateH * 60 + lateM;
-      if (lateMinutes <= nowMinutes) {
+      const phutHenTre = phutCuaGio(late_expected_time);
+      if (phutHenTre === null) {
+        return NextResponse.json({ error: 'Giờ hẹn trễ không hợp lệ (HH:mm)' }, { status: 400 });
+      }
+      if (phutHenTre <= phutBayGio) {
         return NextResponse.json({ error: 'Giờ hẹn trễ phải sau thời điểm hiện tại.' }, { status: 400 });
       }
 
@@ -103,7 +117,7 @@ export async function POST(request: Request) {
         .from('KTVTypeDDailyRegistration')
         .update({
           status: 'LATE_REPORTED',
-          late_reported_at: now.toISOString(),
+          late_reported_at: new Date().toISOString(),
           late_expected_time: late_expected_time,
           late_report_count: registration.late_report_count + 1
         })

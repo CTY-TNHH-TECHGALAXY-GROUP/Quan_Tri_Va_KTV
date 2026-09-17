@@ -7,6 +7,7 @@ import {
     ExternalLink, Loader2, XCircle, LogOut, LogIn, Camera, AlertCircle, SwitchCamera
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { daQuaGio } from '@/lib/business-date';
 import { vnNow } from '@/lib/vn-time';
 import { useKTVAttendance, usesTypeBAttendanceFlow } from './Attendance.logic';
 import { t } from './Attendance.i18n';
@@ -51,6 +52,7 @@ const KTVAttendancePage = () => {
         incompleteTasksCount,
         guestArrivalLock,
         todayRegistration,
+        dayCutoffHours,
         canRequestWithdraw,
         withdrawShowsMaintenance,
         isAdjusting,
@@ -863,8 +865,9 @@ const KTVAttendancePage = () => {
                                             const gioHen = String(todayRegistration.late_expected_time || todayRegistration.expected_time || '').slice(0, 5);
                                             const gioBayGio = format(vnNow(), 'HH:mm');
                                             const isOff = todayRegistration.status === 'OFF_REGISTERED';
-                                            // So chuỗi 'HH:MM' được vì cùng định dạng 2 chữ số.
-                                            const diMuon = !isOff && /^\d{2}:\d{2}$/.test(gioHen) && gioBayGio > gioHen;
+                                            // So theo PHÚT TRONG NGÀY LÀM VIỆC: ca qua nửa đêm thì so chuỗi
+                                            // 'HH:mm' trần sẽ báo muộn oan (23:00 không muộn hơn 01:50 cùng ca).
+                                            const diMuon = !isOff && daQuaGio(gioHen, gioBayGio, dayCutoffHours) === true;
                                             return (
                                                 <>
                                                     <p className={`text-center font-bold ${diMuon ? 'text-rose-600' : 'text-emerald-600'}`}>

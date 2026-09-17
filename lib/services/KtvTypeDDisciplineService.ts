@@ -612,7 +612,7 @@ export class KtvTypeDDisciplineService {
             details: { source: source || 'CRON', violationDate: workDate, reason, netHours },
         });
         await supabase.from('Staff').update({ status: 'KHÓA_TÀI_KHOẢN' }).eq('id', staffId);
-        await KtvTypeDDisciplineService.markAccountLock(supabase, staffId, workDate, reason);
+        await KtvTypeDDisciplineService.markAccountLock(supabase, staffId, workDate, reason, source);
 
         // Khoá tài khoản là tin CÁ NHÂN gửi chính chủ, không phải tin khẩn của quầy.
         await createNotification({
@@ -634,6 +634,8 @@ export class KtvTypeDDisciplineService {
         staffId: string,
         workDate: string,
         reason: string,
+        /** Ai ghi dấu. 'CRON...' để sổ giờ hiện "chốt sổ cuối ngày" thay cho mốc 00:00. */
+        createdBy?: string,
     ) {
         const { error } = await supabase
             .from('KTVDPenaltyLedger')
@@ -644,6 +646,7 @@ export class KtvTypeDDisciplineService {
                 hours_penalty: 0,
                 money_penalty: 0,
                 note: reason,
+                created_by: createdBy || null,
             }, { onConflict: 'staff_id,work_date,penalty_type' });
 
         if (error) console.error('[Type D] Lỗi ghi dấu khoá tài khoản:', error);
