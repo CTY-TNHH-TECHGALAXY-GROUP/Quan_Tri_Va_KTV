@@ -21,7 +21,7 @@ const NO_THERAPIST = new Set(['', 'ngẫu nhiên', 'ngau nhien', 'random', 'any'
 export function normalizeTherapistRequest(raw: unknown): string {
   const v = String(raw ?? '').trim();
   const k = v.toLowerCase();
-  if (NO_THERAPIST.has(k)) return '';
+  if (NO_THERAPIST.has(k)) return 'Ngẫu nhiên';
   if (k === 'nữ' || k === 'nu' || k === 'female') return 'Nữ';
   if (k === 'nam' || k === 'male') return 'Nam';
   return v;
@@ -57,27 +57,56 @@ export function extractBookingNote(notes: unknown): string {
   }
 }
 
+/** Trích xuất số khách thực tế từ notes (vd: 'Guests: 3') hoặc fallback về guestCount */
+export function parseGuestCountFromNotes(notes?: unknown, fallback = 1): number {
+  if (typeof notes === 'string') {
+    const trimmed = notes.trim();
+    const match = trimmed.match(/Guests:\s*(\d{1,2})(?:\s*\||$)/i);
+    if (match) {
+      const count = parseInt(match[1], 10);
+      if (!isNaN(count) && count >= 1 && count <= 50) return count;
+    }
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        const count = Number(parsed.guests || parsed.guestCount || parsed.customerGuests);
+        if (!isNaN(count) && count >= 1 && count <= 50) return count;
+      } catch {}
+    }
+  }
+  const fallbackNum = Number(fallback);
+  return !isNaN(fallbackNum) && fallbackNum >= 1 ? fallbackNum : 1;
+}
+
 /**
  * Dịch vụ, thời lượng, số khách và yêu cầu theo từng dịch vụ — phần BookingDetails
  * lấy từ BookingItems. Nơi gọi tự bổ sung mã đơn, ngày giờ, tiền.
  *
- * Quy tắc hiển thị (đã chốt với vận hành):
+ * Quy tắc hiển thị:
  *  - Mỗi dịch vụ một nhóm, giữ thứ tự trong đơn.
- *  - Bỏ dịch vụ tiện ích (Phòng riêng...) khỏi khối yêu cầu; vẫn nằm ở dòng "Dịch vụ".
- *  - "Vừa" là giá trị form web tự điền cho MỌI dịch vụ, nên chỉ hiện khi dịch vụ đó
- *    có chọn Tập trung/Tránh; Nhẹ/Mạnh là lựa chọn thật nên luôn hiện.
- *  - Nhóm trùng hệt nhau thì gộp; cùng tên nhưng khác yêu cầu thì gắn nhãn khách.
+ *  - Tiện ích / add-on (Phòng riêng...) được đính kèm vào đúng suất dịch vụ thay vì bị lọc mất.
+ *  - Giữ KTV yêu cầu cho từng suất (Ngẫu nhiên / Nữ / Nam / KTV chỉ định).
+ *  - Nhóm trùng hệt nhau thì gộp; cùng tên nhưng khác yêu cầu/add-on thì gắn nhãn khách hoặc hiện riêng.
  */
 export function buildServiceSection(items: any[] | null | undefined, lang: string): Pick<
   BookingDetails,
   'services' | 'duration' | 'guests' | 'servicePrefs' | 'therapistRequests'
 > {
   const services: { name: string; duration: number }[] = [];
-  const groups: ServicePref[] = [];
   const therapistRequests: string[] = [];
   const guestIndex = new Map<string, number>();
   let duration = 0;
   let guests = 0;
+
+  interface RawItemWithOpts {
+    item: any;
+    options: Record<string, any>;
+    name: string;
+    duration: number;
+    unitIndex: number;
+  }
+  const mainItems: RawItemWithOpts[] = [];
+  const addonItems: RawItemWithOpts[] = [];
 
   for (const item of items || []) {
     guests += item.quantity || 1;
@@ -88,44 +117,104 @@ export function buildServiceSection(items: any[] | null | undefined, lang: strin
     }
 
     const name = localizedServiceName(item.Services, lang);
+    const dur = item.Services?.duration || 0;
     if (item.Services) {
-      const dur = item.Services.duration || 0;
       duration += dur;
       services.push({ name, duration: dur });
     }
 
-    if (isUtilityService(item)) continue;
+    const options = parseOptions(item.options);
+    const idStr = String(item.id || '');
+    const unitMatch = idStr.match(/-(\d+)-unit/);
+    const unitIndex = unitMatch ? parseInt(unitMatch[1], 10) : -1;
 
-    const o = parseOptions(item.options);
+    const entry: RawItemWithOpts = { item, options, name, duration: dur, unitIndex };
+
+    if (isUtilityService(item) || options.isAddon) {
+      addonItems.push(entry);
+    } else {
+      mainItems.push(entry);
+    }
+  }
+
+  // Nếu đơn chỉ toàn tiện ích (không có dịch vụ chính), giữ lại để hiển thị
+  const primaryItems = mainItems.length > 0 ? mainItems : addonItems;
+
+  // Ghép Addon vào dịch vụ chính tương ứng
+  const attachedAddons = new Map<number, string>();
+  const usedAddons = new Set<number>();
+
+  primaryItems.forEach((m, mIdx) => {
+    // Ưu tiên 1: trùng unitIndex (ví dụ: NHS0800-2-unit1 và NHS0900-2-unit1)
+    if (m.unitIndex >= 0) {
+      const aIdx = addonItems.findIndex((a, idx) => !usedAddons.has(idx) && a.unitIndex === m.unitIndex);
+      if (aIdx >= 0) {
+        usedAddons.add(aIdx);
+        const aName = addonItems[aIdx].options.displayName || addonItems[aIdx].name || 'Phòng riêng';
+        attachedAddons.set(mIdx, aName);
+        return;
+      }
+    }
+    // Ưu tiên 2: trùng parentServiceId
+    const aIdxParent = addonItems.findIndex(
+      (a, idx) => !usedAddons.has(idx) && a.options.parentServiceId && a.options.parentServiceId === m.item.serviceId
+    );
+    if (aIdxParent >= 0) {
+      usedAddons.add(aIdxParent);
+      const aName = addonItems[aIdxParent].options.displayName || addonItems[aIdxParent].name || 'Phòng riêng';
+      attachedAddons.set(mIdx, aName);
+    }
+  });
+
+  const groups: ServicePref[] = [];
+
+  primaryItems.forEach((m, mIdx) => {
+    const o = m.options;
     const focus = formatBodyAreas(o.focus);
     const avoid = formatBodyAreas(o.avoid);
     const strengthRaw = o.strength ? normalizeStrength(o.strength) : '';
-    const strength = strengthRaw && (strengthRaw !== 'Vừa' || focus || avoid) ? strengthRaw : '';
+    const strength = strengthRaw || '';
     const therapist = normalizeTherapistRequest(o.therapist);
     const note = String(o.note || o.customerNotes || '').trim();
+    const addon = attachedAddons.get(mIdx);
 
-    therapistRequests.push(therapist);
-    groups.push({
-      name,
-      guest: item.guest_id ? guestIndex.get(item.guest_id) : undefined,
-      focus, avoid, strength, therapist, note,
-    });
-  }
+    // Kiểm tra xem suất này có thông tin nào cần hiển thị không
+    const hasAnyOption = Boolean(focus || avoid || strength || (therapist && therapist !== 'Ngẫu nhiên') || note || addon);
 
-  // Bỏ nhóm không có gì để nói, rồi gộp các nhóm trùng hệt nhau
+    if (therapist) {
+      therapistRequests.push(therapist);
+    }
+
+    if (hasAnyOption) {
+      groups.push({
+        name: m.name,
+        guest: m.item.guest_id ? guestIndex.get(m.item.guest_id) : undefined,
+        focus,
+        avoid,
+        strength,
+        therapist,
+        note,
+        addon,
+      });
+    }
+  });
+
+  // Bỏ các nhóm trùng lặp hệt nhau (chỉ gộp khi cùng tên, cùng addon, cùng focus/avoid/strength/therapist/note)
   const seen = new Set<string>();
   const visible = groups.filter(g => {
-    if (!(g.focus || g.avoid || g.strength || g.therapist || g.note)) return false;
-    const key = JSON.stringify([g.name, g.focus, g.avoid, g.strength, g.therapist, g.note]);
+    const key = JSON.stringify([g.name, g.addon || '', g.focus || '', g.avoid || '', g.strength || '', g.therapist || '', g.note || '']);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  // Cùng tên dịch vụ còn lại nhiều nhóm → cần nhãn khách để phân biệt
+  // Cùng tên dịch vụ còn lại nhiều nhóm → cần nhãn khách để phân biệt (nếu không có addon)
   const nameCount = new Map<string, number>();
   visible.forEach(g => nameCount.set(g.name, (nameCount.get(g.name) || 0) + 1));
-  const servicePrefs = visible.map(g => ({ ...g, showGuest: (nameCount.get(g.name) || 0) > 1 }));
+  const servicePrefs = visible.map(g => ({
+    ...g,
+    showGuest: !g.addon && (nameCount.get(g.name) || 0) > 1,
+  }));
 
   return { services, duration, guests, servicePrefs, therapistRequests };
 }

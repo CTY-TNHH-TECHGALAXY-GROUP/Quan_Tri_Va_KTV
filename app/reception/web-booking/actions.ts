@@ -8,7 +8,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
-import { buildServiceSection, extractBookingNote } from '@/lib/booking-email.logic';
+import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
         source: b.source || 'WEB_BOOKING',
         items: bookingItems,
         isReturningCustomer: returningMap.get(b.id) || false,
-        guestCount: b.guestCount || 1,
+        guestCount: parseGuestCountFromNotes(b.notes, b.guestCount || 1),
         customerGender: b.customerGender || null,
         nationality: b.nationality || null,
         paymentMethod: b.paymentMethod || null,
@@ -474,8 +474,11 @@ export async function confirmWebBooking(bookingId: string) {
         // Dịch vụ, thời lượng, số khách và yêu cầu theo TỪNG dịch vụ.
         // Dùng chung với route gửi lại email — xem lib/booking-email.logic.ts.
         const lang = bData.customerLang || 'vi';
+        const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
         const bookingDetails = {
             bookingId: bData.billCode || bData.id || bookingId,
+            customerName: bData.customerName || '',
+            customerPhone: bData.customerPhone || '',
             date: bData.bookingDate || '',
             time: bData.timeBooking || '',
             depositAmount: depositAmountVND,
@@ -483,6 +486,7 @@ export async function confirmWebBooking(bookingId: string) {
             therapist: (bData.technicianCode || '').trim(),
             note: extractBookingNote(bData.notes),
             ...buildServiceSection(bData.BookingItems, lang),
+            guests: customerRealGuests,
         };
 
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
