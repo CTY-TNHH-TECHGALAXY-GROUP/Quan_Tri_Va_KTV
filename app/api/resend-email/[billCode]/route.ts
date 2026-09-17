@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendBookingConfirmationEmail } from '@/lib/email';
+import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
+import { isDummyEmail } from '@/lib/customer.logic';
 
 export async function GET(request: Request, context: { params: Promise<{ billCode: string }> }) {
   try {
@@ -15,12 +17,14 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
       .from('Bookings')
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
-        bookingDate, timeBooking, totalAmount, id,
+        bookingDate, timeBooking, totalAmount, id, notes, guestCount,
         BookingItems!BookingItems_bookingId_fkey (
           quantity,
           serviceId,
+          guest_id,
+          options,
           Services!BookingItems_serviceId_fkey (
-            nameVN, nameEN, nameKR, nameJP, nameCN, duration
+            nameVN, nameEN, nameKR, nameJP, nameCN, duration, is_utility
           )
         )
       `)
@@ -32,7 +36,16 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
     }
 
     if (!bData.customerEmail) {
-      return NextResponse.json({ success: false, error: 'No email found for this booking' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Đơn này không có email khách hàng.' }, { status: 400 });
+    }
+
+    // Khách vãng lai được gán email ảo (guest...@guest.com): gửi tới đó chắc chắn
+    // thất bại, nên báo rõ ràng thay vì để lỗi SMTP khó hiểu dội ngược lên.
+    if (isDummyEmail(bData.customerEmail)) {
+      return NextResponse.json(
+        { success: false, error: `Đơn này chỉ có email ảo (${bData.customerEmail}), không gửi được. Cần cập nhật email thật của khách trước.` },
+        { status: 400 }
+      );
     }
 
     let depositAmountVND = 0;
@@ -41,38 +54,20 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
         depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
     }
 
-    let totalDuration = 0;
-    let totalGuests = 0;
-    const serviceList: { name: string; duration: number }[] = [];
-
-    if (bData.BookingItems && Array.isArray(bData.BookingItems)) {
-        bData.BookingItems.forEach((item: any) => {
-            const qty = item.quantity || 1;
-            totalGuests += qty;
-            
-            if (item.Services) {
-                const dur = item.Services.duration || 0;
-                totalDuration += dur;
-                
-                let sName = item.Services.nameEN || 'Service';
-                if (bData.customerLang === 'vi') sName = item.Services.nameVN || sName;
-                else if (bData.customerLang === 'kr') sName = item.Services.nameKR || sName;
-                else if (bData.customerLang === 'jp') sName = item.Services.nameJP || sName;
-                else if (bData.customerLang === 'cn') sName = item.Services.nameCN || sName;
-                
-                serviceList.push({ name: sName, duration: dur });
-            }
-        });
-    }
-
+    const lang = bData.customerLang || 'vi';
+    const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
     const bookingDetails = {
         bookingId: bData.billCode || bData.id,
+        customerName: bData.customerName || '',
+        customerPhone: bData.customerPhone || '',
         date: bData.bookingDate || '',
         time: bData.timeBooking || '',
-        services: serviceList,
-        duration: totalDuration,
-        guests: totalGuests,
-        depositAmount: depositAmountVND
+        depositAmount: depositAmountVND,
+        totalAmount: bData.totalAmount || 0,
+        therapist: (bData.technicianCode || '').trim(),
+        note: extractBookingNote(bData.notes),
+        ...buildServiceSection(bData.BookingItems, lang),
+        guests: customerRealGuests,
     };
 
     await sendBookingConfirmationEmail(
@@ -80,7 +75,8 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
         bData.customerName || 'Quý khách',
         bData.customerLang || 'vi',
         true, // assume new customer for now
-        bookingDetails
+        bookingDetails,
+        { force: true } // Gửi lại là thao tác thủ công của quản trị: bỏ qua công tắc bật/tắt
     );
 
     return NextResponse.json({ success: true, message: `Email resent to ${bData.customerEmail}` });

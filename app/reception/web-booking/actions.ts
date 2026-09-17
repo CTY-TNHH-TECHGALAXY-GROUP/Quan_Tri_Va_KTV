@@ -8,7 +8,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
-import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
+import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
+import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ export interface WebBookingItem {
   duration: number;
   price: number;
   quantity: number;
+  isUtility?: boolean;
   options?: Record<string, any>;
   requestedKTVs?: { code: string; name: string; skills: string }[];
 }
@@ -45,6 +47,11 @@ export interface WebBooking {
   source: string;
   items: WebBookingItem[];
   isReturningCustomer?: boolean;
+  guestCount?: number;
+  customerGender?: string | null;
+  nationality?: string | null;
+  paymentMethod?: string | null;
+  focusAreaNote?: string | null;
 }
 
 // ─── SERVER ACTIONS ───────────────────────────────────────────────────────────
@@ -209,6 +216,11 @@ export async function getWebBookings(startDate: string, endDate: string) {
         source: b.source || 'WEB_BOOKING',
         items: bookingItems,
         isReturningCustomer: returningMap.get(b.id) || false,
+        guestCount: parseGuestCountFromNotes(b.notes, b.guestCount || 1),
+        customerGender: b.customerGender || null,
+        nationality: b.nationality || null,
+        paymentMethod: b.paymentMethod || null,
+        focusAreaNote: b.focusAreaNote || null,
       };
     });
 
@@ -234,12 +246,15 @@ export async function confirmWebBooking(bookingId: string) {
       .from('Bookings')
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone, customerId,
-        bookingDate, timeBooking, totalAmount, id,
+        bookingDate, timeBooking, totalAmount, id, guestCount, customerGender, notes,
         BookingItems!BookingItems_bookingId_fkey (
+          id,
           quantity,
           serviceId,
+          guest_id,
+          options,
           Services!BookingItems_serviceId_fkey (
-            nameVN, nameEN, nameKR, nameJP, nameCN, duration
+            nameVN, nameEN, nameKR, nameJP, nameCN, duration, is_utility
           )
         )
       `)
@@ -247,9 +262,9 @@ export async function confirmWebBooking(bookingId: string) {
       .single();
 
     let newSource = 'STANDARD_WALK_IN';
-    if (bData?.source === 'VIP_BOOKING') {
+    if (bData?.source === 'VIP_BOOKING' || bData?.source === 'VIP_MENU') {
       newSource = 'VIP_WALK_IN';
-    } else if (bData?.source === 'MIXED_BOOKING' || bData?.source === 'MIXED_WALK_IN') {
+    } else if (bData?.source === 'MIXED_BOOKING' || bData?.source === 'MIXED_WALK_IN' || bData?.source === 'MIXED_MENU') {
       newSource = 'MIXED_WALK_IN';
     } else if (bData?.source === 'WEB_BOOKING' || bData?.source === 'WebBooking') {
       // Xác định tự động dựa trên dịch vụ bên trong (Phương án 2)
@@ -277,11 +292,10 @@ export async function confirmWebBooking(bookingId: string) {
 
     // 🛡️ SANITIZE: Thay thế dummy email bằng mã ngẫu nhiên để không bị trùng
     const sanitizePayload: Record<string, any> = {};
-    const bEmail = (bData?.customerEmail || '').trim().toLowerCase();
-    const isEmailDummy = bEmail === 'aa' || bEmail === 'a' || !bEmail.includes('@') || bEmail.includes('@guest');
-    
+    const isEmailDummy = isDummyEmail(bData?.customerEmail || '');
+
     if (bData?.customerEmail && isEmailDummy) {
-      sanitizePayload.customerEmail = `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com`;
+      sanitizePayload.customerEmail = makeGuestEmail();
     }
     if (bData?.customerPhone && isDummyPhone(bData.customerPhone)) {
       sanitizePayload.customerPhone = '';
@@ -291,7 +305,7 @@ export async function confirmWebBooking(bookingId: string) {
       // Đồng thời clean email/phone dummy trên Customer record
       const cusClean: Record<string, any> = {};
       if (bData.customerEmail && isDummyEmail(bData.customerEmail)) {
-        cusClean.email = `guest${Date.now()}_${Math.floor(Math.random()*1000)}@guest.com`;
+        cusClean.email = makeGuestEmail();
       }
       if (bData.customerPhone && isDummyPhone(bData.customerPhone)) {
         cusClean.phone = '';
@@ -309,23 +323,53 @@ export async function confirmWebBooking(bookingId: string) {
         ...sanitizePayload,
       })
       .eq('id', bookingId)
-      .eq('status', 'NEW'); // Safety: only update if still NEW
+      // Safety: chỉ xác nhận khi đơn còn NEW.
+      // KHÔNG thêm 'WAITING' vào đây: enum BookingStatus của DB không có giá trị đó
+      // (chỉ BookingItems.status là text mới nhận WAITING), nên Postgres sẽ báo
+      // "invalid input value for enum BookingStatus" và mọi lần bấm Xác nhận đều hỏng.
+      .eq('status', 'NEW');
 
     if (error) throw error;
     
     // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
-    // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
-    const bEmailCheck = (bData?.customerEmail || '').trim().toLowerCase();
-    const isNewEmailDummy = bEmailCheck === 'aa' || bEmailCheck === 'a' || !bEmailCheck.includes('@') || bEmailCheck.includes('@guest');
-
-    if (bData?.customerId && bData?.customerEmail && !isNewEmailDummy) {
+    if (bData?.customerId && bData?.customerEmail && !isDummyEmail(bData.customerEmail)) {
         const { data: cData } = await supabase.from('Customers').select('email').eq('id', bData.customerId).maybeSingle();
-        const cEmailCheck = (cData?.email || '').trim().toLowerCase();
-        const isOldEmailDummy = cEmailCheck === 'aa' || cEmailCheck === 'a' || !cEmailCheck.includes('@') || cEmailCheck.includes('@guest');
-        if (cData && isOldEmailDummy) {
+        if (cData && isDummyEmail(cData.email || '')) {
             await supabase.from('Customers').update({ email: bData.customerEmail }).eq('id', bData.customerId);
         }
     }
+
+    // --- MỚI: Đảm bảo có BookingGuests (vì web ngoài có thể không tự sinh) ---
+    const { data: existingGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+    let guestIds = existingGuests?.map((g: any) => g.id) || [];
+    
+    if (guestIds.length === 0) {
+        // Tự sinh guest
+        const guestCount = bData?.guestCount || 1;
+        const crypto = require('crypto');
+        const guestsToInsert = Array.from({ length: guestCount }).map((_, i) => ({
+            id: crypto.randomUUID(),
+            booking_id: bookingId,
+            guest_index: i + 1,
+            guest_label: `Khách ${i + 1}`,
+            status: 'PENDING',
+            gender: bData?.customerGender || null,
+        }));
+        await supabase.from('BookingGuests').insert(guestsToInsert);
+        guestIds = guestsToInsert.map(g => g.id);
+        
+        // Cập nhật lại guest_id cho BookingItems nếu chưa có
+        if (bData?.BookingItems && bData.BookingItems.length > 0) {
+            for (let i = 0; i < bData.BookingItems.length; i++) {
+                const item = bData.BookingItems[i] as any;
+                if (!item.guest_id) {
+                    const targetGuestId = guestIds[i % guestCount];
+                    await supabase.from('BookingItems').update({ guest_id: targetGuestId }).eq('id', item.id);
+                }
+            }
+        }
+    }
+    // -------------------------------------------------------------------------
 
     const msg = `Đơn ${bookingId} đã được xác nhận. Vui lòng vào Điều Phối để phân công KTV.`;
     
@@ -363,8 +407,10 @@ export async function confirmWebBooking(bookingId: string) {
     // Mặc định false nếu không có cấu hình (chưa mở)
     const isEmailEnabled = configEmailData?.value === true || configEmailData?.value === 'true';
 
-    // 3. Gửi email xác nhận kèm mã QR nếu có email và cờ này đang BẬT
-    if (bData?.customerEmail && isEmailEnabled) {
+    // 3. Gửi email xác nhận kèm mã QR nếu có email THẬT và cờ này đang BẬT.
+    // Email ảo của khách vãng lai bị bỏ qua: gửi tới đó chắc chắn thất bại,
+    // chỉ tốn một lượt gọi SMTP và rác log.
+    if (bData?.customerEmail && !isEmailDummy && isEmailEnabled) {
         // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
         let isNewCustomer = true;
         if (bData.customerPhone) {
@@ -417,48 +463,30 @@ export async function confirmWebBooking(bookingId: string) {
             }
         } catch (e) {}
 
-        // Thuật toán: Lấy 50% tổng bill, làm tròn ĐẾN 100.000 gần nhất
+        // Thuật toán: Lấy depositPercent % tổng bill, làm tròn ĐẾN 100.000 gần nhất
         let depositAmountVND = 0;
         if (bData.totalAmount && bData.totalAmount > 0) {
-            const rawDeposit = (bData.totalAmount * 50) / 100;
+            const rawDeposit = (bData.totalAmount * depositPercent) / 100;
             // Làm tròn đến hàng trăm nghìn (vd: 525k -> 5.25 -> round=5 -> 500k)
             depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
         }
 
-        // Bóc tách danh sách dịch vụ và tính tổng phút, số lượng khách
-        let totalDuration = 0;
-        let totalGuests = 0;
-        const serviceList: { name: string; duration: number }[] = [];
-
-        if (bData.BookingItems && Array.isArray(bData.BookingItems)) {
-            bData.BookingItems.forEach((item: any) => {
-                const qty = item.quantity || 1;
-                totalGuests += qty;
-                
-                if (item.Services) {
-                    const dur = item.Services.duration || 0;
-                    totalDuration += dur;
-                    
-                    // Lấy tên dịch vụ theo ngôn ngữ khách hàng
-                    let sName = item.Services.nameEN || 'Service';
-                    if (bData.customerLang === 'vi') sName = item.Services.nameVN || sName;
-                    else if (bData.customerLang === 'kr') sName = item.Services.nameKR || sName;
-                    else if (bData.customerLang === 'jp') sName = item.Services.nameJP || sName;
-                    else if (bData.customerLang === 'cn') sName = item.Services.nameCN || sName;
-                    
-                    serviceList.push({ name: sName, duration: dur });
-                }
-            });
-        }
-
+        // Dịch vụ, thời lượng, số khách và yêu cầu theo TỪNG dịch vụ.
+        // Dùng chung với route gửi lại email — xem lib/booking-email.logic.ts.
+        const lang = bData.customerLang || 'vi';
+        const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
         const bookingDetails = {
             bookingId: bData.billCode || bData.id || bookingId,
+            customerName: bData.customerName || '',
+            customerPhone: bData.customerPhone || '',
             date: bData.bookingDate || '',
             time: bData.timeBooking || '',
-            services: serviceList,
-            duration: totalDuration,
-            guests: totalGuests,
-            depositAmount: depositAmountVND
+            depositAmount: depositAmountVND,
+            totalAmount: bData.totalAmount || 0,
+            therapist: (bData.technicianCode || '').trim(),
+            note: extractBookingNote(bData.notes),
+            ...buildServiceSection(bData.BookingItems, lang),
+            guests: customerRealGuests,
         };
 
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
