@@ -31,10 +31,14 @@ export interface ServicePref {
   therapist?: string;
   /** Ghi chú khách viết riêng cho dịch vụ này */
   note?: string;
+  /** Tag tiện ích hoặc add-on đính kèm dịch vụ, ví dụ: 'Phòng riêng' */
+  addon?: string;
 }
 
 export interface BookingDetails {
   bookingId: string;
+  customerName?: string;
+  customerPhone?: string;
   date: string;
   time: string;
   services: { name: string; duration: number }[];
@@ -111,6 +115,8 @@ interface Strings {
   lLocation: string;
   lGuests: string;
   lBookingId: string;
+  lCustomer: string;
+  lPhone: string;
   lTotal: string;
   lDeposit: string;
   lPreferences: string;
@@ -168,9 +174,10 @@ const STRINGS: Record<string, Strings> = {
     detailsTitle: 'Chi tiết lịch hẹn',
     lService: 'Dịch vụ', lDate: 'Ngày hẹn', lTime: 'Giờ hẹn', lDuration: 'Thời lượng',
     lTherapist: 'Kỹ thuật viên', lLocation: 'Địa điểm', lGuests: 'Số lượng khách',
+    lCustomer: 'Khách hàng', lPhone: 'Số điện thoại',
     lBookingId: 'Mã đặt lịch', lTotal: 'Tổng thanh toán dự kiến', lDeposit: 'Tiền đặt cọc',
     lPreferences: 'Yêu cầu và lưu ý dịch vụ', lFocus: 'Tập trung', lAvoid: 'Tránh',
-    lStrength: 'Lực', lNote: 'Ghi chú thêm',
+    lStrength: 'Lực massage', lNote: 'Ghi chú thêm',
     randomTherapist: 'Ngẫu nhiên',
     lTherapistRequest: 'KTV yêu cầu', lItemNote: 'Ghi chú',
     therapistPerService: 'Theo từng dịch vụ',
@@ -212,6 +219,7 @@ const STRINGS: Record<string, Strings> = {
     detailsTitle: 'Booking details',
     lService: 'Service', lDate: 'Date', lTime: 'Time', lDuration: 'Duration',
     lTherapist: 'Therapist', lLocation: 'Location', lGuests: 'Guests',
+    lCustomer: 'Guest Name', lPhone: 'Phone Number',
     lBookingId: 'Booking ref.', lTotal: 'Estimated total', lDeposit: 'Deposit',
     lPreferences: 'Service preferences & notes', lFocus: 'Focus on', lAvoid: 'Avoid',
     lStrength: 'Pressure', lNote: 'Additional notes',
@@ -256,9 +264,10 @@ const STRINGS: Record<string, Strings> = {
     detailsTitle: '예약 상세 내역',
     lService: '서비스', lDate: '예약 날짜', lTime: '예약 시간', lDuration: '소요 시간',
     lTherapist: '테라피스트', lLocation: '오시는 길', lGuests: '방문 인원',
+    lCustomer: '고객 성함', lPhone: '연락처',
     lBookingId: '예약 번호', lTotal: '예상 결제 금액', lDeposit: '예약금',
     lPreferences: '서비스 요청 및 참고 사항', lFocus: '집중 부위', lAvoid: '제외 부위',
-    lStrength: '강도', lNote: '추가 요청 사항',
+    lStrength: '마사지 강도', lNote: '추가 요청 사항',
     randomTherapist: '랜덤 배정',
     lTherapistRequest: '지정 테라피스트', lItemNote: '메모',
     therapistPerService: '서비스별 상이',
@@ -300,9 +309,10 @@ const STRINGS: Record<string, Strings> = {
     detailsTitle: 'ご予約内容',
     lService: 'メニュー', lDate: 'ご予約日', lTime: 'ご予約時間', lDuration: '所要時間',
     lTherapist: 'セラピスト', lLocation: '所在地', lGuests: 'ご利用人数',
+    lCustomer: 'お客様氏名', lPhone: 'お電話番号',
     lBookingId: '予約番号', lTotal: 'お支払い予定額', lDeposit: '事前決済金',
     lPreferences: 'サービスのご要望・注意事項', lFocus: '重点部位', lAvoid: '避ける部位',
-    lStrength: '強さ', lNote: 'その他ご要望',
+    lStrength: 'マッサージの強さ', lNote: 'その他ご要望',
     randomTherapist: 'ランダム',
     lTherapistRequest: 'ご指名', lItemNote: '備考',
     therapistPerService: 'メニューごとに異なります',
@@ -344,9 +354,10 @@ const STRINGS: Record<string, Strings> = {
     detailsTitle: '预约详情',
     lService: '服务项目', lDate: '预约日期', lTime: '预约时间', lDuration: '服务时长',
     lTherapist: '理疗师', lLocation: '地址', lGuests: '到店人数',
+    lCustomer: '贵宾姓名', lPhone: '联系电话',
     lBookingId: '预约编号', lTotal: '预计支付金额', lDeposit: '定金',
     lPreferences: '服务要求与备注', lFocus: '重点部位', lAvoid: '避开部位',
-    lStrength: '力度', lNote: '其他备注',
+    lStrength: '按摩力度', lNote: '其他备注',
     randomTherapist: '随机',
     lTherapistRequest: '指定理疗师', lItemNote: '备注',
     therapistPerService: '按服务项目而定',
@@ -425,6 +436,9 @@ const PREF_I18N: Record<string, Record<string, string>> = {
   // Yêu cầu KTV (đầu ra của normalizeTherapistRequest)
   'Nữ':        { en: 'Female',    kr: '여성',   jp: '女性',       cn: '女' },
   'Nam':       { en: 'Male',      kr: '남성',   jp: '男性',       cn: '男' },
+  'Ngẫu nhiên': { en: 'Random',    kr: '랜덤',   jp: 'お任せ',     cn: '随机' },
+  // Tiện ích / Add-on
+  'Phòng riêng': { en: 'Private Room', kr: '프라이빗 룸', jp: '個室', cn: '包间' },
 };
 
 function localizePref(value: string, language: string): string {
@@ -454,28 +468,26 @@ function therapistMode(requests: string[] | undefined): { mode: 'none' | 'same' 
 
 /** Khối "Yêu cầu và lưu ý dịch vụ" — mỗi dịch vụ một nhóm, chỉ render khi có nội dung. */
 function preferencesBlock(s: Strings, details: BookingDetails, language: string) {
-  // Chỉ lặp lại KTV trong từng nhóm khi mỗi dịch vụ một kiểu; nếu giống nhau thì
-  // dòng "Kỹ thuật viên" phía trên đã nói rồi.
-  const perGroupTherapist = therapistMode(details.therapistRequests).mode === 'mixed';
-
   const groups = (details.servicePrefs || [])
     .map(g => {
       const rows = [
+        g.therapist && { label: s.lTherapist, value: localizePref(g.therapist, language) },
+        g.strength && { label: s.lStrength, value: localizePref(g.strength, language) },
         g.focus && { label: s.lFocus, value: localizePref(g.focus, language) },
         g.avoid && { label: s.lAvoid, value: localizePref(g.avoid, language) },
-        g.strength && { label: s.lStrength, value: localizePref(g.strength, language) },
-        perGroupTherapist && g.therapist && { label: s.lTherapistRequest, value: localizePref(g.therapist, language) },
         g.note && { label: s.lItemNote, value: g.note },
       ].filter(Boolean) as { label: string; value: string }[];
       return { g, rows };
     })
-    .filter(x => x.rows.length > 0);
+    .filter(x => x.rows.length > 0 || Boolean(x.g.addon));
 
   if (groups.length === 0) return '';
 
   const html = groups
     .map(({ g, rows }, i) => {
       const title = g.showGuest && g.guest ? `${g.name} — ${s.guestLabel(g.guest)}` : g.name;
+      const addonHtml = g.addon ? `
+                      <div style="margin: 4px 0 6px;"><span style="display: inline-block; padding: 2px 10px; background-color: rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.45); border-radius: 12px; font-size: 12px; color: #f7ebc7; font-weight: 500;">🏷️ ${escapeHtml(localizePref(g.addon, language))}</span></div>` : '';
       const lines = rows
         .map(
           r => `
@@ -483,7 +495,7 @@ function preferencesBlock(s: Strings, details: BookingDetails, language: string)
         )
         .join('');
       return `
-                    <div style="color:${C.gold}; font-weight:600; margin:${i === 0 ? '0' : '12px'} 0 4px;">[${escapeHtml(title)}]</div>${lines}`;
+                    <div style="color:${C.gold}; font-weight:600; margin:${i === 0 ? '0' : '12px'} 0 4px;">[${escapeHtml(title)}]</div>${addonHtml}${lines}`;
     })
     .join('');
 
@@ -607,15 +619,18 @@ export function renderBookingEmailHtml(
         ? s.therapistPerService
         : s.randomTherapist;
 
+  const safePhoneHref = details.customerPhone ? escapeHtml(String(details.customerPhone).replace(/[^+\d]/g, '')) : '';
+
   const rows = [
     detailRow(s.lService, serviceNames),
     detailRow(s.lDate, dateStr),
     detailRow(s.lTime, escapeHtml(details.time || '—'), { gold: true, bold: true }),
     detailRow(s.lDuration, details.duration ? s.minsUnit(details.duration) : '—'),
-    detailRow(s.lTherapist, escapeHtml(therapistCell)),
-    detailRow(s.lLocation, locationValue),
     detailRow(s.lGuests, s.guestsUnit(details.guests || 1)),
+    detailRow(s.lLocation, locationValue),
     detailRow(s.lBookingId, escapeHtml(details.bookingId), { gold: true, bold: true }),
+    details.customerName ? detailRow(s.lCustomer, escapeHtml(details.customerName), { bold: true }) : '',
+    details.customerPhone ? detailRow(s.lPhone, `<a href="tel:${safePhoneHref}" style="color:${C.gold}; text-decoration:none;">${escapeHtml(details.customerPhone)}</a>`) : '',
     details.totalAmount ? detailRow(s.lTotal, formatVND(details.totalAmount), { gold: true, bold: true }) : '',
     preferencesBlock(s, details, language),
     noteBlock(s, details.note),
