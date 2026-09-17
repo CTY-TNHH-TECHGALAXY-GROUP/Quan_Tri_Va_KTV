@@ -300,6 +300,28 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
                             const parsedOptions = parseBookingOptions(bi.options);
 
+                            const freeCustomerNote = [
+                                parsedOptions.note,
+                                parsedOptions.customerNotes,
+                            ].find((value) =>
+                                typeof value === 'string' && value.trim()
+                            )?.trim() || '';
+
+                            const specialTags = Array.isArray(parsedOptions.tags)
+                                ? parsedOptions.tags
+                                    .filter((tag: unknown) =>
+                                        typeof tag === 'string' && tag.trim()
+                                    )
+                                    .join(', ')
+                                : '';
+
+                            const itemCustomerNote = [
+                                freeCustomerNote,
+                                specialTags
+                                    ? `Yêu cầu đặc biệt: ${specialTags}`
+                                    : '',
+                            ].filter(Boolean).join(' | ');
+
                             let parsedNotes: any = null;
                             let finalAdminNote = '';
                             let extractedCustomerNote = '';
@@ -420,15 +442,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // những KTV chỉ còn dấu vết trong `segments` — xem
                                 // `dsKtvHienThi` ở KanbanBoard.tsx.
                                 segments: parsedSegments,
-                                adminNote: finalAdminNote,
+                                adminNote: itemCustomerNote,
                                 genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
                                 focus: formatBodyAreas(parsedOptions?.focus || ''),
                                 avoid: formatBodyAreas(parsedOptions?.avoid || ''),
-                                customerNote: [
-                                    parsedOptions?.note || parsedOptions?.customerNotes,
-                                    Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
-                                ].filter(Boolean).join(' | '),
+                                customerNote: itemCustomerNote,
                                 price: Number(bi.price) || 0,
                                 quantity: Number(bi.quantity) || 1,
                                 options: parsedOptions,
