@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sync-daily-ledger-type-d",
-      "schedule": "30 23 * * *"
+      "schedule": "30 0 * * *"
     },
     {
       "path": "/api/cron/ktvd-recompute",

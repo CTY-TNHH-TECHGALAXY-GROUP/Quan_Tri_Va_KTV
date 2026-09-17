@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * Nguồn duy nhất để trả lời: "việc này thuộc ngày làm việc nào?"
  *
  * Spa mở qua nửa đêm, nên ngày làm việc KHÔNG trùng ngày lịch. Mốc cắt
- * là `spa_day_cutoff_hours` (mặc định 6 = 06:00 sáng): mọi việc xảy ra
+ * là `spa_day_cutoff_hours` (mặc định 7 = 07:00 sáng): mọi việc xảy ra
  * TRƯỚC giờ này được tính vào ngày làm việc hôm trước.
  *
  *   tua kết thúc 01:00 ngày 10/09  →  ngày làm việc 09/09
@@ -26,7 +26,7 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 /** Dùng khi SystemConfigs chưa có `spa_day_cutoff_hours`. */
-export const DEFAULT_DAY_CUTOFF_HOURS = 6;
+export const DEFAULT_DAY_CUTOFF_HOURS = 7;
 
 /**
  * Đọc `spa_day_cutoff_hours` từ SystemConfigs.
@@ -65,7 +65,7 @@ export function toBusinessDate(at: Date, cutoffHours: number): string {
  * Khoảng thời gian thực của một ngày làm việc, dạng ISO (UTC).
  *
  * Nửa mở `[startIso, endIso)` — dùng `.gte(start)` + `.lt(end)` khi truy vấn.
- * Với cutoff = 6, ngày 09/09 chạy từ 09/09 06:00 đến 10/09 06:00 giờ VN.
+ * Với cutoff = 7, ngày 09/09 chạy từ 09/09 07:00 đến 10/09 07:00 giờ VN.
  *
  * ⚠️ CÁI BẪY — `Bookings.timeStart` là `timestamp` KHÔNG timezone, lưu theo
  * giờ UTC. PostgREST trả về dạng "2026-09-04T07:40:00" (không có `Z`), khác
@@ -122,7 +122,7 @@ export function shiftBusinessDate(dateStr: string, days: number): string {
 /**
  * 'HH:mm' → số phút tính từ lúc ngày làm việc bắt đầu.
  *
- * Cắt 06:00 thì 06:00 → 0, 20:00 → 840, 23:59 → 1079, 01:50 → 1190.
+ * Cắt 07:00 thì 07:00 → 0, 20:00 → 780, 23:59 → 1019, 01:50 → 1130.
  * Nhờ vậy so hai mốc giờ trong CÙNG một ngày làm việc là so hai số, không còn
  * cảnh 23:00 bị coi là muộn hơn 01:50 chỉ vì chuỗi 'HH:mm' lớn hơn.
  */

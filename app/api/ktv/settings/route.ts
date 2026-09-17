@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 
 /**
  * API Lấy cấu hình hệ thống cho KTV
@@ -20,7 +21,7 @@ export async function GET() {
             auto_finish_on_timer_end: true,
             push_notifications_enabled: true,
             allow_early_checkout: true,
-            spa_day_cutoff_hours: 6,
+            spa_day_cutoff_hours: DEFAULT_DAY_CUTOFF_HOURS,
             min_photo_brightness: 40
         };
 

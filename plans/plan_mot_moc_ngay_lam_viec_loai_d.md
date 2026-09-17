@@ -1,7 +1,7 @@
 # Plan: Một mốc ngày làm việc duy nhất (07:00) cho Loại D
 
 **Mức 2.** Chạm mốc ngày làm việc dùng chung, phạt giờ, khoá tài khoản, cron, điều phối.
-**Trạng thái:** chờ duyệt.
+**Trạng thái:** đợt 1 xong (commit 3d84aae0, 16/09) · đợt 2 xong (commit c8c628fa, 17/09) · đợt 3 code xong 17/09, CHỜ bật cấu hình 6 → 7 trong SystemConfigs sau khi deploy.
 
 ---
 
@@ -29,7 +29,7 @@
 
 ---
 
-## 3. Đợt 1 — Một nguồn duy nhất cho mốc cắt (KHÔNG đổi hành vi)
+## 3. Đợt 1 — Một nguồn duy nhất cho mốc cắt (KHÔNG đổi hành vi) — ĐÃ XONG
 
 Mục tiêu: sau đợt này, đổi mốc chỉ còn là đổi một giá trị cấu hình.
 
@@ -45,7 +45,7 @@ Mục tiêu: sau đợt này, đổi mốc chỉ còn là đổi một giá tr�
 
 ---
 
-## 4. Đợt 2 — Loại D dùng ngày làm việc và ngày của ca
+## 4. Đợt 2 — Loại D dùng ngày làm việc và ngày của ca — ĐÃ XONG
 
 ### 4.1. Giới hạn giờ đăng ký (quyết định 1)
 - `app/api/ktv/daily-registration/route.ts`: chỉ nhận `expected_time` trong **09:00 – 23:59**, ngoài khung trả lỗi rõ ràng.
@@ -77,7 +77,7 @@ Mục tiêu: sau đợt này, đổi mốc chỉ còn là đổi một giá tr�
 
 ---
 
-## 5. Đợt 3 — Đổi mốc và dời cron
+## 5. Đợt 3 — Đổi mốc và dời cron — CODE XONG, CHỜ BẬT CẤU HÌNH
 
 | Việc | Chi tiết |
 |---|---|
@@ -91,7 +91,7 @@ Mục tiêu: sau đợt này, đổi mốc chỉ còn là đổi một giá tr�
 
 ---
 
-## 6. Cron chốt sổ và người bị khoá (quyết định 8)
+## 6. Cron chốt sổ và người bị khoá (quyết định 8) — ĐÃ XONG trong đợt 2
 
 `app/api/cron/daily-absence-check/route.ts`:
 - Bỏ `.neq('status', 'KHÓA_TÀI_KHOẢN')` ở câu lấy danh sách nhân viên.

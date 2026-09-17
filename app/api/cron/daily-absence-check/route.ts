@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic';
  * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md). Mỗi người tối đa một lần
  * khoá mỗi đêm — khoá rồi thì dừng, không xét tiếp.
  *
- * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff 06:00. Bảng
+ * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff 07:00. Bảng
  * `KTVTypeDDailyRegistration.work_date` và `KTVAttendance.date` đều được ghi
  * bằng ngày lịch; tra bằng business date sẽ lệch một ngày và phạt nhầm.
  *

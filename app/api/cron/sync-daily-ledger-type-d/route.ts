@@ -322,7 +322,7 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
  * Ngày mặc định để chốt sổ = NGÀY LÀM VIỆC liền trước ngày làm việc hiện tại.
  *
  * Phải theo ngày làm việc chứ không phải "hôm qua theo lịch": nếu chạy lúc 02:00
- * (trước cutoff 06:00) thì ngày làm việc hôm qua VẪN ĐANG CHẠY, chốt lúc đó là
+ * (trước cutoff 07:00) thì ngày làm việc hôm qua VẪN ĐANG CHẠY, chốt lúc đó là
  * chốt sớm và bỏ sót tua cuối đêm. Cách tính này tự động lùi thêm 1 ngày trong
  * tình huống đó, nên chạy sớm chỉ bị trễ chứ không bị mất dữ liệu.
  *
