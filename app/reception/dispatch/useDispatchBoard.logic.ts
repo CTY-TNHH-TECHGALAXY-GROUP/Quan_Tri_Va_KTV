@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
+import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
 // Helpers copied from page.tsx for internal hook usage
 const getCurrentTime = () => {
@@ -54,6 +55,27 @@ const calcEndTime = (start: string, duration: number): string => {
 };
 
 const genId = () => Math.random().toString(36).slice(2, 8);
+
+function parseBookingOptions(opts: unknown): Record<string, any> {
+  if (!opts) return {};
+
+  if (typeof opts === 'object' && !Array.isArray(opts)) {
+    return opts as Record<string, any>;
+  }
+
+  if (typeof opts === 'string') {
+    try {
+      const parsed = JSON.parse(opts);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
 
 // 🔧 UI CONFIGURATION
 const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
@@ -205,7 +227,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             let parsedSegments: any[] = [];
                             try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
 
-                            const parsedOptions = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {});
+                            const parsedOptions = parseBookingOptions(bi.options);
 
                             let parsedNotes: any = null;
                             let finalAdminNote = '';
@@ -321,13 +343,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 staffList: staffList,
                                 adminNote: finalAdminNote,
                                 genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
-                                strength: parsedOptions?.strength || '',
-                                focus: Array.isArray(parsedOptions?.focus) ? parsedOptions.focus.join(', ') : (parsedOptions?.focus || b.focusAreaNote || ''),
-                                avoid: Array.isArray(parsedOptions?.avoid) ? parsedOptions.avoid.join(', ') : (parsedOptions?.avoid || ''),
+                                strength: normalizeStrength(parsedOptions?.strength || ''),
+                                focus: formatBodyAreas(parsedOptions?.focus || ''),
+                                avoid: formatBodyAreas(parsedOptions?.avoid || ''),
                                 customerNote: [
                                     parsedOptions?.note || parsedOptions?.customerNotes,
                                     Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
-                                    b.focusAreaNote
                                 ].filter(Boolean).join(' | '),
                                 price: Number(bi.price) || 0,
                                 quantity: Number(bi.quantity) || 1,
