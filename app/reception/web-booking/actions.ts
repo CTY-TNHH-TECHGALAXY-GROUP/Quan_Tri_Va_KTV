@@ -75,7 +75,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .gte('bookingDate', startOfRange)
       .lte('bookingDate', endOfRange)
       .neq('status', 'CANCELLED')
-      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
+      .in('source', ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
       .order('createdAt', { ascending: false });
 
     if (bError) throw bError;
@@ -266,7 +266,7 @@ export async function confirmWebBooking(bookingId: string) {
       newSource = 'VIP_WALK_IN';
     } else if (bData?.source === 'MIXED_BOOKING' || bData?.source === 'MIXED_WALK_IN' || bData?.source === 'MIXED_MENU') {
       newSource = 'MIXED_WALK_IN';
-    } else if (bData?.source === 'WEB_BOOKING') {
+    } else if (bData?.source === 'WEB_BOOKING' || bData?.source === 'WebBooking') {
       // Xác định tự động dựa trên dịch vụ bên trong (Phương án 2)
       let hasVip = false;
       let hasStandard = false;
@@ -544,7 +544,7 @@ export async function getNewWebBookingCount(): Promise<number> {
     const { data } = await supabase
       .from('Bookings')
       .select('notes, source')
-      .in('source', ['WEB_BOOKING', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
+      .in('source', ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
       .eq('status', 'NEW');
 
     if (!data) return 0;

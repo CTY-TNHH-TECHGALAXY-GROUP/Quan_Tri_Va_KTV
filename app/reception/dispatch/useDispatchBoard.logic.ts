@@ -57,6 +57,27 @@ const calcEndTime = (start: string, duration: number): string => {
 
 const genId = () => Math.random().toString(36).slice(2, 8);
 
+function parseBookingOptions(opts: unknown): Record<string, any> {
+  if (!opts) return {};
+
+  if (typeof opts === 'object' && !Array.isArray(opts)) {
+    return opts as Record<string, any>;
+  }
+
+  if (typeof opts === 'string') {
+    try {
+      const parsed = JSON.parse(opts);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 // 🔧 UI CONFIGURATION
 const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
 
@@ -259,7 +280,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
                         timeStart: b.timeStart || null,
                         rawNotes: b.notes,
-                        isWebBooking: b.source === 'WEB_BOOKING' || (b.billCode && b.billCode.startsWith('WB-')) || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
+                        isWebBooking: b.source === 'WEB_BOOKING' || b.source === 'WebBooking' || (b.billCode && b.billCode.startsWith('WB-')) || (b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'WEB_ADVANCE_BOOKING'; } catch { return false; } })() : false),
                         timeBooking: b.timeBooking,
                         isReturning: b.isReturning,
                         visitCount: b.visitCount,
@@ -277,7 +298,29 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             let parsedSegments: any[] = [];
                             try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
 
-                            const parsedOptions = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {});
+                            const parsedOptions = parseBookingOptions(bi.options);
+
+                            const freeCustomerNote = [
+                                parsedOptions.note,
+                                parsedOptions.customerNotes,
+                            ].find((value) =>
+                                typeof value === 'string' && value.trim()
+                            )?.trim() || '';
+
+                            const specialTags = Array.isArray(parsedOptions.tags)
+                                ? parsedOptions.tags
+                                    .filter((tag: unknown) =>
+                                        typeof tag === 'string' && tag.trim()
+                                    )
+                                    .join(', ')
+                                : '';
+
+                            const itemCustomerNote = [
+                                freeCustomerNote,
+                                specialTags
+                                    ? `Yêu cầu đặc biệt: ${specialTags}`
+                                    : '',
+                            ].filter(Boolean).join(' | ');
 
                             let parsedNotes: any = null;
                             let finalAdminNote = '';
@@ -399,16 +442,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // những KTV chỉ còn dấu vết trong `segments` — xem
                                 // `dsKtvHienThi` ở KanbanBoard.tsx.
                                 segments: parsedSegments,
-                                adminNote: finalAdminNote,
+                                adminNote: itemCustomerNote,
                                 genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
-                                focus: formatBodyAreas(parsedOptions?.focus || b.focusAreaNote || ''),
+                                focus: formatBodyAreas(parsedOptions?.focus || ''),
                                 avoid: formatBodyAreas(parsedOptions?.avoid || ''),
-                                customerNote: [
-                                    parsedOptions?.note || parsedOptions?.customerNotes,
-                                    Array.isArray(parsedOptions?.tags) && parsedOptions.tags.length > 0 ? `Yêu cầu đặc biệt: ${parsedOptions.tags.join(', ')}` : '',
-                                    b.focusAreaNote
-                                ].filter(Boolean).join(' | '),
+                                customerNote: itemCustomerNote,
                                 price: Number(bi.price) || 0,
                                 quantity: Number(bi.quantity) || 1,
                                 options: parsedOptions,
