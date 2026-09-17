@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendBookingConfirmationEmail } from '@/lib/email';
-import { buildServiceSection, extractBookingNote } from '@/lib/booking-email.logic';
+import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyEmail } from '@/lib/customer.logic';
 
 export async function GET(request: Request, context: { params: Promise<{ billCode: string }> }) {
@@ -17,7 +17,7 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
       .from('Bookings')
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
-        bookingDate, timeBooking, totalAmount, id, notes,
+        bookingDate, timeBooking, totalAmount, id, notes, guestCount,
         BookingItems!BookingItems_bookingId_fkey (
           quantity,
           serviceId,
@@ -55,8 +55,11 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
     }
 
     const lang = bData.customerLang || 'vi';
+    const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
     const bookingDetails = {
         bookingId: bData.billCode || bData.id,
+        customerName: bData.customerName || '',
+        customerPhone: bData.customerPhone || '',
         date: bData.bookingDate || '',
         time: bData.timeBooking || '',
         depositAmount: depositAmountVND,
@@ -64,6 +67,7 @@ export async function GET(request: Request, context: { params: Promise<{ billCod
         therapist: (bData.technicianCode || '').trim(),
         note: extractBookingNote(bData.notes),
         ...buildServiceSection(bData.BookingItems, lang),
+        guests: customerRealGuests,
     };
 
     await sendBookingConfirmationEmail(
