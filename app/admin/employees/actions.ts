@@ -111,6 +111,13 @@ export async function createStaffMember(formData: any) {
         }
 
         // 2. Insert into Staff Table
+        const galleryRaw = formData.galleryUrls ?? formData.gallery_urls ?? [];
+        const galleryUrls = Array.isArray(galleryRaw)
+            ? galleryRaw.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
+            : typeof galleryRaw === 'string'
+                ? galleryRaw.split(/\n|,/).map((url: string) => url.trim()).filter(Boolean)
+                : [];
+
         const staffPayload = {
             id: formData.id, // ID gõ tay (e.g. NV-001)
             full_name: formData.full_name,
@@ -123,6 +130,7 @@ export async function createStaffMember(formData: any) {
             bank_account: formData.bank_account || null,
             bank_name: formData.bank_name || null,
             avatar_url: formData.avatar_url || null,
+            gallery_urls: galleryUrls,
             position: formData.position || 'Kỹ Thuật Viên',
             experience: formData.experience || null,
             join_date: formData.join_date || new Date().toISOString().split('T')[0],
@@ -188,6 +196,15 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.bankAccount !== undefined) staffPayload.bank_account = updates.bankAccount || null;
         if (updates.bankName !== undefined) staffPayload.bank_name = updates.bankName || null;
         if (updates.photoUrl !== undefined) staffPayload.avatar_url = updates.photoUrl || null;
+        if (updates.galleryUrls !== undefined || updates.gallery_urls !== undefined) {
+            const galleryRaw = updates.galleryUrls ?? updates.gallery_urls ?? [];
+            const galleryUrls = Array.isArray(galleryRaw)
+                ? galleryRaw.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
+                : typeof galleryRaw === 'string'
+                    ? galleryRaw.split(/\n|,/).map((url: string) => url.trim()).filter(Boolean)
+                    : [];
+            staffPayload.gallery_urls = galleryUrls;
+        }
         if (updates.position !== undefined) staffPayload.position = updates.position || null;
         if (updates.experience !== undefined) staffPayload.experience = updates.experience || null;
         if (updates.joinDate !== undefined) staffPayload.join_date = updates.joinDate || null;

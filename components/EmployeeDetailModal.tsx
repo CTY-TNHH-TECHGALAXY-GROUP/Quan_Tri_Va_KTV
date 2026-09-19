@@ -16,10 +16,12 @@ interface EmployeeDetailModalProps {
 export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: EmployeeDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [newGalleryUrl, setNewGalleryUrl] = useState('');
   const [editedEmployee, setEditedEmployee] = useState<Employee | null>(employee);
 
   React.useEffect(() => {
     setEditedEmployee(employee);
+    setNewGalleryUrl('');
   }, [employee]);
 
   if (!employee || !editedEmployee) return null;
@@ -71,6 +73,31 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     setEditedEmployee(prev => {
       if (!prev) return null;
       return { ...prev, [field]: value };
+    });
+  };
+
+  const addGalleryUrl = () => {
+    const trimmed = newGalleryUrl.trim();
+    if (!trimmed || !editedEmployee) return;
+
+    const currentUrls = editedEmployee.galleryUrls || [];
+    if (currentUrls.includes(trimmed)) {
+      setNewGalleryUrl('');
+      return;
+    }
+
+    setEditedEmployee({
+      ...editedEmployee,
+      galleryUrls: [...currentUrls, trimmed],
+    });
+    setNewGalleryUrl('');
+  };
+
+  const removeGalleryUrl = (urlToRemove: string) => {
+    if (!editedEmployee) return;
+    setEditedEmployee({
+      ...editedEmployee,
+      galleryUrls: (editedEmployee.galleryUrls || []).filter(url => url !== urlToRemove),
     });
   };
 
@@ -319,34 +346,109 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               )}
             </div>
 
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                  <Award size={14} /> Kỹ năng chuyên môn
-                </h3>
-                {isEditing && (
-                  <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
-                    ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi cấp độ
-                  </span>
+            <div className="mt-8 space-y-6">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Award size={14} /> Ảnh gallery nhân viên
+                  </h3>
+                  {isEditing && (
+                    <span className="text-[10px] text-indigo-600 font-bold">Thêm tối đa url ảnh</span>
+                  )}
+                </div>
+
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newGalleryUrl}
+                        onChange={(e) => setNewGalleryUrl(e.target.value)}
+                        placeholder="https://.../photo.jpg"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={addGalleryUrl}
+                        className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                      >
+                        Thêm
+                      </button>
+                    </div>
+
+                    {(!editedEmployee.galleryUrls || editedEmployee.galleryUrls.length === 0) ? (
+                      <div className="text-xs text-gray-500 italic">Chưa có ảnh gallery nào.</div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {(editedEmployee.galleryUrls || []).map((url, index) => (
+                          <div key={`${url}-${index}`} className="relative group">
+                            <img
+                              src={url}
+                              alt={`gallery-${index}`}
+                              className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                              referrerPolicy="no-referrer"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeGalleryUrl(url)}
+                              className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-red-500 text-white rounded-full p-1 shadow"
+                              title="Xóa ảnh"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {(!editedEmployee.galleryUrls || editedEmployee.galleryUrls.length === 0) ? (
+                      <div className="col-span-full text-xs text-gray-500 italic">Nhân viên này chưa có ảnh gallery.</div>
+                    ) : (
+                      (editedEmployee.galleryUrls || []).map((url, index) => (
+                        <img
+                          key={`${url}-${index}`}
+                          src={url}
+                          alt={`gallery-${index}`}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                          referrerPolicy="no-referrer"
+                        />
+                      ))
+                    )}
+                  </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {(Object.keys(skillLabels) as (keyof Employee['skills'])[]).map((key) => {
-                  const rawLevel = editedEmployee.skills?.[key];
-                  const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
-                  const info = levelInfo[String(isSkilled)];
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => toggleSkill(key)}
-                      disabled={!isEditing}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
-                    >
-                      <span className="text-xs font-bold truncate">{skillLabels[key]}</span>
-                      {info.icon}
-                    </button>
-                  );
-                })}
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Award size={14} /> Kỹ năng chuyên môn
+                  </h3>
+                  {isEditing && (
+                    <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
+                      ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi cấp độ
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {(Object.keys(skillLabels) as (keyof Employee['skills'])[]).map((key) => {
+                    const rawLevel = editedEmployee.skills?.[key];
+                    const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
+                    const info = levelInfo[String(isSkilled)];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => toggleSkill(key)}
+                        disabled={!isEditing}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+                      >
+                        <span className="text-xs font-bold truncate">{skillLabels[key]}</span>
+                        {info.icon}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

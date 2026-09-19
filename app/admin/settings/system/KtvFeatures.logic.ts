@@ -14,6 +14,16 @@ export const isFlagOn = (flags: Record<string, any> | null | undefined, key: str
 // 🔧 FEATURE FLAG DEFINITIONS
 export const FEATURE_FLAG_DEFS = [
     {
+        key: 'nhp_enabled',
+        label: '💎 NHP / VIP Menu',
+        description: 'Cho phép nhân viên xuất hiện trong menu NHP / VIP Menu',
+    },
+    {
+        key: 'nht_enabled',
+        label: '🩺 NHT / Deep Body',
+        description: 'Cho phép nhân viên xuất hiện trong menu NHT / Deep Body',
+    },
+    {
         key: 'laundry_deduction',
         label: '🧦 Trừ giặt đồ',
         description: 'Tự động trừ phí giặt đồ khi điểm danh',
@@ -89,6 +99,8 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
     switch (workType) {
         case 'TYPE_A':
             return {
+                nhp_enabled: false,
+                nht_enabled: false,
                 laundry_deduction: true,
                 sudden_leave_penalty: true,
                 allow_on_call: false,
@@ -99,6 +111,8 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
             };
         case 'TYPE_B':
             return {
+                nhp_enabled: false,
+                nht_enabled: false,
                 laundry_deduction: true,
                 sudden_leave_penalty: false,
                 allow_on_call: true,
@@ -109,6 +123,8 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
             };
         case 'TYPE_C':
             return {
+                nhp_enabled: false,
+                nht_enabled: false,
                 laundry_deduction: true,
                 sudden_leave_penalty: false,
                 allow_on_call: false,
@@ -119,6 +135,8 @@ export const getDefaultFlagsForType = (workType: string): Record<string, boolean
             };
         case 'TYPE_D':
             return {
+                nhp_enabled: false,
+                nht_enabled: false,
                 laundry_deduction: true,
                 sudden_leave_penalty: false,
                 allow_on_call: false,

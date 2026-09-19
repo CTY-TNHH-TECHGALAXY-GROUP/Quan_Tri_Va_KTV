@@ -80,6 +80,7 @@ export interface Employee {
   bankAccount: string;
   bankName: string;
   photoUrl: string;
+  galleryUrls?: string[];
   position: string;
   experience: string;
   joinDate: string;

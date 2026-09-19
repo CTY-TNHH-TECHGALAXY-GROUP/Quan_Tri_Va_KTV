@@ -47,6 +47,9 @@ export const useEmployeeManagement = () => {
                 experience: s.experience || '0 năm',
                 status: s.status === 'ĐANG LÀM' ? 'active' : 'inactive',
                 photoUrl: s.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.full_name)}&background=random`,
+                galleryUrls: Array.isArray(s.gallery_urls)
+                    ? s.gallery_urls.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
+                    : [],
                 phone: s.phone || '',
                 email: s.email || '',
                 dob: s.birthday || '',
