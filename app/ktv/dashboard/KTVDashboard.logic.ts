@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { useToast } from '@/components/ui/Toast';
+import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVER';
 
@@ -56,6 +57,7 @@ export interface DashboardConfig {
 
 export function useKTVDashboard(config?: DashboardConfig) {
     const { user, hasPermission } = useAuth();
+    const shiftExtension = useShiftExtension(user?.id);
     const { setKtvScreen } = useNotifications();
     const { addToast } = useToast();
     const ktvIdRaw = config?.testTechCode || user?.code || user?.id;
@@ -2820,7 +2822,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } catch (e) {
                 console.error('Error fetching wallet timeline:', e);
             }
-        }
+        },
+        shiftExtension,
     };
 }
 

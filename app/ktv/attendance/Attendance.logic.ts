@@ -20,27 +20,8 @@ const GPS_HIGH_ACCURACY = true;
 // VN timezone offset
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 
-// Shift start and end times (must match API SHIFT_TYPES config)
-const SHIFT_START_TIMES: Record<string, string> = {
-    SHIFT_1: '09:00',
-    SHIFT_2: '11:00',
-    SHIFT_3: '17:00',
-    DEV_SHIFT: '09:00',
-    FREE: '00:00',
-    REQUEST: '00:00',
-    SUPPORT: '00:00',
-    VIP: '00:00',
-};
-const SHIFT_END_TIMES: Record<string, string> = {
-    SHIFT_1: '17:00',
-    SHIFT_2: '19:00',
-    SHIFT_3: '00:00', // treated as 24:00 of the same day
-    DEV_SHIFT: '21:00',
-    FREE: '00:00',
-    REQUEST: '00:00',
-    SUPPORT: '00:00',
-    VIP: '00:00',
-};
+import { SHIFT_TYPES } from '@/lib/shift.constants';
+import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 // --- TYPES ---
 export type CheckStatus = 'IDLE' | 'LOADING_GPS' | 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CHECKED_OUT';
@@ -104,6 +85,8 @@ export const useKTVAttendance = () => {
         lockedAt: '',
         message: ''
     });
+
+    const shiftExtension = useShiftExtension(user?.id);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -280,7 +263,7 @@ export const useKTVAttendance = () => {
             return false;
         }
 
-        const startTimeStr = SHIFT_START_TIMES[activeShiftType];
+        const startTimeStr = SHIFT_TYPES[activeShiftType as keyof typeof SHIFT_TYPES]?.start;
         if (!startTimeStr) {
             setIsLate(false);
             return false;
@@ -414,7 +397,7 @@ export const useKTVAttendance = () => {
             return { canCheckOut: true, checkoutBlockedUntil: null };
         }
 
-        const endTimeStr = SHIFT_END_TIMES[activeShiftType];
+        const endTimeStr = SHIFT_TYPES[activeShiftType as keyof typeof SHIFT_TYPES]?.end;
         if (!endTimeStr) return { canCheckOut: true, checkoutBlockedUntil: null };
 
         const vnNow = new Date(Date.now() + VN_OFFSET_MS);
@@ -497,5 +480,6 @@ export const useKTVAttendance = () => {
         incompleteTasksCount,
         roomDebt,
         guestArrivalLock,
+        shiftExtension,
     };
 };

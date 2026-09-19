@@ -12,6 +12,7 @@ export const AttendanceSchema = z.object({
   reason: z.string().optional().nullable(),
   selectedShiftType: z.string().optional().nullable(),
   estimatedEndTime: z.string().optional().nullable(),
+  extensionMinutes: z.coerce.number().int().min(60).optional(),
   wantsToWithdraw: z.boolean().optional().default(false),
   isLiveCapture: z.boolean().optional().default(false)
 });

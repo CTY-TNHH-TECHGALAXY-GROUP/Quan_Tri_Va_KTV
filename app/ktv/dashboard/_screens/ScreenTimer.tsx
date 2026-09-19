@@ -11,6 +11,7 @@ import { apiClient } from '@/lib/apiClient';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
+import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
 export function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean, totalAssignedMins?: number }) {
   if (!segments || segments.length === 0) return null;
@@ -45,7 +46,19 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
     return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  let cumulativeMins = 0;
+  const segmentsWithTimes = displaySegments.reduce<{
+    list: Array<{ seg: (typeof displaySegments)[number]; displayStartTime: string; displayEndTime: string }>;
+    runningMins: number;
+  }>((acc, seg) => {
+    const startMins = acc.runningMins;
+    const endMins = startMins + seg.duration;
+    acc.list.push({
+      seg,
+      displayStartTime: actualStartTime ? getShiftedTime(startMins) : seg.startTime,
+      displayEndTime: actualStartTime ? getShiftedTime(endMins) : seg.endTime,
+    });
+    return { list: acc.list, runningMins: endMins };
+  }, { list: [], runningMins: 0 }).list;
 
   return (
     <div className="space-y-3">
@@ -54,13 +67,9 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
         {activeIndex !== undefined && <span className="text-emerald-600">Chặng {activeIndex + 1}</span>}
       </h3>
       <div className="space-y-2">
-        {displaySegments.map((seg, idx) => {
+        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime }, idx) => {
           const isActive = shouldMerge ? activeIndex !== undefined : idx === activeIndex;
           const isPast = shouldMerge ? false : (activeIndex !== undefined && idx < activeIndex);
-          
-          const displayStartTime = actualStartTime ? getShiftedTime(cumulativeMins) : seg.startTime;
-          cumulativeMins += seg.duration;
-          const displayEndTime = actualStartTime ? getShiftedTime(cumulativeMins) : seg.endTime;
 
           return (
             <motion.div 
@@ -119,6 +128,8 @@ export function ScreenTimer({ logic }: { logic: any }) {
     handleInteraction,
     activeSegmentIndex
   } = logic;
+
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
 
   // 📸 CAMERA WEBRTC STATE & LOGIC FOR START TIMER
   const MIN_BRIGHTNESS_FALLBACK = 40;
@@ -343,7 +354,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
           </div>
           {item?.handover_comment && (
             <p className="text-sm font-medium text-rose-800 bg-white p-3 rounded-2xl mb-3 border border-rose-100 shadow-sm">
-              "{item.handover_comment}"
+              &ldquo;{item.handover_comment}&rdquo;
             </p>
           )}
           {item?.handover_reject_images && Array.isArray(item.handover_reject_images) && item.handover_reject_images.length > 0 && (
@@ -401,6 +412,45 @@ export function ScreenTimer({ logic }: { logic: any }) {
       )}
 
 
+
+      {/* Shift Extension Block */}
+      {logic.shiftExtension?.currentEndTime && (
+        <div className="px-6 mb-6">
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Clock size={18} className="text-indigo-600" />
+              <div>
+                <span className="text-xs font-bold text-slate-700">Giờ tan ca: </span>
+                <span className="text-xs font-black text-indigo-700">
+                  {logic.shiftExtension.currentEndTime}
+                </span>
+                {logic.shiftExtension.used && (
+                  <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-md">
+                    Đã dùng lượt gia hạn
+                  </span>
+                )}
+              </div>
+            </div>
+            {logic.shiftExtension.used ? (
+              <button
+                type="button"
+                disabled
+                className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
+              >
+                Đã dùng lượt gia hạn
+              </button>
+            ) : logic.shiftExtension.canExtend ? (
+              <button
+                type="button"
+                onClick={() => setShowExtensionModal(true)}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm active:scale-95"
+              >
+                Gia hạn
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Primary Action Button */}
       <div className="px-6 mb-10">
@@ -535,6 +585,14 @@ export function ScreenTimer({ logic }: { logic: any }) {
       )}
 
       {/* WebRTC Camera Overlay */}
+
+      <ShiftExtensionModal
+        isOpen={showExtensionModal}
+        onClose={() => setShowExtensionModal(false)}
+        currentEndTime={logic.shiftExtension?.currentEndTime ?? null}
+        onConfirm={logic.shiftExtension?.extend ?? (async () => false)}
+        isSubmitting={logic.shiftExtension?.isSubmitting ?? false}
+      />
 
     </div>
   );
