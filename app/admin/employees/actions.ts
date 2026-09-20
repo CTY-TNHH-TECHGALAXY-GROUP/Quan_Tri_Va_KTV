@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
 import type { GalleryItem } from '@/lib/types';
+import { isGalleryImageUrl } from '@/lib/galleryHelper';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
 
@@ -29,7 +30,11 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
 
     if (typeof item === 'string') {
       const url = item.trim();
-      return url ? [url] : [];
+      if (!url) return [];
+      if (!isGalleryImageUrl(url)) {
+        throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
+      }
+      return [url];
     }
 
     if (typeof item !== 'object' || Array.isArray(item)) {
@@ -43,6 +48,9 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
     }
 
     const url = record.url.trim();
+    if (!isGalleryImageUrl(url)) {
+      throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
+    }
 
     if (record.kind === 'therapy') {
       if (

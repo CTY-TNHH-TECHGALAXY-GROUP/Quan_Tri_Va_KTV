@@ -1,5 +1,74 @@
 import type { GalleryItem } from './types';
 
+/** Accept direct image links without changing CDN paths or query parameters. */
+export function isGalleryImageUrl(value: string): boolean {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('blob:')
+  ) {
+    return false;
+  }
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return true;
+  }
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export type GalleryGroupId =
+  | 'coconutOil'
+  | 'thaiTherapy'
+  | 'shiatsu'
+  | 'hotStone'
+  | 'mix'
+  | 'legacy';
+
+export interface GalleryGroupConfig {
+  id: GalleryGroupId;
+  label: string;
+}
+
+export const GALLERY_GROUPS: GalleryGroupConfig[] = [
+  { id: 'coconutOil', label: 'Tinh Dầu Dừa' },
+  { id: 'thaiTherapy', label: 'Thái / Cổ Vai Gáy' },
+  { id: 'shiatsu', label: 'Bấm Huyệt Shiatsu' },
+  { id: 'hotStone', label: 'Đá Nóng' },
+  { id: 'mix', label: 'Mix 2–4 phương pháp' },
+  { id: 'legacy', label: 'Ảnh chung' },
+];
+
+export function createGalleryItem(url: string, groupId: GalleryGroupId): string | GalleryItem {
+  const trimmed = url.trim();
+  if (groupId === 'legacy') {
+    return trimmed;
+  }
+  if (groupId === 'mix') {
+    return { url: trimmed, kind: 'mix' };
+  }
+  return { url: trimmed, kind: 'therapy', therapyId: groupId };
+}
+
+export function getGalleryGroup(item: string | GalleryItem): GalleryGroupId {
+  if (typeof item === 'string') return 'legacy';
+  if (!item || typeof item !== 'object') return 'legacy';
+  if (item.kind === 'mix') return 'mix';
+  if (item.kind === 'therapy' && item.therapyId) {
+    const valid: GalleryGroupId[] = ['coconutOil', 'thaiTherapy', 'shiatsu', 'hotStone'];
+    if (valid.includes(item.therapyId as GalleryGroupId)) {
+      return item.therapyId as GalleryGroupId;
+    }
+  }
+  return 'legacy';
+}
+
 /** Helper kiểm tra trùng ảnh (cùng URL và cùng metadata) */
 export function checkGalleryDuplicate(
   currentUrls: (string | GalleryItem)[],
