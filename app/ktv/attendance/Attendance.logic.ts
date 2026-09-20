@@ -105,11 +105,11 @@ export const useKTVAttendance = () => {
                 
                 if (statusRes.success) {
                     if (statusRes.workType) setWorkType(statusRes.workType);
-                    if (statusRes.availableUntil) setAvailableUntil(statusRes.availableUntil);
+                    setAvailableUntil(statusRes.availableUntil ?? null);
                     if (statusRes.incompleteTasksCount !== undefined) setIncompleteTasksCount(statusRes.incompleteTasksCount);
                     if (statusRes.roomDebt) setRoomDebt(statusRes.roomDebt);
                     if (statusRes.guestArrivalLock) setGuestArrivalLock(statusRes.guestArrivalLock);
-                    if (statusRes.todayRegistration) setTodayRegistration(statusRes.todayRegistration);
+                    setTodayRegistration(statusRes.todayRegistration ?? null);
                     setCanRequestWithdraw(statusRes.canRequestWithdraw !== false);
                     setWithdrawWalletOff(statusRes.withdrawWalletOff === true);
                 }
@@ -338,6 +338,13 @@ export const useKTVAttendance = () => {
             } else {
                 setCheckStatus('PENDING');
             }
+            // Refresh status & shift extension ngay sau khi điểm danh thành công
+            try {
+                await refreshAttendanceStatus();
+                await shiftExtension.refresh();
+            } catch (refErr) {
+                console.error('❌ [Attendance] Non-blocking refresh error:', refErr);
+            }
         } catch (err: any) {
             const errorMessage = err.message || 'Lỗi không xác định';
             setErrorMsg(errorMessage);
@@ -348,7 +355,7 @@ export const useKTVAttendance = () => {
                 setCheckStatus('CONFIRMED');
             }
         }
-    }, [user?.id, addToast]);
+    }, [user?.id, addToast, refreshAttendanceStatus, shiftExtension]);
 
     
     const handleAdjustmentSubmit = async () => {

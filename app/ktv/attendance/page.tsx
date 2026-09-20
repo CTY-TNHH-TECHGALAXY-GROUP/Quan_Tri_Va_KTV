@@ -288,7 +288,7 @@ const KTVAttendancePage = () => {
         
         if (type !== 'OVERTIME') {
             if (type === 'CHECK_IN' && availableUntil) {
-                setEstimatedEndTime(availableUntil);
+                setEstimatedEndTime(workType === 'TYPE_D' ? availableUntil.slice(0, 5) : availableUntil);
             } else {
                 setEstimatedEndTime('');
             }
@@ -427,6 +427,16 @@ const KTVAttendancePage = () => {
 
     const handleSubmitForm = () => {
         setFormError(null);
+        const isTypeDOffCheckIn =
+            workType === 'TYPE_D'
+            && todayRegistration?.status === 'OFF_REGISTERED'
+            && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
+
+        if (isTypeDOffCheckIn && !/^([01]\d|2[0-3]):[0-5]\d$/.test(estimatedEndTime)) {
+            setFormError(t.offEndTimeRequired);
+            return;
+        }
+
         if (selectedShiftType === 'SUDDEN_OFF') {
             setConfirmDialog({
                 isOpen: true,
@@ -453,7 +463,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || isTypeBFlow)) ? estimatedEndTime : null,
+            (isTypeDOffCheckIn || (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || isTypeBFlow))) ? estimatedEndTime : null,
             wantsToWithdraw,
             isLiveCaptureMode
         );
@@ -918,7 +928,12 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (isTypeBFlow || selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && (
+                            {(() => {
+                                const isTypeDOffCheckIn =
+                                    workType === 'TYPE_D'
+                                    && todayRegistration?.status === 'OFF_REGISTERED'
+                                    && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
+                                return (isTypeDOffCheckIn || (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (isTypeBFlow || selectedShiftType === 'FREE' || selectedShiftType === 'VIP'))) && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -927,13 +942,13 @@ const KTVAttendancePage = () => {
                                         type="time" 
                                         value={estimatedEndTime} 
                                         onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${isTypeBFlow && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
+                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${!isTypeDOffCheckIn && isTypeBFlow && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
                                         required
-                                        disabled={isTypeBFlow && !!availableUntil}
+                                        disabled={!isTypeDOffCheckIn && isTypeBFlow && !!availableUntil}
                                     />
                                     <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>
-                            )}
+                            );})()}
                             
                             {formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT' && (
                                 <div className="bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-200 text-sm mb-2 font-medium flex flex-col gap-1">

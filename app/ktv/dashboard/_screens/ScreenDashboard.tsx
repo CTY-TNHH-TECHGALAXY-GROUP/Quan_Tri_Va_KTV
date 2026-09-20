@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 import { fmtHours } from '@/lib/hours-format';
+import { officeScoreText } from '../OfficeScore.i18n';
 
 /**
  * Giao diện một dòng trong danh sách chuông, theo NHÓM thông báo.
@@ -662,8 +663,11 @@ export function ScreenDashboard({ logic }: { logic: any }) {
              {/* ĐIỂM OFFICE HÔM NAY — chỉ KTV Loại D mới có */}
              {logic.officeScore && (() => {
                const os = logic.officeScore;
-               // Xanh khi chưa bị trừ gì, hổ phách khi có lỗi trong ngày.
-               const tone = os.todayHits.length === 0
+               const isOffToday = os.isOffToday === true;
+               // Xanh khi chưa bị trừ gì, hổ phách khi có lỗi trong ngày, xám dịu khi ngày OFF.
+               const tone = isOffToday
+                 ? 'from-slate-600 to-slate-700'
+                 : os.todayHits.length === 0
                  ? 'from-emerald-500 to-green-600'
                  : 'from-amber-500 to-orange-600';
                return (
@@ -678,10 +682,18 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                      <div className="text-left">
                        <h3 className="font-bold text-[10px] uppercase tracking-widest text-white/80">Điểm hôm nay</h3>
                        <p className="font-black text-xl leading-none mt-1">
-                         {os.todayScore}<span className="text-sm font-medium opacity-80 ml-0.5">/100</span>
+                         {isOffToday ? (
+                           <span className="text-base font-bold">{officeScoreText.offToday}</span>
+                         ) : (
+                           <>{os.todayScore}<span className="text-sm font-medium opacity-80 ml-0.5">/100</span></>
+                         )}
                        </p>
                        <p className="text-[10px] font-bold text-white/85 mt-1">
-                         {os.todayHits.length > 0 ? `${os.todayHits.length} lỗi bị trừ hôm nay` : 'Chưa bị trừ lỗi nào'}
+                         {isOffToday
+                           ? officeScoreText.viewHistory
+                           : os.todayHits.length > 0
+                           ? `${os.todayHits.length} lỗi bị trừ hôm nay`
+                           : 'Chưa bị trừ lỗi nào'}
                        </p>
                      </div>
                    </div>

@@ -6,7 +6,6 @@ import { createNotification } from '@/lib/notification-helper';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import { KtvTypeDOnlineService } from '@/lib/services/KtvTypeDOnlineService';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
-import sharp from 'sharp';
 import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
@@ -18,11 +17,20 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 
 export async function POST(request: Request) {
+    const reqStartMs = Date.now();
+    const reqTraceId = `att_${reqStartMs}_${Math.random().toString(36).slice(2, 7)}`;
+    const logCheckpoint = (stepName: string, meta?: Record<string, any>) => {
+        const elapsed = Date.now() - reqStartMs;
+        console.log(`⏱️ [AttendanceCheck:${reqTraceId}] Stage: ${stepName} | Elapsed: ${elapsed}ms`, meta ? JSON.stringify(meta) : '');
+    };
+
     try {
+        logCheckpoint('start');
         const lockedError = await requireActiveStaff();
         if (lockedError) return lockedError;
 
         const body = await request.json();
+        logCheckpoint('body_parsed', { payloadBytes: JSON.stringify(body).length });
         const parseResult = AttendanceSchema.safeParse(body);
         
         if (!parseResult.success) {
@@ -209,6 +217,9 @@ export async function POST(request: Request) {
         const workType = staffTypeData?.work_type;
         const isTypeD = workType === 'TYPE_D';
 
+        let wasOffRegistered = false;
+        let typeDRegistrationId: string | null = null;
+
         if (isTypeD && (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN')) {
             const { vnNow } = await import('@/lib/vn-time');
             const { format } = await import('date-fns');
@@ -217,23 +228,48 @@ export async function POST(request: Request) {
             const { getBusinessToday, getDayCutoffHours: getCutoffHoursForTypeD, phutTrongNgayLamViec } = await import('@/lib/business-date');
             const cutoffHoursD = await getCutoffHoursForTypeD(supabase);
             const todayStr = await getBusinessToday(supabase);
-            const { data: registration } = await supabase
+            const { data: registration, error: regLookupError } = await supabase
                 .from('KTVTypeDDailyRegistration')
                 .select('id, status, expected_time, late_expected_time')
                 .eq('staff_id', staffCode)
                 .eq('work_date', todayStr)
-                .single();
+                .maybeSingle();
 
-            if (registration && registration.status === 'OFF_REGISTERED') {
-                await supabase.from('KTVTypeDDailyRegistration')
-                  .update({ status: 'REGISTERED', expected_time: format(vnNow(), 'HH:mm') })
-                  .eq('id', registration.id);
+            if (regLookupError) {
+                console.error(`❌ [Attendance:${reqTraceId}] regLookupError:`, regLookupError);
+                return NextResponse.json({ success: false, error: 'Lỗi kiểm tra đăng ký ca Loại D' }, { status: 503 });
+            }
+
+            if (registration) {
+                typeDRegistrationId = registration.id;
+                if (registration.status === 'OFF_REGISTERED') {
+                    wasOffRegistered = true;
+                    // Bắt buộc phải có estimatedEndTime khi KTV Type D OFF đi làm lại
+                    const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+                    if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
+                        return NextResponse.json({
+                            success: false,
+                            error: 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.'
+                        }, { status: 400 });
+                    }
+                    const now = vnNow();
+                    const nowStr = format(now, 'HH:mm');
+                    const phutDen = phutTrongNgayLamViec(nowStr, cutoffHoursD) ?? 0;
+                    const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
+                    if (phutVe <= phutDen) {
+                        return NextResponse.json({
+                            success: false,
+                            error: 'Giờ dự kiến về phải sau giờ hiện tại.'
+                        }, { status: 400 });
+                    }
+                }
             }
 
             // Phạt trễ (§4.4 - đã chốt 2026-09-08):
             //  - LATE_REPORTED: so với late_expected_time (giờ đã báo trễ)
             //  - REGISTERED  : so với expected_time (giờ đăng ký gốc) — đến trễ mà KHÔNG báo
-            if (registration) {
+            // KHÔNG phạt trễ nếu wasOffRegistered (người ta tự nguyện đi làm ngày OFF)
+            if (registration && !wasOffRegistered) {
                 const now = vnNow();
                 let deadline: string | null = null;
                 let noteContext = '';
@@ -259,6 +295,7 @@ export async function POST(request: Request) {
                 }
             }
         }
+        logCheckpoint('step06_done', { isTypeD, wasOffRegistered });
 
 
         // ─── Step 1: Prepare Watermark Info & Business Date ─────────────
@@ -271,6 +308,7 @@ export async function POST(request: Request) {
         const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
         const cutoffHours = await getDayCutoffHours(supabase);
         const today = toBusinessDate(nowUtc, cutoffHours);
+        logCheckpoint('step1_business_date_done', { today, cutoffHours });
 
         // ─── Xử lý nghiệp vụ gia hạn giờ làm (OVERTIME) ───────────────────
         let finalEstimatedEndTime = estimatedEndTime ?? null;
@@ -465,6 +503,7 @@ export async function POST(request: Request) {
                  console.error('❌ [Attendance] Image processing error:', err);
             }
         }
+        logCheckpoint('step2_photo_done', { hasPhoto: !!photoUrl });
 
         // ─── Step 3: Auto-Approve Logic ─────────────────
         const isAutoApprove = true;
@@ -501,6 +540,7 @@ export async function POST(request: Request) {
             }
             return NextResponse.json({ success: false, error: insertError.message }, { status: 500 });
         }
+        logCheckpoint('step3_insert_done', { recordId: record?.id });
 
         // ─── Step 4: TurnQueue & User Shift Update (if auto-approved) ─────
         if (isAutoApprove) {
@@ -536,6 +576,37 @@ export async function POST(request: Request) {
                     const res = await KtvTypeDOnlineService.arriveAtVenue(supabase, staffCode);
                     if (!res.success) {
                         return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                    }
+
+                    if (wasOffRegistered && typeDRegistrationId) {
+                        const { vnNow } = await import('@/lib/vn-time');
+                        const { format } = await import('date-fns');
+                        const nowVnStr = format(vnNow(), 'HH:mm');
+                        const finalEnd = estimatedEndTime ? estimatedEndTime.slice(0, 5) : null;
+
+                        const { error: updateRegErr } = await supabase
+                            .from('KTVTypeDDailyRegistration')
+                            .update({
+                                status: 'REGISTERED',
+                                expected_time: nowVnStr,
+                                expected_end_time: finalEnd,
+                                check_in_at: vnNow().toISOString(),
+                            })
+                            .eq('id', typeDRegistrationId);
+
+                        if (updateRegErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to update KTVTypeDDailyRegistration:`, updateRegErr);
+                        }
+
+                        if (finalEnd) {
+                            const { error: updateStaffErr } = await supabase
+                                .from('Staff')
+                                .update({ available_until: finalEnd })
+                                .eq('id', staffCode);
+                            if (updateStaffErr) {
+                                console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
+                            }
+                        }
                     }
                 } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
                     // KHÔNG đóng KTVShifts ở đây. Bảng này lưu BẢN PHÂN CA, không lưu buổi làm việc.
@@ -816,6 +887,7 @@ export async function POST(request: Request) {
                 console.error('❌ [Feature Deductions] Error:', deductionErr);
             }
         }
+        logCheckpoint('step4_turn_and_deductions_done');
 
         // ─── Step 5: Notifications ──────────────────────
         const mapsLink = latitude && longitude
@@ -902,7 +974,9 @@ export async function POST(request: Request) {
                 employeeId: staffCode || employeeId,
             });
         }
+        logCheckpoint('step5_notifications_done');
 
+        logCheckpoint('completed', { status: finalStatus, recordId: record?.id });
         return NextResponse.json({
             success: true,
             data: record,
@@ -913,7 +987,9 @@ export async function POST(request: Request) {
         });
 
     } catch (error: any) {
-        console.error('❌ [Attendance POST] Unhandled error:', error);
+        const elapsed = Date.now() - reqStartMs;
+        const wasAborted = error?.name === 'AbortError' || request.signal?.aborted;
+        console.error(`❌ [Attendance POST:${reqTraceId}] Error after ${elapsed}ms (aborted=${wasAborted}):`, error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

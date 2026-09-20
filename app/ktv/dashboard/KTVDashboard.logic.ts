@@ -197,6 +197,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // Type D whose points wallet is switched off: the tile shows the maintenance
     // notice instead of disappearing (server answers applicable + disabled).
     const [officeScoreDisabled, setOfficeScoreDisabled] = useState(false);
+    const [officeScoreLoading, setOfficeScoreLoading] = useState(false);
+    const [officeScoreError, setOfficeScoreError] = useState<string | null>(null);
+    const [officeScoreReloadKey, setOfficeScoreReloadKey] = useState(0);
     /**
      * Có ví nào đang mở không. `null` = chưa biết (đang nạp hoặc nạp hỏng).
      *
@@ -339,17 +342,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     });
                 }
 
-                // Điểm Office — API tự nhận diện KTV qua phiên đăng nhập, không nhận staffId
-                // từ client để KTV không xem được điểm của người khác.
-                try {
-                    const officeJson = await apiClient.get<any>('/api/ktv/office-score');
-                    setOfficeScore(officeJson?.applicable && !officeJson?.disabled ? officeJson.data : null);
-                    setOfficeScoreDisabled(officeJson?.disabled === true);
-                } catch {
-                    setOfficeScore(null); // không có điểm Office thì ẩn ô, không chặn dashboard
-                    setOfficeScoreDisabled(false);
-                }
-
                 // Cùng một nguồn với trang Ví (WalletAccessService) để hai màn không
                 // nói hai chuyện. Trang Ví coi là "bảo trì" khi cả ví Tua lẫn ví
                 // Bonus đều tắt — ở đây dùng đúng điều kiện đó.
@@ -365,6 +357,51 @@ export function useKTVDashboard(config?: DashboardConfig) {
         };
         fetchData();
     }, [ktvId]);
+
+    // 🔄 Tách riêng effect fetch Office score độc lập
+    useEffect(() => {
+        let alive = true;
+        if (!ktvId) {
+            setOfficeScore(null);
+            setOfficeScoreDisabled(false);
+            setOfficeScoreLoading(false);
+            setOfficeScoreError(null);
+            return;
+        }
+
+        const fetchOffice = async () => {
+            setOfficeScoreLoading(true);
+            setOfficeScoreError(null);
+            try {
+                const officeJson = await apiClient.get<any>('/api/ktv/office-score');
+                if (!alive) return;
+                if (officeJson?.applicable) {
+                    if (officeJson.disabled) {
+                        setOfficeScore(null);
+                        setOfficeScoreDisabled(true);
+                    } else {
+                        setOfficeScore(officeJson.data);
+                        setOfficeScoreDisabled(false);
+                    }
+                } else {
+                    setOfficeScore(null);
+                    setOfficeScoreDisabled(false);
+                }
+            } catch (err: any) {
+                if (!alive) return;
+                setOfficeScore(null);
+                setOfficeScoreDisabled(false);
+                setOfficeScoreError(err?.message || 'Chưa tải được điểm Office');
+            } finally {
+                if (alive) {
+                    setOfficeScoreLoading(false);
+                }
+            }
+        };
+
+        fetchOffice();
+        return () => { alive = false; };
+    }, [ktvId, officeScoreReloadKey]);
 
 
 
@@ -2779,6 +2816,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         turnData,
         officeScore,
         officeScoreDisabled,
+        officeScoreLoading,
+        officeScoreError,
+        reloadOfficeScore: () => setOfficeScoreReloadKey(k => k + 1),
         walletAnyOn,
         kpiData,
         disciplineStatus,

@@ -486,6 +486,7 @@
 | `staff_id` | text | Mã KTV |
 | `work_date` | date | Ngày đăng ký (YYYY-MM-DD) |
 | `expected_time` | time | Giờ dự kiến đến làm |
+| `expected_end_time` | time | Giờ tan làm đăng ký; nguồn giờ gốc gia hạn TYPE_D. |
 | `registered_at` | timestamptz | Thời điểm đăng ký |
 | `status` | text | `REGISTERED`, `OFF_REGISTERED`, `ABSENT_REPORTED`, `LATE_REPORTED`, `COMPLETED` |
 | `absent_reported_at` | timestamptz | Thời gian bấm nút Báo Vắng |

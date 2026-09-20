@@ -68,22 +68,24 @@ class ApiClient {
       ? Object.fromEntries(fetchOptions.headers.entries())
       : (fetchOptions.headers as Record<string, string> | undefined) || {};
 
-    const response = await fetch(url, {
-      // ⚠️ KHÔNG để trình duyệt cache. Mọi đường trong `/api` ở đây đều là dữ
-      // liệu sống — điểm, ví, tua, cờ tính năng. Trước đây không đặt gì cả, mà
-      // các route này cũng không gắn Cache-Control, nên Safari trên iOS giữ lại
-      // bản JSON cũ: admin tắt một tính năng, KTV mở app vẫn thấy y như cũ, F5
-      // cũng vậy, phải xoá dữ liệu web mới hết.
-      //
-      // Vẫn cho ghi đè qua `options` nếu chỗ nào thật sự muốn cache.
-      cache: 'no-store',
-      ...fetchOptions,
-      headers: { ...getActorHeaders(), ...givenHeaders },
-      signal: controller.signal
-    });
-    
-    clearTimeout(id);
-    return response;
+    try {
+      const response = await fetch(url, {
+        // ⚠️ KHÔNG để trình duyệt cache. Mọi đường trong `/api` ở đây đều là dữ
+        // liệu sống — điểm, ví, tua, cờ tính năng. Trước đây không đặt gì cả, mà
+        // các route này cũng không gắn Cache-Control, nên Safari trên iOS giữ lại
+        // bản JSON cũ: admin tắt một tính năng, KTV mở app vẫn thấy y như cũ, F5
+        // cũng vậy, phải xoá dữ liệu web mới hết.
+        //
+        // Vẫn cho ghi đè qua `options` nếu chỗ nào thật sự muốn cache.
+        cache: 'no-store',
+        ...fetchOptions,
+        headers: { ...getActorHeaders(), ...givenHeaders },
+        signal: controller.signal
+      });
+      return response;
+    } finally {
+      clearTimeout(id);
+    }
   }
 
   private async request<T>(url: string, options: ApiOptions = {}): Promise<T> {
