@@ -55,6 +55,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         height: '',
         weight: '',
         isActiveVipMenu: false,
+        isActiveTherapyMenu: false,
         isHomeSpa: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
@@ -105,6 +106,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                 avatar_url: '', position: 'Kỹ Thuật Viên', experience: '0 năm',
                 join_date: new Date().toISOString().split('T')[0], height: '', weight: '',
         isActiveVipMenu: false,
+        isActiveTherapyMenu: false,
         isHomeSpa: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
@@ -259,6 +261,10 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
                                             <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên VIP Menu</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isActiveTherapyMenu" checked={formData.isActiveTherapyMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveTherapyMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Menu Điều trị</span>
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />

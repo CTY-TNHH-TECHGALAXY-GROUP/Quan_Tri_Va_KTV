@@ -3,8 +3,68 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
 import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B } from '@/lib/constants/staff.constants';
+import type { GalleryItem } from '@/lib/types';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
+
+const GALLERY_THERAPY_IDS = new Set([
+  'coconutOil',
+  'thaiTherapy',
+  'shiatsu',
+  'hotStone',
+]);
+
+function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
+  const items = typeof value === 'string'
+    ? value.split(/\n|,/)
+    : value;
+
+  if (!Array.isArray(items)) {
+    throw new Error('Gallery phải là danh sách ảnh.');
+  }
+
+  return items.flatMap((item: unknown): Array<string | GalleryItem> => {
+    if (item == null) return [];
+
+    if (typeof item === 'string') {
+      const url = item.trim();
+      return url ? [url] : [];
+    }
+
+    if (typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Ảnh gallery không hợp lệ.');
+    }
+
+    const record = item as Record<string, unknown>;
+
+    if (typeof record.url !== 'string' || !record.url.trim()) {
+      throw new Error('Ảnh gallery thiếu URL hợp lệ.');
+    }
+
+    const url = record.url.trim();
+
+    if (record.kind === 'therapy') {
+      if (
+        typeof record.therapyId !== 'string' ||
+        !GALLERY_THERAPY_IDS.has(record.therapyId)
+      ) {
+        throw new Error('Phương pháp trị liệu của ảnh không hợp lệ.');
+      }
+
+      return [{
+        url,
+        kind: 'therapy',
+        therapyId: record.therapyId,
+      }];
+    }
+
+    if (record.kind === 'mix' || record.kind === 'legacy') {
+      return [{ url, kind: record.kind }];
+    }
+
+    throw new Error('Phân loại ảnh gallery không hợp lệ.');
+  });
+}
 
 export async function getStaffList() {
     try {
@@ -49,6 +109,11 @@ export async function createStaffMember(formData: any) {
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
+
+        // 0. Validate gallery FIRST before creating Users / Auth / Staff
+        const galleryRaw = formData.galleryUrls ?? formData.gallery_urls ?? [];
+        const galleryUrls = normalizeStaffGallery(galleryRaw);
+
         // 1. Create entry in custom public."Users" table
         const password = formData.password;
         if (!password) {
@@ -111,13 +176,6 @@ export async function createStaffMember(formData: any) {
         }
 
         // 2. Insert into Staff Table
-        const galleryRaw = formData.galleryUrls ?? formData.gallery_urls ?? [];
-        const galleryUrls = Array.isArray(galleryRaw)
-            ? galleryRaw.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
-            : typeof galleryRaw === 'string'
-                ? galleryRaw.split(/\n|,/).map((url: string) => url.trim()).filter(Boolean)
-                : [];
-
         const staffPayload = {
             id: formData.id, // ID gõ tay (e.g. NV-001)
             full_name: formData.full_name,
@@ -138,19 +196,21 @@ export async function createStaffMember(formData: any) {
             weight: formData.weight ? parseInt(formData.weight) : null,
             work_type: formData.work_type || 'TYPE_A',
             skills: formData.skills || {},
+            is_active_vip_menu: formData.isActiveVipMenu === true || formData.is_active_vip_menu === true,
+            is_active_therapy_menu: formData.isActiveTherapyMenu === true || formData.is_active_therapy_menu === true,
+            is_home_spa: formData.isHomeSpa === true || formData.is_home_spa === true,
             feature_flags: formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B : DEFAULT_FEATURE_FLAGS_TYPE_A
         };
 
         const { data: staffData, error: staffError } = await supabase
             .from('Staff')
-            .insert(staffPayload)
+            .insert([staffPayload])
             .select()
             .single();
 
         if (staffError) {
-            // Rollback auth user creation could be handled here if strictly necessary
-            console.error('Error creating staff record:', staffError);
-            throw new Error(`Lỗi lưu thông tin: ${staffError.message}`);
+            console.error('Error creating staff member:', staffError);
+            throw staffError;
         }
 
         revalidatePath('/admin/employees');
@@ -167,6 +227,13 @@ export async function updateStaffMember(id: string, updates: any) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
+        // 0. Validate gallery if sent, BEFORE any DB write/delete operations (e.g. TurnQueue)
+        let validatedGalleryUrls: Array<string | GalleryItem> | undefined = undefined;
+        if (updates.galleryUrls !== undefined || updates.gallery_urls !== undefined) {
+            const galleryRaw = updates.galleryUrls ?? updates.gallery_urls ?? [];
+            validatedGalleryUrls = normalizeStaffGallery(galleryRaw);
+        }
+
         // 1. Map camelCase (from Modal) to snake_case (for DB) if needed
         // The modal might pass Employee type (camelCase)
         const staffPayload: any = {};
@@ -174,9 +241,6 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.status !== undefined) {
             staffPayload.status = updates.status === 'active' ? 'ĐANG LÀM' : 'ĐÃ NGHỈ';
             if (staffPayload.status === 'ĐÃ NGHỈ') {
-                staffPayload.is_active_vip_menu = false;
-                staffPayload.is_home_spa = false;
-                
                 // Remove from TurnQueue
                 const { error: turnQueueError } = await supabase
                     .from('TurnQueue')
@@ -196,14 +260,8 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.bankAccount !== undefined) staffPayload.bank_account = updates.bankAccount || null;
         if (updates.bankName !== undefined) staffPayload.bank_name = updates.bankName || null;
         if (updates.photoUrl !== undefined) staffPayload.avatar_url = updates.photoUrl || null;
-        if (updates.galleryUrls !== undefined || updates.gallery_urls !== undefined) {
-            const galleryRaw = updates.galleryUrls ?? updates.gallery_urls ?? [];
-            const galleryUrls = Array.isArray(galleryRaw)
-                ? galleryRaw.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
-                : typeof galleryRaw === 'string'
-                    ? galleryRaw.split(/\n|,/).map((url: string) => url.trim()).filter(Boolean)
-                    : [];
-            staffPayload.gallery_urls = galleryUrls;
+        if (validatedGalleryUrls !== undefined) {
+            staffPayload.gallery_urls = validatedGalleryUrls;
         }
         if (updates.position !== undefined) staffPayload.position = updates.position || null;
         if (updates.experience !== undefined) staffPayload.experience = updates.experience || null;
@@ -232,7 +290,17 @@ export async function updateStaffMember(id: string, updates: any) {
             staffPayload.feature_flags = updates.feature_flags;
         }
         if (updates.isActiveVipMenu !== undefined) staffPayload.is_active_vip_menu = updates.isActiveVipMenu;
+        if (updates.is_active_vip_menu !== undefined) staffPayload.is_active_vip_menu = updates.is_active_vip_menu;
+        if (updates.isActiveTherapyMenu !== undefined) staffPayload.is_active_therapy_menu = updates.isActiveTherapyMenu;
+        if (updates.is_active_therapy_menu !== undefined) staffPayload.is_active_therapy_menu = updates.is_active_therapy_menu;
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
+        if (updates.is_home_spa !== undefined) staffPayload.is_home_spa = updates.is_home_spa;
+
+        if (staffPayload.status === 'ĐÃ NGHỈ') {
+            staffPayload.is_active_vip_menu = false;
+            staffPayload.is_active_therapy_menu = false;
+            staffPayload.is_home_spa = false;
+        }
 
         const { error: staffError } = await supabase
             .from('Staff')

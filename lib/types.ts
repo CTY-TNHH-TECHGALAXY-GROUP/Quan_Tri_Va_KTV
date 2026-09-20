@@ -65,6 +65,13 @@ export interface EmployeeSkills {
   nailChuyen: SkillLevel;
 }
 
+/** Một item trong gallery có thể là URL thuần hoặc URL kèm metadata phương pháp trị liệu */
+export interface GalleryItem {
+  url: string;
+  kind: 'therapy' | 'mix' | 'legacy';
+  therapyId?: string;
+}
+
 export interface Employee {
   id: string;
   code: string;
@@ -80,7 +87,7 @@ export interface Employee {
   bankAccount: string;
   bankName: string;
   photoUrl: string;
-  galleryUrls?: string[];
+  galleryUrls?: (string | GalleryItem)[];
   position: string;
   experience: string;
   joinDate: string;
@@ -93,6 +100,7 @@ export interface Employee {
   baseSalaryPerHour?: number;
   targetHoursPerMonth?: number;
   isActiveVipMenu?: boolean;
+  isActiveTherapyMenu?: boolean;
   isHomeSpa?: boolean;
   role?: string;
   work_type?: string;

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2 } from 'lucide-react';
-import { Employee, SkillLevel } from '@/lib/types';
+import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { updateStaffMember } from '@/app/admin/employees/actions';
 
 interface EmployeeDetailModalProps {
@@ -13,15 +13,30 @@ interface EmployeeDetailModalProps {
   onUpdate?: (updatedEmployee: Employee) => void;
 }
 
+/** Nhãn tiếng Việt cho dropdown phương pháp trị liệu */
+const THERAPY_METHOD_OPTIONS: { value: string; label: string }[] = [
+  { value: 'none', label: '-- Không phân loại (Ảnh chung) --' },
+  { value: 'coconutOil', label: 'Tinh Dầu Dừa' },
+  { value: 'thaiTherapy', label: 'Cổ Vai Gáy / Thái' },
+  { value: 'shiatsu', label: 'Bấm Huyệt Shiatsu' },
+  { value: 'hotStone', label: 'Đá Nóng' },
+  { value: 'mix', label: 'Ảnh Mix (Phối hợp 2–4 liệu trình)' },
+];
+
+import { checkGalleryDuplicate, removeGalleryItemByIndex } from '@/lib/galleryHelper';
+export { checkGalleryDuplicate, removeGalleryItemByIndex };
+
 export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: EmployeeDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newGalleryUrl, setNewGalleryUrl] = useState('');
+  const [selectedTherapyMethod, setSelectedTherapyMethod] = useState('none');
   const [editedEmployee, setEditedEmployee] = useState<Employee | null>(employee);
 
   React.useEffect(() => {
     setEditedEmployee(employee);
     setNewGalleryUrl('');
+    setSelectedTherapyMethod('none');
   }, [employee]);
 
   if (!employee || !editedEmployee) return null;
@@ -76,28 +91,43 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     });
   };
 
+  /** Lấy URL thuần từ gallery item (string hoặc object) */
+  const getItemUrl = (item: string | GalleryItem): string =>
+    typeof item === 'string' ? item : item?.url ?? '';
+
   const addGalleryUrl = () => {
     const trimmed = newGalleryUrl.trim();
     if (!trimmed || !editedEmployee) return;
 
     const currentUrls = editedEmployee.galleryUrls || [];
-    if (currentUrls.includes(trimmed)) {
-      setNewGalleryUrl('');
+
+    // Tạo item: nếu cờ therapy đang bật VÀ đã chọn phương pháp → lưu object metadata
+    let newItem: string | GalleryItem = trimmed;
+    if (editedEmployee.isActiveTherapyMenu && selectedTherapyMethod !== 'none') {
+      if (selectedTherapyMethod === 'mix') {
+        newItem = { url: trimmed, kind: 'mix' };
+      } else {
+        newItem = { url: trimmed, kind: 'therapy', therapyId: selectedTherapyMethod };
+      }
+    }
+
+    if (checkGalleryDuplicate(currentUrls, newItem)) {
+      alert('Ảnh với phương pháp này đã có trong gallery.');
       return;
     }
 
     setEditedEmployee({
       ...editedEmployee,
-      galleryUrls: [...currentUrls, trimmed],
+      galleryUrls: [...currentUrls, newItem],
     });
     setNewGalleryUrl('');
   };
 
-  const removeGalleryUrl = (urlToRemove: string) => {
+  const removeGalleryUrl = (indexToRemove: number) => {
     if (!editedEmployee) return;
     setEditedEmployee({
       ...editedEmployee,
-      galleryUrls: (editedEmployee.galleryUrls || []).filter(url => url !== urlToRemove),
+      galleryUrls: removeGalleryItemByIndex(editedEmployee.galleryUrls || [], indexToRemove),
     });
   };
 
@@ -223,6 +253,10 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                         <span className="text-sm font-medium text-gray-700">Hiển thị trên VIP Menu</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editedEmployee.isActiveTherapyMenu || false} onChange={(e) => updateField('isActiveTherapyMenu', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
+                        <span className="text-sm font-medium text-gray-700">Hiển thị trên Menu Điều trị</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" checked={editedEmployee.isHomeSpa || false} onChange={(e) => updateField('isHomeSpa', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
                         <span className="text-sm font-medium text-gray-700">Đi Home Spa</span>
                       </label>
@@ -240,6 +274,10 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">VIP Menu:</span>
                         <span className="text-sm font-medium text-gray-900">{editedEmployee.isActiveVipMenu ? 'Có' : 'Không'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Menu Điều trị:</span>
+                        <span className="text-sm font-medium text-gray-900">{editedEmployee.isActiveTherapyMenu ? 'Có' : 'Không'}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Home Spa:</span>
@@ -359,6 +397,25 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
 
                 {isEditing ? (
                   <div className="space-y-3">
+                    {/* Dropdown chọn phương pháp - chỉ hiện khi cờ Menu Điều Trị bật */}
+                    {editedEmployee.isActiveTherapyMenu && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">
+                          Phương pháp trị liệu (gắn vào ảnh tiếp theo):
+                        </label>
+                        <select
+                          value={selectedTherapyMethod}
+                          onChange={(e) => setSelectedTherapyMethod(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-medium"
+                        >
+                          {THERAPY_METHOD_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -380,7 +437,17 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       <div className="text-xs text-gray-500 italic">Chưa có ảnh gallery nào.</div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {(editedEmployee.galleryUrls || []).map((url, index) => (
+                        {(editedEmployee.galleryUrls || []).map((item, index) => {
+                          const url = getItemUrl(item);
+                          const isObj = typeof item === 'object' && item !== null;
+                          const badgeText = isObj
+                            ? (item as GalleryItem).kind === 'mix'
+                              ? 'Mix 2–4'
+                              : (item as GalleryItem).kind === 'therapy'
+                                ? THERAPY_METHOD_OPTIONS.find(o => o.value === (item as GalleryItem).therapyId)?.label || (item as GalleryItem).therapyId || 'Trị liệu'
+                                : null
+                            : null;
+                          return (
                           <div key={`${url}-${index}`} className="relative group">
                             <img
                               src={url}
@@ -388,16 +455,22 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                               className="w-full h-24 object-cover rounded-lg border border-gray-200"
                               referrerPolicy="no-referrer"
                             />
+                            {badgeText && (
+                              <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-black/75 text-[10px] text-white font-bold rounded">
+                                {badgeText}
+                              </span>
+                            )}
                             <button
                               type="button"
-                              onClick={() => removeGalleryUrl(url)}
+                              onClick={() => removeGalleryUrl(index)}
                               className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-red-500 text-white rounded-full p-1 shadow"
                               title="Xóa ảnh"
                             >
                               <X size={12} />
                             </button>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -406,15 +479,27 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                     {(!editedEmployee.galleryUrls || editedEmployee.galleryUrls.length === 0) ? (
                       <div className="col-span-full text-xs text-gray-500 italic">Nhân viên này chưa có ảnh gallery.</div>
                     ) : (
-                      (editedEmployee.galleryUrls || []).map((url, index) => (
-                        <img
-                          key={`${url}-${index}`}
-                          src={url}
-                          alt={`gallery-${index}`}
-                          className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                          referrerPolicy="no-referrer"
-                        />
-                      ))
+                      (editedEmployee.galleryUrls || []).map((item, index) => {
+                        const url = getItemUrl(item);
+                        const isObj = typeof item === 'object' && item !== null;
+                        const badgeText = isObj
+                          ? (item as GalleryItem).kind === 'mix'
+                            ? 'Mix 2–4'
+                            : (item as GalleryItem).kind === 'therapy'
+                              ? THERAPY_METHOD_OPTIONS.find(o => o.value === (item as GalleryItem).therapyId)?.label || (item as GalleryItem).therapyId || 'Trị liệu'
+                              : null
+                          : null;
+                        return (
+                          <div key={`${url}-${index}`} className="relative">
+                            <img src={url} alt={`gallery-${index}`} className="w-full h-24 object-cover rounded-lg border border-gray-200" referrerPolicy="no-referrer" />
+                            {badgeText && (
+                              <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-black/75 text-[10px] text-white font-bold rounded">
+                                {badgeText}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 )}

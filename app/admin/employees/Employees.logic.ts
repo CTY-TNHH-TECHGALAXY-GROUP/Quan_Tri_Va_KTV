@@ -48,7 +48,13 @@ export const useEmployeeManagement = () => {
                 status: s.status === 'ĐANG LÀM' ? 'active' : 'inactive',
                 photoUrl: s.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.full_name)}&background=random`,
                 galleryUrls: Array.isArray(s.gallery_urls)
-                    ? s.gallery_urls.filter((url: any) => typeof url === 'string' && url.trim()).map((url: string) => url.trim())
+                    ? s.gallery_urls.map((item: any) => {
+                        // String thuần → giữ nguyên (tương thích ảnh cũ)
+                        if (typeof item === 'string' && item.trim()) return item.trim();
+                        // Object {url, kind, therapyId} → giữ nguyên metadata
+                        if (item && typeof item === 'object' && typeof item.url === 'string' && item.url.trim()) return item;
+                        return null;
+                      }).filter(Boolean)
                     : [],
                 phone: s.phone || '',
                 email: s.email || '',
@@ -63,7 +69,8 @@ export const useEmployeeManagement = () => {
                 baseSalary: 0,
                 commissionRate: 0,
                 rating: 5.0,
-                isActiveVipMenu: s.is_active_vip_menu || false,
+                isActiveVipMenu: s.is_active_vip_menu === true,
+                isActiveTherapyMenu: s.is_active_therapy_menu === true,
                 isHomeSpa: s.is_home_spa || false,
                 work_type: s.work_type || 'TYPE_A',
                 baseSalaryPerHour: s.base_salary_per_hour || 180000,
@@ -105,6 +112,7 @@ export const useEmployeeManagement = () => {
     }, []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
         fetchEmployees();
     }, [fetchEmployees]);
