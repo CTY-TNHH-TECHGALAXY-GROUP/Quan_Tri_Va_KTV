@@ -1,3 +1,5 @@
+import { computeMinutes } from './KtvDLedgerEngine';
+
 export class KtvTypeDCommissionService {
     /**
      * Calculate total commission for a set of booking items assigned to a single guest.
@@ -37,39 +39,8 @@ export class KtvTypeDCommissionService {
                 s.ktvId && s.ktvId.toLowerCase() === techCode.toLowerCase()
             );
             
-            for (const seg of mySegs) {
-                // 0. Chặng bị TƯỚC quyền lợi (KTV bị đổi ra, huỷ do lỗi KTV) → 0đ.
-                // ⚠️ PHẢI đứng TRƯỚC nhánh `customCommissionDuration`: chặng bị tước
-                // vẫn CỐ Ý giữ số phút đã làm ở đó để đối soát (quy chế 06/09/2026),
-                // nên vào được nhánh dưới là trả tiền đúng bằng số phút họ đã làm —
-                // ngược hẳn quy chế "mất trắng".
-                if (seg?.voided === true) continue;
-
-                // 1. Admin can thiệp tay
-                if (seg.customCommissionDuration !== undefined && seg.customCommissionDuration !== null) {
-                    const customPhut = Number(seg.customCommissionDuration);
-                    totalPay += customPhut * (ratePer60m / 60);
-                    continue;
-                }
-
-                const gan = Number(seg.duration) || 0;
-                let phut = 0;
-
-                // 2. Quầy bấm dừng sớm -> có actualEndTime
-                if (seg.actualStartTime && seg.actualEndTime) {
-                    const t1 = new Date(seg.actualStartTime).getTime();
-                    const t2 = new Date(seg.actualEndTime).getTime();
-                    const thuc = Math.max(0, (t2 - t1) / 60000); // in minutes
-                    phut = Math.min(thuc, gan);
-                } 
-                // 3. Tua diễn ra bình thường không bị dừng (hoặc thiếu timestamp)
-                else {
-                    phut = gan; // Mặc định làm đủ giờ gán
-                }
-
-                const basePay = phut * (ratePer60m / 60);
-                totalPay += basePay;
-            }
+            // Use the ledger's duration rules for legacy daily-ledger callers too.
+            totalPay += computeMinutes(mySegs).paid * (ratePer60m / 60);
         }
 
         const finalPay = totalPay * (1 - d);

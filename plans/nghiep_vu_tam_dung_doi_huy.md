@@ -37,6 +37,9 @@ Luồng đổi KTV bị sửa đi sửa lại **hơn 15 lần** trong một phi�
 
 ## 2. Bảng hệ quả — sự kiện × khía cạnh
 
+**Cập nhật 21/09/2026 — hoàn tất bình thường:** tiền tua loại D dùng đủ phút gán của từng chặng/KTV. Kết thúc sớm do quầy vẫn dùng phút duyệt (`customCommissionDuration`) hoặc thời gian thực khi có dấu quầy chốt; chặng bị tước và người thay chưa xong không được cộng tiền. Giờ tích luỹ, lượt tua, thưởng/sao, dọn phòng, bàn giao, nợ phòng, hàng đợi, đồng hồ, tự chốt, Kanban, cùng làm, lịch sử sự kiện và nhật ký quầy giữ nguyên quy tắc hiện hành. Ví/lịch sử/báo cáo nhận tiền từ cùng sổ cái sau tính lại; thuế vẫn áp dụng sau tiền tua.
+
+
 Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc sớm (khách xuống sớm) · **HK** Huỷ không công · **HC** Huỷ có công · **ĐR** Đổi KTV — người bị đổi ra · **VT** Đổi KTV — người vào thay.
 
 | # | Khía cạnh | TD | KS | HK | HC | ĐR | VT |
@@ -62,7 +65,10 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 
 ---
 
-## 3. Trạng thái triển khai (11/09/2026 · cập nhật 14/09/2026)
+## 3. Trạng thái triển khai (11/09/2026 · cập nhật 21/09/2026)
+
+- Hoàn tất bình thường nhận đủ tiền theo phút gán: đã sửa engine và calculator legacy trong mã nguồn; chưa deploy/backfill dữ liệu thật. Plan: `plan_fix_type_d_subsecond_commission.md`.
+
 
 ### ✅ Đúng và đã kiểm bằng dữ liệu / mô phỏng
 

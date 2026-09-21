@@ -8,6 +8,9 @@ import {
     TypeDConfigs, EngineBooking, EngineService,
 } from '../lib/services/KtvDLedgerEngine';
 
+import { KtvTypeDCommissionService } from '../lib/services/KtvTypeDCommissionService';
+import { sumByStaff, groupForHistory } from '../lib/services/KtvDLedgerReader';
+
 let pass = 0, fail = 0;
 function check(label: string, got: any, want: any) {
     const ok = JSON.stringify(got) === JSON.stringify(want);
@@ -30,6 +33,8 @@ const CFG: TypeDConfigs = {
     cutoffHours: 6,
     taxRate: 0.1,
     taxEffectiveFrom: null,
+    bonusEnabled: false,
+    bonusPerGuest: 0,
 };
 
 const SERVICES: Record<string, EngineService> = {
@@ -52,11 +57,11 @@ function booking(over: Partial<EngineBooking> = {}): EngineBooking {
 }
 
 // ─────────────────────────────────────────────────────────────────
-section('computeMinutes — luật min(thực, gán)');
+section('computeMinutes — completed services earn assigned minutes');
 
-check('làm 55/60 → trả 55, giờ thực 55',
+check('normal completion at 55/60 → pay 60, worked hours remain 55',
     computeMinutes([seg({ actualStartTime: '2026-09-10T07:00:00Z', actualEndTime: '2026-09-10T07:55:00Z' })]),
-    { assigned: 60, actual: 55, paid: 55, custom: null });
+    { assigned: 60, actual: 55, paid: 60, custom: null });
 
 check('làm 70/60 → chặn cứng tại 60 cho CẢ tiền lẫn giờ',
     computeMinutes([seg({ actualStartTime: '2026-09-10T07:00:00Z', actualEndTime: '2026-09-10T08:10:00Z' })]),
@@ -85,12 +90,12 @@ check('2 segment cộng dồn',
         seg({ duration: 60, actualStartTime: '2026-09-10T07:00:00Z', actualEndTime: '2026-09-10T07:50:00Z' }),
         seg({ duration: 30 }),
     ]),
-    { assigned: 90, actual: 80, paid: 80, custom: null });
+    { assigned: 90, actual: 80, paid: 90, custom: null });
 
-// ⚠️ Tiền dùng phút LẺ, giờ dùng phút LÀM TRÒN — sao chép đúng 2 hàm đang chạy.
-check('phần lẻ: tiền giữ nguyên 29,4140p, giờ làm tròn 29p',
+// Normal completion pays the assignment; worked hours still use elapsed time.
+check('normal completion: pay assigned 30 minutes, worked hours round to 29',
     computeMinutes([seg({ duration: 30, actualStartTime: '2026-09-01T00:00:00.000Z', actualEndTime: '2026-09-01T00:29:24.840Z' })]),
-    { assigned: 30, actual: 29, paid: 29.414, custom: null });
+    { assigned: 30, actual: 29, paid: 30, custom: null });
 
 check('mốc lỗi (kết thúc trước khi bắt đầu): tiền trả 0, giờ lùi về giờ gán',
     computeMinutes([seg({ duration: 60, actualStartTime: '2026-09-10T08:00:00Z', actualEndTime: '2026-09-10T07:00:00Z' })]),
@@ -134,8 +139,7 @@ check('không có gì → 0 / NONE',
 
 // ─────────────────────────────────────────────────────────────────
 section('computeRows — tua 60 làm 55, PT, 3★ (tính tay)');
-// 55 phút × (100000/60) = 91.666,67 → gross 91.667
-// 3★ trừ 25% → 91.667 × 0,75 = 68.750,25 → net 68.750
+// Completed 60-minute assignment: 100,000 gross, 3 stars deduct 25% → 75,000.
 {
     const rows = computeRows([booking({
         BookingGuests: [{ id: 'G1', rating: 3 }],
@@ -148,12 +152,12 @@ section('computeRows — tua 60 làm 55, PT, 3★ (tính tay)');
 
     check('sinh đúng 1 dòng', rows.length, 1);
     const r = rows[0];
-    check('paid_minutes', r.paid_minutes, 55);
+    check('paid_minutes', r.paid_minutes, 60);
     check('actual_minutes', r.actual_minutes, 55);
     check('rate_per_60m', r.rate_per_60m, 100000);
-    money('commission_gross = 55 × 100.000/60', r.commission_gross, 55 * 100000 / 60);
+    money('commission_gross = full assigned 60 minutes', r.commission_gross, 100000);
     check('deduction_rate', r.deduction_rate, 0.25);
-    money('commission_net sau trừ 25%', r.commission_net, 55 * 100000 / 60 * 0.75);
+    money('commission_net sau trừ 25%', r.commission_net, 100000 * 0.75);
     check('tip', r.tip, 20000);
     check('rating_source', r.rating_source, 'GUEST');
     check('work_date (14:00 VN → ngày 10/09)', r.work_date, '2026-09-10');
@@ -185,7 +189,7 @@ section('Thuế 10% — theo đơn của khách, KHÔNG làm tròn');
     money('net 100.000 → thuế 10.000', rows[0].tax_amount, 10000);
 }
 {
-    // 3★ trên 55 phút PT: gross 91.667 → net 68.750 → thuế 6.875,0
+    // Normal completion: full 60-minute commission, then rating deduction and tax.
     const rows = computeRows([booking({
         BookingGuests: [{ id: 'G1', rating: 3 }],
         BookingItems: [it({
@@ -194,7 +198,7 @@ section('Thuế 10% — theo đơn của khách, KHÔNG làm tròn');
             technicianCodes: ['T016'],
         })],
     })], ['T016'], SERVICES, { ...CFG, taxEffectiveFrom: '2026-09-01' });
-    money('giữ nguyên phần lẻ, không làm tròn', rows[0].tax_amount, 55 * 100000 / 60 * 0.75 * 0.1);
+    money('giữ nguyên phần lẻ, không làm tròn', rows[0].tax_amount, 100000 * 0.75 * 0.1);
 }
 {
     // Một khách 2 dịch vụ: thuế cộng từng dòng PHẢI bằng thuế tính trên tổng.
@@ -362,6 +366,58 @@ section('Idempotent — chạy 2 lần ra kết quả giống hệt');
     const a = computeRows(input(), ['T016'], SERVICES, CFG);
     const b = computeRows(input(), ['T016'], SERVICES, CFG);
     check('2 lần chạy khớp nhau', JSON.stringify(a) === JSON.stringify(b), true);
+}
+
+section('Assigned-duration regression — normal finish versus counter closure');
+{
+    const completed = seg({ duration: 90,
+        actualStartTime: '2026-09-21T08:51:23.748Z',
+        actualEndTime: '2026-09-21T10:21:23.023Z' });
+    const rows = computeRows([booking({ BookingItems: [it({
+        status: 'DONE', technicianCodes: ['T016'], segments: [completed],
+    })] })], ['T016'], SERVICES, { ...CFG, taxEffectiveFrom: '2026-09-01' });
+    money('T027 regression: 90-minute service pays 150,000', rows[0].commission_gross, 150000);
+    money('tax remains 10%', rows[0].tax_amount, 15000);
+    const wallet = sumByStaff(rows).T016;
+    const history = groupForHistory(rows)[0];
+    money('wallet/finance net = 135,000', wallet.take_home, 135000);
+    money('history agrees with wallet/finance', history.take_home, wallet.take_home);
+    money('legacy calculator agrees with engine', KtvTypeDCommissionService.calculateGuestCommission(
+        [{ segments: [completed] }], 'T016', 0, 100000, CFG.ratingDeductions), rows[0].commission_gross);
+
+    const start = '2026-09-21T16:30:00Z';
+    const end = '2026-09-21T17:00:00Z'; // Midnight in Vietnam.
+    const short = seg({ duration: 90, actualStartTime: start, actualEndTime: end });
+    check('normal completion is not a one-second tolerance', computeMinutes([short]).paid, 90);
+    check('actual hours remain 30 minutes', computeMinutes([short]).actual, 30);
+    for (const exception of [
+        { ...short, customCommissionDuration: 30, note: 'FINISHED_EARLY_ON_PAUSE' },
+        { ...short, note: 'FINISHED_EARLY_ON_PAUSE' },
+        { ...short, pauses: [{ from: end, to: end, closedBy: 'CANCEL' }] },
+    ]) {
+        check('counter finish retains worked/approved 30 minutes', computeMinutes([exception]).paid, 30);
+        money('legacy exception uses same 30 minutes', KtvTypeDCommissionService.calculateGuestCommission(
+            [{ segments: [exception] }], 'T016', 0, 100000, CFG.ratingDeductions), 50000);
+    }
+    check('explicit zero stays zero', computeMinutes([{ ...short, customCommissionDuration: 0 }]).paid, 0);
+    check('voided overrides custom credit', computeMinutes([{ ...short, voided: true, customCommissionDuration: 30 }]).paid, 0);
+    check('unfinished replacement receives zero', computeMinutes([
+        { ...short, note: 'TAKEOVER', actualEndTime: null, customCommissionDuration: 30 },
+    ]).paid, 0);
+    check('finished replacement receives its approved portion', computeMinutes([
+        { ...short, note: 'TAKEOVER', customCommissionDuration: 30 },
+    ]).paid, 30);
+    check('invalid interval earns zero', computeMinutes([{ ...short, actualEndTime: start }]).paid, 0);
+    check('merged completed portions total 90', computeMinutes([
+        { ...short, duration: 60, isMergedRun: true },
+        { ...short, duration: 30, isMergedRun: true },
+    ]).paid, 90);
+    const teamRows = computeRows([booking({ BookingItems: [it({
+        status: 'DONE', technicianCodes: ['T016', 'T017'], segments: [
+            { ...short, duration: 60 }, { ...short, ktvId: 'T017', duration: 30 },
+        ],
+    })] })], ['T016', 'T017'], SERVICES, CFG);
+    check('two technicians keep their own assigned portions', teamRows.map(r => r.paid_minutes), [60, 30]);
 }
 
 console.log(`\n${'─'.repeat(50)}`);
