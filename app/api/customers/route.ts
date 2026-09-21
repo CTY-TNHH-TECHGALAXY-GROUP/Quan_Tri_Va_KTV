@@ -5,40 +5,44 @@ import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
 import { isDummyEmail, isDummyPhone } from '@/lib/customer.logic';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
+import { customerSearchFilter, searchPattern } from '@/lib/customer-search';
+
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        const params = new URL(request.url).searchParams;
+        const query = params.get('q')?.trim() || '';
+        const customerId = params.get('id')?.trim() || '';
+        if (query.length > 200 || customerId.length > 200) {
+            return NextResponse.json({ success: false, error: 'Từ khóa tìm kiếm quá dài' }, { status: 400 });
+        }
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
 
-        // Helper to bypass 1000 limit
-        async function fetchAll(tableName: string, selectStr: string, buildQuery: (q: any) => any = (q) => q) {
-            let allData: any[] = [];
-            let from = 0;
-            const limit = 1000;
-            
-            while (true) {
-                let query = supabase!.from(tableName).select(selectStr).range(from, from + limit - 1);
-                query = buildQuery(query);
-                
-                const { data, error } = await query;
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                
-                allData = allData.concat(data);
-                if (data.length < limit) break;
-                from += limit;
+        // Keep DB-heavy history pages sequential; targeted reads below avoid scanning unrelated bookings.
+        async function fetchAll(tableName: string, selectStr: string, buildQuery: (q: any) => any = q => q) {
+            const pageSize = 1000;
+            const rows: any[] = [];
+            for (let from = 0; ; from += pageSize) {
+                const result = await buildQuery(supabase!.from(tableName).select(selectStr).range(from, from + pageSize - 1));
+                if (result.error) throw result.error;
+                rows.push(...(result.data || []));
+                if (!result.data || result.data.length < pageSize) break;
             }
-            return allData;
+            return rows;
         }
 
         // 1. Fetch all customers
         let customers: any[];
         try {
-            customers = await fetchAll('Customers', '*', q => q.order('fullName', { ascending: true }).order('id', { ascending: true }));
+            customers = await fetchAll('Customers', '*', q => {
+                if (customerId) q = q.eq('id', customerId);
+                else if (query) q = q.or(customerSearchFilter(query));
+                return q.order('fullName', { ascending: true }).order('id', { ascending: true });
+            });
         } catch (cError) {
             console.error('Error fetching customers:', cError);
             return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 });
@@ -51,13 +55,28 @@ export async function GET() {
         // 2. Fetch all bookings (except CANCELLED) to calculate stats & fetch recent selections like language
         let allBookings: any[];
         try {
-            allBookings = await fetchAll('Bookings', `
+            const select = `
                 id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender, parent_booking_id,
                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options, ktvRatings )
-            `, q => q.neq('status', 'CANCELLED').order('id', { ascending: true }));
+            `;
+            if (query || customerId) {
+                const byBookingId = new Map<string, any>();
+                for (let start = 0; start < customers.length; start += 20) {
+                    const group = customers.slice(start, start + 20);
+                    const ids = group.map(c => JSON.stringify(c.id)).join(',');
+                    const emails = [...new Set(group.map(c => c.email).filter((email: string) => !isDummyEmail(email)))];
+                    const orphanEmails = emails.map(email => `customerEmail.ilike.${searchPattern(String(email).trim())}`).join(',');
+                    const filter = `customerId.in.(${ids})${orphanEmails ? `,and(customerId.is.null,or(${orphanEmails}))` : ''}`;
+                    const rows = await fetchAll('Bookings', select, q => q.or(filter).neq('status', 'CANCELLED').order('id'));
+                    rows.forEach(row => byBookingId.set(row.id, row));
+                }
+                allBookings = [...byBookingId.values()];
+            } else {
+                allBookings = await fetchAll('Bookings', select, q => q.neq('status', 'CANCELLED').order('id'));
+            }
         } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
-            return NextResponse.json({ success: true, data: customers }); // Return without stats gracefully
+            return NextResponse.json({ success: false, error: 'Không tải được lịch sử khách hàng. Vui lòng thử lại.' }, { status: 503 });
         }
 
         // Fetch Services and Staff for mapping
@@ -86,7 +105,7 @@ export async function GET() {
                 }
                 bookingsByCustomerId.get(b.customerId)?.push(b);
             }
-            if (b.customerEmail && b.customerEmail.includes('@') && b.customerName) {
+            if (!b.customerId && !isDummyEmail(b.customerEmail || '') && b.customerName) {
                 const compositeKey = `${(b.customerName || '').toLowerCase().trim()}|${b.customerEmail.toLowerCase().trim()}`;
                 if (!bookingsByNameEmail.has(compositeKey)) {
                     bookingsByNameEmail.set(compositeKey, []);
