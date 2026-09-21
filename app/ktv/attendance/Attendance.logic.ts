@@ -74,7 +74,7 @@ export const useKTVAttendance = () => {
     const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
     const [workType, setWorkType] = useState<string>('TYPE_A');
     const [availableUntil, setAvailableUntil] = useState<string | null>(null);
-    const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
+    const [showOvertimeFeature, setShowOvertimeFeature] = useState(true);
     const [incompleteTasksCount, setIncompleteTasksCount] = useState(0);
     // Nợ phòng (bàn giao chưa nộp / phòng đang dọn dở) — chặn ở bước tan ca.
     const [roomDebt, setRoomDebt] = useState<{ handover: number; cleaning: number; total: number; items: any[] }>(
@@ -86,7 +86,7 @@ export const useKTVAttendance = () => {
         message: ''
     });
 
-    const shiftExtension = useShiftExtension(user?.id);
+    const shiftExtension = useShiftExtension(user?.code || user?.id);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -94,8 +94,9 @@ export const useKTVAttendance = () => {
     const refreshAttendanceStatus = useCallback(async () => {
         if (!user?.id) return;
         try {
+                const targetEmployeeId = user.code || user.id;
                 const [statusRes, settingsRes, configRes] = await Promise.all([
-                    apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
+                    apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(targetEmployeeId)).catch((err) => {
                         console.error(`❌ [Attendance] Status API returned error:`, err);
                         return { success: false, checkStatus: 'IDLE', record: null, workType: 'TYPE_A' };
                     }),
@@ -128,7 +129,9 @@ export const useKTVAttendance = () => {
 
                 if (configRes.success && configRes.data) {
                     const raw = configRes.data.show_overtime_on_dashboard;
-                    setShowOvertimeFeature(raw === true || raw === 'true');
+                    setShowOvertimeFeature(raw === undefined || raw === null ? true : (raw === true || raw === 'true'));
+                } else {
+                    setShowOvertimeFeature(true);
                 }
 
                 if (statusRes.success && statusRes.checkStatus) {

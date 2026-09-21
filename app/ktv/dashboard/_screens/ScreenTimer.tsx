@@ -413,44 +413,56 @@ export function ScreenTimer({ logic }: { logic: any }) {
 
 
 
+      {/* Special Requirements Section (Note của khách hàng & Admin/Quầy) */}
+      <div className="px-2 mb-6">
+        <CollapsibleRequirements booking={booking} />
+      </div>
+
       {/* Shift Extension Block */}
-      {logic.shiftExtension?.currentEndTime && (
-        <div className="px-6 mb-6">
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <Clock size={18} className="text-indigo-600" />
-              <div>
-                <span className="text-xs font-bold text-slate-700">Giờ tan ca: </span>
-                <span className="text-xs font-black text-indigo-700">
-                  {logic.shiftExtension.currentEndTime}
+      <div className="px-2 mb-6">
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Clock size={18} className="text-indigo-600" />
+            <div>
+              <span className="text-xs font-bold text-slate-700">Giờ tan ca: </span>
+              <span className="text-xs font-black text-indigo-700">
+                {logic.shiftExtension?.currentEndTime || '--:--'}
+              </span>
+              {logic.shiftExtension?.used && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-md">
+                  Đã dùng lượt gia hạn
                 </span>
-                {logic.shiftExtension.used && (
-                  <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-md">
-                    Đã dùng lượt gia hạn
-                  </span>
-                )}
-              </div>
+              )}
             </div>
-            {logic.shiftExtension.used ? (
-              <button
-                type="button"
-                disabled
-                className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
-              >
-                Đã dùng lượt gia hạn
-              </button>
-            ) : logic.shiftExtension.canExtend ? (
-              <button
-                type="button"
-                onClick={() => setShowExtensionModal(true)}
-                className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm active:scale-95"
-              >
-                Gia hạn
-              </button>
-            ) : null}
           </div>
+          {logic.shiftExtension?.used ? (
+            <button
+              type="button"
+              disabled
+              className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
+            >
+              Đã dùng lượt gia hạn
+            </button>
+          ) : logic.shiftExtension?.canExtend ? (
+            <button
+              type="button"
+              onClick={() => setShowExtensionModal(true)}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm active:scale-95"
+            >
+              Gia hạn
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
+              title={!logic.shiftExtension?.currentEndTime ? 'Chưa có giờ tan ca' : 'Không thể gia hạn'}
+            >
+              Gia hạn
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Primary Action Button */}
       <div className="px-6 mb-10">
@@ -530,9 +542,6 @@ export function ScreenTimer({ logic }: { logic: any }) {
           </div>
         )}
       </div>
-
-      {/* Special Requirements Section */}
-      <CollapsibleRequirements booking={booking} />
 
       {/* 2x2 Action Grid + Emergency Wide - ONLY SHOW WHEN RUNNING OR PAUSED */}
       {(isTimerRunning || isPaused) && (

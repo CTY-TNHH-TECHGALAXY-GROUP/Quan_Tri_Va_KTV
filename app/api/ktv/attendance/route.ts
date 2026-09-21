@@ -330,7 +330,8 @@ export async function POST(request: Request) {
                 return NextResponse.json({ success: false, error: 'Lỗi kiểm tra cấu hình hệ thống' }, { status: 500 });
             }
 
-            const isOtEnabled = flagConfig?.value === true || flagConfig?.value === 'true';
+            // Mặc định bật nếu chưa có cấu hình trong SystemConfigs
+            const isOtEnabled = flagConfig ? (flagConfig.value === true || flagConfig.value === 'true') : true;
             if (!isOtEnabled) {
                 return NextResponse.json({ success: false, error: 'Tính năng gia hạn giờ làm hiện đang tắt.' }, { status: 403 });
             }

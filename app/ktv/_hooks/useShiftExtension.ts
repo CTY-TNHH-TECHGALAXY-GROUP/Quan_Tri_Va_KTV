@@ -36,7 +36,8 @@ export function useShiftExtension(employeeId: string | undefined | null): ShiftE
       ]);
 
       const rawFlag = configRes?.data?.show_overtime_on_dashboard;
-      const isFeatureEnabled = rawFlag === true || rawFlag === 'true';
+      // Mặc định bật tính năng trừ khi cấu hình explicitly tắt (false)
+      const isFeatureEnabled = rawFlag === undefined || rawFlag === null ? true : (rawFlag === true || rawFlag === 'true');
 
       const shiftExt = statusRes?.shiftExtension;
       const checkStatus = statusRes?.checkStatus;

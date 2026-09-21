@@ -57,11 +57,11 @@ export interface DashboardConfig {
 
 export function useKTVDashboard(config?: DashboardConfig) {
     const { user, hasPermission } = useAuth();
-    const shiftExtension = useShiftExtension(user?.id);
     const { setKtvScreen } = useNotifications();
     const { addToast } = useToast();
     const ktvIdRaw = config?.testTechCode || user?.code || user?.id;
     const ktvId = ktvIdRaw ? ktvIdRaw.toUpperCase() : undefined;
+    const shiftExtension = useShiftExtension(ktvId);
     const canViewWallet = hasPermission('ktv_wallet');
     const [screen, setScreenState] = useState<ScreenState>('DASHBOARD');
     const setScreen = useCallback((val: ScreenState) => {

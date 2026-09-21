@@ -742,7 +742,16 @@ const KTVAttendancePage = () => {
                                                     >
                                                         <Clock size={18} /> Gia hạn giờ làm
                                                     </button>
-                                                ) : null
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled
+                                                        className="w-full mt-3 py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
+                                                        title={!shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : 'Không thể gia hạn ca này'}
+                                                    >
+                                                        <Clock size={18} /> Gia hạn giờ làm {!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}
+                                                    </button>
+                                                )
                                             )}
                                         </>
                                     )}
