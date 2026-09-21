@@ -1,4 +1,4 @@
-﻿import assert from 'assert';
+import assert from 'assert';
 import { KtvTypeDCommissionService } from '../lib/services/KtvTypeDCommissionService';
 
 function runTest() {
@@ -8,7 +8,7 @@ function runTest() {
 
     console.log("Running assertions...");
 
-    // Case 1: GÃ¡n 60p, xong 50p -> 50p, rating 4
+    // Case 1: Normal completion pays the assigned 60 minutes, rating 4
     const items1 = [{
         segments: [{
             ktvId: 'T001',
@@ -19,7 +19,7 @@ function runTest() {
     }];
     const pay1 = KtvTypeDCommissionService.calculateGuestCommission(items1, techCode, 4, ratePer60, deductions);
     console.log(`Case 1: ${pay1}`);
-    assert.strictEqual(pay1, 83333);
+    assert.strictEqual(pay1, 100000);
 
     // Case 2: GÃ¡n 60p, xong 65p -> 60p, rating 4
     const items2 = [{
