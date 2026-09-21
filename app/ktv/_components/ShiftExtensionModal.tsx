@@ -14,9 +14,9 @@ interface ShiftExtensionModalProps {
 }
 
 const PRESET_OPTIONS = [
-  { label: '+60 phút (1h)', minutes: 60 },
-  { label: '+90 phút (1.5h)', minutes: 90 },
-  { label: '+120 phút (2h)', minutes: 120 },
+  { label: '+60 phút', minutes: 60 },
+  { label: '+90 phút', minutes: 90 },
+  { label: '+120 phút', minutes: 120 },
 ] as const;
 
 export function ShiftExtensionModal({

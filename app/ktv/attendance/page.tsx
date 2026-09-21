@@ -506,7 +506,19 @@ const KTVAttendancePage = () => {
                         </div>
                     ) : workType === 'TYPE_D' && user?.code ? (
                         <div className={`w-full ${checkStatus === 'LOADING_GPS' ? 'opacity-40 pointer-events-none' : ''}`}>
-                            <AttendanceTypeD ktvId={user.code} checkStatus={checkStatus} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} roomDebt={roomDebt} guestArrivalLock={guestArrivalLock} />
+                            <AttendanceTypeD
+                                ktvId={user.code}
+                                checkStatus={checkStatus}
+                                onCheckIn={() => openForm('CHECK_IN')}
+                                onCheckOut={() => openForm('CHECK_OUT')}
+                                onRefreshStatus={refreshAttendanceStatus}
+                                incompleteTasksCount={incompleteTasksCount}
+                                roomDebt={roomDebt}
+                                guestArrivalLock={guestArrivalLock}
+                                shiftExtension={shiftExtension}
+                                onOpenShiftExtensionModal={() => setIsExtensionModalOpen(true)}
+                                showOvertimeFeature={showOvertimeFeature}
+                            />
                         </div>
                     ) : (
                         <>
@@ -678,6 +690,32 @@ const KTVAttendancePage = () => {
                                                         </div>
                                                     ) : null}
                                                     
+                                                    {showOvertimeFeature && (
+                                                        shiftExtension.used ? (
+                                                            <button
+                                                                type="button"
+                                                                disabled
+                                                                className="w-full mb-3 py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
+                                                            >
+                                                                <Clock size={18} /> Đã dùng lượt gia hạn ({shiftExtension.currentEndTime})
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsExtensionModalOpen(true)}
+                                                                disabled={!shiftExtension.canExtend}
+                                                                className={`w-full mb-3 py-3.5 font-bold text-base rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                                                                    shiftExtension.canExtend
+                                                                        ? 'bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md shadow-indigo-200'
+                                                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                                                }`}
+                                                                title={!shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : !shiftExtension.canExtend ? 'Không thể gia hạn ca này' : undefined}
+                                                            >
+                                                                <Clock size={18} /> Gia hạn giờ làm {!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}
+                                                            </button>
+                                                        )
+                                                    )}
+
                                                     <button
                                                         onClick={() => {
                                                             if (incompleteTasksCount > 0) return;
@@ -723,35 +761,6 @@ const KTVAttendancePage = () => {
                                                         <LogOut size={22} /> {(incompleteTasksCount > 0 || roomDebt?.total > 0) ? 'CHƯA THỂ TAN CA' : 'Oria Xin Cảm ơn'}
                                                     </button>
                                                 </>
-                                            )}
-                                            
-                                            {showOvertimeFeature && (
-                                                shiftExtension.used ? (
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        className="w-full mt-3 py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
-                                                    >
-                                                        <Clock size={18} /> Đã dùng lượt gia hạn ({shiftExtension.currentEndTime})
-                                                    </button>
-                                                ) : shiftExtension.canExtend ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsExtensionModalOpen(true)}
-                                                        className="w-full mt-3 py-3.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-base rounded-2xl transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
-                                                    >
-                                                        <Clock size={18} /> Gia hạn giờ làm
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        className="w-full mt-3 py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
-                                                        title={!shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : 'Không thể gia hạn ca này'}
-                                                    >
-                                                        <Clock size={18} /> Gia hạn giờ làm {!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}
-                                                    </button>
-                                                )
                                             )}
                                         </>
                                     )}
