@@ -311,7 +311,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
         }
     };
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
-    const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null; title?: string } | null>(null);
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
     const [tempCustomName, setTempCustomName] = useState<string>('');
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -1004,12 +1004,30 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             {!s.isUtility && dsKtvHienThi(s).length > 0 && !veTungNguoi(s) && (
                                                                 <div className="flex flex-wrap gap-1">
                                                                     {dsKtvHienThi(s).map((st: any, idx: number) => {
-                                                                        const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
+                                                                        const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
+                                                                        const guestSlipperPhotoUrl = photoSegment?.guestSlipperPhotoUrl;
                                                                         return (
                                                                             <span key={idx} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' : 'bg-gray-100 text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>
                                                                                 <span className="flex items-center gap-0.5">👤 {st.ktvId ? ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName) : 'Chưa gán'} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                 <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
+                                                                                {guestSlipperPhotoUrl && (
+                                                                                    <button
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setSelectedPhoto({
+                                                                                                url: guestSlipperPhotoUrl,
+                                                                                                ktvId: st.ktvId,
+                                                                                                title: 'Ảnh dép khách',
+                                                                                                time: photoSegment?.actualStartTime || photoSegment?.startTime
+                                                                                            });
+                                                                                        }}
+                                                                                        className="w-3.5 h-3.5 rounded-full overflow-hidden border border-emerald-400 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                        title="Xem ảnh dép khách"
+                                                                                    >
+                                                                                        <img src={guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                                                                    </button>
+                                                                                )}
                                                                                 {startPhotoUrl && (
                                                                                     <button
                                                                                         onClick={(e) => {
@@ -1017,7 +1035,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                             setSelectedPhoto({
                                                                                                 url: startPhotoUrl,
                                                                                                 ktvId: st.ktvId,
-                                                                                                time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                title: 'Ảnh bắt đầu ca',
+                                                                                                time: photoSegment?.actualStartTime || photoSegment?.startTime
                                                                                             });
                                                                                         }}
                                                                                         className="w-3.5 h-3.5 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
@@ -1050,23 +1069,45 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
-                                                                                            const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
+                                                                                            const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                                                                                             if (!photoSegment) return null;
                                                                                             return (
-                                                                                                <button
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        setSelectedPhoto({
-                                                                                                            url: photoSegment.startPhotoUrl,
-                                                                                                            ktvId: st.ktvId,
-                                                                                                            time: photoSegment.actualStartTime || photoSegment.startTime
-                                                                                                        });
-                                                                                                    }}
-                                                                                                    className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
-                                                                                                    title="Xem ảnh xác nhận khách"
-                                                                                                >
-                                                                                                    <img src={photoSegment.startPhotoUrl} alt="Selfie" className="w-full h-full object-cover" />
-                                                                                                </button>
+                                                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                                                    {photoSegment.guestSlipperPhotoUrl && (
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setSelectedPhoto({
+                                                                                                                    url: photoSegment.guestSlipperPhotoUrl,
+                                                                                                                    ktvId: st.ktvId,
+                                                                                                                    title: 'Ảnh dép khách',
+                                                                                                                    time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                                });
+                                                                                                            }}
+                                                                                                            className="w-4 h-4 rounded-full overflow-hidden border border-emerald-400 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                                            title="Xem ảnh dép khách"
+                                                                                                        >
+                                                                                                            <img src={photoSegment.guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                    {photoSegment.startPhotoUrl && (
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setSelectedPhoto({
+                                                                                                                    url: photoSegment.startPhotoUrl,
+                                                                                                                    ktvId: st.ktvId,
+                                                                                                                    title: 'Ảnh bắt đầu ca',
+                                                                                                                    time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                                });
+                                                                                                            }}
+                                                                                                            className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                                            title="Xem ảnh xác nhận khách"
+                                                                                                        >
+                                                                                                            <img src={photoSegment.startPhotoUrl} alt="Selfie" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             );
                                                                                         })()}
                                                                                         {s.options?.serviceNamesForKtvs?.[st.ktvId] && (
@@ -1571,7 +1612,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                             {/* Header */}
                             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                                 <div>
-                                    <h3 className="font-black text-gray-900 text-sm">Ảnh xác nhận khách bắt đầu ca</h3>
+                                    <h3 className="font-black text-gray-900 text-sm">{selectedPhoto.title || 'Ảnh xác nhận khách bắt đầu ca'}</h3>
                                     <p className="text-xs text-gray-500 font-bold">Kỹ thuật viên: {selectedPhoto.ktvId}</p>
                                 </div>
                                 <button
@@ -1586,7 +1627,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                             <div className="relative aspect-[3/4] bg-gray-50 flex items-center justify-center">
                                 <img
                                     src={selectedPhoto.url}
-                                    alt="Ảnh xác nhận khách"
+                                    alt={selectedPhoto.title || "Ảnh xác nhận khách"}
                                     className="w-full h-full object-contain"
                                 />
                             </div>

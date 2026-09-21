@@ -161,7 +161,7 @@ export class CustomerIdentifyService {
 
         if (!isReturning) {
             wowMessage = `Ting! Khách mới tinh chưa có lịch sử (${customerName}). Cố gắng chốt sale và phục vụ thật tốt nhé!`;
-            greetingSuggestion = `Dạ Ngan Ha Spa xin chào! Đây là lần đầu tiên ${customerName} đến với Spa đúng không ạ?`;
+            greetingSuggestion = `Dạ Oria Spa xin chào! Đây là lần đầu tiên ${customerName} đến với Spa đúng không ạ?`;
         } else {
             const preferencesParts = [];
             if (topService) preferencesParts.push(`hay làm ${topService}`);
@@ -182,7 +182,7 @@ export class CustomerIdentifyService {
             if (greetingParts.length > 0) {
                 greetingSuggestion = `Chào ${customerName}, hôm nay anh/chị vẫn làm ${greetingParts.join(' ')} đúng không ạ?`;
             } else {
-                greetingSuggestion = `Chào ${customerName}, mừng anh/chị đã quay lại Ngan Ha Spa lần thứ ${visitCount + 1}! Hôm nay anh/chị muốn dùng dịch vụ gì ạ?`;
+                greetingSuggestion = `Chào ${customerName}, mừng anh/chị đã quay lại Oria Spa lần thứ ${visitCount + 1}! Hôm nay anh/chị muốn dùng dịch vụ gì ạ?`;
             }
         }
 

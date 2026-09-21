@@ -73,7 +73,7 @@ export default function LoginPage() {
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                 <Sparkles size={32} />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">Ngân Hà Spa</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Oria Spa</h1>
               <p className="text-indigo-100 text-sm mt-1">Hệ thống quản trị trung tâm</p>
             </div>
             {/* Decorative circles */}

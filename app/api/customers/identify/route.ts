@@ -193,7 +193,7 @@ export async function GET(request: Request) {
             greetingSuggestion += ` đúng không ạ?`;
         } else {
             wowMessage = "Ting! Có đơn mới từ Khách Mới. Hãy tư vấn nhiệt tình nhé!";
-            greetingSuggestion = `Dạ Ngan Ha Spa xin chào! Đây là lần đầu tiên ${cName} đến spa, mời ${cName} tham khảo menu dịch vụ ạ.`;
+            greetingSuggestion = `Dạ Oria Spa xin chào! Đây là lần đầu tiên ${cName} đến spa, mời ${cName} tham khảo menu dịch vụ ạ.`;
         }
 
         return NextResponse.json({

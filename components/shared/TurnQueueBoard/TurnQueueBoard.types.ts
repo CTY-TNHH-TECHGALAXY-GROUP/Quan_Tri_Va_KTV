@@ -27,5 +27,6 @@ export type TurnQueueData = {
     net_hours?: number;
     /** `KTVAttendance` CHECK_IN hôm nay — xem lib/attendance/checkedInToday. */
     checked_in_today?: boolean;
+    shift_end_time?: string | null;
 };
 

@@ -68,46 +68,6 @@ const KTVSchedulePage = () => {
     const [isWorkListOpen, setIsWorkListOpen] = useState(true);
     const [isOffListOpen, setIsOffListOpen] = useState(true);
 
-    const pointerStartRef = React.useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> | null }>({
-        x: 0,
-        y: 0,
-        timer: null
-    });
-    const suppressNextClickRef = React.useRef(false);
-
-    const handlePointerDown = (e: React.PointerEvent, dateStr: string, canSelect: boolean) => {
-        if (!canSelect) return;
-        if (pointerStartRef.current.timer) {
-            clearTimeout(pointerStartRef.current.timer);
-        }
-        pointerStartRef.current = {
-            x: e.clientX,
-            y: e.clientY,
-            timer: setTimeout(() => {
-                suppressNextClickRef.current = true;
-                setIsMultiSelectMode(true);
-                toggleDate(dateStr);
-            }, 500)
-        };
-    };
-
-    const handlePointerMove = (e: React.PointerEvent) => {
-        if (!pointerStartRef.current.timer) return;
-        const dx = Math.abs(e.clientX - pointerStartRef.current.x);
-        const dy = Math.abs(e.clientY - pointerStartRef.current.y);
-        if (dx > 10 || dy > 10) {
-            clearTimeout(pointerStartRef.current.timer);
-            pointerStartRef.current.timer = null;
-        }
-    };
-
-    const handlePointerUpOrCancel = () => {
-        if (pointerStartRef.current.timer) {
-            clearTimeout(pointerStartRef.current.timer);
-            pointerStartRef.current.timer = null;
-        }
-    };
-
     if (!mounted) return null;
 
     if (!canAccessPage) {
@@ -189,10 +149,6 @@ const KTVSchedulePage = () => {
     })();
 
     const handleDateClick = (dateStr: string) => {
-        if (suppressNextClickRef.current) {
-            suppressNextClickRef.current = false;
-            return;
-        }
         setViewDate(dateStr);
         
         const isTypeD = user?.work_type === 'TYPE_D';
@@ -271,12 +227,9 @@ const KTVSchedulePage = () => {
                     </div>
                 )}
 
-                {/* Toolbar chọn nhiều ngày cho Type D */}
+                {/* Nút chọn nhiều ngày cho Type D */}
                 {user?.work_type === 'TYPE_D' && (
-                    <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-2.5">
-                        <span className="text-xs text-gray-500">
-                            {isMultiSelectMode ? `Đang chọn: ${selectedDates.length} ngày` : 'Nhấn giữ 0.5s hoặc bấm nút để chọn nhiều ngày'}
-                        </span>
+                    <div className="flex justify-end">
                         <button
                             type="button"
                             onClick={() => {
@@ -286,9 +239,14 @@ const KTVSchedulePage = () => {
                                     setIsMultiSelectMode(true);
                                 }
                             }}
-                            className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all ${isMultiSelectMode ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                            className={`text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm ${
+                                isMultiSelectMode
+                                    ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'
+                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                            }`}
                         >
-                            {isMultiSelectMode ? 'Hủy chọn nhiều' : 'Chọn nhiều ngày'}
+                            <CalendarDays size={14} className={isMultiSelectMode ? 'text-rose-500' : 'text-gray-500'} />
+                            <span>{isMultiSelectMode ? `Hủy chọn nhiều${selectedDates.length > 0 ? ` (${selectedDates.length})` : ''}` : 'Chọn nhiều ngày'}</span>
                         </button>
                     </div>
                 )}
@@ -371,14 +329,6 @@ const KTVSchedulePage = () => {
                                         return (
                                             <button
                                                 key={dateStr}
-                                                onPointerDown={(e) => {
-                                                    if (user?.work_type === 'TYPE_D' && !myWorkReg && !isPast) {
-                                                        handlePointerDown(e, dateStr, true);
-                                                    }
-                                                }}
-                                                onPointerMove={handlePointerMove}
-                                                onPointerUp={handlePointerUpOrCancel}
-                                                onPointerCancel={handlePointerUpOrCancel}
                                                 onClick={() => handleDateClick(dateStr)}
                                                 className={`aspect-square rounded-xl flex flex-col items-center justify-center relative transition-all text-sm ${cellStyle}`}
                                             >

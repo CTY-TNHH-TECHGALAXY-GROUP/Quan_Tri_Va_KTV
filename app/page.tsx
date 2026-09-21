@@ -3,7 +3,7 @@ import { parseDbDate } from "@/lib/utils";
 
 // 🔧 SYSTEM CONFIGURATION
 const SYSTEM_CONFIG = {
-  spa_name: 'Ngan Ha Spa',
+  spa_name: 'Oria Spa',
   spa_address: '123 Đường ABC, Quận 1, TP. HCM',
   // Fallback, actual URL loaded from SystemConfigs API
   default_booking_url: 'https://nganha.vercel.app/',

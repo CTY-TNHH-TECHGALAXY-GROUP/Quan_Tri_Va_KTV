@@ -24,7 +24,7 @@ interface AppLayoutProps {
   disablePullToRefresh?: boolean;
 }
 
-export function AppLayout({ children, hideAI = false, title = 'Ngân Hà Spa', disablePullToRefresh = false, headerRight }: AppLayoutProps) {
+export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disablePullToRefresh = false, headerRight }: AppLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // Desktop sidebar state
   const [mounted, setMounted] = useState(false);

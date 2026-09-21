@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
         // 2. Send push to each subscription
         const payload = JSON.stringify({
-            title: title || 'Ngân Hà Spa',
+            title: title || 'Oria Spa',
             body: message || 'Bạn có thông báo mới!',
             url: url || '/'
         });
