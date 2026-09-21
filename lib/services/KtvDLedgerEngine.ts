@@ -1,4 +1,4 @@
-import { isVoidedSegment, workedMsOf, parseTimeMs } from '../segment-time';
+import { isVoidedSegment, workedMsOf, parseTimeMs, endedByCounter } from '../segment-time';
 import { toBusinessDate } from '../business-date';
 
 /**
@@ -215,33 +215,11 @@ export function resolveRating(
 }
 
 /**
- * Phút gán / phút làm thực / phút được trả tiền.
- *
- * ⚠️ `paid` và `actual` KHÔNG dùng chung cách tính, và đây là chủ ý — nó sao
- * chép đúng hai hàm đang chạy trong production, để engine không tự ý đổi
- * lương hay đổi giờ tích lũy của KTV:
- *
- *   paid   ← KtvTypeDCommissionService.calculateGuestCommission  (TIỀN)
- *            · phút LẺ, không làm tròn
- *            · thực = max(0, t2−t1) → mốc lỗi (t2 < t1) trả 0
- *            · = min(thực, gán): làm 55/60 trả 55; làm 70/60 vẫn trả 60
- *
- *   actual ← KtvTypeDTurnService.calculateActualMinutes           (GIỜ)
- *            · phút LÀM TRÒN
- *            · mốc lỗi (t2 ≤ t1) thì lùi về giờ gán
- *            · CHẶN TRÊN tại giờ gán — xem ghi chú dưới
- *
- * Hai cách này lệch nhau ở phần lẻ và ở mốc lỗi.
- *
- * ⚠️ CHẶN TRÊN cho `actual` (thêm 04/09/2026): trước đây giờ tích lũy không
- * có trần, nên một tua quên bấm kết thúc đẻ ra 1441 phút = 24 giờ (bill
- * 005-02092026-B). Vì thứ tự nhận khách sort theo net_hours DESC, một lần
- * quên bấm là đủ để một KTV đứng đầu hàng suốt cả tháng. Máy treo hay lỗi
- * ghi nhận thì không thể tính thành giờ làm — giờ thực chặn tại giờ gán,
- * đúng như tiền. Phải sửa cùng lúc ở KtvTypeDTurnService.calculateActualMinutes.
- *
- * `customCommissionDuration` (admin can thiệp) thắng cả hai và KHÔNG bị chặn —
- * đó là con số admin cố ý nhập, không phải dữ liệu hỏng.
+ * Assigned, worked and payable minutes for one technician's segments.
+ * Normal completion earns the assigned duration, regardless of elapsed seconds.
+ * Counter closures retain elapsed pay; explicit custom minutes take precedence.
+ * Actual hours remain rounded elapsed time capped at the assignment, so this
+ * payment rule does not change accumulated hours or queue priority.
  */
 /** Incoming KTV of a TAKEOVER segment has really started and then finished. */
 function takeoverFinished(seg: any): boolean {
@@ -288,8 +266,10 @@ export function computeMinutes(segs: any[]): {
         const workedMs = workedMsOf(seg);
         const hasMarks = workedMs !== null;
 
-        // TIỀN — phút lẻ, mốc lỗi trả 0, chặn tại giờ gán
-        paid += hasMarks ? Math.min(workedMs / 60000, gan) : gan;
+        // A normal finish earns the assigned service portion in full. Counter
+        // closures without an explicit override retain their worked-time pay.
+        const completedNormally = hasMarks && workedMs > 0 && !endedByCounter(seg);
+        paid += completedNormally ? gan : hasMarks ? Math.min(workedMs / 60000, gan) : gan;
 
         // GIỜ — phút làm tròn, mốc lỗi lùi về giờ gán, chặn tại giờ gán
         actual += (hasMarks && workedMs > 0) ? Math.min(Math.round(workedMs / 60000), gan) : gan;

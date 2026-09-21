@@ -19,9 +19,9 @@ function check(label: string, actual: any, expected: any) {
     ok.push(`✓ ${label} = ${JSON.stringify(actual)}`);
 }
 
-// ── 1. Dữ liệu CŨ (không có `pauses`) phải cho kết quả y hệt trước đây ──────
+// Normal completion pays assigned minutes; worked hours still use timestamps.
 const cu = { ktvId: 'T016', duration: 60, actualStartTime: T(0), actualEndTime: T(50) };
-check('cũ · không pauses · computeMinutes', computeMinutes([cu]), { assigned: 60, actual: 50, paid: 50, custom: null });
+check('cũ · không pauses · computeMinutes', computeMinutes([cu]), { assigned: 60, actual: 50, paid: 60, custom: null });
 check('cũ · không pauses · giờ tích luỹ', KtvTypeDTurnService.calculateActualMinutes(item([cu]), 'T016'), 50);
 
 // ── 2. Một lần tạm dừng 10 phút ────────────────────────────────────────────
@@ -33,7 +33,7 @@ const motLan = {
 };
 check('1 lần dừng 10p · trừ đúng', pausedMsOf(motLan, motLan.actualEndTime) / 60000, 10);
 check('1 lần dừng 10p · làm thực', workedMsOf(motLan)! / 60000, 50);
-check('1 lần dừng 10p · computeMinutes', computeMinutes([motLan]), { assigned: 60, actual: 50, paid: 50, custom: null });
+check('1 lần dừng 10p · computeMinutes', computeMinutes([motLan]), { assigned: 60, actual: 50, paid: 60, custom: null });
 check('1 lần dừng 10p · giờ tích luỹ', KtvTypeDTurnService.calculateActualMinutes(item([motLan]), 'T016'), 50);
 check('1 lần dừng 10p · mốc bắt đầu KHÔNG đổi', motLan.actualStartTime, T(0));
 
