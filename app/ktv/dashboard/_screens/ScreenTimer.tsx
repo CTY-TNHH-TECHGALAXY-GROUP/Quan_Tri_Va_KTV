@@ -145,30 +145,41 @@ export function ScreenTimer({ logic }: { logic: any }) {
           .catch(() => { /* use fallback */ });
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-          const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''}`;
-          const compressed = await compressImageWithWatermark(file, {
-              minBrightness,
-              watermarkText
-          });
-          logic.setStartPhotoBase64(compressed);
-      } catch (err: any) {
-          if (err?.message === 'TOO_DARK') {
-              addToast('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.', 'error');
-          } else {
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                  const result = ev.target?.result as string;
-                  if (result) logic.setStartPhotoBase64(result);
-              };
-              reader.readAsDataURL(file);
-          }
+  const handleProcessPhoto = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (value: string | null) => void,
+    label: string
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await compressImageWithWatermark(file, {
+        minBrightness,
+        watermarkText: `${label} - Room ${booking?.assignedRoomId || booking?.roomName || ''}`
+      });
+      setter(compressed);
+    } catch (err: any) {
+      if (err?.message === 'TOO_DARK') {
+        addToast('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.', 'error');
+      } else {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const result = ev.target?.result as string;
+          if (result) setter(result);
+        };
+        reader.readAsDataURL(file);
       }
-      if (e.target) e.target.value = '';
+    }
+
+    e.target.value = '';
   };
+
+  const handleSlipperFileUpload = (e: React.ChangeEvent<HTMLInputElement>) =>
+    handleProcessPhoto(e, logic.setGuestSlipperPhotoBase64, 'Dép khách');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) =>
+    handleProcessPhoto(e, logic.setStartPhotoBase64, 'Bắt đầu dịch vụ');
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -468,49 +479,90 @@ export function ScreenTimer({ logic }: { logic: any }) {
       {((!isTimerRunning && !isPaused) || isPrepping) ? (
         <div className="px-6 mb-10">
           <div className="space-y-4">
-            {/* Selfie Photo Preview (Sequential Flow) */}
-            {logic.startPhotoBase64 && (
-              <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md">
-                    <img src={logic.startPhotoBase64} className="w-full h-full object-cover" alt="Selfie preview" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-slate-800">Đã lưu ảnh chụp!</p>
-                    <p className="text-[10px] text-slate-400 font-bold">Bấm Bắt đầu để kích hoạt ca</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => logic.setStartPhotoBase64(null)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
-                >
-                  Chụp lại 🔄
-                </button>
-              </div>
-            )}
+            {[
+              {
+                label: 'Ảnh dép khách',
+                value: logic.guestSlipperPhotoBase64,
+                setter: logic.setGuestSlipperPhotoBase64,
+                onChange: handleSlipperFileUpload
+              },
+              {
+                label: 'Ảnh bắt đầu dịch vụ',
+                value: logic.startPhotoBase64,
+                setter: logic.setStartPhotoBase64,
+                onChange: handleFileUpload
+              }
+            ].map((photo, index) => (
+              <div key={photo.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-700">
+                    {index + 1}. {photo.label} {photo.value && '✅'}
+                  </span>
 
-            {/* Action buttons based on photo status */}
-            {logic.startPhotoBase64 ? (
+                  {photo.value && (
+                    <button
+                      type="button"
+                      onClick={() => photo.setter(null)}
+                      className="text-[10px] font-bold text-rose-600 hover:underline"
+                    >
+                      Chụp lại 🔄
+                    </button>
+                  )}
+                </div>
+
+                {photo.value ? (
+                  <img
+                    src={photo.value}
+                    alt={photo.label}
+                    className="w-20 h-20 rounded-xl object-cover border-2 border-emerald-500"
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <label className={`relative flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                      logic.canStart
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <Camera size={16} />
+                      Chụp ảnh
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={photo.onChange}
+                        disabled={logic.isLoading || !logic.canStart}
+                      />
+                    </label>
+
+                    <label className="relative px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">
+                      Tải ảnh
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={photo.onChange}
+                        disabled={logic.isLoading || !logic.canStart}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {logic.guestSlipperPhotoBase64 && logic.startPhotoBase64 ? (
               <button
                 onClick={handleStartTimer}
-                disabled={logic.isLoading}
+                disabled={logic.isLoading || !logic.canStart}
                 className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40"
               >
                 <Play fill="white" size={24} />
                 {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
               </button>
             ) : (
-              <div className="flex gap-3">
-                <label className="relative flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:active:scale-100">
-                  <Camera size={18} />
-                  {logic.canStart ? 'CHỤP ẢNH ĐỂ BẮT ĐẦU' : 'CHƯA ĐẾN GIỜ'}
-                  <input type="file" accept="image/*" capture="environment" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
-                </label>
-                <label className="relative flex-[0.8] h-16 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh</span>
-                  <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
-                </label>
-              </div>
+              <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                <Camera size={18} /> Chụp đủ 2 ảnh để bắt đầu
+              </button>
             )}
 
             {!logic.canStart && logic.allowedStartTime && (

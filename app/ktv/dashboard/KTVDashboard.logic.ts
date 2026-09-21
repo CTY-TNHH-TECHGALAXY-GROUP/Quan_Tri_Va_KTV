@@ -237,6 +237,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // 📸 Selfie photo before starting service
     const [startPhotoBase64, setStartPhotoBase64State] = useState<string | null>(null);
+    const [guestSlipperPhotoBase64, setGuestSlipperPhotoBase64State] = useState<string | null>(null);
 
     const setStartPhotoBase64 = useCallback((val: string | null) => {
         setStartPhotoBase64State(val);
@@ -251,22 +252,36 @@ export function useKTVDashboard(config?: DashboardConfig) {
         } catch(e) {}
     }, [ktvId]);
 
+    const setGuestSlipperPhotoBase64 = useCallback((val: string | null) => {
+        setGuestSlipperPhotoBase64State(val);
+        if (!bookingRef.current?.id || !ktvId) return;
+        try {
+            const key = `ktv_slipper_photo_${ktvId}_${bookingRef.current.id}_${activeSegmentIndexRef.current}`;
+            if (val) {
+                localStorage.setItem(key, val);
+            } else {
+                localStorage.removeItem(key);
+            }
+        } catch(e) {}
+    }, [ktvId]);
+
     // Restore temporary selfie photo from localStorage on load / booking / segment change
     useEffect(() => {
         if (!booking?.id || !ktvId) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
             return;
         }
         try {
             const key = `ktv_start_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
+            const slipperKey = `ktv_slipper_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
             const saved = localStorage.getItem(key);
-            if (saved) {
-                setStartPhotoBase64State(saved);
-            } else {
-                setStartPhotoBase64State(null);
-            }
+            const savedSlipper = localStorage.getItem(slipperKey);
+            setStartPhotoBase64State(saved || null);
+            setGuestSlipperPhotoBase64State(savedSlipper || null);
         } catch(e) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
         }
     }, [booking?.id, ktvId, activeSegmentIndex]);
 
@@ -2012,11 +2027,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 techCode: ktvId,
                 action: 'START_TIMER',
                 shouldMerge: shouldMerge,
-                photoBase64: startPhotoBase64
+                activeSegmentIndex,
+                startPhotoBase64,
+                guestSlipperPhotoBase64
             });
             if (res.success) {
-                // 📸 Clean up check-in photo from preview and localStorage
+                // 📸 Clean up check-in photos from preview and localStorage
                 setStartPhotoBase64(null);
+                setGuestSlipperPhotoBase64(null);
 
                 // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
                 supabase.channel('dispatch_board_realtime').send({
@@ -2801,6 +2819,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         workType,
         startPhotoBase64,
         setStartPhotoBase64,
+        guestSlipperPhotoBase64,
+        setGuestSlipperPhotoBase64,
         // Room procedures & issue reporting
         prepProcedure,
         cleanProcedure,

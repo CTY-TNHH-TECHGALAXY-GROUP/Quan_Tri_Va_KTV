@@ -1146,7 +1146,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
                                     reviewTime: dbSeg.reviewTime || incomingSeg.reviewTime,
-                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl
+                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                    guestSlipperPhotoUrl: dbSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl
                                 };
                             }
                             return incomingSeg;
@@ -1219,6 +1220,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                         actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
                                         feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
                                         startPhotoUrl: existingSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                        guestSlipperPhotoUrl: existingSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl,
                                         handoverPhotoUrl: existingSeg.handoverPhotoUrl || incomingSeg.handoverPhotoUrl,
                                         handoverPhotoUrls: existingSeg.handoverPhotoUrls || incomingSeg.handoverPhotoUrls
                                     };
