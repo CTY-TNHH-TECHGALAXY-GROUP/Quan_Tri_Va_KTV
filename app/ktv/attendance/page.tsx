@@ -709,9 +709,9 @@ const KTVAttendancePage = () => {
                                                                         ? 'bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md shadow-indigo-200'
                                                                         : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                                                                 }`}
-                                                                title={!shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : !shiftExtension.canExtend ? 'Không thể gia hạn ca này' : undefined}
+                                                                title={shiftExtension.deadlineReached ? 'Đã quá giờ gia hạn' : !shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : !shiftExtension.canExtend ? 'Không thể gia hạn ca này' : undefined}
                                                             >
-                                                                <Clock size={18} /> Gia hạn giờ làm {!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}
+                                                                <Clock size={18} /> {shiftExtension.deadlineReached ? 'Đã quá giờ gia hạn' : `Gia hạn giờ làm ${!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}`}
                                                             </button>
                                                         )
                                                     )}

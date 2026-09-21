@@ -9,7 +9,9 @@ import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineServ
 import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
-import { SHIFT_TYPES, addMinutesToTime } from '@/lib/shift.constants';
+import { SHIFT_TYPES, addMinutesToTime, hasReachedShiftEnd } from '@/lib/shift.constants';
+import { vnNow } from '@/lib/vn-time';
+import { format } from 'date-fns';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -458,6 +460,10 @@ export async function POST(request: Request) {
 
             if (!baseEndTime) {
                 return NextResponse.json({ success: false, error: 'Không xác định được giờ tan ca gốc.' }, { status: 400 });
+            }
+
+            if (hasReachedShiftEnd(baseEndTime, format(vnNow(), 'HH:mm'), cutoffHours)) {
+                return NextResponse.json({ success: false, error: 'Đã quá giờ gia hạn' }, { status: 409 });
             }
 
             finalEstimatedEndTime = addMinutesToTime(baseEndTime, extensionMinutes);

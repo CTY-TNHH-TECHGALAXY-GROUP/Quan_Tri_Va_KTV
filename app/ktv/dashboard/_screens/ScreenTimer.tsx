@@ -467,9 +467,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
               type="button"
               disabled
               className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
-              title={!logic.shiftExtension?.currentEndTime ? 'Chưa có giờ tan ca' : 'Không thể gia hạn'}
+              title={logic.shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : !logic.shiftExtension?.currentEndTime ? 'Chưa có giờ tan ca' : 'Không thể gia hạn'}
             >
-              Gia hạn
+              {logic.shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : 'Gia hạn'}
             </button>
           )}
         </div>

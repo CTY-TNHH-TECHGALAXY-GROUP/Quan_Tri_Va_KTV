@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { addMinutesToTime } from '../lib/shift.constants';
+import { addMinutesToTime, hasReachedShiftEnd } from '../lib/shift.constants';
 import { AttendanceSchema } from '../lib/schemas/ktv.schema';
 
 console.log('🧪 Running Shift Extension & Schedule Unit Tests...\n');
@@ -49,6 +49,15 @@ assert.ok(
     '01:00 to 17:00 in same workday should fail'
 );
 console.log('✅ Business date cutoff calculations passed all cases.\n');
+
+// ── Test 2.1: Extension deadline is inclusive ──
+console.log('Test Suite 2.1: Shift extension deadline');
+assert.equal(hasReachedShiftEnd('22:00', '21:59'), false, '21:59 vẫn được gia hạn ca kết thúc 22:00');
+assert.equal(hasReachedShiftEnd('22:00', '22:00'), true, '22:00 phải đóng quyền gia hạn');
+assert.equal(hasReachedShiftEnd('22:00', '22:01'), true, 'Sau 22:00 phải đóng quyền gia hạn');
+assert.equal(hasReachedShiftEnd('00:00', '23:59'), false, '23:59 vẫn trước hạn 00:00 trong cùng ngày làm việc');
+assert.equal(hasReachedShiftEnd('00:00', '00:00'), true, '00:00 phải đóng quyền gia hạn ca đêm');
+console.log('✅ Shift extension deadline passed all cases.\n');
 
 // ── Test 3: Zod schema validation for OVERTIME payload ──
 console.log('Test Suite 3: AttendanceSchema validation for extensionMinutes');
