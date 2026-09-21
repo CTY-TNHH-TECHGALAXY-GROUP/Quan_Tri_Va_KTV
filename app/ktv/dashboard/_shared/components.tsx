@@ -91,6 +91,16 @@ export function CollapsibleRequirements({ booking }: { booking: any }) {
     displayDispatcherNote = currentStr || null;
   }
 
+  const customerNote = item?.customerNote || booking?.customerNote;
+  const hasCustomerPrefs = Boolean(item?.strength || item?.focus || item?.avoid || customerNote);
+  const hasDispatcherNote = Boolean(displayDispatcherNote);
+  const hasKtvNote = Boolean(item?.noteForKtv);
+
+  // Chỉ hiển thị khi có note hoặc yêu cầu chi tiết
+  if (!hasCustomerPrefs && !hasDispatcherNote && !hasKtvNote) {
+    return null;
+  }
+
   return (
     <div className="border-t border-slate-50 mt-2">
       <button 
@@ -115,32 +125,34 @@ export function CollapsibleRequirements({ booking }: { booking: any }) {
           >
             <div className="pb-6 space-y-5">
               {/* 1. Yêu cầu của khách */}
-              <div className="flex flex-col gap-3">
-                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-1">Từ phía khách hàng</span>
-                <div className="flex flex-wrap gap-2">
-                  {/* Giới tính KTV: ẩn vì KTV không cần xem thông tin này */}
-                  {item.strength && (
-                    <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-xl text-[13px] font-black border border-orange-100 flex items-center gap-2">
-                      <Dumbbell size={16} /> Lực: {normalizeStrength(item.strength)}
-                    </div>
-                  )}
-                  {item.focus && (
-                    <div className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[13px] font-black border border-emerald-100 flex items-center gap-2">
-                      <Target size={16} /> Tập trung: {formatBodyAreas(item.focus)}
-                    </div>
-                  )}
-                  {item.avoid && (
-                    <div className="px-4 py-2 bg-rose-50 text-rose-700 rounded-xl text-[13px] font-black border border-rose-100 flex items-center gap-2">
-                      <Ban size={16} /> Tránh: {formatBodyAreas(item.avoid)}
+              {hasCustomerPrefs && (
+                <div className="flex flex-col gap-3">
+                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-1">Từ phía khách hàng</span>
+                  <div className="flex flex-wrap gap-2">
+                    {/* Giới tính KTV: ẩn vì KTV không cần xem thông tin này */}
+                    {item.strength && (
+                      <div className="px-4 py-2 bg-orange-50 text-orange-700 rounded-xl text-[13px] font-black border border-orange-100 flex items-center gap-2">
+                        <Dumbbell size={16} /> Lực: {normalizeStrength(item.strength)}
+                      </div>
+                    )}
+                    {item.focus && (
+                      <div className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[13px] font-black border border-emerald-100 flex items-center gap-2">
+                        <Target size={16} /> Tập trung: {formatBodyAreas(item.focus)}
+                      </div>
+                    )}
+                    {item.avoid && (
+                      <div className="px-4 py-2 bg-rose-50 text-rose-700 rounded-xl text-[13px] font-black border border-rose-100 flex items-center gap-2">
+                        <Ban size={16} /> Tránh: {formatBodyAreas(item.avoid)}
+                      </div>
+                    )}
+                  </div>
+                  {customerNote && (
+                    <div className="bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 font-bold italic border border-slate-100 shadow-sm">
+                      &quot;{customerNote}&quot;
                     </div>
                   )}
                 </div>
-                {item.customerNote && (
-                  <div className="bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 font-bold italic border border-slate-100 shadow-sm">
-                    &quot;{item.customerNote}&quot;
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* 2. Ghi chú của quầy */}
               {displayDispatcherNote && (

@@ -465,8 +465,8 @@ export function ScreenTimer({ logic }: { logic: any }) {
       </div>
 
       {/* Primary Action Button */}
-      <div className="px-6 mb-10">
-        {(!isTimerRunning && !isPaused) || isPrepping ? (
+      {((!isTimerRunning && !isPaused) || isPrepping) ? (
+        <div className="px-6 mb-10">
           <div className="space-y-4">
             {/* Selfie Photo Preview (Sequential Flow) */}
             {logic.startPhotoBase64 && (
@@ -524,24 +524,17 @@ export function ScreenTimer({ logic }: { logic: any }) {
               </motion.p>
             )}
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2">
-            <div className="flex items-center justify-center gap-2 py-4 bg-emerald-50 border border-emerald-200 rounded-2xl w-full">
-              <Clock size={16} className="text-emerald-600 animate-pulse" />
-              <span className="text-sm font-bold text-emerald-700">Hệ thống tự động hoàn tất khi hết giờ</span>
-            </div>
-            
-            {logic.booking?.nextBookingId && (
-              <div className="flex items-center justify-center gap-2 py-2 w-full mt-2 bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
-                <BellRing size={14} className="text-amber-600 animate-bounce" />
-                <span className="text-[11px] font-bold text-amber-700">
-                  Tiếp: {logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
-                </span>
-              </div>
-            )}
+        </div>
+      ) : logic.booking?.nextBookingId ? (
+        <div className="px-6 mb-6">
+          <div className="flex items-center justify-center gap-2 py-2 w-full bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
+            <BellRing size={14} className="text-amber-600 animate-bounce" />
+            <span className="text-[11px] font-bold text-amber-700">
+              Tiếp: {logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
+            </span>
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {/* 2x2 Action Grid + Emergency Wide - ONLY SHOW WHEN RUNNING OR PAUSED */}
       {(isTimerRunning || isPaused) && (
