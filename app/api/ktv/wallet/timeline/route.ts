@@ -199,17 +199,14 @@ export async function GET(request: Request) {
         // Khác đường cũ ở chỗ hiển thị: cũ gộp thành "Tổng tiền tua ngày X",
         // nay tách từng tua kèm mã bill để KTV đối chiếu được với lịch sử.
         if (workType === 'TYPE_D') {
-            const { drainQueueFor } = await import('@/lib/services/KtvDLedgerWriter');
+            const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
             const { getRows, groupForHistory } = await import('@/lib/services/KtvDLedgerReader');
 
+            // Refresh first because a newly finished item has no ledger row yet.
+            await drainQueueForStaff(supabase, [techCode]);
             const turnRows = await getRows(supabase, {
                 staffIds: [techCode], from: GLOBAL_START_DATE_STR, to: '2099-12-31',
             });
-
-            // Tua vừa xong có thể còn trong hàng đợi (worker 5 phút/lần).
-            try {
-                await drainQueueFor(supabase, [...new Set(turnRows.map(r => r.booking_id))]);
-            } catch { /* không chặn hiển thị */ }
 
             for (const g of groupForHistory(turnRows)) {
                 const at = asUtcIso(g.rows[0].booking_time_start) || `${g.work_date}T12:00:00+07:00`;

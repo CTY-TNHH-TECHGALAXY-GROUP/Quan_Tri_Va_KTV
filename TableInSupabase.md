@@ -218,6 +218,41 @@
 
 ---
 
+### 4.6. KTVDTurnLedger ✅ NGUỒN TIỀN/GIỜ KTV LOẠI D
+
+**Nhiệm vụ**: Một dòng cho mỗi KTV + BookingItem. Ví, lịch sử, giờ tích lũy và báo cáo quản lý cùng đọc bảng này.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `staff_id`, `booking_item_id` | text | Khóa nghiệp vụ duy nhất |
+| `booking_id`, `guest_id`, `group_id` | text | Liên kết bill, khách và nhóm dịch vụ |
+| `work_date` | date | Ngày làm việc theo giờ cắt ca |
+| `assigned_minutes` | numeric | Thời lượng được giao |
+| `actual_minutes` | numeric | Phút thực tế dùng cho giờ tích lũy |
+| `paid_minutes` | numeric | Phút được trả tiền; revision 2 trả đủ thời lượng giao khi hoàn tất bình thường |
+| `rate_per_60m` | numeric | Đơn giá snapshot |
+| `commission_gross`, `commission_net`, `bonus_amount`, `tax_amount`, `tip` | numeric | Các thành phần tiền của tua |
+| `entry_status` | text | `OPEN`, `FINAL`, `LOCKED`, `VOID` |
+| `source`, `computed_at` | text, timestamptz | Nguồn và thời điểm tính |
+| `formula_revision` | integer NOT NULL DEFAULT 0 | Revision công thức đã ghi dòng; revision hiện hành là `2` |
+| `writer_commit` | text | Git SHA/định danh công cụ đã ghi dòng |
+
+**Constraint**: `UNIQUE(staff_id, booking_item_id)`. Từ migration `20260922091000`, mọi INSERT/UPDATE/DELETE phải đi qua RPC revision 2; direct writer cũ bị từ chối ở trigger DB.
+
+### 4.7. KTVDRecomputeQueue ✅ HÀNG ĐỢI TÍNH LẠI LOẠI D
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `booking_item_id` | text PK | Item cần tính lại; tự khử trùng lặp |
+| `booking_id`, `reason` | text | Bill và nguyên nhân `ITEM`/`GUEST`/`BOOKING`/`MANUAL` |
+| `enqueued_at` | timestamptz | Lần nguồn thay đổi gần nhất |
+| `attempts`, `last_error` | integer, text | Số lần lỗi và lỗi gần nhất |
+| `generation` | bigint NOT NULL DEFAULT 1 | Tăng sau mỗi thay đổi nguồn; RPC chỉ xóa đúng generation đã tính |
+
+Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `ktvd_commit_recompute` khóa generation, ghi/VOID ledger và acknowledge queue trong cùng transaction. RPC `ktvd_mark_recompute_failed` giữ queue khi tính lỗi; `ktvd_enqueue_recompute` là lối bảo trì có kiểm soát. Chỉ `service_role` được EXECUTE các RPC này.
+
+---
+
 ### 4.4. KtvAssignments ✅ CHỦ LỰC (HÀNG ĐỢI PHÂN CÔNG)
 **Nhiệm vụ**: Danh sách phân công KTV — 1 dòng = 1 KTV + 1 BookingItem. Cho phép 1 KTV xếp nhiều đơn liên tiếp; `TurnQueue` chỉ phản chiếu **assignment đang ACTIVE**.
 **Nguồn**: `supabase/migrations/20260502150000_create_ktv_assignments.sql` (ghi bởi RPC `dispatch_confirm_booking`, `promote_next_assignment`, và các handler trong `app/api/ktv/booking/_handlers/`).

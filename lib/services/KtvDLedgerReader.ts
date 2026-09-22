@@ -21,6 +21,8 @@ export interface TurnRowDb extends TurnRow {
     locked_at: string | null;
     source: string | null;
     computed_at: string | null;
+    formula_revision: number;
+    writer_commit: string | null;
 }
 
 export interface PenaltyRow {
@@ -67,6 +69,7 @@ function normalize(r: any): TurnRowDb {
         tax_amount: num(r.tax_amount),
         tip: num(r.tip),
         co_workers: r.co_workers || [],
+        formula_revision: num(r.formula_revision),
     };
 }
 
