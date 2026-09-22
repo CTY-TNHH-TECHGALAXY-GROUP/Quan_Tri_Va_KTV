@@ -73,6 +73,68 @@ export interface RecomputeResult {
     rowsSkippedLocked: number;
 }
 
+const FORMULA_REVISION = 2;
+
+interface QueueEntry {
+    booking_item_id: string;
+    booking_id?: string | null;
+    reason?: string | null;
+    attempts?: number | null;
+    generation: number;
+}
+
+const writerCommit = (): string =>
+    process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'local';
+
+async function computeAndCommit(
+    supabase: SupabaseClient,
+    entries: QueueEntry[],
+    ctx?: LedgerContext,
+): Promise<RecomputeResult> {
+    const itemIds = entries.map(e => e.booking_item_id);
+    const context = ctx || await loadContext(supabase);
+
+    const { data: idRows, error: idErr } = await supabase
+        .from('BookingItems')
+        .select('bookingId')
+        .in('id', itemIds);
+    if (idErr) throw idErr;
+
+    const bookingIds = [...new Set((idRows || []).map((r: any) => r.bookingId).filter(Boolean))];
+    let bookings: any[] = [];
+    if (bookingIds.length > 0) {
+        const { data, error } = await supabase
+            .from('Bookings')
+            .select(`
+                id, billCode, timeStart, status, rating,
+                BookingItems!fk_bookingitems_booking (
+                    id, serviceId, guest_id, technicianCodes, segments, status, tip,
+                    itemRating, ktvRatings, options, handover_status, handover_comment
+                ),
+                BookingGuests ( id, rating, ktv_ratings )
+            `)
+            .in('id', bookingIds);
+        if (error) throw error;
+        bookings = data || [];
+    }
+
+    const live = bookings.filter((b: any) => b.status !== 'CANCELLED');
+    const rows = computeRows(live as any, context.staffIds, context.services, context.configs)
+        .filter((r: TurnRow) => itemIds.includes(r.booking_item_id));
+
+    const { data, error } = await supabase.rpc('ktvd_commit_recompute', {
+        p_formula_revision: FORMULA_REVISION,
+        p_writer_commit: writerCommit(),
+        p_entries: entries.map(e => ({
+            booking_item_id: e.booking_item_id,
+            generation: e.generation,
+        })),
+        p_rows: rows,
+    });
+    if (error) throw error;
+    return data as RecomputeResult;
+}
+
 /**
  * Tính lại sổ cái cho đúng các BookingItem được chỉ định.
  *
@@ -86,84 +148,22 @@ export async function recomputeTurnRows(
     const empty: RecomputeResult = { itemsRequested: 0, rowsWritten: 0, rowsVoided: 0, rowsSkippedLocked: 0 };
     if (itemIds.length === 0) return empty;
 
-    const context = ctx || await loadContext(supabase);
+    const { error: enqueueError } = await supabase.rpc('ktvd_enqueue_recompute', {
+        p_item_ids: itemIds,
+        p_reason: 'DIRECT',
+    });
+    if (enqueueError) throw enqueueError;
 
-    // Tìm các booking chứa những item này, rồi nạp ĐẦY ĐỦ booking đó.
-    // Phải nạp cả bill vì hậu tố -A/-B được đánh theo toàn bộ đơn con của
-    // bill, không thể tính đúng nếu chỉ nhìn một item.
-    const { data: idRows, error: idErr } = await supabase
-        .from('BookingItems')
-        .select('bookingId')
-        .in('id', itemIds);
-    if (idErr) throw idErr;
-
-    const bookingIds = [...new Set((idRows || []).map((r: any) => r.bookingId).filter(Boolean))];
-    if (bookingIds.length === 0) return { ...empty, itemsRequested: itemIds.length };
-
-    const { data: bookings, error: bErr } = await supabase
-        .from('Bookings')
-        .select(`
-            id, billCode, timeStart, status, rating,
-            BookingItems!fk_bookingitems_booking (
-                id, serviceId, guest_id, technicianCodes, segments, status, tip,
-                itemRating, ktvRatings, options, handover_status, handover_comment
-            ),
-            BookingGuests ( id, rating, ktv_ratings )
-        `)
-        .in('id', bookingIds);
-    if (bErr) throw bErr;
-
-    // Đơn đã huỷ → không sinh dòng nào; các dòng cũ sẽ bị VOID bên dưới.
-    const live = (bookings || []).filter((b: any) => b.status !== 'CANCELLED');
-    const produced = computeRows(live as any, context.staffIds, context.services, context.configs)
-        // Chỉ giữ dòng thuộc đúng những item được yêu cầu — tránh vô tình ghi
-        // đè item khác trong cùng bill mà lần này không được nhắc tới.
-        .filter((r: TurnRow) => itemIds.includes(r.booking_item_id));
-
-    // Dòng đã LOCKED thì cấm sửa đè — thay đổi phải đi bằng dòng ADMIN_ADJUST.
-    const { data: existing } = await supabase
-        .from('KTVDTurnLedger')
-        .select('staff_id, booking_item_id, entry_status')
+    const { data: queued, error: queueError } = await supabase
+        .from('KTVDRecomputeQueue')
+        .select('booking_item_id, booking_id, reason, attempts, generation')
         .in('booking_item_id', itemIds);
-
-    const lockedKeys = new Set(
-        (existing || []).filter((r: any) => r.entry_status === 'LOCKED')
-            .map((r: any) => `${r.staff_id}|${r.booking_item_id}`));
-
-    const writable = produced.filter(r => !lockedKeys.has(`${r.staff_id}|${r.booking_item_id}`));
-
-    if (writable.length > 0) {
-        const payload = writable.map(r => ({ ...r, source: 'EVENT', computed_at: new Date().toISOString() }));
-        const { error } = await supabase
-            .from('KTVDTurnLedger')
-            .upsert(payload, { onConflict: 'staff_id,booking_item_id' });
-        if (error) throw error;
+    if (queueError) throw queueError;
+    if (!queued || queued.length !== new Set(itemIds).size) {
+        throw new Error('Không thể xếp đủ BookingItem vào hàng đợi tính tiền tua D');
     }
 
-    // Dòng còn trong sổ nhưng engine không còn sinh ra nữa → VOID.
-    // Xảy ra khi: đổi KTV, huỷ đơn, item lùi về trạng thái chưa tính tiền,
-    // hoặc dịch vụ được đổi sang loại tiện ích.
-    const producedKeys = new Set(writable.map(r => `${r.staff_id}|${r.booking_item_id}`));
-    const toVoid = (existing || []).filter((r: any) =>
-        r.entry_status !== 'LOCKED'
-        && r.entry_status !== 'VOID'
-        && !producedKeys.has(`${r.staff_id}|${r.booking_item_id}`));
-
-    for (const r of toVoid) {
-        const { error } = await supabase
-            .from('KTVDTurnLedger')
-            .update({ entry_status: 'VOID', computed_at: new Date().toISOString() })
-            .eq('staff_id', r.staff_id)
-            .eq('booking_item_id', r.booking_item_id);
-        if (error) throw error;
-    }
-
-    return {
-        itemsRequested: itemIds.length,
-        rowsWritten: writable.length,
-        rowsVoided: toVoid.length,
-        rowsSkippedLocked: lockedKeys.size,
-    };
+    return computeAndCommit(supabase, queued as QueueEntry[], ctx);
 }
 
 /** Số dòng lấy mỗi lượt khi quét hàng đợi. */
@@ -171,27 +171,9 @@ const QUEUE_SCAN_PAGE = 500;
 /** Số id tối đa nhét vào một mệnh đề `.in()` — dài quá thì URL PostgREST vỡ. */
 const IN_CHUNK = 200;
 
-/** Một dòng hàng đợi, đủ thông tin để dán lại NGUYÊN VẸN nếu tính lỗi. */
-interface QueueEntry {
-    booking_item_id: string;
-    booking_id?: string | null;
-    reason?: string | null;
-    attempts?: number | null;
-}
-
 /**
- * Rút một lô khỏi hàng đợi rồi tính lại — và DÁN LẠI nếu tính lỗi.
- *
- * Xoá trước khi tính là cố ý: một item hỏng kinh niên không được phép nằm lì
- * chặn cả hàng đợi. Nhưng xoá xong mà tính lỗi thì bắt buộc phải nhét lại kèm
- * `attempts + 1`, nếu không item biến mất vĩnh viễn — sổ cái thiếu một tua và
- * không còn ai nhắc lại nữa.
- *
- * ⚠️ Trước đây CHỈ `drainRecomputeQueue` (cron) làm đúng việc dán lại. Hai đường
- * rút lúc ĐỌC thì xoá xong là tính, lỗi bị `catch` ở ngoài nuốt gọn — mất tua
- * không để lại dấu vết nào. Chừng nào cron còn chạy thì trigger sẽ đẩy item vào
- * lại ở lần sửa kế tiếp nên không ai thấy; bỏ cron đi là mất thật. Nay cả ba
- * đường dùng chung đúng hàm này.
+ * Tính rồi commit kết quả và acknowledge đúng generation trong một transaction.
+ * Nếu nguồn đổi trong lúc tính, RPC từ chối toàn bộ và hàng đợi vẫn còn nguyên.
  *
  * Không ném lỗi ra ngoài — trả `failed` để nơi gọi tự quyết.
  */
@@ -204,26 +186,19 @@ async function takeAndRecompute(
     };
     if (entries.length === 0) return { result: { ...zero, itemsRequested: 0 }, failed: 0 };
 
-    const itemIds = entries.map(e => e.booking_item_id);
-    await supabase.from('KTVDRecomputeQueue').delete().in('booking_item_id', itemIds);
-
     try {
-        return { result: await recomputeTurnRows(supabase, itemIds), failed: 0 };
+        return { result: await computeAndCommit(supabase, entries), failed: 0 };
     } catch (e: any) {
-        // Dán lại NGUYÊN VẸN: giữ cả `booking_id` và `reason`, không chỉ mỗi id.
-        // Mất `booking_id` là `drainQueueFor()` không còn tìm ra item theo đơn nữa,
-        // tức item hỏng mất luôn đường cứu thứ hai.
-        await supabase.from('KTVDRecomputeQueue').upsert(
-            entries.map(en => ({
+        const { error: markError } = await supabase.rpc('ktvd_mark_recompute_failed', {
+            p_formula_revision: FORMULA_REVISION,
+            p_entries: entries.map(en => ({
                 booking_item_id: en.booking_item_id,
-                booking_id: en.booking_id ?? null,
-                reason: en.reason ?? null,
-                attempts: (Number(en.attempts) || 0) + 1,
-                last_error: String(e?.message || e).slice(0, 500),
+                generation: en.generation,
             })),
-            { onConflict: 'booking_item_id' },
-        );
-        console.error(`[KTVD] tính lại lỗi, đã trả ${entries.length} item về hàng đợi:`, e?.message || e);
+            p_error: String(e?.message || e),
+        });
+        console.error('[KTVD] tính lại lỗi, hàng đợi được giữ nguyên:', e?.message || e,
+            markError ? `| không ghi được lỗi: ${markError.message}` : '');
         return { result: zero, failed: entries.length };
     }
 }
@@ -247,7 +222,7 @@ export async function drainQueueFor(
         for (let i = 0; i < bookingIds.length; i += IN_CHUNK) {
             const { data } = await supabase
                 .from('KTVDRecomputeQueue')
-                .select('booking_item_id, booking_id, reason, attempts')
+                .select('booking_item_id, booking_id, reason, attempts, generation')
                 .in('booking_id', bookingIds.slice(i, i + IN_CHUNK))
                 .lt('attempts', 5);
             if (data) queued.push(...(data as QueueEntry[]));
@@ -292,7 +267,7 @@ export async function drainQueueForStaff(
         for (let page = 0; queued.length < maxScan; page++) {
             const { data } = await supabase
                 .from('KTVDRecomputeQueue')
-                .select('booking_item_id, booking_id, reason, attempts')
+                .select('booking_item_id, booking_id, reason, attempts, generation')
                 .lt('attempts', 5)
                 .order('enqueued_at', { ascending: true })
                 .range(page * QUEUE_SCAN_PAGE, (page + 1) * QUEUE_SCAN_PAGE - 1);
@@ -374,7 +349,7 @@ export async function drainRecomputeQueue(
 ): Promise<DrainResult> {
     const { data: queued, error } = await supabase
         .from('KTVDRecomputeQueue')
-        .select('booking_item_id, booking_id, reason, attempts')
+        .select('booking_item_id, booking_id, reason, attempts, generation')
         .lt('attempts', 5)                       // bỏ qua item hỏng kinh niên
         .order('enqueued_at', { ascending: true })
         .limit(batchSize);
