@@ -124,7 +124,7 @@ onBlur={async () => {
 
 `DispatchServiceBlock.tsx:1` khai báo `'use client'` — component chạy trong trình duyệt.
 
-`lib/supabaseAdmin.ts:10` đọc `process.env.SUPABASE_SERVICE_ROLE_KEY`. Biến này **không có tiền tố `NEXT_PUBLIC_`**, nên Next.js không đưa vào bundle trình duyệt. Giá trị luôn `undefined` → `lib/supabaseAdmin.ts:12-15` trả về `null` → khối `if (supabase)` không bao giờ chạy.
+`lib/supabaseAdmin.ts:10` đọc `process.env.SUPABASE_SECRET_KEY`. Biến này **không có tiền tố `NEXT_PUBLIC_`**, nên Next.js không đưa vào bundle trình duyệt. Giá trị luôn `undefined` → `lib/supabaseAdmin.ts:12-15` trả về `null` → khối `if (supabase)` không bao giờ chạy.
 
 **Tính năng sinh ra để "chống mất dữ liệu" thực tế không lưu gì cả.** Tên chỉ tồn tại trong state React cho tới khi có một lần lưu thật.
 

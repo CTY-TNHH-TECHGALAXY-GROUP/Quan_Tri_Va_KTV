@@ -6,7 +6,7 @@ envContent.split('\n').forEach(line => {
   if (match) process.env[match[1].trim()] = match[2].trim();
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 (async () => {
   const { data: booking } = await supabase.from('Bookings').select('id, billCode, status, notes').eq('billCode', '010-13052026').single();

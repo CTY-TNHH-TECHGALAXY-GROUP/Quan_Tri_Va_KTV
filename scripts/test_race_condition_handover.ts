@@ -7,7 +7,7 @@ dotenv.config({ path: '.env.local' });
 // NOTE: The Next.js server must be running on localhost:3000 (npm run dev) for these tests to pass.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 const API_URL = process.env.TEST_API_URL || 'http://localhost:3000/api/ktv/booking';
 

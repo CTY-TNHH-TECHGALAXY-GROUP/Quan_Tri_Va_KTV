@@ -14,7 +14,7 @@ envFile.split('\n').forEach(line => {
 });
 
 const supabaseUrl = envConfig['NEXT_PUBLIC_SUPABASE_URL'];
-const supabaseKey = envConfig['SUPABASE_SERVICE_ROLE_KEY'];
+const supabaseKey = envConfig['SUPABASE_SECRET_KEY'];
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkLatestLeaves() {

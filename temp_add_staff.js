@@ -4,7 +4,7 @@ const fs = require('fs');
 const envPath = 'C:/Users/ADMIN/OneDrive/Desktop/Ngan Ha/Quan_Tri_Va_KTV/.env.local';
 const env = fs.readFileSync(envPath, 'utf-8');
 const url = env.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/)[1].trim();
-const key = env.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/)[1].trim();
+const key = env.match(/SUPABASE_SECRET_KEY=(.*)/)[1].trim();
 
 const supabase = createClient(url, key);
 

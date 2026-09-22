@@ -10,7 +10,7 @@ import { getDayCutoffHours, businessDayRange, toBusinessDate, previousBusinessDa
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const TYPE_D_RULE_EFFECTIVE_FROM = '2026-09-01';

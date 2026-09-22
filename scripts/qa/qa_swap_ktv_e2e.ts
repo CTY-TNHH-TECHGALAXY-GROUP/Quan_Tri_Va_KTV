@@ -30,7 +30,7 @@ const env = fs.readFileSync(path.resolve('.env.local'), 'utf-8');
 let url = '', key = '';
 env.split('\n').forEach(l => {
     if (l.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) url = l.split('=')[1].trim();
-    if (l.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) key = l.split('=')[1].trim();
+    if (l.startsWith('SUPABASE_SECRET_KEY=')) key = l.split('=')[1].trim();
 });
 const sb = createClient(url, key);
 
