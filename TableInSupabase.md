@@ -202,6 +202,90 @@
 
 ---
 
+### 4.6. KTVDTurnLedger ✅ NGUỒN TIỀN/GIỜ KTV LOẠI D
+
+**Nhiệm vụ**: Một dòng cho mỗi KTV + BookingItem. Ví, lịch sử, giờ tích lũy và báo cáo quản lý cùng đọc bảng này.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `staff_id`, `booking_item_id` | text | Khóa nghiệp vụ duy nhất |
+| `booking_id`, `guest_id`, `group_id` | text | Liên kết bill, khách và nhóm dịch vụ |
+| `work_date` | date | Ngày làm việc theo giờ cắt ca |
+| `assigned_minutes` | numeric | Thời lượng được giao |
+| `actual_minutes` | numeric | Phút thực tế dùng cho giờ tích lũy |
+| `paid_minutes` | numeric | Phút được trả tiền; revision 2 trả đủ thời lượng giao khi hoàn tất bình thường |
+| `rate_per_60m` | numeric | Đơn giá snapshot |
+| `commission_gross`, `commission_net`, `bonus_amount`, `tax_amount`, `tip` | numeric | Các thành phần tiền của tua |
+| `entry_status` | text | `OPEN`, `FINAL`, `LOCKED`, `VOID` |
+| `source`, `computed_at` | text, timestamptz | Nguồn và thời điểm tính |
+| `formula_revision` | integer NOT NULL DEFAULT 0 | Revision công thức đã ghi dòng; revision hiện hành là `2` |
+| `writer_commit` | text | Git SHA/định danh công cụ đã ghi dòng |
+
+**Constraint**: `UNIQUE(staff_id, booking_item_id)`. Từ migration `20260922091000`, mọi INSERT/UPDATE/DELETE phải đi qua RPC revision 2; direct writer cũ bị từ chối ở trigger DB.
+
+### 4.7. KTVDRecomputeQueue ✅ HÀNG ĐỢI TÍNH LẠI LOẠI D
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `booking_item_id` | text PK | Item cần tính lại; tự khử trùng lặp |
+| `booking_id`, `reason` | text | Bill và nguyên nhân `ITEM`/`GUEST`/`BOOKING`/`MANUAL` |
+| `enqueued_at` | timestamptz | Lần nguồn thay đổi gần nhất |
+| `attempts`, `last_error` | integer, text | Số lần lỗi và lỗi gần nhất |
+| `generation` | bigint NOT NULL DEFAULT 1 | Tăng sau mỗi thay đổi nguồn; RPC chỉ xóa đúng generation đã tính |
+
+Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `ktvd_commit_recompute` khóa generation, ghi/VOID ledger và acknowledge queue trong cùng transaction. RPC `ktvd_mark_recompute_failed` giữ queue khi tính lỗi; `ktvd_enqueue_recompute` là lối bảo trì có kiểm soát. Chỉ `service_role` được EXECUTE các RPC này.
+
+---
+
+### 4.4. KtvAssignments ✅ CHỦ LỰC (HÀNG ĐỢI PHÂN CÔNG)
+**Nhiệm vụ**: Danh sách phân công KTV — 1 dòng = 1 KTV + 1 BookingItem. Cho phép 1 KTV xếp nhiều đơn liên tiếp; `TurnQueue` chỉ phản chiếu **assignment đang ACTIVE**.
+**Nguồn**: `supabase/migrations/20260502150000_create_ktv_assignments.sql` (ghi bởi RPC `dispatch_confirm_booking`, `promote_next_assignment`, và các handler trong `app/api/ktv/booking/_handlers/`).
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `employee_id` | text NOT NULL | Mã KTV |
+| `business_date` | date NOT NULL | Ngày làm việc (business date) |
+| `booking_id` | text NOT NULL FK → Bookings (ON DELETE CASCADE) | Đơn hàng |
+| `booking_item_id` | text NOT NULL | BookingItem được phân công |
+| `segment_id` | text | Chặng cụ thể trong `BookingItems.segments` (nếu có) |
+| `planned_start_time` | timestamptz | Giờ bắt đầu dự kiến (quy đổi từ giờ Asia/Bangkok) |
+| `planned_end_time` | timestamptz | Giờ kết thúc dự kiến |
+| `room_id` | text | Phòng |
+| `bed_id` | text | Giường |
+| `priority` | integer | Độ ưu tiên (default 0, nhỏ hơn = ưu tiên hơn) |
+| `sequence_no` | integer | Thứ tự trong chuỗi phân công (default 0) |
+| `status` | KtvAssignmentStatus | `QUEUED` (chờ) → `READY` → `ACTIVE` (đang làm) → `COMPLETED`; hoặc `CANCELLED`, `SKIPPED` (default `QUEUED`) |
+| `dispatch_source` | text | Nguồn tạo (VD: `DISPATCH_CONFIRM`) |
+| `created_at` | timestamptz | Thời điểm tạo |
+| `updated_at` | timestamptz | Tự cập nhật qua trigger `ktvassignments_updated_at_trigger` |
+
+**Constraint / Invariant:**
+- `UNIQUE(employee_id, booking_item_id)` — 1 KTV không bị phân trùng 1 item.
+- `UNIQUE(employee_id, business_date) WHERE status = 'ACTIVE'` — mỗi KTV chỉ 1 assignment ACTIVE/ngày.
+
+---
+
+### 4.6. KTVServiceHoursLedger ✅ CHỦ LỰC (GIỜ LÀM LOẠI D)
+**Nhiệm vụ**: Sổ cái ghi nhận giờ làm thực tế của KTV Loại D để xếp tua. Bù trừ và cộng dồn (gian thực).
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `staff_id` | text FK → Staff | Mã KTV |
+| `date` | date | Ngày phát sinh |
+| `hours_earned` | numeric | Giờ làm thực tế kiếm được (0 nếu phạt) |
+| `hours_penalty` | numeric | Giờ bị phạt (âm, default 0) |
+| `penalty_type` | text | Loại phạt (`ABSENT`, `LATE_1`, `LATE_2`) |
+| `booking_id` | text FK → Bookings | ID đơn hàng nếu là giờ làm thực |
+| `note` | text | Ghi chú (VD: "Làm khách", "Phạt vắng") |
+| `created_at` | timestamptz | Thời điểm tạo |
+
+**Constraint 1**: `UNIQUE(staff_id, date, booking_id) WHERE booking_id IS NOT NULL` — Mỗi KTV 1 bill chỉ cộng 1 lần.
+**Constraint 2**: `UNIQUE(staff_id, date, penalty_type)` — Chống phạt trùng 1 loại lỗi trong ngày.
+
+---
+
 ### 5. KTVAttendance ✅ CHỦ LỰC
 **Nhiệm vụ**: Chấm công GPS có duyệt của admin.
 
