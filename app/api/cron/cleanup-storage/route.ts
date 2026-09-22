@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { StorageCleanupService } from '@/lib/services/StorageCleanupService';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 /**
  * POST /api/cron/cleanup-storage
  * Cron job: Delete expired images from handover-images and attendance buckets.
  * Should be called daily at 3:00 AM by a scheduled task.
  */
-export async function POST() {
+export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');

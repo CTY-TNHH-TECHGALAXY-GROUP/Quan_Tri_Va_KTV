@@ -6,7 +6,7 @@ const envConfig = fs.readFileSync('.env.local', 'utf8').split('\n').forEach((lin
 });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error("Missing SUPABASE env vars");

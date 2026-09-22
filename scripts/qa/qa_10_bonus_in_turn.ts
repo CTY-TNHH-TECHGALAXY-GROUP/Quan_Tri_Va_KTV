@@ -103,7 +103,7 @@ async function b2_khongTraHaiLan(): Promise<void> {
 
     const sb = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-        process.env.SUPABASE_SERVICE_ROLE_KEY as string
+        process.env.SUPABASE_SECRET_KEY as string
     );
 
     // Sổ cái tua đã mang thưởng...

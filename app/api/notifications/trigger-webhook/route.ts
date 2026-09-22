@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushNotification } from '@/lib/push-helper';
 import { WebhookRecordSchema } from '@/lib/schemas/notification.schema';
@@ -24,9 +25,8 @@ export async function POST(request: Request) {
     try {
         // 1. Verify webhook secret
         const authHeader = request.headers.get('x-webhook-secret');
-        const secret = process.env.WEBHOOK_SECRET || 'nganha-webhook-secret-2026';
-        if (authHeader !== secret) {
-            console.warn('⚠️ [Webhook] Unauthorized webhook call. Header:', authHeader);
+        const secret = process.env.WEBHOOK_SECRET;
+        if (!secret || !authHeader || Buffer.byteLength(authHeader) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(authHeader), Buffer.from(secret))) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

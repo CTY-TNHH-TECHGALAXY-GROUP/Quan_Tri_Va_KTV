@@ -39,6 +39,15 @@ export const useEmployeeManagement = () => {
                 experience: s.experience || '0 năm',
                 status: s.status === 'ĐANG LÀM' ? 'active' : 'inactive',
                 photoUrl: s.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.full_name)}&background=random`,
+                galleryUrls: Array.isArray(s.gallery_urls)
+                    ? s.gallery_urls.map((item: any) => {
+                        // String thuần → giữ nguyên (tương thích ảnh cũ)
+                        if (typeof item === 'string' && item.trim()) return item.trim();
+                        // Object {url, kind, therapyId} → giữ nguyên metadata
+                        if (item && typeof item === 'object' && typeof item.url === 'string' && item.url.trim()) return item;
+                        return null;
+                      }).filter(Boolean)
+                    : [],
                 phone: s.phone || '',
                 email: s.email || '',
                 dob: s.birthday || '',
@@ -52,9 +61,9 @@ export const useEmployeeManagement = () => {
                 baseSalary: 0,
                 commissionRate: 0,
                 rating: 5.0,
-                isActiveVipMenu: s.is_active_vip_menu || false,
+                isActiveVipMenu: s.is_active_vip_menu === true,
                 isHomeSpa: s.is_home_spa || false,
-                isActiveTherapyMenu: s.is_active_therapy_menu || false,
+                isActiveTherapyMenu: s.is_active_therapy_menu === true,
                 work_type: s.work_type || 'TYPE_A',
                 baseSalaryPerHour: s.base_salary_per_hour || 180000,
                 targetHoursPerMonth: s.target_hours_per_month || 80,

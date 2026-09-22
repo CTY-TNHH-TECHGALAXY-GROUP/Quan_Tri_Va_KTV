@@ -1,11 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2 } from 'lucide-react';
-import { Employee, SkillLevel } from '@/lib/types';
+import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload } from 'lucide-react';
+import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
 import { updateStaffMember } from '@/app/admin/employees/actions';
+import {
+  checkGalleryDuplicate,
+  removeGalleryItemByIndex,
+  GALLERY_GROUPS,
+  GalleryGroupId,
+  createGalleryItem,
+  getGalleryGroup,
+  isGalleryImageUrl,
+} from '@/lib/galleryHelper';
+export {
+  checkGalleryDuplicate,
+  removeGalleryItemByIndex,
+  GALLERY_GROUPS,
+  createGalleryItem,
+  getGalleryGroup,
+};
 
 interface EmployeeDetailModalProps {
   employee: Employee | null;
@@ -17,11 +33,181 @@ interface EmployeeDetailModalProps {
 export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: EmployeeDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [galleryUrlDrafts, setGalleryUrlDrafts] = useState<
+    Partial<Record<GalleryGroupId, string>>
+  >({});
+  const [galleryUrlErrors, setGalleryUrlErrors] = useState<
+    Partial<Record<GalleryGroupId, string>>
+  >({});
+  const [uploadingGroups, setUploadingGroups] = useState<
+    Partial<Record<GalleryGroupId, boolean>>
+  >({});
+  const [uploadErrors, setUploadErrors] = useState<
+    Partial<Record<GalleryGroupId, string>>
+  >({});
   const [editedEmployee, setEditedEmployee] = useState<Employee | null>(employee);
+  const gallerySessionRef = useRef(0);
 
   React.useEffect(() => {
+    gallerySessionRef.current += 1;
     setEditedEmployee(employee);
-  }, [employee]);
+    setGalleryUrlDrafts({});
+    setGalleryUrlErrors({});
+    setUploadingGroups({});
+    setUploadErrors({});
+    return () => {
+      gallerySessionRef.current += 1;
+    };
+  }, [employee, isOpen]);
+
+  const getItemUrl = (item: string | GalleryItem): string =>
+    typeof item === 'string' ? item : item?.url ?? '';
+
+  const addGalleryUrlToGroup = (groupId: GalleryGroupId) => {
+    const url = (galleryUrlDrafts[groupId] ?? '').trim();
+    if (!url || !editedEmployee) return;
+
+    if (!isGalleryImageUrl(url)) {
+      setGalleryUrlErrors((current) => ({
+        ...current,
+        [groupId]: 'Vui lòng nhập URL ảnh http:// hoặc https:// hợp lệ.',
+      }));
+      return;
+    }
+
+    const item = createGalleryItem(url, groupId);
+    if (checkGalleryDuplicate(editedEmployee.galleryUrls ?? [], item)) {
+      setGalleryUrlErrors((current) => ({
+        ...current,
+        [groupId]: 'Ảnh này đã có trong nhóm.',
+      }));
+      return;
+    }
+
+    setEditedEmployee((current) => {
+      if (!current) return current;
+      const gallery = current.galleryUrls ?? [];
+      if (checkGalleryDuplicate(gallery, item)) return current;
+      return { ...current, galleryUrls: [...gallery, item] };
+    });
+
+    setGalleryUrlDrafts((current) => ({ ...current, [groupId]: '' }));
+    setGalleryUrlErrors((current) => ({ ...current, [groupId]: '' }));
+  };
+
+  const handleFileUpload = async (groupId: GalleryGroupId, files: FileList | null) => {
+    if (
+      !files ||
+      files.length === 0 ||
+      !editedEmployee ||
+      !isOpen ||
+      isSaving ||
+      uploadingGroups[groupId]
+    ) return;
+
+    const sessionAtStart = gallerySessionRef.current;
+    const employeeIdAtStart = editedEmployee.id;
+    const isCurrentSession = () => gallerySessionRef.current === sessionAtStart;
+
+    setUploadingGroups((prev) => ({ ...prev, [groupId]: true }));
+    setUploadErrors((prev) => ({ ...prev, [groupId]: '' }));
+
+    try {
+      const fileArray = Array.from(files);
+      const newItems: Array<string | GalleryItem> = [];
+      const errors: string[] = [];
+
+      for (const file of fileArray) {
+        if (!isCurrentSession()) return;
+
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+          errors.push(`"${file.name}": Chỉ chấp nhận JPG, PNG, WebP.`);
+          continue;
+        }
+        if (file.size === 0) {
+          errors.push(`"${file.name}": File rỗng.`);
+          continue;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          errors.push(`"${file.name}": Vượt quá dung lượng 5MB.`);
+          continue;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('staffId', employeeIdAtStart);
+        formData.append('groupId', groupId);
+
+        try {
+          const res = await fetch('/api/admin/employees/upload-gallery', {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json();
+          if (!isCurrentSession()) return;
+
+          if (!res.ok || !data.success || !data.url) {
+            errors.push(`"${file.name}": ${data.error || 'Lỗi tải ảnh'}`);
+            continue;
+          }
+
+          const item = createGalleryItem(data.url, groupId);
+          newItems.push(item);
+        } catch (err: any) {
+          if (!isCurrentSession()) return;
+          errors.push(`"${file.name}": ${err.message || 'Lỗi kết nối'}`);
+        }
+      }
+
+      if (!isCurrentSession()) return;
+
+      if (newItems.length > 0) {
+        setEditedEmployee((current) => {
+          if (
+            !isCurrentSession() ||
+            !current ||
+            current.id !== employeeIdAtStart
+          ) return current;
+
+          const gallery = [...(current.galleryUrls ?? [])];
+          for (const item of newItems) {
+            if (!checkGalleryDuplicate(gallery, item)) {
+              gallery.push(item);
+            }
+          }
+
+          return {
+            ...current,
+            galleryUrls: gallery,
+          };
+        });
+      }
+
+      if (errors.length > 0) {
+        if (isCurrentSession()) {
+          setUploadErrors((prev) => ({
+            ...prev,
+            [groupId]: errors.join('; '),
+          }));
+        }
+      }
+    } finally {
+      if (isCurrentSession()) {
+        setUploadingGroups((current) => ({
+          ...current,
+          [groupId]: false,
+        }));
+      }
+    }
+  };
+
+  const removeGalleryUrl = (indexToRemove: number) => {
+    if (!editedEmployee) return;
+    setEditedEmployee({
+      ...editedEmployee,
+      galleryUrls: removeGalleryItemByIndex(editedEmployee.galleryUrls || [], indexToRemove),
+    });
+  };
 
   if (!employee || !editedEmployee) return null;
 
@@ -80,8 +266,19 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     'true': { label: 'Có tay nghề', color: 'text-emerald-700 bg-emerald-50 border-emerald-100', icon: <CheckCircle2 size={12} /> },
   };
 
+  const handleCloseModal = () => {
+    gallerySessionRef.current += 1;
+    onClose();
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      handleCloseModal();
+    }
+  };
+
   return (
-    <Dialog.Root open={isOpen} onOpenChange={onClose}>
+    <Dialog.Root open={isOpen} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -90,11 +287,25 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               {isEditing ? (
                 <button
                   onClick={handleSave}
-                  disabled={isSaving}
-                  className={`p-2 text-white rounded-full transition-colors shadow-lg flex items-center gap-2 px-4 ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                  disabled={isSaving || Object.values(uploadingGroups).some(Boolean)}
+                  className={`p-2 text-white rounded-full transition-colors shadow-lg flex items-center gap-2 px-4 ${
+                    isSaving || Object.values(uploadingGroups).some(Boolean)
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-emerald-500 hover:bg-emerald-600'
+                  }`}
                 >
-                  {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                  <span className="text-sm font-bold">{isSaving ? 'Đang lưu...' : 'Lưu'}</span>
+                  {isSaving || Object.values(uploadingGroups).some(Boolean) ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Save size={18} />
+                  )}
+                  <span className="text-sm font-bold">
+                    {isSaving
+                      ? 'Đang lưu...'
+                      : Object.values(uploadingGroups).some(Boolean)
+                      ? 'Đang tải ảnh...'
+                      : 'Lưu'}
+                  </span>
                 </button>
               ) : (
                 <button
@@ -106,7 +317,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                 </button>
               )}
               <button
-                onClick={onClose}
+                onClick={handleCloseModal}
                 className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors"
               >
                 <X size={20} />
@@ -309,34 +520,248 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               )}
             </div>
 
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                  <Award size={14} /> Kỹ năng chuyên môn
-                </h3>
-                {isEditing && (
-                  <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
-                    ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi cấp độ
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SKILL_KEYS.map((key) => {
-                  const rawLevel = editedEmployee.skills?.[key];
-                  const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
-                  const info = levelInfo[String(isSkilled)];
+            <div className="mt-8 space-y-6">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                    <Award size={14} />{' '}
+                    {editedEmployee.isActiveTherapyMenu
+                      ? 'Ảnh theo phương pháp trị liệu'
+                      : 'Ảnh gallery nhân viên'}
+                  </h3>
+                  {isEditing && (
+                    <span className="text-[10px] text-indigo-600 font-bold">
+                      Tải file từ máy hoặc dán URL theo từng nhóm
+                    </span>
+                  )}
+                </div>
+
+                {(() => {
+                  const groupsToRender = editedEmployee.isActiveTherapyMenu
+                    ? GALLERY_GROUPS
+                    : GALLERY_GROUPS.filter((g) => g.id === 'legacy');
+
+                  const allItems = (editedEmployee.galleryUrls || []).map((item, originalIndex) => ({
+                    item,
+                    originalIndex,
+                    url: getItemUrl(item),
+                    group: getGalleryGroup(item),
+                  }));
+
+                  if (!isEditing) {
+                    const hasAnyPhotos = allItems.length > 0;
+                    if (!hasAnyPhotos) {
+                      return (
+                        <div className="text-xs text-gray-500 italic py-2">
+                          Nhân viên này chưa có ảnh gallery.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {groupsToRender.map((group) => {
+                          const groupItems = allItems.filter((i) => i.group === group.id);
+                          if (groupItems.length === 0) return null;
+
+                          return (
+                            <div
+                              key={group.id}
+                              className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm"
+                            >
+                              <div className="flex items-center justify-between mb-2.5">
+                                <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                                  {group.label}
+                                </span>
+                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                                  {groupItems.length}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {groupItems.map(({ originalIndex, url }) => (
+                                  <GalleryThumbnailItem
+                                    key={`${url}-${originalIndex}`}
+                                    url={url}
+                                    index={originalIndex}
+                                    isEditing={false}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
                   return (
-                    <button
-                      key={key}
-                      onClick={() => toggleSkill(key)}
-                      disabled={!isEditing}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
-                    >
-                      <span className="text-xs font-bold truncate">{SKILL_LABELS[key]}</span>
-                      {info.icon}
-                    </button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {groupsToRender.map((group) => {
+                        const groupItems = allItems.filter((i) => i.group === group.id);
+                        const isUploading = Boolean(uploadingGroups[group.id]);
+                        const uploadErr = uploadErrors[group.id];
+                        const urlErr = galleryUrlErrors[group.id];
+
+                        return (
+                          <div
+                            key={group.id}
+                            className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                                    {group.label}
+                                  </span>
+                                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">
+                                    {groupItems.length}
+                                  </span>
+                                </div>
+
+                                <div>
+                                  <input
+                                    id={`file-upload-${group.id}`}
+                                    type="file"
+                                    multiple
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="hidden"
+                                    disabled={isSaving || isUploading}
+                                    onChange={(e) => {
+                                      if (e.target.files && e.target.files.length > 0) {
+                                        handleFileUpload(group.id, e.target.files);
+                                        e.target.value = '';
+                                      }
+                                    }}
+                                  />
+                                  <label
+                                    htmlFor={`file-upload-${group.id}`}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                                      isSaving || isUploading
+                                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                                    }`}
+                                  >
+                                    {isUploading ? (
+                                      <>
+                                        <Loader2 size={12} className="animate-spin text-indigo-600" />
+                                        <span>Đang tải...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Upload size={12} />
+                                        <span>+ Tải ảnh</span>
+                                      </>
+                                    )}
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-1.5 mb-2">
+                                <input
+                                  type="url"
+                                  aria-label={`URL ảnh ${group.label}`}
+                                  placeholder="https://.../photo.jpg"
+                                  value={galleryUrlDrafts[group.id] ?? ''}
+                                  disabled={isSaving || isUploading}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setGalleryUrlDrafts((current) => ({
+                                      ...current,
+                                      [group.id]: value,
+                                    }));
+                                    setGalleryUrlErrors((current) => ({
+                                      ...current,
+                                      [group.id]: '',
+                                    }));
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      addGalleryUrlToGroup(group.id);
+                                    }
+                                  }}
+                                  className="flex-1 min-w-0 px-2.5 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isSaving ||
+                                    isUploading ||
+                                    !(galleryUrlDrafts[group.id] ?? '').trim()
+                                  }
+                                  onClick={() => addGalleryUrlToGroup(group.id)}
+                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shrink-0 transition-colors"
+                                >
+                                  Thêm ảnh
+                                </button>
+                              </div>
+
+                              {uploadErr && (
+                                <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
+                                  {uploadErr}
+                                </p>
+                              )}
+                              {urlErr && (
+                                <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
+                                  {urlErr}
+                                </p>
+                              )}
+
+                              {groupItems.length === 0 ? (
+                                <div className="text-[11px] text-gray-400 italic py-2 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                  Chưa có ảnh trong nhóm này.
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {groupItems.map(({ originalIndex, url }) => (
+                                    <GalleryThumbnailItem
+                                      key={`${url}-${originalIndex}`}
+                                      url={url}
+                                      index={originalIndex}
+                                      isEditing={true}
+                                      onRemove={() => removeGalleryUrl(originalIndex)}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   );
-                })}
+                })()}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Award size={14} /> Kỹ năng chuyên môn
+                  </h3>
+                  {isEditing && (
+                    <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
+                      ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi cấp độ
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {SKILL_KEYS.map((key) => {
+                    const rawLevel = editedEmployee.skills?.[key];
+                    const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
+                    const info = levelInfo[String(isSkilled)];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => toggleSkill(key)}
+                        disabled={!isEditing}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+                      >
+                        <span className="text-xs font-bold truncate">{SKILL_LABELS[key]}</span>
+                        {info.icon}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -375,6 +800,50 @@ function InfoItem({
           <div className="text-sm text-gray-900 font-medium">{value}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function GalleryThumbnailItem({
+  url,
+  index,
+  isEditing,
+  onRemove,
+}: {
+  url: string;
+  index: number;
+  isEditing: boolean;
+  onRemove?: () => void;
+}) {
+  const [loadError, setLoadError] = useState(false);
+
+  return (
+    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-square flex items-center justify-center">
+      {loadError ? (
+        <div className="p-1 text-center text-[10px] text-red-500 font-medium leading-tight">
+          Lỗi tải ảnh
+        </div>
+      ) : (
+        <img
+          src={url}
+          alt={`gallery-${index}`}
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setLoadError(true)}
+        />
+      )}
+
+      {isEditing && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Xóa ảnh"
+          title="Xóa ảnh"
+          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-opacity sm:opacity-90 opacity-100 touch-manipulation z-10"
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
   );
 }

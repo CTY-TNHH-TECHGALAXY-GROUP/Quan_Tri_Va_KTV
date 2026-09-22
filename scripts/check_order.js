@@ -6,7 +6,7 @@ envContent.split('\n').forEach(line => {
   const [key, ...val] = line.split('=');
   if (key && val.length) envVars[key.trim()] = val.join('=').trim();
 });
-const supabase = createClient(envVars.NEXT_PUBLIC_SUPABASE_URL, envVars.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(envVars.NEXT_PUBLIC_SUPABASE_URL, envVars.SUPABASE_SECRET_KEY);
 
 async function run() {
   // Lấy booking mới nhất (S260429-K23F)

@@ -25,6 +25,8 @@ import { formatToHourMinute } from './dispatch-time.logic';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient, getActorHeaders } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { phoneIdentity } from '@/lib/customer-search';
+import { isDummyEmail } from '@/lib/customer.logic';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone, Globe,
@@ -2631,26 +2633,43 @@ if (!hasPermission('dispatch_board')) {
                                   onClick={async () => {
                                     setIsFetchingCustomer(true);
                                     try {
-                                      const data = (await apiClient.get(API.CUSTOMERS)) as any;
                                       const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
-                                      
-                                      let found = null;
+                                      const phone = phoneIdentity(orderToUse?.phone || '');
+                                      const email = (orderToUse?.email || '').trim().toLowerCase();
+                                      const contact = phone || (!isDummyEmail(email) ? email : '');
+                                      if (!orderToUse?.customerId && !contact) {
+                                        throw new Error('Đơn chưa có mã khách hoặc thông tin liên hệ hợp lệ để tìm hồ sơ.');
+                                      }
+                                      const params = new URLSearchParams(orderToUse?.customerId
+                                        ? { id: orderToUse.customerId }
+                                        : { q: contact });
+                                      const data = (await apiClient.get(`${API.CUSTOMERS}?${params}`)) as any;
+                                      if (!data.success) throw new Error(data.error || 'Không tải được hồ sơ khách hàng');
+
+                                      let matches = data.data || [];
                                       if (orderToUse?.customerId) {
-                                          found = data.data?.find((c: any) => c.id === orderToUse.customerId);
+                                        matches = matches.filter((c: any) => c.id === orderToUse.customerId);
+                                      } else if (phone) {
+                                        matches = matches.filter((c: any) => phoneIdentity(c.phone || '') === phone);
+                                        if (matches.length > 1 && !isDummyEmail(email)) {
+                                          matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
+                                        }
+                                      } else {
+                                        matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
                                       }
-                                      if (!found && orderToUse?.phone) {
-                                          found = data.data?.find((c: any) => c.phone === orderToUse.phone);
+                                      if (matches.length > 1) {
+                                        throw new Error('Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.');
                                       }
-                                      
+                                      const found = matches[0];
                                       if (found) {
                                         setFullCustomerData(found);
                                         setShowCustomerInfo(true);
                                       } else {
-                                        alert('Khách vãng lai chưa cung cấp thông tin liên lạc thật (SĐT/Email) nên không có hồ sơ chi tiết.');
+                                        alert('Không tìm thấy hồ sơ tương ứng với đơn. Vui lòng kiểm tra liên kết khách hàng hoặc tìm trong trang Khách Hàng.');
                                       }
                                     } catch (e) {
                                       console.error('Lỗi tải dữ liệu khách:', e);
-                                      alert('Lỗi tải dữ liệu khách hàng');
+                                      alert(e instanceof Error ? e.message : 'Lỗi tải dữ liệu khách hàng');
                                     } finally {
                                       setIsFetchingCustomer(false);
                                     }

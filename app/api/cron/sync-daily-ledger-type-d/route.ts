@@ -6,11 +6,12 @@ import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
 import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 import { getDayCutoffHours, businessDayRange, toBusinessDate, previousBusinessDate } from '@/lib/business-date';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const TYPE_D_RULE_EFFECTIVE_FROM = '2026-09-01';
@@ -335,10 +336,8 @@ async function resolveDefaultTargetDate(): Promise<string> {
 }
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const targetDateStr = await resolveDefaultTargetDate();
         return await processLedgerSyncTypeD(targetDateStr);
@@ -349,6 +348,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         let targetDateStr = '';
         try {
