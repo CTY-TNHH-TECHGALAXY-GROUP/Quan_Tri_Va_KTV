@@ -6,6 +6,7 @@ import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
 import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 import { getDayCutoffHours, businessDayRange, toBusinessDate, previousBusinessDate } from '@/lib/business-date';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -335,10 +336,8 @@ async function resolveDefaultTargetDate(): Promise<string> {
 }
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const targetDateStr = await resolveDefaultTargetDate();
         return await processLedgerSyncTypeD(targetDateStr);
@@ -349,6 +348,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         let targetDateStr = '';
         try {
