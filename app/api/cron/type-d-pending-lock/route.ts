@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
 import { invalidateLockedStaffCache } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,10 +103,8 @@ async function run(dry = false) {
 }
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const dry = new URL(request.url).searchParams.get('dry') === '1';
         return await run(dry);

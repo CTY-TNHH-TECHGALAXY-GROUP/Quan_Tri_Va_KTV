@@ -5,11 +5,12 @@ import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionServ
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Internal core logic for syncing ledger
@@ -342,11 +343,8 @@ async function processLedgerSync(targetDateStr: string) {
 
 // API: GET /api/cron/sync-daily-ledger (Used by Vercel Cron)
 export async function GET(request: Request) {
-    // Security verification for Vercel Cron
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
 
     try {
         const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -364,6 +362,8 @@ export async function GET(request: Request) {
 // API: POST /api/cron/sync-daily-ledger (Used for manual triggers via Admin/Script)
 // Body: { targetDate: 'YYYY-MM-DD' } (Optional, defaults to yesterday)
 export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         let targetDateStr = '';
         try {

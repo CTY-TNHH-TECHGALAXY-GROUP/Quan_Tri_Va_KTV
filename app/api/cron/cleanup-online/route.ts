@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 
 /**
  * CRON: Cleanup expired online KTVs
@@ -20,17 +21,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  * Protected by CRON_SECRET to prevent unauthorized access.
  */
 export async function GET(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
-        // Verify cron secret (Vercel automatically sends this header)
-        const authHeader = request.headers.get('authorization');
-        const cronSecret = process.env.CRON_SECRET;
-        
-        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-            return NextResponse.json(
-                { success: false, error: 'Unauthorized' }, 
-                { status: 401 }
-            );
-        }
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         const result = await KtvOnlineService.cleanupExpiredOnline(supabase);

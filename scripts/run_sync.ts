@@ -9,7 +9,7 @@ const envContent = fs.readFileSync(envPath, 'utf-8');
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) process.env.NEXT_PUBLIC_SUPABASE_URL = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) process.env.SUPABASE_SERVICE_ROLE_KEY = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) process.env.SUPABASE_SECRET_KEY = line.split('=')[1].trim();
 });
 
 async function run() {

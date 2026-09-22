@@ -2,6 +2,19 @@
 
 Date: 2026-09-21. Updated after user approval: normal completion earns the full assigned service duration.
 
+## Applied correction — 2026-09-21
+
+Code fix committed as `e870c098` and pushed to `origin/feat/bit-lo-hong-phase1`. Deployment has not been verified.
+
+At the user's request, both confirmed T027 records were corrected with guarded updates (FINAL, unlocked, unchanged computed_at and old gross), and read back successfully:
+
+| Bill | Old paid minutes | Old base gross | New base gross | Bonus preserved | Old tax | New tax | New net including bonus |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 006-21092026 | 89.98791666666666 | 149979.86111111112 | 150000 | 0 | 14997.986111111113 | 15000 | 135000 |
+| 007-20092026-B | 89.6191 | 149365.1666666667 | 150000 | 20000 | 16936.51666666667 | 17000 | 153000 |
+
+Both now store 90 paid minutes. Only paid_minutes, commission_gross, commission_net, tax_amount and computed_at were updated. Full original row/item snapshots were saved locally in `/tmp/commission-006-21092026-before-1790008989657.json` and `/tmp/commission-007-20092026-B-before-1790008990094.json`. No other ledger rows were changed. An older deployed calculator could recompute these rows under the old rule until the pushed code is deployed.
+
 ## Approved implementation update
 
 The user explicitly replaced the proposed one-second tolerance below with full assigned-duration pay for normal completion. The original investigation is retained below as evidence; its tolerance proposal and timeline diff are superseded/not applied.
@@ -12,7 +25,7 @@ The user explicitly replaced the proposed one-second tolerance below with full a
 - Actual hours and queue priority remain based on the existing worked-hours calculation. Ratings, bonuses and tax still apply after base commission.
 - No timestamp, schema, auth, handover, room duty, rating attribution, notification, display-formatting or timeline-refresh changes.
 - Effect on both KTV wallet/history and management Type D finance: shared ledger calculation produces full base commission; existing refresh/recompute mechanisms deliver the new values after deployment.
-- Production ledger values have not been backfilled. Locked settlements must retain their existing adjustment process. Deploying this rule can change unlocked old rows when existing recomputation jobs process them.
+- Apart from the two targeted corrections documented above, production ledger values have not been backfilled. Locked settlements must retain their existing adjustment process. Deploying this rule can change unlocked old rows when existing recomputation jobs process them.
 
 The implementation tests cover the real 725 ms case, a substantial shortfall on normal completion, genuine counter closure, overrides, zero/voided work, replacement, pause accounting, merged portions, multiple technicians, tax and reader parity.
 

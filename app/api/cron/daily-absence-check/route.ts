@@ -4,6 +4,7 @@ import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineServ
 import type { TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
 import { createNotification } from '@/lib/notification-helper';
 import { vnDate } from '@/lib/vn-time';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -225,10 +226,8 @@ async function run(dry = false) {
 export async function GET(request: Request) {
     // ⚠️ Vercel Cron gọi bằng GET. Trước đây file này chỉ export POST nên cron
     // luôn trả 405 và toàn bộ kỷ luật loại D chưa bao giờ được áp dụng.
-    const authHeader = request.headers.get('Authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         // Chỉ còn MỘT lượt. `?mode=lock-unregistered` giữ lại cho lịch cron cũ
         // và cho link mà quản lý đã lưu — gọi vào cùng một chỗ.
