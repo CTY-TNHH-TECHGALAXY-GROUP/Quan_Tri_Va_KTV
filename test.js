@@ -5,5 +5,5 @@ const env = fs.readFileSync('.env.local', 'utf8').split('\n').reduce((acc, line)
   return acc;
 }, {});
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 supabase.from('Rooms').select('id, name, type').then(res => console.log(JSON.stringify(res.data, null, 2)));

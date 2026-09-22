@@ -24,7 +24,7 @@ const path = require('path');
 
 const env = fs.readFileSync(path.resolve('.env.local'), 'utf-8');
 const get = k => (env.split('\n').find(l => l.startsWith(k + '=')) || '').slice(k.length + 1).trim().replace(/^"|"$/g, '');
-const sb = createClient(get('NEXT_PUBLIC_SUPABASE_URL'), get('SUPABASE_SERVICE_ROLE_KEY'));
+const sb = createClient(get('NEXT_PUBLIC_SUPABASE_URL'), get('SUPABASE_SECRET_KEY'));
 
 const APPLY = process.argv.includes('--apply');
 // Same report by the same KTV within 30s = already logged or a double tap (real data: ≤ 13s).

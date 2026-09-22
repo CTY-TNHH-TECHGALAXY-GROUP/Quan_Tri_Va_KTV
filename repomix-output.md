@@ -29163,7 +29163,7 @@ import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
@@ -29191,7 +29191,7 @@ import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 
 /**
  * CRON: Cleanup expired online KTVs
@@ -29275,7 +29275,7 @@ import { createClient } from '@supabase/supabase-js';
 // Setup admin client to bypass RLS for cron job
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.SUPABASE_SECRET_KEY!,
     {
         auth: {
             persistSession: false,
@@ -30790,7 +30790,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AdjustmentRequestSchema } from '@/lib/schemas/adjustment.schema';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
@@ -31976,7 +31976,7 @@ import { createNotification } from '@/lib/notification-helper';
 import { WithdrawalPatchSchema } from '@/lib/schemas/finance.schema';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function PATCH(
@@ -32052,7 +32052,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
@@ -34407,7 +34407,7 @@ import { createClient } from '@supabase/supabase-js';
 import { KtvKpiService } from '@/lib/services/KtvKpiService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
@@ -35079,7 +35079,7 @@ import { createClient } from '@supabase/supabase-js';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
@@ -35148,7 +35148,7 @@ const pauseSwapSchema = z.object({
 
 export async function POST(req: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
@@ -36203,7 +36203,7 @@ import { KtvWalletService } from '@/lib/services/KtvWalletService';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
@@ -36291,7 +36291,7 @@ import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
@@ -36762,7 +36762,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(req: NextRequest) {
@@ -37198,7 +37198,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SECRET_KEY!
 );
 
 // GET: Fetch task notifications for an employee
@@ -37439,7 +37439,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SECRET_KEY!
 );
 
 // GET: Fetch routines for a specific employee
@@ -63069,7 +63069,7 @@ export async function createClient() {
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         get(name: string) {
@@ -65235,7 +65235,7 @@ import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/
  */
 export const createClient = () => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
     return createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
 
@@ -65248,7 +65248,7 @@ let _supabase: SupabaseClient | null = null
 
 const createSafeClient = (): SupabaseClient | null => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
     if (!supabaseUrl || !supabaseAnonKey) {
         console.warn('⚠️ [Supabase] Missing env vars — returning no-op client (build-time)')
@@ -65288,10 +65288,10 @@ import { createClient } from '@supabase/supabase-js';
  */
 export const getSupabaseAdmin = () => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
-        console.warn('⚠️ [SupabaseAdmin] Missing env vars (SUPABASE_SERVICE_ROLE_KEY). This is expected during build.');
+        console.warn('⚠️ [SupabaseAdmin] Missing env vars (SUPABASE_SECRET_KEY). This is expected during build.');
         return null;
     }
 
@@ -78365,7 +78365,7 @@ const CustomerRequestSchema = z.object({
 
 ### Lưu ý quan trọng:
 - Project `wrb-noi-bo-dev` cần kết nối **cùng Supabase instance** với `Quan_Tri_Va_KTV`.
-- Kiểm tra file `.env.local` của `wrb-noi-bo-dev` có `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY` trỏ đúng.
+- Kiểm tra file `.env.local` của `wrb-noi-bo-dev` có `SUPABASE_URL` và `SUPABASE_SECRET_KEY` trỏ đúng.
 - Nếu chưa có, cần tạo Supabase admin client tương tự pattern ở `Quan_Tri_Va_KTV/lib/supabaseAdmin.ts`.
 
 ---
@@ -79017,7 +79017,7 @@ require('dotenv').config({ path: '.env.local' });
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase URL or Key');
@@ -79107,7 +79107,7 @@ let supabaseKey = '';
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -79136,7 +79136,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79156,7 +79156,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -79186,7 +79186,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79252,7 +79252,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79281,10 +79281,10 @@ const envContent = fs.readFileSync(envPath, 'utf-8');
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) process.env.NEXT_PUBLIC_SUPABASE_URL = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) process.env.SUPABASE_SERVICE_ROLE_KEY = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) process.env.SUPABASE_SECRET_KEY = line.split('=')[1].trim();
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function checkKTVs() {
     const ktvs = ['NH025', 'NH021', 'NH011', 'NH027'];
@@ -79362,7 +79362,7 @@ let supabaseKey = '';
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -79388,7 +79388,7 @@ let supabaseKey = '';
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -79430,10 +79430,10 @@ const envContent = fs.readFileSync(envPath, 'utf-8');
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) process.env.NEXT_PUBLIC_SUPABASE_URL = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) process.env.SUPABASE_SERVICE_ROLE_KEY = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) process.env.SUPABASE_SECRET_KEY = line.split('=')[1].trim();
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function check() {
     const { data } = await supabase.from('BookingItems').select('id, serviceId, itemRating').eq('bookingId', '11NDK-004-04072026');
@@ -79449,7 +79449,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79480,7 +79480,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79529,7 +79529,7 @@ let supabaseKey = '';
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -79553,7 +79553,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -79630,10 +79630,10 @@ envContent.split('\n').forEach(line => {
     const [key, ...valueParts] = line.split('=');
     const value = valueParts.join('=').trim();
     if (key === 'NEXT_PUBLIC_SUPABASE_URL') process.env.NEXT_PUBLIC_SUPABASE_URL = value;
-    if (key === 'SUPABASE_SERVICE_ROLE_KEY') process.env.SUPABASE_SERVICE_ROLE_KEY = value;
+    if (key === 'SUPABASE_SECRET_KEY') process.env.SUPABASE_SECRET_KEY = value;
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function checkOrphanBookings() {
     // Các booking thừa trong TurnLedger mà Node.js không thấy
@@ -79797,7 +79797,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -79837,7 +79837,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -79867,7 +79867,7 @@ run();
 -- Reason: Supabase security alert — tables publicly accessible
 --
 -- ⚠️ STRATEGY:
--- Vì app dùng SUPABASE_SERVICE_ROLE_KEY ở server-side (Next.js API routes),
+-- Vì app dùng SUPABASE_SECRET_KEY ở server-side (Next.js API routes),
 -- service_role KEY sẽ BYPASS RLS hoàn toàn → server code hoạt động bình thường.
 -- Chỉ cần block anon key truy cập trực tiếp từ browser.
 --
@@ -79968,7 +79968,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -80142,10 +80142,10 @@ const envContent = fs.readFileSync(envPath, 'utf-8');
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) process.env.NEXT_PUBLIC_SUPABASE_URL = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) process.env.SUPABASE_SERVICE_ROLE_KEY = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) process.env.SUPABASE_SECRET_KEY = line.split('=')[1].trim();
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function run() {
     // Force the booking to DONE
@@ -80178,7 +80178,7 @@ async function run() {
     const res = await POST(req);
     console.log('Result:', await res.json());
 
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
     const { data: ledger } = await supabase.from('KTVDailyLedger').select('*').eq('staff_id', 'NH021').eq('date', '2026-07-04');
     console.log('Ledger after sync:', ledger);
 }
@@ -80193,7 +80193,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase credentials in .env.local');
@@ -80227,7 +80227,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    process.env.SUPABASE_SECRET_KEY
 );
 
 async function run() {
@@ -80287,10 +80287,10 @@ for (const line of envContent.split('\n')) {
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ Missing Supabase env vars. Make sure SUPABASE_SERVICE_ROLE_KEY is set in .env.local');
+    console.error('❌ Missing Supabase env vars. Make sure SUPABASE_SECRET_KEY is set in .env.local');
     process.exit(1);
 }
 
@@ -80461,7 +80461,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -80499,7 +80499,7 @@ const envConfig = fs.readFileSync('.env.local', 'utf8').split('\n').forEach((lin
 });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error("Missing SUPABASE env vars");
@@ -80599,7 +80599,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
@@ -80641,7 +80641,7 @@ const envContent = fs.readFileSync(envPath, 'utf-8');
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) process.env.NEXT_PUBLIC_SUPABASE_URL = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) process.env.SUPABASE_SERVICE_ROLE_KEY = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) process.env.SUPABASE_SECRET_KEY = line.split('=')[1].trim();
 });
 
 async function run() {
@@ -80655,7 +80655,7 @@ run();
 ## File: scripts/setup-push-table.js
 ````javascript
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient('https://adzfohfdindovfcpaizb.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTY3OTgwMCwiZXhwIjoyMDg3MjU1ODAwfQ.wGaNWPGK8fLF5GMzbiGTApVnktdtaegQkquTMOGPyl8');
+const supabase = createClient('https://adzfohfdindovfcpaizb.supabase.co', '[REDACTED_JWT]');
 
 async function createPushTable() {
     console.log('🚀 Creating StaffPushSubscriptions table...');
@@ -81067,7 +81067,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -81191,7 +81191,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -88665,7 +88665,7 @@ runMigration();
 
 ## File: check.js
 ````javascript
-require('dotenv').config({ path: '.env.local' }); const { createClient } = require('@supabase/supabase-js'); const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY); supabase.from('EmployeeRoutines').select('room_id').limit(1).then(console.log).catch(console.error);
+require('dotenv').config({ path: '.env.local' }); const { createClient } = require('@supabase/supabase-js'); const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY); supabase.from('EmployeeRoutines').select('room_id').limit(1).then(console.log).catch(console.error);
 ````
 
 ## File: checkCustomer.js
@@ -88674,7 +88674,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   'https://adzfohfdindovfcpaizb.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2Nzk4MDAsImV4cCI6MjA4NzI1NTgwMH0.C7-HhcJDfbh41JTcoc-mjguSiGiTvN3SjDl-OecDKIk'
+  '[REDACTED_JWT]'
 );
 
 async function run() {
@@ -88697,7 +88697,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error("Missing Supabase credentials in .env.local");
@@ -88962,7 +88962,7 @@ const fs = require('fs');
 const envPath = 'C:/Users/ADMIN/OneDrive/Desktop/Ngan Ha/Quan_Tri_Va_KTV/.env.local';
 const env = fs.readFileSync(envPath, 'utf-8');
 const url = env.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/)[1].trim();
-const key = env.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/)[1].trim();
+const key = env.match(/SUPABASE_SECRET_KEY=(.*)/)[1].trim();
 
 const supabase = createClient(url, key);
 
@@ -89001,7 +89001,7 @@ export default defineConfig([{
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://adzfohfdindovfcpaizb.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTY3OTgwMCwiZXhwIjoyMDg3MjU1ODAwfQ.wGaNWPGK8fLF5GMzbiGTApVnktdtaegQkquTMOGPyl8';
+const supabaseKey = '[REDACTED_JWT]';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function fixData() {
@@ -90958,7 +90958,7 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         get(name: string) {
@@ -91160,7 +91160,7 @@ envContent.split('\n').forEach(line => {
 });
 
 const supabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL'];
-const supabaseKey = env['SUPABASE_SERVICE_ROLE_KEY'];
+const supabaseKey = env['SUPABASE_SECRET_KEY'];
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -91299,7 +91299,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -91324,7 +91324,7 @@ main();
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 async function checkAudit() {
     const today = new Date().toISOString().split('T')[0];
@@ -91351,7 +91351,7 @@ checkAudit();
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 async function checkCols() {
     const { data, error } = await supabase
@@ -91379,7 +91379,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 async function findColumns() {
     try {
@@ -91412,7 +91412,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkAuditAll() {
@@ -91438,7 +91438,7 @@ checkAuditAll();
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 async function checkDevices() {
     const { data, error } = await supabase
@@ -91502,7 +91502,7 @@ import { KtvDisciplineService } from './lib/services/KtvDisciplineService.js';
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
     console.error('Missing Supabase env vars');
@@ -92525,7 +92525,7 @@ const fs = require('fs');
 const envPath = 'C:/Users/ADMIN/OneDrive/Desktop/Ngan Ha/Quan_Tri_Va_KTV/.env.local';
 const env = fs.readFileSync(envPath, 'utf-8');
 const url = env.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/)[1].trim();
-const key = env.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/)[1].trim();
+const key = env.match(/SUPABASE_SECRET_KEY=(.*)/)[1].trim();
 
 const supabase = createClient(url, key);
 
@@ -92563,7 +92563,7 @@ const fs = require('fs');
 const envPath = 'C:/Users/ADMIN/OneDrive/Desktop/Ngan Ha/Quan_Tri_Va_KTV/.env.local';
 const env = fs.readFileSync(envPath, 'utf-8');
 const url = env.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/)[1].trim();
-const key = env.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/)[1].trim();
+const key = env.match(/SUPABASE_SECRET_KEY=(.*)/)[1].trim();
 
 const supabase = createClient(url, key);
 
@@ -92592,7 +92592,7 @@ const fs = require('fs');
 const envPath = 'C:/Users/ADMIN/OneDrive/Desktop/Ngan Ha/Quan_Tri_Va_KTV/.env.local';
 const env = fs.readFileSync(envPath, 'utf-8');
 const url = env.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/)[1].trim();
-const key = env.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/)[1].trim();
+const key = env.match(/SUPABASE_SECRET_KEY=(.*)/)[1].trim();
 
 const supabase = createClient(url, key);
 
@@ -93068,7 +93068,7 @@ const env = fs.readFileSync('.env.local', 'utf8').split('\n').reduce((acc, line)
   return acc;
 }, {});
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 supabase.from('Rooms').select('id, name, type').then(res => console.log(JSON.stringify(res.data, null, 2)));
 ````
 
@@ -94860,7 +94860,7 @@ import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function fetchAll(queryBuilder: any) {
@@ -102587,7 +102587,7 @@ import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
@@ -107896,7 +107896,7 @@ import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Internal core logic for syncing ledger

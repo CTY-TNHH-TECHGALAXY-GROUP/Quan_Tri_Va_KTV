@@ -13,7 +13,7 @@ let SUPABASE_KEY = '';
 
 envFile.split('\n').forEach(line => {
   if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) SUPABASE_URL = line.split('=')[1].trim();
-  if (line.startsWith('NEXT_PUBLIC_SUPABASE_ANON_KEY=')) SUPABASE_KEY = line.split('=')[1].trim();
+  if (line.startsWith('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=')) SUPABASE_KEY = line.split('=')[1].trim();
 });
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);

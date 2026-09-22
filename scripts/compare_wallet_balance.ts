@@ -11,10 +11,10 @@ envContent.split('\n').forEach(line => {
     const [key, ...valueParts] = line.split('=');
     const value = valueParts.join('=').trim();
     if (key === 'NEXT_PUBLIC_SUPABASE_URL') process.env.NEXT_PUBLIC_SUPABASE_URL = value;
-    if (key === 'SUPABASE_SERVICE_ROLE_KEY') process.env.SUPABASE_SERVICE_ROLE_KEY = value;
+    if (key === 'SUPABASE_SECRET_KEY') process.env.SUPABASE_SECRET_KEY = value;
 });
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function checkOrphanBookings() {
     // Các booking thừa trong TurnLedger mà Node.js không thấy

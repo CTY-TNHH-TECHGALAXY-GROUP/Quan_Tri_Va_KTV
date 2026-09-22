@@ -149,7 +149,7 @@ COMMENT ON COLUMN "KTVDPenaltyLedger"."penalty_type" IS
 -- bất kỳ ai cầm anon key (key này nằm sẵn trong JS phía client) đều ĐỌC, GHI,
 -- XOÁ được. KTVServiceHoursLedger thì không bật RLS.
 --
--- Hai bảng này chỉ được ghi/đọc bởi API server dùng SUPABASE_SERVICE_ROLE_KEY,
+-- Hai bảng này chỉ được ghi/đọc bởi API server dùng SUPABASE_SECRET_KEY,
 -- mà service_role vốn BYPASSRLS — nên siết chặt không làm hỏng luồng nào:
 --   · anon           → không có policy → chặn hoàn toàn
 --   · authenticated  → chỉ SELECT (cho trang admin đọc trực tiếp nếu cần)

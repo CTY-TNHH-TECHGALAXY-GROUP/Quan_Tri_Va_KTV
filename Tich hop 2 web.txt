@@ -8,7 +8,7 @@ Kết nối hệ thống giữa **App Khách Hàng** (`wrb-noi-bo-dev`) và **Ap
 ### 1. Cấu Hình Chung Môi Trường Database (Supabase)
 Hiện tại, App Khách Hàng đang dùng **Supabase** (với các bảng `Bookings`, `Customers`, `BookingItems`). App KTV hiện tại chỉ đang dùng dữ liệu giả (Mock Data) trong giao diện.
 - [ ] **Thêm thư viện**: Cài đặt `@supabase/supabase-js` và `@supabase/ssr` vào App KTV.
-- [ ] **Biến Môi Trường**: Copy chuỗi kết nối Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) từ [.env.local](file:///C:/Users/ADMIN/OneDrive/Desktop/Ngan%20Ha/wrb-noi-bo-dev/.env.local) của Web Khách Hàng sang Web KTV.
+- [ ] **Biến Môi Trường**: Copy chuỗi kết nối Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) từ [.env.local](file:///C:/Users/ADMIN/OneDrive/Desktop/Ngan%20Ha/wrb-noi-bo-dev/.env.local) của Web Khách Hàng sang Web KTV.
 - [ ] **Khởi tạo Config**: Tạo file [lib/supabase.ts](file:///C:/Users/ADMIN/OneDrive/Desktop/Ngan%20Ha/wrb-noi-bo-dev/src/lib/supabase.ts) ở Web KTV chuẩn hóa kết nối giống Web Khách Hàng.
 
 ### 2. Cập Nhật Màn Hình App KTV ([Quan_Tri_Va_KTV/app/ktv/dashboard/page.tsx](file:///C:/Users/ADMIN/OneDrive/Desktop/Ngan%20Ha/Quan_Tri_Va_KTV/app/ktv/dashboard/page.tsx))
