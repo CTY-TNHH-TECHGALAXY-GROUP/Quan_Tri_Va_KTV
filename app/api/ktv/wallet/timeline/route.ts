@@ -209,6 +209,11 @@ export async function GET(request: Request) {
             });
 
             for (const g of groupForHistory(turnRows)) {
+                // Chỉ đưa tiền vào Ví sau khi tua đã chốt. Lịch sử cũng ẩn
+                // khoản này khi còn chờ đánh giá; hiển thị sớm ở đây gây hiểu
+                // nhầm là tiền đã được cộng dù số dư vẫn loại khoản tạm tính.
+                if (g.is_provisional) continue;
+
                 const at = asUtcIso(g.rows[0].booking_time_start) || `${g.work_date}T12:00:00+07:00`;
 
                 // Tiền tua và thưởng 4★ là MỘT CỤC, đúng như công thức:
@@ -398,7 +403,7 @@ export async function GET(request: Request) {
 
         for (const b of validBookings) {
             // 🧠 Filter theo ITEM STATUS thay vì Booking cha — triệt tiêu kẹt tiền
-            const DONE_STATUSES = ['DONE', 'COMPLETED', 'CLEANING', 'FEEDBACK'];
+            const DONE_STATUSES = ['DONE', 'COMPLETED'];
             const relevantItemsOriginal = (b.BookingItems || []).filter((i: any) =>
                 i.technicianCodes &&
                 Array.isArray(i.technicianCodes) &&
