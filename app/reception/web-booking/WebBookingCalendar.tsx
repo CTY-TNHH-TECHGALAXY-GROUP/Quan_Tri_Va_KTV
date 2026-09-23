@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 
 // 🔧 UI CONFIGURATION
 const START_HOUR = 8;              // Giờ bắt đầu hiển thị
@@ -208,7 +209,7 @@ const DayBookingCard = ({
         {/* Total + billCode footer */}
         {height > 100 && (
           <div className="flex items-center justify-between mt-auto pt-1 border-t border-gray-100">
-            <span className="text-[10px] text-gray-400 font-mono">{(booking.billCode || '').split('-')[0]}</span>
+            <span className="text-[10px] text-gray-400 font-mono">{displayBookingCode(booking.billCode)}</span>
             <span className="text-[11px] font-black text-gray-800">
               {formatVND(booking.totalAmount)}
             </span>
