@@ -13,7 +13,7 @@ async function run() {
     const res = await POST(req);
     console.log('Result:', await res.json());
 
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
     const { data: ledger } = await supabase.from('KTVDailyLedger').select('*').eq('staff_id', 'NH021').eq('date', '2026-07-04');
     console.log('Ledger after sync:', ledger);
 }

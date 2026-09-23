@@ -90,11 +90,11 @@ const loadEnv = (): Record<string, string> => {
 const simulateRealData = async () => {
     console.log('\n=== Part 3: real data (read-only) — today vs after deploy ===');
     const env = loadEnv();
-    if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
         console.log('  ⚠️  No .env.local — skipped');
         return;
     }
-    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
     const [{ data: staff }, { data: users }, { data: cfgRows }] = await Promise.all([
         sb.from('Staff').select('id, work_type, status, feature_flags').eq('status', 'ĐANG LÀM'),

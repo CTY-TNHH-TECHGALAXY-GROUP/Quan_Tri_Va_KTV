@@ -13,7 +13,7 @@ for (const line of envContent.split('\n')) {
     }
 }
 
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
 async function debugNH014() {
     const today = '2026-04-25';

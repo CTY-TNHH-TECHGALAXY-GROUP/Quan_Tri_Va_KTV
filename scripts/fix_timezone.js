@@ -5,7 +5,7 @@ fs.readFileSync('.env.local', 'utf8').split('\n').forEach(l => {
   if (m) process.env[m[1].trim()] = m[2].trim();
 });
 
-const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 (async () => {
   // Fix NH069 directly

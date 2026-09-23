@@ -11,7 +11,7 @@ envFile.split('\n').forEach(line => {
 });
 
 const supabaseUrl = envVars['NEXT_PUBLIC_SUPABASE_URL'];
-const supabaseKey = envVars['SUPABASE_SERVICE_ROLE_KEY']; 
+const supabaseKey = envVars['SUPABASE_SECRET_KEY'];
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false }
 });
