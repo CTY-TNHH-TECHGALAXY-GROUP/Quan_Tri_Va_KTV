@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -678,7 +679,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2 py-0.5 rounded-lg tracking-wider">
-                                                            #{subOrder.services.length < order.services.length ? `${(order.billCode || '').split('-')[0]}-${subOrder.subSuffix || 'A'}` : (order.billCode || '').split('-')[0]}
+                                                            #{subOrder.services.length < order.services.length ? `${displayBookingCode(order.billCode)}-${subOrder.subSuffix || 'A'}` : displayBookingCode(order.billCode)}
                                                         </span>
                                                         {order.hasVat && (
                                                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>

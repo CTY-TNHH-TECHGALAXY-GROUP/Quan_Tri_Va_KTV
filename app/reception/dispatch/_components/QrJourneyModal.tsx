@@ -3,6 +3,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { QrCode } from 'lucide-react';
+import { displayBookingCode } from '@/lib/booking-display-code';
 
 /** Trang lộ trình khách quét — khác domain với app quản trị. */
 const JOURNEY_BASE_URL = 'https://nganha.vercel.app';
@@ -54,7 +55,7 @@ export function QrJourneyModal({
             </div>
             <h3 className="text-lg font-black text-gray-900 mb-1">QR Journey</h3>
             <p className="text-xs text-gray-500 font-medium mb-6">
-              Đơn #{(data.billCode || '').split('-')[0]} — Khách quét để xem lộ trình
+              Đơn #{displayBookingCode(data.billCode)} — Khách quét để xem lộ trình
             </p>
 
             <div className="bg-gray-50 rounded-2xl p-6 mb-6 inline-block border border-gray-100">

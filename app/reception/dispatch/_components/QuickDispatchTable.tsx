@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
@@ -637,7 +638,7 @@ export const QuickDispatchTable = ({
       if (isAllSelected) setSelectedGroupKeys([]);
       else setSelectedGroupKeys(Array.from(initialGroups.keys()));
   };
-  const parentPrefix = billCode ? billCode.split('-')[0] : 'XXX';
+  const parentPrefix = billCode ? displayBookingCode(billCode) : 'XXX';
   // Assign subSuffix based on customerGroupId (or groupKey if no customerGroupId)
   const persistentSuffixesRef = useRef(new Map<string, string>());
 
@@ -774,7 +775,7 @@ export const QuickDispatchTable = ({
                                    {billCode && (
                                      <>
                                        <span className="text-xs text-slate-400 font-bold">•</span>
-                                       <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode.split('-')[0]}</span></span>
+                                       <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{displayBookingCode(billCode)}</span></span>
                                      </>
                                    )}
                                    

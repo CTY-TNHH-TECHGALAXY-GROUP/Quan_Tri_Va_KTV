@@ -4,6 +4,7 @@ import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus, Send } from 'lucide-react';
 import { isUtilityService } from '@/lib/booking.logic';
+import { displayBookingCode } from '@/lib/booking-display-code';
 import { getDisplayCustomerName } from '../dispatch-display';
 import { isNewExternalKtvToken } from '@/lib/constants/staff.constants';
 
@@ -50,7 +51,7 @@ export function DispatchConfirmModal({
 
   // Đơn con chỉ chứa một phần dịch vụ của đơn gốc → hiện thêm hậu tố (A, B…).
   const isPartial = subOrder.services.length < orderForModal.services.length;
-  const billPrefix = (orderForModal.billCode || '').split('-')[0];
+  const billPrefix = displayBookingCode(orderForModal.billCode);
   const billLabel = isPartial ? `${billPrefix}-${subOrder.subSuffix || 'A'}` : billPrefix;
 
   const total = subOrder.services.reduce(

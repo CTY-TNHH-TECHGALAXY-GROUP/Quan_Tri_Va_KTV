@@ -202,7 +202,12 @@ export function WebBookingBoard() {
     try {
       const res = await confirmWebBooking(id);
       if (res.success) {
-        showToast('✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.', 'success');
+        showToast(
+          res.emailSent === false
+            ? 'Đơn đã vào Điều phối nhưng email chưa gửi được. Kiểm tra SMTP và gửi lại email.'
+            : '✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.',
+          res.emailSent === false ? 'error' : 'success'
+        );
         setSelectedBooking(null);
         // Mark as confirmed locally so it won't reappear after realtime refetch
         confirmedIdsRef.current.add(id);

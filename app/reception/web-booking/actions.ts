@@ -11,6 +11,8 @@ import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
 
+const WEB_BOOKING_SOURCES = ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
+
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
 export type WebBookingStatus = 'NEW' | 'PREPARING' | 'IN_PROGRESS' | 'COMPLETED' | 'DONE' | 'FEEDBACK' | 'CANCELLED';
@@ -75,7 +77,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .gte('bookingDate', startOfRange)
       .lte('bookingDate', endOfRange)
       .neq('status', 'CANCELLED')
-      .in('source', ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
+      .in('source', WEB_BOOKING_SOURCES)
       .order('createdAt', { ascending: false });
 
     if (bError) throw bError;
@@ -242,7 +244,7 @@ export async function confirmWebBooking(bookingId: string) {
     if (!supabase) throw new Error('Supabase admin not initialized');
 
     // Lấy thông tin hiện tại để map sang loại tương ứng và gửi thông báo KTV, kèm thông tin chi tiết cho Email
-    const { data: bData } = await supabase
+    const { data: bData, error: bookingError } = await supabase
       .from('Bookings')
       .select(`
         source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone, customerId,
@@ -260,6 +262,11 @@ export async function confirmWebBooking(bookingId: string) {
       `)
       .eq('id', bookingId)
       .single();
+
+    if (bookingError) throw bookingError;
+    if (!bData || !WEB_BOOKING_SOURCES.includes(bData.source)) {
+      return { success: false, error: 'Đơn đã được xử lý.' };
+    }
 
     let newSource = 'STANDARD_WALK_IN';
     if (bData?.source === 'VIP_BOOKING' || bData?.source === 'VIP_MENU') {
@@ -301,7 +308,27 @@ export async function confirmWebBooking(bookingId: string) {
       sanitizePayload.customerPhone = '';
     }
     
-    if (bData?.customerId) {
+    const { data: updated, error } = await supabase
+      .from('Bookings')
+      .update({
+        source: newSource,
+        updatedAt: new Date().toISOString(),
+        ...sanitizePayload,
+      })
+      .eq('id', bookingId)
+      // Safety: chỉ xác nhận khi đơn còn NEW.
+      // KHÔNG thêm 'WAITING' vào đây: enum BookingStatus của DB không có giá trị đó
+      // (chỉ BookingItems.status là text mới nhận WAITING), nên Postgres sẽ báo
+      // "invalid input value for enum BookingStatus" và mọi lần bấm Xác nhận đều hỏng.
+      .eq('status', 'NEW')
+      .eq('source', bData.source)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!updated) return { success: false, error: 'Đơn đã được xử lý.' };
+
+    if (bData.customerId) {
       // Đồng thời clean email/phone dummy trên Customer record
       const cusClean: Record<string, any> = {};
       if (bData.customerEmail && isDummyEmail(bData.customerEmail)) {
@@ -314,22 +341,6 @@ export async function confirmWebBooking(bookingId: string) {
         await supabase.from('Customers').update(cusClean).eq('id', bData.customerId);
       }
     }
-
-    const { error } = await supabase
-      .from('Bookings')
-      .update({
-        source: newSource,
-        updatedAt: new Date().toISOString(),
-        ...sanitizePayload,
-      })
-      .eq('id', bookingId)
-      // Safety: chỉ xác nhận khi đơn còn NEW.
-      // KHÔNG thêm 'WAITING' vào đây: enum BookingStatus của DB không có giá trị đó
-      // (chỉ BookingItems.status là text mới nhận WAITING), nên Postgres sẽ báo
-      // "invalid input value for enum BookingStatus" và mọi lần bấm Xác nhận đều hỏng.
-      .eq('status', 'NEW');
-
-    if (error) throw error;
     
     // Tự động đè email thật vào thông tin khách hàng nếu trong DB đang là email ảo
     if (bData?.customerId && bData?.customerEmail && !isDummyEmail(bData.customerEmail)) {
@@ -410,6 +421,7 @@ export async function confirmWebBooking(bookingId: string) {
     // 3. Gửi email xác nhận kèm mã QR nếu có email THẬT và cờ này đang BẬT.
     // Email ảo của khách vãng lai bị bỏ qua: gửi tới đó chắc chắn thất bại,
     // chỉ tốn một lượt gọi SMTP và rác log.
+    let emailSent: boolean | null = null;
     if (bData?.customerEmail && !isEmailDummy && isEmailEnabled) {
         // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
         let isNewCustomer = true;
@@ -491,19 +503,21 @@ export async function confirmWebBooking(bookingId: string) {
 
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
         try {
-            await sendBookingConfirmationEmail(
+            const result = await sendBookingConfirmationEmail(
                 bData.customerEmail,
                 bData.customerName || 'Quý khách',
                 bData.customerLang || 'vi',
                 isNewCustomer,
                 bookingDetails
             );
+            emailSent = result.success;
         } catch (err) {
+            emailSent = false;
             console.error('[WebBooking] Lỗi khi gửi email xác nhận:', err);
         }
     }
 
-    return { success: true };
+    return { success: true, emailSent };
   } catch (error: any) {
     console.error('❌ [WebBooking] confirmWebBooking error:', error);
     return { success: false, error: error.message };
@@ -548,7 +562,7 @@ export async function getNewWebBookingCount(): Promise<number> {
     const { data } = await supabase
       .from('Bookings')
       .select('notes, source')
-      .in('source', ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'])
+      .in('source', WEB_BOOKING_SOURCES)
       .eq('status', 'NEW');
 
     if (!data) return 0;

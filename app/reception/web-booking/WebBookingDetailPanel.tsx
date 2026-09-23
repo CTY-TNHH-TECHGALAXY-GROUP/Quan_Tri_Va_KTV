@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 // 🔧 UI CONFIGURATION
 const PANEL_ANIMATION_DURATION = 0.25;
@@ -115,7 +116,7 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-black text-gray-400 bg-gray-100 px-2 py-0.5 rounded-lg">
-                    {(booking.billCode || '').split('-')[0]}
+                    {displayBookingCode(booking.billCode)}
                   </span>
                   {isNew && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 animate-pulse">
