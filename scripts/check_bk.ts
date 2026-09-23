@@ -10,7 +10,7 @@ let supabaseKey = '';
 
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
 const supabase = createClient(supabaseUrl, supabaseKey);

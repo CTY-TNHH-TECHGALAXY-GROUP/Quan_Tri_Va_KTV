@@ -80655,7 +80655,7 @@ run();
 ## File: scripts/setup-push-table.js
 ````javascript
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient('https://adzfohfdindovfcpaizb.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTY3OTgwMCwiZXhwIjoyMDg3MjU1ODAwfQ.wGaNWPGK8fLF5GMzbiGTApVnktdtaegQkquTMOGPyl8');
+const supabase = createClient('https://adzfohfdindovfcpaizb.supabase.co', '[REDACTED_LEGACY_JWT]');
 
 async function createPushTable() {
     console.log('🚀 Creating StaffPushSubscriptions table...');
@@ -88674,7 +88674,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   'https://adzfohfdindovfcpaizb.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2Nzk4MDAsImV4cCI6MjA4NzI1NTgwMH0.C7-HhcJDfbh41JTcoc-mjguSiGiTvN3SjDl-OecDKIk'
+  '[REDACTED_LEGACY_JWT]'
 );
 
 async function run() {
@@ -89001,7 +89001,7 @@ export default defineConfig([{
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://adzfohfdindovfcpaizb.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkemZvaGZkaW5kb3ZmY3BhaXpiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTY3OTgwMCwiZXhwIjoyMDg3MjU1ODAwfQ.wGaNWPGK8fLF5GMzbiGTApVnktdtaegQkquTMOGPyl8';
+const supabaseKey = '[REDACTED_LEGACY_JWT]';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function fixData() {

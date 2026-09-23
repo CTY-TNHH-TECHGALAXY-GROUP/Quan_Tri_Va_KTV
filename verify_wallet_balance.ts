@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 import { KtvWalletService } from './lib/services/KtvWalletService';
 
 dotenv.config({ path: '.env.local' });
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
 async function run() {
     const balance = await KtvWalletService.getBalance(supabase, 'T001');

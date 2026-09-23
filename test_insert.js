@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const sb = createClient(
   'https://adzfohfdindovfcpaizb.supabase.co', 
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SECRET_KEY
 );
 sb.from('TaskTemplates').select('id').limit(1).then(({data}) => {
   const tplId = data[0].id;

@@ -29,7 +29,7 @@ async function main() {
     const to = process.argv[3] || '2026-09-30';
 
     const env = loadEnv();
-    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
     const cutoffHours = await getDayCutoffHours(sb as any);
 

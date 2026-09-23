@@ -15,7 +15,7 @@ const envContent = fs.readFileSync(path.resolve('.env.local'), 'utf-8');
 let url = '', key = '';
 envContent.split('\n').forEach(line => {
     if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) url = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SERVICE_ROLE_KEY=')) key = line.split('=')[1].trim();
+    if (line.startsWith('SUPABASE_SECRET_KEY=')) key = line.split('=')[1].trim();
 });
 const supabase = createClient(url, key);
 

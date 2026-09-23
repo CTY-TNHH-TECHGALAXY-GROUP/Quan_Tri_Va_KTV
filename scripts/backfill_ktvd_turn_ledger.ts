@@ -36,7 +36,7 @@ async function main() {
     const dryRun = process.argv.includes('--dry-run');
 
     const env = loadEnv();
-    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
     // Dùng CHUNG bộ nạp cấu hình với cửa ghi thật (KtvDLedgerWriter.loadContext).
     //

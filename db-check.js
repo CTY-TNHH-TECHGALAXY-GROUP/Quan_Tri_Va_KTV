@@ -20,7 +20,7 @@ function loadEnv() {
 async function run() {
     try {
         const env = loadEnv();
-        const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+        const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY);
         
         console.log("🔍 Checking Users table...");
         const { data, count, error } = await supabase
