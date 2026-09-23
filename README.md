@@ -30,3 +30,16 @@ SUPABASE_SECRET_KEY=
 ```
 
 The publishable key is used by browser and user-session clients. `SUPABASE_SECRET_KEY` is server-only and must never be added to a `NEXT_PUBLIC_*` variable. Keep legacy keys active until every application sharing the Supabase project, including WebBooking, has migrated and passed production checks.
+
+## Booking confirmation email
+
+The Admin app reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`,
+`SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, and `SMTP_REPLY_TO` on the server. Copy the
+names from `.env.example` into the deployment environment and enter the values
+there. Keep `SMTP_PASS` out of Git.
+
+On Vercel, configure these variables for each environment used to confirm
+bookings. Preview deployments do not inherit Production-only SMTP variables;
+select Preview (or the specific Preview branch), then redeploy that branch.
+The Email settings page in Admin shows whether the required SMTP variables are
+present. Use its test-email action to verify delivery after redeployment.
