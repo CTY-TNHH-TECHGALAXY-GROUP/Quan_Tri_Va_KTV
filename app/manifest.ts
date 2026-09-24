@@ -2,9 +2,9 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Ngân Hà Spa Management',
-    short_name: 'Ngân Hà Spa',
-    description: 'Hệ thống quản lý Ngân Hà Spa chuyên nghiệp',
+    name: 'Oria Spa Management',
+    short_name: 'Oria Spa',
+    description: 'Hệ thống quản lý Oria Spa chuyên nghiệp',
     start_url: '/',
     scope: '/',
     display: 'standalone',

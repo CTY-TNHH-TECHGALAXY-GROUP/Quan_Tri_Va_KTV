@@ -6,10 +6,12 @@ import { createNotification } from '@/lib/notification-helper';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
 import { KtvTypeDOnlineService } from '@/lib/services/KtvTypeDOnlineService';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
-import sharp from 'sharp';
-import { requireActiveStaff } from '@/lib/auth-server';
+import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
+import { SHIFT_TYPES, addMinutesToTime, hasReachedShiftEnd } from '@/lib/shift.constants';
+import { vnNow } from '@/lib/vn-time';
+import { format } from 'date-fns';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -17,17 +19,29 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 
 export async function POST(request: Request) {
+    const reqStartMs = Date.now();
+    const reqTraceId = `att_${reqStartMs}_${Math.random().toString(36).slice(2, 7)}`;
+    const logCheckpoint = (stepName: string, meta?: Record<string, any>) => {
+        const elapsed = Date.now() - reqStartMs;
+        console.log(`⏱️ [AttendanceCheck:${reqTraceId}] Stage: ${stepName} | Elapsed: ${elapsed}ms`, meta ? JSON.stringify(meta) : '');
+    };
+
     try {
+        logCheckpoint('start');
         const lockedError = await requireActiveStaff();
         if (lockedError) return lockedError;
 
         const body = await request.json();
+        logCheckpoint('body_parsed', { payloadBytes: JSON.stringify(body).length });
         const parseResult = AttendanceSchema.safeParse(body);
         
         if (!parseResult.success) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         
+        const mismatch = await requireStaffMatches(parseResult.data.employeeId);
+        if (mismatch) return mismatch;
+
         const { 
             employeeId, 
             employeeName: empNameInput, 
@@ -39,6 +53,7 @@ export async function POST(request: Request) {
             reason, 
             selectedShiftType, 
             estimatedEndTime, 
+            extensionMinutes,
             wantsToWithdraw 
         } = parseResult.data;
 
@@ -204,6 +219,9 @@ export async function POST(request: Request) {
         const workType = staffTypeData?.work_type;
         const isTypeD = workType === 'TYPE_D';
 
+        let wasOffRegistered = false;
+        let typeDRegistrationId: string | null = null;
+
         if (isTypeD && (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN')) {
             const { vnNow } = await import('@/lib/vn-time');
             const { format } = await import('date-fns');
@@ -212,23 +230,48 @@ export async function POST(request: Request) {
             const { getBusinessToday, getDayCutoffHours: getCutoffHoursForTypeD, phutTrongNgayLamViec } = await import('@/lib/business-date');
             const cutoffHoursD = await getCutoffHoursForTypeD(supabase);
             const todayStr = await getBusinessToday(supabase);
-            const { data: registration } = await supabase
+            const { data: registration, error: regLookupError } = await supabase
                 .from('KTVTypeDDailyRegistration')
                 .select('id, status, expected_time, late_expected_time')
                 .eq('staff_id', staffCode)
                 .eq('work_date', todayStr)
-                .single();
+                .maybeSingle();
 
-            if (registration && registration.status === 'OFF_REGISTERED') {
-                await supabase.from('KTVTypeDDailyRegistration')
-                  .update({ status: 'REGISTERED', expected_time: format(vnNow(), 'HH:mm') })
-                  .eq('id', registration.id);
+            if (regLookupError) {
+                console.error(`❌ [Attendance:${reqTraceId}] regLookupError:`, regLookupError);
+                return NextResponse.json({ success: false, error: 'Lỗi kiểm tra đăng ký ca Loại D' }, { status: 503 });
+            }
+
+            if (registration) {
+                typeDRegistrationId = registration.id;
+                if (registration.status === 'OFF_REGISTERED') {
+                    wasOffRegistered = true;
+                    // Bắt buộc phải có estimatedEndTime khi KTV Type D OFF đi làm lại
+                    const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+                    if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
+                        return NextResponse.json({
+                            success: false,
+                            error: 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.'
+                        }, { status: 400 });
+                    }
+                    const now = vnNow();
+                    const nowStr = format(now, 'HH:mm');
+                    const phutDen = phutTrongNgayLamViec(nowStr, cutoffHoursD) ?? 0;
+                    const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
+                    if (phutVe <= phutDen) {
+                        return NextResponse.json({
+                            success: false,
+                            error: 'Giờ dự kiến về phải sau giờ hiện tại.'
+                        }, { status: 400 });
+                    }
+                }
             }
 
             // Phạt trễ (§4.4 - đã chốt 2026-09-08):
             //  - LATE_REPORTED: so với late_expected_time (giờ đã báo trễ)
             //  - REGISTERED  : so với expected_time (giờ đăng ký gốc) — đến trễ mà KHÔNG báo
-            if (registration) {
+            // KHÔNG phạt trễ nếu wasOffRegistered (người ta tự nguyện đi làm ngày OFF)
+            if (registration && !wasOffRegistered) {
                 const now = vnNow();
                 let deadline: string | null = null;
                 let noteContext = '';
@@ -254,17 +297,181 @@ export async function POST(request: Request) {
                 }
             }
         }
+        logCheckpoint('step06_done', { isTypeD, wasOffRegistered });
 
 
-        // ─── Step 1: Prepare Watermark Info ─────────────
+        // ─── Step 1: Prepare Watermark Info & Business Date ─────────────
         const nowUtc = new Date();
         const nowVn = new Date(nowUtc.getTime() + VN_OFFSET_MS);
         const dateStr = nowVn.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); // 15 Apr 2026
         const timeStr = nowVn.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        
-        // ─── Step 2: Upload Photo if exists ────────────
+
+        // Ngày làm việc — một nguồn duy nhất: lib/business-date
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
+        const today = toBusinessDate(nowUtc, cutoffHours);
+        logCheckpoint('step1_business_date_done', { today, cutoffHours });
+
+        // ─── Xử lý nghiệp vụ gia hạn giờ làm (OVERTIME) ───────────────────
+        let finalEstimatedEndTime = estimatedEndTime ?? null;
+
+        if (checkType === 'OVERTIME') {
+            if (!extensionMinutes || extensionMinutes < 60 || !Number.isInteger(extensionMinutes)) {
+                return NextResponse.json({ success: false, error: 'Thời gian gia hạn tối thiểu là 60 phút (số nguyên)' }, { status: 400 });
+            }
+
+            // 1. Kiểm tra feature flag phía server
+            const { data: flagConfig, error: flagErr } = await supabase
+                .from('SystemConfigs')
+                .select('value')
+                .eq('key', 'show_overtime_on_dashboard')
+                .maybeSingle();
+
+            if (flagErr) {
+                console.error('❌ [Attendance:OVERTIME] Lỗi đọc SystemConfigs flag:', flagErr);
+                return NextResponse.json({ success: false, error: 'Lỗi kiểm tra cấu hình hệ thống' }, { status: 500 });
+            }
+
+            // Mặc định bật nếu chưa có cấu hình trong SystemConfigs
+            const isOtEnabled = flagConfig ? (flagConfig.value === true || flagConfig.value === 'true') : true;
+            if (!isOtEnabled) {
+                return NextResponse.json({ success: false, error: 'Tính năng gia hạn giờ làm hiện đang tắt.' }, { status: 403 });
+            }
+
+            // 2. Query attendance bằng employeeId + date + status=CONFIRMED
+            const { data: attRecords, error: attErr } = await supabase
+                .from('KTVAttendance')
+                .select('id, checkType, status, checkedAt, estimatedEndTime')
+                .eq('employeeId', employeeId)
+                .eq('date', today)
+                .eq('status', 'CONFIRMED');
+
+            if (attErr) {
+                console.error('❌ [Attendance:OVERTIME] Lỗi truy vấn attendance:', attErr);
+                return NextResponse.json({ success: false, error: 'Lỗi kiểm tra trạng thái điểm danh từ hệ thống' }, { status: 500 });
+            }
+
+            const hasCheckedIn = (attRecords || []).some(r => r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN');
+            const hasCheckedOut = (attRecords || []).some(r => r.checkType === 'CHECK_OUT' || r.checkType === 'SUDDEN_OFF');
+
+            if (!hasCheckedIn || hasCheckedOut) {
+                return NextResponse.json({
+                    success: false,
+                    error: hasCheckedOut ? 'Bạn đã tan ca hôm nay rồi' : 'Bạn chưa điểm danh vào ca hôm nay'
+                }, { status: 400 });
+            }
+
+            const hasOvertime = (attRecords || []).some(r => r.checkType === 'OVERTIME');
+            if (hasOvertime) {
+                return NextResponse.json({ success: false, error: 'Bạn đã gia hạn giờ làm cho ca hôm nay rồi' }, { status: 409 });
+            }
+
+            // 3. Query Staff fail-closed, chỉ chấp nhận chính xác TYPE_A / TYPE_D
+            const { data: staffRow, error: staffErr } = await supabase
+                .from('Staff')
+                .select('work_type')
+                .eq('id', staffCode)
+                .maybeSingle();
+
+            if (staffErr) {
+                console.error('❌ [Attendance:OVERTIME] Lỗi truy vấn staff:', staffErr);
+                return NextResponse.json({ success: false, error: 'Lỗi truy vấn thông tin nhân viên' }, { status: 500 });
+            }
+
+            if (!staffRow || !staffRow.work_type) {
+                return NextResponse.json({ success: false, error: 'Không tìm thấy thông tin phân loại nhân viên' }, { status: 403 });
+            }
+
+            if (staffRow.work_type !== 'TYPE_A' && staffRow.work_type !== 'TYPE_D') {
+                return NextResponse.json({ success: false, error: 'Tính năng gia hạn giờ làm chỉ hỗ trợ KTV Loại A và Loại D' }, { status: 403 });
+            }
+
+            let baseEndTime: string | null = null;
+            if (staffRow.work_type === 'TYPE_D') {
+                // Type D: registration cùng business date, chấp nhận REGISTERED hoặc LATE_REPORTED, từ chối OFF_REGISTERED
+                const { data: reg, error: regErr } = await supabase
+                    .from('KTVTypeDDailyRegistration')
+                    .select('expected_end_time, status')
+                    .eq('staff_id', staffCode)
+                    .eq('work_date', today)
+                    .in('status', ['REGISTERED', 'LATE_REPORTED'])
+                    .maybeSingle();
+
+                if (regErr) {
+                    console.error('❌ [Attendance:OVERTIME] Lỗi đọc đăng ký Loại D:', regErr);
+                    return NextResponse.json({ success: false, error: 'Lỗi truy vấn đăng ký ca Loại D' }, { status: 500 });
+                }
+
+                if (!reg || !reg.expected_end_time) {
+                    return NextResponse.json({
+                        success: false,
+                        error: 'Không tìm thấy giờ tan làm đăng ký hợp lệ của bạn hôm nay. Vui lòng liên hệ quản lý.'
+                    }, { status: 400 });
+                }
+                baseEndTime = String(reg.expected_end_time).slice(0, 5);
+            } else if (staffRow.work_type === 'TYPE_A') {
+                let activeShiftType: string | null = null;
+                let isHoliday = false;
+                try {
+                    const vnDateStr = today.slice(5, 10);
+                    const { data: configData } = await supabase
+                        .from('SystemConfigs')
+                        .select('value')
+                        .eq('key', 'holiday_shift2_dates')
+                        .maybeSingle();
+                    const holidayDates = configData?.value || ['04-30', '09-02', '12-31'];
+                    if (Array.isArray(holidayDates) && holidayDates.includes(vnDateStr)) {
+                        isHoliday = true;
+                        activeShiftType = 'SHIFT_2';
+                    }
+                } catch (e) {
+                    console.error('❌ [Attendance:OVERTIME] Lỗi kiểm tra ngày lễ:', e);
+                }
+
+                if (!isHoliday) {
+                    const { data: shifts, error: shiftErr } = await supabase
+                        .from('KTVShifts')
+                        .select('shiftType, status, effectiveFrom, createdAt')
+                        .eq('employeeId', employeeId)
+                        .lte('effectiveFrom', today)
+                        .in('status', ['ACTIVE', 'REPLACED'])
+                        .order('effectiveFrom', { ascending: false })
+                        .order('createdAt', { ascending: false });
+
+                    if (shiftErr) {
+                        console.error('❌ [Attendance:OVERTIME] Lỗi đọc KTVShifts:', shiftErr);
+                        return NextResponse.json({ success: false, error: 'Lỗi truy vấn ca làm việc Loại A' }, { status: 500 });
+                    }
+
+                    const chosen = (shifts || []).find(s => s.status === 'ACTIVE') || (shifts || [])[0];
+                    activeShiftType = chosen?.shiftType || null;
+                }
+
+                if (!activeShiftType || !['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType)) {
+                    return NextResponse.json({
+                        success: false,
+                        error: 'Gia hạn ca chỉ áp dụng cho Ca 1, Ca 2 hoặc Ca 3.'
+                    }, { status: 400 });
+                }
+
+                const sKey = activeShiftType as keyof typeof SHIFT_TYPES;
+                baseEndTime = SHIFT_TYPES[sKey].end;
+            }
+
+            if (!baseEndTime) {
+                return NextResponse.json({ success: false, error: 'Không xác định được giờ tan ca gốc.' }, { status: 400 });
+            }
+
+            if (hasReachedShiftEnd(baseEndTime, format(vnNow(), 'HH:mm'), cutoffHours)) {
+                return NextResponse.json({ success: false, error: 'Đã quá giờ gia hạn' }, { status: 409 });
+            }
+
+            finalEstimatedEndTime = addMinutesToTime(baseEndTime, extensionMinutes);
+        }
+
+        // ─── Step 2: Upload Photo if exists (chặn nếu OVERTIME) ────────────
         let photoUrl = null;
-        if (photoBase64) {
+        if (photoBase64 && checkType !== 'OVERTIME') {
             try {
                 const processImage = async (base64Str: string, index?: number) => {
                     const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
@@ -272,8 +479,6 @@ export async function POST(request: Request) {
                     const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
                     const fileName = `${staffCode || 'UNKNOWN'}_${Date.now()}${index !== undefined ? `_${index}` : ''}.${fileExt}`;
 
-
-                    
                     const { data: uploadData, error: uploadError } = await supabase.storage
                         .from('attendance')
                         .upload(fileName, buffer as any, {
@@ -305,16 +510,11 @@ export async function POST(request: Request) {
                  console.error('❌ [Attendance] Image processing error:', err);
             }
         }
+        logCheckpoint('step2_photo_done', { hasPhoto: !!photoUrl });
 
         // ─── Step 3: Auto-Approve Logic ─────────────────
-        // Chỉnh sửa: Spa có chính sách "thoáng", mọi yêu cầu điểm danh, xin đi trễ, nghỉ đột xuất đều được đồng ý tự động
         const isAutoApprove = true;
         const finalStatus = 'CONFIRMED';
-
-        // Ngày làm việc — một nguồn duy nhất: lib/business-date
-        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
-        const cutoffHours = await getDayCutoffHours(supabase);
-        const today = toBusinessDate(nowUtc, cutoffHours);
 
         const { data: record, error: insertError } = await supabase
             .from('KTVAttendance')
@@ -326,9 +526,9 @@ export async function POST(request: Request) {
                 latitude: latitude ?? null,
                 longitude: longitude ?? null,
                 locationText: locationText ?? null,
-                photoUrl: photoUrl,
+                photoUrl: checkType === 'OVERTIME' ? null : photoUrl,
                 reason: reason ?? null,
-                estimatedEndTime: estimatedEndTime ?? null,
+                estimatedEndTime: checkType === 'OVERTIME' ? finalEstimatedEndTime : (estimatedEndTime ?? null),
                 is_live_capture: parseResult.data.isLiveCapture,
                 status: finalStatus,
                 confirmedBy: isAutoApprove ? 'SYSTEM' : null,
@@ -338,8 +538,16 @@ export async function POST(request: Request) {
             .single();
 
         if (insertError) {
+            if (checkType === 'OVERTIME') {
+                const errMsg = String(insertError.message || '');
+                const errDetail = String((insertError as any).details || '');
+                if (insertError.code === '23505' || errMsg.includes('KTVAttendance_one_overtime_per_workday') || errDetail.includes('KTVAttendance_one_overtime_per_workday') || errMsg.includes('idx_ktv_attendance_single_overtime_per_day')) {
+                    return NextResponse.json({ success: false, error: 'Bạn đã gia hạn giờ làm cho ca hôm nay rồi' }, { status: 409 });
+                }
+            }
             return NextResponse.json({ success: false, error: insertError.message }, { status: 500 });
         }
+        logCheckpoint('step3_insert_done', { recordId: record?.id });
 
         // ─── Step 4: TurnQueue & User Shift Update (if auto-approved) ─────
         if (isAutoApprove) {
@@ -375,6 +583,37 @@ export async function POST(request: Request) {
                     const res = await KtvTypeDOnlineService.arriveAtVenue(supabase, staffCode);
                     if (!res.success) {
                         return NextResponse.json({ success: false, error: res.error }, { status: 500 });
+                    }
+
+                    if (wasOffRegistered && typeDRegistrationId) {
+                        const { vnNow } = await import('@/lib/vn-time');
+                        const { format } = await import('date-fns');
+                        const nowVnStr = format(vnNow(), 'HH:mm');
+                        const finalEnd = estimatedEndTime ? estimatedEndTime.slice(0, 5) : null;
+
+                        const { error: updateRegErr } = await supabase
+                            .from('KTVTypeDDailyRegistration')
+                            .update({
+                                status: 'REGISTERED',
+                                expected_time: nowVnStr,
+                                expected_end_time: finalEnd,
+                                check_in_at: vnNow().toISOString(),
+                            })
+                            .eq('id', typeDRegistrationId);
+
+                        if (updateRegErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to update KTVTypeDDailyRegistration:`, updateRegErr);
+                        }
+
+                        if (finalEnd) {
+                            const { error: updateStaffErr } = await supabase
+                                .from('Staff')
+                                .update({ available_until: finalEnd })
+                                .eq('id', staffCode);
+                            if (updateStaffErr) {
+                                console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
+                            }
+                        }
                     }
                 } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
                     // KHÔNG đóng KTVShifts ở đây. Bảng này lưu BẢN PHÂN CA, không lưu buổi làm việc.
@@ -548,14 +787,6 @@ export async function POST(request: Request) {
                         });
                         if (leaveErr) console.error('❌ [KTVLeaveRequests] Insert Error:', leaveErr);
                     }
-                } else if (checkType === 'OVERTIME') {
-                    if (estimatedEndTime) {
-                        await supabase
-                            .from('KTVShifts')
-                            .update({ estimatedEndTime })
-                            .eq('employeeId', employeeId)
-                            .eq('status', 'ACTIVE');
-                    }
                 }
             }
         }
@@ -663,6 +894,7 @@ export async function POST(request: Request) {
                 console.error('❌ [Feature Deductions] Error:', deductionErr);
             }
         }
+        logCheckpoint('step4_turn_and_deductions_done');
 
         // ─── Step 5: Notifications ──────────────────────
         const mapsLink = latitude && longitude
@@ -676,7 +908,7 @@ export async function POST(request: Request) {
         else if (checkType === 'LATE_CHECKIN') actionText = 'điểm danh bổ sung';
         else if (checkType === 'OFF_REQUEST') actionText = 'gửi yêu cầu OFF';
         else if (checkType === 'SUDDEN_OFF') actionText = 'xin NGHỈ ĐỘT XUẤT nguyên ngày hôm nay';
-        else if (checkType === 'OVERTIME') actionText = `đăng ký làm thêm giờ đến ${estimatedEndTime}`;
+        else if (checkType === 'OVERTIME') actionText = `đăng ký làm thêm giờ đến ${finalEstimatedEndTime || estimatedEndTime}`;
 
         const autoSuffix = isAutoApprove ? ' [AUTO]' : '';
         
@@ -741,7 +973,7 @@ export async function POST(request: Request) {
             else if (checkType === 'LATE_CHECKIN') confirmText = 'Đã ghi nhận điểm danh bổ sung của bạn';
             else if (checkType === 'OFF_REQUEST') confirmText = 'Đã ghi nhận yêu cầu OFF của bạn';
             else if (checkType === 'SUDDEN_OFF') confirmText = 'Đã ghi nhận yêu cầu nghỉ đột xuất của bạn';
-            else if (checkType === 'OVERTIME') confirmText = `Đã ghi nhận đăng ký làm thêm giờ đến ${estimatedEndTime}`;
+            else if (checkType === 'OVERTIME') confirmText = `Đã ghi nhận đăng ký làm thêm giờ đến ${finalEstimatedEndTime || estimatedEndTime}`;
 
             await createNotification({
                 type: 'ATTENDANCE_RESPONSE',
@@ -749,7 +981,9 @@ export async function POST(request: Request) {
                 employeeId: staffCode || employeeId,
             });
         }
+        logCheckpoint('step5_notifications_done');
 
+        logCheckpoint('completed', { status: finalStatus, recordId: record?.id });
         return NextResponse.json({
             success: true,
             data: record,
@@ -760,7 +994,9 @@ export async function POST(request: Request) {
         });
 
     } catch (error: any) {
-        console.error('❌ [Attendance POST] Unhandled error:', error);
+        const elapsed = Date.now() - reqStartMs;
+        const wasAborted = error?.name === 'AbortError' || request.signal?.aborted;
+        console.error(`❌ [Attendance POST:${reqTraceId}] Error after ${elapsed}ms (aborted=${wasAborted}):`, error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

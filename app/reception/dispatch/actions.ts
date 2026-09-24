@@ -201,6 +201,10 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         const checkedInToday = await checkedInStaffIds(supabase, turns.map(t => t.employee_id), date);
         turns.forEach(t => { (t as any).checked_in_today = checkedInToday.has(t.employee_id); });
 
+        const { resolveStaffShiftEndTimes } = await import('@/lib/shift.constants');
+        const shiftEndMap = await resolveStaffShiftEndTimes(supabase, turns.map(t => t.employee_id), date);
+        turns.forEach(t => { (t as any).shift_end_time = shiftEndMap[t.employee_id] || null; });
+
         // Dọn phần hàng đợi CÒN LẠI sau khi đã trả dữ liệu — không làm chậm bảng.
         // Bảng điều phối mở suốt ca ở quầy và tự tải lại theo realtime, nên đây là
         // nơi dọn hàng đợi đều đặn nhất trong cả hệ thống.
@@ -1146,7 +1150,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
                                     reviewTime: dbSeg.reviewTime || incomingSeg.reviewTime,
-                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl
+                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                    guestSlipperPhotoUrl: dbSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl
                                 };
                             }
                             return incomingSeg;
@@ -1219,6 +1224,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                         actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
                                         feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
                                         startPhotoUrl: existingSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                        guestSlipperPhotoUrl: existingSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl,
                                         handoverPhotoUrl: existingSeg.handoverPhotoUrl || incomingSeg.handoverPhotoUrl,
                                         handoverPhotoUrls: existingSeg.handoverPhotoUrls || incomingSeg.handoverPhotoUrls
                                     };

@@ -200,6 +200,12 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 )
                             )
                         )}
+                        {turn.shift_end_time && turn.status !== 'off' && !(shifts[turn.employee_id]?.type === 'FREE' && shifts[turn.employee_id]?.end) && (
+                            <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold border border-slate-200 flex items-center gap-1" title="Giờ tan làm">
+                                <Clock size={10} className="text-slate-500" />
+                                <span>Về: {turn.shift_end_time}</span>
+                            </span>
+                        )}
                         {shifts[turn.employee_id]?.type === 'FREE' && shifts[turn.employee_id]?.end && (
                             <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold border border-orange-100 flex items-center gap-1">
                                 <Clock size={10} /> Tự do (Về: {shifts[turn.employee_id].end})

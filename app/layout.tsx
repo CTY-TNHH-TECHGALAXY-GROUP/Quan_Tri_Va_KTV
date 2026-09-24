@@ -14,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Ngân Hà Spa Management',
-  description: 'Hệ thống quản lý Ngân Hà Spa chuyên nghiệp',
+  title: 'Oria Spa Management',
+  description: 'Hệ thống quản lý Oria Spa chuyên nghiệp',
   icons: {
     icon: '/icon.png',
     shortcut: '/favicon.ico',
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Ngân Hà Spa',
+    title: 'Oria Spa',
   },
 };
 

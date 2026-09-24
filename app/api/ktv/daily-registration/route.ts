@@ -35,29 +35,35 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { work_date, dates, type, expected_time, entries } = body;
+    const { work_date, dates, type, expected_time, expected_end_time, entries } = body;
     // Hỗ trợ payload cũ (dates, work_date) và mới (entries)
     const targetDates: string[] = dates || (work_date ? [work_date] : []);
     
-    // Normalize thành dạng entry: { work_date, expected_time }
-    let processedEntries: { work_date: string; expected_time: string | null }[] = [];
+    // Normalize thành dạng entry: { work_date, expected_time, expected_end_time }
+    let processedEntries: { work_date: string; expected_time: string | null; expected_end_time: string | null }[] = [];
     if (entries && entries.length > 0) {
-      processedEntries = entries;
+      processedEntries = entries.map((e: any) => ({
+        work_date: e.work_date,
+        expected_time: type === 'WORKING' ? (e.expected_time || null) : null,
+        expected_end_time: type === 'WORKING' ? (e.expected_end_time || null) : null,
+      }));
     } else {
       processedEntries = targetDates.map(d => ({
         work_date: d,
-        expected_time: type === 'WORKING' ? expected_time : null
+        expected_time: type === 'WORKING' ? (expected_time || null) : null,
+        expected_end_time: type === 'WORKING' ? (expected_end_time || null) : null,
       }));
     }
 
-    // Postgres `time` reads back as 'HH:mm:ss'. A client that re-sends the stored
-    // value (the "Sửa lịch" dialog did) was rejected as "không hợp lệ (HH:mm)".
-    // Accept it and cut to 'HH:mm' — the minute is the same.
+    // Postgres `time` reads back as 'HH:mm:ss'. Accept it and cut to 'HH:mm'
     processedEntries = processedEntries.map(e => ({
       ...e,
-      expected_time: typeof e.expected_time === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(e.expected_time)
+      expected_time: typeof e.expected_time === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(e.expected_time)
         ? e.expected_time.slice(0, 5)
         : e.expected_time,
+      expected_end_time: typeof e.expected_end_time === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(e.expected_end_time)
+        ? e.expected_end_time.slice(0, 5)
+        : e.expected_end_time,
     }));
 
     if (processedEntries.length === 0 || !type) {
@@ -109,6 +115,24 @@ export async function POST(request: Request) {
         // −5h đi trễ — chặn ngay từ đây.
         if (!coDong && entry.work_date === homNay && entry.expected_time <= gioHienTai) {
           return NextResponse.json({ error: `Giờ đến tiệm hôm nay phải sau ${gioHienTai}` }, { status: 400 });
+        }
+
+        // Validate giờ tan làm cho KTV D
+        if (!entry.expected_end_time) {
+          return NextResponse.json({ error: `Vui lòng nhập giờ tan làm cho ngày ${vnDate(entry.work_date)}` }, { status: 400 });
+        }
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.expected_end_time)) {
+          return NextResponse.json({ error: `Giờ tan làm ngày ${vnDate(entry.work_date)} không hợp lệ (HH:mm)` }, { status: 400 });
+        }
+
+        const { phutTrongNgayLamViec, getDayCutoffHours } = await import('@/lib/business-date');
+        const cutoff = await getDayCutoffHours(supabase as any);
+        const phutDen = phutTrongNgayLamViec(entry.expected_time, cutoff);
+        const phutTan = phutTrongNgayLamViec(entry.expected_end_time, cutoff);
+        if (phutDen === null || phutTan === null || phutTan <= phutDen) {
+          return NextResponse.json({
+            error: `Giờ tan làm ngày ${vnDate(entry.work_date)} phải sau giờ đến tiệm`
+          }, { status: 400 });
         }
       }
     }
@@ -176,6 +200,7 @@ export async function POST(request: Request) {
         staff_id: staff.id,
         work_date: entry.work_date,
         expected_time: effectiveType === 'WORKING' ? entry.expected_time : null,
+        expected_end_time: effectiveType === 'WORKING' ? entry.expected_end_time : null,
         status,
         // Mốc thật, KHÔNG cộng 7 tiếng rồi gắn nhãn UTC như trước.
         registered_at: new Date().toISOString()

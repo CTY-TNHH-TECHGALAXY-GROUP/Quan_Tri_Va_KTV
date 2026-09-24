@@ -34,7 +34,7 @@ export const MODULES: ModuleDefinition[] = [
 ];
 
 export const SYSTEM_CONFIG = {
-  spa_name: 'Ngân Hà Spa',
+  spa_name: 'Oria Spa',
   spa_address: '123 Đường Ngân Hà, Quận 1, TP. HCM',
   internal_qr_url: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://nganhaspa.vn/internal',
 };

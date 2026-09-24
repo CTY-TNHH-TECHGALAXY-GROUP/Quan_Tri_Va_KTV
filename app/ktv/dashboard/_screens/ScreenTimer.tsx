@@ -11,6 +11,7 @@ import { apiClient } from '@/lib/apiClient';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
+import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
 export function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean, totalAssignedMins?: number }) {
   if (!segments || segments.length === 0) return null;
@@ -45,7 +46,19 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
     return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  let cumulativeMins = 0;
+  const segmentsWithTimes = displaySegments.reduce<{
+    list: Array<{ seg: (typeof displaySegments)[number]; displayStartTime: string; displayEndTime: string }>;
+    runningMins: number;
+  }>((acc, seg) => {
+    const startMins = acc.runningMins;
+    const endMins = startMins + seg.duration;
+    acc.list.push({
+      seg,
+      displayStartTime: actualStartTime ? getShiftedTime(startMins) : seg.startTime,
+      displayEndTime: actualStartTime ? getShiftedTime(endMins) : seg.endTime,
+    });
+    return { list: acc.list, runningMins: endMins };
+  }, { list: [], runningMins: 0 }).list;
 
   return (
     <div className="space-y-3">
@@ -54,13 +67,9 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
         {activeIndex !== undefined && <span className="text-emerald-600">Chặng {activeIndex + 1}</span>}
       </h3>
       <div className="space-y-2">
-        {displaySegments.map((seg, idx) => {
+        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime }, idx) => {
           const isActive = shouldMerge ? activeIndex !== undefined : idx === activeIndex;
           const isPast = shouldMerge ? false : (activeIndex !== undefined && idx < activeIndex);
-          
-          const displayStartTime = actualStartTime ? getShiftedTime(cumulativeMins) : seg.startTime;
-          cumulativeMins += seg.duration;
-          const displayEndTime = actualStartTime ? getShiftedTime(cumulativeMins) : seg.endTime;
 
           return (
             <motion.div 
@@ -120,6 +129,8 @@ export function ScreenTimer({ logic }: { logic: any }) {
     activeSegmentIndex
   } = logic;
 
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
+
   // 📸 CAMERA WEBRTC STATE & LOGIC FOR START TIMER
   const MIN_BRIGHTNESS_FALLBACK = 40;
   const [minBrightness, setMinBrightness] = React.useState(MIN_BRIGHTNESS_FALLBACK);
@@ -134,30 +145,41 @@ export function ScreenTimer({ logic }: { logic: any }) {
           .catch(() => { /* use fallback */ });
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-          const watermarkText = `Room ${booking?.assignedRoomId || booking?.roomName || ''}`;
-          const compressed = await compressImageWithWatermark(file, {
-              minBrightness,
-              watermarkText
-          });
-          logic.setStartPhotoBase64(compressed);
-      } catch (err: any) {
-          if (err?.message === 'TOO_DARK') {
-              addToast('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.', 'error');
-          } else {
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                  const result = ev.target?.result as string;
-                  if (result) logic.setStartPhotoBase64(result);
-              };
-              reader.readAsDataURL(file);
-          }
+  const handleProcessPhoto = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (value: string | null) => void,
+    label: string
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await compressImageWithWatermark(file, {
+        minBrightness,
+        watermarkText: `${label} - Room ${booking?.assignedRoomId || booking?.roomName || ''}`
+      });
+      setter(compressed);
+    } catch (err: any) {
+      if (err?.message === 'TOO_DARK') {
+        addToast('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.', 'error');
+      } else {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const result = ev.target?.result as string;
+          if (result) setter(result);
+        };
+        reader.readAsDataURL(file);
       }
-      if (e.target) e.target.value = '';
+    }
+
+    e.target.value = '';
   };
+
+  const handleSlipperFileUpload = (e: React.ChangeEvent<HTMLInputElement>) =>
+    handleProcessPhoto(e, logic.setGuestSlipperPhotoBase64, 'Dép khách');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) =>
+    handleProcessPhoto(e, logic.setStartPhotoBase64, 'Bắt đầu dịch vụ');
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -343,7 +365,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
           </div>
           {item?.handover_comment && (
             <p className="text-sm font-medium text-rose-800 bg-white p-3 rounded-2xl mb-3 border border-rose-100 shadow-sm">
-              "{item.handover_comment}"
+              &ldquo;{item.handover_comment}&rdquo;
             </p>
           )}
           {item?.handover_reject_images && Array.isArray(item.handover_reject_images) && item.handover_reject_images.length > 0 && (
@@ -402,53 +424,145 @@ export function ScreenTimer({ logic }: { logic: any }) {
 
 
 
-      {/* Primary Action Button */}
-      <div className="px-6 mb-10">
-        {(!isTimerRunning && !isPaused) || isPrepping ? (
-          <div className="space-y-4">
-            {/* Selfie Photo Preview (Sequential Flow) */}
-            {logic.startPhotoBase64 && (
-              <div className="bg-slate-50 border border-slate-100 rounded-3xl p-4 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md">
-                    <img src={logic.startPhotoBase64} className="w-full h-full object-cover" alt="Selfie preview" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-slate-800">Đã lưu ảnh chụp!</p>
-                    <p className="text-[10px] text-slate-400 font-bold">Bấm Bắt đầu để kích hoạt ca</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => logic.setStartPhotoBase64(null)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-slate-200"
-                >
-                  Chụp lại 🔄
-                </button>
-              </div>
-            )}
+      {/* Special Requirements Section (Note của khách hàng & Admin/Quầy) */}
+      <div className="px-2 mb-6">
+        <CollapsibleRequirements booking={booking} />
+      </div>
 
-            {/* Action buttons based on photo status */}
-            {logic.startPhotoBase64 ? (
+      {/* Shift Extension Block */}
+      <div className="px-2 mb-6">
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Clock size={18} className="text-indigo-600" />
+            <div>
+              <span className="text-xs font-bold text-slate-700">Giờ tan ca: </span>
+              <span className="text-xs font-black text-indigo-700">
+                {logic.shiftExtension?.currentEndTime || '--:--'}
+              </span>
+              {logic.shiftExtension?.used && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-md">
+                  Đã dùng lượt gia hạn
+                </span>
+              )}
+            </div>
+          </div>
+          {logic.shiftExtension?.used ? (
+            <button
+              type="button"
+              disabled
+              className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
+            >
+              Đã dùng lượt gia hạn
+            </button>
+          ) : logic.shiftExtension?.canExtend ? (
+            <button
+              type="button"
+              onClick={() => setShowExtensionModal(true)}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm active:scale-95"
+            >
+              Gia hạn
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed border border-slate-200"
+              title={logic.shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : !logic.shiftExtension?.currentEndTime ? 'Chưa có giờ tan ca' : 'Không thể gia hạn'}
+            >
+              {logic.shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : 'Gia hạn'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Primary Action Button */}
+      {((!isTimerRunning && !isPaused) || isPrepping) ? (
+        <div className="px-6 mb-10">
+          <div className="space-y-4">
+            {[
+              {
+                label: 'Ảnh dép khách',
+                value: logic.guestSlipperPhotoBase64,
+                setter: logic.setGuestSlipperPhotoBase64,
+                onChange: handleSlipperFileUpload
+              },
+              {
+                label: 'Ảnh bắt đầu dịch vụ',
+                value: logic.startPhotoBase64,
+                setter: logic.setStartPhotoBase64,
+                onChange: handleFileUpload
+              }
+            ].map((photo, index) => (
+              <div key={photo.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-700">
+                    {index + 1}. {photo.label} {photo.value && '✅'}
+                  </span>
+
+                  {photo.value && (
+                    <button
+                      type="button"
+                      onClick={() => photo.setter(null)}
+                      className="text-[10px] font-bold text-rose-600 hover:underline"
+                    >
+                      Chụp lại 🔄
+                    </button>
+                  )}
+                </div>
+
+                {photo.value ? (
+                  <img
+                    src={photo.value}
+                    alt={photo.label}
+                    className="w-20 h-20 rounded-xl object-cover border-2 border-emerald-500"
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <label className={`relative flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                      logic.canStart
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <Camera size={16} />
+                      Chụp ảnh
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={photo.onChange}
+                        disabled={logic.isLoading || !logic.canStart}
+                      />
+                    </label>
+
+                    <label className="relative px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">
+                      Tải ảnh
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={photo.onChange}
+                        disabled={logic.isLoading || !logic.canStart}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {logic.guestSlipperPhotoBase64 && logic.startPhotoBase64 ? (
               <button
                 onClick={handleStartTimer}
-                disabled={logic.isLoading}
+                disabled={logic.isLoading || !logic.canStart}
                 className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40"
               >
                 <Play fill="white" size={24} />
                 {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
               </button>
             ) : (
-              <div className="flex gap-3">
-                <label className="relative flex-[2] h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:active:scale-100">
-                  <Camera size={18} />
-                  {logic.canStart ? 'CHỤP ẢNH ĐỂ BẮT ĐẦU' : 'CHƯA ĐẾN GIỜ'}
-                  <input type="file" accept="image/*" capture="environment" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
-                </label>
-                <label className="relative flex-[0.8] h-16 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.98] disabled:opacity-40">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Tải ảnh</span>
-                  <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleFileUpload} disabled={logic.isLoading || !logic.canStart} />
-                </label>
-              </div>
+              <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                <Camera size={18} /> Chụp đủ 2 ảnh để bắt đầu
+              </button>
             )}
 
             {!logic.canStart && logic.allowedStartTime && (
@@ -462,27 +576,17 @@ export function ScreenTimer({ logic }: { logic: any }) {
               </motion.p>
             )}
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2">
-            <div className="flex items-center justify-center gap-2 py-4 bg-emerald-50 border border-emerald-200 rounded-2xl w-full">
-              <Clock size={16} className="text-emerald-600 animate-pulse" />
-              <span className="text-sm font-bold text-emerald-700">Hệ thống tự động hoàn tất khi hết giờ</span>
-            </div>
-            
-            {logic.booking?.nextBookingId && (
-              <div className="flex items-center justify-center gap-2 py-2 w-full mt-2 bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
-                <BellRing size={14} className="text-amber-600 animate-bounce" />
-                <span className="text-[11px] font-bold text-amber-700">
-                  Tiếp: {logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
-                </span>
-              </div>
-            )}
+        </div>
+      ) : logic.booking?.nextBookingId ? (
+        <div className="px-6 mb-6">
+          <div className="flex items-center justify-center gap-2 py-2 w-full bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
+            <BellRing size={14} className="text-amber-600 animate-bounce" />
+            <span className="text-[11px] font-bold text-amber-700">
+              Tiếp: {logic.booking.nextServiceName || 'Đơn mới'}{logic.booking.nextStartTime ? ` • ${logic.booking.nextStartTime}` : ''}
+            </span>
           </div>
-        )}
-      </div>
-
-      {/* Special Requirements Section */}
-      <CollapsibleRequirements booking={booking} />
+        </div>
+      ) : null}
 
       {/* 2x2 Action Grid + Emergency Wide - ONLY SHOW WHEN RUNNING OR PAUSED */}
       {(isTimerRunning || isPaused) && (
@@ -535,6 +639,14 @@ export function ScreenTimer({ logic }: { logic: any }) {
       )}
 
       {/* WebRTC Camera Overlay */}
+
+      <ShiftExtensionModal
+        isOpen={showExtensionModal}
+        onClose={() => setShowExtensionModal(false)}
+        currentEndTime={logic.shiftExtension?.currentEndTime ?? null}
+        onConfirm={logic.shiftExtension?.extend ?? (async () => false)}
+        isSubmitting={logic.shiftExtension?.isSubmitting ?? false}
+      />
 
     </div>
   );

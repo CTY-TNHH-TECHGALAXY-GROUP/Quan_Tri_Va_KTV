@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
@@ -637,7 +638,7 @@ export const QuickDispatchTable = ({
       if (isAllSelected) setSelectedGroupKeys([]);
       else setSelectedGroupKeys(Array.from(initialGroups.keys()));
   };
-  const parentPrefix = billCode ? billCode.split('-')[0] : 'XXX';
+  const parentPrefix = billCode ? displayBookingCode(billCode) : 'XXX';
   // Assign subSuffix based on customerGroupId (or groupKey if no customerGroupId)
   const persistentSuffixesRef = useRef(new Map<string, string>());
 
@@ -774,7 +775,7 @@ export const QuickDispatchTable = ({
                                    {billCode && (
                                      <>
                                        <span className="text-xs text-slate-400 font-bold">•</span>
-                                       <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode.split('-')[0]}</span></span>
+                                       <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{displayBookingCode(billCode)}</span></span>
                                      </>
                                    )}
                                    
@@ -1467,6 +1468,11 @@ const ServiceGroupCard = ({
                             {fmtHours(turn.net_hours || 0)}
                           </span>
                         )}
+                        {turn.shift_end_time && (
+                          <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold border border-slate-200" title="Giờ tan làm của KTV">
+                            Tan: {turn.shift_end_time}
+                          </span>
+                        )}
                       </div>
                       <span className={`text-[10px] font-semibold ${isUsed ? 'text-indigo-500' : turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>{isUsed ? '🔄 Đã gán ở DV khác' : turn.status === 'working' ? `⌛ Đến ${fmtTime(turn.estimated_end_time)}` : turn.status === 'assigned' ? `🔒 Đã xếp lịch${turn.estimated_end_time ? ` • Rảnh ${fmtTime(turn.estimated_end_time)}` : ''}` : '✅ Sẵn sàng'}</span>
                     </div>); 
@@ -1826,7 +1832,7 @@ const ServiceGroupCard = ({
             
             {/* Footer */}
             <div className="text-center py-4 border-t border-gray-200 mt-2">
-                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Spa Ngân Hà</p>
+                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Oria Spa</p>
             </div>
           </motion.div>
         </div>

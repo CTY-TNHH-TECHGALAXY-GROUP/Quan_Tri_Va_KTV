@@ -20,27 +20,8 @@ const GPS_HIGH_ACCURACY = true;
 // VN timezone offset
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 
-// Shift start and end times (must match API SHIFT_TYPES config)
-const SHIFT_START_TIMES: Record<string, string> = {
-    SHIFT_1: '09:00',
-    SHIFT_2: '11:00',
-    SHIFT_3: '17:00',
-    DEV_SHIFT: '09:00',
-    FREE: '00:00',
-    REQUEST: '00:00',
-    SUPPORT: '00:00',
-    VIP: '00:00',
-};
-const SHIFT_END_TIMES: Record<string, string> = {
-    SHIFT_1: '17:00',
-    SHIFT_2: '19:00',
-    SHIFT_3: '00:00', // treated as 24:00 of the same day
-    DEV_SHIFT: '21:00',
-    FREE: '00:00',
-    REQUEST: '00:00',
-    SUPPORT: '00:00',
-    VIP: '00:00',
-};
+import { SHIFT_TYPES } from '@/lib/shift.constants';
+import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 // --- TYPES ---
 export type CheckStatus = 'IDLE' | 'LOADING_GPS' | 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CHECKED_OUT';
@@ -93,7 +74,7 @@ export const useKTVAttendance = () => {
     const [minPhotoBrightness, setMinPhotoBrightness] = useState(40);
     const [workType, setWorkType] = useState<string>('TYPE_A');
     const [availableUntil, setAvailableUntil] = useState<string | null>(null);
-    const [showOvertimeFeature, setShowOvertimeFeature] = useState(false);
+    const [showOvertimeFeature, setShowOvertimeFeature] = useState(true);
     const [incompleteTasksCount, setIncompleteTasksCount] = useState(0);
     // Nợ phòng (bàn giao chưa nộp / phòng đang dọn dở) — chặn ở bước tan ca.
     const [roomDebt, setRoomDebt] = useState<{ handover: number; cleaning: number; total: number; items: any[] }>(
@@ -105,14 +86,17 @@ export const useKTVAttendance = () => {
         message: ''
     });
 
+    const shiftExtension = useShiftExtension(user?.code || user?.id);
+
     useEffect(() => { setMounted(true); }, []);
 
     // --- Fetch current attendance status ---
     const refreshAttendanceStatus = useCallback(async () => {
         if (!user?.id) return;
         try {
+                const targetEmployeeId = user.code || user.id;
                 const [statusRes, settingsRes, configRes] = await Promise.all([
-                    apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(user.id)).catch((err) => {
+                    apiClient.get<any>(API.KTV.ATTENDANCE_STATUS(targetEmployeeId)).catch((err) => {
                         console.error(`❌ [Attendance] Status API returned error:`, err);
                         return { success: false, checkStatus: 'IDLE', record: null, workType: 'TYPE_A' };
                     }),
@@ -122,11 +106,11 @@ export const useKTVAttendance = () => {
                 
                 if (statusRes.success) {
                     if (statusRes.workType) setWorkType(statusRes.workType);
-                    if (statusRes.availableUntil) setAvailableUntil(statusRes.availableUntil);
+                    setAvailableUntil(statusRes.availableUntil ?? null);
                     if (statusRes.incompleteTasksCount !== undefined) setIncompleteTasksCount(statusRes.incompleteTasksCount);
                     if (statusRes.roomDebt) setRoomDebt(statusRes.roomDebt);
                     if (statusRes.guestArrivalLock) setGuestArrivalLock(statusRes.guestArrivalLock);
-                    if (statusRes.todayRegistration) setTodayRegistration(statusRes.todayRegistration);
+                    setTodayRegistration(statusRes.todayRegistration ?? null);
                     setCanRequestWithdraw(statusRes.canRequestWithdraw !== false);
                     setWithdrawWalletOff(statusRes.withdrawWalletOff === true);
                 }
@@ -145,7 +129,9 @@ export const useKTVAttendance = () => {
 
                 if (configRes.success && configRes.data) {
                     const raw = configRes.data.show_overtime_on_dashboard;
-                    setShowOvertimeFeature(raw === true || raw === 'true');
+                    setShowOvertimeFeature(raw === undefined || raw === null ? true : (raw === true || raw === 'true'));
+                } else {
+                    setShowOvertimeFeature(true);
                 }
 
                 if (statusRes.success && statusRes.checkStatus) {
@@ -280,7 +266,7 @@ export const useKTVAttendance = () => {
             return false;
         }
 
-        const startTimeStr = SHIFT_START_TIMES[activeShiftType];
+        const startTimeStr = SHIFT_TYPES[activeShiftType as keyof typeof SHIFT_TYPES]?.start;
         if (!startTimeStr) {
             setIsLate(false);
             return false;
@@ -355,6 +341,13 @@ export const useKTVAttendance = () => {
             } else {
                 setCheckStatus('PENDING');
             }
+            // Refresh status & shift extension ngay sau khi điểm danh thành công
+            try {
+                await refreshAttendanceStatus();
+                await shiftExtension.refresh();
+            } catch (refErr) {
+                console.error('❌ [Attendance] Non-blocking refresh error:', refErr);
+            }
         } catch (err: any) {
             const errorMessage = err.message || 'Lỗi không xác định';
             setErrorMsg(errorMessage);
@@ -365,7 +358,7 @@ export const useKTVAttendance = () => {
                 setCheckStatus('CONFIRMED');
             }
         }
-    }, [user?.id, addToast]);
+    }, [user?.id, addToast, refreshAttendanceStatus, shiftExtension]);
 
     
     const handleAdjustmentSubmit = async () => {
@@ -414,7 +407,7 @@ export const useKTVAttendance = () => {
             return { canCheckOut: true, checkoutBlockedUntil: null };
         }
 
-        const endTimeStr = SHIFT_END_TIMES[activeShiftType];
+        const endTimeStr = SHIFT_TYPES[activeShiftType as keyof typeof SHIFT_TYPES]?.end;
         if (!endTimeStr) return { canCheckOut: true, checkoutBlockedUntil: null };
 
         const vnNow = new Date(Date.now() + VN_OFFSET_MS);
@@ -497,5 +490,6 @@ export const useKTVAttendance = () => {
         incompleteTasksCount,
         roomDebt,
         guestArrivalLock,
+        shiftExtension,
     };
 };

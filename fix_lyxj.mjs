@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const supabase = createClient(supabaseUrl, process.env.SUPABASE_SECRET_KEY);
 async function main() {
   const { data: b } = await supabase.from('Bookings').select('id, billCode, parent_booking_id, sub_suffix, status').ilike('billCode', '%LYXJ%');
   const ids = b.map(x => x.id);
@@ -17,12 +17,12 @@ async function main() {
     const bookingId = gid.split('_guest_')[0];
     const index = parseInt(gid.split('_guest_')[1] || '1');
     const suffixMatch = bookingId.match(/-([A-Z])$/);
-    const label = suffixMatch ? suffixMatch[1] : 'Khách ' + index;
+    const label = suffixMatch ? suffixMatch[1] : 'Khï¿½ch ' + index;
     return {
       id: gid,
       booking_id: bookingId,
       guest_index: index,
-      guest_label: 'Khách ' + label,
+      guest_label: 'Khï¿½ch ' + label,
       status: 'WAITING'
     };
   });

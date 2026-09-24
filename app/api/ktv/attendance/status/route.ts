@@ -6,6 +6,7 @@ import { resolveAttendanceStatus } from '@/lib/attendance/resolveAttendanceStatu
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
+import { requireStaffMatches } from '@/lib/auth-server';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -22,6 +23,9 @@ export async function GET(request: Request) {
         if (!employeeId) {
             return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
         }
+
+        const mismatch = await requireStaffMatches(employeeId);
+        if (mismatch) return mismatch;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) {
@@ -132,7 +136,7 @@ export async function GET(request: Request) {
                 // late_expected_time is required: the check-in dialog shows the EFFECTIVE
                 // arrival time (late report wins). Without it the dialog fell back to the
                 // original expected_time and flagged "late" someone who reported late on time.
-                .select('status, expected_time, late_expected_time, check_in_at, penalty_applied')
+                .select('status, expected_time, expected_end_time, late_expected_time, check_in_at, penalty_applied')
                 .eq('staff_id', userRow.code)
                 .eq('work_date', todayStr)
                 .maybeSingle();
@@ -253,7 +257,17 @@ export async function GET(request: Request) {
             }
         }
 
-        // ─── Determine status from records ───
+        // ─── Determine status from records & shiftExtension ───
+        const overtimeRecord = (records || []).find(
+            (record: any) => record.checkType === 'OVERTIME' && record.status === 'CONFIRMED'
+        );
+
+        const shiftExtension = {
+            used: !!overtimeRecord,
+            currentEndTime: overtimeRecord?.estimatedEndTime ?? null,
+            usedAt: overtimeRecord?.checkedAt ?? null,
+        };
+
         if (!records || records.length === 0) {
             // CƠ CHẾ BẢO VỆ: Nếu KTV chưa điểm danh hôm nay nhưng bị kẹt AT_VENUE ở bảng Staff (do quên tan ca hôm trước) -> Auto reset về OFFLINE
             if (userRow?.code) {
@@ -278,11 +292,11 @@ export async function GET(request: Request) {
                     }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

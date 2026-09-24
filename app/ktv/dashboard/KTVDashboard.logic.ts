@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { useToast } from '@/components/ui/Toast';
+import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVER';
 
@@ -60,6 +61,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const { addToast } = useToast();
     const ktvIdRaw = config?.testTechCode || user?.code || user?.id;
     const ktvId = ktvIdRaw ? ktvIdRaw.toUpperCase() : undefined;
+    const shiftExtension = useShiftExtension(ktvId);
     const canViewWallet = hasPermission('ktv_wallet');
     const [screen, setScreenState] = useState<ScreenState>('DASHBOARD');
     const setScreen = useCallback((val: ScreenState) => {
@@ -195,6 +197,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // Type D whose points wallet is switched off: the tile shows the maintenance
     // notice instead of disappearing (server answers applicable + disabled).
     const [officeScoreDisabled, setOfficeScoreDisabled] = useState(false);
+    const [officeScoreLoading, setOfficeScoreLoading] = useState(false);
+    const [officeScoreError, setOfficeScoreError] = useState<string | null>(null);
+    const [officeScoreReloadKey, setOfficeScoreReloadKey] = useState(0);
     /**
      * Có ví nào đang mở không. `null` = chưa biết (đang nạp hoặc nạp hỏng).
      *
@@ -232,6 +237,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // 📸 Selfie photo before starting service
     const [startPhotoBase64, setStartPhotoBase64State] = useState<string | null>(null);
+    const [guestSlipperPhotoBase64, setGuestSlipperPhotoBase64State] = useState<string | null>(null);
 
     const setStartPhotoBase64 = useCallback((val: string | null) => {
         setStartPhotoBase64State(val);
@@ -246,22 +252,36 @@ export function useKTVDashboard(config?: DashboardConfig) {
         } catch(e) {}
     }, [ktvId]);
 
+    const setGuestSlipperPhotoBase64 = useCallback((val: string | null) => {
+        setGuestSlipperPhotoBase64State(val);
+        if (!bookingRef.current?.id || !ktvId) return;
+        try {
+            const key = `ktv_slipper_photo_${ktvId}_${bookingRef.current.id}_${activeSegmentIndexRef.current}`;
+            if (val) {
+                localStorage.setItem(key, val);
+            } else {
+                localStorage.removeItem(key);
+            }
+        } catch(e) {}
+    }, [ktvId]);
+
     // Restore temporary selfie photo from localStorage on load / booking / segment change
     useEffect(() => {
         if (!booking?.id || !ktvId) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
             return;
         }
         try {
             const key = `ktv_start_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
+            const slipperKey = `ktv_slipper_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
             const saved = localStorage.getItem(key);
-            if (saved) {
-                setStartPhotoBase64State(saved);
-            } else {
-                setStartPhotoBase64State(null);
-            }
+            const savedSlipper = localStorage.getItem(slipperKey);
+            setStartPhotoBase64State(saved || null);
+            setGuestSlipperPhotoBase64State(savedSlipper || null);
         } catch(e) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
         }
     }, [booking?.id, ktvId, activeSegmentIndex]);
 
@@ -337,17 +357,6 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     });
                 }
 
-                // Điểm Office — API tự nhận diện KTV qua phiên đăng nhập, không nhận staffId
-                // từ client để KTV không xem được điểm của người khác.
-                try {
-                    const officeJson = await apiClient.get<any>('/api/ktv/office-score');
-                    setOfficeScore(officeJson?.applicable && !officeJson?.disabled ? officeJson.data : null);
-                    setOfficeScoreDisabled(officeJson?.disabled === true);
-                } catch {
-                    setOfficeScore(null); // không có điểm Office thì ẩn ô, không chặn dashboard
-                    setOfficeScoreDisabled(false);
-                }
-
                 // Cùng một nguồn với trang Ví (WalletAccessService) để hai màn không
                 // nói hai chuyện. Trang Ví coi là "bảo trì" khi cả ví Tua lẫn ví
                 // Bonus đều tắt — ở đây dùng đúng điều kiện đó.
@@ -363,6 +372,51 @@ export function useKTVDashboard(config?: DashboardConfig) {
         };
         fetchData();
     }, [ktvId]);
+
+    // 🔄 Tách riêng effect fetch Office score độc lập
+    useEffect(() => {
+        let alive = true;
+        if (!ktvId) {
+            setOfficeScore(null);
+            setOfficeScoreDisabled(false);
+            setOfficeScoreLoading(false);
+            setOfficeScoreError(null);
+            return;
+        }
+
+        const fetchOffice = async () => {
+            setOfficeScoreLoading(true);
+            setOfficeScoreError(null);
+            try {
+                const officeJson = await apiClient.get<any>('/api/ktv/office-score');
+                if (!alive) return;
+                if (officeJson?.applicable) {
+                    if (officeJson.disabled) {
+                        setOfficeScore(null);
+                        setOfficeScoreDisabled(true);
+                    } else {
+                        setOfficeScore(officeJson.data);
+                        setOfficeScoreDisabled(false);
+                    }
+                } else {
+                    setOfficeScore(null);
+                    setOfficeScoreDisabled(false);
+                }
+            } catch (err: any) {
+                if (!alive) return;
+                setOfficeScore(null);
+                setOfficeScoreDisabled(false);
+                setOfficeScoreError(err?.message || 'Chưa tải được điểm Office');
+            } finally {
+                if (alive) {
+                    setOfficeScoreLoading(false);
+                }
+            }
+        };
+
+        fetchOffice();
+        return () => { alive = false; };
+    }, [ktvId, officeScoreReloadKey]);
 
 
 
@@ -1973,11 +2027,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 techCode: ktvId,
                 action: 'START_TIMER',
                 shouldMerge: shouldMerge,
-                photoBase64: startPhotoBase64
+                activeSegmentIndex,
+                startPhotoBase64,
+                guestSlipperPhotoBase64
             });
             if (res.success) {
-                // 📸 Clean up check-in photo from preview and localStorage
+                // 📸 Clean up check-in photos from preview and localStorage
                 setStartPhotoBase64(null);
+                setGuestSlipperPhotoBase64(null);
 
                 // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
                 supabase.channel('dispatch_board_realtime').send({
@@ -2762,6 +2819,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         workType,
         startPhotoBase64,
         setStartPhotoBase64,
+        guestSlipperPhotoBase64,
+        setGuestSlipperPhotoBase64,
         // Room procedures & issue reporting
         prepProcedure,
         cleanProcedure,
@@ -2777,6 +2836,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         turnData,
         officeScore,
         officeScoreDisabled,
+        officeScoreLoading,
+        officeScoreError,
+        reloadOfficeScore: () => setOfficeScoreReloadKey(k => k + 1),
         walletAnyOn,
         kpiData,
         disciplineStatus,
@@ -2820,7 +2882,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } catch (e) {
                 console.error('Error fetching wallet timeline:', e);
             }
-        }
+        },
+        shiftExtension,
     };
 }
 

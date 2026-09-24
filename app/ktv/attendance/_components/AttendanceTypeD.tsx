@@ -31,6 +31,9 @@ interface Props {
   /** Nợ phòng: bàn giao chưa nộp / phòng đang dọn dở. Còn nợ là chưa cho tan ca. */
   roomDebt?: { handover: number; cleaning: number; total: number; items: any[] };
   guestArrivalLock?: { active: boolean; message: string };
+  shiftExtension?: any;
+  onOpenShiftExtensionModal?: () => void;
+  showOvertimeFeature?: boolean;
 }
 
 /** 'HH:MM:SS' hoặc 'HH:MM' đều về 'HH:MM'. */
@@ -48,7 +51,19 @@ const dienGiaiPhut = (n: number) => {
   return [h ? `${h} giờ` : '', m ? `${m} phút` : ''].filter(Boolean).join(' ') || '0 phút';
 };
 
-export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0, roomDebt, guestArrivalLock }: Props) {
+export default function AttendanceTypeD({
+  ktvId,
+  checkStatus,
+  onCheckIn,
+  onCheckOut,
+  onRefreshStatus,
+  incompleteTasksCount = 0,
+  roomDebt,
+  guestArrivalLock,
+  shiftExtension,
+  onOpenShiftExtensionModal,
+  showOvertimeFeature = true
+}: Props) {
   const { addToast } = useToast();
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +233,7 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
   // Cờ tắt thì không thể ở trạng thái "đang chờ đơn": không có đường nào bật.
   const isOnline = canOnCall && onlineStatus === 'ONLINE';
   // Ngăn lỗi kẹt trạng thái AT_VENUE sang ngày mới: Chỉ khi đã điểm danh hôm nay mới tính là AT_VENUE.
-  const isAtVenue = onlineStatus === 'AT_VENUE' && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
+  const isAtVenue = (onlineStatus === 'AT_VENUE' || checkStatus === 'CONFIRMED') && checkStatus !== 'IDLE' && checkStatus !== 'CHECKED_OUT';
   const isOffline = !isOnline && !isAtVenue;
 
   // OFF day + has on-call permission: turn on-call FIRST, then "Oria Xin chào" appears.
@@ -268,6 +283,16 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
              canOnCall ? 'Chưa bật nhận đơn. Hãy bật khi bạn rảnh.'
                        : 'Bấm "Oria Xin chào" khi bạn tới tiệm để bắt đầu ca.'}
         </p>
+        {isAtVenue && shiftExtension?.currentEndTime && (
+          <p className="text-[13px] font-bold text-indigo-600 mt-2 flex items-center justify-center gap-1.5">
+            <Clock size={15} /> Giờ về dự kiến: {shiftExtension.currentEndTime}
+            {shiftExtension.used && (
+              <span className="ml-1 text-[11px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                Đã gia hạn
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* ─── BÁO ĐI MUỘN ─── */}
@@ -362,9 +387,36 @@ export default function AttendanceTypeD({ ktvId, checkStatus, onCheckIn, onCheck
             </>
         )}
 
-        {/* Nếu đã tới tiệm (AT_VENUE) -> Tan Ca */}
+        {/* Nếu đã tới tiệm (AT_VENUE) -> Gia hạn ca & Tan Ca */}
         {isAtVenue && (
-             <div className="w-full">
+             <div className="w-full space-y-3">
+              {/* Nút Gia hạn giờ làm (TRÊN nút tan ca) */}
+              {showOvertimeFeature && (
+                shiftExtension?.used ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
+                  >
+                    <Clock size={18} /> Đã dùng lượt gia hạn ({shiftExtension.currentEndTime})
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenShiftExtensionModal}
+                    disabled={!shiftExtension?.canExtend}
+                    className={`w-full py-3.5 font-bold text-base rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                      shiftExtension?.canExtend
+                        ? 'bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md shadow-indigo-200'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                    }`}
+                    title={shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : !shiftExtension?.currentEndTime ? 'Chưa đăng ký giờ tan làm' : !shiftExtension?.canExtend ? 'Không thể gia hạn ca này' : undefined}
+                  >
+                    <Clock size={18} /> {shiftExtension?.deadlineReached ? 'Đã quá giờ gia hạn' : `Gia hạn giờ làm ${!shiftExtension?.currentEndTime ? '(Chưa có giờ tan)' : ''}`}
+                  </button>
+                )
+              )}
+
                <button
                   onClick={() => {
                     if (incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0 || guestArrivalLock?.active) return;

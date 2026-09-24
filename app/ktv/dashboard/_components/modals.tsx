@@ -14,6 +14,7 @@ import { roomLabel } from '@/lib/room-label';
 import { fmtHours } from '@/lib/hours-format';
 import { THEME } from '../_shared/ui';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { officeScoreText } from '../OfficeScore.i18n';
 
 /** Các hộp thoại của KTV Dashboard. Mỗi cái tự quản state riêng, nhận dữ liệu qua props. */
 
@@ -576,9 +577,16 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
 
   const entry = byDate[selected];
   const isToday = selected === today;
+  const isOffToday = isToday && view?.isOffToday === true;
   // Ngày đi làm mà không có phiếu trừ nào vẫn là 100 — đúng nguyên tắc "bắt đầu
-  // từ 100, trừ dần". Ngày không đi làm thì không có điểm để hiện.
-  const dayScore = entry ? entry.dayScore : (isToday ? (view?.todayScore ?? 100) : null);
+  // từ 100, trừ dần". Ngày không đi làm hoặc ngày OFF thì không có điểm hôm nay.
+  const dayScore = isOffToday
+    ? null
+    : entry
+      ? entry.dayScore
+      : isToday
+        ? (view?.todayScore ?? null)
+        : null;
   const hits = entry ? entry.hits : (isToday ? (view?.todayHits || []) : []);
   // Phiếu đã được quản lý hoàn điểm trong đúng ngày đang xem. Giữ lại cho KTV
   // thấy "trừ rồi hoàn", chứ phiếu tự biến mất thì họ không biết đã được xử lý.
@@ -668,10 +676,14 @@ export function OfficeScoreModal({ data, onClose }: { data: any, onClose: () => 
                 {isToday ? 'Hôm nay' : 'Điểm ngày'}
               </p>
               <p className="text-2xl font-black text-slate-800 mt-1">
-                {dayScore === null ? '—' : `${dayScore}/100`}
+                {isOffToday
+                  ? officeScoreText.offToday
+                  : dayScore === null ? '—' : `${dayScore}/100`}
               </p>
               <p className="text-[11px] text-slate-400 font-bold mt-1">
-                {dayScore === null
+                {isOffToday
+                  ? officeScoreText.viewHistory
+                  : dayScore === null
                   ? 'Ngày này bạn không đi làm'
                   : hits.length === 0 ? 'Chưa bị trừ lỗi nào' : `${hits.length} lỗi bị trừ`}
               </p>

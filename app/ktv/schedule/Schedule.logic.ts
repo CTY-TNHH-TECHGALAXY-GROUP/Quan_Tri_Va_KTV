@@ -39,6 +39,21 @@ export interface ShiftTypes {
 
 export type ScheduleTab = 'off' | 'shift';
 
+export interface PendingSubmit {
+    type: 'CHOOSE' | 'WORKING' | 'OFF';
+    dates: string[];
+    expectedTime: string;
+    expectedEndTime: string;
+}
+
+export interface EditingReg {
+    date: string;
+    expected_time: string;
+    expected_end_time: string;
+    status: string;
+    step?: 'EDIT' | 'CONFIRM_CANCEL';
+}
+
 export const useKTVSchedule = () => {
     const { hasPermission, user, logout } = useAuth();
     const { addToast } = useToast();
@@ -50,20 +65,18 @@ export const useKTVSchedule = () => {
     // Tab state
     const [activeTab, setActiveTab] = useState<ScheduleTab>('off');
 
-    // ── OFF state ──
+    // ── OFF & Work state ──
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
+    const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
     const [isSubmittingOff, setIsSubmittingOff] = useState(false);
     const [leaveList, setLeaveList] = useState<LeaveRequest[]>([]);
     const [workRegistrationList, setWorkRegistrationList] = useState<any[]>([]);
     
-    // D1: Giờ riêng từng ngày
-    const [expectedTimes, setExpectedTimes] = useState<Record<string, string>>({});
-    
-    // A1: Màn xác nhận đăng ký
-    const [pendingSubmit, setPendingSubmit] = useState<{ type: 'WORKING' | 'OFF', dates: string[] } | null>(null);
+    // Unified submit modal: CHOOSE | WORKING | OFF
+    const [pendingSubmit, setPendingSubmit] = useState<PendingSubmit | null>(null);
 
-    // E1: Màn sửa lịch
-    const [editingReg, setEditingReg] = useState<{ date: string, expected_time: string, status: string, step?: 'EDIT' | 'CONFIRM_CANCEL' } | null>(null);
+    // Edit registration modal
+    const [editingReg, setEditingReg] = useState<EditingReg | null>(null);
 
     const [isLoadingLeaves, setIsLoadingLeaves] = useState(false);
 
@@ -191,6 +204,22 @@ export const useKTVSchedule = () => {
         });
     };
 
+    const clearSelectedDates = () => {
+        setSelectedDates([]);
+        setIsMultiSelectMode(false);
+    };
+
+    const openRegistration = (dates: string[]) => {
+        if (!dates.length || !user?.id) return;
+        setOffError(null);
+        setPendingSubmit({
+            type: 'CHOOSE',
+            dates,
+            expectedTime: '10:00',
+            expectedEndTime: '22:00'
+        });
+    };
+
     // Calendar navigation
     const goToPrevMonth = useCallback(() => {
         setCalendarMonth(prev => {
@@ -211,10 +240,10 @@ export const useKTVSchedule = () => {
         setCalendarMonth({ year: now.getFullYear(), month: now.getMonth() });
     }, []);
 
-    // ── Submit OFF request ──
+    // ── Submit WORK / OFF registration ──
     const handleSubmitWorkRegistration = () => {
         if (selectedDates.length === 0 || !user?.id) return;
-        setPendingSubmit({ type: 'WORKING', dates: selectedDates });
+        openRegistration(selectedDates);
     };
 
     const handleCancelWorkRegistration = async (dateStr: string) => {
@@ -227,7 +256,7 @@ export const useKTVSchedule = () => {
                 type: "CANCEL",
                 dates: [dateStr],
             });
-            fetchLeaveList();
+            await fetchLeaveList();
             setEditingReg(null);
             // Server trả về `penalised` nếu bỏ ca sau hạn miễn phạt (12:00 hôm trước).
             const bịPhạt = (res as any)?.penalised?.[0];
@@ -245,17 +274,28 @@ export const useKTVSchedule = () => {
 
     const handleSaveEditRegistration = async () => {
         if (!editingReg) return;
+        const startTime = (editingReg.expected_time || '').trim().slice(0, 5);
+        const endTime = (editingReg.expected_end_time || '').trim().slice(0, 5);
+
+        if (!startTime || !endTime) {
+            setOffError("Vui lòng nhập đầy đủ giờ đến tiệm và giờ tan làm");
+            return;
+        }
+
         try {
             setIsSubmittingOff(true);
             setOffError(null);
             await apiClient.post(API.KTV.DAILY_REGISTRATION, {
                 type: "WORKING",
                 entries: [
-                    // DB `time` comes back as 'HH:mm:ss'; the API only takes 'HH:mm'.
-                    { work_date: editingReg.date, expected_time: (editingReg.expected_time || '').slice(0, 5) }
+                    {
+                        work_date: editingReg.date,
+                        expected_time: startTime,
+                        expected_end_time: endTime
+                    }
                 ]
             });
-            fetchLeaveList();
+            await fetchLeaveList();
             setEditingReg(null);
             addToast("Cập nhật lịch thành công", "success");
         } catch(err: any) {
@@ -268,9 +308,11 @@ export const useKTVSchedule = () => {
     const confirmSubmitWorkRegistration = async () => {
         if (!pendingSubmit || pendingSubmit.type !== 'WORKING' || !user?.id) return;
         
-        const missingTimes = pendingSubmit.dates.filter(d => !expectedTimes[d]);
-        if (missingTimes.length > 0) {
-            setOffError("Vui lòng nhập giờ đến tiệm cho tất cả các ngày đã chọn");
+        const startTime = (pendingSubmit.expectedTime || '').trim().slice(0, 5);
+        const endTime = (pendingSubmit.expectedEndTime || '').trim().slice(0, 5);
+
+        if (!startTime || !endTime) {
+            setOffError("Vui lòng nhập đầy đủ giờ đi làm và giờ tan làm");
             return;
         }
 
@@ -280,7 +322,8 @@ export const useKTVSchedule = () => {
         try {
             const entries = pendingSubmit.dates.map(d => ({
                 work_date: d,
-                expected_time: expectedTimes[d]
+                expected_time: startTime,
+                expected_end_time: endTime
             }));
 
             await apiClient.post(API.KTV.DAILY_REGISTRATION, {
@@ -289,9 +332,10 @@ export const useKTVSchedule = () => {
             });
             setOffSuccess(true);
             setSelectedDates([]);
-            setExpectedTimes({});
+            setIsMultiSelectMode(false);
             setPendingSubmit(null);
-            fetchLeaveList();
+            await fetchLeaveList();
+            addToast("Đăng ký đi làm thành công", "success");
             setTimeout(() => setOffSuccess(false), 3000);
         } catch (err: any) {
             setOffError(err.message || "Có lỗi xảy ra");
@@ -301,11 +345,17 @@ export const useKTVSchedule = () => {
     };
 
     const handleSubmitOff = async (isConfirming?: 'extension' | 'sudden_off') => {
-        if (selectedDates.length === 0 || !user?.id) return;
+        const datesToSubmit = pendingSubmit?.dates || selectedDates;
+        if (datesToSubmit.length === 0 || !user?.id) return;
         
         // Modal Flow cho OFF
         if (!isConfirming && !pendingSubmit) {
-            setPendingSubmit({ type: 'OFF', dates: selectedDates });
+            setPendingSubmit({
+                type: 'OFF',
+                dates: selectedDates,
+                expectedTime: '',
+                expectedEndTime: ''
+            });
             return;
         }
 
@@ -318,18 +368,20 @@ export const useKTVSchedule = () => {
             if (user.work_type === 'TYPE_D') {
                 await apiClient.post(API.KTV.DAILY_REGISTRATION, {
                     type: "OFF",
-                    dates: pendingSubmit?.dates || selectedDates
+                    dates: datesToSubmit
                 });
                 setOffSuccess(true);
                 setSelectedDates([]);
+                setIsMultiSelectMode(false);
                 setPendingSubmit(null);
-                fetchLeaveList();
+                await fetchLeaveList();
+                addToast("Đăng ký nghỉ OFF thành công", "success");
                 setTimeout(() => setOffSuccess(false), 3000);
             } else {
                 const payload: any = {
                     employeeId: user.id,
                     employeeName: user.name || user.id,
-                    dates: pendingSubmit?.dates || selectedDates,
+                    dates: datesToSubmit,
                     reason: 'Xin nghỉ',
                 };
                 if (isConfirming === 'extension') payload.confirmExtension = true;
@@ -350,8 +402,9 @@ export const useKTVSchedule = () => {
                 setConfirmDialog(null);
                 setOffSuccess(true);
                 setSelectedDates([]);
+                setIsMultiSelectMode(false);
                 setPendingSubmit(null);
-                fetchLeaveList();
+                await fetchLeaveList();
                 setTimeout(() => setOffSuccess(false), 3000);
             }
         } catch (err: any) {
@@ -404,9 +457,14 @@ export const useKTVSchedule = () => {
         activeTab,
         setActiveTab,
 
-        // OFF
+        // OFF & Work
         selectedDates,
+        setSelectedDates,
         toggleDate,
+        clearSelectedDates,
+        isMultiSelectMode,
+        setIsMultiSelectMode,
+        openRegistration,
         isSubmittingOff,
         leaveList,
         workRegistrationList,
@@ -420,8 +478,6 @@ export const useKTVSchedule = () => {
         confirmDialog,
         setConfirmDialog,
         
-        expectedTimes,
-        setExpectedTimes,
         pendingSubmit,
         setPendingSubmit,
         editingReg,

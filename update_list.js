@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 async function run() {
   const { data, error } = await supabase
     .from('Bookings')
@@ -21,7 +21,7 @@ async function run() {
   
   console.log('Total bookings combined:', combined.length);
   
-  let md = '| Ngu?n ghi nh?n | Mã Bill | Tên Khách Hàng | S? Ði?n Tho?i | Email | Ngày Ð?t | Gi? H?n |\n';
+  let md = '| Ngu?n ghi nh?n | Mï¿½ Bill | Tï¿½n Khï¿½ch Hï¿½ng | S? ï¿½i?n Tho?i | Email | Ngï¿½y ï¿½?t | Gi? H?n |\n';
   md += '|---|---|---|---|---|---|---|\n';
   
   combined.sort((a, b) => new Date(b.bookingDate || 0) - new Date(a.bookingDate || 0));

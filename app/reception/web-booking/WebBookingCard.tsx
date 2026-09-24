@@ -1,4 +1,5 @@
 'use client';
+import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.2;
@@ -123,7 +124,7 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-xs font-black text-gray-400 bg-gray-50 px-2 py-0.5 rounded-lg shrink-0">
-              {(booking.billCode || '').split('-')[0]}
+              {displayBookingCode(booking.billCode)}
             </span>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.badgeBg} ${cfg.color} flex items-center gap-1 shrink-0`}>
               <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />

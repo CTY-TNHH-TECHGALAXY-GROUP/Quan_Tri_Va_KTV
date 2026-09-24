@@ -9,6 +9,7 @@ export interface WorkSegment {
   actualEndTime?: string | null;
   feedbackTime?: string | null;
   startPhotoUrl?: string | null;
+  guestSlipperPhotoUrl?: string | null;
   handoverPhotoUrl?: string | null; // For legacy compatibility
   handoverPhotoUrls?: string[]; // Multiple handover photos
 }
@@ -172,6 +173,7 @@ export type TurnQueueData = {
   net_hours?: number;
   /** `KTVAttendance` CHECK_IN hôm nay — xem lib/attendance/checkedInToday. */
   checked_in_today?: boolean;
+  shift_end_time?: string | null;
 };
 
 export interface StaffNotification {

@@ -54,6 +54,10 @@ export async function GET(request: Request) {
         const checkedInToday = await checkedInStaffIds(supabase, allTurns.map((t: any) => t.employee_id), date);
         allTurns.forEach((t: any) => { t.checked_in_today = checkedInToday.has(t.employee_id); });
 
+        const { resolveStaffShiftEndTimes } = await import('@/lib/shift.constants');
+        const shiftEndMap = await resolveStaffShiftEndTimes(supabase, allTurns.map((t: any) => t.employee_id), date);
+        allTurns.forEach((t: any) => { t.shift_end_time = shiftEndMap[t.employee_id] || null; });
+
         // --- Determine which types to include ---
         const VALID_TYPES = ['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D'];
         let filtered: any[];

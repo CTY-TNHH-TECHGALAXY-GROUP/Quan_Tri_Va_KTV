@@ -37,6 +37,35 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     const { supabase, bookingId, technicianCode, action, turnForSync, allItemIdsForThisKTV, body } = ctx;
     const bookingUpdatePayload: Record<string, any> = {};
 
+    const fail = (error: string, status = 400): HandlerResult => ({
+        bookingUpdatePayload: {},
+        earlyResponse: NextResponse.json({ success: false, error }, { status })
+    });
+
+    const uploadedPaths: string[] = [];
+
+    const cleanupUploadedProofs = async () => {
+        if (uploadedPaths.length === 0) return;
+
+        const paths = [...uploadedPaths];
+        const { error } = await supabase.storage
+            .from('attendance')
+            .remove(paths);
+
+        if (error) {
+            console.error('Proof cleanup failed:', { paths, error });
+        }
+    };
+
+    if (action === 'START_TIMER' && (!technicianCode || allItemIdsForThisKTV.length === 0)) {
+        return fail('Không tìm thấy KTV hoặc chặng làm việc hợp lệ');
+    }
+
+    const activeSegmentIndex = body.activeSegmentIndex ?? 0;
+    if (action === 'START_TIMER' && (!Number.isInteger(activeSegmentIndex) || activeSegmentIndex < 0)) {
+        return fail('Chặng làm việc không hợp lệ');
+    }
+
     // ─── 1. TIME VALIDATION (chờ đúng giờ) ───
     if (turnForSync && action !== 'NEXT_SEGMENT_PREPARE') {
         let allowed: Date | null = null;
@@ -96,32 +125,103 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         }
         allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
 
-        // 📸 UPLOAD SELFIE BEFORE START (action: START_TIMER)
+        const target = allGlobalSegs[activeSegmentIndex];
+
+        if (action === 'START_TIMER' &&
+            (!target ||
+             !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
+             target.seg.actualEndTime)) {
+            return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
+        }
+
+        const parseProof = (value: unknown) => {
+            const match = typeof value === 'string'
+                ? /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value)
+                : null;
+
+            if (!match) throw new Error('Ảnh phải là JPEG, PNG hoặc WEBP');
+
+            const mime = match[1].toLowerCase();
+            const encoded = match[2];
+            const buffer = Buffer.from(encoded, 'base64');
+
+            if (
+                buffer.length === 0 ||
+                buffer.length > 5 * 1024 * 1024 ||
+                buffer.toString('base64') !== encoded
+            ) {
+                throw new Error('Ảnh không hợp lệ hoặc vượt quá 5MB');
+            }
+
+            const validSignature = mime === 'jpeg'
+                ? buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
+                : mime === 'png'
+                    ? buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+                    : buffer.length >= 12 &&
+                      buffer.toString('ascii', 0, 4) === 'RIFF' &&
+                      buffer.toString('ascii', 8, 12) === 'WEBP';
+
+            if (!validSignature) throw new Error('Nội dung ảnh không khớp định dạng');
+
+            return {
+                buffer,
+                contentType: `image/${mime}`,
+                extension: mime === 'jpeg' ? 'jpg' : mime
+            };
+        };
+
         let startPhotoUrl: string | null = null;
-        if (action === 'START_TIMER' && body.photoBase64 && technicianCode) {
+        let guestSlipperPhotoUrl: string | null = null;
+
+        const startInput = body.startPhotoBase64 || body.photoBase64;
+        if (action === 'START_TIMER') {
+            if (!body.guestSlipperPhotoBase64 || !startInput) {
+                return fail('Bắt buộc có ảnh dép khách và ảnh bắt đầu dịch vụ');
+            }
+
+            let slipperProof: ReturnType<typeof parseProof>;
+            let startProof: ReturnType<typeof parseProof>;
+
             try {
-                const base64Str = body.photoBase64;
-                const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
-                const buffer = Buffer.from(base64Data, 'base64');
-                const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
-                const fileName = `selfie_${bookingId}_${technicianCode}_${Date.now()}.${fileExt}`;
-                
-                const { data: uploadData, error: uploadError } = await supabase.storage
+                slipperProof = parseProof(body.guestSlipperPhotoBase64);
+                startProof = parseProof(startInput);
+            } catch (error: any) {
+                return fail(error?.message || 'Ảnh không hợp lệ', 400);
+            }
+
+            const uploadProof = async (prefix: string, proof: ReturnType<typeof parseProof>) => {
+                const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${proof.extension}`;
+
+                const { data, error } = await supabase.storage
                     .from('attendance')
-                    .upload(fileName, buffer, {
-                        contentType: `image/${fileExt}`,
+                    .upload(fileName, proof.buffer, {
+                        contentType: proof.contentType,
                         upsert: false
                     });
-                
-                if (uploadError) {
-                    console.error('❌ [KTV API] Selfie upload error:', uploadError);
-                } else if (uploadData?.path) {
-                    const { data: publicUrlData } = supabase.storage.from('attendance').getPublicUrl(uploadData.path);
-                    startPhotoUrl = publicUrlData.publicUrl;
-                    console.log(`📸 [KTV API] Uploaded start photo for ${technicianCode}:`, startPhotoUrl);
-                }
-            } catch (err) {
-                console.error('❌ [KTV API] Failed to upload start photo:', err);
+
+                if (error || !data?.path) throw error || new Error('Upload ảnh thất bại');
+
+                uploadedPaths.push(data.path);
+
+                const { data: publicData } = supabase.storage
+                    .from('attendance')
+                    .getPublicUrl(data.path);
+
+                if (!publicData?.publicUrl) throw new Error('Không tạo được URL ảnh');
+
+                return { path: data.path, url: publicData.publicUrl };
+            };
+
+            try {
+                const slipperUpload = await uploadProof('slipper', slipperProof);
+                const startUpload = await uploadProof('start', startProof);
+
+                guestSlipperPhotoUrl = slipperUpload.url;
+                startPhotoUrl = startUpload.url;
+            } catch (error: any) {
+                await cleanupUploadedProofs();
+                console.error('❌ [KTV API] Upload proofs error:', error);
+                return fail('Tải ảnh minh chứng lên máy chủ thất bại', 500);
             }
         }
 
@@ -163,11 +263,20 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                     }
                 }
 
-                // Đồng bộ startPhotoUrl vào tất cả segment của KTV này trong đơn hàng này
-                if (startPhotoUrl) {
-                    allGlobalSegs.forEach((itemSeg: any) => {
-                        if (itemSeg.seg.ktvId === technicianCode) {
+                // Ghi nhận ảnh vào đúng chặng đang thực hiện (không đè chặng đã xong)
+                if (action === 'START_TIMER' && startPhotoUrl && guestSlipperPhotoUrl) {
+                    allGlobalSegs.forEach((itemSeg: any, i: number) => {
+                        const belongsToRun =
+                            i === activeSegmentIndex ||
+                            (body.shouldMerge === true && itemSeg.seg.isMergedRun);
+
+                        if (
+                            belongsToRun &&
+                            !itemSeg.seg.actualEndTime &&
+                            ktvMatchesSeg(itemSeg.seg.ktvId, technicianCode)
+                        ) {
                             itemSeg.seg.startPhotoUrl = startPhotoUrl;
+                            itemSeg.seg.guestSlipperPhotoUrl = guestSlipperPhotoUrl;
                             originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
                         }
                     });
@@ -186,12 +295,28 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         }
 
 
-        for (const item of currentItems || []) {
+        const itemsToUpdate = currentItems || [];
+        let persistedItemCount = 0;
+
+        for (let itemIdx = 0; itemIdx < itemsToUpdate.length; itemIdx++) {
+            const item = itemsToUpdate[itemIdx];
             const updatePayload: any = { segments: JSON.stringify(originalItemsData[item.id]) };
             if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
                 updatePayload.status = 'IN_PROGRESS';
             }
-            await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+            const { error: itemUpdateError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+            if (itemUpdateError) {
+                console.error('❌ [handleStartTimer] Failed to update BookingItem:', item.id, itemUpdateError);
+                if (persistedItemCount === 0) {
+                    await cleanupUploadedProofs();
+                }
+
+                const partialWarning = persistedItemCount > 0
+                    ? ` (Lưu ý: Đã cập nhật dở ${persistedItemCount}/${itemsToUpdate.length} item trước đó do chưa hỗ trợ database transaction)`
+                    : '';
+                return fail(`Lỗi cập nhật chặng dịch vụ (${item.id})${partialWarning}: ${itemUpdateError.message}`, 500);
+            }
+            persistedItemCount++;
         }
     }
     

@@ -39,7 +39,7 @@ interface DispatchServiceBlockProps {
     onToggleExpand?: () => void;
     onDispatchSvc?: (orderId: string, svcId: string) => void;
     reminders?: ReminderData[];
-    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
+    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER'; title?: string }) => void;
     onUnmergeSvc?: (orderId: string, svcId: string) => void;
     orderSource?: string;
     now?: Date;
@@ -94,8 +94,9 @@ export const DispatchServiceBlock = ({
                                     
                                     if (!ktvCode && !roomName) return null;
                                     
-                                    const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl);
+                                    const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                                     const startPhotoUrl = photoSegment?.startPhotoUrl;
+                                    const guestSlipperPhotoUrl = photoSegment?.guestSlipperPhotoUrl;
                                     const handoverPhotoSegment = row.segments?.find((seg: any) => (seg.handoverPhotoUrls && seg.handoverPhotoUrls.length > 0) || seg.handoverPhotoUrl);
                                     const handoverPhotoUrls = handoverPhotoSegment?.handoverPhotoUrls || (handoverPhotoSegment?.handoverPhotoUrl ? [handoverPhotoSegment.handoverPhotoUrl] : null);
 
@@ -125,6 +126,25 @@ export const DispatchServiceBlock = ({
                                                     )}
                                                 </button>
                                             )}
+                                            {guestSlipperPhotoUrl && onViewPhoto && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onViewPhoto({
+                                                            url: guestSlipperPhotoUrl,
+                                                            ktvId: ktvCode,
+                                                            time: photoSegment?.actualStartTime || photoSegment?.startTime,
+                                                            type: 'START',
+                                                            title: 'Ảnh dép khách'
+                                                        });
+                                                    }}
+                                                    className="w-4 h-4 rounded-full overflow-hidden border border-emerald-500 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                    title="Xem ảnh dép khách"
+                                                >
+                                                    <img src={guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                                </button>
+                                            )}
                                             {startPhotoUrl && onViewPhoto && (
                                                 <button
                                                     onClick={(e) => {
@@ -132,8 +152,9 @@ export const DispatchServiceBlock = ({
                                                         onViewPhoto({
                                                             url: startPhotoUrl,
                                                             ktvId: ktvCode,
-                                                            time: photoSegment.actualStartTime || photoSegment.startTime,
-                                                            type: 'START'
+                                                            time: photoSegment?.actualStartTime || photoSegment?.startTime,
+                                                            type: 'START',
+                                                            title: 'Ảnh bắt đầu ca'
                                                         });
                                                     }}
                                                     className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"

@@ -55,6 +55,19 @@ export async function GET(request: Request) {
         const monthParam = searchParams.get('month');
         const month = /^\d{4}-\d{2}$/.test(monthParam || '') ? monthParam! : today.slice(0, 7);
 
+        // Tra cứu đăng ký làm việc của ngày hôm nay để nhận diện trạng thái OFF
+        const { data: registration, error: registrationError } = await supabase
+            .from('KTVTypeDDailyRegistration')
+            .select('status')
+            .eq('staff_id', staffId)
+            .eq('work_date', today)
+            .maybeSingle();
+
+        if (registrationError) throw registrationError;
+
+        const todayRegistrationStatus = registration?.status ?? null;
+        const isOffToday = todayRegistrationStatus === 'OFF_REGISTERED';
+
         const scores = await KtvOfficeScoreService.computeMonth(supabase, [staffId], month, { withRevoked: true });
         const m = scores.get(staffId)!;
 
@@ -80,9 +93,11 @@ export async function GET(request: Request) {
             data: {
                 today,
                 month,
+                todayRegistrationStatus,
+                isOffToday,
                 // Mỗi ngày mặc định 100đ, chỉ giảm khi có phiếu trừ. Không có phiếu nào
                 // thì vẫn là 100 — đúng nguyên tắc "bắt đầu từ 100, trừ dần".
-                todayScore: todayEntry ? todayEntry.dayScore : 100,
+                todayScore: isOffToday ? null : (todayEntry ? todayEntry.dayScore : 100),
                 todayHits: todayEntry ? mapHits(todayEntry.hits) : [],
                 // Toàn bộ ngày ĐI LÀM trong tháng — lịch chọn ngày dựa vào đây để
                 // biết ngày nào có chấm công, ngày nào bị trừ lỗi.

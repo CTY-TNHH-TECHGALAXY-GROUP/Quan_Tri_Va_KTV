@@ -1,5 +1,5 @@
 /*
- * Service Worker for Ngân Hà Spa Management
+ * Service Worker for Oria Spa Management
  * Handles Web Push Notifications + Offline Cache + Keep-Alive
  */
 
@@ -84,13 +84,13 @@ self.addEventListener('fetch', (event) => {
 // ─── PUSH: Handle push notifications ───────────────────────────
 self.addEventListener('push', (event) => {
   console.log('[SW] Push Received.');
-  let data = { title: 'Ngân Hà Spa', body: 'Bạn có thông báo mới!' };
+  let data = { title: 'Oria Spa', body: 'Bạn có thông báo mới!' };
 
   if (event.data) {
     try {
       data = event.data.json();
     } catch (e) {
-      data = { title: 'Ngân Hà Spa', body: event.data.text() };
+      data = { title: 'Oria Spa', body: event.data.text() };
     }
   }
 

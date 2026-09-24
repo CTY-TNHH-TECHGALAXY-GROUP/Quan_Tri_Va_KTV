@@ -57,7 +57,7 @@ interface DispatchStaffRowProps {
     billCode?: string;
     genderReq?: string;
     customerName?: string;
-    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' }) => void;
+    onViewPhoto?: (photo: { url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER'; title?: string }) => void;
     now?: Date; // Auto-refreshed from parent hook every 60s
     svcStatus?: string;
 }
@@ -337,6 +337,11 @@ export const DispatchStaffRow = ({
                                                             </div>
                                                         </div>
                                                         <div className="text-[10px] font-semibold flex gap-2">
+                                                            {turn.shift_end_time && (
+                                                                <span className="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                    Tan: {turn.shift_end_time}
+                                                                </span>
+                                                            )}
                                                             {isUsedInOtherSvc 
                                                                 ? <span className="text-indigo-500">🔄 Cùng đơn này</span> 
                                                                 : (turn.status === 'working' 
@@ -377,8 +382,9 @@ export const DispatchStaffRow = ({
 
                     {/* 🖨️ Print Ticket Button — only show when KTV is selected */}
                     {row.ktvId && (() => {
-                        const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl);
+                        const photoSegment = row.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                         const startPhotoUrl = photoSegment?.startPhotoUrl;
+                        const guestSlipperPhotoUrl = photoSegment?.guestSlipperPhotoUrl;
                         const handoverPhotoSegment = row.segments?.find((seg: any) => (seg.handoverPhotoUrls && seg.handoverPhotoUrls.length > 0) || seg.handoverPhotoUrl);
                         const handoverPhotoUrls = handoverPhotoSegment?.handoverPhotoUrls || (handoverPhotoSegment?.handoverPhotoUrl ? [handoverPhotoSegment.handoverPhotoUrl] : null);
                         return (
@@ -405,6 +411,25 @@ export const DispatchStaffRow = ({
                                         )}
                                     </button>
                                 )}
+                                {guestSlipperPhotoUrl && onViewPhoto && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onViewPhoto({
+                                                url: guestSlipperPhotoUrl,
+                                                ktvId: row.ktvId,
+                                                time: photoSegment?.actualStartTime || photoSegment?.startTime,
+                                                type: 'START',
+                                                title: 'Ảnh dép khách'
+                                            });
+                                        }}
+                                        className="w-10 h-10 rounded-xl overflow-hidden border border-emerald-500 hover:scale-105 active:scale-95 transition-all shrink-0 flex items-center justify-center bg-emerald-50 shadow-sm"
+                                        title="Xem ảnh dép khách"
+                                    >
+                                        <img src={guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                    </button>
+                                )}
                                 {startPhotoUrl && onViewPhoto && (
                                     <button
                                         onClick={(e) => {
@@ -412,8 +437,9 @@ export const DispatchStaffRow = ({
                                             onViewPhoto({
                                                 url: startPhotoUrl,
                                                 ktvId: row.ktvId,
-                                                time: photoSegment.actualStartTime || photoSegment.startTime,
-                                                type: 'START'
+                                                time: photoSegment?.actualStartTime || photoSegment?.startTime,
+                                                type: 'START',
+                                                title: 'Ảnh bắt đầu ca'
                                             });
                                         }}
                                         className="w-10 h-10 rounded-xl overflow-hidden border border-indigo-300 hover:scale-105 active:scale-95 transition-all shrink-0 flex items-center justify-center bg-indigo-50 shadow-sm"
@@ -708,7 +734,7 @@ export const DispatchStaffRow = ({
 
                             {/* Footer */}
                             <div className="text-center py-4 border-t border-gray-200 mt-2">
-                                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Spa Ngân Hà</p>
+                                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Oria Spa</p>
                             </div>
                         </motion.div>
                     </div>

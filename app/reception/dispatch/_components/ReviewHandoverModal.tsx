@@ -56,12 +56,20 @@ export function ReviewHandoverModal({ isOpen, onClose, service, onApprove, onRej
         let count = 1;
         service.staffList.forEach(staff => {
             staff.segments?.forEach((seg: any) => {
-                if (seg.startPhotoUrl) {
-                    startImages[`Bắt đầu ${count++} (${staff.ktvId})`] = seg.startPhotoUrl;
+                const segmentNumber = count++;
+
+                if (seg.guestSlipperPhotoUrl) {
+                    startImages[`Ảnh dép khách ${segmentNumber} (${staff.ktvId})`] = seg.guestSlipperPhotoUrl;
                 }
+
+                if (seg.startPhotoUrl) {
+                    startImages[`Ảnh bắt đầu dịch vụ ${segmentNumber} (${staff.ktvId})`] = seg.startPhotoUrl;
+                }
+
+                // Giữ dữ liệu cũ.
                 if (seg.startPhotoUrls) {
                     seg.startPhotoUrls.forEach((url: string) => {
-                        startImages[`Bắt đầu ${count++} (${staff.ktvId})`] = url;
+                        startImages[`Ảnh bắt đầu dịch vụ ${count++} (${staff.ktvId})`] = url;
                     });
                 }
             });
