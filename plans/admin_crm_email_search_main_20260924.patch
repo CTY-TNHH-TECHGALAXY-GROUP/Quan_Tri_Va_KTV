@@ -1,0 +1,331 @@
+diff --git a/app/api/customers/route.ts b/app/api/customers/route.ts
+index 6a8b5e96..01011224 100644
+--- a/app/api/customers/route.ts
++++ b/app/api/customers/route.ts
+@@ -3,41 +3,44 @@ import { NextResponse } from 'next/server';
+ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+ import { CustomerPatchSchema } from '@/lib/schemas/crm.schema';
+ import { isDummyEmail, isDummyPhone } from '@/lib/customer.logic';
++import { customerSearchFilter, searchPattern } from '@/lib/customer-search';
+ 
+ export const dynamic = 'force-dynamic';
+ 
+-export async function GET() {
++export async function GET(request: Request) {
+     try {
++        const params = new URL(request.url).searchParams;
++        const query = params.get('q')?.trim() || '';
++        const customerId = params.get('id')?.trim() || '';
++        if (query.length > 200 || customerId.length > 200) {
++            return NextResponse.json({ success: false, error: 'Từ khóa tìm kiếm quá dài' }, { status: 400 });
++        }
+         const supabase = getSupabaseAdmin();
+         if (!supabase) {
+             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
+         }
+ 
+-        // Helper to bypass 1000 limit
+-        async function fetchAll(tableName: string, selectStr: string, buildQuery: (q: any) => any = (q) => q) {
+-            let allData: any[] = [];
+-            let from = 0;
+-            const limit = 1000;
+-            
+-            while (true) {
+-                let query = supabase!.from(tableName).select(selectStr).range(from, from + limit - 1);
+-                query = buildQuery(query);
+-                
+-                const { data, error } = await query;
+-                if (error) throw error;
+-                if (!data || data.length === 0) break;
+-                
+-                allData = allData.concat(data);
+-                if (data.length < limit) break;
+-                from += limit;
++        // Keep DB-heavy history pages sequential; targeted reads below avoid scanning unrelated bookings.
++        async function fetchAll(tableName: string, selectStr: string, buildQuery: (q: any) => any = q => q) {
++            const pageSize = 1000;
++            const rows: any[] = [];
++            for (let from = 0; ; from += pageSize) {
++                const result = await buildQuery(supabase!.from(tableName).select(selectStr).range(from, from + pageSize - 1));
++                if (result.error) throw result.error;
++                rows.push(...(result.data || []));
++                if (!result.data || result.data.length < pageSize) break;
+             }
+-            return allData;
++            return rows;
+         }
+ 
+         // 1. Fetch all customers
+         let customers: any[];
+         try {
+-            customers = await fetchAll('Customers', '*', q => q.order('fullName', { ascending: true }).order('id', { ascending: true }));
++            customers = await fetchAll('Customers', '*', q => {
++                if (customerId) q = q.eq('id', customerId);
++                else if (query) q = q.or(customerSearchFilter(query));
++                return q.order('fullName', { ascending: true }).order('id', { ascending: true });
++            });
+         } catch (cError) {
+             console.error('Error fetching customers:', cError);
+             return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 });
+@@ -50,13 +53,28 @@ export async function GET() {
+         // 2. Fetch all bookings (except CANCELLED) to calculate stats & fetch recent selections like language
+         let allBookings: any[];
+         try {
+-            allBookings = await fetchAll('Bookings', `
++            const select = `
+                 id, customerId, customerName, customerEmail, customerLang, status, bookingDate, totalAmount, createdAt, notes, source, guestCount, customerGender, parent_booking_id,
+                 BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, options, ktvRatings )
+-            `, q => q.neq('status', 'CANCELLED').order('id', { ascending: true }));
++            `;
++            if (query || customerId) {
++                const byBookingId = new Map<string, any>();
++                for (let start = 0; start < customers.length; start += 20) {
++                    const group = customers.slice(start, start + 20);
++                    const ids = group.map(c => JSON.stringify(c.id)).join(',');
++                    const emails = [...new Set(group.map(c => c.email).filter((email: string) => !isDummyEmail(email)))];
++                    const orphanEmails = emails.map(email => `customerEmail.ilike.${searchPattern(String(email).trim())}`).join(',');
++                    const filter = `customerId.in.(${ids})${orphanEmails ? `,and(customerId.is.null,or(${orphanEmails}))` : ''}`;
++                    const rows = await fetchAll('Bookings', select, q => q.or(filter).neq('status', 'CANCELLED').order('id'));
++                    rows.forEach(row => byBookingId.set(row.id, row));
++                }
++                allBookings = [...byBookingId.values()];
++            } else {
++                allBookings = await fetchAll('Bookings', select, q => q.neq('status', 'CANCELLED').order('id'));
++            }
+         } catch (bError) {
+             console.error('Error fetching bookings for stats:', bError);
+-            return NextResponse.json({ success: true, data: customers }); // Return without stats gracefully
++            return NextResponse.json({ success: false, error: 'Không tải được lịch sử khách hàng. Vui lòng thử lại.' }, { status: 503 });
+         }
+ 
+         // Fetch Services and Staff for mapping
+@@ -86,7 +104,7 @@ export async function GET() {
+                 }
+                 bookingsByCustomerId.get(b.customerId)?.push(b);
+             }
+-            if (b.customerEmail && b.customerEmail.includes('@') && b.customerName) {
++            if (!b.customerId && !isDummyEmail(b.customerEmail || '') && b.customerName) {
+                 const compositeKey = `${(b.customerName || '').toLowerCase().trim()}|${b.customerEmail.toLowerCase().trim()}`;
+                 if (!bookingsByNameEmail.has(compositeKey)) {
+                     bookingsByNameEmail.set(compositeKey, []);
+diff --git a/app/reception/crm/page.tsx b/app/reception/crm/page.tsx
+index 59a7497e..60f5b2dc 100644
+--- a/app/reception/crm/page.tsx
++++ b/app/reception/crm/page.tsx
+@@ -1,6 +1,7 @@
+ 'use client';
+ 
+ import React, { useState } from 'react';
++import { matchesCustomerSearch } from '@/lib/customer-search';
+ import { AppLayout } from '@/components/layout/AppLayout';
+ import { useAuth } from '@/lib/auth-context';
+ import { ShieldAlert, Search, Filter, Plus, User, Phone, Calendar, Star, MoreHorizontal, Edit2, Check, X, Tag, Building2, MapPin, Mail, FileText, Receipt, Download } from 'lucide-react';
+@@ -44,6 +45,10 @@ export default function CRMPage() {
+   const [customers, setCustomers] = useState<Customer[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+   const [mounted, setMounted] = useState(false);
++  const [loadError, setLoadError] = useState('');
++  const [reloadKey, setReloadKey] = useState(0);
++  const [detailLoading, setDetailLoading] = useState(false);
++  const detailRequest = React.useRef(0);
+   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+ 
+@@ -159,18 +164,49 @@ export default function CRMPage() {
+ 
+   React.useEffect(() => {
+     setMounted(true);
+-    const fetchCustomers = async () => {
++    const refresh = () => setReloadKey(key => key + 1);
++    window.addEventListener('focus', refresh);
++    return () => window.removeEventListener('focus', refresh);
++  }, []);
++
++  React.useEffect(() => {
++    let active = true;
++    setIsLoading(true);
++    setLoadError('');
++    setCurrentPage(1);
++    const timer = setTimeout(async () => {
+       try {
+-        const data = await apiClient.get<any>(API.CUSTOMERS);
+-        setCustomers(data.data || []);
++        const query = new URLSearchParams({ q: searchTerm.trim() });
++        // ponytail: full CRM scan needs 60s; replace with DB pagination/aggregation when this grows.
++        const data = await apiClient.get<any>(`${API.CUSTOMERS}?${query}`, { timeout: 60000 });
++        if (!data.success) throw new Error(data.error || 'Không tải được khách hàng');
++        if (active) setCustomers(data.data || []);
+       } catch (err: any) {
+-        console.error('Failed to fetch customers:', err.message || err);
++        if (active) setLoadError(err.message || 'Không tải được khách hàng');
+       } finally {
+-        setIsLoading(false);
++        if (active) setIsLoading(false);
+       }
+-    };
+-    fetchCustomers();
+-  }, []);
++    }, searchTerm.trim() ? 300 : 0);
++    return () => { active = false; clearTimeout(timer); };
++  }, [searchTerm, reloadKey]);
++
++  const viewCustomer = async (customer: Customer) => {
++    const requestId = ++detailRequest.current;
++    setDetailLoading(true);
++    setLoadError('');
++    try {
++      const params = new URLSearchParams({ id: customer.id });
++      const result = await apiClient.get<any>(`${API.CUSTOMERS}?${params}`);
++      if (!result.success || !result.data?.[0]) throw new Error(result.error || 'Không tìm thấy hồ sơ khách');
++      if (requestId !== detailRequest.current) return;
++      setCustomers(prev => prev.map(c => c.id === customer.id ? result.data[0] : c));
++      setSelectedCustomer(result.data[0]);
++    } catch (err: any) {
++      if (requestId === detailRequest.current) setLoadError(err.message || 'Không tải được lịch sử');
++    } finally {
++      if (requestId === detailRequest.current) setDetailLoading(false);
++    }
++  };
+ 
+   if (!mounted) return null;
+ 
+@@ -187,12 +223,7 @@ export default function CRMPage() {
+ 
+   const filteredCustomers = customers.filter(c => {
+     // 1. Search filter
+-    const matchesSearch = 
+-      (c.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+-      (c.phone || '').includes(searchTerm) ||
+-      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+-      (c.taxCode || '').includes(searchTerm) ||
+-      (c.companyName || '').toLowerCase().includes(searchTerm.toLowerCase());
++    const matchesSearch = matchesCustomerSearch(c, searchTerm);
+     
+     if (!matchesSearch) return false;
+ 
+@@ -243,6 +274,12 @@ export default function CRMPage() {
+     return true;
+   });
+ 
++  const clearFilters = () => {
++    setFilterVip('all'); setFilterVipMenu('all'); setFilterVisit('all');
++    setFilterGuestType('all'); setFilterNationality('all'); setFilterDate('all');
++    setCurrentPage(1);
++  };
++
+   const sortedCustomers = [...filteredCustomers].sort((a, b) => {
+     if (sortByDate === 'newest') {
+       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+@@ -276,6 +313,9 @@ export default function CRMPage() {
+       <div className="space-y-4">
+         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+           <p className="text-sm text-gray-500">Lưu trữ thông tin, lịch sử dịch vụ và phân hạng thành viên.</p>
++          <button type="button" onClick={() => setReloadKey(key => key + 1)} className="text-sm text-indigo-600 underline">Tải lại khách hàng</button>
++          {detailLoading && <p role="status" className="text-sm text-gray-500">Đang tải lịch sử mới nhất...</p>}
++          {loadError && <p role="alert" className="text-sm text-red-600">Không tải được dữ liệu: {loadError}. Vui lòng tải lại.</p>}
+           <div className="flex items-center gap-2">
+             {/* Tách Khách Ảo Button */}
+             <button
+@@ -477,17 +517,20 @@ export default function CRMPage() {
+                     key={customer.id} 
+                     customer={customer} 
+                     formatVND={formatVND} 
+-                    onViewDetail={setSelectedCustomer} 
++                    onViewDetail={viewCustomer}
+                     onUpdate={(updated) => {
+                       setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
+                     }}
+                     onPreviewAvatar={setPreviewAvatar}
+                   />
+                 ))}
+-                {!isLoading && filteredCustomers.length === 0 && (
++                {!isLoading && !loadError && filteredCustomers.length === 0 && (
+                   <tr>
+                     <td colSpan={7} className="p-8 text-center text-gray-500">
+-                      Không tìm thấy khách hàng nào phù hợp.
++                      {customers.length > 0 ? <>
++                        Có khách khớp từ khóa nhưng bị bộ lọc ẩn.{' '}
++                        <button type="button" className="text-indigo-600 underline" onClick={clearFilters}>Bỏ bộ lọc</button>
++                      </> : 'Không tìm thấy khách hàng nào phù hợp.'}
+                     </td>
+                   </tr>
+                 )}
+diff --git a/lib/customer-search.ts b/lib/customer-search.ts
+new file mode 100644
+index 00000000..8fc56105
+--- /dev/null
++++ b/lib/customer-search.ts
+@@ -0,0 +1,73 @@
++export function phoneSearchVariants(raw: string): string[] {
++  const value = (raw || '').trim();
++  if (!value || !/^[+\d\s().-]+$/.test(value)) return [];
++
++  const digits = value.replace(/\D/g, '');
++  if (!digits || /^0+$/.test(digits)) return [];
++
++  const variants = new Set<string>();
++  const explicit = value;
++  const national = (() => {
++    if (digits.startsWith('84') && digits.length === 11) return '0' + digits.slice(2);
++    if (digits.startsWith('840') && digits.length === 12) return digits.slice(2);
++    if (digits.startsWith('0') && digits.length === 10) return digits;
++    if (digits.length === 9) return '0' + digits;
++    return digits;
++  })();
++
++  [explicit, digits, national].forEach((item) => {
++    if (item && item.trim()) variants.add(item.trim());
++  });
++
++  if (/^0\d{9}$/.test(national)) {
++    variants.add('+84' + national.slice(1));
++    variants.add('84' + national.slice(1));
++    variants.add('+84' + national);
++    variants.add('84' + national);
++  }
++
++  return [...variants];
++}
++
++export function searchPattern(value: string): string {
++  const safe = String(value ?? '')
++    .replace(/\\/g, '\\\\')
++    .replace(/%/g, '\\%')
++    .replace(/_/g, '\\_');
++  return JSON.stringify(`%${safe}%`);
++}
++
++export function customerSearchFilter(raw: string): string {
++  const query = (raw || '').trim();
++  if (!query) return 'id.is.null';
++
++  const fieldClauses = ['fullName', 'email', 'taxCode', 'companyName']
++    .map((field) => `${field}.ilike.${searchPattern(query)}`);
++
++  const phoneClauses = [...new Set([query, ...phoneSearchVariants(query)])]
++    .filter((value) => value && value.trim())
++    .map((value) => `phone.ilike.${searchPattern(value)}`);
++
++  return [...fieldClauses, ...phoneClauses].join(',');
++}
++
++export function matchesCustomerSearch(customer: any, raw: string): boolean {
++  const query = (raw || '').trim().toLowerCase();
++  if (!query) return true;
++
++  const candidateValues = [
++    customer?.fullName,
++    customer?.phone,
++    customer?.email,
++    customer?.taxCode,
++    customer?.companyName,
++  ];
++
++  if (candidateValues.some((value) => (value || '').toString().toLowerCase().includes(query))) {
++    return true;
++  }
++
++  const storedPhones = phoneSearchVariants(customer?.phone || '');
++  const queryPhones = phoneSearchVariants(query);
++  return queryPhones.some((value) => storedPhones.some((phone) => phone.includes(value)));
++}
