@@ -58,3 +58,4 @@ fix_diff.txt
 .agents/image.png
 appDataDir/
 tsconfig.tsbuildinfo
+.worktrees/

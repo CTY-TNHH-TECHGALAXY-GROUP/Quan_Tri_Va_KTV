@@ -1220,9 +1220,14 @@ if (!hasPermission('dispatch_board')) {
                 p_split_plan: splitPlan
             });
             
-            if (splitErr || (splitRes && !splitRes.success)) {
+            if (splitErr || splitRes?.success !== true) {
                 console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
-                alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
+                alert(
+                    'Lưu nháp thành công nhưng chưa tách được đơn: ' +
+                    (splitErr?.message || splitRes?.error || 'Máy chủ chưa xác nhận tách thành công')
+                );
+                await fetchData();
+                return;
             } else if (customGuestNames) {
                 // Quầy gõ tên khách trong hộp xem trước thì ghi đè nhãn "Khách A/B/C" của RPC.
                 const renames = splitPlan

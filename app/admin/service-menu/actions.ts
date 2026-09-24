@@ -71,6 +71,7 @@ export async function updateServiceBulkSync(originalNameVN: string, payload: Par
             showNotes: payload.showNotes,
             showGender: payload.showGender,
             showStrength: payload.showStrength,
+            strengthConfig: payload.strengthConfig,
             showFocus: payload.showFocus,
             min_ktv_required: payload.min_ktv_required,
             service_group: payload.service_group
@@ -97,4 +98,3 @@ export async function updateServiceBulkSync(originalNameVN: string, payload: Par
         return { success: false, error: error.message || 'Unknown error' };
     }
 }
-

@@ -227,6 +227,7 @@ export interface Service {
   showNotes?: boolean;
   showGender?: boolean;
   showStrength?: boolean;
+  strengthConfig?: { light: boolean; medium: boolean; strong: boolean } | null;
   showFocus?: boolean;
   showPreferences?: boolean; // Legacy
   
@@ -234,4 +235,3 @@ export interface Service {
   tags?: (string | Record<string, string>)[] | null;
   hint?: any;
 }
-

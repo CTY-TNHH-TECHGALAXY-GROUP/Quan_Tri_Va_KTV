@@ -465,7 +465,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // Ô góp ý khách tích khi đánh giá — [{id, text}].
                                 // Có từ migration 20260907000000; đơn cũ thì null.
                                 violations: Array.isArray(bi.violations) ? bi.violations : null,
-                                customerGroupId: dStatus === 'pending' ? undefined : (bi.guest_id || parsedOptions?.customerGroupId),
+                                customerGroupId: dStatus === 'pending' ? undefined : (parsedOptions?.customerGroupId || bi.guest_id),
                                 guestId: bi.guest_id
                             };
                         }),

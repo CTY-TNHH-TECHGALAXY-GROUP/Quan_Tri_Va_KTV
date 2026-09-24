@@ -261,28 +261,32 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Giờ rảnh dự kiến
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedStart}
-                        onChange={(e) => setExpectedStart(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-emerald-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedStart}
+                          onChange={(e) => setExpectedStart(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Đến mấy giờ?
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedEnd}
-                        onChange={(e) => setExpectedEnd(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-emerald-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedEnd}
+                          onChange={(e) => setExpectedEnd(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

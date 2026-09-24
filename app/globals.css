@@ -5,3 +5,19 @@
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
 }
+
+input[type="time"],
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+input[type="time"]::-webkit-date-and-time-value,
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+}

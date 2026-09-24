@@ -157,7 +157,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 });
             }
 
-            let targetGroup = guestGroups.get(svc.guestId || svc.customerGroupId || '');
+            let targetGroup = guestGroups.get(svc.customerGroupId || svc.guestId || '');
             
             // 🔧 Tách các dịch vụ chưa có KTV và đang ở trạng thái pending thành các SubOrder riêng biệt
             // Điều này giúp Lễ Tân dễ dàng thấy và điều phối từng dịch vụ một trong cột "Chờ xếp ca"
@@ -175,7 +175,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // Nếu dịch vụ CÓ customerGroupId hoặc guestId rõ ràng nhưng không nằm trong order.guests
                 // (ví dụ: khi user bấm "Tách Khách"), ta tạo một group mới để tách nó thành SubOrder riêng biệt.
                 if (svc.guestId || svc.customerGroupId) {
-                    const newGroupId = svc.guestId || svc.customerGroupId || `split-${svc.id}`;
+                    const newGroupId = svc.customerGroupId || svc.guestId || `split-${svc.id}`;
                     guestGroups.set(newGroupId, { guest: null, services: [] });
                     targetGroup = guestGroups.get(newGroupId);
                 } else {

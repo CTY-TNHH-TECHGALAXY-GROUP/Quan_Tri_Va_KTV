@@ -41,6 +41,12 @@ const FOCUS_AREAS = [
   { id: 'FOOT', label: 'Bàn chân' },
 ];
 
+const STRENGTH_LEVELS = [
+  { id: 'light', label: 'Nhẹ' },
+  { id: 'medium', label: 'Vừa' },
+  { id: 'strong', label: 'Mạnh' },
+] as const;
+
 export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onSuccess }: EditServiceDrawerProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +69,7 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         ...service,
         category: parsedCats,
         focusConfig: service.focusConfig || {},
+        strengthConfig: service.strengthConfig || { light: true, medium: true, strong: true },
         tags: service.tags || [],
         description: typeof service.description === 'string' 
           ? { vn: service.description, en: '', cn: '', jp: '', kr: '' } 
@@ -100,6 +107,18 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
       focusCfg[areaId] = !focusCfg[areaId];
       return { ...prev, focusConfig: focusCfg };
     });
+  };
+
+  const handleStrengthToggle = (level: 'light' | 'medium' | 'strong') => {
+    setFormData(prev => ({
+      ...prev,
+      strengthConfig: {
+        light: prev.strengthConfig?.light !== false,
+        medium: prev.strengthConfig?.medium !== false,
+        strong: prev.strengthConfig?.strong !== false,
+        [level]: prev.strengthConfig?.[level] === false,
+      },
+    }));
   };
 
   const handleTagToggle = (tagId: string) => {
@@ -183,6 +202,7 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         showNotes: formData.showNotes,
         showGender: formData.showGender,
         showStrength: formData.showStrength,
+        strengthConfig: formData.strengthConfig,
         showFocus: formData.showFocus,
         min_ktv_required: formData.min_ktv_required,
         service_group: formData.service_group,
@@ -497,10 +517,22 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
                       <input type="checkbox" name="showNotes" checked={formData.showNotes !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
                     </label>
                     
-                    <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
-                      <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
-                      <input type="checkbox" name="showStrength" checked={formData.showStrength !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
-                    </label>
+                    <div className="space-y-2">
+                      <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                        <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
+                        <input type="checkbox" name="showStrength" checked={formData.showStrength !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                      </label>
+                      {formData.showStrength !== false && (
+                        <div className="flex flex-wrap gap-2 pl-4" aria-label="Các mức lực đấm được bán">
+                          {STRENGTH_LEVELS.map(level => (
+                            <label key={level.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm cursor-pointer">
+                              <input type="checkbox" checked={formData.strengthConfig?.[level.id] !== false} onChange={() => handleStrengthToggle(level.id)} className="w-4 h-4 accent-indigo-600" />
+                              {level.label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     
                     <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
                       <span className="text-sm font-medium text-gray-700">Chọn Giới tính KTV</span>

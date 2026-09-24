@@ -581,7 +581,7 @@ const KTVSchedulePage = () => {
                 {/* ── PENDING SUBMIT MODAL (CHOOSE | WORKING | OFF) ── */}
                 {pendingSubmit && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col">
+                        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col overflow-hidden">
                             {pendingSubmit.type === 'CHOOSE' && (
                                 <>
                                     <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3 bg-indigo-100 text-indigo-600">
@@ -653,33 +653,37 @@ const KTVSchedulePage = () => {
                                         Áp dụng cho {pendingSubmit.dates.length} ngày đã chọn
                                     </p>
 
-                                    <div className="space-y-3 mb-4">
-                                        <div>
+                                    <div className="space-y-3 mb-4 w-full min-w-0">
+                                        <div className="w-full min-w-0">
                                             <label className="block text-xs font-bold text-gray-700 mb-1">
                                                 Giờ đến tiệm (Bắt buộc)
                                             </label>
-                                            <input
-                                                type="time"
-                                                min={GIO_SOM_NHAT}
-                                                max={GIO_MUON_NHAT}
-                                                value={pendingSubmit.expectedTime || ''}
-                                                onChange={e => setPendingSubmit({ ...pendingSubmit, expectedTime: e.target.value })}
-                                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold text-sm bg-white"
-                                            />
+                                            <div className="w-full min-w-0 flex items-center px-4 py-2.5 border border-gray-200 rounded-xl bg-white focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all">
+                                                <input
+                                                    type="time"
+                                                    min={GIO_SOM_NHAT}
+                                                    max={GIO_MUON_NHAT}
+                                                    value={pendingSubmit.expectedTime || ''}
+                                                    onChange={e => setPendingSubmit({ ...pendingSubmit, expectedTime: e.target.value })}
+                                                    className="w-full min-w-0 bg-transparent border-0 p-0 font-bold text-base sm:text-sm text-gray-900 outline-none focus:outline-none focus:ring-0"
+                                                />
+                                            </div>
                                         </div>
 
-                                        <div>
+                                        <div className="w-full min-w-0">
                                             <label className="block text-xs font-bold text-gray-700 mb-1">
                                                 Giờ tan làm (Bắt buộc)
                                             </label>
-                                            <input
-                                                type="time"
-                                                min={GIO_SOM_NHAT}
-                                                max={GIO_MUON_NHAT}
-                                                value={pendingSubmit.expectedEndTime || ''}
-                                                onChange={e => setPendingSubmit({ ...pendingSubmit, expectedEndTime: e.target.value })}
-                                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold text-sm bg-white"
-                                            />
+                                            <div className="w-full min-w-0 flex items-center px-4 py-2.5 border border-gray-200 rounded-xl bg-white focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all">
+                                                <input
+                                                    type="time"
+                                                    min={GIO_SOM_NHAT}
+                                                    max={GIO_MUON_NHAT}
+                                                    value={pendingSubmit.expectedEndTime || ''}
+                                                    onChange={e => setPendingSubmit({ ...pendingSubmit, expectedEndTime: e.target.value })}
+                                                    className="w-full min-w-0 bg-transparent border-0 p-0 font-bold text-base sm:text-sm text-gray-900 outline-none focus:outline-none focus:ring-0"
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="max-h-28 overflow-y-auto space-y-1 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
@@ -795,7 +799,7 @@ const KTVSchedulePage = () => {
                 {/* ── EDIT REGISTRATION MODAL (E1) ── */}
                 {editingReg && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 flex flex-col">
+                        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden">
                             {editingReg.step === 'CONFIRM_CANCEL' ? (
                                 <>
                                     <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-red-100 text-red-600">
@@ -858,7 +862,7 @@ const KTVSchedulePage = () => {
                                         </button>
                                     </div>
 
-                                    <div className="space-y-4 mb-6">
+                                    <div className="space-y-4 mb-6 w-full min-w-0">
                                         <div className={`flex items-center gap-3 p-3 rounded-2xl border ${editingReg.status === 'REGISTERED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
                                             {editingReg.status === 'REGISTERED' ? <Briefcase size={20} /> : <CalendarOff size={20} />}
                                             <span className="font-bold text-sm">
@@ -866,34 +870,38 @@ const KTVSchedulePage = () => {
                                             </span>
                                         </div>
                                         
-                                        <div>
+                                        <div className="w-full min-w-0">
                                             <label className="block text-xs font-bold text-gray-700 mb-1">
                                                 {editingReg.status === 'REGISTERED'
                                                     ? 'Giờ đến tiệm (Bắt buộc)'
                                                     : 'Muốn đi làm ngày này? Nhập giờ đến tiệm'}
                                             </label>
-                                            <input
-                                                type="time"
-                                                min={GIO_SOM_NHAT}
-                                                max={GIO_MUON_NHAT}
-                                                value={editingReg.expected_time || ""}
-                                                onChange={e => setEditingReg({ ...editingReg, expected_time: e.target.value })}
-                                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold text-sm bg-white"
-                                            />
+                                            <div className="w-full min-w-0 flex items-center px-4 py-2.5 border border-gray-200 rounded-xl bg-white focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all">
+                                                <input
+                                                    type="time"
+                                                    min={GIO_SOM_NHAT}
+                                                    max={GIO_MUON_NHAT}
+                                                    value={editingReg.expected_time || ""}
+                                                    onChange={e => setEditingReg({ ...editingReg, expected_time: e.target.value })}
+                                                    className="w-full min-w-0 bg-transparent border-0 p-0 font-bold text-base sm:text-sm text-gray-900 outline-none focus:outline-none focus:ring-0"
+                                                />
+                                            </div>
                                         </div>
 
-                                        <div>
+                                        <div className="w-full min-w-0">
                                             <label className="block text-xs font-bold text-gray-700 mb-1">
                                                 Giờ tan làm (Bắt buộc)
                                             </label>
-                                            <input
-                                                type="time"
-                                                min={GIO_SOM_NHAT}
-                                                max={GIO_MUON_NHAT}
-                                                value={editingReg.expected_end_time || ""}
-                                                onChange={e => setEditingReg({ ...editingReg, expected_end_time: e.target.value })}
-                                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold text-sm bg-white"
-                                            />
+                                            <div className="w-full min-w-0 flex items-center px-4 py-2.5 border border-gray-200 rounded-xl bg-white focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all">
+                                                <input
+                                                    type="time"
+                                                    min={GIO_SOM_NHAT}
+                                                    max={GIO_MUON_NHAT}
+                                                    value={editingReg.expected_end_time || ""}
+                                                    onChange={e => setEditingReg({ ...editingReg, expected_end_time: e.target.value })}
+                                                    className="w-full min-w-0 bg-transparent border-0 p-0 font-bold text-base sm:text-sm text-gray-900 outline-none focus:outline-none focus:ring-0"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

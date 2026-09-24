@@ -473,12 +473,14 @@ export default function AttendanceTypeD({
             <label className="text-sm font-bold text-slate-700 block mb-2">
               Bạn sẽ có mặt lúc mấy giờ?
             </label>
-            <input
-              type="time"
-              value={lateTime}
-              onChange={(e) => setLateTime(e.target.value)}
-              className="w-full border-2 border-slate-200 rounded-2xl p-3 text-lg font-bold text-slate-700 focus:border-amber-400 outline-none"
-            />
+            <div className="w-full min-w-0 flex items-center p-3 border-2 border-slate-200 rounded-2xl bg-white focus-within:border-amber-400 transition-all">
+              <input
+                type="time"
+                value={lateTime}
+                onChange={(e) => setLateTime(e.target.value)}
+                className="w-full min-w-0 border-0 p-0 text-lg font-bold text-slate-700 outline-none bg-transparent"
+              />
+            </div>
 
             {/* Con số chỉ có nghĩa khi đặt cạnh giờ đã đăng ký. Chọn giờ không
                 muộn hơn thì báo đỏ — mỗi ngày chỉ được báo 1 lần, bấm nhầm là mất. */}
@@ -562,16 +564,18 @@ export default function AttendanceTypeD({
                     </button>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                       Đến mấy giờ? (Tuỳ chọn)
                     </label>
-                    <input 
-                      type="time" 
-                      value={expectedEnd}
-                      onChange={(e) => setExpectedEnd(e.target.value)}
-                      className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                    />
+                    <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-emerald-500 transition-all">
+                      <input 
+                        type="time" 
+                        value={expectedEnd}
+                        onChange={(e) => setExpectedEnd(e.target.value)}
+                        className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                      />
+                    </div>
                   </div>
                 </div>
 
