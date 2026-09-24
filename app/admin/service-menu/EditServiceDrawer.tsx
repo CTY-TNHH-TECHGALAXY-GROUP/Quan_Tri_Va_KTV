@@ -520,9 +520,9 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
                     <div className="space-y-2">
                       <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
                         <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
-                        <input type="checkbox" name="showStrength" checked={formData.showStrength !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                        <input type="checkbox" name="showStrength" checked={formData.showStrength === true} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
                       </label>
-                      {formData.showStrength !== false && (
+                      {formData.showStrength === true && (
                         <div className="flex flex-wrap gap-2 pl-4" aria-label="Các mức lực đấm được bán">
                           {STRENGTH_LEVELS.map(level => (
                             <label key={level.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm cursor-pointer">
