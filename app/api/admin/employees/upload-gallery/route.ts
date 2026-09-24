@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requireApiUser, requireBusinessUser } from '@/lib/auth-server';
-import { GALLERY_GROUPS } from '@/lib/galleryHelper';
+import { GALLERY_GROUPS, isVipGalleryGroup } from '@/lib/galleryHelper';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
       typeof staffId !== 'string' ||
       !staffId.trim() ||
       typeof groupId !== 'string' ||
-      !GALLERY_GROUPS.some((group) => group.id === groupId)
+      !(GALLERY_GROUPS.some((group) => group.id === groupId) || isVipGalleryGroup(groupId))
     ) {
       return NextResponse.json(
         { success: false, error: 'Dữ liệu tải ảnh không hợp lệ.' },

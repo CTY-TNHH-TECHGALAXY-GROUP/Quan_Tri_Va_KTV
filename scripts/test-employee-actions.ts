@@ -115,6 +115,12 @@ try {
 } catch {}
 
 // Inject mock into supabaseAdmin module
+const Module = require('node:module');
+const originalLoad = Module._load;
+Module._load = function (request: string, ...args: any[]) {
+  if (request === 'server-only') return {};
+  return originalLoad.call(this, request, ...args);
+};
 const supabaseAdminModule = require('../lib/supabaseAdmin');
 supabaseAdminModule.getSupabaseAdmin = () => mockClient;
 
@@ -138,6 +144,7 @@ const {
   GALLERY_GROUPS,
   createGalleryItem,
   getGalleryGroup,
+  isVipGalleryGroup,
 } = require('../lib/galleryHelper');
 
 let passedCount = 0;
@@ -411,6 +418,11 @@ async function run() {
 
     const legacy = createGalleryItem(url, 'legacy');
     assert.equal(legacy, url);
+
+    const vip = createGalleryItem(url, 'vip:shampoo');
+    assert.deepEqual(vip, { url, kind: 'vip', skillId: 'shampoo' });
+    assert.equal(isVipGalleryGroup('vip:shampoo'), true);
+    assert.equal(isVipGalleryGroup('vip:not-a-skill'), false);
   });
 
   // Case 17: getGalleryGroup classifies items accurately
@@ -421,6 +433,7 @@ async function run() {
     assert.equal(getGalleryGroup({ url: 'https://cdn.example.com/d.jpg', kind: 'therapy', therapyId: 'hotStone' }), 'hotStone');
     assert.equal(getGalleryGroup({ url: 'https://cdn.example.com/e.jpg', kind: 'therapy', therapyId: 'thaiTherapy' }), 'thaiTherapy');
     assert.equal(getGalleryGroup({ url: 'https://cdn.example.com/f.jpg', kind: 'therapy', therapyId: 'unknown' as any }), 'legacy');
+    assert.equal(getGalleryGroup({ url: 'https://cdn.example.com/g.jpg', kind: 'vip', skillId: 'shampoo' }), 'vip:shampoo');
   });
 
   // Case 18: Adding same URL to hotStone and shiatsu is allowed, adding again to shiatsu is blocked
@@ -441,6 +454,17 @@ async function run() {
 
     // Add again to shiatsu -> blocked
     assert.equal(checkGalleryDuplicate(gallery, shiatsuItem), true);
+  });
+
+  await testCase('VIP and NHT photos with the same URL stay in separate groups', async () => {
+    const url = 'https://cdn.example.com/shared.jpg';
+    const nht = createGalleryItem(url, 'hotStone');
+    const vip = createGalleryItem(url, 'vip:shampoo');
+    assert.equal(checkGalleryDuplicate([nht], vip), false);
+    assert.equal(checkGalleryDuplicate([nht, vip], vip), true);
+    const res = await updateStaffMember('T027', { galleryUrls: [nht, vip] });
+    assert.equal(res.success, true);
+    assert.deepEqual(capturedPayload?.gallery_urls, [nht, vip]);
   });
 
   // Case 19: URL CDN with query parameters is preserved completely

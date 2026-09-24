@@ -70,8 +70,9 @@ export interface EmployeeSkills {
 /** Một item trong gallery có thể là URL thuần hoặc URL kèm metadata phương pháp trị liệu */
 export interface GalleryItem {
   url: string;
-  kind: 'therapy' | 'mix' | 'legacy';
+  kind: 'therapy' | 'mix' | 'legacy' | 'vip';
   therapyId?: string;
+  skillId?: string;
 }
 
 export interface Employee {

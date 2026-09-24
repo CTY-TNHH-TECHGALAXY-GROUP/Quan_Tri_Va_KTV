@@ -63,6 +63,9 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
   const getItemUrl = (item: string | GalleryItem): string =>
     typeof item === 'string' ? item : item?.url ?? '';
 
+  const isSkillActive = (value: unknown): boolean =>
+    value === true || (typeof value === 'string' && value !== '' && value !== 'none');
+
   const addGalleryUrlToGroup = (groupId: GalleryGroupId) => {
     const url = (galleryUrlDrafts[groupId] ?? '').trim();
     if (!url || !editedEmployee) return;
@@ -525,9 +528,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
                     <Award size={14} />{' '}
-                    {editedEmployee.isActiveTherapyMenu
-                      ? 'Ảnh theo phương pháp trị liệu'
-                      : 'Ảnh gallery nhân viên'}
+                    Ảnh gallery theo menu
                   </h3>
                   {isEditing && (
                     <span className="text-[10px] text-indigo-600 font-bold">
@@ -537,19 +538,27 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                 </div>
 
                 {(() => {
-                  const groupsToRender = editedEmployee.isActiveTherapyMenu
-                    ? GALLERY_GROUPS
-                    : GALLERY_GROUPS.filter((g) => g.id === 'legacy');
-
                   const allItems = (editedEmployee.galleryUrls || []).map((item, originalIndex) => ({
                     item,
                     originalIndex,
                     url: getItemUrl(item),
                     group: getGalleryGroup(item),
                   }));
+                  const groupsToRender = [
+                    ...(editedEmployee.isActiveTherapyMenu
+                      ? GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((g) => ({ ...g, label: `NHT · ${g.label}` }))
+                      : []),
+                    ...(editedEmployee.isActiveVipMenu
+                      ? SKILL_KEYS.filter((key) => isSkillActive(editedEmployee.skills?.[key]))
+                          .map((key) => ({ id: `vip:${key}` as GalleryGroupId, label: `VIP NHP · ${SKILL_LABELS[key]}` }))
+                      : []),
+                    ...(!editedEmployee.isActiveTherapyMenu && !editedEmployee.isActiveVipMenu || allItems.some((i) => i.group === 'legacy')
+                      ? [{ id: 'legacy' as GalleryGroupId, label: 'Ảnh cũ chưa phân loại' }]
+                      : []),
+                  ];
 
                   if (!isEditing) {
-                    const hasAnyPhotos = allItems.length > 0;
+                    const hasAnyPhotos = allItems.some((item) => groupsToRender.some((group) => group.id === item.group));
                     if (!hasAnyPhotos) {
                       return (
                         <div className="text-xs text-gray-500 italic py-2">
@@ -596,6 +605,9 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
 
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {editedEmployee.isActiveVipMenu && !SKILL_KEYS.some((key) => isSkillActive(editedEmployee.skills?.[key])) && (
+                        <p className="col-span-full text-xs text-amber-700">Hãy bật kỹ năng VIP ở mục Kỹ năng chuyên môn để tải ảnh NHP theo kỹ năng.</p>
+                      )}
                       {groupsToRender.map((group) => {
                         const groupItems = allItems.filter((i) => i.group === group.id);
                         const isUploading = Boolean(uploadingGroups[group.id]);

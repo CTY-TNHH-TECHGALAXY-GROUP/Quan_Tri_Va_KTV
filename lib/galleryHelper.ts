@@ -1,4 +1,5 @@
 import type { GalleryItem } from './types';
+import { SKILL_KEYS } from './constants/staff.constants';
 
 /** Accept direct image links without changing CDN paths or query parameters. */
 export function isGalleryImageUrl(value: string): boolean {
@@ -29,7 +30,11 @@ export type GalleryGroupId =
   | 'shiatsu'
   | 'hotStone'
   | 'mix'
-  | 'legacy';
+  | 'legacy'
+  | `vip:${string}`;
+
+export const isVipGalleryGroup = (value: string): value is `vip:${string}` =>
+  value.startsWith('vip:') && SKILL_KEYS.includes(value.slice(4) as typeof SKILL_KEYS[number]);
 
 export interface GalleryGroupConfig {
   id: GalleryGroupId;
@@ -47,6 +52,9 @@ export const GALLERY_GROUPS: GalleryGroupConfig[] = [
 
 export function createGalleryItem(url: string, groupId: GalleryGroupId): string | GalleryItem {
   const trimmed = url.trim();
+  if (isVipGalleryGroup(groupId)) {
+    return { url: trimmed, kind: 'vip', skillId: groupId.slice(4) };
+  }
   if (groupId === 'legacy') {
     return trimmed;
   }
@@ -59,6 +67,9 @@ export function createGalleryItem(url: string, groupId: GalleryGroupId): string 
 export function getGalleryGroup(item: string | GalleryItem): GalleryGroupId {
   if (typeof item === 'string') return 'legacy';
   if (!item || typeof item !== 'object') return 'legacy';
+  if (item.kind === 'vip' && item.skillId && isVipGalleryGroup(`vip:${item.skillId}`)) {
+    return `vip:${item.skillId}`;
+  }
   if (item.kind === 'mix') return 'mix';
   if (item.kind === 'therapy' && item.therapyId) {
     const valid: GalleryGroupId[] = ['coconutOil', 'thaiTherapy', 'shiatsu', 'hotStone'];
@@ -82,14 +93,14 @@ export function checkGalleryDuplicate(
   const nextTherapyId =
     typeof newItem !== 'string' && newItem.kind === 'therapy'
       ? newItem.therapyId
-      : undefined;
+      : typeof newItem !== 'string' && newItem.kind === 'vip' ? newItem.skillId : undefined;
 
   return currentUrls.some((item) => {
     const kind = typeof item === 'string' ? 'legacy' : item.kind;
     const therapyId =
       typeof item !== 'string' && item.kind === 'therapy'
         ? item.therapyId
-        : undefined;
+        : typeof item !== 'string' && item.kind === 'vip' ? item.skillId : undefined;
 
     return (
       getUrl(item).trim() === trimmed &&

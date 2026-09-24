@@ -2,7 +2,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
-import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId, SKILL_KEYS } from '@/lib/constants/staff.constants';
 import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
 import type { GalleryItem } from '@/lib/types';
 import { isGalleryImageUrl } from '@/lib/galleryHelper';
@@ -65,6 +65,13 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
         kind: 'therapy',
         therapyId: record.therapyId,
       }];
+    }
+
+    if (record.kind === 'vip') {
+      if (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number])) {
+        throw new Error('Kỹ năng VIP của ảnh không hợp lệ.');
+      }
+      return [{ url, kind: 'vip', skillId: record.skillId }];
     }
 
     if (record.kind === 'mix' || record.kind === 'legacy') {
