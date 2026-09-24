@@ -235,15 +235,24 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
 
   const handleSave = async () => {
     if (!editedEmployee) return;
+    if (!editedEmployee.name || !editedEmployee.name.trim()) {
+      alert('❌ Vui lòng không để trống họ và tên nhân viên.');
+      return;
+    }
     setIsSaving(true);
     console.log('[EmployeeDetailModal] Saving...', editedEmployee.id, { skills: editedEmployee.skills });
     try {
+      const trimmedName = editedEmployee.name.trim();
+      const payloadToSave: Employee = {
+        ...editedEmployee,
+        name: trimmedName,
+      };
       // Call server action to persist to DB
-      const result = await updateStaffMember(editedEmployee.id, editedEmployee);
+      const result = await updateStaffMember(editedEmployee.id, payloadToSave);
       console.log('[EmployeeDetailModal] Save result:', result);
       if (result.success) {
         // Update local state in parent
-        if (onUpdate) onUpdate(editedEmployee);
+        if (onUpdate) onUpdate(payloadToSave);
         setIsEditing(false);
         alert('✅ Đã lưu thành công!');
       } else {
@@ -316,7 +325,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                   className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors flex items-center gap-2 px-4"
                 >
                   <Edit2 size={18} />
-                  <span className="text-sm font-bold">Sửa tay nghề</span>
+                  <span className="text-sm font-bold">Sửa thông tin</span>
                 </button>
               )}
               <button
@@ -339,7 +348,29 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
           </div>
 
           <div className="pt-16 px-8 pb-8 overflow-y-auto">
-            <Dialog.Title className="text-2xl font-bold text-gray-900">{editedEmployee.name}</Dialog.Title>
+            {isEditing ? (
+              <div className="space-y-1 mb-2">
+                <label className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">
+                  Họ và tên KTV / Nhân viên
+                </label>
+                <div className="relative max-w-md">
+                  <input
+                    type="text"
+                    value={editedEmployee.name || ''}
+                    onChange={(e) => updateField('name', e.target.value)}
+                    placeholder="Nhập họ và tên..."
+                    className="w-full text-xl font-bold text-gray-900 px-3 py-1.5 bg-indigo-50/50 border-2 border-indigo-400 focus:border-indigo-600 focus:bg-white rounded-lg outline-none transition-colors"
+                  />
+                </div>
+                <Dialog.Title className="sr-only">
+                  {editedEmployee.name || 'Hồ sơ nhân viên'}
+                </Dialog.Title>
+              </div>
+            ) : (
+              <Dialog.Title className="text-2xl font-bold text-gray-900">
+                {editedEmployee.name}
+              </Dialog.Title>
+            )}
             <Dialog.Description className="sr-only">
               Chi tiết hồ sơ nhân viên {editedEmployee.name}
             </Dialog.Description>
@@ -377,6 +408,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                   <User size={14} /> Thông tin cá nhân
                 </h3>
                 <div className="space-y-3">
+                  <InfoItem label="Họ và tên" value={editedEmployee.name} icon={<User size={14} />} isEditing={isEditing} onChange={(val) => updateField('name', val)} />
                   <InfoItem label="Ngày sinh" value={editedEmployee.dob} icon={<Calendar size={14} />} isEditing={isEditing} onChange={(val) => updateField('dob', val)} />
                   <InfoItem label="Giới tính" value={editedEmployee.gender} isEditing={isEditing} onChange={(val) => updateField('gender', val)} />
                   <InfoItem label="Số CCCD" value={editedEmployee.idCard} isEditing={isEditing} onChange={(val) => updateField('idCard', val)} />

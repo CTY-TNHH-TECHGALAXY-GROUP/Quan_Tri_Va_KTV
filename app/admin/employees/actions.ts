@@ -261,7 +261,8 @@ export async function updateStaffMember(id: string, updates: any) {
         // 1. Map camelCase (from Modal) to snake_case (for DB) if needed
         // The modal might pass Employee type (camelCase)
         const staffPayload: any = {};
-        if (updates.name !== undefined) staffPayload.full_name = updates.name;
+        if (updates.name !== undefined) staffPayload.full_name = typeof updates.name === 'string' ? updates.name.trim() : updates.name;
+        if (updates.full_name !== undefined) staffPayload.full_name = typeof updates.full_name === 'string' ? updates.full_name.trim() : updates.full_name;
         // Modal chỉ có hai nút active/inactive, không biết tới 'HỆ THỐNG'. Lưu
         // một tài khoản hệ thống mà không chặn ở đây là nó thành 'ĐÃ NGHỈ' —
         // admin/dev bị ép đăng xuất ngay.
@@ -344,7 +345,8 @@ export async function updateStaffMember(id: string, updates: any) {
         if (staffError) throw new Error(`Lỗi cập nhật Staff: ${staffError.message}`);
 
         // 2. If login info provided, update Users table
-        if (updates.password || updates.username || updates.name) {
+        const resolvedName = (updates.name ?? updates.full_name)?.toString()?.trim();
+        if (updates.password || updates.username || resolvedName) {
             // Get current username BEFORE updating (needed for Auth lookup)
             const { data: currentUser } = await supabase.from('Users').select('username').eq('id', id).single();
             const oldUsername = currentUser?.username || id;
@@ -352,7 +354,7 @@ export async function updateStaffMember(id: string, updates: any) {
             const userPayload: any = {};
             if (updates.password) userPayload.password = updates.password;
             if (updates.username) userPayload.username = updates.username;
-            if (updates.name) userPayload.fullName = updates.name;
+            if (resolvedName) userPayload.fullName = resolvedName;
 
             if (Object.keys(userPayload).length > 0) {
                 const { error: userError } = await supabase
@@ -370,7 +372,7 @@ export async function updateStaffMember(id: string, updates: any) {
             if (updates.username && updates.username !== oldUsername) {
                 authUpdates.newUsername = updates.username;
             }
-            if (updates.name) authUpdates.metadata = { fullName: updates.name };
+            if (resolvedName) authUpdates.metadata = { fullName: resolvedName };
 
             if (Object.keys(authUpdates).length > 0) {
                 const result = await updateAuthUser(supabase, oldUsername, authUpdates);
