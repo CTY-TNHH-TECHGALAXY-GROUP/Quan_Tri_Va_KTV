@@ -1,0 +1,1 @@
+﻿INSERT INTO "SystemConfigs" (key, value, description) VALUES ('room_transition_time', '"1"', 'Thời gian chờ (phút) để tự động chuyển đơn từ Dọn dẹp & Nhận xét sang Hoàn tất') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
