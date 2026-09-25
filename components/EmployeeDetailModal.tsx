@@ -2,7 +2,8 @@
 
 import React, { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload } from 'lucide-react';
+import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { CardImageCropModal } from '@/components/admin/CardImageCropModal';
 import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
 import { updateStaffMember } from '@/app/admin/employees/actions';
@@ -30,6 +31,17 @@ interface EmployeeDetailModalProps {
   onUpdate?: (updatedEmployee: Employee) => void;
 }
 
+interface CropTargetState {
+  imageSrc: string;
+  title: string;
+  subtitle: string;
+  staffCode: string;
+  staffName: string;
+  type: 'avatar' | 'gallery';
+  groupId?: GalleryGroupId;
+  pendingFiles?: File[];
+}
+
 export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: EmployeeDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +59,14 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
   >({});
   const [editedEmployee, setEditedEmployee] = useState<Employee | null>(employee);
   const gallerySessionRef = useRef(0);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [showAvatarUrlInput, setShowAvatarUrlInput] = useState(false);
+  const [avatarUrlDraft, setAvatarUrlDraft] = useState('');
+  const [cropTarget, setCropTarget] = useState<CropTargetState | null>(null);
+  const [isVipExpanded, setIsVipExpanded] = useState(true);
+  const [isTherapyExpanded, setIsTherapyExpanded] = useState(true);
+  const [isAllSkillsExpanded, setIsAllSkillsExpanded] = useState(false);
 
   React.useEffect(() => {
     gallerySessionRef.current += 1;
@@ -98,7 +118,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     setGalleryUrlErrors((current) => ({ ...current, [groupId]: '' }));
   };
 
-  const handleFileUpload = async (groupId: GalleryGroupId, files: FileList | null) => {
+  const handleFileUpload = async (groupId: GalleryGroupId, files: FileList | File[] | null) => {
     if (
       !files ||
       files.length === 0 ||
@@ -212,6 +232,140 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     });
   };
 
+  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editedEmployee) return;
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      alert('Chỉ chấp nhận file ảnh JPG, PNG hoặc WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Dung lượng ảnh không được vượt quá 5MB.');
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setCropTarget({
+      imageSrc: objectUrl,
+      title: 'Căn chỉnh Ảnh Đại Diện (Avatar)',
+      subtitle: 'Khung hiển thị Card WRB Nội Bộ',
+      staffCode: editedEmployee.code || 'KTV',
+      staffName: editedEmployee.name || '',
+      type: 'avatar',
+    });
+    if (e.target) e.target.value = '';
+  };
+
+  const handleApplyAvatarUrl = () => {
+    const trimmed = avatarUrlDraft.trim();
+    if (!trimmed) {
+      alert('Vui lòng nhập đường dẫn URL ảnh.');
+      return;
+    }
+    if (!isGalleryImageUrl(trimmed)) {
+      alert('URL ảnh không hợp lệ (cần bắt đầu bằng http:// hoặc https://)');
+      return;
+    }
+    setCropTarget({
+      imageSrc: trimmed,
+      title: 'Căn chỉnh Ảnh Đại Diện (Avatar)',
+      subtitle: 'Khung hiển thị Card WRB Nội Bộ',
+      staffCode: editedEmployee?.code || 'KTV',
+      staffName: editedEmployee?.name || '',
+      type: 'avatar',
+    });
+    setShowAvatarUrlInput(false);
+    setAvatarUrlDraft('');
+  };
+
+  const handleCropConfirm = async (croppedBlob: Blob) => {
+    if (!cropTarget || !editedEmployee) return;
+    const currentTarget = { ...cropTarget };
+
+    // Convert cropped blob to a File
+    const croppedFile = new File([croppedBlob], `crop_${Date.now()}.jpg`, {
+      type: 'image/jpeg',
+    });
+
+    if (currentTarget.type === 'avatar') {
+      setCropTarget(null);
+      setIsUploadingAvatar(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', croppedFile);
+        formData.append('staffId', editedEmployee.id);
+
+        const res = await fetch('/api/admin/employees/upload-avatar', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success && data.url) {
+          setEditedEmployee((prev) => (prev ? { ...prev, photoUrl: data.url } : null));
+        } else {
+          alert(data.error || 'Lỗi khi lưu ảnh đại diện');
+        }
+      } catch (err: any) {
+        alert(err.message || 'Lỗi kết nối khi tải ảnh đại diện');
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    } else if (currentTarget.type === 'gallery' && currentTarget.groupId) {
+      // Upload the cropped file to gallery
+      await handleFileUpload(currentTarget.groupId, [croppedFile]);
+
+      // If there are more pending files in queue, advance to next file!
+      if (currentTarget.pendingFiles && currentTarget.pendingFiles.length > 0) {
+        const nextFile = currentTarget.pendingFiles[0];
+        const nextRemaining = currentTarget.pendingFiles.slice(1);
+        const objectUrl = URL.createObjectURL(nextFile);
+        setCropTarget({
+          ...currentTarget,
+          imageSrc: objectUrl,
+          pendingFiles: nextRemaining,
+        });
+      } else {
+        setCropTarget(null);
+      }
+    }
+  };
+
+  const handleUseOriginal = async () => {
+    if (!cropTarget || !editedEmployee) return;
+    const currentTarget = { ...cropTarget };
+
+    if (currentTarget.type === 'avatar') {
+      setCropTarget(null);
+      if (currentTarget.imageSrc.startsWith('http')) {
+        setEditedEmployee((prev) => (prev ? { ...prev, photoUrl: currentTarget.imageSrc } : null));
+      }
+    } else if (currentTarget.type === 'gallery' && currentTarget.groupId) {
+      if (currentTarget.imageSrc.startsWith('http')) {
+        const item = createGalleryItem(currentTarget.imageSrc, currentTarget.groupId);
+        setEditedEmployee((prev) => {
+          if (!prev) return prev;
+          const gallery = [...(prev.galleryUrls || [])];
+          if (!checkGalleryDuplicate(gallery, item)) gallery.push(item);
+          return { ...prev, galleryUrls: gallery };
+        });
+      }
+      // If there are more pending files in queue, advance to next file!
+      if (currentTarget.pendingFiles && currentTarget.pendingFiles.length > 0) {
+        const nextFile = currentTarget.pendingFiles[0];
+        const nextRemaining = currentTarget.pendingFiles.slice(1);
+        const objectUrl = URL.createObjectURL(nextFile);
+        setCropTarget({
+          ...currentTarget,
+          imageSrc: objectUrl,
+          pendingFiles: nextRemaining,
+        });
+      } else {
+        setCropTarget(null);
+      }
+    }
+  };
+
   if (!employee || !editedEmployee) return null;
 
   const toggleSkill = (skillKey: keyof Employee['skills']) => {
@@ -283,6 +437,162 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     onClose();
   };
 
+  const renderGroupCard = (groupId: GalleryGroupId, groupLabel: string) => {
+    const allItems = (editedEmployee?.galleryUrls || []).map((item, originalIndex) => ({
+      item,
+      originalIndex,
+      url: getItemUrl(item),
+      group: getGalleryGroup(item),
+    }));
+    const groupItems = allItems.filter((i) => i.group === groupId);
+    const isUploading = Boolean(uploadingGroups[groupId]);
+    const uploadErr = uploadErrors[groupId];
+    const urlErr = galleryUrlErrors[groupId];
+
+    return (
+      <div
+        key={groupId}
+        className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm flex flex-col justify-between"
+      >
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                {groupLabel}
+              </span>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">
+                {groupItems.length}
+              </span>
+            </div>
+
+            {isEditing && (
+              <div>
+                <input
+                  id={`file-upload-${groupId}`}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  disabled={isSaving || isUploading}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      const fileList = Array.from(e.target.files);
+                      const firstFile = fileList[0];
+                      const pendingFiles = fileList.slice(1);
+                      const objectUrl = URL.createObjectURL(firstFile);
+                      setCropTarget({
+                        imageSrc: objectUrl,
+                        title: `Căn chỉnh ảnh ${groupLabel}`,
+                        subtitle: 'Khung Card hiển thị trên web_noi_bo (Tỷ lệ 3:4)',
+                        staffCode: editedEmployee?.code || 'KTV',
+                        staffName: editedEmployee?.name || '',
+                        type: 'gallery',
+                        groupId,
+                        pendingFiles,
+                      });
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <label
+                  htmlFor={`file-upload-${groupId}`}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                    isSaving || isUploading
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                  }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin text-indigo-600" />
+                      <span>Đang tải...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={12} />
+                      <span>+ Tải ảnh</span>
+                    </>
+                  )}
+                </label>
+              </div>
+            )}
+          </div>
+
+          {isEditing && (
+            <div className="flex gap-1.5 mb-2">
+              <input
+                type="url"
+                aria-label={`URL ảnh ${groupLabel}`}
+                placeholder="https://.../photo.jpg"
+                value={galleryUrlDrafts[groupId] ?? ''}
+                disabled={isSaving || isUploading}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setGalleryUrlDrafts((current) => ({
+                    ...current,
+                    [groupId]: value,
+                  }));
+                  setGalleryUrlErrors((current) => ({
+                    ...current,
+                    [groupId]: '',
+                  }));
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addGalleryUrlToGroup(groupId);
+                  }
+                }}
+                className="flex-1 min-w-0 px-2.5 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                disabled={
+                  isSaving ||
+                  isUploading ||
+                  !(galleryUrlDrafts[groupId] ?? '').trim()
+                }
+                onClick={() => addGalleryUrlToGroup(groupId)}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shrink-0 transition-colors"
+              >
+                Thêm
+              </button>
+            </div>
+          )}
+
+          {uploadErr && (
+            <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
+              {uploadErr}
+            </p>
+          )}
+          {urlErr && (
+            <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
+              {urlErr}
+            </p>
+          )}
+
+          {groupItems.length === 0 ? (
+            <div className="text-[11px] text-gray-400 italic py-2 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              Chưa có ảnh trong nhóm này.
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {groupItems.map(({ originalIndex, url }) => (
+                <GalleryThumbnailItem
+                  key={`${url}-${originalIndex}`}
+                  url={url}
+                  index={originalIndex}
+                  isEditing={isEditing}
+                  onRemove={() => removeGalleryUrl(originalIndex)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       handleCloseModal();
@@ -290,7 +600,8 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
   };
 
   return (
-    <Dialog.Root open={isOpen} onOpenChange={handleOpenChange}>
+    <>
+      <Dialog.Root open={isOpen} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] sm:w-full max-w-2xl max-h-[90dvh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -336,14 +647,85 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               </button>
             </div>
             <div className="absolute -bottom-12 left-8">
-              <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100">
+              <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 group">
                 <img
-                  src={employee.photoUrl}
+                  src={editedEmployee.photoUrl || employee.photoUrl}
                   alt={employee.name}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
+                {isEditing && (
+                  <>
+                    <input
+                      type="file"
+                      ref={avatarFileRef}
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarFileSelect}
+                      disabled={isSaving || isUploadingAvatar}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => avatarFileRef.current?.click()}
+                      disabled={isSaving || isUploadingAvatar}
+                      className="absolute inset-0 bg-black/50 hover:bg-black/60 transition-colors flex flex-col items-center justify-center text-white cursor-pointer"
+                      title="Bấm để tải ảnh đại diện từ máy"
+                    >
+                      {isUploadingAvatar ? (
+                        <Loader2 size={22} className="animate-spin text-white" />
+                      ) : (
+                        <>
+                          <Camera size={20} />
+                          <span className="text-[10px] font-bold mt-0.5">Đổi ảnh</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
+              {isEditing && (
+                <div className="mt-1 relative">
+                  {showAvatarUrlInput ? (
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-lg shadow-xl border border-gray-200 mt-1 w-64 absolute left-0 z-30 animate-in fade-in zoom-in-95 duration-150">
+                      <input
+                        type="url"
+                        placeholder="https://.../avatar.jpg"
+                        value={avatarUrlDraft}
+                        onChange={(e) => setAvatarUrlDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyAvatarUrl();
+                          }
+                        }}
+                        className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded outline-none focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyAvatarUrl}
+                        className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-semibold hover:bg-indigo-700"
+                      >
+                        Lưu
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAvatarUrlInput(false)}
+                        className="p-1 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAvatarUrlInput(true)}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
+                    >
+                      <LinkIcon size={10} /> Link ảnh
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -414,50 +796,6 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                   <InfoItem label="Số CCCD" value={editedEmployee.idCard} isEditing={isEditing} onChange={(val) => updateField('idCard', val)} />
                   <InfoItem label="Chiều cao" value={editedEmployee.height} icon={<Ruler size={14} />} isEditing={isEditing} onChange={(val) => updateField('height', val)} />
                   <InfoItem label="Cân nặng" value={editedEmployee.weight} icon={<Weight size={14} />} isEditing={isEditing} onChange={(val) => updateField('weight', val)} />
-
-                  {isEditing ? (
-                    <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editedEmployee.isActiveVipMenu || false} onChange={(e) => updateField('isActiveVipMenu', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                        <span className="text-sm font-medium text-gray-700">Hiển thị trên VIP Menu</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editedEmployee.isHomeSpa || false} onChange={(e) => updateField('isHomeSpa', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                        <span className="text-sm font-medium text-gray-700">Đi Home Spa</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editedEmployee.isActiveTherapyMenu || false} onChange={(e) => updateField('isActiveTherapyMenu', e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                        <span className="text-sm font-medium text-gray-700">Hiển thị trên Menu Điều trị</span>
-                      </label>
-                        <label className="flex items-center gap-2 cursor-pointer mt-2">
-                          <input type="checkbox" checked={editedEmployee.enableKpiDemo || false} onChange={(e) => updateField('enableKpiDemo', e.target.checked)} className="w-4 h-4 text-amber-500 rounded border-amber-300 focus:ring-amber-500" />
-                          <span className="text-sm font-medium text-amber-700">Hiển thị Demo KPI</span>
-                        </label>
-                      <label className="flex items-center gap-2 cursor-pointer mt-2 pt-2 border-t border-gray-100">
-                        <input type="checkbox" checked={editedEmployee.enableBonus ?? true} onChange={(e) => updateField('enableBonus', e.target.checked)} className="w-4 h-4 text-emerald-500 rounded border-emerald-300 focus:ring-emerald-500" />
-                        <span className="text-sm font-medium text-emerald-700">Tính điểm Bonus (Ví Bonus)</span>
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">VIP Menu:</span>
-                        <span className="text-sm font-medium text-gray-900">{editedEmployee.isActiveVipMenu ? 'Có' : 'Không'}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Home Spa:</span>
-                        <span className="text-sm font-medium text-gray-900">{editedEmployee.isHomeSpa ? 'Có' : 'Không'}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Menu Điều trị:</span>
-                        <span className="text-sm font-medium text-gray-900">{editedEmployee.isActiveTherapyMenu ? 'Có' : 'Không'}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Nhận điểm Bonus:</span>
-                        <span className="text-sm font-medium text-emerald-600">{editedEmployee.enableBonus ?? true ? 'Có' : 'Không'}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -555,263 +893,328 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               )}
             </div>
 
-            <div className="mt-8 space-y-6">
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                    <Award size={14} />{' '}
-                    Ảnh gallery theo menu
-                  </h3>
-                  {isEditing && (
-                    <span className="text-[10px] text-indigo-600 font-bold">
-                      Tải file từ máy hoặc dán URL theo từng nhóm
-                    </span>
+            {/* ── CẤU HÌNH MENU & DỊCH VỤ (GOM CỤM ĐI LIỀN NÚT ACTIVE VÀ UPLOAD ẢNH) ── */}
+            <div className="mt-8 space-y-5">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                <Sparkles size={14} className="text-amber-500" /> Cấu hình Menu & Dịch Vụ
+              </h3>
+
+              {/* 🌟 1. VIP MENU (NHP) */}
+              <div className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+                editedEmployee.isActiveVipMenu
+                  ? 'border-amber-300 bg-amber-50/20 shadow-sm'
+                  : 'border-gray-200 bg-gray-50/60'
+              }`}>
+                <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/70 border-b border-amber-100/60">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="vip-menu-toggle"
+                      disabled={!isEditing}
+                      checked={editedEmployee.isActiveVipMenu || false}
+                      onChange={(e) => {
+                        updateField('isActiveVipMenu', e.target.checked);
+                        if (e.target.checked) setIsVipExpanded(true);
+                      }}
+                      className="w-5 h-5 text-amber-500 rounded border-gray-300 focus:ring-amber-500 cursor-pointer disabled:opacity-60"
+                    />
+                    <label htmlFor="vip-menu-toggle" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 text-sm">VIP Menu (NHP)</span>
+                        {editedEmployee.isActiveVipMenu ? (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full border border-amber-300">
+                            Đang Bật
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-full">
+                            Đang Tắt
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Kích hoạt nhân viên trên VIP Menu và quản lý ảnh theo kỹ năng VIP
+                      </p>
+                    </label>
+                  </div>
+
+                  {editedEmployee.isActiveVipMenu && (
+                    <button
+                      type="button"
+                      onClick={() => setIsVipExpanded(!isVipExpanded)}
+                      className="self-end sm:self-auto px-3 py-1.5 text-amber-900 bg-amber-100/70 hover:bg-amber-100 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                    >
+                      <span>{isVipExpanded ? 'Thu gọn' : 'Mở rộng'}</span>
+                      {isVipExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
                   )}
                 </div>
 
-                {(() => {
-                  const allItems = (editedEmployee.galleryUrls || []).map((item, originalIndex) => ({
-                    item,
-                    originalIndex,
-                    url: getItemUrl(item),
-                    group: getGalleryGroup(item),
-                  }));
-                  const groupsToRender = [
-                    ...(editedEmployee.isActiveTherapyMenu
-                      ? GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((g) => ({ ...g, label: `NHT · ${g.label}` }))
-                      : []),
-                    ...(editedEmployee.isActiveVipMenu
-                      ? SKILL_KEYS.filter((key) => isSkillActive(editedEmployee.skills?.[key]))
-                          .map((key) => ({ id: `vip:${key}` as GalleryGroupId, label: `VIP NHP · ${SKILL_LABELS[key]}` }))
-                      : []),
-                    ...(!editedEmployee.isActiveTherapyMenu && !editedEmployee.isActiveVipMenu || allItems.some((i) => i.group === 'legacy')
-                      ? [{ id: 'legacy' as GalleryGroupId, label: 'Ảnh cũ chưa phân loại' }]
-                      : []),
-                  ];
-
-                  if (!isEditing) {
-                    const hasAnyPhotos = allItems.some((item) => groupsToRender.some((group) => group.id === item.group));
-                    if (!hasAnyPhotos) {
-                      return (
-                        <div className="text-xs text-gray-500 italic py-2">
-                          Nhân viên này chưa có ảnh gallery.
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {groupsToRender.map((group) => {
-                          const groupItems = allItems.filter((i) => i.group === group.id);
-                          if (groupItems.length === 0) return null;
-
+                {/* Nội dung VIP Menu khi Active */}
+                {editedEmployee.isActiveVipMenu && isVipExpanded && (
+                  <div className="p-4 space-y-4">
+                    {/* Bật/tắt kỹ năng VIP */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                          Kỹ năng VIP của nhân viên
+                        </span>
+                        {isEditing && (
+                          <span className="text-[10px] text-amber-700 font-medium">
+                            Bấm vào kỹ năng để bật/tắt
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {SKILL_KEYS.map((key) => {
+                          const isSkilled = isSkillActive(editedEmployee.skills?.[key]);
                           return (
-                            <div
-                              key={group.id}
-                              className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm"
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => toggleSkill(key)}
+                              disabled={!isEditing}
+                              className={`px-3 py-2 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
+                                isSkilled
+                                  ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                              } ${!isEditing ? 'cursor-default' : 'cursor-pointer active:scale-95'}`}
                             >
-                              <div className="flex items-center justify-between mb-2.5">
-                                <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                  {group.label}
-                                </span>
-                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
-                                  {groupItems.length}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2">
-                                {groupItems.map(({ originalIndex, url }) => (
-                                  <GalleryThumbnailItem
-                                    key={`${url}-${originalIndex}`}
-                                    url={url}
-                                    index={originalIndex}
-                                    isEditing={false}
-                                  />
-                                ))}
-                              </div>
-                            </div>
+                              <span className="truncate">{SKILL_LABELS[key]}</span>
+                              {isSkilled && <CheckCircle2 size={14} className="shrink-0 text-white" />}
+                            </button>
                           );
                         })}
                       </div>
-                    );
-                  }
+                    </div>
 
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {editedEmployee.isActiveVipMenu && !SKILL_KEYS.some((key) => isSkillActive(editedEmployee.skills?.[key])) && (
-                        <p className="col-span-full text-xs text-amber-700">Hãy bật kỹ năng VIP ở mục Kỹ năng chuyên môn để tải ảnh NHP theo kỹ năng.</p>
+                    {/* Upload ảnh theo kỹ năng VIP đã bật */}
+                    <div className="pt-2 border-t border-amber-100">
+                      <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-2.5">
+                        Tải ảnh theo từng kỹ năng VIP
+                      </span>
+                      {!SKILL_KEYS.some((key) => isSkillActive(editedEmployee.skills?.[key])) ? (
+                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 text-center">
+                          Hãy bật ít nhất một kỹ năng VIP ở trên để hiển thị ô tải ảnh tương ứng.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {SKILL_KEYS.filter((key) => isSkillActive(editedEmployee.skills?.[key])).map((key) => {
+                            const groupId = `vip:${key}` as GalleryGroupId;
+                            const groupLabel = `VIP · ${SKILL_LABELS[key]}`;
+                            return renderGroupCard(groupId, groupLabel);
+                          })}
+                        </div>
                       )}
-                      {groupsToRender.map((group) => {
-                        const groupItems = allItems.filter((i) => i.group === group.id);
-                        const isUploading = Boolean(uploadingGroups[group.id]);
-                        const uploadErr = uploadErrors[group.id];
-                        const urlErr = galleryUrlErrors[group.id];
+                    </div>
+                  </div>
+                )}
+              </div>
 
+              {/* 🌿 2. MENU ĐIỀU TRỊ / DEEP BODY (NHT) */}
+              <div className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+                editedEmployee.isActiveTherapyMenu
+                  ? 'border-emerald-300 bg-emerald-50/20 shadow-sm'
+                  : 'border-gray-200 bg-gray-50/60'
+              }`}>
+                <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/70 border-b border-emerald-100/60">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="therapy-menu-toggle"
+                      disabled={!isEditing}
+                      checked={editedEmployee.isActiveTherapyMenu || false}
+                      onChange={(e) => {
+                        updateField('isActiveTherapyMenu', e.target.checked);
+                        if (e.target.checked) setIsTherapyExpanded(true);
+                      }}
+                      className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
+                    />
+                    <label htmlFor="therapy-menu-toggle" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 text-sm">Menu Điều Trị / Deep Body (NHT)</span>
+                        {editedEmployee.isActiveTherapyMenu ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-300">
+                            Đang Bật
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-full">
+                            Đang Tắt
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Kích hoạt nhân viên trên Menu Điều trị và tải ảnh 5 phương pháp trị liệu
+                      </p>
+                    </label>
+                  </div>
+
+                  {editedEmployee.isActiveTherapyMenu && (
+                    <button
+                      type="button"
+                      onClick={() => setIsTherapyExpanded(!isTherapyExpanded)}
+                      className="self-end sm:self-auto px-3 py-1.5 text-emerald-900 bg-emerald-100/70 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                    >
+                      <span>{isTherapyExpanded ? 'Thu gọn' : 'Mở rộng'}</span>
+                      {isTherapyExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  )}
+                </div>
+
+                {/* Nội dung Menu Điều trị khi Active */}
+                {editedEmployee.isActiveTherapyMenu && isTherapyExpanded && (
+                  <div className="p-4 space-y-3">
+                    <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider block">
+                      Tải ảnh 5 phương pháp trị liệu
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((group) => {
+                        return renderGroupCard(group.id, `NHT · ${group.label}`);
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ⚙️ 3. DỊCH VỤ & TÍNH NĂNG KHÁC */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-3">
+                  Dịch vụ & Tính năng phụ
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100/80 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={!isEditing}
+                      checked={editedEmployee.isHomeSpa || false}
+                      onChange={(e) => updateField('isHomeSpa', e.target.checked)}
+                      className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500 cursor-pointer disabled:opacity-60"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 block">Đi Home Spa</span>
+                      <span className="text-[10px] text-gray-500">Phục vụ tận nơi</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100/80 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={!isEditing}
+                      checked={editedEmployee.enableBonus ?? true}
+                      onChange={(e) => updateField('enableBonus', e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 block">Điểm Bonus</span>
+                      <span className="text-[10px] text-gray-500">Tích lũy Ví Bonus</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100/80 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={!isEditing}
+                      checked={editedEmployee.enableKpiDemo || false}
+                      onChange={(e) => updateField('enableKpiDemo', e.target.checked)}
+                      className="w-4 h-4 text-amber-500 rounded border-gray-300 focus:ring-amber-500 cursor-pointer disabled:opacity-60"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 block">Demo KPI</span>
+                      <span className="text-[10px] text-gray-500">Hiển thị thử nghiệm</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* 📷 4. ẢNH CŨ CHƯA PHÂN LOẠI (Nếu có) */}
+              {(() => {
+                const legacyItems = (editedEmployee.galleryUrls || []).map((item, originalIndex) => ({
+                  item,
+                  originalIndex,
+                  url: getItemUrl(item),
+                  group: getGalleryGroup(item),
+                })).filter(i => i.group === 'legacy');
+                if (legacyItems.length === 0 && !isEditing) return null;
+                return (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50/60 p-4">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
+                      Ảnh cũ chưa phân loại ({legacyItems.length})
+                    </span>
+                    {renderGroupCard('legacy', 'Ảnh cũ chưa phân loại')}
+                  </div>
+                );
+              })()}
+
+              {/* 🎯 5. TẤT CẢ KỸ NĂNG CHUYÊN MÔN (Thu gọn/Mở rộng) */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Award size={16} className="text-indigo-600" />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 uppercase tracking-wide block">
+                        Tất cả kỹ năng chuyên môn ({SKILL_KEYS.length})
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).length} kỹ năng đã kích hoạt
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAllSkillsExpanded(!isAllSkillsExpanded)}
+                    className="px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                  >
+                    <span>{isAllSkillsExpanded ? 'Thu gọn' : 'Xem tất cả'}</span>
+                    {isAllSkillsExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  </button>
+                </div>
+
+                {isAllSkillsExpanded && (
+                  <div className="mt-4 pt-3 border-t border-gray-100">
+                    {isEditing && (
+                      <p className="text-[10px] text-indigo-600 font-bold mb-2.5 animate-pulse">
+                        ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi trạng thái
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {SKILL_KEYS.map((key) => {
+                        const rawLevel = editedEmployee.skills?.[key];
+                        const isSkilled = isSkillActive(rawLevel);
+                        const info = levelInfo[String(isSkilled)];
                         return (
-                          <div
-                            key={group.id}
-                            className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm flex flex-col justify-between"
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => toggleSkill(key)}
+                            disabled={!isEditing}
+                            className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer active:scale-95' : 'cursor-default'}`}
                           >
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                    {group.label}
-                                  </span>
-                                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">
-                                    {groupItems.length}
-                                  </span>
-                                </div>
-
-                                <div>
-                                  <input
-                                    id={`file-upload-${group.id}`}
-                                    type="file"
-                                    multiple
-                                    accept="image/jpeg,image/png,image/webp"
-                                    className="hidden"
-                                    disabled={isSaving || isUploading}
-                                    onChange={(e) => {
-                                      if (e.target.files && e.target.files.length > 0) {
-                                        handleFileUpload(group.id, e.target.files);
-                                        e.target.value = '';
-                                      }
-                                    }}
-                                  />
-                                  <label
-                                    htmlFor={`file-upload-${group.id}`}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                                      isSaving || isUploading
-                                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-                                    }`}
-                                  >
-                                    {isUploading ? (
-                                      <>
-                                        <Loader2 size={12} className="animate-spin text-indigo-600" />
-                                        <span>Đang tải...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Upload size={12} />
-                                        <span>+ Tải ảnh</span>
-                                      </>
-                                    )}
-                                  </label>
-                                </div>
-                              </div>
-
-                              <div className="flex gap-1.5 mb-2">
-                                <input
-                                  type="url"
-                                  aria-label={`URL ảnh ${group.label}`}
-                                  placeholder="https://.../photo.jpg"
-                                  value={galleryUrlDrafts[group.id] ?? ''}
-                                  disabled={isSaving || isUploading}
-                                  onChange={(event) => {
-                                    const value = event.target.value;
-                                    setGalleryUrlDrafts((current) => ({
-                                      ...current,
-                                      [group.id]: value,
-                                    }));
-                                    setGalleryUrlErrors((current) => ({
-                                      ...current,
-                                      [group.id]: '',
-                                    }));
-                                  }}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                      event.preventDefault();
-                                      addGalleryUrlToGroup(group.id);
-                                    }
-                                  }}
-                                  className="flex-1 min-w-0 px-2.5 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                />
-                                <button
-                                  type="button"
-                                  disabled={
-                                    isSaving ||
-                                    isUploading ||
-                                    !(galleryUrlDrafts[group.id] ?? '').trim()
-                                  }
-                                  onClick={() => addGalleryUrlToGroup(group.id)}
-                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shrink-0 transition-colors"
-                                >
-                                  Thêm ảnh
-                                </button>
-                              </div>
-
-                              {uploadErr && (
-                                <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
-                                  {uploadErr}
-                                </p>
-                              )}
-                              {urlErr && (
-                                <p role="alert" className="text-[11px] text-red-600 font-medium mb-2">
-                                  {urlErr}
-                                </p>
-                              )}
-
-                              {groupItems.length === 0 ? (
-                                <div className="text-[11px] text-gray-400 italic py-2 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                  Chưa có ảnh trong nhóm này.
-                                </div>
-                              ) : (
-                                <div className="grid grid-cols-3 gap-2">
-                                  {groupItems.map(({ originalIndex, url }) => (
-                                    <GalleryThumbnailItem
-                                      key={`${url}-${originalIndex}`}
-                                      url={url}
-                                      index={originalIndex}
-                                      isEditing={true}
-                                      onRemove={() => removeGalleryUrl(originalIndex)}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                            <span className="text-xs font-bold truncate">{SKILL_LABELS[key]}</span>
+                            {info.icon}
+                          </button>
                         );
                       })}
                     </div>
-                  );
-                })()}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Award size={14} /> Kỹ năng chuyên môn
-                  </h3>
-                  {isEditing && (
-                    <span className="text-[10px] text-indigo-600 font-bold animate-pulse">
-                      ĐANG CHỈNH SỬA - Bấm vào kỹ năng để chuyển đổi cấp độ
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {SKILL_KEYS.map((key) => {
-                    const rawLevel = editedEmployee.skills?.[key];
-                    const isSkilled = rawLevel === true || (rawLevel as any) === 'basic' || (rawLevel as any) === 'expert' || (rawLevel as any) === 'training';
-                    const info = levelInfo[String(isSkilled)];
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => toggleSkill(key)}
-                        disabled={!isEditing}
-                        className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${info.color} ${isEditing ? 'hover:border-indigo-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
-                      >
-                        <span className="text-xs font-bold truncate">{SKILL_LABELS[key]}</span>
-                        {info.icon}
-                      </button>
-                    );
-                  })}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+
+    {cropTarget && (
+      <CardImageCropModal
+        isOpen={Boolean(cropTarget)}
+        imageSrc={cropTarget.imageSrc}
+        title={cropTarget.title}
+        subtitle={cropTarget.subtitle}
+        staffCode={cropTarget.staffCode}
+        staffName={cropTarget.staffName}
+        onClose={() => setCropTarget(null)}
+        onConfirm={handleCropConfirm}
+        onUseOriginal={handleUseOriginal}
+      />
+    )}
+  </>
   );
 }
 
