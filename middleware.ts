@@ -2,6 +2,9 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  if (process.env.NODE_ENV === 'development' && request.nextUrl.pathname === '/reception/dispatch/sequential-demo') {
+    return NextResponse.next()
+  }
   let supabaseResponse = NextResponse.next({
     request,
   })
