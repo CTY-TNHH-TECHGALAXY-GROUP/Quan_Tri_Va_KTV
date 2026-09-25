@@ -1,6 +1,6 @@
 import type {Metadata, Viewport} from 'next';
 import './globals.css'; // Global styles
-import { AuthProvider } from '@/lib/auth-context';
+import AppProviders from './AppProviders';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 
 const inter = Inter({
@@ -37,20 +37,11 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-import { NotificationProvider } from '@/components/NotificationProvider';
-import { ToastProvider } from '@/components/ui/Toast';
-
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body suppressHydrationWarning className="font-sans antialiased w-full overflow-x-hidden">
-        <AuthProvider>
-          <NotificationProvider>
-            <ToastProvider>
-              {children}
-            </ToastProvider>
-          </NotificationProvider>
-        </AuthProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );
