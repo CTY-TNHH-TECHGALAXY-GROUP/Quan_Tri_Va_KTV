@@ -1,5 +1,6 @@
 import { isUtilityService } from '@/lib/booking.logic';
 import { PendingOrder, ServiceBlock, GuestBlock } from '../types';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
 export const formatToHourMinute = (isoString: string | null | undefined): string => {
     if (!isoString) return '--:--';
@@ -152,7 +153,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (svc.staffList) {
                 svc.staffList = svc.staffList.map(st => {
                     const origStart = st.segments?.[0]?.startTime || svc.timeStart || 'unknown';
-                    const calculatedStart = dynamicStartTimes.get(`${svc.id}_${st.ktvId}`) || origStart;
+                    const calculatedStart = isTwoSlotSequential(svc.options)
+                        ? origStart : (dynamicStartTimes.get(`${svc.id}_${st.ktvId}`) || origStart);
                     return { ...st, _calculatedStartTime: calculatedStart };
                 });
             }
@@ -263,6 +265,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             // [Antigravity] SPLIT SERVICES BY CALCULATED START TIME FOR SEQUENTIAL (NỐI TIẾP)
             const splitGroupServices: ServiceBlock[] = [];
             group.services.forEach(svc => {
+                if (isTwoSlotSequential(svc.options)) {
+                    splitGroupServices.push(svc);
+                    return;
+                }
                 if (svc.staffList && svc.staffList.length > 1) {
                     // ⚠️ Người BỊ ĐỔI RA không phải một ca nối tiếp.
                     //
@@ -346,7 +352,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     return { ...svc, status: dStatus, _isChild: true, _parentId: opts.mergedIntoId, _splitTime: (svc as any)._splitTime };
                 }
 
-                if (dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {
+                if (!isTwoSlotSequential(svc.options) && dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {
                     let svcAllComp = true, svcAnyStart = false, svcAllFb = true;
                     if (!svc.staffList || svc.staffList.length === 0) {
                         svcAllComp = false; svcAllFb = false;
@@ -412,7 +418,12 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // [Antigravity] To guarantee separated Kanban cards for "Nối tiếp" even if they share the same phase,
                 // we group by phase AND _splitTime.
                 let groupingKey = phase;
-                if ((svc as any)._splitTime) {
+                const sequentialParent = svc._isChild && (svc as any)._parentId
+                    ? updatedServices.find(parent => parent.id === (svc as any)._parentId)
+                    : svc;
+                if (sequentialParent && isTwoSlotSequential(sequentialParent.options)) {
+                    groupingKey = `${phase}#item:${sequentialParent.id}`;
+                } else if ((svc as any)._splitTime) {
                     groupingKey = `${phase}#${(svc as any)._splitTime}`;
                 }
 
@@ -467,8 +478,11 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
 
                 // Create a unique ID for this SubOrder split by Phase, so they render as distinct cards
                 // Also factor in _splitTime to ensure uniqueness
-                const splitIdSuffix = servicesByPhase.size > 1 ? `_${groupingKey}` : '';
                 const baseId = guestId !== 'default' ? `${order.id}_${guestId}` : `${order.id}_guest${groupIndex}`;
+                const sequentialItem = phaseServices.find(s => isTwoSlotSequential(s.options));
+                const splitIdSuffix = sequentialItem
+                    ? `_${sequentialItem.id}`
+                    : (servicesByPhase.size > 1 ? `_${groupingKey}` : '');
 
                 resultForOrder.push({
                     id: `${baseId}${splitIdSuffix}`,

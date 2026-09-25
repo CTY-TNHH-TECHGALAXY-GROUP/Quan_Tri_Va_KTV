@@ -39,7 +39,7 @@
 
 import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
 import { isUtilityService } from '@/lib/booking.logic';
-import { segmentProgress } from '@/lib/dispatch-status';
+import { segmentProgress, sequentialSlotsComplete } from '@/lib/dispatch-status';
 
 export async function handleFinishService(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, status, allItemIdsForThisKTV } = ctx;
@@ -62,7 +62,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     }
 
     // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
-    const { data: items } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id').in('id', allItemIdsForThisKTV);
+    const { data: items } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
     
     let allGlobalSegs: any[] = [];
     let originalItemsData: Record<string, any[]> = {};
@@ -235,7 +235,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                                               // đã huỷ thành "Chờ đánh giá" hoặc "Hoàn tất".
             : (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
-            : hasUnstartedSegs
+            : (hasUnstartedSegs || !sequentialSlotsComplete(item.options, segs))
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
                 : (alreadyRated && allSegsDone && allHandovered)
                     ? 'DONE'                  // 🧠 Khách đã rate + KTV xong + KTV đã bàn giao → hoàn tất

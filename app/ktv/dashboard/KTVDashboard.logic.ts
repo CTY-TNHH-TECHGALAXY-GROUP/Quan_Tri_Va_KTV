@@ -480,6 +480,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
 
         const calculateAllowedTime = () => {
+            const assignedItem = booking.BookingItems?.find((item: any) =>
+                item.id === (booking.assignedItemId || booking.activeItemId));
+            let assignedOptions: any = assignedItem?.options || {};
+            try { if (typeof assignedOptions === 'string') assignedOptions = JSON.parse(assignedOptions); } catch { assignedOptions = {}; }
+            let assignedSegments: any[] = [];
+            try {
+                assignedSegments = typeof assignedItem?.segments === 'string'
+                    ? JSON.parse(assignedItem.segments) : (assignedItem?.segments || []);
+            } catch {}
+            if (assignedOptions.sequentialSlots === 2 && assignedSegments.some((seg: any) =>
+                seg.sequenceSlot === 2 && seg.ktvId?.toLowerCase() === ktvId?.toLowerCase()
+                && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true)) {
+                setAllowedStartTime(null);
+                setCanStart(true);
+                return;
+            }
             let allowed: Date | null = null;
 
             if (booking.dispatchStartTime) {
@@ -532,7 +548,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         calculateAllowedTime();
         const interval = setInterval(calculateAllowedTime, 1000); // Check mỗi giây để đếm ngược mượt
         return () => clearInterval(interval);
-    }, [booking, settings.ktv_setup_duration_minutes]);
+    }, [booking, ktvId, settings.ktv_setup_duration_minutes]);
 
     // 🕒 Active Segment & Shifting Logic
     useEffect(() => {
@@ -2886,4 +2902,3 @@ export function useKTVDashboard(config?: DashboardConfig) {
         shiftExtension,
     };
 }
-

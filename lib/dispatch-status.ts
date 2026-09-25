@@ -100,6 +100,33 @@ export function hasOpenKtvSegment(segments: any[]): boolean {
         && !s.actualEndTime);
 }
 
+/** Only an item explicitly marked by the counter has two sequential slots. */
+export function isTwoSlotSequential(options: any): boolean {
+    try {
+        const parsed = typeof options === 'string' ? JSON.parse(options) : options;
+        const value = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+        return value?.sequentialSlots === 2;
+    } catch {
+        return false;
+    }
+}
+
+export function sequentialSlotsComplete(options: any, segments: any[]): boolean {
+    if (!isTwoSlotSequential(options)) return true;
+    if (!Array.isArray(segments)) return false;
+    const completed = (slot: number) => segments.some((s: any) =>
+        s?.sequenceSlot === slot && s?.ktvId
+        && s?.voided !== true && s?.voided !== 'true'
+        && s?.actualStartTime && s?.actualEndTime);
+    if (!completed(1)) return false;
+    try {
+        const parsed = typeof options === 'string' ? JSON.parse(options) : options;
+        const value = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+        if (value?.finishedAfterA === true && !segments.some((s: any) => s?.sequenceSlot === 2 && s?.actualStartTime)) return true;
+    } catch {}
+    return completed(2);
+}
+
 /**
  * Progress of a service's KTV segments, used by handleFinishService to pick the
  * item status. Voided segments (swapped out, never started before the customer

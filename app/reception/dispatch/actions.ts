@@ -5,6 +5,8 @@ import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
@@ -716,12 +718,15 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const ktvIdsWithoutTurnRow = uniqueKtvIds.filter(id => !(turnRowsToday || []).some(t => t.employee_id === id));
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
+        const protectedSequentialIds = new Set<string>();
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
-            const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes').eq('bookingId', bookingId);
+            const { data: currentItems, error: currentItemsError } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
+            if (currentItemsError) throw currentItemsError;
             if (currentItems) {
                 dispatchData.itemUpdates = dispatchData.itemUpdates.map(updateItem => {
                     const dbItem = currentItems.find(i => i.id === updateItem.id);
                     if (!dbItem) return updateItem;
+                    if (isTwoSlotSequential(dbItem.options) && !['NEW', 'WAITING'].includes(dbItem.status)) protectedSequentialIds.add(dbItem.id);
                     
                     // 1. NGĂN LÙI TRẠNG THÁI CA ĐANG LÀM / ĐÃ XONG
                     if (updateItem.status && dbItem.status) {
@@ -747,6 +752,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
+                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options);
+                    if (conflict) throw new Error(conflict);
                     
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
                         updateItem.segments = updateItem.segments.map(incomingSeg => {
@@ -767,6 +774,11 @@ export async function processDispatch(bookingId: string, dispatchData: {
                     return updateItem;
                 });
             }
+        }
+        if (protectedSequentialIds.size > 0) {
+            dispatchData.itemUpdates = dispatchData.itemUpdates?.filter(item => !protectedSequentialIds.has(item.id));
+            dispatchData.staffAssignments = dispatchData.staffAssignments.filter(a => !protectedSequentialIds.has(a.bookingItemId));
+            if (!dispatchData.itemUpdates?.length) return { success: false, error: 'Dịch vụ nối tiếp đã điều phối; hãy dùng thao tác gán/sửa B riêng.' };
         }
         
         // 🚀 BẢO VỆ TRẠNG THÁI BOOKING: Nếu DB đang ở trạng thái cao hơn, không cho lùi
@@ -924,6 +936,77 @@ export async function processDispatch(bookingId: string, dispatchData: {
     }
 }
 
+/** Ghi ý định nối tiếp khi A đã được điều phối, không chốt giờ A. */
+export async function enableSequentialItem(bookingId: string, itemId: string) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { error } = await supabase.rpc('dispatch_enable_sequential_item', {
+            p_booking_id: bookingId, p_item_id: itemId,
+        });
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không thể chọn nối tiếp' };
+    }
+}
+
+/** Gán/sửa B có khóa, giữ nguyên giờ thực của A. */
+export async function handoffSequentialKtv(input: {
+    bookingId: string;
+    itemId: string;
+    toKtvId: string;
+    plannedStartAt: string;
+    durationMinutes: number;
+    confirmOverlap: boolean;
+}) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { data, error } = await supabase.rpc('dispatch_assign_sequential_slot_b', {
+            p_booking_id: input.bookingId,
+            p_item_id: input.itemId,
+            p_to_ktv: input.toKtvId,
+            p_planned_start_at: input.plannedStartAt,
+            p_duration_minutes: input.durationMinutes,
+            p_confirm_overlap: input.confirmOverlap,
+        });
+        if (error) throw error;
+        if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return {
+            success: false, code: 'OVERLAP_CONFIRM_REQUIRED' as const,
+            referenceAt: data.referenceAt as string,
+            referenceKind: data.referenceKind as 'actual' | 'planned',
+        };
+        if (!data?.success) throw new Error(data?.error || 'DB không xác nhận gán B');
+        await createNotification({
+            bookingId: input.bookingId,
+            employeeId: input.toKtvId,
+            type: 'KTV_NEW_ORDER',
+            message: 'Bạn được phân công lượt B của dịch vụ nối tiếp. Vui lòng kiểm tra ứng dụng.',
+        });
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không thể bàn giao nối tiếp' };
+    }
+}
+
+export async function finishSequentialAfterA(bookingId: string, itemId: string) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { error } = await supabase.rpc('dispatch_finish_sequential_after_a', {
+            p_booking_id: bookingId, p_item_id: itemId,
+        });
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không thể kết thúc sau A' };
+    }
+}
+
 /**
  * Đổi mọi `NEW_EXT:<TÊN>` (KTV ngoài chưa có dòng Staff, quầy vừa thêm ở ô chọn)
  * thành mã `EXT_xxxxxx` thật, ghi thẳng vào `data`. Trả câu lỗi, hoặc `null`.
@@ -1064,7 +1147,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
-            const { data: cItems } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, guest_id').eq('bookingId', bookingId);
+            const { data: cItems, error: cItemsError } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, guest_id, options').eq('bookingId', bookingId);
+            if (cItemsError) throw cItemsError;
             const { data: cGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
             currentItems = cItems;
             currentGuests = cGuests;
@@ -1114,6 +1198,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
+                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options);
+                    if (conflict) throw new Error(conflict);
                     
                     // 3. NGĂN CẤM XÓA KTV ĐÃ BẮT ĐẦU LÀM
                     if (updateItem.technicianCodes !== undefined) {
@@ -1259,7 +1345,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
 
                 // NẾU LÀ CHILD ITEM THÌ DỪNG LẠI TẠI ĐÂY (không đồng bộ TurnQueue)
-                if (isChild) continue;
+                if (isChild || isTwoSlotSequential(item.options)) continue;
 
                 // 3. Đồng bộ lại start_time cho TurnQueue (quan trọng để KTV không bị chặn khi Lễ tân đổi giờ)
                 if (item.segments && Array.isArray(item.segments)) {
@@ -1467,6 +1553,19 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
             if (!canTransition(bCurrent.status, newStatus)) {
                 return { success: false, error: `Lỗi: Không thể chuyển trạng thái từ ${bCurrent.status} sang ${newStatus}` };
             }
+        }
+
+        if (['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(newStatus)) {
+            const { sequentialSlotsComplete, isTwoSlotSequential } = await import('@/lib/dispatch-status');
+            const { data: sequentialItems, error: sequentialError } = await supabase
+                .from('BookingItems').select('id, status, options, segments').eq('bookingId', bookingId);
+            if (sequentialError) throw sequentialError;
+            const unfinished = (sequentialItems || []).find((item: any) => {
+                if (item.status === 'CANCELLED' || !isTwoSlotSequential(item.options)) return false;
+                const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : item.segments;
+                return !sequentialSlotsComplete(item.options, segments);
+            });
+            if (unfinished) throw new Error(`Dịch vụ ${unfinished.id} còn chờ lượt KTV nối tiếp; chưa thể chốt cả đơn.`);
         }
 
         // 1. Cập nhật trạng thái Booking
@@ -1718,8 +1817,8 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
         if (!supabase) throw new Error('Supabase admin not initialized');
 
         // Lấy trạng thái hiện tại của items để check rule
-        const { data: itemsCurrent } = await supabase.from('BookingItems').select('id, status, segments').in('id', itemIds);
-        const { canTransition, shouldHoldItemStatus } = await import('@/lib/dispatch-status');
+        const { data: itemsCurrent } = await supabase.from('BookingItems').select('id, status, segments, options').in('id', itemIds);
+        const { canTransition, shouldHoldItemStatus, isTwoSlotSequential, sequentialSlotsComplete } = await import('@/lib/dispatch-status');
         // Items whose status really changed below — merged children follow only these.
         const statusChangedIds: string[] = [];
         
@@ -1739,6 +1838,15 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
         for (const item of itemsCurrent || []) {
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+            const sequential = isTwoSlotSequential(item.options);
+            if (sequential && newStatus === 'IN_PROGRESS' && (!targetKtvIds || targetKtvIds.length !== 1)) {
+                throw new Error('Hãy chọn đúng hàng KTV để bắt đầu dịch vụ nối tiếp.');
+            }
+            if (sequential && ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(newStatus)
+                && (!targetKtvIds || targetKtvIds.length !== 1)
+                && !sequentialSlotsComplete(item.options, segs)) {
+                throw new Error('Dịch vụ còn lượt KTV nối tiếp chưa xong; hãy chọn hàng KTV hoặc kết thúc sau A.');
+            }
             
             let segmentsModified = false;
             // Cập nhật actualStartTime khi bắt đầu làm
@@ -1784,6 +1892,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     if (targetKtvIds && targetKtvIds.length > 0) {
                         if (!s.ktvId || !targetKtvIds.includes(s.ktvId)) return;
                     }
+                    if (sequential && !s.actualStartTime) return;
                     if (!s.actualEndTime) {
                         s.actualEndTime = new Date().toISOString();
                         segmentsModified = true;
@@ -1799,7 +1908,9 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             // Chỉ update status nếu được phép chuyển đổi.
             // One KTV's card finishing must not finish a service another KTV is still
             // on (sequence / takeover): close that KTV's segments only, keep the status.
-            const holdStatus = shouldHoldItemStatus(segs, newStatus, targetKtvIds);
+            const holdStatus = shouldHoldItemStatus(segs, newStatus, targetKtvIds)
+                || (sequential && ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(newStatus)
+                    && !sequentialSlotsComplete(item.options, segs));
             if (holdStatus) {
                 console.log(`🛡️ [updateBookingItemStatus] ${item.id}: ${targetKtvIds?.join(',')} → ${newStatus}, but another KTV segment is still open → keep status ${item.status}`);
             }

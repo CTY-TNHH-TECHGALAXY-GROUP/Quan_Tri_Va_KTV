@@ -44,13 +44,14 @@ import { supabase } from '@/lib/supabase';
 import { KanbanBoard } from './_components/KanbanBoard';
 import { TimeEditorModal } from './_components/TimeEditorModal';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
-import { getDispatchData, processDispatch, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
+import { getDispatchData, processDispatch, enableSequentialItem, handoffSequentialKtv, finishSequentialAfterA, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import { ReviewHandoverModal } from './_components/ReviewHandoverModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
 import CancelItemModal from './_components/CancelItemModal';
 import { workedMsOf } from '@/lib/segment-time';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { useDispatchBoard } from './useDispatchBoard.logic';
 import { MergePromptModal } from '@/app/reception/dispatch/_components/MergePromptModal';
 import { useNotifications } from '@/components/NotificationProvider';
@@ -329,6 +330,10 @@ export default function DispatchBoardPage() {
     name2?: string;
     defaultName?: string;
     isSaving: boolean;
+  } | null>(null);
+  const [liveHandoff, setLiveHandoff] = useState<{
+    bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
+    plannedStartAt: string; durationMinutes: number; saving: boolean;
   } | null>(null);
 
   const [splitPreviewState, setSplitPreviewState] = useState<{
@@ -716,9 +721,69 @@ if (!hasPermission('dispatch_board')) {
       }
   };
 
+  const openLiveHandoff = (bookingId: string, itemId: string, fromKtvId: string, toKtvId: string) => {
+    const item = orders.find(o => o.id === bookingId)?.services.find(s => s.id === itemId);
+    const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => (seg as any).sequenceSlot === 1 || seg.actualStartTime);
+    if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
+    const existingB = item.staffList.flatMap(row => row.segments).find(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true);
+    const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && t.status === 'waiting' && isVisibleInKtvPicker(t))) ? toKtvId : '';
+    const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .format((existingB as any)?.plannedStartAt ? new Date((existingB as any).plannedStartAt) : new Date()).replace(' ', 'T');
+    setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
+      plannedStartAt, durationMinutes: existingB?.duration || segment.duration || item.duration || 60, saving: false });
+  };
+
+  const confirmLiveHandoff = async () => {
+    if (!liveHandoff || liveHandoff.saving) return;
+    setLiveHandoff(prev => prev ? { ...prev, saving: true } : null);
+    const startMs = Date.parse(`${liveHandoff.plannedStartAt}${liveHandoff.plannedStartAt.length === 16 ? ':00' : ''}+07:00`);
+    if (!Number.isFinite(startMs)) {
+      alert('Giờ bắt đầu B không hợp lệ.');
+      setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+      return;
+    }
+    const item = orders.find(o => o.id === liveHandoff.bookingId)?.services.find(s => s.id === liveHandoff.itemId);
+    if (!isTwoSlotSequential(item?.options)) {
+      const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId);
+      if (!enabled.success) {
+        alert('Không thể chọn nối tiếp: ' + enabled.error);
+        setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+        return;
+      }
+    }
+    const input = { bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
+      toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
+      durationMinutes: liveHandoff.durationMinutes };
+    let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
+    if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+      const marker = res.referenceKind === 'actual' ? 'thực tế' : 'dự kiến';
+      const aTime = new Date(res.referenceAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+      const bTime = new Date(input.plannedStartAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+      if (confirm(`B dự kiến bắt đầu ${bTime}, trước khi A kết thúc ${marker} lúc ${aTime}. Vẫn gán B?`)) {
+        res = await handoffSequentialKtv({ ...input, confirmOverlap: true });
+      } else {
+        setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+        return;
+      }
+    }
+    if (!res.success) {
+      alert('Không thể bàn giao: ' + res.error);
+      setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+      return;
+    }
+    setLiveHandoff(null);
+    await fetchData();
+  };
+
   const addStaffRow = async (orderId: string, svcId: string) => {
     const svc = orders.find(o => o.id === orderId)?.services.find(s => s.id === svcId);
     const dur = svc?.duration ?? DEFAULT_DURATION;
+    const liveRow = svc?.staffList.find(row => row.segments.some(seg => seg.actualStartTime && !seg.actualEndTime));
+    if (liveRow) {
+      openLiveHandoff(orderId, svcId, liveRow.ktvId, '');
+      return;
+    }
     
     if (svc && svc.staffList.length >= 1) {
        const isFourhand = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'].includes(svc.serviceId || '');
@@ -1869,67 +1934,11 @@ if (!hasPermission('dispatch_board')) {
         }
         
         if (res.success) {
-          setOrders(prev => prev.map(o => {
-              if (o.id !== orderId) return o;
-              if (!isPartial) {
-                  // If it's a full update, hide the order if it's completed (if needed) or let fetchData handle it.
-                  // We'll just rely on fetchData, no need to hide it if we don't want it to jump weirdly
-                  return o;
-              }
-              // Optimistic update for partial services
-              return {
-                  ...o,
-                  services: o.services.map(s => {
-                      if (itemIds.includes(s.id)) {
-                          let newSegments = (s as any).segments;
-                          try {
-                              let segs = typeof (s as any).segments === 'string' ? JSON.parse((s as any).segments) : ((s as any).segments || []);
-                              if (newStatus === 'IN_PROGRESS') {
-                                  segs = segs.map((seg: any) => {
-                                      if (!targetKtvIds || targetKtvIds.length === 0 || targetKtvIds.includes(seg.ktvId)) {
-                                          return { ...seg, actualStartTime: customStartTime || new Date().toISOString() };
-                                      }
-                                      return seg;
-                                  });
-                              } else if (['PREPARING', 'WAITING', 'NEW'].includes(newStatus) && forceBackward) {
-                                  segs = segs.map((seg: any) => {
-                                      if (!targetKtvIds || targetKtvIds.length === 0 || targetKtvIds.includes(seg.ktvId)) {
-                                          const copy = { ...seg };
-                                          delete copy.actualStartTime;
-                                          delete copy.actualEndTime;
-                                          delete copy.feedbackTime;
-                                          delete copy.reviewTime;
-                                          return copy;
-                                      }
-                                      return seg;
-                                  });
-                              } else if (['DONE', 'CANCELLED', 'CLEANING', 'FEEDBACK', 'COMPLETED'].includes(newStatus)) {
-                                  segs = segs.map((seg: any) => {
-                                      if (!targetKtvIds || targetKtvIds.length === 0 || targetKtvIds.includes(seg.ktvId)) {
-                                          const copy = { ...seg };
-                                          copy.actualEndTime = copy.actualEndTime || new Date().toISOString();
-                                          if (['FEEDBACK', 'DONE'].includes(newStatus)) {
-                                              copy.feedbackTime = copy.feedbackTime || new Date().toISOString();
-                                          }
-                                          return copy;
-                                      }
-                                      return seg;
-                                  });
-                              }
-                              newSegments = JSON.stringify(segs);
-                          } catch (e) {}
-                          return { ...s, status: newStatus, segments: newSegments } as any;
-                      }
-                      return s;
-                  })
-              };
-          }));
-          
           if (!isPartial && selectedOrderId === orderId) {
               setSelectedOrderId(null);
           }
           setContextMenu(null);
-          fetchData();
+          await fetchData();
         } else {
           alert('Lỗi cập nhật trạng thái: ' + res.error);
         }
@@ -2729,6 +2738,12 @@ if (!hasPermission('dispatch_board')) {
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
+                    onLiveHandoff={(itemId, fromKtvId, toKtvId) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId)}
+                    onEnableSequential={async itemId => {
+                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId);
+                      if (!result.success) alert(result.error);
+                      else await fetchData();
+                    }}
                     rooms={rooms}
                     beds={beds}
                     availableTurns={turns}
@@ -2970,16 +2985,21 @@ if (!hasPermission('dispatch_board')) {
               onOpenDetail={(orderId, subOrderId, status) => {
                 setLeftPanelTab((status || 'pending') as DispatchStatus);
                 setSelectedOrderId(orderId);
-                const firstSubOrder = subOrders.find(so => so.bookingId === orderId);
-                setSelectedSubOrderId(firstSubOrder ? firstSubOrder.id : (subOrderId || null));
+                setSelectedSubOrderId(subOrderId || subOrders.find(so => so.bookingId === orderId)?.id || null);
                 setActiveMode('DISPATCH');
+              }}
+              onAssignSequentialB={(orderId, itemId, fromKtvId, toKtvId) => openLiveHandoff(orderId, itemId, fromKtvId, toKtvId || '')}
+              onFinishSequentialAfterA={async (orderId, itemId) => {
+                if (!confirm('Kết thúc dịch vụ sau lượt A? Công của A vẫn được giữ.')) return;
+                const result = await finishSequentialAfterA(orderId, itemId);
+                if (!result.success) alert(result.error);
+                else await fetchData();
               }}
               onConfirmAddonPayment={handleConfirmAddonPayment}
               selectedOrderId={selectedOrderId}
-              onSelectOrder={(orderId) => {
+              onSelectOrder={(orderId, subOrderId) => {
                   setSelectedOrderId(orderId);
-                  const firstSubOrder = subOrders.find(so => so.bookingId === orderId);
-                  if (firstSubOrder) setSelectedSubOrderId(firstSubOrder.id);
+                  setSelectedSubOrderId(subOrderId || subOrders.find(so => so.bookingId === orderId)?.id || null);
               }}
               onContextMenu={(e: any, orderId: string, itemId?: string, guestId?: string) => {
                 let x = 0, y = 0;
@@ -3224,6 +3244,39 @@ Vẫn kết thúc sớm?`)) return;
         onCancel={() => setSplitConfig(null)}
       />
 
+      {liveHandoff && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Bàn giao KTV nối tiếp">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+            <h2 className="text-lg font-bold">Bàn giao nối tiếp ngay</h2>
+            <p className="text-sm text-slate-600">A: {liveHandoff.fromKtvId}. Gán lượt B mà không chốt giờ thực của A.</p>
+            <label className="block text-sm font-semibold">KTV B
+              <select className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.toKtvId}
+                onChange={e => setLiveHandoff(prev => prev ? { ...prev, toKtvId: e.target.value } : null)}>
+                <option value="">Chọn KTV đang rảnh</option>
+                {turns.filter(t => t.employee_id !== liveHandoff.fromKtvId &&
+                  ((t.status === 'waiting' && isVisibleInKtvPicker(t)) || t.employee_id === liveHandoff.toKtvId))
+                  .map(t => <option key={t.employee_id} value={t.employee_id}>{t.employee_id} — {t.staff?.full_name || ''}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-semibold">B bắt đầu dự kiến
+              <input type="datetime-local" className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.plannedStartAt}
+                onChange={e => setLiveHandoff(prev => prev ? { ...prev, plannedStartAt: e.target.value } : null)} />
+            </label>
+            <label className="flex items-center gap-2 text-sm">Thời lượng B
+              <input type="number" min="1" max="600" step="1" className="w-20 rounded-lg border p-1"
+                value={liveHandoff.durationMinutes}
+                onChange={e => setLiveHandoff(prev => prev ? { ...prev, durationMinutes: Number(e.target.value) } : null)} /> phút
+            </label>
+            <div className="flex justify-end gap-2">
+              <button className="rounded-lg border px-4 py-2" disabled={liveHandoff.saving} onClick={() => setLiveHandoff(null)}>Hủy</button>
+              <button className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                disabled={liveHandoff.saving || !liveHandoff.toKtvId || !liveHandoff.plannedStartAt || !Number.isInteger(liveHandoff.durationMinutes) || liveHandoff.durationMinutes < 1 || liveHandoff.durationMinutes > 600}
+                onClick={confirmLiveHandoff}>{liveHandoff.saving ? 'Đang gán…' : 'Gán B'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Xem Ảnh Xác Nhận / Ảnh Bàn Giao */}
       <PhotoViewerModal
         selectedPhoto={selectedPhoto}
@@ -3350,6 +3403,3 @@ Vẫn kết thúc sớm?`)) return;
     </AppLayout>
   );
 }
-
-
-

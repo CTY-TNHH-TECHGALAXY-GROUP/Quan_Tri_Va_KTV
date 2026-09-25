@@ -33,6 +33,7 @@
 import { NextResponse } from 'next/server';
 import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
 import { calculateAccurateEndTimeFromSegments } from '@/lib/time-helper';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, action, turnForSync, allItemIdsForThisKTV, body } = ctx;
     const bookingUpdatePayload: Record<string, any> = {};
@@ -66,8 +67,34 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         return fail('Chặng làm việc không hợp lệ');
     }
 
-    // ─── 1. TIME VALIDATION (chờ đúng giờ) ───
-    if (turnForSync && action !== 'NEXT_SEGMENT_PREPARE') {
+    // The counter has already assigned slot B and confirmed its planned time.
+    // B may start before that plan; the actual start is stamped below.
+    let assignedSequentialB = false;
+    if (action === 'START_TIMER' && turnForSync?.booking_item_id) {
+        const { data: assignedItem } = await supabase.from('BookingItems')
+            .select('options, segments').eq('id', turnForSync.booking_item_id)
+            .eq('bookingId', bookingId).maybeSingle();
+        if (assignedItem && isTwoSlotSequential(assignedItem.options)) {
+            let assignedSegments: any[] = [];
+            try {
+                assignedSegments = typeof assignedItem.segments === 'string'
+                    ? JSON.parse(assignedItem.segments) : (assignedItem.segments || []);
+            } catch {}
+            const slotB = assignedSegments.find((seg: any) =>
+                seg.sequenceSlot === 2 && ktvMatchesSeg(seg.ktvId, technicianCode)
+                && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true);
+            if (slotB) {
+                const { data: assignment } = await supabase.from('KtvAssignments')
+                    .select('id').eq('booking_item_id', turnForSync.booking_item_id)
+                    .eq('employee_id', technicianCode).eq('segment_id', slotB.id)
+                    .eq('status', 'ACTIVE').maybeSingle();
+                assignedSequentialB = !!assignment;
+            }
+        }
+    }
+
+    // ─── 1. TIME VALIDATION (chờ đúng giờ, ngoại trừ B đã được gán) ───
+    if (turnForSync && action !== 'NEXT_SEGMENT_PREPARE' && !assignedSequentialB) {
         let allowed: Date | null = null;
         if (turnForSync.start_time) {
             const [h, m] = String(turnForSync.start_time).split(':').map(Number);
@@ -132,6 +159,10 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
              !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
              target.seg.actualEndTime)) {
             return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
+        }
+        if (assignedSequentialB && (target?.item?.id !== turnForSync?.booking_item_id
+            || target?.seg?.sequenceSlot !== 2 || target?.seg?.actualStartTime)) {
+            return fail('Chặng B đã thay đổi; vui lòng tải lại đơn', 409);
         }
 
         const parseProof = (value: unknown) => {
@@ -376,4 +407,3 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
 
     return { bookingUpdatePayload };
 }
-

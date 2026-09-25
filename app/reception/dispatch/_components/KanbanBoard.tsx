@@ -7,7 +7,7 @@ import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Spar
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
-import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
+import { RawStatus, getNextStatus, canTransition, isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
 import { KtvCommentModal } from './KtvCommentModal';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
@@ -72,7 +72,7 @@ const coNguoiBiTuoc = (s: any): boolean =>
  * người, nên chỉ được chọn một. Một hàm duy nhất quyết định, hai nơi cùng đọc.
  */
 const veTungNguoi = (s: any): boolean =>
-    !s?.isUtility && (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
+    !s?.isUtility && (isTwoSlotSequential(s.options) || dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
 
@@ -196,7 +196,7 @@ interface KanbanBoardProps {
     onReviewClick?: (service: ServiceBlock) => void;
     staffWorkTypeMap?: Record<string, string>;
     staffs?: any[];
-    onSelectOrder?: (orderId: string) => void;
+    onSelectOrder?: (orderId: string, subOrderId?: string) => void;
     onFinishEarlyPaused?: (orderId: string, subOrder: any) => void;
     /** Bấm "Tiếp" trên thẻ tạm dừng: chạy thẳng, không qua popup chọn hành động. */
     onResumeClick?: (orderId: string, subOrder: any) => Promise<void> | void;
@@ -204,6 +204,8 @@ interface KanbanBoardProps {
     onCancelClick?: (orderId: string, subOrder: any) => void;
     /** Bấm "Dừng" trên thẻ đang làm: tạm dừng thẳng, không qua popup chọn. */
     onPauseNow?: (orderId: string, subOrder: any) => Promise<void> | void;
+    onAssignSequentialB?: (orderId: string, itemId: string, fromKtvId: string, toKtvId?: string) => void;
+    onFinishSequentialAfterA?: (orderId: string, itemId: string) => void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
@@ -287,7 +289,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onFinishSequentialAfterA }: KanbanBoardProps) {
     // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
     const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
 
@@ -379,6 +381,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                 );
                 
                 if (subOrder.dispatchStatus === 'IN_PROGRESS') {
+                    if (subOrder.services.some(s => isTwoSlotSequential(s.options)
+                        && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap(st => st.segments)))) return;
                     // 🔒 GUARD: KHÔNG auto-finish nếu có bất kỳ service nào đang tạm dừng (pauseStart != null)
                     const isPaused = subOrder.services.some(s => s.pauseStart);
                     if (isPaused) return;
@@ -523,6 +527,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     if (draggedSubOrder.ktvIds && draggedSubOrder.ktvIds.length > 0) {
                                         targetKtvIds = draggedSubOrder.ktvIds;
                                     }
+                                    if (['CLEANING', 'FEEDBACK', 'DONE'].includes(newStatus)
+                                        && draggedSubOrder.services.some(s => isTwoSlotSequential(s.options)
+                                            && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap(st => st.segments)))) {
+                                        alert('Dịch vụ nối tiếp còn chờ lượt B. Chọn hàng KTV hoặc Kết thúc sau A.');
+                                        setDraggedSubOrderId(null);
+                                        return;
+                                    }
                                     
                                     if (!canTransition(draggedSubOrder.dispatchStatus, newStatus)) {
                                         const { mapDispatchToRawStatus, STATUS_FLOW } = require('@/lib/dispatch-status');
@@ -641,7 +652,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                             onDragEnd={() => setDraggedSubOrderId(null)}
                                             onClick={() => {
                                                 const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
-                                                onSelectOrder?.(targetId);
+                                                onSelectOrder?.(targetId, subOrder.id);
                                             }}
                                             onDoubleClick={() => {
                                                 const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
@@ -1058,15 +1069,20 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     <div className="space-y-1 mt-1">
                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
                                                                             const seg = st?.segments?.[0];
-                                                                            const ktvStart = seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart;
-                                                                            // 🔥 FIX: Luôn tính dynamic end time từ ktvStart thực tế, không dùng seg.endTime cũ
-                                                                            const ktvEnd = seg?.actualEndTime ? seg.actualEndTime : getDynamicEndTime(ktvStart, Number(seg?.duration) || duration);
+                                                                            const ktvStart = isTwoSlotSequential(s.options)
+                                                                                ? (seg?.actualStartTime || seg?.startTime || '--:--')
+                                                                                : (seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart);
+                                                                            const ktvEnd = seg?.actualEndTime || (seg?.actualStartTime
+                                                                                ? getDynamicEndTime(ktvStart, Number(seg?.duration) || duration)
+                                                                                : seg?.endTime || getDynamicEndTime(ktvStart, Number(seg?.duration) || duration));
                                                                             return (
                                                                                 /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
                                                                                    hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
                                                                                    ngoài thẻ. */
-                                                                                <div key={stIdx} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
+                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
+                                                                                        {isTwoSlotSequential(s.options) && <span className="text-[9px] font-black text-indigo-600">{seg?.sequenceSlot === 2 ? 'B' : 'A'}</span>}
+                                                                                        {isTwoSlotSequential(s.options) && seg?.sequenceSlot === 2 && !seg?.actualStartTime && !seg?.voided && <span className="text-[8px] font-bold text-amber-700">Chờ bắt đầu</span>}
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
@@ -1127,6 +1143,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                         )}
                                                                                     </div>
                                                                                     <div className="flex items-center gap-1.5">
+                                                                                        {isTwoSlotSequential(s.options) && <span className="text-[8px] text-indigo-500">{seg?.actualStartTime ? 'Thực tế' : 'Dự kiến'}</span>}
                                                                                         {/* KTV bị đổi ra: giữ tên trong đơn để biết ai từng làm cho khách,
                                                                                             kèm số phút đã làm — dù tiền và giờ tích luỹ đều bằng 0. */}
                                                                                         {/* Luôn in khoảng giờ, kể cả người bị đổi ra — quầy cần biết họ
@@ -1140,6 +1157,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 </div>
                                                                             );
                                                                         })}
+                                                                        {isTwoSlotSequential(s.options) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 2 && seg.voided !== true)) && (
+                                                                            <button className="w-full rounded-lg border border-dashed border-indigo-300 px-2.5 py-1 text-left text-[10px] font-bold text-indigo-600"
+                                                                                onClick={e => { e.stopPropagation(); const a = dsKtvHienThi(s).find((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 1)); if (a) onAssignSequentialB?.(order.id, s.id, a.ktvId); }}>
+                                                                                B · Chưa gán KTV
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1.5 border border-indigo-100/50 mt-1">
@@ -1457,6 +1480,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             );
                                                         }
                                                         const anyPaused = services.some((s: any) => s.status === 'PAUSED');
+                                                        const waitingSequential = services.some((s: any) => isTwoSlotSequential(s.options)
+                                                            && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap((st: any) => st.segments)));
+                                                        if (waitingSequential && nextStatus === 'CLEANING') return null;
                                                         if (nextStatus && !anyPaused) {
                                                             return (
                                                                 <button
@@ -1486,6 +1512,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             );
                                                         }
                                                         return null;
+                                                    })()}
+                                                    {(() => {
+                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options)
+                                                            && s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 1 && seg.actualStartTime && seg.actualEndTime))
+                                                            && !s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 2 && seg.actualStartTime)));
+                                                        return item && onFinishSequentialAfterA ? <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
+                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(order.id, item.id); }}>Kết thúc sau A</button> : null;
                                                     })()}
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
                                                         const isPaused = services.some((s: any) => s.status === 'PAUSED');
