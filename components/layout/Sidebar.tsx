@@ -254,7 +254,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
 
       {/* Sidebar Content */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 flex flex-col h-screen transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 flex flex-col h-[100dvh] transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
       >
         {/* Header: User Info */}
         <div className={`border-b border-gray-100 h-[69px] flex items-center ${isExpanded ? 'px-4 gap-3' : 'justify-center'}`}>
@@ -353,7 +353,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
         </div>
 
       {/* Bottom Section for Settings */}
-      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 flex flex-col">
+      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 pb-safe flex flex-col">
         {/* Version & Reload Button */}
         <div className={`px-4 pt-4 pb-2 w-full flex flex-col ${isExpanded ? 'items-start' : 'items-center'} gap-2`}>
           <button

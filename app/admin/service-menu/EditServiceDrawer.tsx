@@ -243,7 +243,7 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         {/* Centered Modal */}
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-5xl h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1rem)] sm:w-[90vw] max-w-5xl h-[calc(100%-2rem)] sm:h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
           
           <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50 shrink-0">
             <div>

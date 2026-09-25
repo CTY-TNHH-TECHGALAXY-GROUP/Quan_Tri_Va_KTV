@@ -138,7 +138,7 @@ export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disabl
 
   return (
     <div
-      className="min-h-screen bg-gray-50 flex font-sans text-gray-900"
+      className="min-h-screen w-full max-w-full overflow-x-hidden bg-gray-50 flex font-sans text-gray-900"
       onClick={unlockAudio}
     >
       <Sidebar
@@ -148,7 +148,7 @@ export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disabl
         onToggleExpand={() => setIsSidebarExpanded(!isSidebarExpanded)}
       />
 
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Mobile Header: Aligns Hamburger and Page Title */}
         <div className="lg:hidden sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 h-14 flex items-center gap-3">
           <button

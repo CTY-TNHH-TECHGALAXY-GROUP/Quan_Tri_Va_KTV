@@ -471,7 +471,7 @@ const KTVAttendancePage = () => {
 
     return (
         <AppLayout title="Chấm Công">
-            <div className="max-w-sm mx-auto px-4 py-8 space-y-6 relative">
+            <div className="max-w-sm md:max-w-lg mx-auto px-4 py-8 space-y-6 relative">
                 <div>
                     <p className="text-sm text-gray-500">{t.pageSubtitle}</p>
                 </div>
@@ -1078,7 +1078,7 @@ const KTVAttendancePage = () => {
 
                 {/* WEBRTC CAMERA MODAL */}
                 {isCameraOpen && (
-                    <div className="fixed inset-0 bg-black z-[70] flex flex-col">
+                    <div className="fixed inset-0 bg-black z-[70] flex flex-col h-[100dvh]">
                         <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
                             <video 
                                 ref={videoRef} 
@@ -1104,7 +1104,7 @@ const KTVAttendancePage = () => {
                                 Đã chụp: {photos.length}/{MAX_PHOTOS}
                             </div>
                         </div>
-                        <div className="bg-black p-4 pb-8 flex flex-col items-center justify-center gap-4">
+                        <div className="bg-black p-4 pb-safe flex flex-col items-center justify-center gap-4">
                             <div className="flex items-center justify-between w-full px-6">
                                 <div className="w-16">
                                     {photos.length > 0 && (

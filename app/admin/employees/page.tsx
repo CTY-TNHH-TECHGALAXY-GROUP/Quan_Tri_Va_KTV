@@ -59,7 +59,7 @@ export default function EmployeeManagementPage() {
     }
 
     return (
-        <AppLayout title={t.pageTitle}>
+        <AppLayout title={t.pageTitle} headerRight={<button onClick={handleOpenAddModal} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold lg:hidden"><Plus size={14} />{t.addNew}</button>}>
             <div className="space-y-2 lg:space-y-6">
                 <div className="hidden lg:flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -94,7 +94,7 @@ export default function EmployeeManagementPage() {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                        <table className="w-full text-left border-collapse min-w-[680px]">
                             <thead>
                                 <tr>
                                     <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">{t.thEmployee}</th>

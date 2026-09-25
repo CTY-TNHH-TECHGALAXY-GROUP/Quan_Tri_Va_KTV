@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type {Metadata, Viewport} from 'next';
 import './globals.css'; // Global styles
 import { AuthProvider } from '@/lib/auth-context';
 import { Inter, JetBrains_Mono } from 'next/font/google';
@@ -28,10 +28,13 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   themeColor: '#D4AF37',
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 import { NotificationProvider } from '@/components/NotificationProvider';
@@ -40,7 +43,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body suppressHydrationWarning className="font-sans antialiased">
+      <body suppressHydrationWarning className="font-sans antialiased w-full overflow-x-hidden">
         <AuthProvider>
           <NotificationProvider>
             <ToastProvider>

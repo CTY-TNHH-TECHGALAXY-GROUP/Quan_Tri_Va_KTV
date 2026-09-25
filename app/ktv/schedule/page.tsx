@@ -209,7 +209,7 @@ const KTVSchedulePage = () => {
 
     return (
         <AppLayout title={t.pageTitle}>
-            <div className="max-w-md mx-auto px-4 py-6 space-y-5">
+            <div className="max-w-md md:max-w-2xl mx-auto px-4 py-6 space-y-5">
                 
                 <div>
                     <p className="text-sm text-gray-500">{t.pageSubtitle}</p>

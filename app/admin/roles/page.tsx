@@ -284,7 +284,7 @@ export default function RoleManagementPage() {
             <Dialog.Root open={isUserModalOpen} onOpenChange={handleCloseUserPermissions}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] animate-in fade-in duration-200" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl z-[110] flex flex-col animate-in zoom-in-95 duration-200">
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] sm:w-full max-w-4xl max-h-[90dvh] bg-white rounded-2xl shadow-2xl z-[110] flex flex-col animate-in zoom-in-95 duration-200">
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-gray-100">
                             <div>
