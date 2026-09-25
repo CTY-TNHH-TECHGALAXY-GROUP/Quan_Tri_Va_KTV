@@ -605,7 +605,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] sm:w-full max-w-2xl max-h-[90dvh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-          <div className="relative h-32 bg-indigo-600">
+          <div className="relative h-32 bg-indigo-600 shrink-0">
             <div className="absolute top-4 right-4 flex gap-2 z-10">
               {isEditing ? (
                 <button
@@ -633,7 +633,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               ) : (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors flex items-center gap-2 px-4"
+                  className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors flex items-center gap-2 px-4 shadow-sm backdrop-blur-sm border border-white/20"
                 >
                   <Edit2 size={18} />
                   <span className="text-sm font-bold">Sửa thông tin</span>
@@ -729,7 +729,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             </div>
           </div>
 
-          <div className="pt-16 px-4 sm:px-8 pb-8 overflow-y-auto">
+          <div className="pt-16 px-4 sm:px-8 pb-8 overflow-y-auto flex-1 min-h-0">
             {isEditing ? (
               <div className="space-y-1 mb-2">
                 <label className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">
