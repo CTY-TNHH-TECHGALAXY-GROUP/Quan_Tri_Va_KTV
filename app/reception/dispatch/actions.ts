@@ -5,8 +5,9 @@ import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
-import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
+import { liveDispatchConflict, savedPlanFields } from '@/lib/dispatch-live-guard';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { currentCounterActor } from '@/lib/counter-action-log';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
@@ -18,6 +19,12 @@ import { ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
+
+async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
+    const actor = await currentCounterActor();
+    return supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
+        p_payload: payload, p_actor: actor });
+}
 
 async function resolveGuestIdsForUpdate(
     supabase: any,
@@ -757,11 +764,12 @@ export async function processDispatch(bookingId: string, dispatchData: {
                     
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
                         updateItem.segments = updateItem.segments.map(incomingSeg => {
-                            const dbSeg = dbSegs.find((s: any) => s.ktvId === incomingSeg.ktvId);
+                            const dbSeg = dbSegs.find((s: any) => s.id === incomingSeg.id);
                             if (dbSeg) {
                                 // Trộn lại các mốc thời gian thực tế từ DB để không bị xóa mất
                                 return {
                                     ...incomingSeg,
+                                    ...savedPlanFields(dbSeg, incomingSeg),
                                     actualStartTime: dbSeg.actualStartTime || incomingSeg.actualStartTime,
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
@@ -848,16 +856,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
         }
 
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION
-        const { data, error } = await supabase.rpc('dispatch_confirm_booking', {
-            p_booking_id: bookingId,
-            p_date: dispatchData.date,
-            p_status: dispatchData.status || 'PREPARING',
-            p_technician_code: dispatchData.technicianCode ?? null,
-            p_bed_id: dispatchData.bedId ?? null,
-            p_room_name: dispatchData.roomName ?? null,
-            p_notes: dispatchData.notes ?? null,
-            p_staff_assignments: dispatchData.staffAssignments || [],
-            p_item_updates: dispatchData.itemUpdates || []
+        const { data, error } = await applyDispatchEdit(supabase, bookingId, 'DISPATCH', {
+            ...dispatchData, status: dispatchData.status || 'PREPARING',
+            staffAssignments: dispatchData.staffAssignments || [], itemUpdates: dispatchData.itemUpdates || []
         });
 
         if (error) {
@@ -947,17 +948,56 @@ export async function processDispatch(bookingId: string, dispatchData: {
     }
 }
 
-/** Ghi ý định nối tiếp khi A đã được điều phối, không chốt giờ A. */
-export async function enableSequentialItem(bookingId: string, itemId: string) {
+/** Manual actual-time corrections use the same locked version/audit as dispatch. */
+export async function editDispatchActualTimes(bookingId: string, itemId: string, expectedRevision: number,
+    times: { segmentId: string; actualStartTime: string | null; actualEndTime: string | null }[]) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
-        const { error } = await supabase.rpc('dispatch_enable_sequential_item', {
-            p_booking_id: bookingId, p_item_id: itemId,
+        const { data: item, error: readError } = await supabase.from('BookingItems').select('segments, options')
+            .eq('id', itemId).eq('bookingId', bookingId).single();
+        if (readError) throw readError;
+        const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : item.segments;
+        if (!Array.isArray(segments) || !Array.isArray(times) || new Set(times.map(t => t.segmentId)).size !== times.length
+            || times.some(t => !segments.some(s => s.id === t.segmentId))) throw new Error('Chặng đã thay đổi; tải lại đơn');
+        const stamp = (value: string | null) => {
+            if (!value) return null;
+            if (!/(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value)))
+                throw new Error('Giờ thực tế cần đúng dạng ISO, có múi giờ Z hoặc +07:00');
+            return new Date(value).toISOString();
+        };
+        const updated = segments.map(seg => {
+            const edit = times.find(t => t.segmentId === seg.id);
+            if (!edit) return seg;
+            const start = stamp(edit.actualStartTime), end = stamp(edit.actualEndTime);
+            if ((seg.actualStartTime && !start) || (seg.actualEndTime && !end))
+                throw new Error('Không xóa mốc giờ thực tế đã ghi nhận; chỉ chỉnh lại giờ');
+            if (end && (!start || Date.parse(end) < Date.parse(start))) throw new Error('Giờ kết thúc phải sau giờ bắt đầu');
+            if (seg.voided === true && (start !== stamp(seg.actualStartTime || null) || end !== stamp(seg.actualEndTime || null)))
+                throw new Error('Không sửa giờ lượt đã được thay');
+            if (seg.voided === true) return seg;
+            return { ...seg, actualStartTime: start, actualEndTime: end };
+        });
+        const { error } = await applyDispatchEdit(supabase, bookingId, 'EDIT_ACTUAL_TIME', {
+            itemUpdates: [{ id: itemId, options: { dispatchRevision: expectedRevision }, segments: updated }]
         });
         if (error) throw error;
         return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không thể sửa giờ thực tế' };
+    }
+}
+
+/** Ghi ý định nối tiếp khi A đã được điều phối, không chốt giờ A. */
+export async function enableSequentialItem(bookingId: string, itemId: string, expectedRevision: number) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { data, error } = await applyDispatchEdit(supabase, bookingId, 'ENABLE_SEQUENTIAL', { itemId, expectedRevision });
+        if (error) throw error;
+        return { success: true, revision: data?.revisions?.[itemId] as number | undefined };
     } catch (error: any) {
         return { success: false, error: error.message || 'Không thể chọn nối tiếp' };
     }
@@ -971,19 +1011,13 @@ export async function handoffSequentialKtv(input: {
     plannedStartAt: string;
     durationMinutes: number;
     confirmOverlap: boolean;
+    expectedRevision: number;
 }) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
-        const { data, error } = await supabase.rpc('dispatch_assign_sequential_slot_b', {
-            p_booking_id: input.bookingId,
-            p_item_id: input.itemId,
-            p_to_ktv: input.toKtvId,
-            p_planned_start_at: input.plannedStartAt,
-            p_duration_minutes: input.durationMinutes,
-            p_confirm_overlap: input.confirmOverlap,
-        });
+        const { data, error } = await applyDispatchEdit(supabase, input.bookingId, 'ASSIGN_B', input);
         if (error) throw error;
         if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return {
             success: false, code: 'OVERLAP_CONFIRM_REQUIRED' as const,
@@ -1003,14 +1037,12 @@ export async function handoffSequentialKtv(input: {
     }
 }
 
-export async function finishSequentialAfterA(bookingId: string, itemId: string) {
+export async function finishSequentialAfterA(bookingId: string, itemId: string, expectedRevision: number) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
-        const { error } = await supabase.rpc('dispatch_finish_sequential_after_a', {
-            p_booking_id: bookingId, p_item_id: itemId,
-        });
+        const { error } = await applyDispatchEdit(supabase, bookingId, 'FINISH_AFTER_A', { itemId, expectedRevision });
         if (error) throw error;
         return { success: true };
     } catch (error: any) {
@@ -1109,6 +1141,7 @@ async function resolveNewExternalKtvIds(
 }
 
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
+    date?: string;
     technicianCode?: string | null;
     bedId: string | null;
     roomName: string | null;
@@ -1239,10 +1272,11 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                     
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
                         updateItem.segments = updateItem.segments.map(incomingSeg => {
-                            const dbSeg = dbSegs.find((s: any) => s.ktvId === incomingSeg.ktvId);
+                            const dbSeg = dbSegs.find((s: any) => s.id === incomingSeg.id);
                             if (dbSeg) {
                                 return {
                                     ...incomingSeg,
+                                    ...savedPlanFields(dbSeg, incomingSeg),
                                     actualStartTime: dbSeg.actualStartTime || incomingSeg.actualStartTime,
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
@@ -1259,22 +1293,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             }
         }
 
-        // 1. Update Booking (Dữ liệu tổng quát cho Bill, không đổi status)
-        const { error: bError } = await supabase
-            .from('Bookings')
-            .update({
-                technicianCode: dispatchData.technicianCode,
-                bedId: dispatchData.bedId,
-                roomName: dispatchData.roomName,
-                notes: dispatchData.notes,
-                updatedAt: new Date().toISOString()
-            })
-            .eq('id', bookingId);
-
-        if (bError) {
-            console.error('❌ [Server] Booking draft update error:', bError);
-            throw bError;
-        }
+        // Collect the whole draft; the RPC checks all revisions before any write.
+        const finalItemUpdates: any[] = [];
 
         // 2. Update BookingItems (Dữ liệu chi tiết từng dịch vụ, không đổi status)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
@@ -1313,10 +1333,11 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
                         if (Array.isArray(dbSegments) && dbSegments.length > 0) {
                             finalSegments = finalSegments.map((incomingSeg: any) => {
-                                const existingSeg = dbSegments.find((s: any) => s.ktvId === incomingSeg.ktvId);
+                                const existingSeg = dbSegments.find((s: any) => s.id === incomingSeg.id);
                                 if (existingSeg) {
                                     return {
                                         ...incomingSeg,
+                                        ...savedPlanFields(existingSeg, incomingSeg),
                                         actualStartTime: existingSeg.actualStartTime || incomingSeg.actualStartTime,
                                         actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
                                         feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
@@ -1343,46 +1364,14 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                     updatePayload.guest_id = targetGuestId;
                 }
 
-                const { error: updError } = await supabase
-                    .from('BookingItems')
-                    .update(updatePayload)
-                    .eq('id', item.id);
-
-                if (updError) {
-                    console.error('❌ [Server] Lỗi khi update BookingItems trong saveDraftDispatch:', updError);
-                    throw updError;
-                }
-                
-                console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
-
-                // NẾU LÀ CHILD ITEM THÌ DỪNG LẠI TẠI ĐÂY (không đồng bộ TurnQueue)
-                if (isChild || isTwoSlotSequential(item.options)) continue;
-
-                // 3. Đồng bộ lại start_time cho TurnQueue (quan trọng để KTV không bị chặn khi Lễ tân đổi giờ)
-                if (item.segments && Array.isArray(item.segments)) {
-                    for (const seg of item.segments) {
-                        if (seg.ktvId && seg.startTime) {
-                            // Convert "10:54" -> "10:54:00" để match kiểu time của PG
-                            const timeStr = String(seg.startTime).length === 5 ? `${seg.startTime}:00` : seg.startTime;
-                            
-                            // Chỉ update nếu KTV đang ở trạng thái 'assigned' cho đúng đơn này
-                            const { error: tqError } = await supabase
-                                .from('TurnQueue')
-                                .update({ start_time: timeStr })
-                                .eq('employee_id', seg.ktvId)
-                                .eq('current_order_id', bookingId)
-                                .eq('status', 'assigned');
-                                
-                            if (tqError) {
-                                console.error(`❌ [Server] Lỗi đồng bộ start_time cho KTV ${seg.ktvId}:`, tqError);
-                            } else {
-                                console.log(`✅ [Server] Đã đồng bộ start_time = ${timeStr} cho KTV ${seg.ktvId} trong TurnQueue`);
-                            }
-                        }
-                    }
-                }
+                finalItemUpdates.push({ id: item.id, ...updatePayload });
             }
         }
+        const { data: saved, error: saveError } = await applyDispatchEdit(supabase, bookingId, 'DRAFT', {
+            ...dispatchData, itemUpdates: finalItemUpdates
+        });
+        if (saveError) throw saveError;
+        if (!saved?.success) throw new Error('Máy chủ chưa xác nhận lưu nháp');
 
         // Fetch bookingDate to sync turns correctly
         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
@@ -1392,7 +1381,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             await syncTurnsForDate(dateStr);
         }
 
-        return { success: true };
+        return { success: true, revisions: saved.revisions as Record<string, number> };
     } catch (error: any) {
         console.error('❌ [Server] saveDraftDispatch error:', error);
         return { success: false, error: error.message };

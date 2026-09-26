@@ -357,7 +357,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
 
                                         if (segments.length === 0) {
-                                            const st = formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
+                                            const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                            const st = saved ? '' : (formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
                                             const totalDur = parsedOptions?.vipDuration || bi.duration || 0;
                                             const dur = techCodes.length > 1 ? Math.ceil(totalDur / techCodes.length) : totalDur;
                                             segments = [{
@@ -366,7 +367,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                                 bedId: turn?.bed_id || bi.bedId || b.bedId,
                                                 startTime: st,
                                                 duration: dur,
-                                                endTime: formatTime(turn?.estimated_end_time) || calcEndTime(st, dur)
+                                                endTime: saved ? '' : (formatTime(turn?.estimated_end_time) || calcEndTime(st, dur))
                                             }];
                                         }
 
@@ -376,7 +377,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             ktvName: parsedOptions?.external_technician_name?.[tCode] || staff?.full_name || tCode,
                                             segments: segments,
                                             noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || '',
-                                            serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[tCode] || ''
+                                            serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[tCode] ?? ''
                                         };
                                 });
                             }
@@ -386,7 +387,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                     let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
 
                                     if (segments.length === 0) {
-                                        const st = formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
+                                        const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                        const st = saved ? '' : (formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
                                         const dur = parsedOptions?.vipDuration || bi.duration || 0;
                                         segments = [{
                                             id: `seg-${genId()}`,
@@ -394,7 +396,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             bedId: t.bed_id || bi.bedId || b.bedId,
                                             startTime: st,
                                             duration: dur,
-                                            endTime: formatTime(t.estimated_end_time) || calcEndTime(st, dur)
+                                            endTime: saved ? '' : (formatTime(t.estimated_end_time) || calcEndTime(st, dur))
                                         }];
                                     }
 
@@ -404,13 +406,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         ktvName: parsedOptions?.external_technician_name?.[t.employee_id] || staff?.full_name || 'KTV',
                                         segments: segments,
                                         noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || '',
-                                        serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[t.employee_id] || ''
+                                        serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[t.employee_id] ?? ''
                                     };
                                 });
                             } else if (staffList.length === 0) {
                                 const dbSeg = parsedSegments.length > 0 ? parsedSegments[0] : null;
-                                const fallbackStart = dbSeg?.startTime || forcedStartTime || getCurrentTime();
-                                const fallbackDur = dbSeg?.duration || parsedOptions?.vipDuration || Number(bi.duration) || 0;
+                                const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                const fallbackStart = dbSeg?.startTime ?? (saved ? '' : (forcedStartTime || getCurrentTime()));
+                                const fallbackDur = dbSeg?.duration ?? (saved ? 0 : (parsedOptions?.vipDuration || Number(bi.duration) || 0));
                                 staffList = [{
                                     id: `st-${bi.id}`,
                                     ktvId: '',
@@ -421,7 +424,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         bedId: dbSeg?.bedId || null,
                                         startTime: fallbackStart,
                                         duration: fallbackDur,
-                                        endTime: dbSeg?.endTime || calcEndTime(fallbackStart, fallbackDur)
+                                        endTime: dbSeg?.endTime ?? (saved ? '' : calcEndTime(fallbackStart, fallbackDur))
                                     }],
                                     noteForKtv: '',
                                     serviceNameForKtv: ''
@@ -531,6 +534,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
         let fetchTimeout: NodeJS.Timeout;
         const debouncedFetchData = () => {
+            if (selectedOrderIdRef.current) { needsRefreshRef.current = true; return; }
             clearTimeout(fetchTimeout);
             fetchTimeout = setTimeout(() => {
                 fetchData();
@@ -616,48 +620,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 debouncedFetchData();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
-                const newItem = payload.new as any;
-                if (newItem?.bookingId && newItem?.status) {
-                    setOrders(prev => prev.map(o => {
-                        if (o.id === newItem.bookingId) {
-                            const updatedServices = o.services.map((svc: any) =>
-                                svc.id === newItem.id ? { 
-                                    ...svc, 
-                                    status: newItem.status,
-                                    itemRating: newItem.itemRating,
-                                    ktvRatings: newItem.ktvRatings,
-                                    // Phải chép cả `options`: dấu tích "KTV đã nhận đơn" đọc
-                                    // từ options.acceptedByStaff. Thiếu dòng này thì KTV bấm
-                                    // nhận xong quầy vẫn thấy "CHỜ NHẬN" cho tới khi F5.
-                                    options: newItem.options ?? svc.options,
-                                    handover_status: newItem.handover_status ?? svc.handover_status
-                                } : svc
-                            );
-                            return { ...o, services: updatedServices };
-                        }
-                        return o;
-                    }));
-                }
                 if (selectedOrderIdRef.current) {
+                    // Keep the form's revision and values together. A stale save is
+                    // rejected by the locked RPC; closing the form refreshes it.
                     needsRefreshRef.current = true;
                     return;
                 }
-
-                if (payload.eventType !== 'UPDATE') {
-                    debouncedFetchData();
-                } else {
-                    setOrders(prev => {
-                        const order = prev.find(o => o.id === newItem.bookingId);
-                        const svc = order?.services.find((s: any) => s.id === newItem.id);
-                        if (
-                            (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') ||
-                            (newItem.itemRating !== svc?.itemRating)
-                        ) {
-                            debouncedFetchData();
-                        }
-                        return prev;
-                    });
-                }
+                debouncedFetchData();
             })
             .on('broadcast', { event: 'KTV_STARTED' }, (payload: any) => {
                 const { bookingId, ktvId, startTime } = payload.payload;

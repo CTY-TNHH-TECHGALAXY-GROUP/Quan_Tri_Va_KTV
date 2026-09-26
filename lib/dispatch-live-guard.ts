@@ -24,3 +24,12 @@ export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[],
     }
     return null;
 }
+
+/** A follow-up save keeps the acknowledged ISO plan when its clock/minutes match. */
+export function savedPlanFields(current: any, incoming: any) {
+    const samePlan = ['startTime', 'endTime', 'duration'].every(key => current[key] === incoming[key]);
+    return {
+        plannedStartAt: samePlan ? (current.plannedStartAt ?? incoming.plannedStartAt) : undefined,
+        plannedEndAt: samePlan ? (current.plannedEndAt ?? incoming.plannedEndAt) : undefined,
+    };
+}

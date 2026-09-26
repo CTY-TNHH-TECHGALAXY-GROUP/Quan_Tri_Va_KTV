@@ -7,6 +7,8 @@ import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-sta
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
 import { AccountDemo } from './AccountDemo';
+import { dispatchRevision, recordDispatchEdit } from '@/lib/dispatch-edit-history';
+import { DispatchEditHistory } from '../_components/DispatchEditHistory';
 import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
 
 const storageKey = 'dispatch-sequential-demo-v2';
@@ -15,7 +17,7 @@ const staff: StaffData[] = [
   { id: 'DEMO-B', full_name: 'KTV B', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
   { id: 'DEMO-C', full_name: 'KTV C', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
 ];
-type HandoffForm = { ktvId: string; start: string; duration: number };
+type HandoffForm = { ktvId: string; start: string; duration: number; expectedRevision: number };
 const localInput = (date: Date) => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -70,12 +72,17 @@ export default function SequentialDemo() {
     return () => { window.removeEventListener('storage', sync); window.clearInterval(tick); };
   }, []);
 
-  const change = (edit: (service: ServiceBlock) => void | string) => {
+  const change = (edit: (service: ServiceBlock) => void | string, action = 'DRAFT', expectedRevision?: number) => {
     const previous = readOrder() || order;
     if (!previous) return;
+    if (expectedRevision !== undefined && expectedRevision !== dispatchRevision(previous.services[0].options)) {
+      alert('Dịch vụ đã có bản lưu mới. Tải lại đơn trước khi chỉnh tiếp; bản cũ chưa được lưu.');
+      setOrder(previous); return;
+    }
     const next = structuredClone(previous);
     const error = edit(next.services[0]);
     if (error) { alert(error); setOrder(previous); return; }
+    recordDispatchEdit(previous.services[0], next.services[0], action, { id: accountId || 'DEMO-ADMIN', name: accountId || 'Quầy demo' });
     const status = next.services[0].status || 'NEW';
     next.dispatchStatus = status === 'NEW' ? 'pending' : status as PendingOrder['dispatchStatus'];
     next.rawStatus = status;
@@ -114,7 +121,7 @@ export default function SequentialDemo() {
       s.selectedRoomId = current.roomId;
       s.bedId = current.bedId;
       s.status = 'PREPARING';
-    });
+    }, 'DISPATCH', dispatchRevision(service.options));
   };
 
   const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
@@ -125,7 +132,7 @@ export default function SequentialDemo() {
     const start = current?.startTime && current.plannedEndAt
         ? localInput(new Date(new Date(current.plannedEndAt).getTime() - current.duration * 60_000))
         : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now()));
-    setHandoff({ ktvId: toKtvId || b?.ktvId || '',
+    setHandoff({ ktvId: toKtvId || b?.ktvId || '', expectedRevision: dispatchRevision(service.options),
       start: plannedStartTime ? `${start.slice(0, 10)}T${plannedStartTime}` : start,
       duration: current?.duration ?? (a && segmentOf(a).actualEndTime
         ? suggestedHandoffMinutes(service.duration, segmentOf(a)) : remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0)) });
@@ -159,11 +166,11 @@ export default function SequentialDemo() {
           ktvName: staff.find(person => person.id === handoff.ktvId)?.full_name || handoff.ktvId,
           segments: [segment], noteForKtv: '' });
       }
-    });
+    }, 'ASSIGN_B', handoff.expectedRevision);
     setHandoff(null);
   };
   const stampEmployee = (employeeId: string, field: 'actualStartTime' | 'actualEndTime') =>
-    change(s => stampDemoAccount(s, employeeId, field));
+    change(s => stampDemoAccount(s, employeeId, field), 'UPDATE');
   const stamp = (slot: number, field: 'actualStartTime' | 'actualEndTime') => {
     const employeeId = slot === 1 ? a?.ktvId : b?.ktvId;
     if (employeeId) stampEmployee(employeeId, field);
@@ -179,7 +186,7 @@ export default function SequentialDemo() {
       if (currentB) segmentOf(currentB).voided = true;
       s.options = { ...s.options, finishedAfterA: true };
       s.status = 'CLEANING';
-    });
+    }, 'FINISH_AFTER_A', dispatchRevision(service.options));
   };
 
   if (!order || !service) return <p className="p-6">Đang tạo dữ liệu mẫu…</p>;
@@ -220,13 +227,14 @@ export default function SequentialDemo() {
                 ? plannedEndAt(segmentOf(row)) : segmentOf(previous).plannedEndAt;
             }
           });
-        })}
+        }, 'DRAFT', dispatchRevision(updated[0].options))}
         onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={dispatchA}
         onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
           s.options = { ...s.options, sequentialSlots: 2 };
           segmentOf(s.staffList[0]).sequenceSlot = 1;
-        })} />
+        }, 'ENABLE_SEQUENTIAL', dispatchRevision(service.options))} />
     </section>
+    <DispatchEditHistory services={[service]} />
     <section className="rounded-xl border bg-white p-4">
       <h2 className="mb-3 font-bold">2. Gửi phân công</h2>
       <div className="flex flex-wrap gap-2">

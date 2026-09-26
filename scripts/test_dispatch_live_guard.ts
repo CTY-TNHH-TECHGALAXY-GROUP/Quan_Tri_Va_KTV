@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { liveDispatchConflict } from '../lib/dispatch-live-guard';
+import { liveDispatchConflict, savedPlanFields } from '../lib/dispatch-live-guard';
 import { suggestedHandoffMinutes, remainingHandoffMinutes, plannedHandoffStartAt } from '../lib/dispatch-handoff';
 import { sequentialSlotsComplete } from '../lib/dispatch-status';
 import { buildOrderTimeline } from '../app/reception/dispatch/_components/dispatch-timeline';
@@ -49,4 +49,10 @@ for (const segments of [[slotA], [slotA, slotB]]) {
     assert.equal(cards[0].dispatchStatus, 'IN_PROGRESS');
 }
 assert.equal(suggestedHandoffMinutes(60, a, Date.parse('2026-09-25T04:01:00Z')), 0);
+const savedPlan = { startTime: '10:30', endTime: '11:00', duration: 30,
+    plannedStartAt: '2026-09-26T03:30:00Z', plannedEndAt: '2026-09-26T04:00:00Z' };
+assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, plannedStartAt: 'old', plannedEndAt: undefined }),
+    { plannedStartAt: savedPlan.plannedStartAt, plannedEndAt: savedPlan.plannedEndAt });
+assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, startTime: '10:45' }),
+    { plannedStartAt: undefined, plannedEndAt: undefined });
 console.log('dispatch live guard: OK');

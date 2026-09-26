@@ -355,8 +355,13 @@ export const QuickDispatchTable = ({
   };
 
   // Build fingerprint from current services data
-  const buildFingerprint = (svcs: ServiceBlock[]) =>
-    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${isTwoSlotSequential(s.options)}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.id || ''}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}:${st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? ''}`).join(',')}`).join(';');
+  const buildFingerprint = (svcs: ServiceBlock[]) => JSON.stringify(svcs.map(s => ({
+    id: s.id, mergedIntoId: s.mergedIntoId, mergedServiceIds: s.mergedServiceIds,
+    sequential: isTwoSlotSequential(s.options), revision: s.options?.dispatchRevision,
+    displayName: s.options?.displayName,
+    staff: s.staffList.map(st => ({ ktvId: st.ktvId, segments: st.segments,
+      name: st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? '', note: st.noteForKtv }))
+  })));
 
   // Initialize / re-initialize group states when services change
   useEffect(() => {
@@ -390,15 +395,16 @@ export const QuickDispatchTable = ({
                   ktvDisplayNames[staff.ktvId] = staff.ktvName;
                 }
                 roomIds.push(staff.segments?.[0]?.roomId || '');
-                startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
+                const saved = Number(item.options?.dispatchRevision || 0) > 0 || !['NEW', 'WAITING'].includes(item.status || 'NEW');
+                startTimes.push(staff.segments?.[0]?.startTime ?? (saved ? '' : defaultTime));
                 
-                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : duration;
+                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : (saved ? 0 : duration);
                 let finalEndTime = staff.segments?.[0]?.endTime;
                 
                 // Parent segment duration already contains the TOTAL merged duration
                 // Do NOT add child durations here — it would double-count
                 if (!finalEndTime) {
-                   finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
+                   finalEndTime = saved ? '' : calcEndTime(staff.segments?.[0]?.startTime ?? defaultTime, totalStaffDur);
                 }
                 
                 endTimes.push(finalEndTime);
@@ -519,7 +525,7 @@ export const QuickDispatchTable = ({
           let bedId: string | null = state.ktvBedIds?.[idx] || null;
           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
           else if (bedId) { globalUsedBedIds.push(bedId); }
-          const st = state.ktvStartTimes?.[idx] || getCurrentTime();
+          const st = state.ktvStartTimes?.[idx] ?? getCurrentTime();
           
           const originalDur = (updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[0].segments[0].duration : updatedServices[svcIdx].duration;
           
@@ -541,11 +547,11 @@ export const QuickDispatchTable = ({
             id: existingSeg?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
             sequenceSlot: state.confirmedSequential && items.length === 1 ? 1 : undefined,
-            endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
+            endTime: state.ktvEndTimes?.[idx] ?? calcEndTime(st, ktvDur),
           };
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
-            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
+            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === ktvId)?.segments.slice(1) || [])], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
             options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
@@ -590,7 +596,7 @@ export const QuickDispatchTable = ({
                     baseIdxToBedId.set(baseIdx, bedId);
                 }
             }
-            const st = state.ktvStartTimes?.[ki] || getCurrentTime();
+            const st = state.ktvStartTimes?.[ki] ?? getCurrentTime();
             const originalDur = (updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[ki].segments[0].duration : updatedServices[svcIdx].duration;
             
             // For merged services, ktvDurations[0] already contains the TOTAL merged duration from the UI
@@ -601,7 +607,7 @@ export const QuickDispatchTable = ({
                 kd = (state.ktvDurations?.[ki] !== undefined && state.ktvDurations?.[ki] !== null) ? state.ktvDurations[ki] : originalDur;
             }
             
-            const finalEndTime = state.ktvEndTimes?.[ki] || calcEndTime(st, kd);
+            const finalEndTime = state.ktvEndTimes?.[ki] ?? calcEndTime(st, kd);
             
             staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: finalEndTime, duration: kd });
           }
@@ -610,7 +616,7 @@ export const QuickDispatchTable = ({
             staffList: staffEntries.map((e, si) => ({
               id: updatedServices[svcIdx].staffList?.[si]?.id || `st-${item.id}-${e.ktvId}`,
               ktvId: e.ktvId, ktvName: e.ktvName,
-              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }],
+              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === e.ktvId)?.segments.slice(1) || [])],
               noteForKtv: (state.ktvNotes && state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] !== undefined) ? state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] : '',
               serviceNameForKtv: state.ktvServiceNames?.[state.selectedKtvIds.indexOf(e.ktvId)] || '',
             })),
@@ -1035,10 +1041,10 @@ const ServiceGroupCard = ({
     if (state.workMode === 'sequential') {
         newStarts = [...(state.ktvStartTimes || [])];
         newEnds = [...(state.ktvEndTimes || [])];
-        let currentStart = newStarts[0] || getCurrentTime();
+        let currentStart = newStarts[0] ?? getCurrentTime();
         for (let i = 0; i < state.selectedKtvIds.length; i++) {
             newStarts[i] = currentStart;
-            newEnds[i] = calcEndTime(currentStart, newDurations[i] || duration);
+            newEnds[i] = calcEndTime(currentStart, newDurations[i] ?? duration);
             currentStart = newEnds[i];
         }
     }
@@ -1086,7 +1092,7 @@ const ServiceGroupCard = ({
 
       const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
 
-      let defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
+      let defaultStart = latestEndTime || ((state.ktvStartTimes || [])[0] ?? getCurrentTime());
       let defaultDur = duration;
 
       if (state.workMode === 'sequential' && state.selectedKtvIds.length > 0) {
@@ -1467,7 +1473,7 @@ const ServiceGroupCard = ({
                          const newStarts: string[] = [];
                          const newEnds: string[] = [];
                          
-                         let currentStart = (state.ktvStartTimes || [])[0] || getCurrentTime();
+                         let currentStart = (state.ktvStartTimes || [])[0] ?? getCurrentTime();
                          
                          for (let i = 0; i < numKtvs; i++) {
                              const partDur = mode === 'sequential' ? Math.round(duration / numKtvs) : duration;

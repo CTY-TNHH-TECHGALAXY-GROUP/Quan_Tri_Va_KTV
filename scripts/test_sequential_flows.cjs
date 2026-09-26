@@ -8,6 +8,7 @@ const SequentialDemo = require('../app/reception/dispatch/sequential-demo/Sequen
 const { QuickDispatchTable } = require('../app/reception/dispatch/_components/QuickDispatchTable');
 const { KanbanBoard } = require('../app/reception/dispatch/_components/KanbanBoard');
 const { AccountDemo } = require('../app/reception/dispatch/sequential-demo/AccountDemo');
+const { DispatchEditHistory } = require('../app/reception/dispatch/_components/DispatchEditHistory');
 const { demoAccountState, segmentOf } = require('../app/reception/dispatch/sequential-demo/demo-account');
 const key = 'dispatch-sequential-demo-v2';
 const originalDate = Date;
@@ -215,4 +216,63 @@ try {
   finishRoom();
   console.log('PASS FLOW 5/5: Hoàn thành sau A → hủy B chưa làm → chặn handler cũ → reload giữ kết quả → DONE');
   console.log('PASS TÊN RIÊNG: sửa/xóa A không đổi B; sửa B không đổi A; B mới không kế thừa tên; giữ tên sau gửi/reload, không đổi giờ');
+  // Audit continuity and stale edits through actual demo handlers/components.
+  reset(); chooseA(); name('DEMO-A','Tên A lần 1');
+  app = hooks(SequentialDemo); quick = card = null; flush();
+  assertName('DEMO-A','Tên A lần 1'); name('DEMO-A','Tên A lần 2');
+  const named = service().options.dispatchHistory.at(-1).changes.find(c=>c.field==='serviceNameForKtv');
+  assert.equal(named.before,'Tên A lần 1'); assert.equal(named.after,'Tên A lần 2');
+  assert.equal(service().options.dispatchHistory.at(-1).actor.id,'DEMO-ADMIN');
+  const historyMarkup = renderToStaticMarkup(React.createElement(DispatchEditHistory,{services:[service()]}));
+  assert.ok(historyMarkup.includes('Tên A lần 1') && historyMarkup.includes('Tên A lần 2') && historyMarkup.includes('Quầy demo'));
+  console.log('PASS HISTORY UI 1/5: Reload → sửa lần 2 dựa trên lần 1; lưu người sửa và trước/sau');
+
+  minutes(0,30); sequential(); send(); assignLiveB('DEMO-B','2026-09-26T10:45',25);
+  click(app.tree,'Gán / sửa B');
+  let form = elements(app.tree,e=>e.props.role==='dialog')[0];
+  assert.equal(elements(form,e=>e.props.type==='datetime-local')[0].props.value,'2026-09-26T10:45');
+  assert.equal(elements(form,e=>e.props.type==='number')[0].props.value,25);
+  changeInput(elements(form,e=>e.props.type==='datetime-local')[0],'2026-09-26T10:50');
+  click(app.tree,'Lưu B');
+  const latestB = service().options.dispatchHistory.at(-1);
+  assert.equal(latestB.action,'ASSIGN_B');
+  assert.equal(latestB.changes.find(c=>c.field==='startTime').before,'10:45');
+  checkPlan('DEMO-B','10:50',25); checkPlan('DEMO-A','10:00',30);
+  console.log('PASS HISTORY UI 2/5: Modal B lần 2 mở đúng giờ/phút lần 1, không quay về mốc A');
+
+  click(app.tree,'Gán / sửa B');
+  const oldSave = elements(app.tree,e=>e.type==='button' && textOf(e)==='Lưu B')[0];
+  const oldTable = elements(app.tree,e=>e.type===QuickDispatchTable)[0];
+  const oldServices = structuredClone(oldTable.props.services);
+  name('DEMO-A','Tên A mới nhất'); const beforeStale=order();
+  oldSave.props.onClick(); flush();
+  assert.match(alerts.at(-1),/bản lưu mới/); assert.deepEqual(order(),beforeStale);
+  oldTable.props.onUpdateServices(oldServices); flush();
+  assert.match(alerts.at(-1),/bản lưu mới/); assert.deepEqual(order(),beforeStale);
+  console.log('PASS HISTORY UI 3/5: Modal / callback tab cũ bị chặn, không xóa bản mới hoặc nhật ký');
+
+  // Exercise reinitialization where ONLY endTime changes (no revision/start/duration change).
+  const props = elements(app.tree,e=>e.type===QuickDispatchTable)[0].props;
+  const independent = hooks(QuickDispatchTable);
+  independent.render(props); independent.render(props);
+  const changedServices = structuredClone(props.services);
+  changedServices[0].staffList[0].segments[0].endTime='11:15';
+  const newProps={...props,services:changedServices};
+  independent.render(newProps);
+  const tree=independent.render(newProps);
+  let group=elements(tree,e=>typeof e.type==='function' && e.type.name==='ServiceGroupCard')[0];
+  assert.equal(group.props.state.ktvEndTimes[0],'11:15');
+  console.log('PASS HISTORY UI 4/5: Chỉ đổi giờ kết thúc vẫn cập nhật bảng, không giữ giá trị cũ');
+
+  const missingServices=structuredClone(props.services);
+  missingServices[0].options.sequentialSlots=undefined;
+  missingServices[0].staffList=missingServices[0].staffList.slice(0,1);
+  missingServices[0].staffList[0].segments[0].startTime='';
+  delete missingServices[0].staffList[0].segments[0].endTime;
+  const missingProps={...props,services:missingServices};
+  independent.render(missingProps);
+  group=elements(independent.render(missingProps),e=>typeof e.type==='function' && e.type.name==='ServiceGroupCard')[0];
+  assert.equal(group.props.state.ktvStartTimes[0],''); assert.equal(group.props.state.ktvEndTimes[0],'');
+  console.log('PASS HISTORY UI 5/5: Chặng đã lưu thiếu giờ không tự lấy giờ hiện tại / tính giờ kết thúc');
+
 } finally { global.Date = originalDate; console.log = originalLog; }

@@ -1,4 +1,6 @@
 'use client';
+import { DispatchEditHistory } from './_components/DispatchEditHistory';
+import { dispatchRevision } from '@/lib/dispatch-edit-history';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import { parseDbDate } from "@/lib/utils";
@@ -334,7 +336,7 @@ export default function DispatchBoardPage() {
   } | null>(null);
   const [liveHandoff, setLiveHandoff] = useState<{
     bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
-    plannedStartAt: string; durationMinutes: number; saving: boolean;
+    plannedStartAt: string; durationMinutes: number; expectedRevision: number; saving: boolean;
   } | null>(null);
 
   const [splitPreviewState, setSplitPreviewState] = useState<{
@@ -733,7 +735,7 @@ if (!hasPermission('dispatch_board')) {
     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
-    setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
+    setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB, expectedRevision: dispatchRevision(item.options),
       plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
   };
@@ -748,15 +750,18 @@ if (!hasPermission('dispatch_board')) {
       return;
     }
     const item = orders.find(o => o.id === liveHandoff.bookingId)?.services.find(s => s.id === liveHandoff.itemId);
+    let expectedRevision = liveHandoff.expectedRevision;
     if (!isTwoSlotSequential(item?.options)) {
-      const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId);
+      const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId, expectedRevision);
       if (!enabled.success) {
         alert('Không thể chọn nối tiếp: ' + enabled.error);
         setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
         return;
       }
+      expectedRevision = enabled.revision ?? expectedRevision;
+      setLiveHandoff(prev => prev ? { ...prev, expectedRevision } : null);
     }
-    const input = { bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
+    const input = { expectedRevision, bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
       durationMinutes: liveHandoff.durationMinutes };
     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
@@ -1277,6 +1282,7 @@ if (!hasPermission('dispatch_board')) {
 
       const { saveDraftDispatch } = await import('./actions');
       const res = await saveDraftDispatch(clonedOrder.id, {
+        date: selectedDate,
         bedId: primarySeg?.bedId || null,
         roomName: primarySeg?.roomId || null,
         notes: finalNotesToSave,
@@ -1315,7 +1321,7 @@ if (!hasPermission('dispatch_board')) {
         }
 
         if (intent === 'DISPATCH') {
-            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan);
+            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
         } else {
             alert('✅ Đã lưu thông tin' + (splitPlan.length > 1 ? ' và tách đơn' : '') + ' thành công!');
             fetchData();
@@ -1367,7 +1373,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[]) => {
+  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[], savedRevisions?: Record<string, number>) => {
     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
     if (!orderToDispatch) return;
     if (!skipValidation) {
@@ -1426,6 +1432,10 @@ if (!hasPermission('dispatch_board')) {
 
     try {
       const clonedOrder = JSON.parse(JSON.stringify(orderToDispatch)) as PendingOrder;
+      // Continue from our own acknowledged draft, never from a newly read tab's revision.
+      clonedOrder.services.forEach(svc => {
+        if (savedRevisions?.[svc.id] !== undefined) svc.options = { ...svc.options, dispatchRevision: savedRevisions[svc.id] };
+      });
       const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
       
       let splitPlan = precomputedSplitPlan || [];
@@ -2742,12 +2752,13 @@ if (!hasPermission('dispatch_board')) {
                       <button onClick={() => setInvoiceLangModal({ invoiceId: selectedSubOrder.originalOrder.parentBookingId as string })} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow hover:bg-indigo-700">Xem Hóa Đơn Nhóm</button>
                     </div>
                   )}
+                  <DispatchEditHistory services={selectedSubOrder.services} />
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
                     onEnableSequential={async itemId => {
-                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId);
+                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId, dispatchRevision(selectedSubOrder.services.find(s => s.id === itemId)?.options));
                       if (!result.success) alert(result.error);
                       else await fetchData();
                     }}
@@ -2819,7 +2830,7 @@ if (!hasPermission('dispatch_board')) {
                              return svc;
                           });
 
-                          return recalculateAllTimes({ ...o, services: mergedServices }, roomTransitionTime);
+                          return { ...o, services: mergedServices };
                       });
                     }}
                     onDispatchGroup={(group, specificSvcId) => {
@@ -2998,7 +3009,7 @@ if (!hasPermission('dispatch_board')) {
               onAssignSequentialB={(orderId, itemId, fromKtvId, toKtvId) => openLiveHandoff(orderId, itemId, fromKtvId, toKtvId || '')}
               onFinishSequentialAfterA={async (orderId, itemId) => {
                 if (!confirm('Kết thúc dịch vụ sau lượt A? Công của A vẫn được giữ.')) return;
-                const result = await finishSequentialAfterA(orderId, itemId);
+                const result = await finishSequentialAfterA(orderId, itemId, dispatchRevision(orders.find(o => o.id === orderId)?.services.find(s => s.id === itemId)?.options));
                 if (!result.success) alert(result.error);
                 else await fetchData();
               }}
