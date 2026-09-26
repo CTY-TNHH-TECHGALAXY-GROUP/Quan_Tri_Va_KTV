@@ -7,6 +7,9 @@ import { buildOrderTimeline } from '../app/reception/dispatch/_components/dispat
 const a = { id: 'a', ktvId: 'T001', startTime: '10:00', endTime: '11:00', duration: 60,
     actualStartTime: '2026-09-25T03:00:00Z' };
 assert.equal(suggestedHandoffMinutes(60, a, Date.parse('2026-09-25T03:40:00Z')), 20);
+const finishedA = { ...a, actualEndTime: '2026-09-25T03:30:00Z' };
+assert.equal(suggestedHandoffMinutes(60, finishedA, Date.parse('2026-09-25T04:40:00Z')), 30);
+assert.equal(suggestedHandoffMinutes(60, { ...finishedA, pauses: [{ from: '2026-09-25T03:10:00Z', to: '2026-09-25T03:20:00Z' }] }, Date.parse('2026-09-25T04:40:00Z')), 40);
 assert.equal(suggestedHandoffMinutes(60, { ...a, pauses: [
     { from: '2026-09-25T03:10:00Z', to: '2026-09-25T03:20:00Z' },
 ] }, Date.parse('2026-09-25T03:40:00Z')), 30);

@@ -73,7 +73,7 @@ import {
 
 import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
-import { remainingHandoffMinutes, plannedHandoffStartAt } from '@/lib/dispatch-handoff';
+import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import { KtvCommentModal } from './_components/KtvCommentModal';
 
 
@@ -735,7 +735,7 @@ if (!hasPermission('dispatch_board')) {
       .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
     setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
       plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
-      durationMinutes: existingB?.duration ?? remainingHandoffMinutes(item.duration, segment.duration), saving: false });
+      durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
   };
 
   const confirmLiveHandoff = async () => {

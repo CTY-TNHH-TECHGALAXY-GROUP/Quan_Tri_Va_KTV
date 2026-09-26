@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { KanbanBoard } from '../_components/KanbanBoard';
 import { QuickDispatchTable } from '../_components/QuickDispatchTable';
 import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
-import { remainingHandoffMinutes, plannedHandoffStartAt } from '@/lib/dispatch-handoff';
+import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
 import { AccountDemo } from './AccountDemo';
 import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
@@ -127,7 +127,8 @@ export default function SequentialDemo() {
         : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now()));
     setHandoff({ ktvId: toKtvId || b?.ktvId || '',
       start: plannedStartTime ? `${start.slice(0, 10)}T${plannedStartTime}` : start,
-      duration: current?.duration ?? remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0) });
+      duration: current?.duration ?? (a && segmentOf(a).actualEndTime
+        ? suggestedHandoffMinutes(service.duration, segmentOf(a)) : remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0)) });
   };
   const saveHandoff = () => {
     if (!handoff || !a || !service) return;

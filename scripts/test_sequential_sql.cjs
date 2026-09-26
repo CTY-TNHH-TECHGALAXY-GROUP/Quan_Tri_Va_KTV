@@ -51,7 +51,7 @@ async function main() {
     (await db.query('SELECT * FROM "KtvAssignments" WHERE booking_item_id = $1 AND employee_id = $2', [id.item, employee])).rows[0];
   const ledger = async (id, employee) =>
     (await db.query('SELECT * FROM "TurnLedger" WHERE booking_id = $1 AND employee_id = $2', [id.booking, employee])).rows;
-  const log = (n, name) => console.log(`PASS ${n}/7: ${name}`);
+  const log = (n, name) => console.log(`PASS ${n}/12: ${name}`);
 
   // 1. Mark A as sequential without closing its actual work.
   {
@@ -209,6 +209,139 @@ async function main() {
     assert.equal((await item(id)).segments[0].duration, 30);
     assert.equal((await item(id)).segments[1].duration, 30);
     log(n, pickBBeforeSending ? 'Nháp sửa được A/B; gửi A+B tạo phân công thật đúng segment' : 'Gửi A với B trống không giữ tua B; chọn B sau tạo phân công thật');
+  }
+  // Five operational flows use the real dispatch RPC and sequential guard together.
+  async function businessFixture(n) {
+    const id = { booking: `flow-b${n}`, item: `flow-i${n}`, a: `flow-A${n}`, b: `flow-B${n}`, c: `flow-C${n}` };
+    await db.query('INSERT INTO "Bookings" (id) VALUES ($1)', [id.booking]);
+    await db.query('INSERT INTO "BookingItems" (id, "bookingId", status, options, segments) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)',
+      [id.item, id.booking, 'NEW', '{}', '[]']);
+    for (const employee of [id.a, id.b, id.c]) {
+      await db.query('INSERT INTO "Staff" VALUES ($1, $2)', [employee, 'ĐANG LÀM']);
+      await db.query('INSERT INTO "TurnQueue" (employee_id, date, status) VALUES ($1, $2, $3)', [employee, '2026-09-26', 'waiting']);
+    }
+    return id;
+  }
+  const planned = (id, employee, slot, start, duration) => {
+    const startMs = Date.parse(`2026-09-26T${start}:00+07:00`);
+    const end = new Date(startMs + duration * 60_000);
+    return { id: `s-${employee}`, ktvId: employee, sequenceSlot: slot, roomId: 'R', bedId: 'X', startTime: start,
+      duration, endTime: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(end) };
+  };
+  async function dispatch(id, segments, options = { sequentialSlots: 2 }) {
+    const assignments = segments.map(s => ({ ktvId: s.ktvId, bookingItemId: id.item, segmentId: s.id,
+      sequenceNo: s.sequenceSlot || 0, roomId: s.roomId, bedId: s.bedId, startTime: s.startTime, endTime: s.endTime }));
+    const updates = [{ id: id.item, status: 'PREPARING', options, segments, technicianCodes: segments.map(s => s.ktvId) }];
+    const result = (await db.query(`SELECT dispatch_confirm_booking($1, '2026-09-26', 'PREPARING', NULL, NULL, NULL, NULL, $2::jsonb, $3::jsonb) AS result`,
+      [id.booking, JSON.stringify(assignments), JSON.stringify(updates)])).rows[0].result;
+    assert.equal(result.success, true, result.error);
+  }
+  const assignMinutes = async (id, employee, at, duration) => (await db.query(
+    'SELECT dispatch_assign_sequential_slot_b($1, $2, $3, $4, $5, false) AS result',
+    [id.booking, id.item, employee, at, duration])).rows[0].result;
+  async function actual(id, employee, field, at, status = 'IN_PROGRESS') {
+    const segments = (await item(id)).segments;
+    segments.find(s => s.ktvId === employee && !s.voided)[field] = at;
+    await db.query('UPDATE "BookingItems" SET segments = $1::jsonb, status = $2 WHERE id = $3', [JSON.stringify(segments), status, id.item]);
+  }
+
+  {
+    const id = await businessFixture(8);
+    await dispatch(id, [planned(id, id.a, 1, '10:00', 30), planned(id, id.b, 2, '10:30', 30)]);
+    assert.equal((await assignment(id, id.a)).planned_start_time.toISOString(), '2026-09-26T03:00:00.000Z');
+    assert.equal((await assignment(id, id.b)).planned_start_time.toISOString(), '2026-09-26T03:30:00.000Z');
+    assert.equal((await ledger(id, id.a)).length, 1); assert.equal((await ledger(id, id.b)).length, 1);
+    await actual(id, id.a, 'actualStartTime', startA);
+    await actual(id, id.a, 'actualEndTime', '2026-09-26T03:30:00Z');
+    await assert.rejects(db.query('UPDATE "BookingItems" SET status = $1 WHERE id = $2', ['CLEANING', id.item]));
+    await actual(id, id.b, 'actualStartTime', '2026-09-26T03:30:00Z');
+    await actual(id, id.b, 'actualEndTime', endA, 'CLEANING');
+    assert.equal((await item(id)).status, 'CLEANING');
+    log(8, 'FLOW 1: A30/B30 từ mới đến CLEANING, giờ assignment và ledger riêng');
+  }
+  {
+    const id = await businessFixture(9);
+    await dispatch(id, [planned(id, id.a, undefined, '10:00', 60)], {});
+    const aAssignment = await assignment(id, id.a);
+    await dispatch(id, [planned(id, id.a, undefined, '10:00', 30)], {});
+    assert.equal((await assignment(id, id.a)).segment_id, aAssignment.segment_id);
+    assert.equal((await assignment(id, id.a)).planned_end_time.toISOString(), '2026-09-26T03:30:00.000Z');
+    assert.equal((await ledger(id, id.a)).length, 1);
+    await enable(id);
+    assert.equal((await assignMinutes(id, id.b, '2026-09-26T03:30:00Z', 30)).success, true);
+    assert.equal((await item(id)).segments[0].duration, 30);
+    assert.equal((await item(id)).segments[0].actualStartTime, undefined);
+    const running = await businessFixture('9-running');
+    await dispatch(running, [planned(running, running.a, undefined, '10:00', 60)], {});
+    await actual(running, running.a, 'actualStartTime', startA);
+    await enable(running);
+    const stale = (await item(running)).segments.map(s => ({ ...s, duration: 30, endTime: '10:30' }));
+    await db.query('UPDATE "BookingItems" SET segments = $1::jsonb WHERE id = $2', [JSON.stringify(stale), running.item]);
+    assert.equal((await item(running)).segments[0].duration, 60);
+    await actual(running, running.a, 'actualEndTime', '2026-09-26T03:30:00Z');
+    const finishedA = (await item(running)).segments[0];
+    assert.equal((await assignMinutes(running, running.b, '2026-09-26T03:30:00Z', 30)).success, true);
+    assert.deepEqual((await item(running)).segments[0], finishedA);
+    await actual(running, running.b, 'actualStartTime', '2026-09-26T03:30:00Z');
+    await actual(running, running.b, 'actualEndTime', endA, 'CLEANING');
+    log(9, 'FLOW 2: A full60 đã gửi → A30 trước bắt đầu → RPC cập nhật giờ cuối → B30');
+  }
+  {
+    const id = await businessFixture(10);
+    await dispatch(id, [planned(id, id.a, 1, '10:00', 30)]);
+    assert.equal(await assignment(id, id.b), undefined); assert.equal((await ledger(id, id.b)).length, 0);
+    await actual(id, id.a, 'actualStartTime', startA);
+    await actual(id, id.a, 'actualEndTime', '2026-09-26T03:35:00Z');
+    const aBefore = (await item(id)).segments[0];
+    const overlap = await assignMinutes(id, id.b, '2026-09-26T03:30:00Z', 30);
+    assert.equal(overlap.code, 'OVERLAP_CONFIRM_REQUIRED'); assert.equal(overlap.referenceKind, 'actual');
+    assert.equal((await assignMinutes(id, id.b, '2026-09-26T03:35:00Z', 30)).success, true);
+    assert.deepEqual((await item(id)).segments[0], aBefore);
+    await actual(id, id.b, 'actualStartTime', '2026-09-26T03:35:00Z');
+    await actual(id, id.b, 'actualEndTime', '2026-09-26T04:05:00Z', 'CLEANING');
+    assert.deepEqual((await item(id)).segments[0], aBefore);
+    log(10, 'FLOW 3: A làm trước/B trống → A xong → gán B theo mốc thực, giữ A');
+  }
+  {
+    const id = await businessFixture(11);
+    await db.query('UPDATE "BookingItems" SET options = $1::jsonb, segments = $2::jsonb WHERE id = $3',
+      ['{"sequentialSlots":2}', JSON.stringify([planned(id, id.a, 1, '10:00', 40), planned(id, id.b, 2, '10:40', 20)]), id.item]);
+    assert.equal(await assignment(id, id.b), undefined);
+    await dispatch(id, [planned(id, id.a, 1, '10:00', 30), planned(id, id.c, 2, '10:30', 30)]);
+    assert.equal((await item(id)).segments[0].duration, 30); assert.equal((await item(id)).segments[1].duration, 30);
+    assert.equal(await assignment(id, id.b), undefined);
+    const aBefore = (await item(id)).segments[0];
+    const cId = (await item(id)).segments[1].id;
+    assert.equal((await assignMinutes(id, id.c, '2026-09-26T03:50:00Z', 30)).success, true);
+    assert.equal((await item(id)).segments[1].id, cId);
+    assert.deepEqual((await item(id)).segments[0], aBefore);
+    assert.equal((await assignMinutes(id, id.b, '2026-09-26T03:50:00Z', 30)).success, true);
+    assert.equal((await assignment(id, id.c)).status, 'CANCELLED'); assert.equal((await ledger(id, id.c)).length, 0);
+    assert.equal((await assignment(id, id.b)).status, 'ACTIVE'); assert.equal((await ledger(id, id.b)).length, 1);
+    const stale = (await item(id)).segments.map(s => s.ktvId === id.c ? { ...s, actualStartTime: endA } : s);
+    await assert.rejects(db.query('UPDATE "BookingItems" SET segments = $1::jsonb WHERE id = $2', [JSON.stringify(stale), id.item]));
+    await actual(id, id.a, 'actualStartTime', startA);
+    await actual(id, id.a, 'actualEndTime', '2026-09-26T03:30:00Z');
+    await actual(id, id.b, 'actualStartTime', '2026-09-26T03:50:00Z');
+    await assert.rejects(assignMinutes(id, id.c, endA, 20));
+    await actual(id, id.b, 'actualEndTime', '2026-09-26T04:20:00Z', 'CLEANING');
+    log(11, 'FLOW 4: Đổi nháp/live B và giờ B; ledger/tua đúng; khóa B đã bắt đầu');
+  }
+  {
+    const id = await businessFixture(12);
+    await dispatch(id, [planned(id, id.a, 1, '10:00', 30), planned(id, id.b, 2, '10:30', 30)]);
+    await actual(id, id.a, 'actualStartTime', startA);
+    await actual(id, id.a, 'actualEndTime', '2026-09-26T03:30:00Z');
+    const aBefore = (await item(id)).segments[0];
+    await db.query('SELECT dispatch_finish_sequential_after_a($1, $2)', [id.booking, id.item]);
+    const completed = await item(id);
+    assert.equal(completed.status, 'CLEANING'); assert.equal(completed.options.finishedAfterA, true);
+    assert.deepEqual(completed.segments[0], aBefore); assert.equal(completed.segments[1].voided, true);
+    assert.equal((await assignment(id, id.b)).status, 'CANCELLED'); assert.equal((await ledger(id, id.b)).length, 0);
+    await assert.rejects(assignMinutes(id, id.b, endA, 30));
+    completed.segments[1].actualStartTime = endA;
+    await assert.rejects(db.query('UPDATE "BookingItems" SET segments = $1::jsonb WHERE id = $2', [JSON.stringify(completed.segments), id.item]));
+    log(12, 'FLOW 5: Hoàn thành sau A giữ công A, hủy B chưa làm; chặn bắt đầu/gán lại');
   }
   await db.close();
 }

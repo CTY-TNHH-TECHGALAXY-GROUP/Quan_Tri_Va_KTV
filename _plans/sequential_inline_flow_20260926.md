@@ -151,3 +151,46 @@ Người dùng yêu cầu dùng nhãn `Hoàn thành`. Tiếp tục theo phê duy
 - Chọn hàng KTV hoặc Kết thúc sau A.
 + Chọn hàng KTV hoặc bấm Hoàn thành.
 ```
+
+## Kiểm thử 5 flow vận hành ngày 26/09
+
+Phát hiện bằng `test_sequential_flows.cjs`: A gán full60, mở nối tiếp trong lúc làm, A kết thúc thực sau30; modal B gợi ý0 thay vì30. Assertion thất bại `0 !== 30`. Sửa trên branch đã được duyệt:
+
+```diff
+--- lib/dispatch-handoff.ts: suggestedHandoffMinutes
+- workedMsOf(activeSegment, now)
++ workedMsOf(activeSegment, activeSegment.actualEndTime || now)
+--- page.tsx / SequentialDemo.tsx: phút mặc định cho B mới
+- tổng gói - số phút kế hoạch A
++ A chưa xong: tổng gói - số phút kế hoạch A
++ A đã xong: tổng gói - số phút thực đã làm A (trừ khoảng dừng)
+```
+
+Không thay số phút/mốc thực của A, không thay B đã có kế hoạch, không migrate DB.
+
+### Kết quả sau sửa và chạy lại
+
+| Flow | Tình huống vận hành đã chạy | Bằng chứng kỹ thuật | Kết quả |
+| --- | --- | --- | --- |
+| 1 | Dịch vụ mới 60p; A30, mở nối tiếp, chọn B30 trước gửi; cả hai làm xong, dọn phòng, đánh giá, DONE | Handler chọn KTV/phòng/giờ/phút, syncToServices thật; SQL RPC tạo 2 assignment đúng giờ và 2 ledger; không CLEANING khi B chưa xong | PASS |
+| 2 | Gửi A full60 rồi sửa A30 trước bắt đầu, mở nối tiếp, B30. Nhánh A đã bắt đầu: mở nối tiếp trước khi A kết thúc; A thực làm30 rồi gán B30 | Cập nhật giờ cuối assignment A qua dispatch RPC, không trùng ledger A. Kế hoạch đang chạy khóa; mốc thực A giữ nguyên. Modal B mới gợi ý đúng30 sau sửa lỗi | PASS |
+| 3 | A30 làm trước, B chưa biết; A xong vẫn chờ B; gán B sau rồi hoàn tất đến DONE | Không assignment/ledger cho B trống; dùng mốc kết thúc thực A khi gán B; giữ nguyên A qua mọi ghi B; chồng giờ cần xác nhận | PASS |
+| 4 | A40/B20 trong nháp → sửa A30/B30 → đổi B thành C; gửi; nhập tay giờ C/B; đổi lại B trước bắt đầu; hoàn tất DONE | Giữ segment ID khi sửa cùng B, giữ A; B cũ voided, assignment CANCELLED, trả tua và xóa ledger chưa làm; handler và SQL chặn B cũ; B đã bắt đầu không đổi được | PASS |
+| 5 | A xong, B chưa làm; bấm Hoàn thành; tải lại; dọn/đánh giá/DONE | Giữ giờ thực A; hủy B chưa làm, xóa ledger B; chặn bắt đầu/gán lại B từ dữ liệu cũ; localStorage giữ kết quả sau reload | PASS |
+
+Lệnh đã chạy thành công:
+
+```sh
+node scripts/test_sequential_flows.cjs
+node scripts/test_sequential_sql.cjs
+node scripts/test_sequential_accounts.cjs
+node scripts/test_sequential_inline_ui.cjs
+../../node_modules/.bin/ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/test_dispatch_live_guard.ts
+../../node_modules/.bin/tsc --noEmit --pretty false
+../../node_modules/.bin/next lint --file lib/dispatch-handoff.ts --file app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+```
+
+- 5/5 flow handler PASS, 12/12 SQL PASS, 5/5 tài khoản PASS, 5/5 inline + giờ B + Kanban PASS, guard PASS, TypeScript PASS, lint không lỗi/cảnh báo trong file vừa sửa.
+- Harness gọi component React/hooks/handler thật của SequentialDemo, QuickDispatchTable, ServiceGroupCard, AccountDemo và Kanban. Không sao chép thuật toán syncToServices vào test.
+- SQL chạy PGlite trong bộ nhớ, dùng migration/RPC thật và schema tối thiểu; hàm promote_next_assignment được stub để kiểm tra trả tua. Mốc thực ghi bằng UPDATE qua trigger, không gọi API KTV chụp ảnh/bắt đầu/kết thúc. Chưa phải browser end-to-end hoặc UAT tài khoản thật trên DB đã migrate.
+- Không DB chung, không migration apply. Thay đổi runtime duy nhất trong lượt kiểm thử này là sửa gợi ý số phút B sau khi A kết thúc thực sớm, dùng chung helper đã có cho demo và trang điều phối.
