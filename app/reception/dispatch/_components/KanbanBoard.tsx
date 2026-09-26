@@ -533,7 +533,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     if (['CLEANING', 'FEEDBACK', 'DONE'].includes(newStatus)
                                         && draggedSubOrder.services.some(s => isTwoSlotSequential(s.options)
                                             && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap(st => st.segments)))) {
-                                        alert('Dịch vụ nối tiếp còn chờ lượt B. Chọn hàng KTV hoặc Kết thúc sau A.');
+                                        alert('Dịch vụ nối tiếp còn chờ lượt B. Chọn hàng KTV hoặc bấm Hoàn thành.');
                                         setDraggedSubOrderId(null);
                                         return;
                                     }
@@ -1528,7 +1528,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             && s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 1 && seg.actualStartTime && seg.actualEndTime))
                                                             && !s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 2 && seg.actualStartTime)));
                                                         return item && onFinishSequentialAfterA ? <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
-                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(order.id, item.id); }}>Kết thúc sau A</button> : null;
+                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(order.id, item.id); }}>Hoàn thành</button> : null;
                                                     })()}
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
                                                         const isPaused = services.some((s: any) => s.status === 'PAUSED');

@@ -245,7 +245,7 @@ export default function SequentialDemo() {
             onClick={() => openHandoff(service.id, a?.ktvId || '', b?.ktvId || '')}>Gán / sửa B</button>
           <button disabled={!canWork || !bSegment || !!bSegment.actualStartTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualStartTime')}>B bắt đầu</button>
           <button disabled={!bSegment?.actualStartTime || !!bSegment.actualEndTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualEndTime')}>B hoàn tất</button>
-          <button disabled={!aSegment?.actualEndTime || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-40" onClick={finishAfterA}>Kết thúc sau A</button>
+          <button disabled={!aSegment?.actualEndTime || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-40" onClick={finishAfterA}>Hoàn thành</button>
         </>}
       </div>
     </section>

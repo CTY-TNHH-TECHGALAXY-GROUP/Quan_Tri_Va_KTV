@@ -1856,7 +1856,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             if (sequential && ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(newStatus)
                 && (!targetKtvIds || targetKtvIds.length !== 1)
                 && !sequentialSlotsComplete(item.options, segs)) {
-                throw new Error('Dịch vụ còn lượt KTV nối tiếp chưa xong; hãy chọn hàng KTV hoặc kết thúc sau A.');
+                throw new Error('Dịch vụ còn lượt KTV nối tiếp chưa xong; hãy chọn hàng KTV hoặc bấm Hoàn thành.');
             }
             
             let segmentsModified = false;

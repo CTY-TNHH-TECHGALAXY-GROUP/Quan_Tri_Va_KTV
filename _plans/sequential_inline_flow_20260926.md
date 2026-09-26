@@ -138,3 +138,16 @@ Tiếp tục trên branch test đã được duyệt. Mỗi link `?account=DEMO-
 - 5 case inline điều phối + chỉnh tay B + Kanban tiếp tục PASS. TypeScript PASS; lint không lỗi, chỉ hai cảnh báo img có sẵn trên ScreenTimer.
 - URL demo B trả HTTP 200. Chưa xác nhận lại bằng click trình duyệt do công cụ Safari mất trạng thái điều khiển. Các kết quả 5/5 trên là component/handler, không phải browser end-to-end.
 - Mở cùng trình duyệt, cùng origin `http://localhost:3001`, ba tab điều phối / `?account=DEMO-A` / `?account=DEMO-B`. Demo không tạo tài khoản Supabase hoặc ghi DB; không đồng bộ qua trình duyệt khác/máy khác.
+
+## Nhãn nút theo yêu cầu vận hành
+
+Người dùng yêu cầu dùng nhãn `Hoàn thành`. Tiếp tục theo phê duyệt sửa file ổn định đã có; chỉ đổi chữ, giữ nguyên callback và điều kiện A đã xong/B chưa bắt đầu.
+
+```diff
+--- SequentialDemo.tsx / KanbanBoard.tsx
+- >Kết thúc sau A</button>
++ >Hoàn thành</button>
+--- KanbanBoard.tsx / actions.ts: hướng dẫn nút
+- Chọn hàng KTV hoặc Kết thúc sau A.
++ Chọn hàng KTV hoặc bấm Hoàn thành.
+```
