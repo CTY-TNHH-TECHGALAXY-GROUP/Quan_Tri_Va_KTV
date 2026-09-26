@@ -11,6 +11,7 @@ import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalK
 import { t as tCheckin } from '../CheckinConfirm.i18n';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { remainingHandoffMinutes } from '@/lib/dispatch-handoff';
 
 // 🛠 UI CONFIGURATION
 const MAX_EXTERNAL_SUGGESTIONS = 8;
@@ -539,13 +540,13 @@ export const QuickDispatchTable = ({
             ...existingSeg,
             id: existingSeg?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
-            ...(state.confirmedSequential && items.length === 1 ? { sequenceSlot: 1 } : {}),
+            sequenceSlot: state.confirmedSequential && items.length === 1 ? 1 : undefined,
             endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
           };
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
             staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
-            options: { ...updatedServices[svcIdx].options, ...(state.confirmedSequential && items.length === 1 ? { sequentialSlots: 2 } : {}), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       } else {
@@ -609,11 +610,11 @@ export const QuickDispatchTable = ({
             staffList: staffEntries.map((e, si) => ({
               id: updatedServices[svcIdx].staffList?.[si]?.id || `st-${item.id}-${e.ktvId}`,
               ktvId: e.ktvId, ktvName: e.ktvName,
-              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, ...(state.confirmedSequential && items.length === 1 ? { sequenceSlot: si + 1 } : {}) }],
+              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }],
               noteForKtv: (state.ktvNotes && state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] !== undefined) ? state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] : '',
               serviceNameForKtv: state.ktvServiceNames?.[state.selectedKtvIds.indexOf(e.ktvId)] || '',
             })),
-            options: { ...updatedServices[svcIdx].options, ...(state.confirmedSequential && items.length === 1 ? { sequentialSlots: 2 } : {}), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       }
@@ -977,6 +978,13 @@ const ServiceGroupCard = ({
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
   const hasHandoff = groupItems.some(item => isTwoSlotSequential(item.options));
+  const isDraft = groupItems.every(item => ['NEW', 'WAITING'].includes(item.status || 'NEW'));
+  const canAddSequential = groupItems.length === 1 && !state.isMergedGroup && state.selectedKtvIds.length === 1
+    && !FOURHAND_SERVICES.includes(groupItems[0].serviceId || '')
+    && (isDraft || ['PREPARING', 'READY', 'IN_PROGRESS'].includes(groupItems[0].status || ''));
+  const remainingMinutes = remainingHandoffMinutes(duration, state.ktvDurations?.[0] ?? duration);
+  const waitingForB = hasHandoff && !groupItems.some(item => item.options?.finishedAfterA
+    || item.staffList.some(row => row.segments.some(seg => Number((seg as any).sequenceSlot) === 2 && (seg as any).voided !== true)));
   const [ktvSearch, setKtvSearch] = useState('');
   const [showTicketForIdx, setShowTicketForIdx] = useState<number | null>(null);
   const [openDurationIdx, setOpenDurationIdx] = useState<number | null>(null);
@@ -1041,13 +1049,11 @@ const ServiceGroupCard = ({
   };
 
   const addKtv = (ktvId: string) => {
+    if (state.selectedKtvIds.includes(ktvId)) return;
+    if (state.confirmedSequential && isDraft && state.selectedKtvIds.length >= 2) return;
     if (state.selectedKtvIds.length >= MAX_KTV_PER_GROUP) return;
-    if (hasHandoff) {
+    if (hasHandoff && !isDraft) {
       const item = groupItems.find(item => isTwoSlotSequential(item.options));
-      if (item && ['NEW', 'WAITING'].includes(item.status || '')) {
-        alert('Gửi phân công A trước, sau đó chọn B trong hàng nối tiếp.');
-        return;
-      }
       const a = item?.staffList.find(row => row.segments.some(seg => (seg as any).sequenceSlot === 1));
       const b = item?.staffList.some(row => row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true));
       if (item && a && !b && onLiveHandoff) onLiveHandoff(item.id, a.ktvId, ktvId);
@@ -1079,6 +1085,7 @@ const ServiceGroupCard = ({
       if (state.workMode === 'sequential' && state.selectedKtvIds.length > 0) {
           const lastIdx = state.selectedKtvIds.length - 1;
           defaultStart = state.ktvEndTimes?.[lastIdx] || defaultStart;
+          if (state.confirmedSequential) defaultDur = remainingMinutes;
       } else if (state.workMode === 'parallel' && state.selectedKtvIds.length > 0) {
           defaultStart = (state.ktvStartTimes || [])[0] || defaultStart;
       }
@@ -1098,6 +1105,7 @@ const ServiceGroupCard = ({
         selectedRoomIds: [...(state.selectedRoomIds || []), defaultRoom]
       });
       setKtvSearch('');
+      setIsKtvDropdownOpen(false);
     };
 
     /*
@@ -1437,30 +1445,12 @@ const ServiceGroupCard = ({
              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                  Nhân viên ({state.selectedKtvIds.length}{count > 1 ? `/${count}` : ''})
              </label>
-             {hasHandoff && !groupItems.some(item => item.options?.finishedAfterA) && !groupItems.some(item => item.staffList.some(row => row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true))) && (
-               <button type="button" disabled={['NEW', 'WAITING'].includes(groupItems[0]?.status || '')} className="rounded-lg border border-dashed border-indigo-300 px-2 py-1 text-[10px] font-bold text-indigo-600 disabled:opacity-50"
-                 onClick={() => { const item = groupItems.find(item => isTwoSlotSequential(item.options)); const a = item?.staffList.find(row => row.segments.some(seg => (seg as any).sequenceSlot === 1)); if (item && a) onLiveHandoff?.(item.id, a.ktvId, ''); }}>
-                 {['NEW', 'WAITING'].includes(groupItems[0]?.status || '') ? 'B · Gửi A trước' : 'B · Chưa gán KTV'}
-               </button>
-             )}
-             {!state.confirmedSequential && state.workMode === 'sequential' && groupItems.length === 1 && state.selectedKtvIds.length === 1 && (
-               <button type="button" className="rounded-lg border border-amber-300 px-2 py-1 text-[10px] font-bold text-amber-700"
-                 onClick={() => { if (['PREPARING', 'READY', 'IN_PROGRESS'].includes(groupItems[0].status || '')) onEnableSequential?.(groupItems[0].id); else onUpdate({ confirmedSequential: true }); }}>
-                 Xác nhận nối tiếp
-               </button>
-             )}
-             {state.selectedKtvIds.length > 0 && !state.confirmedSequential && (groupItems.length === 1 || state.selectedKtvIds.length > 1) && (
+             {state.selectedKtvIds.length > 1 && !state.confirmedSequential && (
                  <select 
                      className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
                      value={state.workMode || 'parallel'}
                      onChange={(e) => {
                          const mode = e.target.value as 'parallel' | 'sequential';
-                         if (mode === 'sequential' && groupItems.length === 1
-                             && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(groupItems[0].status || '')
-                             && state.selectedKtvIds.length === 1 && onEnableSequential) {
-                             onEnableSequential(groupItems[0].id);
-                             return;
-                         }
                          const numKtvs = state.selectedKtvIds.length;
                          
                          const newDurs: number[] = [];
@@ -1489,19 +1479,19 @@ const ServiceGroupCard = ({
              )}
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
-            <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
+            <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => { if (!state.confirmedSequential) setIsKtvDropdownOpen(true); }}>
               {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot) as any; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{slot?.voided === true ? 'Đã đổi' : `Ca ${slot?.sequenceSlot || idx + 1}`}</span>}
-                  <button disabled={hasHandoff || groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime)))} onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md disabled:opacity-30"><X size={12} /></button>
+                  <button disabled={(hasHandoff && (!isDraft || idx === 0)) || groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime)))} onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md disabled:opacity-30"><X size={12} /></button>
                 </span>); })}
-              <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
+              <input hidden={state.confirmedSequential} type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) { addKtv(picked); setKtvSearch(''); } else if (!externalKtvNameProblem(ktvSearch, staffs)) { addKtv(newExternalKtvToken(ktvSearch)); setKtvSearch(''); } } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
-                    return state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : '+ Thêm (Ghép sô/Nối tiếp)...';
+                    return state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : state.confirmedSequential ? '+ Chọn KTV B...' : '+ Thêm KTV cùng làm...';
                 })()} 
                 className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-sm font-bold placeholder:text-gray-400 placeholder:italic py-1" />
             </div>
@@ -1595,7 +1585,7 @@ const ServiceGroupCard = ({
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';
                 const endT = (state.ktvEndTimes || [])[idx] || '';
-                const ktvDur = (state.ktvDurations || [])[idx] || duration;
+                const ktvDur = state.ktvDurations?.[idx] ?? duration;
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
                 const timeLocked = (hasHandoff && !['NEW', 'WAITING'].includes(groupItems[0]?.status || ''))
                   || groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime)));
@@ -1618,7 +1608,7 @@ const ServiceGroupCard = ({
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{idx + 1}</span>
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     {replacedB && <span className="text-[9px] font-bold text-rose-600">Đã đổi · chưa làm</span>}
-                    {slotBItem && slotAKtvId && <button type="button" className="text-[10px] font-bold text-indigo-600 underline"
+                    {slotBItem && slotAKtvId && !isDraft && <button type="button" className="text-[10px] font-bold text-indigo-600 underline"
                       onClick={() => onLiveHandoff?.(slotBItem.id, slotAKtvId, ktvId)}>Sửa B</button>}
                     {idx < (count || 1) ? (
                         <>
@@ -1787,6 +1777,31 @@ const ServiceGroupCard = ({
                   </div>
                 </div>
               ); })}
+              {canAddSequential && !state.confirmedSequential && <button type="button"
+                className={`w-full rounded-xl border-2 border-dashed px-3 py-3 text-left text-xs font-bold ${remainingMinutes > 0 ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}
+                onClick={() => {
+                  setIsKtvDropdownOpen(false);
+                  setKtvSearch('');
+                  if (isDraft) onUpdate({ workMode: 'sequential', confirmedSequential: true });
+                  else onEnableSequential?.(groupItems[0].id);
+                }}>
+                {remainingMinutes > 0 ? `Còn ${remainingMinutes} phút · + Nối tiếp` : '+ Nối tiếp'}
+              </button>}
+              {waitingForB && <div className="rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-indigo-700">B · Chưa chọn nhân viên</span>
+                  {isDraft && <button type="button" className="text-[10px] text-gray-500 underline"
+                    onClick={() => onUpdate({ workMode: 'parallel', confirmedSequential: false })}>Bỏ nối tiếp</button>}
+                </div>
+                {isDraft ? <select aria-label="Chọn nhân viên B" value="" onChange={e => { if (e.target.value) addKtv(e.target.value); }}
+                  className="w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs font-bold">
+                  <option value="">+ Chọn nhân viên B (có thể chọn sau)</option>
+                  {availableTurns.filter(isVisibleInKtvPicker).filter(turn => !state.selectedKtvIds.includes(turn.employee_id)).map(turn =>
+                    <option key={turn.employee_id} value={turn.employee_id}>{turn.employee_id} · {turn.staff?.full_name || turn.employee_id}</option>)}
+                </select> : <button type="button" className="w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-left text-xs font-bold text-indigo-600"
+                  onClick={() => { const item = groupItems[0]; const a = item.staffList.find(row => row.segments.some(seg => Number((seg as any).sequenceSlot) === 1)); if (a) onLiveHandoff?.(item.id, a.ktvId, ''); }}>+ Chọn nhân viên B</button>}
+                <p className="text-[10px] text-gray-500">{remainingMinutes > 0 ? `Dự kiến ${state.ktvEndTimes?.[0] || 'sau A'} · ${remainingMinutes} phút còn lại` : 'Nhập thời lượng B khi chọn nhân viên.'} · Cùng phòng/giường A</p>
+              </div>}
             </div>
           </div>
         )}

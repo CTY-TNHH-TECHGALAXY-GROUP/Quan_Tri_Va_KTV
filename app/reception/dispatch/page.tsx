@@ -73,6 +73,7 @@ import {
 
 import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
+import { remainingHandoffMinutes, plannedHandoffStartAt } from '@/lib/dispatch-handoff';
 import { KtvCommentModal } from './_components/KtvCommentModal';
 
 
@@ -727,11 +728,13 @@ if (!hasPermission('dispatch_board')) {
     if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
     const existingB = item.staffList.flatMap(row => row.segments).find(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true);
     const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && t.status === 'waiting' && isVisibleInKtvPicker(t))) ? toKtvId : '';
+    let existingStart = existingB ? Date.parse(`${selectedDate}T${existingB.startTime.slice(0, 5)}:00+07:00`) : NaN;
+    if (existingB && existingB.startTime.slice(0, 5) < segment.startTime.slice(0, 5)) existingStart += 86400000;
     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .format((existingB as any)?.plannedStartAt ? new Date((existingB as any).plannedStartAt) : new Date()).replace(' ', 'T');
+      .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
     setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
-      plannedStartAt, durationMinutes: existingB?.duration || segment.duration || item.duration || 60, saving: false });
+      plannedStartAt, durationMinutes: existingB?.duration ?? remainingHandoffMinutes(item.duration, segment.duration), saving: false });
   };
 
   const confirmLiveHandoff = async () => {
@@ -882,6 +885,7 @@ if (!hasPermission('dispatch_board')) {
             if (!seg.roomId) missing.push(`${segPrefix}: Chưa chọn Phòng`);
             if (!seg.bedId) missing.push(`${segPrefix}: Chưa chọn Giường`);
             if (!seg.startTime) missing.push(`${segPrefix}: Chưa nhập giờ bắt đầu`);
+            if (isTwoSlotSequential(s.options) && (!Number.isInteger(seg.duration) || seg.duration < 1 || seg.duration > 600)) missing.push(`${segPrefix}: Nhập thời lượng 1–600 phút`);
         });
       });
     });
@@ -1535,6 +1539,8 @@ if (!hasPermission('dispatch_board')) {
                   allStaffAssignments.push({
                       ktvId: row.ktvId,
                       bookingItemId: svc.id,
+                      segmentId: firstSeg.id,
+                      sequenceNo: Number((firstSeg as any).sequenceSlot) || 0,
                       roomId: firstSeg.roomId,
                       bedId: firstSeg.bedId,
                       turnsCompleted,

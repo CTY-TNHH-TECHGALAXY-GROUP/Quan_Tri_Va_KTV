@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { liveDispatchConflict } from '../lib/dispatch-live-guard';
-import { suggestedHandoffMinutes } from '../lib/dispatch-handoff';
+import { suggestedHandoffMinutes, remainingHandoffMinutes, plannedHandoffStartAt } from '../lib/dispatch-handoff';
 import { sequentialSlotsComplete } from '../lib/dispatch-status';
 import { buildOrderTimeline } from '../app/reception/dispatch/_components/dispatch-timeline';
 
@@ -16,6 +16,17 @@ assert.equal(liveDispatchConflict([a], [{ ...a, roomId: 'R2' }]), null);
 const slotA = { ...a, sequenceSlot: 1 };
 const slotB = { id: 'b', ktvId: 'T002', sequenceSlot: 2, startTime: '10:40', endTime: '11:00', duration: 20 };
 const twoSlots = { sequentialSlots: 2 };
+assert.equal(remainingHandoffMinutes(60, 30), 30);
+assert.equal(remainingHandoffMinutes(60, 45), 15);
+assert.equal(remainingHandoffMinutes(60, 60), 0);
+assert.equal(remainingHandoffMinutes(60, 90), 0);
+assert.equal(plannedHandoffStartAt('2026-09-26', { startTime: '23:45', duration: 30 }), '2026-09-26T17:15:00.000Z');
+assert.equal(plannedHandoffStartAt('2026-09-26', { ...a, actualEndTime: '2026-09-26T04:05:00Z' }), '2026-09-26T04:05:00.000Z');
+assert.equal(plannedHandoffStartAt('2026-09-26', { startTime: '', duration: 30 }), '');
+const draftA = { ...slotA, actualStartTime: undefined };
+assert.equal(liveDispatchConflict([draftA], [{ ...draftA, duration: 30 }, slotB], twoSlots, twoSlots, 'NEW'), null);
+assert.equal(liveDispatchConflict([draftA, slotB], [draftA], twoSlots, {}, 'WAITING'), null);
+assert.ok(liveDispatchConflict([slotA], [{ ...slotA, duration: 30 }], twoSlots, twoSlots, 'NEW'));
 assert.equal(liveDispatchConflict([slotA, slotB], [slotA, slotB], twoSlots, twoSlots), null);
 assert.ok(liveDispatchConflict([slotA, slotB], [slotA], twoSlots, twoSlots));
 assert.ok(liveDispatchConflict([slotA, slotB], [slotA, { ...slotB, sequenceSlot: 1 }], twoSlots, twoSlots));

@@ -1,7 +1,8 @@
 import { isTwoSlotSequential } from './dispatch-status';
 
 /** Item đã chọn nối tiếp chỉ đổi chặng qua RPC có khóa. */
-export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[], dbOptions?: any, incomingOptions?: any): string | null {
+export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[], dbOptions?: any, incomingOptions?: any, dbStatus?: string): string | null {
+    if (['NEW', 'WAITING'].includes(dbStatus || '') && !dbSegments.some(s => s.actualStartTime || s.actualEndTime)) return null;
     if (isTwoSlotSequential(dbOptions)) {
         if (!isTwoSlotSequential(incomingOptions) || dbSegments.length !== incomingSegments.length || dbSegments.some(current => {
             const incoming = incomingSegments.find(s => s.id === current.id);

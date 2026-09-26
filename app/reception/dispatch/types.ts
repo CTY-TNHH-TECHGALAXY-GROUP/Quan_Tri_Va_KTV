@@ -5,6 +5,7 @@ export interface WorkSegment {
   startTime: string;
   actualStartTime?: string | null;
   duration: number;
+  sequenceSlot?: number;
   endTime: string;
   actualEndTime?: string | null;
   feedbackTime?: string | null;

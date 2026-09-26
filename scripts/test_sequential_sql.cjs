@@ -51,7 +51,7 @@ async function main() {
     (await db.query('SELECT * FROM "KtvAssignments" WHERE booking_item_id = $1 AND employee_id = $2', [id.item, employee])).rows[0];
   const ledger = async (id, employee) =>
     (await db.query('SELECT * FROM "TurnLedger" WHERE booking_id = $1 AND employee_id = $2', [id.booking, employee])).rows;
-  const log = (n, name) => console.log(`PASS ${n}/5: ${name}`);
+  const log = (n, name) => console.log(`PASS ${n}/7: ${name}`);
 
   // 1. Mark A as sequential without closing its actual work.
   {
@@ -146,6 +146,63 @@ async function main() {
     log(5, 'Ghi stale giữ cả A.end/B.start, chỉ hoàn tất khi B xong');
   }
 
+  // Exercise the real initial-dispatch RPC too; no shared database is used.
+  await db.exec(`
+    CREATE TYPE "BookingStatus" AS ENUM ('NEW', 'WAITING', 'PREPARING', 'IN_PROGRESS', 'COMPLETED', 'CLEANING', 'FEEDBACK', 'DONE', 'CANCELLED', 'SPLIT');
+    ALTER TABLE "Bookings" ADD COLUMN status "BookingStatus" DEFAULT 'NEW', ADD COLUMN "technicianCode" text,
+      ADD COLUMN "bedId" text, ADD COLUMN "roomName" text, ADD COLUMN notes text, ADD COLUMN "updatedAt" timestamptz;
+    ALTER TABLE "BookingItems" ADD COLUMN "roomName" text, ADD COLUMN "bedId" text;
+    ALTER TABLE "KtvAssignments" ADD COLUMN id uuid DEFAULT gen_random_uuid(), ADD COLUMN priority integer,
+      ADD COLUMN sequence_no integer, ADD COLUMN updated_at timestamptz;
+    ALTER TABLE "TurnQueue" ADD COLUMN queue_position integer, ADD COLUMN last_served_at timestamptz;
+    CREATE UNIQUE INDEX turn_queue_employee_date ON "TurnQueue"(employee_id, date);
+  `);
+  await db.exec(readFileSync(join(__dirname, '../supabase/migrations/20260830_add_dispatch_booking_guard.sql'), 'utf8'));
+  for (const pickBBeforeSending of [true, false]) {
+    const n = pickBBeforeSending ? 6 : 7;
+    const id = { booking: `b${n}`, item: `i${n}`, a: `A${n}`, b: `B${n}` };
+    const a = { id: `a${n}`, ktvId: id.a, roomId: 'R', bedId: 'X', sequenceSlot: 1, startTime: '10:00', endTime: '11:00', duration: 60 };
+    const b = { id: `s-b${n}`, ktvId: id.b, roomId: 'R', bedId: 'X', sequenceSlot: 2, startTime: '10:30', endTime: '11:00', duration: 30 };
+    await db.query('INSERT INTO "Bookings" (id) VALUES ($1)', [id.booking]);
+    await db.query('INSERT INTO "BookingItems" (id, "bookingId", status, options, segments) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)',
+      [id.item, id.booking, 'NEW', '{"sequentialSlots":2}', JSON.stringify([a])]);
+    // A saved sequential draft can still be changed or cancelled before dispatch.
+    await db.query('UPDATE "BookingItems" SET options = $1::jsonb WHERE id = $2', ['{}', id.item]);
+    a.duration = 30; a.endTime = '10:30';
+    const segments = pickBBeforeSending ? [a, b] : [a];
+    await db.query('UPDATE "BookingItems" SET options = $1::jsonb, segments = $2::jsonb WHERE id = $3',
+      ['{"sequentialSlots":2}', JSON.stringify(segments), id.item]);
+    assert.equal((await item(id)).segments[0].duration, 30);
+    assert.equal((await ledger(id, id.b)).length, 0);
+    assert.equal(await assignment(id, id.b), undefined);
+    for (const employee of [id.a, id.b]) {
+      await db.query('INSERT INTO "Staff" VALUES ($1, $2)', [employee, 'ĐANG LÀM']);
+      await db.query('INSERT INTO "TurnQueue" (employee_id, date, status) VALUES ($1, $2, $3)', [employee, '2026-09-26', 'waiting']);
+    }
+    const assignments = segments.map(s => ({ ktvId: s.ktvId, bookingItemId: id.item, segmentId: s.id,
+      sequenceNo: s.sequenceSlot, roomId: s.roomId, bedId: s.bedId, startTime: s.startTime, endTime: s.endTime }));
+    const updates = [{ id: id.item, status: 'PREPARING', options: { sequentialSlots: 2 }, segments, technicianCodes: segments.map(s => s.ktvId) }];
+    const result = (await db.query(`SELECT dispatch_confirm_booking($1, '2026-09-26', 'PREPARING', NULL, NULL, NULL, NULL, $2::jsonb, $3::jsonb) AS result`,
+      [id.booking, JSON.stringify(assignments), JSON.stringify(updates)])).rows[0].result;
+    assert.equal(result.success, true, result.error);
+    assert.equal((await item(id)).status, 'PREPARING');
+    assert.equal((await assignment(id, id.a)).segment_id, a.id);
+    assert.equal((await ledger(id, id.b)).length, pickBBeforeSending ? 1 : 0);
+    if (!pickBBeforeSending) {
+      const added = (await db.query('SELECT dispatch_assign_sequential_slot_b($1, $2, $3, $4, 30, false) AS result',
+        [id.booking, id.item, id.b, '2026-09-26T03:30:00Z'])).rows[0].result;
+      assert.equal(added.success, true);
+    }
+    assert.equal((await assignment(id, id.b)).status, 'ACTIVE');
+    assert.equal((await ledger(id, id.b)).length, 1);
+    // Once sent, stale edits cannot move A or replace B via a whole-array save.
+    const live = (await item(id)).segments;
+    await db.query('UPDATE "BookingItems" SET segments = $1::jsonb WHERE id = $2',
+      [JSON.stringify(live.map(s => ({ ...s, duration: 99 }))), id.item]);
+    assert.equal((await item(id)).segments[0].duration, 30);
+    assert.equal((await item(id)).segments[1].duration, 30);
+    log(n, pickBBeforeSending ? 'Nháp sửa được A/B; gửi A+B tạo phân công thật đúng segment' : 'Gửi A với B trống không giữ tua B; chọn B sau tạo phân công thật');
+  }
   await db.close();
 }
 

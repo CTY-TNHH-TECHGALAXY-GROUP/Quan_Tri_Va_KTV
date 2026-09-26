@@ -246,9 +246,13 @@ DECLARE
     v_out jsonb := '[]'::jsonb;
     v_a_done boolean;
     v_b_done boolean;
+    v_is_draft boolean;
 BEGIN
     IF v_old_options->>'sequentialSlots' IS DISTINCT FROM '2' AND v_new_options->>'sequentialSlots' IS DISTINCT FROM '2' THEN RETURN NEW; END IF;
-    IF v_old_options->>'sequentialSlots' = '2' AND v_new_options->>'sequentialSlots' IS DISTINCT FROM '2' THEN
+    v_is_draft := OLD.status IN ('NEW', 'WAITING') AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_old_segments) s
+        WHERE COALESCE(s->>'actualStartTime', '') <> '' OR COALESCE(s->>'actualEndTime', '') <> '');
+    IF NOT v_is_draft AND v_old_options->>'sequentialSlots' = '2' AND v_new_options->>'sequentialSlots' IS DISTINCT FROM '2' THEN
         RAISE EXCEPTION 'Không được bỏ chế độ nối tiếp qua lưu đơn cũ';
     END IF;
     IF v_old_options->>'finishedAfterA' = 'true' AND v_new_options->>'finishedAfterA' IS DISTINCT FROM 'true' THEN
@@ -260,7 +264,7 @@ BEGIN
         RAISE EXCEPTION 'Chỉ được kết thúc sau A qua thao tác quầy';
     END IF;
     IF jsonb_typeof(v_new_segments) <> 'array' THEN RAISE EXCEPTION 'Segments nối tiếp không hợp lệ'; END IF;
-    IF v_old_options->>'sequentialSlots' = '2' AND current_setting('app.sequential_rpc', true) IS DISTINCT FROM '1' THEN
+    IF NOT v_is_draft AND v_old_options->>'sequentialSlots' = '2' AND current_setting('app.sequential_rpc', true) IS DISTINCT FROM '1' THEN
         FOR v_old IN SELECT value FROM jsonb_array_elements(v_old_segments) LOOP
             SELECT value INTO v_in FROM jsonb_array_elements(v_new_segments)
             WHERE value->>'id' = v_old->>'id' LIMIT 1;

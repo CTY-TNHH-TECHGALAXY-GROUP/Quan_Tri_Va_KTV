@@ -752,7 +752,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options);
+                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
@@ -779,6 +779,17 @@ export async function processDispatch(bookingId: string, dispatchData: {
             dispatchData.itemUpdates = dispatchData.itemUpdates?.filter(item => !protectedSequentialIds.has(item.id));
             dispatchData.staffAssignments = dispatchData.staffAssignments.filter(a => !protectedSequentialIds.has(a.bookingItemId));
             if (!dispatchData.itemUpdates?.length) return { success: false, error: 'Dịch vụ nối tiếp đã điều phối; hãy dùng thao tác gán/sửa B riêng.' };
+        }
+        for (const item of dispatchData.itemUpdates || []) {
+            if (!isTwoSlotSequential(item.options)) continue;
+            const slots = (item.segments || []).filter(s => s.voided !== true);
+            if (slots.length < 1 || slots.length > 2 || !slots.some(s => Number(s.sequenceSlot) === 1)
+                || new Set(slots.map(s => Number(s.sequenceSlot))).size !== slots.length
+                || new Set(slots.map(s => s.ktvId)).size !== slots.length
+                || slots.some(s => ![1, 2].includes(Number(s.sequenceSlot)) || !s.id || !s.ktvId || !s.roomId || !s.bedId || !s.startTime
+                    || !Number.isInteger(s.duration) || s.duration < 1 || s.duration > 600)) {
+                return { success: false, error: 'Phân công nối tiếp cần A hợp lệ và tối đa một B, thời lượng mỗi lượt 1–600 phút.' };
+            }
         }
         
         // 🚀 BẢO VỆ TRẠNG THÁI BOOKING: Nếu DB đang ở trạng thái cao hơn, không cho lùi
@@ -1198,7 +1209,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options);
+                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
                     // 3. NGĂN CẤM XÓA KTV ĐÃ BẮT ĐẦU LÀM

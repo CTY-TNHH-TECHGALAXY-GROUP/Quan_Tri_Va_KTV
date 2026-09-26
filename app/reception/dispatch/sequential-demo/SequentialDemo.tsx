@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { KanbanBoard } from '../_components/KanbanBoard';
 import { QuickDispatchTable } from '../_components/QuickDispatchTable';
 import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
+import { remainingHandoffMinutes, plannedHandoffStartAt } from '@/lib/dispatch-handoff';
 import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 
 const storageKey = 'dispatch-sequential-demo-v2';
@@ -72,42 +73,30 @@ export default function SequentialDemo() {
   const service = order?.services[0];
   const a = service?.staffList.find(row => segmentOf(row).sequenceSlot === 1) || service?.staffList[0];
   const b = service?.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
-  const mode = service?.options?._demoMode as 'full' | 'sequential' | undefined;
   const isSequential = isTwoSlotSequential(service?.options);
   const turns: (TurnQueueData & { staff?: StaffData })[] = staff.map((person, index) => ({
     employee_id: person.id, date: localInput(new Date()).slice(0, 10), queue_position: index + 1,
-    check_in_order: index + 1, turns_completed: 0, status: person.id === a?.ktvId ? 'working'
-      : person.id === b?.ktvId ? 'assigned' : 'waiting', staff: person, checked_in_today: true,
+    check_in_order: index + 1, turns_completed: 0, status: service?.status === 'NEW' ? 'waiting'
+      : person.id === a?.ktvId ? (segmentOf(a).actualStartTime && !segmentOf(a).actualEndTime ? 'working' : 'assigned')
+      : person.id === b?.ktvId ? (segmentOf(b).actualStartTime && !segmentOf(b).actualEndTime ? 'working' : 'assigned') : 'waiting', staff: person, checked_in_today: true,
   }));
-
-  const chooseMode = (choice: 'full' | 'sequential') => {
-    if (service?.staffList.length !== 1 || service.status !== 'NEW') return;
-    change(s => {
-      const options = { ...s.options, _demoMode: choice };
-      const segment = segmentOf(s.staffList[0]);
-      if (choice === 'sequential') {
-        options.sequentialSlots = 2;
-        segment.sequenceSlot = 1;
-      } else {
-        delete options.sequentialSlots;
-        delete options.finishedAfterA;
-        delete segment.sequenceSlot;
-      }
-      s.options = options;
-    });
-  };
   const dispatchA = () => {
-    if (service?.staffList.length !== 1 || !a || !mode || service.status !== 'NEW') {
-      alert('Chọn đúng một KTV A và cách làm trước khi gửi phân công.'); return;
+    if (!service || !a || service.status !== 'NEW' || (!isSequential && service.staffList.length !== 1)) {
+      alert('Chọn KTV A trước khi gửi phân công.'); return;
     }
-    const segment = segmentOf(a);
-    if (!segment.roomId || !segment.bedId || !segment.startTime || !segment.duration) {
-      alert('Chọn phòng, giường và thời gian cho A.'); return;
+    if (service.staffList.some(row => {
+      const segment = segmentOf(row);
+      return !segment.roomId || !segment.bedId || !segment.startTime || !Number.isInteger(segment.duration) || segment.duration < 1 || segment.duration > 600;
+    })) {
+      alert('Chọn phòng, giường, giờ và thời lượng 1–600 phút cho từng nhân viên.'); return;
     }
     change(s => {
+      s.staffList.forEach(row => {
+        const segment = segmentOf(row);
+        segment.ktvId = row.ktvId;
+        segment.plannedEndAt = plannedEndAt(segment);
+      });
       const current = segmentOf(s.staffList[0]);
-      current.ktvId = s.staffList[0].ktvId;
-      current.plannedEndAt = plannedEndAt(current);
       s.selectedRoomId = current.roomId;
       s.bedId = current.bedId;
       s.status = 'PREPARING';
@@ -122,8 +111,8 @@ export default function SequentialDemo() {
     setHandoff({ ktvId: toKtvId || b?.ktvId || '',
       start: current?.startTime && current.plannedEndAt
         ? localInput(new Date(new Date(current.plannedEndAt).getTime() - current.duration * 60_000))
-        : localInput(new Date((a && segmentOf(a).plannedEndAt) || Date.now())),
-      duration: current?.duration || 20 });
+        : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now())),
+      duration: current?.duration ?? remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0) });
   };
   const saveHandoff = () => {
     if (!handoff || !a || !service) return;
@@ -191,12 +180,12 @@ export default function SequentialDemo() {
   return <main className="mx-auto max-w-7xl space-y-6 p-6 text-slate-800">
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
       <h1 className="text-xl font-bold">Test trọn quy trình điều phối · chỉ trên trình duyệt</h1>
-      <p className="text-sm">Bắt đầu từ dịch vụ mới, chọn A, quyết định làm toàn bộ hoặc nối tiếp rồi gửi phân công. Dữ liệu lưu tại <code>localStorage[{storageKey}]</code>; không ghi DB.</p>
+      <p className="text-sm">Chọn A rồi gửi phân công. Khi cần người làm tiếp, bấm + Nối tiếp dưới A; chọn B ngay hoặc để trống chọn sau. Dữ liệu lưu tại <code>localStorage[{storageKey}]</code>; không ghi DB.</p>
     </div>
     <section id="demo-quick" className="rounded-xl border bg-white p-4">
       <h2 className="mb-1 font-bold">1. Chọn KTV A, phòng, giường và giờ dự kiến</h2>
-      <p className="mb-3 text-sm text-slate-500">Dùng bảng điều phối thật bên dưới. Nếu chọn nối tiếp, KTV B sẽ được chọn sau khi gửi A.</p>
-      <QuickDispatchTable key={mode || 'undecided'} services={[service]} orderId={order.id} rooms={[{ id: 'R01', name: 'Phòng 01', type: 'standard' }]}
+      <p className="mb-3 text-sm text-slate-500">Dùng bảng điều phối thật bên dưới. A chưa đủ phút của gói thì bảng gợi ý thêm người nối tiếp.</p>
+      <QuickDispatchTable key={order.createdAt} services={[service]} orderId={order.id} rooms={[{ id: 'R01', name: 'Phòng 01', type: 'standard' }]}
         beds={[{ id: 'BED01', roomId: 'R01' }]} availableTurns={turns} staffs={staff} busyBedIds={[]}
         billCode={order.billCode} onUpdateServices={updated => change(s => {
           const before = s.staffList;
@@ -213,26 +202,21 @@ export default function SequentialDemo() {
                 ? plannedEndAt(segmentOf(row)) : segmentOf(previous).plannedEndAt;
             }
           });
-          if (isTwoSlotSequential(s.options)) s.options = { ...s.options, _demoMode: 'sequential' };
         })}
         onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={dispatchA}
         onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
-          s.options = { ...s.options, sequentialSlots: 2, _demoMode: 'sequential' };
+          s.options = { ...s.options, sequentialSlots: 2 };
           segmentOf(s.staffList[0]).sequenceSlot = 1;
         })} />
     </section>
     <section className="rounded-xl border bg-white p-4">
-      <h2 className="mb-3 font-bold">2. Chọn cách làm và gửi phân công</h2>
+      <h2 className="mb-3 font-bold">2. Gửi phân công</h2>
       <div className="flex flex-wrap gap-2">
-        <button disabled={service.staffList.length !== 1 || service.status !== 'NEW'} className={`rounded border px-3 py-2 disabled:opacity-40 ${mode === 'full' ? 'border-indigo-600 bg-indigo-50 font-bold' : ''}`}
-          onClick={() => chooseMode('full')}>A làm toàn bộ</button>
-        <button disabled={service.staffList.length !== 1 || service.status !== 'NEW'} className={`rounded border px-3 py-2 disabled:opacity-40 ${mode === 'sequential' ? 'border-indigo-600 bg-indigo-50 font-bold' : ''}`}
-          onClick={() => chooseMode('sequential')}>Nối tiếp: A trước, B chọn sau</button>
-        <button disabled={service.staffList.length !== 1 || !mode || service.status !== 'NEW'} className="rounded bg-indigo-600 px-3 py-2 font-bold text-white disabled:opacity-40"
-          onClick={dispatchA}>Gửi phân công A</button>
+        <button disabled={!a || service.status !== 'NEW'} className="rounded bg-indigo-600 px-3 py-2 font-bold text-white disabled:opacity-40"
+          onClick={dispatchA}>{isSequential && b ? 'Gửi phân công A + B' : 'Gửi phân công A'}</button>
         <button className="rounded border px-3 py-2" onClick={() => { localStorage.removeItem(storageKey); setHandoff(null); setOrder(sampleOrder()); }}>Tạo dịch vụ mới</button>
       </div>
-      <p className="mt-2 text-sm">Trạng thái: <strong>{service.status}</strong> · A: <strong>{a?.ktvName || 'chưa chọn'}</strong> · Cách làm: <strong>{mode === 'full' ? 'A làm toàn bộ' : mode === 'sequential' ? 'nối tiếp' : 'chưa chọn'}</strong></p>
+      <p className="mt-2 text-sm">Trạng thái: <strong>{service.status}</strong> · A: <strong>{a?.ktvName || 'chưa chọn'}</strong>{isSequential && <> · B: <strong>{b?.ktvName || 'chọn sau'}</strong></>}</p>
     </section>
     <section className="rounded-xl border bg-white p-4">
       <h2 className="mb-3 font-bold">3. Thực hiện và kết thúc ca</h2>
@@ -242,7 +226,7 @@ export default function SequentialDemo() {
         {isSequential && <>
           <button disabled={!canWork || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-indigo-600 px-3 py-2 text-white disabled:opacity-40"
             onClick={() => openHandoff(service.id, a?.ktvId || '', b?.ktvId || '')}>Gán / sửa B</button>
-          <button disabled={!bSegment || !!bSegment.actualStartTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualStartTime')}>B bắt đầu</button>
+          <button disabled={!canWork || !bSegment || !!bSegment.actualStartTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualStartTime')}>B bắt đầu</button>
           <button disabled={!bSegment?.actualStartTime || !!bSegment.actualEndTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualEndTime')}>B hoàn tất</button>
           <button disabled={!aSegment?.actualEndTime || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-40" onClick={finishAfterA}>Kết thúc sau A</button>
         </>}
