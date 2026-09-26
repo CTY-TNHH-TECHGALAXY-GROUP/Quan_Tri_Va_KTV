@@ -60,6 +60,8 @@ export interface HandlerContext {
 }
 
 export interface HandlerResult {
+    bookingPersisted?: boolean; // Handler already committed booking + items atomically.
+    bookingData?: any;
     bookingUpdatePayload: Record<string, any>;  // → merge vào Bookings.update()
     earlyResponse?: NextResponse;               // → 403/400 response (bypass normal flow)
     // NOTE: Handlers tự xử lý BookingItems/TurnQueue/KtvAssignments DB ops bên trong

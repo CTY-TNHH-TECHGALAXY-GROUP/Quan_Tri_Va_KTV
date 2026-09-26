@@ -53,7 +53,17 @@ export default function SequentialDemo() {
   const readOrder = (): PendingOrder | null => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-      return saved?.services?.[0]?.staffList ? saved : null;
+      if (!saved?.services?.[0]?.staffList) return null;
+      // Repair demo snapshots made before returning employees reused their row.
+      for (const service of saved.services) {
+        const rows = new Map<string, ServiceBlock['staffList'][number]>();
+        for (const row of service.staffList) {
+          const previous = rows.get(row.ktvId);
+          rows.set(row.ktvId, previous ? { ...previous, ...row, segments: [...row.segments, ...previous.segments] } : row);
+        }
+        service.staffList = [...rows.values()];
+      }
+      return saved;
     } catch { return null; }
   };
   const saveOrder = (next: PendingOrder) => {
@@ -167,10 +177,12 @@ export default function SequentialDemo() {
         startTime: handoff.start.slice(11, 16), endTime: localInput(end).slice(11),
         duration: handoff.duration, plannedStartAt: new Date(startMs).toISOString(), plannedEndAt: end.toISOString(),
       };
-      if (old?.ktvId === handoff.ktvId) old.segments = [segment];
+      if (old?.ktvId === handoff.ktvId) old.segments = old.segments.map(previous => previous.id === segment.id ? segment : previous);
       else {
         if (old) segmentOf(old).voided = true;
-        s.staffList.push({ id: `demo-row-${handoff.ktvId}`, ktvId: handoff.ktvId,
+        const returning = s.staffList.find(row => row.ktvId === handoff.ktvId);
+        if (returning) returning.segments = [segment, ...returning.segments];
+        else s.staffList.push({ id: `demo-row-${handoff.ktvId}`, ktvId: handoff.ktvId,
           ktvName: staff.find(person => person.id === handoff.ktvId)?.full_name || handoff.ktvId,
           segments: [segment], noteForKtv: '' });
       }
@@ -251,11 +263,13 @@ export default function SequentialDemo() {
           s.status = status;
           s.staffList.forEach(row => {
             segmentOf(row).ktvId = row.ktvId;
-            const previous = before.find(old => old.ktvId === row.ktvId);
-            if (previous) {
-              segmentOf(row).actualStartTime = segmentOf(previous).actualStartTime;
-              segmentOf(row).actualEndTime = segmentOf(previous).actualEndTime;
-            }
+            row.segments.forEach(segment => {
+              const previous = before.find(old => old.ktvId === row.ktvId)?.segments.find(old => old.id === segment.id);
+              if (previous) {
+                segment.actualStartTime = previous.actualStartTime;
+                segment.actualEndTime = previous.actualEndTime;
+              }
+            });
           });
         }, 'DRAFT', dispatchRevision(updated[0].options))}
         onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={service.status === 'NEW' ? dispatchA : redispatchB}

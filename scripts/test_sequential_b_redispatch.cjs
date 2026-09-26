@@ -65,11 +65,27 @@ async function main(){
   const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
   const retryBody=page.slice(page.indexOf('          let res: any = await sendPayload();'),page.indexOf('          if (!res.success) {',page.indexOf('          let res: any = await sendPayload();')));
   const retryCode=ts.transpileModule(retryBody,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
-  const runRetry=new Function('sendPayload','askCheckinConfirm','confirmUpdatedBOverlap',`return (async()=>{let confirmOverlap=false;const confirmedUncheckedKtvIds=[];${retryCode}return {res,confirmOverlap,confirmedUncheckedKtvIds};})()`);
+  const runRetry=new Function('sendPayload','askCheckinConfirm','confirmUpdatedBOverlap',`return (async()=>{const confirmedOverlapItemIds=[];const payload={itemUpdates:[{id:'one'},{id:'two'}]};const confirmedUncheckedKtvIds=[];${retryCode}return {res,confirmedOverlapItemIds,confirmedUncheckedKtvIds};})()`);
   let calls=0;
-  const results=[{success:false,code:'NEED_CHECKIN_CONFIRM',ktvs:[{id:'B'}]},{success:false,code:'OVERLAP_CONFIRM_REQUIRED'},{success:true}];
+  const results=[{success:false,code:'NEED_CHECKIN_CONFIRM',ktvs:[{id:'B'}]},
+    {success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:'one'},
+    {success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:'two'},{success:true}];
   const retry=await runRetry(async()=>results[calls++],async()=>true,()=>true);
-  assert.equal(calls,3);assert.equal(retry.res.success,true);assert.equal(retry.confirmOverlap,true);assert.deepEqual(retry.confirmedUncheckedKtvIds,['B']);
-  console.log('PASS retry UI: xác nhận điểm danh B rồi xác nhận overlap vẫn gửi được bản mới');
+  assert.equal(calls,4);assert.equal(retry.res.success,true);assert.deepEqual(retry.confirmedOverlapItemIds,['one','two']);assert.deepEqual(retry.confirmedUncheckedKtvIds,['B']);
+  await assert.rejects(runRetry(async()=>({code:'OVERLAP_CONFIRM_REQUIRED',itemId:'unknown'}),async()=>true,()=>true),/Không xác định/);
+  let repeats=0;
+  await assert.rejects(runRetry(async()=>{repeats++;return {code:'OVERLAP_CONFIRM_REQUIRED',itemId:'one'};},async()=>true,()=>true),/Không xác định/);
+  assert.equal(repeats,2);
+  // Run the actual per-payload loop: a confirmation from child one must not reach child two.
+  const loop=page.slice(page.indexOf('      for (const payload of dispatchPayloads) {'),page.indexOf('      if (!isPartial || targetSvcIds.length',page.indexOf('      for (const payload of dispatchPayloads) {')));
+  const loopCode=ts.transpileModule(loop,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  const sent=[],asked=[];
+  const runLoop=new Function('dispatchPayloads','processDispatch','confirmUpdatedBOverlap',`return (async()=>{const confirmedUncheckedKtvIds=[];const bookingStatus='PREPARING',selectedDate='2026-09-26',isPartial=false,finalNotesToSave='';const askCheckinConfirm=async()=>true;const alert=()=>{};${loopCode}})()`);
+  await runLoop(['one','two'].map(id=>({bookingId:id,dbBookingId:id,itemUpdates:[{id}]})),async(id,payload)=>{
+    sent.push([id,[...payload.confirmedOverlapItemIds]]);
+    return payload.confirmedOverlapItemIds.includes(id)?{success:true}:{success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:id};
+  },res=>{asked.push(res.itemId);return true;});
+  assert.deepEqual(sent,[['one',[]],['one',['one']],['two',[]],['two',['two']]]);assert.deepEqual(asked,['one','two']);
+  console.log('PASS retry UI: checkin + từng overlap; reset theo đơn con; chặn item lạ/xác nhận lặp');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

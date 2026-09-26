@@ -1,5 +1,6 @@
 'use client';
 
+import { ktvServiceName } from '@/lib/ktvUtils';
 import { demoAccountState } from './demo-account';
 import { WorkingTimeline } from '@/app/ktv/dashboard/_screens/ScreenTimer';
 import { gioDongHoVN } from '@/lib/segment-time';
@@ -17,7 +18,7 @@ export function AccountDemo({ service, employeeId, employeeName, now, onStamp }:
     <h2 className="text-lg font-bold">Tài khoản demo · {employeeName}</h2>
     <p className="mb-4 text-sm text-slate-500">Mã nhân viên: {employeeId}</p>
     {!state.assigned ? <p>Chưa có phân công gửi cho tài khoản này.</p> : <>
-      <h3 className="font-bold">{state.row?.serviceNameForKtv || service.serviceName}</h3>
+      <h3 className="font-bold">{ktvServiceName({ options: service.options, base_service_name: service.serviceName }, employeeId)}</h3>
       <p>Phòng {segment!.roomId} · Giường {segment!.bedId} · {segment!.duration} phút</p>
       <p>Giờ dự kiến của bạn: {segment!.startTime} → {segment!.endTime}</p>
       <div className="my-4"><WorkingTimeline segments={[segment!]} activeIndex={segment!.actualStartTime && !segment!.actualEndTime ? 0 : undefined} /></div>

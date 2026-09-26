@@ -635,6 +635,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
     /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
     confirmedUncheckedKtvIds?: string[];
     confirmOverlap?: boolean;
+    confirmedOverlapItemIds?: string[];
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -1164,6 +1165,7 @@ async function resolveNewExternalKtvIds(
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
     date?: string;
     confirmOverlap?: boolean;
+    confirmedOverlapItemIds?: string[];
     technicianCode?: string | null;
     bedId: string | null;
     roomName: string | null;

@@ -568,6 +568,89 @@ async function main() {
   assert.deepEqual(await item(midnight),nightAfter);
   console.log('PASS MIDNIGHT: inline rollback, explicit next-day ISO + pending name/note atomic, stale/invalid/overlap preserve latest/A');
 
+  // Two live sequential items in one booking: each overlap needs its own confirmation.
+  const multi1=await businessFixture('overlap1'), multi2=await businessFixture('overlap2');
+  for (const id of [multi1,multi2]) {
+    await dispatch(id,[planned(id,id.a,1,'10:00',30)]);
+    await apply(id,'ENABLE_SEQUENTIAL',{itemId:id.item,expectedRevision:(await item(id)).options.dispatchRevision});
+    await apply(id,'ASSIGN_B',{itemId:id.item,toKtvId:id.b,plannedStartAt:'2026-09-26T03:30:00Z',durationMinutes:30,expectedRevision:(await item(id)).options.dispatchRevision});
+  }
+  await db.query('UPDATE "BookingItems" SET "bookingId"=$1 WHERE id=$2',[multi1.booking,multi2.item]);
+  await db.query('UPDATE "KtvAssignments" SET booking_id=$1 WHERE booking_item_id=$2',[multi1.booking,multi2.item]);
+  const overlapBaseline=await Promise.all([item(multi1),item(multi2)]);
+  const multiEdits=overlapBaseline.map(row=>{const update=updateOf(row),b=update.segments.find(s=>s.sequenceSlot===2&&!s.voided);b.startTime='10:15';b.endTime='10:45';return update;});
+  async function unchanged(){assert.deepEqual(await Promise.all([item(multi1),item(multi2)]),overlapBaseline);}
+  const overlapPayload={date:'2026-09-26',itemUpdates:multiEdits};
+  await assert.rejects(apply(multi1,'DRAFT',{...overlapPayload,confirmOverlap:true}),err=>JSON.parse(err.detail).itemId===multi1.item);
+  await unchanged();
+  await assert.rejects(apply(multi1,'DISPATCH',{...overlapPayload,confirmedOverlapItemIds:[multi1.item]}),err=>JSON.parse(err.detail).itemId===multi2.item);
+  await unchanged();
+  await assert.rejects(apply(multi1,'DRAFT',{...overlapPayload,confirmedOverlapItemIds:true}),/không hợp lệ/);
+  await unchanged();
+  await apply(multi1,'DISPATCH',{...overlapPayload,confirmedOverlapItemIds:[multi1.item,multi2.item]});
+  assert.equal((await item(multi1)).segments.find(s=>s.sequenceSlot===2&&!s.voided).startTime,'10:15');
+  assert.equal((await item(multi2)).segments.find(s=>s.sequenceSlot===2&&!s.voided).startTime,'10:15');
+  console.log('PASS scoped overlap: two items confirmed separately, rejected attempts rollback all, blanket multi-item confirmation blocked');
+
+  // FINISH acceptance with the actual sequential guard + audit triggers still enabled.
+  await db.exec(`
+    ALTER TABLE "Bookings" ADD COLUMN rating numeric;
+    ALTER TABLE "BookingItems" ADD COLUMN "itemRating" numeric, ADD COLUMN handover_status text,
+      ADD COLUMN handover_images jsonb, ADD COLUMN handover_skipped boolean,
+      ADD COLUMN handover_submitted_at timestamptz, ADD COLUMN "serviceId" text;
+    CREATE TABLE "BookingGuests" (id text PRIMARY KEY, booking_id text, rating numeric);
+  `);
+  await db.exec(readFileSync(join(__dirname, '../supabase/migrations/20260926140000_ktv_finish_service_atomic.sql'), 'utf8'));
+  const finishId=midnight;
+  const childId='atomic-finish-child';
+  await db.query(`INSERT INTO "BookingItems" (id,"bookingId",status,segments,options)
+    VALUES ($1,$2,'NEW','[]',$3::jsonb)`,[childId,finishId.booking,JSON.stringify({mergedIntoId:finishId.item})]);
+  async function finishBaseline(){
+    const booking=(await db.query('SELECT id,status,rating FROM "Bookings" WHERE id=$1',[finishId.booking])).rows[0];
+    const snapshots=(await db.query(`SELECT id,segments,status,"itemRating",guest_id,options,handover_status,
+      handover_images,handover_skipped,handover_submitted_at,"serviceId" FROM "BookingItems" WHERE "bookingId"=$1 ORDER BY id`,[finishId.booking])).rows;
+    return {booking,snapshots};
+  }
+  const finishAtomic=async(baseline,updates,status)=>(await db.query('SELECT ktv_finish_service_atomic($1,$2,$3,$4,$5,$6) AS result',
+    [finishId.booking,JSON.stringify(baseline.booking),JSON.stringify(baseline.snapshots),'[]',JSON.stringify(updates),status])).rows[0].result;
+  const beforeFinish=await item(finishId),finishAPlan=structuredClone(beforeFinish.segments);
+  finishAPlan.find(seg=>seg.sequenceSlot===1).actualEndTime='2026-09-26T04:00:00Z';
+  const aBaseline=await finishBaseline();
+  const aFinished=await finishAtomic(aBaseline,[{id:finishId.item,segments:JSON.stringify(finishAPlan),status:'IN_PROGRESS'},
+    {id:childId,status:'IN_PROGRESS'}],'IN_PROGRESS');
+  assert.equal(aFinished.booking.status,'IN_PROGRESS');
+  assert.ok(aFinished.booking.updatedAt);
+  const afterA=await item(finishId);
+  assert.equal(afterA.status,'IN_PROGRESS');
+  assert.equal(afterA.segments.find(seg=>seg.sequenceSlot===2&&!seg.voided).actualEndTime,undefined);
+  assert.equal(afterA.options.dispatchRevision,beforeFinish.options.dispatchRevision+1);
+  assert.equal(afterA.options.dispatchHistory.length,beforeFinish.options.dispatchHistory.length+1);
+  assert.equal(afterA.options.dispatchHistory.at(-1).action,'UPDATE');
+  assert.ok(afterA.options.dispatchHistory.at(-1).changes.some(change=>change.employeeId===finishId.a&&change.field==='actualEndTime'));
+  assert.deepEqual(afterA.options.serviceNamesForKtvs,beforeFinish.options.serviceNamesForKtvs);
+  assert.equal((await db.query('SELECT status FROM "BookingItems" WHERE id=$1',[childId])).rows[0].status,'IN_PROGRESS');
+  await assert.rejects(finishAtomic(aBaseline,[{id:finishId.item,segments:finishAPlan,status:'IN_PROGRESS'}],'IN_PROGRESS'),/changed/);
+  assert.deepEqual(await item(finishId),afterA);
+  await actual(finishId,finishId.b,'actualStartTime','2026-09-26T17:10:00Z');
+  const beforeBFinish=await item(finishId),bFinishPlan=structuredClone(beforeBFinish.segments);
+  bFinishPlan.find(seg=>seg.sequenceSlot===2&&!seg.voided).actualEndTime='2026-09-26T17:30:00Z';
+  const bBaseline=await finishBaseline();
+  const bFinished=await finishAtomic(bBaseline,[{id:finishId.item,segments:bFinishPlan,status:'CLEANING'},
+    {id:childId,status:'CLEANING'}],'CLEANING');
+  assert.equal(bFinished.booking.status,'CLEANING');
+  const afterB=await item(finishId);
+  assert.equal(afterB.status,'CLEANING');
+  assert.deepEqual(afterB.segments.find(seg=>seg.sequenceSlot===1),beforeBFinish.segments.find(seg=>seg.sequenceSlot===1));
+  assert.equal(afterB.options.dispatchRevision,beforeBFinish.options.dispatchRevision+1);
+  assert.equal(afterB.options.dispatchHistory.length,beforeBFinish.options.dispatchHistory.length+1);
+  assert.ok(afterB.options.dispatchHistory.at(-1).changes.some(change=>change.employeeId===finishId.b&&change.field==='actualEndTime'));
+  assert.equal((await db.query('SELECT status FROM "BookingItems" WHERE id=$1',[childId])).rows[0].status,'CLEANING');
+  // An idempotent retry has no new actual-time edit or revision/history entry.
+  await finishAtomic(await finishBaseline(),[{id:finishId.item,segments:afterB.segments,status:'CLEANING'},
+    {id:childId,status:'CLEANING'}],'CLEANING');
+  assert.deepEqual(await item(finishId),afterB);
+  console.log('PASS integrated atomic FINISH: enum Booking status, guard + audit, A waits B, B/child CLEANING, latest revisions/history, stale rejection and retry');
+
   await db.close();
 }
 

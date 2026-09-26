@@ -1,5 +1,7 @@
 # Plan sửa gấp 6 lỗi nối tiếp A/B
 
+> Nghiệm thu bổ sung: `sequential_acceptance_results_20260926.md`. Giới hạn FINISH ghi từng item ở plan ban đầu đã được thay bằng RPC giao dịch sau khi nghiệm thu xác nhận rủi ro lưu một phần. Plan này giữ lại quyết định ở thời điểm ban đầu.
+
 ## Phạm vi
 - Branch: `feat/sequential-two-slot-handoff-20260926`, nền `f206bfb8`.
 - Diff đầy đủ đề xuất: `sequential_six_fixes_20260926.patch` (16 file nguồn).

@@ -294,4 +294,40 @@ try {
   assert.equal(service().options.dispatchHistory.at(-1).action,'DISPATCH');
   console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → lưu & điều phối → tài khoản B/reload → sửa lần 2; A giữ nguyên');
 
+
+  reset(); chooseA(); minutes(0,30); send(); sequential(); assignLiveB();
+  const originalB = structuredClone(segmentOf(row('DEMO-B')));
+  at('10:01'); assignLiveB('DEMO-C','2026-09-26T10:40',20);
+  at('10:02'); assignLiveB('DEMO-B','2026-09-26T10:50',10);
+  assert.equal(service().staffList.filter(person=>person.ktvId==='DEMO-B').length,1);
+  assert.equal(row('DEMO-B').segments.length,2);
+  assert.equal(row('DEMO-B').segments.find(segment=>segment.id===originalB.id).voided,true);
+  assert.notEqual(segmentOf(row('DEMO-B')).id,originalB.id);
+  checkPlan('DEMO-B','10:50',10);
+  name('DEMO-B','B quay lại');
+  changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'10:55');
+  checkPlan('DEMO-B','10:55',10); assertName('DEMO-B','B quay lại');
+  stamp('DEMO-B','actualStartTime','10:55');
+  const liveActual=segmentOf(row('DEMO-B')).actualStartTime;
+  name('DEMO-B','B đã bắt đầu');
+  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
+  assert.equal(row('DEMO-B').segments.find(segment=>segment.id===originalB.id).actualStartTime,undefined);
+  app=hooks(SequentialDemo);quick=card=null;flush();
+  checkPlan('DEMO-B','10:55',10);assertName('DEMO-B','B đã bắt đầu');
+  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
+  assert.equal(demoAccountState(service(),'DEMO-C',now).canStart,false);
+  const legacySnapshot=order();
+  const legacyB=legacySnapshot.services[0].staffList.find(person=>person.ktvId==='DEMO-B');
+  const legacyOld=structuredClone(legacyB);legacyOld.segments=legacyOld.segments.filter(segment=>segment.voided===true);
+  legacyB.segments=legacyB.segments.filter(segment=>segment.voided!==true);
+  legacySnapshot.services[0].staffList.splice(1,0,legacyOld);
+  data.set(key,JSON.stringify(legacySnapshot));
+  app=hooks(SequentialDemo);quick=card=null;flush();
+  name('DEMO-B','B đã bắt đầu');
+  assert.equal(service().staffList.filter(person=>person.ktvId==='DEMO-B').length,1);
+  assert.equal(row('DEMO-B').segments.length,2);
+  checkPlan('DEMO-B','10:55',10);
+  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
+  console.log('PASS RETURNING B DEMO: B → C → B keeps one row/history, latest plan/name and actual stamp across edit/reload; old C cannot start');
+
 } finally { global.Date = originalDate; console.log = originalLog; }

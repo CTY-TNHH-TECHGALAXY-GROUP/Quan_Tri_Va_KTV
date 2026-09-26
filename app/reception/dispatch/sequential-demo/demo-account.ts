@@ -1,13 +1,14 @@
 import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
+import { isLiveKtvSegment } from '@/lib/ktvUtils';
 import { workedMsOf } from '@/lib/segment-time';
 import type { ServiceBlock, WorkSegment } from '../types';
 
 export type DemoSegment = WorkSegment & { ktvId: string; voided?: boolean; plannedStartAt?: string; plannedEndAt?: string };
-export const segmentOf = (row: ServiceBlock['staffList'][number]) => row.segments[0] as DemoSegment;
-export const segmentsOf = (service: ServiceBlock) => service.staffList.map(row => ({ ...segmentOf(row), ktvId: row.ktvId }));
+export const segmentOf = (row: ServiceBlock['staffList'][number]) => (row.segments.find(seg => (seg as any).voided !== true && (seg as any).voided !== 'true') || row.segments[0]) as DemoSegment;
+export const segmentsOf = (service: ServiceBlock) => service.staffList.flatMap(row => row.segments.map(segment => ({ ...segment, ktvId: row.ktvId })));
 
 export function demoAccountState(service: ServiceBlock, employeeId: string, now: number) {
-  const row = service.staffList.find(person => person.ktvId === employeeId && segmentOf(person).voided !== true);
+  const row = service.staffList.find(person => !!segmentOf(person) && isLiveKtvSegment({ ...segmentOf(person), ktvId: person.ktvId }, employeeId));
   const segment = row && segmentOf(row);
   const assigned = service.status !== 'NEW' && service.status !== 'WAITING' && !!segment;
   const elapsedMs = assigned && segment ? workedMsOf(segment, segment.actualEndTime || now) ?? 0 : 0;

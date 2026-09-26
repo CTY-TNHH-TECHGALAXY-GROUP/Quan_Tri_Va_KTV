@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isLiveKtvSegment } from '@/lib/ktvUtils';
+import { isLiveKtvSegment, parseKtvOptions } from '@/lib/ktvUtils';
 /**
  * ============================================================
  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
@@ -28,12 +28,14 @@ import { isLiveKtvSegment } from '@/lib/ktvUtils';
  *   - Ca đêm: Cross-midnight time calculation
  *   - Khách rate trước KTV xong: alreadyRated check
  * 
- * 📊 DB OPERATIONS (tự xử lý):
- *   - UPDATE BookingItems.segments + status (per-item Smart Status)
- *   - SELECT BookingItems → recomputeBookingStatus
+ * 📊 DB OPERATIONS:
+ *   - Read immutable Booking/item/guest-rating snapshots and compute Smart Status
+ *   - ktv_finish_service_atomic locks/validates snapshots, then saves all items,
+ *     merged-child statuses and Bookings.status in one transaction
  * 
  * 📤 TRẢ VỀ:
- *   - bookingUpdatePayload: { status: bStatus }
+ *   - bookingPersisted: true, bookingData: committed booking row
+ *   - earlyResponse on read/RPC failure; no subsequent booking write/recompute
  * 
  * 🔗 PHỤ THUỘC: lib/dispatch-status.ts (recomputeBookingStatus)
  * ============================================================
@@ -52,7 +54,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     // 🔍 Fetch bookings and guest ratings để check rating
     const { data: bookingData, error: bookingError } = await supabase
         .from('Bookings')
-        .select('rating, BookingGuests(id, rating)')
+        .select('id, status, rating, BookingGuests(id, rating)')
         .eq('id', bookingId)
         .single();
     
@@ -66,11 +68,20 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         });
     }
 
-    // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
-    const { data: items, error: itemsError } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
-    if (itemsError || !items?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+    // One immutable baseline for all writes and merged-child status synchronization.
+    const { data: bookingItems, error: itemsError } = await supabase.from('BookingItems')
+        .select('id, segments, status, itemRating, guest_id, options, handover_status, handover_images, handover_skipped, handover_submitted_at, serviceId').eq('bookingId', bookingId);
+    const targetIds = new Set(allItemIdsForThisKTV);
+    const items = bookingItems?.filter((item: any) => targetIds.has(item.id));
+    if (itemsError || !items?.length || items.length !== targetIds.size) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
         error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
-    
+    const itemSnapshots = structuredClone(bookingItems);
+    const { data: itemsWithServices, error: servicesError } = await supabase.from('BookingItems')
+        .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
+    if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
+    const updates: any[] = [];
+
     let allGlobalSegs: any[] = [];
     let originalItemsData: Record<string, any[]> = {};
     for (const item of items || []) {
@@ -194,8 +205,6 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         });
     }
 
-    // ponytail: per-item writes can partially succeed; reload/retry preserves saved stamps.
-    // Use a DB transaction if all-item atomic completion becomes required.
     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
     for (const item of items || []) {
         let segs = originalItemsData[item.id];
@@ -274,65 +283,36 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         }
         
-        const { error: saveError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
-        if (saveError) {
-            console.error('[FinishService] Save failed', item.id, saveError);
-            return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
-                error: 'Chưa lưu xong giờ hoàn thành; có thể đã lưu một phần. Tải lại đơn và thử lại.', itemId: item.id }, { status: 500 }) };
-        }
-        console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
+        updates.push({ id: item.id, ...updatePayload });
+        item.status = newItemStatus;
     }
-    
-    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
-    // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
-    const { data: bookingItemsToSync, error: syncReadError } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
-    if (syncReadError || !bookingItemsToSync?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
-        error: 'Đã lưu một phần; chưa đọc được dữ liệu đồng bộ. Tải lại để tiếp tục.' }, { status: 500 }) };
-    if (bookingItemsToSync) {
-        const updates = [];
-        for (const item of bookingItemsToSync) {
-            let opts: any = {};
-            try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
-            if (opts.mergedIntoId) {
-                const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
-                if (parent && parent.status && parent.status !== item.status) {
-                    updates.push({ id: item.id, status: parent.status });
-                    item.status = parent.status; // Update local state
-                }
-            }
-        }
-        if (updates.length > 0) {
-            for (const upd of updates) {
-                const { error: syncError } = await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
-                if (syncError) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
-                    error: 'Đã lưu một phần; chưa đồng bộ được dịch vụ con. Tải lại để tiếp tục.' }, { status: 500 }) };
+
+    // Build child changes from the same baseline, then persist the complete batch atomically.
+    for (const item of bookingItems) {
+        const opts = parseKtvOptions(item.options);
+        if (opts.mergedIntoId) {
+            const parent = bookingItems.find((p: any) => p.id === opts.mergedIntoId);
+            if (parent?.status && parent.status !== item.status) {
+                const existing = updates.find(update => update.id === item.id);
+                if (existing) existing.status = parent.status;
+                else updates.push({ id: item.id, status: parent.status });
+                item.status = parent.status;
             }
         }
     }
-
-    // ─── 4. 🔄 RECOMPUTE BOOKING STATUS ───
-    // Dùng bookingItemsToSync thay vì fetch lại để giảm thiểu query và sử dụng state đã sync
-    const allItems = bookingItemsToSync;
-    if (allItems && allItems.length > 0) {
-        // Cần fetch lại Services info cho phần kiểm tra is_utility
-        const { data: itemsWithServices, error: servicesError } = await supabase
-            .from('BookingItems')
-            .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
-            .eq('bookingId', bookingId);
-            
-        if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
-            error: 'Đã lưu một phần; chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
-        const validItems = allItems.filter((i: any) => {
-            const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
-            return !isUtilityService(svcInfo);
-        });
-        const finalItems = validItems.length > 0 ? validItems : allItems;
-        const statuses = finalItems.map((i: any) => i.status);
-        const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
-        const bStatus = recomputeBookingStatus(statuses);
-        bookingUpdatePayload.status = bStatus;
-    }
-
-
-    return { bookingUpdatePayload };
+    const validItems = bookingItems.filter((item: any) => !isUtilityService(itemsWithServices.find((svc: any) => svc.id === item.id)));
+    const finalItems = validItems.length ? validItems : bookingItems;
+    const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+    const bStatus = recomputeBookingStatus(finalItems.map((item: any) => item.status));
+    const { data: saved, error: saveError } = await supabase.rpc('ktv_finish_service_atomic', {
+        p_booking_id: bookingId,
+        p_booking_snapshot: { id: bookingData.id, status: bookingData.status, rating: bookingData.rating },
+        p_item_snapshots: itemSnapshots,
+        p_guest_ratings: bookingData.BookingGuests || [],
+        p_updates: updates,
+        p_booking_status: bStatus,
+    });
+    if (saveError || !saved?.success || !saved.booking) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa lưu được lượt hoàn thành. Dữ liệu đã thay đổi hoặc lưu thất bại; tải lại đơn và thử lại.' }, { status: 409 }) };
+    return { bookingUpdatePayload, bookingPersisted: true, bookingData: saved.booking };
 }

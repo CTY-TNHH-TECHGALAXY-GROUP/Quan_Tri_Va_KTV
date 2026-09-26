@@ -22,6 +22,7 @@ for (const raw of [options, JSON.stringify(options), JSON.stringify(JSON.stringi
 }
 for (const raw of [null, 'broken', 'null', '[]', []]) assert.deepEqual(parseKtvOptions(raw), {});
 assert.equal(ktvServiceName({ options: { serviceNamesForKtvs: { B: '' } }, base_service_name: 'Tên gốc', service_name: 'Tên B cache cũ' }, 'B'), 'Tên gốc');
+assert.equal(ktvServiceName({ options: { _generatedDisplayName: 'Massage (60p)', displayName: 'Gói mới', serviceNamesForKtvs: { B: '' } }, base_service_name: 'Massage' }, 'B'), 'Gói mới');
 console.log('PASS options object/JSON/double JSON/malformed, own names and cleared override');
 const segments = [
  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', endTime: '10:30', duration: 30 },

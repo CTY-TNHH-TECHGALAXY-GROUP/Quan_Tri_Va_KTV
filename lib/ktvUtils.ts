@@ -46,5 +46,5 @@ export function ktvServiceName(item: any, code: string | undefined | null): stri
     const opts = parseKtvOptions(item?.options);
     const names = parseKtvOptions(opts.serviceNamesForKtvs);
     const own = Object.entries(names).find(([id]) => id.trim().toLowerCase() === code?.trim().toLowerCase())?.[1];
-    return String(own || opts._generatedDisplayName || opts.displayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
+    return String(own || opts.displayName || opts._generatedDisplayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
 }

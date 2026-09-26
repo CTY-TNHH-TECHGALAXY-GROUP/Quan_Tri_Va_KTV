@@ -1281,16 +1281,18 @@ if (!hasPermission('dispatch_board')) {
       }
 
       const { saveDraftDispatch } = await import('./actions');
-      let confirmOverlap = false;
+      const confirmedOverlapItemIds: string[] = [];
       const savePayload = () => saveDraftDispatch(clonedOrder.id, {
-        date: selectedDate, confirmOverlap,
+        date: selectedDate, confirmedOverlapItemIds: [...confirmedOverlapItemIds],
         bedId: primarySeg?.bedId || null, roomName: primarySeg?.roomId || null,
         notes: finalNotesToSave, itemUpdates
       });
       let res = await savePayload();
-      if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+      while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+        if (!res.itemId || !itemUpdates.some(item => item.id === res.itemId)
+            || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
         if (!confirmUpdatedBOverlap(res)) return;
-        confirmOverlap = true;
+        confirmedOverlapItemIds.push(res.itemId);
         res = await savePayload();
       }
 
@@ -1649,7 +1651,6 @@ if (!hasPermission('dispatch_board')) {
       // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
       // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
       const confirmedUncheckedKtvIds: string[] = [];
-      let confirmOverlap = false;
       const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
           setConfirmModal({
               isOpen: true,
@@ -1662,6 +1663,7 @@ if (!hasPermission('dispatch_board')) {
           });
       });
       for (const payload of dispatchPayloads) {
+          const confirmedOverlapItemIds: string[] = [];
           const sendPayload = () => processDispatch(payload.dbBookingId, {
               status: bookingStatus as any,
               bedId: payload.bedId,
@@ -1670,7 +1672,7 @@ if (!hasPermission('dispatch_board')) {
               date: selectedDate,
               notes: isPartial ? undefined : finalNotesToSave,
               itemUpdates: payload.itemUpdates,
-              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmOverlap,
+              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmedOverlapItemIds: [...confirmedOverlapItemIds],
           });
           let res: any = await sendPayload();
           if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
@@ -1681,9 +1683,12 @@ if (!hasPermission('dispatch_board')) {
               });
               res = await sendPayload();
           }
-          if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+          while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+              if (!res.itemId || !payload.itemUpdates.some(item => item.id === res.itemId)
+                  || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
               if (!confirmUpdatedBOverlap(res)) return;
-              confirmOverlap = true; res = await sendPayload();
+              confirmedOverlapItemIds.push(res.itemId);
+              res = await sendPayload();
           }
           if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
           if (!res.success) {

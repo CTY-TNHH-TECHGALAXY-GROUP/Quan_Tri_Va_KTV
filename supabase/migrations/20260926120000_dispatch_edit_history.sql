@@ -149,7 +149,7 @@ BEGIN
     result := dispatch_assign_sequential_slot_b(p_booking_id,item_row.id,b->>'ktvId',plan_start,
       (next_b->>'duration')::integer,p_confirm_overlap);
     IF result->>'code' = 'OVERLAP_CONFIRM_REQUIRED' THEN
-      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = result::text;
+      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = (result || jsonb_build_object('itemId', item_row.id))::text;
     END IF;
     IF COALESCE((result->>'success')::boolean,false) = false THEN RAISE EXCEPTION 'Chưa cập nhật được kế hoạch B'; END IF;
   END IF;
@@ -198,11 +198,16 @@ BEGIN
   PERFORM set_config('app.dispatch_action', p_action, true);
   PERFORM set_config('app.dispatch_actor', COALESCE(p_actor, 'null')::text, true);
   IF p_action IN ('DRAFT','DISPATCH') THEN
+    IF p_payload ? 'confirmedOverlapItemIds' AND jsonb_typeof(p_payload->'confirmedOverlapItemIds') IS DISTINCT FROM 'array' THEN
+      RAISE EXCEPTION 'Danh sách xác nhận chồng giờ không hợp lệ';
+    END IF;
     FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
       SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id';
       IF jsonb_unwrap_string(item_row.options)->>'sequentialSlots' = '2'
          AND item_row.status IN ('PREPARING','READY','IN_PROGRESS') THEN
-        PERFORM dispatch_save_sequential_update(p_booking_id,edit,COALESCE((p_payload->>'confirmOverlap')::boolean,false));
+        PERFORM dispatch_save_sequential_update(p_booking_id,edit,
+          COALESCE(p_payload->'confirmedOverlapItemIds', '[]'::jsonb) ? item_row.id
+          OR (jsonb_array_length(item_updates) = 1 AND COALESCE((p_payload->>'confirmOverlap')::boolean,false)));
         live_ids := array_append(live_ids,item_row.id);
       ELSE
         normal_updates := normal_updates || jsonb_build_array(edit);

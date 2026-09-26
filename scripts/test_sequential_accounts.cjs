@@ -143,3 +143,18 @@ try {
   React.useState = originals.useState; React.useEffect = originals.useEffect;
 }
 console.log('PASS 5/5: Hai tab đồng bộ localStorage, handler cũ không xóa mốc của người kia, reload giữ đúng tài khoản/giờ');
+
+const removedString = structuredClone(fixture().services[0]);
+removedString.staffList[1].segments[0].voided = 'true';
+assert.equal(demoAccountState(removedString, 'DEMO-B', at('11:00')).assigned, false);
+assert.ok(renderAccount(removedString, 'DEMO-B').includes('Chưa có phân công'));
+removedString.staffList[1].segments = [];
+assert.equal(demoAccountState(removedString, 'DEMO-B', at('11:00')).assigned, false);
+assert.ok(renderAccount(removedString, 'DEMO-B').includes('Chưa có phân công'));
+const renamedCommon = fixture().services[0];
+renamedCommon.options = { sequentialSlots: 2, displayName: 'Tên chung mới', _generatedDisplayName: 'Tên cũ' };
+assert.ok(renderAccount(renamedCommon, 'DEMO-B').includes('Tên chung mới'));
+assert.ok(!renderAccount(renamedCommon, 'DEMO-B').includes('Tên cũ'));
+renamedCommon.options.serviceNamesForKtvs = { 'demo-b': 'Tên B riêng' };
+assert.ok(renderAccount(renamedCommon, 'DEMO-B').includes('Tên B riêng'));
+console.log('PASS demo guards/title: string voided and empty rows unassigned; common and own names use shared latest fallback');
