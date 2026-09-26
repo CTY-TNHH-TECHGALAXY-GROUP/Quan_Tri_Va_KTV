@@ -497,6 +497,9 @@ export const QuickDispatchTable = ({
           staffList: updatedServices[svcIdx].staffList.map(row => {
             const idx = state.selectedKtvIds.indexOf(row.ktvId);
             return idx < 0 ? row : { ...row,
+              segments: row.segments.map(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime
+                ? { ...seg, startTime: state.ktvStartTimes[idx] ?? seg.startTime,
+                    endTime: state.ktvEndTimes[idx] ?? seg.endTime, duration: state.ktvDurations[idx] ?? seg.duration } : seg),
               noteForKtv: state.ktvNotes[idx] ?? row.noteForKtv,
               serviceNameForKtv: state.ktvServiceNames?.[idx] ?? row.serviceNameForKtv };
           }),
@@ -994,7 +997,6 @@ const ServiceGroupCard = ({
   const waitingForB = hasHandoff && !groupItems.some(item => item.options?.finishedAfterA
     || item.staffList.some(row => row.segments.some(seg => Number((seg as any).sequenceSlot) === 2 && (seg as any).voided !== true)));
   const [ktvSearch, setKtvSearch] = useState('');
-  const [bStartDrafts, setBStartDrafts] = useState<Record<string, string>>({});
   const [showTicketForIdx, setShowTicketForIdx] = useState<number | null>(null);
   const [openDurationIdx, setOpenDurationIdx] = useState<number | null>(null);
   const [showRemindersIdx, setShowRemindersIdx] = useState<number | null>(null);
@@ -1610,7 +1612,6 @@ const ServiceGroupCard = ({
                   && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
                 const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
                 const canEditBStart = !isDraft && !!slotBItem && !!slotAKtvId;
-                const bStartDraft = bStartDrafts[ktvId] ?? startT;
                 const replacedB = groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
                 return (
@@ -1713,14 +1714,14 @@ const ServiceGroupCard = ({
                     </div>
                     <div className="flex items-center gap-1">
                       <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}
-                        disabled={timeLocked && !canEditBStart} value={canEditBStart ? bStartDraft : startT}
-                        onChange={e => canEditBStart ? setBStartDrafts(prev => ({ ...prev, [ktvId]: e.target.value })) : updateTimeForIdx(idx, 'start', e.target.value)}
+                        disabled={timeLocked && !canEditBStart} value={startT}
+                        onChange={e => updateTimeForIdx(idx, 'start', e.target.value)}
                         className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
                       <span className="text-indigo-300 text-[10px]">&rarr;</span>
-                      <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{(canEditBStart && bStartDraft !== startT ? calcEndTime(bStartDraft, ktvDur) : endT) || '--:--'}</span>
-                      {canEditBStart && <button type="button" disabled={!bStartDraft || bStartDraft === startT}
-                        onClick={() => { onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId, bStartDraft); setBStartDrafts(prev => { const next = { ...prev }; delete next[ktvId]; return next; }); }}
-                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 disabled:opacity-40">Lưu giờ B</button>}
+                      <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{endT || '--:--'}</span>
+                      {canEditBStart && <button type="button" disabled={!startT}
+                        onClick={() => onDispatch?.(idx)}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 disabled:opacity-40">Lưu & điều phối B</button>}
                     </div>
                     <button onClick={() => setShowTicketForIdx(idx)} className="p-2.5 bg-indigo-50 text-indigo-500 hover:bg-indigo-100 border border-indigo-100 rounded-xl transition-all active:scale-90 shrink-0" title="In phiếu"><Printer size={15} strokeWidth={2.5} /></button>
                   </div>

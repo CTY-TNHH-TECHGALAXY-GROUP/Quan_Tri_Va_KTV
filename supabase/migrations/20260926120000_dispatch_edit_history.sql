@@ -85,6 +85,80 @@ DROP TRIGGER IF EXISTS zz_dispatch_edit_history ON "BookingItems";
 CREATE TRIGGER zz_dispatch_edit_history BEFORE UPDATE OF segments, options ON "BookingItems"
 FOR EACH ROW EXECUTE FUNCTION keep_dispatch_edit_history();
 
+-- Edit an existing sequential service without resending/recreating A's assignment.
+CREATE OR REPLACE FUNCTION dispatch_save_sequential_update(p_booking_id text, p_edit jsonb, p_confirm_overlap boolean)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  item_row "BookingItems"%ROWTYPE;
+  opts jsonb;
+  old_segments jsonb;
+  incoming_segments jsonb := jsonb_unwrap_string(p_edit->'segments');
+  old_segment jsonb;
+  incoming jsonb;
+  b jsonb;
+  next_b jsonb;
+  field_name text;
+  plan_start timestamptz;
+  plan_day date;
+  result jsonb;
+BEGIN
+  SELECT * INTO item_row FROM "BookingItems" WHERE id = p_edit->>'id' AND "bookingId" = p_booking_id FOR UPDATE;
+  opts := COALESCE(jsonb_unwrap_string(item_row.options), '{}');
+  old_segments := COALESCE(jsonb_unwrap_string(item_row.segments), '[]');
+  IF NOT FOUND OR opts->>'sequentialSlots' IS DISTINCT FROM '2'
+     OR item_row.status NOT IN ('PREPARING','READY','IN_PROGRESS')
+     OR jsonb_unwrap_string(p_edit->'options')->>'sequentialSlots' IS DISTINCT FROM '2'
+     OR COALESCE((opts->>'dispatchRevision')::bigint,0) <> COALESCE((jsonb_unwrap_string(p_edit->'options')->>'dispatchRevision')::bigint,0)
+     OR jsonb_typeof(incoming_segments) <> 'array' OR jsonb_array_length(old_segments) <> jsonb_array_length(incoming_segments) THEN
+    RAISE EXCEPTION 'Dịch vụ đã thay đổi; tải lại đơn trước khi cập nhật B';
+  END IF;
+  FOR old_segment IN SELECT value FROM jsonb_array_elements(old_segments) LOOP
+    SELECT value INTO incoming FROM jsonb_array_elements(incoming_segments) WHERE value->>'id' = old_segment->>'id';
+    IF incoming IS NULL THEN RAISE EXCEPTION 'Không được xóa chặng đã điều phối'; END IF;
+    FOR field_name IN SELECT unnest(ARRAY['ktvId','sequenceSlot','roomId','bedId','actualStartTime','actualEndTime','voided']) LOOP
+      IF COALESCE(incoming->>field_name,'') IS DISTINCT FROM COALESCE(old_segment->>field_name,'') THEN
+        RAISE EXCEPTION 'Chặng đã thay đổi; dùng thao tác đổi B riêng';
+      END IF;
+    END LOOP;
+    IF old_segment->>'sequenceSlot' = '2' AND COALESCE(old_segment->>'voided','false') <> 'true' THEN
+      b := old_segment; next_b := incoming;
+    ELSE
+      FOR field_name IN SELECT unnest(ARRAY['startTime','endTime','duration','plannedStartAt','plannedEndAt']) LOOP
+        IF COALESCE(incoming->>field_name,'') IS DISTINCT FROM COALESCE(old_segment->>field_name,'') THEN
+          RAISE EXCEPTION 'Không đổi kế hoạch A hoặc chặng cũ khi cập nhật B';
+        END IF;
+      END LOOP;
+    END IF;
+  END LOOP;
+  IF b IS NOT NULL AND (b->'startTime' IS DISTINCT FROM next_b->'startTime'
+      OR b->'endTime' IS DISTINCT FROM next_b->'endTime' OR b->'duration' IS DISTINCT FROM next_b->'duration') THEN
+    IF COALESCE(b->>'actualStartTime','') <> '' THEN RAISE EXCEPTION 'B đã bắt đầu; không sửa giờ dự kiến'; END IF;
+    IF COALESCE(next_b->>'startTime','') = '' OR COALESCE((next_b->>'duration')::integer,0) NOT BETWEEN 1 AND 600 THEN
+      RAISE EXCEPTION 'Giờ/phút B không hợp lệ';
+    END IF;
+    SELECT COALESCE((NULLIF(b->>'plannedStartAt','')::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
+      (SELECT business_date FROM "KtvAssignments" WHERE booking_item_id = item_row.id AND segment_id = b->>'id' LIMIT 1)) INTO plan_day;
+    IF plan_day IS NULL THEN RAISE EXCEPTION 'Thiếu ngày phân công B; tải lại đơn'; END IF;
+    plan_start := (plan_day + (next_b->>'startTime')::time) AT TIME ZONE 'Asia/Ho_Chi_Minh';
+    IF next_b->>'endTime' IS DISTINCT FROM to_char((plan_start + make_interval(mins => (next_b->>'duration')::integer)) AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI') THEN
+      RAISE EXCEPTION 'Giờ kết thúc B không khớp thời lượng';
+    END IF;
+    result := dispatch_assign_sequential_slot_b(p_booking_id,item_row.id,b->>'ktvId',plan_start,
+      (next_b->>'duration')::integer,p_confirm_overlap);
+    IF result->>'code' = 'OVERLAP_CONFIRM_REQUIRED' THEN
+      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = result::text;
+    END IF;
+    IF COALESCE((result->>'success')::boolean,false) = false THEN RAISE EXCEPTION 'Chưa cập nhật được kế hoạch B'; END IF;
+  END IF;
+  -- Read options again: the planned-time RPC may already have appended an audit entry.
+  UPDATE "BookingItems" SET options = COALESCE(jsonb_unwrap_string(options),'{}') || COALESCE(jsonb_unwrap_string(p_edit->'options'),'{}')
+  WHERE id = item_row.id;
+  RETURN '{"success":true}';
+END;
+$$;
+REVOKE ALL ON FUNCTION dispatch_save_sequential_update(text,jsonb,boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION dispatch_save_sequential_update(text,jsonb,boolean) TO service_role;
+
 CREATE OR REPLACE FUNCTION dispatch_apply_edit(p_booking_id text, p_action text, p_payload jsonb, p_actor jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -98,6 +172,8 @@ DECLARE
   segment_list jsonb;
   plan_day date;
   plan_start timestamptz;
+  normal_updates jsonb := '[]';
+  live_ids text[] := ARRAY[]::text[];
 BEGIN
   IF p_action NOT IN ('DRAFT','DISPATCH','ENABLE_SEQUENTIAL','ASSIGN_B','FINISH_AFTER_A','EDIT_ACTUAL_TIME') THEN
     RAISE EXCEPTION 'Thao tác lưu không hợp lệ';
@@ -118,10 +194,25 @@ BEGIN
   END LOOP;
   PERFORM set_config('app.dispatch_action', p_action, true);
   PERFORM set_config('app.dispatch_actor', COALESCE(p_actor, 'null')::text, true);
-  IF p_action = 'DISPATCH' THEN
+  IF p_action IN ('DRAFT','DISPATCH') THEN
+    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
+      SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id';
+      IF jsonb_unwrap_string(item_row.options)->>'sequentialSlots' = '2'
+         AND item_row.status IN ('PREPARING','READY','IN_PROGRESS') THEN
+        PERFORM dispatch_save_sequential_update(p_booking_id,edit,COALESCE((p_payload->>'confirmOverlap')::boolean,false));
+        live_ids := array_append(live_ids,item_row.id);
+      ELSE
+        normal_updates := normal_updates || jsonb_build_array(edit);
+      END IF;
+    END LOOP;
+  END IF;
+  IF p_action = 'DISPATCH' AND cardinality(live_ids) > 0 AND jsonb_array_length(normal_updates) = 0 THEN
+    result := '{"success":true}';
+  ELSIF p_action = 'DISPATCH' THEN
     result := dispatch_confirm_booking(p_booking_id, (p_payload->>'date')::date,
       COALESCE(p_payload->>'status', 'PREPARING'), p_payload->>'technicianCode', p_payload->>'bedId',
-      p_payload->>'roomName', p_payload->>'notes', COALESCE(p_payload->'staffAssignments', '[]'), item_updates);
+      p_payload->>'roomName', p_payload->>'notes', COALESCE((SELECT jsonb_agg(value) FROM jsonb_array_elements(COALESCE(p_payload->'staffAssignments','[]'))
+        WHERE NOT (value->>'bookingItemId' = ANY(live_ids))), '[]'), normal_updates);
     IF COALESCE((result->>'success')::boolean, false) = false THEN RAISE EXCEPTION '%', COALESCE(result->>'error', 'Điều phối chưa được lưu'); END IF;
   ELSIF p_action = 'EDIT_ACTUAL_TIME' THEN
     FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
@@ -156,7 +247,7 @@ BEGIN
     UPDATE "Bookings" SET "technicianCode" = CASE WHEN p_payload ? 'technicianCode' THEN p_payload->>'technicianCode' ELSE "technicianCode" END,
       "bedId" = p_payload->>'bedId', "roomName" = p_payload->>'roomName',
       notes = p_payload->>'notes', "updatedAt" = clock_timestamp() WHERE id = p_booking_id;
-    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
+    FOR edit IN SELECT value FROM jsonb_array_elements(normal_updates) LOOP
       SELECT COALESCE(jsonb_unwrap_string(options), '{}') INTO opts FROM "BookingItems" WHERE id = edit->>'id';
       segment_list := COALESCE(edit->'segments', (SELECT segments FROM "BookingItems" WHERE id = edit->>'id'));
       IF opts->>'sequentialSlots' IS DISTINCT FROM '2' THEN

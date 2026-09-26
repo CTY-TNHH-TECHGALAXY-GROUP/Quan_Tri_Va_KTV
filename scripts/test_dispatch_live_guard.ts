@@ -49,6 +49,10 @@ for (const segments of [[slotA], [slotA, slotB]]) {
     assert.equal(cards[0].dispatchStatus, 'IN_PROGRESS');
 }
 assert.equal(suggestedHandoffMinutes(60, a, Date.parse('2026-09-25T04:01:00Z')), 0);
+assert.equal(liveDispatchConflict([slotA,slotB],[slotA,{...slotB,startTime:'10:50',endTime:'11:10'}],twoSlots,twoSlots,'IN_PROGRESS'),null);
+assert.ok(liveDispatchConflict([slotA,{...slotB,actualStartTime:'2026-09-26T03:40:00Z'}],
+    [slotA,{...slotB,actualStartTime:'2026-09-26T03:40:00Z',startTime:'10:50'}],twoSlots,twoSlots,'IN_PROGRESS'));
+assert.ok(liveDispatchConflict([slotA,slotB],[{...slotA,startTime:'09:50'},slotB],twoSlots,twoSlots,'IN_PROGRESS'));
 const savedPlan = { startTime: '10:30', endTime: '11:00', duration: 30,
     plannedStartAt: '2026-09-26T03:30:00Z', plannedEndAt: '2026-09-26T04:00:00Z' };
 assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, plannedStartAt: 'old', plannedEndAt: undefined }),

@@ -6,8 +6,11 @@ export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[],
     if (isTwoSlotSequential(dbOptions)) {
         if (!isTwoSlotSequential(incomingOptions) || dbSegments.length !== incomingSegments.length || dbSegments.some(current => {
             const incoming = incomingSegments.find(s => s.id === current.id);
-            return !incoming || ['ktvId', 'sequenceSlot', 'roomId', 'bedId', 'startTime', 'duration', 'endTime',
-                'actualStartTime', 'actualEndTime', 'voided'].some(k => String(incoming[k] ?? '') !== String(current[k] ?? ''));
+            const editableB = Number(current.sequenceSlot) === 2 && current.voided !== true && !current.actualStartTime
+                && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(dbStatus || '');
+            const keys = ['ktvId', 'sequenceSlot', 'roomId', 'bedId', 'actualStartTime', 'actualEndTime', 'voided',
+                ...(editableB ? [] : ['startTime', 'duration', 'endTime'])];
+            return !incoming || keys.some(k => String(incoming[k] ?? '') !== String(current[k] ?? ''));
         })) return 'Ca nối tiếp đã thay đổi; tải lại đơn và dùng thao tác gán B riêng.';
         return null;
     }

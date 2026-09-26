@@ -19,9 +19,10 @@ loaded.paths = Module._nodeModulePaths(dirname(filename));
 loaded._compile(compiled, filename);
 const { ServiceGroupCard } = loaded.exports;
 const jsxRuntime = require('react/jsx-runtime');
-let actions = [], lastUpdate, lastHandoff, lastBStartDraft;
+let lastDispatch;
+let actions = [], lastUpdate, lastHandoff;
 
-function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStartDraft, names = [] } = {}) {
+function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, names = [] } = {}) {
   actions = []; lastUpdate = undefined; lastHandoff = undefined;
   const ids = b ? ['A', 'B'] : ['A'];
   const segments = ids.map((ktvId, idx) => ({ id: `segment-${ktvId}`, roomId: 'R', bedId: 'X',
@@ -35,16 +36,6 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
     ktvDurations: segments.map(s => s.duration), ktvStartTimes: segments.map(s => s.startTime), ktvEndTimes: segments.map(s => s.endTime),
     ktvNotes: [], ktvServiceNames: names, displayName: 'Test', duration: 60, workMode: sequential ? 'sequential' : 'parallel', confirmedSequential: sequential };
   const originalJsx = jsxRuntime.jsx, originalJsxs = jsxRuntime.jsxs;
-  const originalUseState = React.useState;
-  let capturedBStart = false;
-  React.useState = initial => {
-    if (bStartDraft !== undefined && !capturedBStart && initial && typeof initial === 'object' && !Array.isArray(initial) && Object.keys(initial).length === 0) {
-      capturedBStart = true;
-      const value = { B: bStartDraft };
-      return [value, update => { lastBStartDraft = typeof update === 'function' ? update(value) : update; }];
-    }
-    return originalUseState(initial);
-  };
   const capture = original => (...args) => {
     const element = original(...args);
     if (typeof element.type === 'string' && (element.props.onClick || element.props.onChange || element.props.onDrop)) actions.push(element);
@@ -56,8 +47,8 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
     serviceName: 'Test', count: 1, duration: 60, state, groupItems: [item], allServices: [item],
     availableTurns: [], staffs: [], allSelectedKtvIds: ids, rooms: [{ id: 'R', name: 'Phòng R' }], beds: [{ id: 'X', roomId: 'R' }],
     busyBedIds: [], onUpdate: patch => { lastUpdate = patch; }, onPrint() {}, onEnableSequential() {},
-    onLiveHandoff: (...args) => { lastHandoff = args; }, getLatestEndTime: () => '',
-  })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; React.useState = originalUseState; }
+    onLiveHandoff: (...args) => { lastHandoff = args; }, onDispatch: idx => { lastDispatch = idx; }, getLatestEndTime: () => '',
+  })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; }
   return html;
 }
 
@@ -101,23 +92,20 @@ render({ minutes: 30, sequential: true, b: true });
 actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.onChange({ target: { value: '10:45' } });
 assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00', '10:45']);
 assert.deepEqual(lastUpdate.ktvEndTimes, ['10:30', '11:15']);
-render({ minutes: 30, sequential: true, b: true, status: 'PREPARING', bStartDraft: '10:30' });
+render({ minutes: 30, sequential: true, b: true, status: 'PREPARING' });
 const liveBTime = actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B');
 assert.equal(liveBTime.props.disabled, false);
 assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu KTV 1').props.disabled, true);
 liveBTime.props.onChange({ target: { value: '10:45' } });
-assert.deepEqual(lastBStartDraft, { B: '10:45' });
-assert.equal(lastUpdate, undefined);
-render({ minutes: 30, sequential: true, b: true, status: 'PREPARING', bStartDraft: lastBStartDraft.B });
-const saveBTime = actions.find(e => e.props.children === 'Lưu giờ B');
-assert.equal(saveBTime.props.disabled, false);
-saveBTime.props.onClick();
-assert.deepEqual(lastHandoff, ['item', 'A', 'B', '10:45']);
-assert.equal(lastUpdate, undefined);
+assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00','10:45']);
+assert.deepEqual(lastUpdate.ktvEndTimes, ['10:30','11:15']);
+const saveBTime = actions.find(e => e.props.children === 'Lưu & điều phối B');
+assert.equal(saveBTime.props.disabled, false); saveBTime.props.onClick();
+assert.equal(lastDispatch,1);
 render({ minutes: 30, sequential: true, b: true, status: 'IN_PROGRESS', startedB: true });
 assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.disabled, true);
-assert.ok(!actions.some(e => e.props.children === 'Lưu giờ B'));
-console.log('PASS giờ B: Nhập tay trong nháp/đã gửi; lưu qua xác nhận riêng, khóa khi B đã bắt đầu');
+assert.ok(!actions.some(e => e.props.children === 'Lưu & điều phối B'));
+console.log('PASS giờ B: Tên/giờ chung bản chỉnh, lưu và điều phối lại B; khóa giờ khi B đã bắt đầu');
 
 const kanbanFilename = join(__dirname, '../app/reception/dispatch/_components/KanbanBoard.tsx');
 const kanbanModule = new Module(kanbanFilename, module);

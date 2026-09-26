@@ -186,7 +186,7 @@ try {
   name('DEMO-C', 'Tên C riêng'); send();
   const aBefore = structuredClone(segmentOf(row('DEMO-A')));
   changeInput(elements(card.tree, e => e.props['aria-label'] === 'Giờ bắt đầu B')[0], '10:50');
-  click(card.tree, 'Lưu giờ B'); click(elements(app.tree, e => e.props.role === 'dialog')[0], 'Lưu B');
+  click(card.tree, 'Lưu & điều phối B');
   checkPlan('DEMO-C', '10:50', 30); assert.deepEqual(segmentOf(row('DEMO-A')), aBefore);
   const oldAccount = elements(app.tree, e => e.type === AccountDemo && e.props.employeeId === 'DEMO-C')[0];
   assignLiveB('DEMO-B', '2026-09-26T10:50', 30);
@@ -274,5 +274,24 @@ try {
   group=elements(independent.render(missingProps),e=>typeof e.type==='function' && e.type.name==='ServiceGroupCard')[0];
   assert.equal(group.props.state.ktvStartTimes[0],''); assert.equal(group.props.state.ktvEndTimes[0],'');
   console.log('PASS HISTORY UI 5/5: Chặng đã lưu thiếu giờ không tự lấy giờ hiện tại / tính giờ kết thúc');
+
+  reset(); chooseA(); minutes(0,30); send(); sequential(); assignLiveB();
+  const preservedA=structuredClone(segmentOf(row('DEMO-A')));
+  name('DEMO-A','Tên A cố định'); name('DEMO-B','Tên B lần 1');
+  changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'10:45');
+  click(app.tree,'Lưu thông tin'); click(card.tree,'Lưu & điều phối B');
+  checkPlan('DEMO-B','10:45',30); assertName('DEMO-B','Tên B lần 1');
+  assert.equal(segmentOf(row('DEMO-B')).plannedStartAt,'2026-09-26T03:45:00.000Z');
+  const accountBHtml=renderToStaticMarkup(React.createElement(AccountDemo,{service:service(),employeeId:'DEMO-B',employeeName:'B',now}));
+  assert.ok(accountBHtml.includes('Tên B lần 1') && accountBHtml.includes('10:45'));
+  assert.deepEqual(segmentOf(row('DEMO-A')),preservedA); assertName('DEMO-A','Tên A cố định');
+  app=hooks(SequentialDemo); quick=card=null; flush();
+  assertName('DEMO-B','Tên B lần 1'); checkPlan('DEMO-B','10:45',30);
+  name('DEMO-B','Tên B lần 2'); changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'11:10');
+  click(app.tree,'Cập nhật & điều phối B'); checkPlan('DEMO-B','11:10',30);
+  assertName('DEMO-B','Tên B lần 2'); assertName('DEMO-A','Tên A cố định');
+  assert.deepEqual(segmentOf(row('DEMO-A')),preservedA);
+  assert.equal(service().options.dispatchHistory.at(-1).action,'DISPATCH');
+  console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → lưu & điều phối → tài khoản B/reload → sửa lần 2; A giữ nguyên');
 
 } finally { global.Date = originalDate; console.log = originalLog; }

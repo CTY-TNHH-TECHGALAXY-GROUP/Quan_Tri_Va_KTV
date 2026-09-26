@@ -7,6 +7,7 @@ import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-sta
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
 import { AccountDemo } from './AccountDemo';
+import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
 import { dispatchRevision, recordDispatchEdit } from '@/lib/dispatch-edit-history';
 import { DispatchEditHistory } from '../_components/DispatchEditHistory';
 import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
@@ -124,6 +125,13 @@ export default function SequentialDemo() {
     }, 'DISPATCH', dispatchRevision(service.options));
   };
 
+  const redispatchB = () => {
+    if (!service || !b || !['PREPARING','READY','IN_PROGRESS'].includes(service.status || '')) {
+      alert('Chọn và gán B trước khi cập nhật phân công.'); return;
+    }
+    change(() => {}, 'DISPATCH', dispatchRevision(service.options));
+  };
+
   const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
     if (!service || !isTwoSlotSequential(service.options) || !['PREPARING', 'IN_PROGRESS'].includes(service.status || '')) {
       alert('Gửi phân công A ở chế độ nối tiếp trước khi gán B.'); return;
@@ -215,7 +223,28 @@ export default function SequentialDemo() {
         billCode={order.billCode} onUpdateServices={updated => change(s => {
           const before = s.staffList;
           const status = s.status;
-          Object.assign(s, updated[0]);
+          const incoming = updated[0];
+          const conflict = liveDispatchConflict(segmentsOf(s), segmentsOf(incoming), s.options, incoming.options, s.status);
+          if (conflict) return conflict;
+          for (const row of incoming.staffList) {
+            const previous = before.find(old => old.ktvId === row.ktvId && segmentOf(old).id === segmentOf(row).id);
+            if (!previous) continue;
+            const old = segmentOf(previous), next = segmentOf(row);
+            const planChanged = next.startTime !== old.startTime || next.duration !== old.duration || next.endTime !== old.endTime;
+            if (!planChanged) {
+              next.plannedStartAt = old.plannedStartAt; next.plannedEndAt = old.plannedEndAt;
+            } else if (Number(next.sequenceSlot) === 2 && !['NEW','WAITING'].includes(status || '')) {
+              const day = old.plannedStartAt ? localInput(new Date(old.plannedStartAt)).slice(0,10) : localInput(new Date()).slice(0,10);
+              const start = Date.parse(`${day}T${next.startTime}:00+07:00`);
+              if (!Number.isFinite(start) || next.duration < 1) return 'Giờ/phút B không hợp lệ';
+              const currentA = before.find(person => Number(segmentOf(person).sequenceSlot) === 1);
+              const reference = currentA && plannedHandoffStartAt(day,segmentOf(currentA));
+              if (reference && start < Date.parse(reference) && !confirm('Giờ B mới trước mốc kết thúc A. Vẫn lưu và cập nhật B?'))
+                return 'Giờ B chưa được lưu.';
+              next.plannedStartAt = new Date(start).toISOString(); next.plannedEndAt = new Date(start + next.duration * 60_000).toISOString();
+            } else if (status === 'PREPARING' && !old.actualStartTime) next.plannedEndAt = plannedEndAt(next);
+          }
+          Object.assign(s, incoming);
           s.status = status;
           s.staffList.forEach(row => {
             segmentOf(row).ktvId = row.ktvId;
@@ -223,12 +252,10 @@ export default function SequentialDemo() {
             if (previous) {
               segmentOf(row).actualStartTime = segmentOf(previous).actualStartTime;
               segmentOf(row).actualEndTime = segmentOf(previous).actualEndTime;
-              (segmentOf(row) as DemoSegment).plannedEndAt = status === 'PREPARING' && !segmentOf(previous).actualStartTime
-                ? plannedEndAt(segmentOf(row)) : segmentOf(previous).plannedEndAt;
             }
           });
         }, 'DRAFT', dispatchRevision(updated[0].options))}
-        onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={dispatchA}
+        onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={service.status === 'NEW' ? dispatchA : redispatchB}
         onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
           s.options = { ...s.options, sequentialSlots: 2 };
           segmentOf(s.staffList[0]).sequenceSlot = 1;
@@ -240,6 +267,10 @@ export default function SequentialDemo() {
       <div className="flex flex-wrap gap-2">
         <button disabled={!a || service.status !== 'NEW'} className="rounded bg-indigo-600 px-3 py-2 font-bold text-white disabled:opacity-40"
           onClick={dispatchA}>{isSequential && b ? 'Gửi phân công A + B' : 'Gửi phân công A'}</button>
+        {b && ['PREPARING','READY','IN_PROGRESS'].includes(service.status || '') && <>
+          <button className="rounded border px-3 py-2" onClick={() => alert('Đã lưu thông tin mới nhất. Demo tự lưu bản nháp vào localStorage.')}>Lưu thông tin</button>
+          <button className="rounded bg-indigo-600 px-3 py-2 text-white" onClick={redispatchB}>Cập nhật & điều phối B</button>
+        </>}
         <button className="rounded border px-3 py-2" onClick={() => { setHandoff(null); saveOrder(sampleOrder()); }}>Tạo dịch vụ mới</button>
       </div>
       <p className="mt-2 text-sm">Trạng thái: <strong>{service.status}</strong> · A: <strong>{a?.ktvName || 'chưa chọn'}</strong>{isSequential && <> · B: <strong>{b?.ktvName || 'chọn sau'}</strong></>}</p>

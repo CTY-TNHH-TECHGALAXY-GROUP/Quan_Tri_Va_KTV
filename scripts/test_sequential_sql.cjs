@@ -466,6 +466,77 @@ async function main() {
 
   historyLog(5,'Background options cũ không xóa tên mới, lịch sử hoặc nhật ký quầy');
 
+  // The operational case: A sent first, B added later, then edit B through Save/Dispatch.
+  const liveId=fullA;
+  let baseline=updateOf(await item(liveId));
+  baseline.options.serviceNamesForKtvs={ [liveId.a]:'Tên A giữ nguyên' };
+  await apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[baseline]});
+  const aPlanBefore=(await item(liveId)).segments.find(s=>s.sequenceSlot===1);
+  const aAssignmentBefore=await assignment(liveId,liveId.a);
+  const aTurnBefore=(await db.query('SELECT * FROM "TurnQueue" WHERE employee_id=$1',[liveId.a])).rows[0];
+  const stableA=async()=>{
+    assert.deepEqual((await item(liveId)).segments.find(s=>s.sequenceSlot===1),aPlanBefore);
+    assert.deepEqual(await assignment(liveId,liveId.a),aAssignmentBefore);
+    assert.deepEqual((await db.query('SELECT * FROM "TurnQueue" WHERE employee_id=$1',[liveId.a])).rows[0],aTurnBefore);
+    assert.equal((await ledger(liveId,liveId.a)).length,1);
+    assert.equal((await ledger(liveId,liveId.b)).length,1);
+    assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.a],'Tên A giữ nguyên');
+  };
+  let bUpdate=updateOf(await item(liveId));
+  bUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B lần 1';
+  let bSegment=bUpdate.segments.find(s=>s.sequenceSlot===2 && !s.voided);
+  const originalBId=bSegment.id;
+  bSegment.startTime='10:45'; bSegment.endTime='11:15';
+  await apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[bUpdate]});
+  let newest=await item(liveId);
+  assert.equal(newest.options.serviceNamesForKtvs[liveId.b],'Tên B lần 1');
+  assert.equal(newest.segments.find(s=>s.sequenceSlot===2).startTime,'10:45');
+  assert.equal((await assignment(liveId,liveId.b)).planned_start_time.toISOString(),'2026-09-26T03:45:00.000Z');
+  await stableA();
+  console.log('PASS UPDATE B 1/5: A gửi trước → B gán sau → lưu tên/giờ B mới, giữ A/ledger/tua');
+
+  const savedBeforeResend=updateOf(newest);
+  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[savedBeforeResend],staffAssignments:[]});
+  bUpdate=updateOf(await item(liveId));
+  bUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B lần 2';
+  bSegment=bUpdate.segments.find(s=>s.sequenceSlot===2); bSegment.startTime='11:10'; bSegment.endTime='11:40';
+  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[bUpdate],staffAssignments:[]});
+  newest=await item(liveId);
+  assert.equal(newest.options.serviceNamesForKtvs[liveId.b],'Tên B lần 2');
+  assert.equal(newest.segments.find(s=>s.sequenceSlot===2).startTime,'11:10');
+  assert.equal((await assignment(liveId,liveId.b)).segment_id,originalBId);
+  assert.equal((await assignment(liveId,liveId.b)).planned_start_time.toISOString(),'2026-09-26T04:10:00.000Z');
+  assert.ok(newest.options.dispatchHistory.some(entry=>entry.action==='DISPATCH' && entry.changes.some(c=>c.field==='serviceNameForKtv' && c.before==='Tên B lần 1' && c.after==='Tên B lần 2')));
+  await stableA();
+  console.log('PASS UPDATE B 2/5: Điều phối lại B lấy lần sửa 2 từ lần 1, giữ segment và phân công A');
+
+  await assert.rejects(apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[savedBeforeResend]}),/bản lưu mới/);
+  assert.deepEqual(await item(liveId),newest); await stableA();
+  console.log('PASS UPDATE B 3/5: Cửa sổ/tab cũ không ghi đè tên/giờ và lịch sử mới');
+
+  const overlapUpdate=updateOf(newest); overlapUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B overlap';
+  const overlapB=overlapUpdate.segments.find(s=>s.sequenceSlot===2); overlapB.startTime='10:15'; overlapB.endTime='10:45';
+  await assert.rejects(apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[overlapUpdate]}),error=>{
+    assert.equal(error.message,'OVERLAP_CONFIRM_REQUIRED'); assert.equal(JSON.parse(error.detail).referenceKind,'planned'); return true;
+  });
+  assert.deepEqual(await item(liveId),newest);
+  await apply(liveId,'DISPATCH',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[overlapUpdate]});
+  assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.b],'Tên B overlap'); await stableA();
+  console.log('PASS UPDATE B 4/5: Overlap chưa xác nhận không lưu cả tên/giờ; xác nhận mới cập nhật');
+
+  await actual(liveId,liveId.b,'actualStartTime','2026-09-26T03:15:00Z');
+  const started=await item(liveId), attempted=updateOf(started);
+  attempted.segments.find(s=>s.sequenceSlot===2).startTime='10:20';
+  attempted.segments.find(s=>s.sequenceSlot===2).endTime='10:50';
+  await assert.rejects(apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[attempted]}),/B đã bắt đầu/);
+  assert.deepEqual(await item(liveId),started);
+  const renameOnly=updateOf(started); renameOnly.options.serviceNamesForKtvs[liveId.b]='Tên B khi đang làm';
+  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[renameOnly]});
+  assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.b],'Tên B khi đang làm');
+  assert.equal((await item(liveId)).segments.find(s=>s.sequenceSlot===2).actualStartTime,'2026-09-26T03:15:00Z');
+  await stableA();
+  console.log('PASS UPDATE B 5/5: B đang làm khóa giờ dự kiến; tên vẫn cập nhật, không reset giờ thực/A');
+
   await db.close();
 }
 

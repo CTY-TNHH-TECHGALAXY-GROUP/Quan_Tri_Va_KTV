@@ -22,8 +22,12 @@ import { after } from 'next/server';
 
 async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
     const actor = await currentCounterActor();
-    return supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
+    const result = await supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
         p_payload: payload, p_actor: actor });
+    if (result.error?.message === 'OVERLAP_CONFIRM_REQUIRED') {
+        try { return { data: JSON.parse(result.error.details), error: null }; } catch { /* Keep the database error. */ }
+    }
+    return result;
 }
 
 async function resolveGuestIdsForUpdate(
@@ -630,6 +634,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
     guestCount?: number;
     /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
     confirmedUncheckedKtvIds?: string[];
+    confirmOverlap?: boolean;
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -669,6 +674,20 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
         if (extError) return { success: false, error: extError };
 
+        const { data: currentItems, error: currentItemsError } = await supabase.from('BookingItems')
+            .select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
+        if (currentItemsError) throw currentItemsError;
+        const liveSequentialItems = (currentItems || []).filter(i => isTwoSlotSequential(i.options)
+            && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(i.status));
+        const liveIds = new Set(liveSequentialItems.map(i => i.id));
+        if ((currentItems || []).some(i => isTwoSlotSequential(i.options) && !['NEW','WAITING','PREPARING','READY','IN_PROGRESS'].includes(i.status)
+            && dispatchData.itemUpdates?.some(update => update.id === i.id)))
+            throw new Error('Dịch vụ đã hoàn tất hoặc dừng; chỉ lưu thông tin, không điều phối lại');
+        const liveSegments = liveSequentialItems.flatMap(i => typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []));
+        const aIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 1).map(s => s.ktvId));
+        const bIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 2 && s.voided !== true).map(s => s.ktvId));
+        const otherIds = new Set(dispatchData.staffAssignments.filter(a => !liveIds.has(a.bookingItemId)).map(a => a.ktvId));
+
         const allKtvIds = new Set<string>();
         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
@@ -683,7 +702,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
                 }
             }
         });
-        const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
+        const uniqueKtvIds = Array.from(allKtvIds).filter(id => id && (!aIds.has(id) || bIds.has(id) || otherIds.has(id)));
 
         const { data: knownStaffs } = uniqueKtvIds.length > 0
             ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
@@ -725,15 +744,11 @@ export async function processDispatch(bookingId: string, dispatchData: {
         const ktvIdsWithoutTurnRow = uniqueKtvIds.filter(id => !(turnRowsToday || []).some(t => t.employee_id === id));
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
-        const protectedSequentialIds = new Set<string>();
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
-            const { data: currentItems, error: currentItemsError } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
-            if (currentItemsError) throw currentItemsError;
             if (currentItems) {
                 dispatchData.itemUpdates = dispatchData.itemUpdates.map(updateItem => {
                     const dbItem = currentItems.find(i => i.id === updateItem.id);
                     if (!dbItem) return updateItem;
-                    if (isTwoSlotSequential(dbItem.options) && !['NEW', 'WAITING'].includes(dbItem.status)) protectedSequentialIds.add(dbItem.id);
                     
                     // 1. NGĂN LÙI TRẠNG THÁI CA ĐANG LÀM / ĐÃ XONG
                     if (updateItem.status && dbItem.status) {
@@ -782,11 +797,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
                     return updateItem;
                 });
             }
-        }
-        if (protectedSequentialIds.size > 0) {
-            dispatchData.itemUpdates = dispatchData.itemUpdates?.filter(item => !protectedSequentialIds.has(item.id));
-            dispatchData.staffAssignments = dispatchData.staffAssignments.filter(a => !protectedSequentialIds.has(a.bookingItemId));
-            if (!dispatchData.itemUpdates?.length) return { success: false, error: 'Dịch vụ nối tiếp đã điều phối; hãy dùng thao tác gán/sửa B riêng.' };
         }
         for (const item of dispatchData.itemUpdates || []) {
             if (!isTwoSlotSequential(item.options)) continue;
@@ -866,9 +876,24 @@ export async function processDispatch(bookingId: string, dispatchData: {
             throw error;
         }
 
+        if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return data;
         if (data && !data.success) {
             console.error('❌ [Server] RPC failed internally:', data.error);
             throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
+        }
+
+        for (const item of liveSequentialItems) {
+            const update = dispatchData.itemUpdates?.find(update => update.id === item.id);
+            if (!update) continue;
+            const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []);
+            const b = segments.find((s: any) => Number(s.sequenceSlot) === 2 && s.voided !== true);
+            if (!b) continue;
+            const name = update.options?.serviceNamesForKtvs?.[b.ktvId] || update.options?.displayName || 'dịch vụ';
+            const start = update.segments?.find(s => s.id === b.id)?.startTime || b.startTime;
+            await supabase.from('StaffNotifications').delete().eq('bookingId', bookingId).eq('employeeId', b.ktvId)
+                .eq('type', 'KTV_NEW_ORDER').eq('isRead', false);
+            await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
+                message: `Phân công lượt B cập nhật: ${name} lúc ${start}. Vui lòng kiểm tra ứng dụng.` });
         }
 
         // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
@@ -889,7 +914,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
         // 4. Send background push and realtime notification to KTVs
         if (dispatchData.staffAssignments && dispatchData.staffAssignments.length > 0) {
-            const staffIds = dispatchData.staffAssignments.map(a => a.ktvId).filter(Boolean);
+            const staffIds = dispatchData.staffAssignments.filter(a => !liveIds.has(a.bookingItemId)).map(a => a.ktvId).filter(Boolean);
             const uniqueStaffIds = Array.from(new Set(staffIds));
             
             for (const staffId of uniqueStaffIds) {
@@ -936,8 +961,10 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         }
 
-        const { syncTurnsForDate } = await import('@/lib/turn-sync');
-        await syncTurnsForDate(dispatchData.date);
+        if (dispatchData.staffAssignments.some(a => !liveIds.has(a.bookingItemId))) {
+            const { syncTurnsForDate } = await import('@/lib/turn-sync');
+            await syncTurnsForDate(dispatchData.date);
+        }
 
         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
         // Removed destructive syncOrderTimelineToDb
@@ -1142,6 +1169,7 @@ async function resolveNewExternalKtvIds(
 
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
     date?: string;
+    confirmOverlap?: boolean;
     technicianCode?: string | null;
     bedId: string | null;
     roomName: string | null;
@@ -1371,11 +1399,16 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             ...dispatchData, itemUpdates: finalItemUpdates
         });
         if (saveError) throw saveError;
+        if (saved?.code === 'OVERLAP_CONFIRM_REQUIRED') return saved;
         if (!saved?.success) throw new Error('Máy chủ chưa xác nhận lưu nháp');
 
         // Fetch bookingDate to sync turns correctly
         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
-        if (bData && bData.bookingDate) {
+        const hasNormalUpdate = dispatchData.itemUpdates?.some(update => {
+            const current = currentItems?.find(item => item.id === update.id);
+            return !current || !isTwoSlotSequential(current.options) || !['PREPARING','READY','IN_PROGRESS'].includes(current.status);
+        });
+        if (hasNormalUpdate && bData && bData.bookingDate) {
             const dateStr = bData.bookingDate.split('T')[0];
             const { syncTurnsForDate } = await import('@/lib/turn-sync');
             await syncTurnsForDate(dateStr);

@@ -740,6 +740,8 @@ if (!hasPermission('dispatch_board')) {
       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
   };
 
+  const confirmUpdatedBOverlap = (result: any) => confirm(`Giờ B mới trước mốc kết thúc ${result.referenceKind === 'actual' ? 'thực tế' : 'dự kiến'} của A (${new Date(result.referenceAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}). Vẫn lưu và cập nhật B?`);
+
   const confirmLiveHandoff = async () => {
     if (!liveHandoff || liveHandoff.saving) return;
     setLiveHandoff(prev => prev ? { ...prev, saving: true } : null);
@@ -1281,13 +1283,18 @@ if (!hasPermission('dispatch_board')) {
       }
 
       const { saveDraftDispatch } = await import('./actions');
-      const res = await saveDraftDispatch(clonedOrder.id, {
-        date: selectedDate,
-        bedId: primarySeg?.bedId || null,
-        roomName: primarySeg?.roomId || null,
-        notes: finalNotesToSave,
-        itemUpdates: itemUpdates
+      let confirmOverlap = false;
+      const savePayload = () => saveDraftDispatch(clonedOrder.id, {
+        date: selectedDate, confirmOverlap,
+        bedId: primarySeg?.bedId || null, roomName: primarySeg?.roomId || null,
+        notes: finalNotesToSave, itemUpdates
       });
+      let res = await savePayload();
+      if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+        if (!confirmUpdatedBOverlap(res)) return;
+        confirmOverlap = true;
+        res = await savePayload();
+      }
 
       if (res.success) {
         if (splitPlan.length > 1) {
@@ -1644,6 +1651,7 @@ if (!hasPermission('dispatch_board')) {
       // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
       // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
       const confirmedUncheckedKtvIds: string[] = [];
+      let confirmOverlap = false;
       const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
           setConfirmModal({
               isOpen: true,
@@ -1664,7 +1672,7 @@ if (!hasPermission('dispatch_board')) {
               date: selectedDate,
               notes: isPartial ? undefined : finalNotesToSave,
               itemUpdates: payload.itemUpdates,
-              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds],
+              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmOverlap,
           });
           let res: any = await sendPayload();
           if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
@@ -1674,6 +1682,10 @@ if (!hasPermission('dispatch_board')) {
                   if (!confirmedUncheckedKtvIds.includes(k.id)) confirmedUncheckedKtvIds.push(k.id);
               });
               res = await sendPayload();
+          }
+          if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+              if (!confirmUpdatedBOverlap(res)) return;
+              confirmOverlap = true; res = await sendPayload();
           }
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
@@ -2885,7 +2897,7 @@ if (!hasPermission('dispatch_board')) {
                         // Removed native confirm for hasKtvAssigned because SplitPreviewModal will handle it
                         
                         if (isDispatched) {
-                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nNếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
+                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nTên riêng và giờ B mới sẽ được lưu. Bấm [CẬP NHẬT KTV & GỬI LẠI] để gửi thông báo cập nhật cho B.\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
                                 handleSaveDraft();
                             }
                             return;
