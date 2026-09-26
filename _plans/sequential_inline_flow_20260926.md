@@ -94,3 +94,10 @@ Giữ branch `feat/sequential-two-slot-handoff-20260926`, kiểm tra trên demo 
 - `tsc --noEmit --pretty false`: PASS. Lint các component/helper thay đổi không có lỗi; còn cảnh báo dependency `syncToServices` có sẵn.
 - Thao tác trình duyệt đã xác nhận A 60 gửi ngay không chọn mode, bắt đầu và hoàn tất sang CLEANING. Chưa hoàn thành lại toàn bộ 5 flow bằng click trình duyệt: công cụ Safari lỗi `elementHasNoFrame`/`noWindowsAvailable`; Chrome bị chậm. 5 case giao diện ở trên là kiểm tra component/handler, không phải 5 flow browser end-to-end.
 - Demo tiếp tục dùng `dispatch-sequential-demo-v2` trong localStorage, không kết nối DB. Nhánh vận hành thật cần migration trên DB test trước UAT nhiều máy; chưa áp dụng migration ở môi trường chung.
+
+## Chỉnh tay giờ bắt đầu B
+
+- Trong nháp: nhập trực tiếp giờ B, giờ cuối B tính theo thời lượng; không sửa giờ A.
+- Sau gửi, B chưa bắt đầu: ô giờ B cho nhập tay. `Lưu giờ B` mở phần xác nhận gán/sửa B với giờ vừa nhập; xác nhận để lưu qua RPC hiện có. Hủy xác nhận giữ kế hoạch cũ.
+- B đã bắt đầu, bị thay hoặc ca đã đóng: không sửa giờ dự kiến bằng đường này.
+- Kiểm tra handler đã pass: nhập 10:45 thay 10:30, giữ giờ A; truyền đúng giờ mới sang callback; khóa khi B đã bắt đầu. SQL pass khi sửa kế hoạch B cùng KTV/segment ID và giữ nguyên mọi mốc A.

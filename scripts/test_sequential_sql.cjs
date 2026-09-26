@@ -83,6 +83,13 @@ async function main() {
     const actualOverlap = await assign(id, id.b, endA);
     assert.equal(actualOverlap.code, 'OVERLAP_CONFIRM_REQUIRED');
     assert.equal(actualOverlap.referenceKind, 'actual');
+    const beforeEdit = (await item(id)).segments;
+    assert.equal((await assign(id, id.b, '2026-09-26T04:15:00Z')).success, true);
+    const afterEdit = (await item(id)).segments;
+    assert.deepEqual(afterEdit[0], beforeEdit[0]);
+    assert.equal(afterEdit[1].id, beforeEdit[1].id);
+    assert.equal(afterEdit[1].plannedStartAt, '2026-09-26T04:15:00+00:00');
+    assert.equal(afterEdit[1].actualStartTime, undefined);
     log(2, 'Giờ B chồng mốc A dự kiến/thực tế cần xác nhận');
   }
 

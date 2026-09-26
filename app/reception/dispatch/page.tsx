@@ -722,7 +722,7 @@ if (!hasPermission('dispatch_board')) {
       }
   };
 
-  const openLiveHandoff = (bookingId: string, itemId: string, fromKtvId: string, toKtvId: string) => {
+  const openLiveHandoff = (bookingId: string, itemId: string, fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
     const item = orders.find(o => o.id === bookingId)?.services.find(s => s.id === itemId);
     const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => Number(seg.sequenceSlot) === 1 || seg.actualStartTime);
     if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
@@ -734,7 +734,8 @@ if (!hasPermission('dispatch_board')) {
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
     setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
-      plannedStartAt, durationMinutes: existingB?.duration ?? remainingHandoffMinutes(item.duration, segment.duration), saving: false });
+      plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
+      durationMinutes: existingB?.duration ?? remainingHandoffMinutes(item.duration, segment.duration), saving: false });
   };
 
   const confirmLiveHandoff = async () => {
@@ -2744,7 +2745,7 @@ if (!hasPermission('dispatch_board')) {
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
-                    onLiveHandoff={(itemId, fromKtvId, toKtvId) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId)}
+                    onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
                     onEnableSequential={async itemId => {
                       const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId);
                       if (!result.success) alert(result.error);

@@ -103,15 +103,16 @@ export default function SequentialDemo() {
     });
   };
 
-  const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string) => {
+  const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
     if (!service || !isTwoSlotSequential(service.options) || !['PREPARING', 'IN_PROGRESS'].includes(service.status || '')) {
       alert('Gửi phân công A ở chế độ nối tiếp trước khi gán B.'); return;
     }
     const current = b && segmentOf(b);
-    setHandoff({ ktvId: toKtvId || b?.ktvId || '',
-      start: current?.startTime && current.plannedEndAt
+    const start = current?.startTime && current.plannedEndAt
         ? localInput(new Date(new Date(current.plannedEndAt).getTime() - current.duration * 60_000))
-        : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now())),
+        : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now()));
+    setHandoff({ ktvId: toKtvId || b?.ktvId || '',
+      start: plannedStartTime ? `${start.slice(0, 10)}T${plannedStartTime}` : start,
       duration: current?.duration ?? remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0) });
   };
   const saveHandoff = () => {
