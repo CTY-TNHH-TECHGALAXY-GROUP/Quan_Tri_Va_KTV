@@ -10,6 +10,8 @@ require('ts-node').register({ project: join(__dirname, 'qa/tsconfig.qa.json'), t
 require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@/*': ['./*'] } });
 // Load the private card for rendering without adding a production export.
 const filename = join(__dirname, '../app/reception/dispatch/_components/QuickDispatchTable.tsx');
+assert.match(readFileSync(filename, 'utf8').trimStart(), /^['"]use client['"];?/,
+  'Next.js client directive must precede imports');
 const compiled = ts.transpileModule(readFileSync(filename, 'utf8') + '\nexport { ServiceGroupCard };', {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
 }).outputText;

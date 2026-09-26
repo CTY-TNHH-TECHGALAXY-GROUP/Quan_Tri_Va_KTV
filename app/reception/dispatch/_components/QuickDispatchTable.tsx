@@ -1,5 +1,5 @@
-import { ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
 'use client';
+import { ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
