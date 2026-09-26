@@ -45,6 +45,46 @@ export function parseKtvOptions(raw: any): Record<string, any> {
 export function ktvServiceName(item: any, code: string | undefined | null): string {
     const opts = parseKtvOptions(item?.options);
     const names = parseKtvOptions(opts.serviceNamesForKtvs);
-    const own = Object.entries(names).find(([id]) => id.trim().toLowerCase() === code?.trim().toLowerCase())?.[1];
+    const own = ktvMetadataValue(names, code || '');
     return String(own || opts.displayName || opts._generatedDisplayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
+}
+
+/** UI tolerates legacy encoding; mutation handlers must reject invalid shapes. */
+export function parseKtvSegments(raw: unknown, strict = false): any[] {
+    try {
+        for (let i = 0; i < 2 && typeof raw === 'string'; i++) raw = JSON.parse(raw);
+        if (strict && raw != null && (!Array.isArray(raw) || raw.some(s => !s || typeof s !== 'object' || Array.isArray(s)))) throw new Error('Dữ liệu chặng không hợp lệ.');
+        return Array.isArray(raw) ? raw.filter(s => s && typeof s === 'object' && !Array.isArray(s)) : [];
+    } catch (error) { if (strict) throw error; return []; }
+}
+
+/** Undefined means absent; an explicit empty string is a saved clear. */
+export function ktvMetadataValue(raw: unknown, code: string): string | undefined {
+    const entries = Object.entries(parseKtvOptions(raw));
+    const key = code.trim().toLowerCase();
+    const exact = entries.find(([id]) => id === code);
+    const value = (exact || entries.find(([id]) => id.trim().toLowerCase() === key))?.[1];
+    return typeof value === 'string' ? value : undefined;
+}
+
+/** Retain other employees' values, normalize aliases, and persist explicit clears. */
+export function ktvMetadataMap(raw: unknown, rows: any[], field: string): Record<string, string> {
+    const result = { ...parseKtvOptions(raw) };
+    for (const row of rows) {
+        if (!row.ktvId || row[field] === undefined) continue;
+        for (const key of Object.keys(result)) {
+            if (key.trim().toLowerCase() === row.ktvId.trim().toLowerCase()) delete result[key];
+        }
+        result[row.ktvId] = String(row[field] ?? '');
+    }
+    return result;
+}
+
+/** A time edit changes the clock within the booking's service run, never its service day. */
+export function sequentialClockAt(serviceDay: string, aStartClock: string, bClock: string): string | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDay)
+        || !/^([01]\d|2[0-3]):[0-5]\d$/.test(aStartClock.slice(0, 5))
+        || !/^([01]\d|2[0-3]):[0-5]\d$/.test(bClock)) return null;
+    const start = Date.parse(`${serviceDay}T${bClock}:00+07:00`);
+    return Number.isFinite(start) ? new Date(start + (bClock < aStartClock.slice(0, 5) ? 86400000 : 0)).toISOString() : null;
 }

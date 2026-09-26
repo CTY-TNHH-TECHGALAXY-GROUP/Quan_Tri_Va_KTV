@@ -1,7 +1,7 @@
 import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ktvMatchesSeg, isLiveKtvSegment, ktvServiceName, parseKtvOptions } from '@/lib/ktvUtils';
+import { ktvMatchesSeg, isLiveKtvSegment, ktvServiceName, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
@@ -485,8 +485,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const assignedOptions = parseKtvOptions(assignedItem?.options);
             let assignedSegments: any[] = [];
             try {
-                assignedSegments = typeof assignedItem?.segments === 'string'
-                    ? JSON.parse(assignedItem.segments) : (assignedItem?.segments || []);
+                assignedSegments = parseKtvSegments(assignedItem?.segments);
             } catch {}
             if (assignedOptions.sequentialSlots === 2 && assignedSegments.some((seg: any) =>
                 Number(seg.sequenceSlot) === 2 && isLiveKtvSegment(seg, ktvId)
@@ -578,9 +577,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             for (const ai of allAssignedItems) {
                 let segs: any[] = [];
                 try {
-                    segs = typeof ai?.segments === 'string' 
-                        ? JSON.parse(ai.segments) 
-                        : (Array.isArray(ai?.segments) ? ai.segments : []);
+                    segs = parseKtvSegments(ai?.segments);
                 } catch { segs = []; }
                 
                 const mySegs = segs.filter((seg: any) => 
@@ -669,7 +666,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         for (const ai of allAssignedItems) {
             let segs: any[] = [];
             try {
-                segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                segs = parseKtvSegments(ai?.segments);
             } catch { segs = []; }
             const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             allMySegsForStatus.push(...mySegs);
@@ -884,7 +881,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 let allHandover = false;
                 if (booking?.BookingItems && ktvId) {
                     const mySegs = booking.BookingItems.flatMap((i: any) => {
-                        let parsed = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []);
+                        let parsed = parseKtvSegments(i.segments);
                         return parsed.filter((s: any) => isLiveKtvSegment(s, ktvId));
                     });
                     
@@ -1145,9 +1142,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         for (const ai of allAssignedItems) {
                             let segs: any[] = [];
                             try {
-                                segs = typeof ai?.segments === 'string' 
-                                    ? JSON.parse(ai.segments) 
-                                    : (Array.isArray(ai?.segments) ? ai.segments : []);
+                                segs = parseKtvSegments(ai?.segments);
                             } catch { segs = []; }
                             
                             const mySegs = segs.filter((seg: any) => 
@@ -1433,7 +1428,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         const items = bookingRef.current?.BookingItems || [];
                         const daBatDau = items.some((i: any) => {
                             let segs: any[] = [];
-                            try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []); } catch {}
+                            try { segs = parseKtvSegments(i.segments); } catch {}
                             return segs.some((s: any) => isLiveKtvSegment(s, ktvId) && s.actualStartTime);
                         });
                         if (daBatDau) { scheduleRealtimeFetch(); return; }
@@ -1629,7 +1624,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             for (const ai of allItems) {
                 let segs: any[] = [];
                 try {
-                    segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                    segs = parseKtvSegments(ai?.segments);
                 } catch { segs = []; }
                 const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                 const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
@@ -1650,7 +1645,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             for (const seg of allMySegs) {
                 for (const ai of allItems) {
                     let aiSegs: any[] = [];
-                    try { aiSegs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []); } catch { aiSegs = []; }
+                    try { aiSegs = parseKtvSegments(ai?.segments); } catch { aiSegs = []; }
                     if (aiSegs.some((s: any) => s.ktvId?.toLowerCase() === ktvId?.toLowerCase() && s.startTime === seg.startTime && s.duration === seg.duration)) {
                         segItemIdSet.add(ai.id);
                         break;
@@ -1861,7 +1856,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     for (const ai of allAssignedItems) {
                         let segs: any[] = [];
                         try {
-                            segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                            segs = parseKtvSegments(ai?.segments);
                         } catch { segs = []; }
                         const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                         if (mySegs.some((s: any) => s.actualStartTime)) {
@@ -1959,7 +1954,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             for (const ai of allItems) {
                 let segs: any[] = [];
                 try {
-                    segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                    segs = parseKtvSegments(ai?.segments);
                 } catch { segs = []; }
                 const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                 
@@ -2013,7 +2008,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         for (const ai of allItems) {
             let segs: any[] = [];
             try {
-                segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                segs = parseKtvSegments(ai?.segments);
             } catch { segs = []; }
             const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
@@ -2104,7 +2099,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         for (const ai of allItems) {
             let segs: any[] = [];
             try {
-                segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                segs = parseKtvSegments(ai?.segments);
             } catch { segs = []; }
             const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
@@ -2395,7 +2390,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
                 bookingId: postServiceBookingIdRef.current || booking.id, 
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
-                action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
+                action: 'RELEASE_KTV',
+                handoverItemIds: itemIds, // BÂY GIỜ mới giải phóng KTV
                 techCode: ktvId,
                 photosBase64: photosToSubmit
             }, { timeout: 120000 });
@@ -2444,7 +2440,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // nguyên đó. Báo "đã nộp xong" lúc này là nói sai — KTV tưởng hết nợ
                 // rồi đi tan ca, tới nơi mới thấy vẫn bị chặn.
                 if (photosToSubmit.length > 0) {
-                    addToast('✅ Đã nộp ảnh bàn giao. Bạn hết nợ phòng này rồi!', 'success');
+                    addToast('Đã lưu ảnh bàn giao; đang chờ duyệt. Nếu ảnh bị trả lại, phòng sẽ hiện nợ lại.', 'success');
                     // Dọn xong nợ MỚI là lúc việc thật sự kết thúc, nên giờ mới cho
                     // đánh giá quầy — phần đã bị bỏ qua lúc bấm "Bỏ qua".
                     setRewardHideMoney(true);

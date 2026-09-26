@@ -1,4 +1,5 @@
 'use client';
+import { ktvMetadataValue, parseKtvOptions } from '@/lib/ktvUtils';
 
 import { useEffect, useState } from 'react';
 import { KanbanBoard } from '../_components/KanbanBoard';
@@ -183,8 +184,10 @@ export default function SequentialDemo() {
         const returning = s.staffList.find(row => row.ktvId === handoff.ktvId);
         if (returning) returning.segments = [segment, ...returning.segments];
         else s.staffList.push({ id: `demo-row-${handoff.ktvId}`, ktvId: handoff.ktvId,
+          serviceNameForKtv: ktvMetadataValue(parseKtvOptions(s.options).serviceNamesForKtvs, handoff.ktvId) ?? '',
+          noteForKtv: ktvMetadataValue(parseKtvOptions(s.options).notesForKtvs, handoff.ktvId) ?? '',
           ktvName: staff.find(person => person.id === handoff.ktvId)?.full_name || handoff.ktvId,
-          segments: [segment], noteForKtv: '' });
+          segments: [segment] });
       }
     }, 'ASSIGN_B', handoff.expectedRevision);
     setHandoff(null);

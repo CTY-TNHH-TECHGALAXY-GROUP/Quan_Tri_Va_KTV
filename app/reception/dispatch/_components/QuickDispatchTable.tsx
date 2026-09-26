@@ -1,3 +1,4 @@
+import { ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
 'use client';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
@@ -630,7 +631,8 @@ export const QuickDispatchTable = ({
       }
     });
     onUpdateServices(updatedServices.map(svc => ({ ...svc, options: { ...svc.options,
-      serviceNamesForKtvs: Object.fromEntries(svc.staffList.filter(row => row.ktvId && row.serviceNameForKtv).map(row => [row.ktvId, row.serviceNameForKtv]))
+      serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).serviceNamesForKtvs, svc.staffList, 'serviceNameForKtv'),
+      notesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).notesForKtvs, svc.staffList, 'noteForKtv')
     } })));
   };
 

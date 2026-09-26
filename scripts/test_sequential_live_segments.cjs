@@ -20,8 +20,9 @@ function query(table) {
   let update;
   const q = {
     select() { return q; }, eq() { return q; }, in() { return q; },
-    update(value) { update = value; return q; },
-    single() { return Promise.resolve({ data: { timeStart: '2026-09-26T03:00:00Z', status: 'IN_PROGRESS' } }); },
+    update() { throw Error('START must use the atomic RPC'); },
+    maybeSingle() { assert.equal(table,'KtvAssignments');return Promise.resolve({data:{id:'assignment'}}); },
+    single() { return Promise.resolve({ data: { id:'order',rating:null,BookingGuests:[],bookingDate:'2026-09-26T10:00:00',timeStart: '2026-09-26T03:00:00Z', status: 'IN_PROGRESS' } }); },
     then(resolve, reject) {
       if (update) saved = JSON.parse(update.segments);
       return Promise.resolve({ data: update ? null : table === 'BookingItems' ? [{ id: 'item', segments: JSON.stringify(segments), options: { sequentialSlots: 2 } }] : [], error: null }).then(resolve, reject);
@@ -29,7 +30,12 @@ function query(table) {
   };
   return q;
 }
-const supabase = { from: query, storage: { from: () => ({
+const supabase = { from: query, async rpc(name,args) {
+  assert.equal(name,'ktv_start_service_atomic');
+  assert.equal(args.p_target_segment_id,'new-b');
+  saved=JSON.parse(args.p_updates.find(p=>p.id==='item').segments);
+  return {data:{success:true,booking:{id:'order',status:'IN_PROGRESS'}}};
+}, storage: { from: () => ({
   async upload(path) { return { data: { path } }; },
   getPublicUrl(path) { return { data: { publicUrl: `https://local.test/${path}` } }; },
   async remove() { return { error: null }; },

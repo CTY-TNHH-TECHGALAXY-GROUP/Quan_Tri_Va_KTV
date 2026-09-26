@@ -1,4 +1,4 @@
-import { isLiveKtvSegment, parseKtvOptions, ktvServiceName } from '@/lib/ktvUtils';
+import { isLiveKtvSegment, parseKtvOptions, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
 import { isUtilityService } from '@/lib/booking.logic';
 /**
  * ============================================================
@@ -75,7 +75,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 for (const item of activeItems) {
                     let segs: any[] = [];
                     try {
-                        segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+                        segs = parseKtvSegments(item.segments);
                     } catch { segs = []; }
                     
                     const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
@@ -534,7 +534,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         if (ktvItems.length > 0) {
             for (const item of ktvItems) {
                 let segs: any[] = [];
-                try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
+                try { segs = parseKtvSegments(item.segments); } catch { segs = []; }
                 const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 if (runningIdx !== -1) {
@@ -551,7 +551,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     activeItemId = inProgressItem.id;
                     statusSource = 'item_status';
                     let segs: any[] = [];
-                    try { segs = typeof inProgressItem.segments === 'string' ? JSON.parse(inProgressItem.segments) : (Array.isArray(inProgressItem.segments) ? inProgressItem.segments : []); } catch { segs = []; }
+                    try { segs = parseKtvSegments(inProgressItem.segments); } catch { segs = []; }
                     const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
@@ -618,7 +618,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             if (opts.mergedIntoId) return;
 
             let segs: any[] = [];
-            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+            try { segs = parseKtvSegments(item.segments); } catch {}
             segs.forEach((s: any) => {
                 if (isLiveKtvSegment(s, technicianCode)) {
                     mySegments.push({
@@ -871,7 +871,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     // trong phòng, phòng đã mở".
                     let segsCuaToi: any[] = [];
                     try {
-                        const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
+                        const sg = parseKtvSegments(it.segments);
                         segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
                             isLiveKtvSegment(x, technicianCode));
                     } catch { }

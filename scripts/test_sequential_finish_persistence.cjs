@@ -87,12 +87,18 @@ async function main() {
   console.log('PASS FINISH atomic RPC failure: no local per-item writes; retry preserves committed stamps');
 
   const parent = item('parent');
-  const child = { ...item('child'), options: JSON.stringify(JSON.stringify({ mergedIntoId: 'parent' })) };
+  const child = { ...item('child'), segments: [], options: JSON.stringify(JSON.stringify({ mergedIntoId: 'parent' })) };
   const merged = database([parent, child]);
   assert.equal((await run(merged, 'A', ['parent'])).bookingPersisted, true);
   assert.equal(merged.rows[0].status, 'CLEANING');
   assert.equal(merged.rows[1].status, 'CLEANING');
   console.log('PASS FINISH merged-child status included in same RPC batch');
+  const independent = { ...item('independent', 'B'), status: 'PREPARING', options: { mergedIntoId: 'parent' } };
+  delete independent.segments[0].actualStartTime;
+  const separateWork = database([parent, independent]);
+  assert.equal((await run(separateWork, 'A', ['parent'])).bookingPersisted, true);
+  assert.equal(separateWork.rows[1].status, 'PREPARING');
+  console.log('PASS FINISH child with independent work stays PREPARING');
 
   const sequential = item('seq');
   sequential.options = { sequentialSlots: 2 };

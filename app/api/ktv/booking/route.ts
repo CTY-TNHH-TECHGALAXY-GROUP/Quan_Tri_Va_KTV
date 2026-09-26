@@ -127,7 +127,9 @@ export async function PATCH(request: Request) {
         // ─── 4. ROUTE TO HANDLER ───
         let result: HandlerResult = { bookingUpdatePayload: {} };
 
-        if (status === 'IN_PROGRESS' || action === 'NEXT_SEGMENT_PREPARE') {
+        if (action === 'RELEASE_KTV') {
+            result = await handleReleaseKTV(ctx);
+        } else if (status === 'IN_PROGRESS' || action === 'NEXT_SEGMENT_PREPARE') {
             result = await handleStartTimer(ctx);
         } else if (status === 'CLEANING' || status === 'DONE' || status === 'FEEDBACK') {
             result = await handleFinishService(ctx);
@@ -186,10 +188,6 @@ export async function PATCH(request: Request) {
             }
         }
 
-        // ─── 7. RELEASE_KTV (runs after booking update, independent) ───
-        if (action === 'RELEASE_KTV' && technicianCode) {
-            await handleReleaseKTV(ctx);
-        }
 
         // Removed destructive syncOrderTimelineToDb
 

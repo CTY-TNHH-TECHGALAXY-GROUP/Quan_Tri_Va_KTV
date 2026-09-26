@@ -1,4 +1,4 @@
-import { parseKtvOptions } from '@/lib/ktvUtils';
+import { parseKtvOptions, parseKtvSegments, ktvMetadataValue } from '@/lib/ktvUtils';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
@@ -276,7 +276,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             const finalItemTurns = (itemTurns.length === 0 && (b.BookingItems || []).length === 1) ? assignedTurns : itemTurns;
 
                             let parsedSegments: any[] = [];
-                            try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
+                            try { parsedSegments = parseKtvSegments(bi.segments); } catch (e) { parsedSegments = []; }
 
                             const parsedOptions = parseKtvOptions(bi.options);
 
@@ -356,8 +356,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             ktvId: tCode,
                                             ktvName: parsedOptions?.external_technician_name?.[tCode] || staff?.full_name || tCode,
                                             segments: segments,
-                                            noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || '',
-                                            serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[tCode] ?? ''
+                                            noteForKtv: ktvMetadataValue(parsedOptions.notesForKtvs, tCode) ?? parsedOptions.noteForKtv ?? '',
+                                            serviceNameForKtv: ktvMetadataValue(parsedOptions.serviceNamesForKtvs, tCode) ?? ''
                                         };
                                 });
                             }
@@ -385,8 +385,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         ktvId: t.employee_id,
                                         ktvName: parsedOptions?.external_technician_name?.[t.employee_id] || staff?.full_name || 'KTV',
                                         segments: segments,
-                                        noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || '',
-                                        serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[t.employee_id] ?? ''
+                                        noteForKtv: ktvMetadataValue(parsedOptions.notesForKtvs, t.employee_id) ?? parsedOptions.noteForKtv ?? '',
+                                        serviceNameForKtv: ktvMetadataValue(parsedOptions.serviceNamesForKtvs, t.employee_id) ?? ''
                                     };
                                 });
                             } else if (staffList.length === 0) {

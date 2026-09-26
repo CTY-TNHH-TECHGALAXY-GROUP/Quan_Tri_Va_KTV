@@ -22,7 +22,7 @@ const dependencies={requirePermission:async p=>assert.equal(p,'dispatch_board'),
   currentCounterActor:async()=>({id:'ADMIN',name:'Quầy test',verified:true}),resolveNewExternalKtvIds:async()=>null,
   isTwoSlotSequential,liveDispatchConflict,savedPlanFields,checkedInStaffIds:async()=>new Set(['B']),
   findKtvsNeedingCheckinConfirm:({ktvIds})=>{assert.deepEqual(ktvIds,['B']);return [];},
-  ensureTurnRowsAtEnd:async()=>{throw Error('Không tạo lại tua');},resolveGuestIdsForUpdate:async()=>[],
+  resolveGuestIdsForUpdate:async()=>({updatesToApply:[],newGuests:[]}),
   createNotification:async notification=>{notifications.push(notification);return notifySucceeded;}};
 const exportsStub={};
 new Function(...Object.keys(dependencies),'exports',compiled)(...Object.values(dependencies),exportsStub);

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { isLiveKtvSegment, parseKtvOptions } from '@/lib/ktvUtils';
+import { isLiveKtvSegment, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
 /**
  * ============================================================
  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
  * ============================================================
- * 
+ *
  * Xử lý khi KTV hoàn thành dịch vụ (bấm "Xong").
- * 
+ *
  * 📋 LUỒNG:
  *   1. Gom TẤT CẢ segments của KTV này (cross-item nếu merged)
  *   2. Nếu isMerged: phân bổ thời gian theo duration ratio
@@ -15,28 +15,28 @@ import { isLiveKtvSegment, parseKtvOptions } from '@/lib/ktvUtils';
  *   4. 🧠 SMART STATUS: Chỉ set item = CLEANING khi TẤT CẢ segments done
  *   5. 🧠 DUAL-CONDITION: Item = DONE chỉ khi allSegsDone + alreadyRated
  *   6. recomputeBookingStatus → set booking-level status
- * 
+ *
  * 🚫 KHÔNG ĐƯỢC:
  *   - Set actualEndTime cho segment của KTV KHÁC (each KTV finishes independently)
  *   - Bỏ qua Smart Status check (allSegsDone)
  *   - Force booking status thành DONE khi còn item chưa xong
  *   - Lùi item status đã DONE về CLEANING/FEEDBACK
- * 
+ *
  * ⚠️ EDGE CASES ĐÃ XỬ LÝ:
  *   - 2 KTV 1 DV: Ng 1 xong, item giữ IN_PROGRESS cho Ng 2
  *   - 1 KTV 2 DV (merged): Thời gian phân bổ theo duration ratio
  *   - Ca đêm: Cross-midnight time calculation
  *   - Khách rate trước KTV xong: alreadyRated check
- * 
+ *
  * 📊 DB OPERATIONS:
  *   - Read immutable Booking/item/guest-rating snapshots and compute Smart Status
  *   - ktv_finish_service_atomic locks/validates snapshots, then saves all items,
  *     merged-child statuses and Bookings.status in one transaction
- * 
+ *
  * 📤 TRẢ VỀ:
  *   - bookingPersisted: true, bookingData: committed booking row
  *   - earlyResponse on read/RPC failure; no subsequent booking write/recompute
- * 
+ *
  * 🔗 PHỤ THUỘC: lib/dispatch-status.ts (recomputeBookingStatus)
  * ============================================================
  */
@@ -57,7 +57,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         .select('id, status, rating, BookingGuests(id, rating)')
         .eq('id', bookingId)
         .single();
-    
+
     if (bookingError || !bookingData) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
         error: 'Chưa đọc được đơn hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
 
@@ -75,6 +75,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     const items = bookingItems?.filter((item: any) => targetIds.has(item.id));
     if (itemsError || !items?.length || items.length !== targetIds.size) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
         error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+    for (const row of bookingItems) parseKtvSegments(row.segments, true);
     const itemSnapshots = structuredClone(bookingItems);
     const { data: itemsWithServices, error: servicesError } = await supabase.from('BookingItems')
         .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
@@ -85,7 +86,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     let allGlobalSegs: any[] = [];
     let originalItemsData: Record<string, any[]> = {};
     for (const item of items || []) {
-        let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+        let segs = parseKtvSegments(item.segments);
         originalItemsData[item.id] = [...segs];
         segs.forEach((seg: any, idx: number) => {
             if (isLiveKtvSegment(seg, technicianCode)) {
@@ -99,6 +100,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
 
+    if (!allGlobalSegs.some((s: any) => s.seg.actualStartTime)) {
+        return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+            error: 'Chưa có chặng nào bắt đầu; không thể hoàn thành.' }, { status: 409 }) };
+    }
+    // Reject malformed mutation input rather than silently treating it as no work.
+    if (items.some((item: any) => !parseKtvSegments(item.segments).length)) {
+        return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+            error: 'Dữ liệu chặng không hợp lệ; tải lại đơn.' }, { status: 409 }) };
+    }
     // 📸 UPLOAD HANDOVER PHOTO (if provided)
     let handoverPhotoUrl: string | null = null;
     if (ctx.body?.photoBase64 && technicianCode) {
@@ -108,14 +118,14 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             const buffer = Buffer.from(base64Data, 'base64');
             const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
             const fileName = `handover_${bookingId}_${technicianCode}_${Date.now()}.${fileExt}`;
-            
+
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('attendance')
                 .upload(fileName, buffer, {
                     contentType: `image/${fileExt}`,
                     upsert: false
                 });
-            
+
             if (uploadError) {
                 console.error('❌ [KTV API] Handover photo upload error:', uploadError);
             } else if (uploadData?.path) {
@@ -127,7 +137,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             console.error('❌ [KTV API] Failed to upload handover photo:', err);
         }
     }
-    
+
     // Đồng bộ handoverPhotoUrl vào tất cả segment của KTV này trong đơn hàng này
     if (handoverPhotoUrl) {
         allGlobalSegs.forEach((itemSeg: any) => {
@@ -137,16 +147,18 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         });
     }
-    
+
     // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
-    const hasFinishedSegment = allGlobalSegs.some((s: any) => 
-        s.item.status === 'DONE' || 
+    const hasFinishedSegment = allGlobalSegs.some((s: any) =>
+        s.item.status === 'DONE' ||
         s.seg.actualEndTime
     );
 
     // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
     // tự động gộp và phân bổ thời gian liên tục (kể cả DV gán thêm lúc đang làm).
-    const isMerged = allGlobalSegs.length > 1 
+    const isMerged = allGlobalSegs.length > 1
+        && allGlobalSegs.every((s: any) => s.seg.actualStartTime && s.seg.isMergedRun)
+        && new Set(allGlobalSegs.map((s: any) => s.seg.mergedRunId || s.seg.actualStartTime)).size === 1
         && uniqueItemIds.size === allGlobalSegs.length
         && uniqueRoomIds.size === 1
         && !hasFinishedSegment;
@@ -159,35 +171,35 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         if (actualTimeSpentMs < 0) actualTimeSpentMs = 0; // Guard against negative time
 
         let currentStartTimeMs = new Date(firstStartTime).getTime();
-        
+
         // ⚖️ PROPORTIONAL ALLOCATION (Chia thời gian theo tỉ lệ duration)
         const totalDurationMs = allGlobalSegs.reduce((sum: number, s: any) => sum + ((Number(s.seg.duration) || 60) * 60000), 0);
 
         for (let i = 0; i < allGlobalSegs.length; i++) {
             const target = allGlobalSegs[i];
             const segDurationMs = (Number(target.seg.duration) || 60) * 60000;
-            
+
             target.seg.actualStartTime = new Date(currentStartTimeMs).toISOString();
-            
+
             // Chia tỉ lệ: (Thời gian tiêu chuẩn của DV / Tổng thời gian tiêu chuẩn) * Tổng thời gian thực tế
             let allocatedMs = Math.floor((segDurationMs / (totalDurationMs || 1)) * actualTimeSpentMs);
-            
+
             // Chặng cuối ôm trọn số phút còn lại (tránh sai số làm tròn hoặc finish trễ)
             if (i === allGlobalSegs.length - 1) {
                 allocatedMs = new Date(nowISO).getTime() - currentStartTimeMs;
             }
-            
+
             currentStartTimeMs += allocatedMs;
-            
+
             target.seg.actualEndTime = new Date(currentStartTimeMs).toISOString();
             if (isFeedback) target.seg.feedbackTime = nowISO;
-            
+
             // Đánh dấu lại cờ isMergedRun để UI luôn biết đây là phiên gộp
             target.seg.isMergedRun = true;
-            
+
             originalItemsData[target.item.id][target.idx] = target.seg;
         }
-        
+
     } else {
         // Logic cũ (non-merged) — CHỈ hoàn tất segments đã có actualStartTime
         allGlobalSegs.forEach((target: any) => {
@@ -208,7 +220,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
     for (const item of items || []) {
         let segs = originalItemsData[item.id];
-        
+        if (!segs.some((seg: any) => isLiveKtvSegment(seg, technicianCode) && seg.actualStartTime)) continue;
+
         // (Removed Parallel Sync for actualEndTime so KTVs finish independently)
 
         // 🧠 SMART STATUS: Only set CLEANING when ALL segments in item have actualEndTime
@@ -218,7 +231,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         // cancelled no credit) are ignored — see segmentProgress. Before 14/09/2026 a
         // never-started KTV left by "Kết thúc sớm" pulled the item back to IN_PROGRESS.
         const { allSegsDone, hasUnstartedSegs, allHandovered } = segmentProgress(segs);
-        const alreadyRated = 
+        const alreadyRated =
             ((item as any).itemRating !== null && (item as any).itemRating !== undefined) ||
             ((item as any).guest_id && guestRatings[(item as any).guest_id] != null) ||
             (bookingData?.rating != null);
@@ -262,7 +275,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                     : allSegsDone
                         ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
                         : 'IN_PROGRESS';
-        
+
         const updatePayload: any = { segments: JSON.stringify(segs), status: newItemStatus };
         if (Object.keys(newHandoverImages).length > 0) {
             updatePayload.handover_images = newHandoverImages;
@@ -282,7 +295,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                 updatePayload.handover_submitted_at = new Date().toISOString();
             }
         }
-        
+
         updates.push({ id: item.id, ...updatePayload });
         item.status = newItemStatus;
     }
@@ -290,7 +303,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     // Build child changes from the same baseline, then persist the complete batch atomically.
     for (const item of bookingItems) {
         const opts = parseKtvOptions(item.options);
-        if (opts.mergedIntoId) {
+        if (opts.mergedIntoId && !['CANCELLED', 'DONE'].includes(item.status)
+            && !parseKtvSegments(item.segments).some((seg: any) => seg.ktvId && seg.voided !== true && seg.voided !== 'true')) {
             const parent = bookingItems.find((p: any) => p.id === opts.mergedIntoId);
             if (parent?.status && parent.status !== item.status) {
                 const existing = updates.find(update => update.id === item.id);

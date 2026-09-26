@@ -193,7 +193,7 @@ try {
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-C').segments[0].voided, true);
   oldAccount.props.onStamp('DEMO-C', 'actualStartTime'); flush(); assert.equal(alerts.length, 1); alerts.length = 0;
   assert.equal(liveRows().length, 2); checkPlan('DEMO-B', '10:50', 30);
-  assertName('DEMO-B', ''); assertName('DEMO-A', 'Tên A giữ nguyên');
+  assertName('DEMO-B', 'Tên B cũ'); assertName('DEMO-A', 'Tên A giữ nguyên');
   closeBoth('DEMO-A', 'DEMO-B', '10:30', '10:50', '11:20');
   console.log('PASS FLOW 4/5: Sửa phút A/B + đổi B trong nháp → gửi → nhập tay giờ B → đổi B live → chặn tài khoản B cũ → DONE');
 

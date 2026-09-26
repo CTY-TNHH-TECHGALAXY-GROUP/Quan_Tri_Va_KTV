@@ -1,5 +1,5 @@
 'use client';
-import { parseKtvOptions } from '@/lib/ktvUtils';
+import { parseKtvOptions, sequentialClockAt, ktvMetadataMap } from '@/lib/ktvUtils';
 import { DispatchEditHistory } from './_components/DispatchEditHistory';
 import { dispatchRevision } from '@/lib/dispatch-edit-history';
 import { displayBookingCode } from '@/lib/booking-display-code';
@@ -718,9 +718,11 @@ if (!hasPermission('dispatch_board')) {
     const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && t.status === 'waiting' && isVisibleInKtvPicker(t))) ? toKtvId : '';
     let existingStart = existingB ? Date.parse(`${selectedDate}T${existingB.startTime.slice(0, 5)}:00+07:00`) : NaN;
     if (existingB && existingB.startTime.slice(0, 5) < segment.startTime.slice(0, 5)) existingStart += 86400000;
+    const reference = (existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment));
+    if (!reference || !Number.isFinite(new Date(reference).getTime())) { alert('Chưa có giờ A hợp lệ; sửa và lưu A trước.'); return; }
     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
+      .format(new Date(reference)).replace(' ', 'T');
     setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB, expectedRevision: dispatchRevision(item.options),
       plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
@@ -758,10 +760,8 @@ if (!hasPermission('dispatch_board')) {
       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
       durationMinutes: liveHandoff.durationMinutes,
       metadata: {
-        serviceNamesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
-          .map(row => [row.ktvId, row.serviceNameForKtv ?? parseKtvOptions(item?.options).serviceNamesForKtvs?.[row.ktvId] ?? ''])),
-        notesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
-          .map(row => [row.ktvId, row.noteForKtv ?? ''])),
+        serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(item.options).serviceNamesForKtvs, item.staffList, 'serviceNameForKtv'),
+        notesForKtvs: ktvMetadataMap(parseKtvOptions(item.options).notesForKtvs, item.staffList, 'noteForKtv'),
       } };
     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
     if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
@@ -1255,16 +1255,8 @@ if (!hasPermission('dispatch_board')) {
                   focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
                   avoid: svc.avoid.split(',').map(a => a.trim()).filter(Boolean),
                   noteForKtv: svc.staffList?.[0]?.noteForKtv || '',
-                  notesForKtvs: Object.fromEntries(
-                      svc.staffList
-                          .filter(r => r.ktvId && r.noteForKtv)
-                          .map(r => [r.ktvId, r.noteForKtv])
-                  ),
-                  serviceNamesForKtvs: Object.fromEntries(
-                      svc.staffList
-                          .filter(r => r.ktvId && r.serviceNameForKtv)
-                          .map(r => [r.ktvId, r.serviceNameForKtv])
-                  )
+                  notesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).notesForKtvs, svc.staffList, 'noteForKtv'),
+                  serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).serviceNamesForKtvs, svc.staffList, 'serviceNameForKtv')
               }
           };
       });
@@ -1623,12 +1615,8 @@ if (!hasPermission('dispatch_board')) {
                       focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
                       avoid: svc.avoid.split(',').map(a => a.trim()).filter(Boolean),
                       noteForKtv: svc.staffList?.[0]?.noteForKtv || '',
-                      notesForKtvs: Object.fromEntries(
-                          svc.staffList.filter(r => r.ktvId && r.noteForKtv).map(r => [r.ktvId, r.noteForKtv])
-                      ),
-                      serviceNamesForKtvs: Object.fromEntries(
-                          svc.staffList.filter(r => r.ktvId && r.serviceNameForKtv).map(r => [r.ktvId, r.serviceNameForKtv])
-                      )
+                      notesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).notesForKtvs, svc.staffList, 'noteForKtv'),
+                      serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).serviceNamesForKtvs, svc.staffList, 'serviceNameForKtv')
                   }
               };
           });
@@ -3293,8 +3281,16 @@ Vẫn kết thúc sớm?`)) return;
               </select>
             </label>
             <label className="block text-sm font-semibold">B bắt đầu dự kiến
-              <input type="datetime-local" className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.plannedStartAt}
-                onChange={e => setLiveHandoff(prev => prev ? { ...prev, plannedStartAt: e.target.value } : null)} />
+              <input type="time" className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.plannedStartAt.slice(11, 16)}
+                onChange={e => setLiveHandoff(prev => {
+                  if (!prev) return null;
+                  const svc = orders.find(o => o.id === prev.bookingId)?.services.find(s => s.id === prev.itemId);
+                  const a = svc?.staffList.flatMap(row => row.segments).find(seg => Number(seg.sequenceSlot) === 1 || seg.actualStartTime);
+                  const iso = a && sequentialClockAt(selectedDate, a.startTime, e.target.value);
+                  return { ...prev, plannedStartAt: iso ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
+                    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)).replace(' ', 'T') : '' };
+                })} />
+              <p className="mt-1 text-xs text-gray-500">Ngày theo đơn. Giờ qua 0h được tính trong cùng lượt dịch vụ.</p>
             </label>
             <label className="flex items-center gap-2 text-sm">Thời lượng B
               <input type="number" min="1" max="600" step="1" className="w-20 rounded-lg border p-1"

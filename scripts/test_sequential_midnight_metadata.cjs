@@ -6,7 +6,7 @@ require('ts-node').register({project:join(__dirname,'qa/tsconfig.qa.json'),trans
 require('tsconfig-paths').register({baseUrl:join(__dirname,'..'),paths:{'@/*':['./*']}});
 const {isTwoSlotSequential}=require('../lib/dispatch-status');
 const {dispatchRevision}=require('../lib/dispatch-edit-history');
-const {parseKtvOptions}=require('../lib/ktvUtils');
+const {parseKtvOptions,ktvMetadataMap}=require('../lib/ktvUtils');
 const source=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
 const body=source.slice(source.indexOf('  const confirmLiveHandoff = async () => {'),source.indexOf('  const addStaffRow = async'));
 const compiled=ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
@@ -16,7 +16,7 @@ async function run({overlap=false,start='2026-09-27T00:10',failure=false}={}) {
  const deps={liveHandoff,orders:[{id:'booking',services:[{id:'item',options:{sequentialSlots:2,dispatchRevision:7,serviceNamesForKtvs:{A:'Tên A gốc',B:'Tên B gốc'}},staffList:[
   {ktvId:'A',serviceNameForKtv:'Tên A giữ nguyên',noteForKtv:'Ghi chú A'},
   {ktvId:'B',serviceNameForKtv:'Tên B chưa lưu',noteForKtv:'Ghi chú B chưa lưu'}]}]}],
-  isTwoSlotSequential,dispatchRevision,parseKtvOptions,
+  isTwoSlotSequential,dispatchRevision,parseKtvOptions,ktvMetadataMap,
   setLiveHandoff:update=>{state=typeof update==='function'?update(state):update;},
   enableSequentialItem:async()=>{throw Error('Không bật nối tiếp lại');},
   handoffSequentialKtv:async payload=>{calls.push(structuredClone(payload));return failure?{success:false,error:'Bản cũ'}:overlap&&calls.length===1?{success:false,code:'OVERLAP_CONFIRM_REQUIRED',referenceAt:'2026-09-26T17:20:00Z',referenceKind:'planned'}:{success:true};},

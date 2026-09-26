@@ -38,12 +38,12 @@ async function scenario(failure) {
   if (failure === 'handler-early') return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false, error: 'Already saved a portion; reload.' }, { status: 500 }) };
   if (failure === 'handler-throw') throw new Error('Injected handler network');
   return { bookingUpdatePayload: { status: 'CLEANING' } };
- }, async () => { released++; }, () => false, id => {
+ }, async () => { released++; return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: atomicData }; }, () => false, id => {
   assert.equal(id, '@/lib/dispatch-status'); return { recomputeBookingStatus: () => 'IN_PROGRESS' };
  });
  const response = await exportsStub.PATCH(new Request('http://localhost/api/ktv/booking', { method: 'PATCH', body: JSON.stringify({ bookingId: 'booking', techCode: 'B', status: 'CLEANING', ...(failure === 'atomic-release' ? { action: 'RELEASE_KTV' } : {}) }), headers: { 'Content-Type': 'application/json' } }));
  const body = await response.json();
- if (atomic) { assert.equal(response.status, 200); assert.equal(body.success, true); assert.deepEqual(body.data, atomicData); assert.equal(bookingWrites, 0); assert.equal(safetyReads, 0); assert.equal(handlerCalls, 1); }
+ if (atomic) { assert.equal(response.status, 200); assert.equal(body.success, true); assert.deepEqual(body.data, atomicData); assert.equal(bookingWrites, 0); assert.equal(safetyReads, 0); assert.equal(handlerCalls, failure === 'atomic-release' ? 0 : 1); }
  else if (!failure) { assert.equal(response.status, 200); assert.equal(body.success, true); assert.equal(body.data.status, 'IN_PROGRESS'); assert.equal(bookingWrites, 2); }
  else {
   assert.ok(response.status >= 400, `${failure} must not report HTTP200`);

@@ -1,5 +1,5 @@
 'use client';
-import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
+import { isLiveKtvSegment, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
@@ -15,52 +15,34 @@ import { useToast } from '@/components/ui/Toast';
 import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
 export function WorkingTimeline({ segments, activeIndex, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, shouldMerge?: boolean, totalAssignedMins?: number }) {
-  if (!segments || segments.length === 0) return null;
-  const actualStartTime = segments[0]?.actualStartTime || null;
-
-  let displaySegments = segments;
-  if (shouldMerge && segments.length > 0) {
-    const totalDuration = totalAssignedMins || segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0);
-    displaySegments = [{
-      ...segments[0],
-      id: 'merged-' + segments[0].id,
-      duration: totalDuration
-    }];
-  }
-
-  // Helper để tính giờ tịnh tiến
-  const getShiftedTime = (offsetMins: number) => {
-    if (!actualStartTime) return null;
-    let tStart = actualStartTime;
-    // Xử lý chuỗi HH:mm hoặc HH:mm:ss
-    if (typeof tStart === 'string' && /^\d{1,2}:\d{2}/.test(tStart)) {
-        const [h, m] = tStart.split(':').map(Number);
-        const d = new Date();
-        d.setHours(h, m + offsetMins, 0, 0);
-        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  const clock = (value: any, offset = 0): string => {
+    if (!value) return '—';
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(value))) {
+      const [h, m] = String(value).split(':').map(Number);
+      const minutes = ((h * 60 + m + offset) % 1440 + 1440) % 1440;
+      return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
     }
-
-    if (typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+')) {
-        tStart = tStart.replace(' ', 'T') + 'Z';
-    }
-    const date = new Date(new Date(tStart).getTime() + (offsetMins * 60 * 1000));
-    if (isNaN(date.getTime())) return actualStartTime; // Fallback
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(value);
+    return Number.isFinite(date.getTime())
+      ? new Date(date.getTime() + offset * 60000).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : '—';
   };
-
-  const segmentsWithTimes = displaySegments.reduce<{
-    list: Array<{ seg: (typeof displaySegments)[number]; displayStartTime: string; displayEndTime: string }>;
-    runningMins: number;
-  }>((acc, seg) => {
-    const startMins = acc.runningMins;
-    const endMins = startMins + seg.duration;
-    acc.list.push({
-      seg,
-      displayStartTime: actualStartTime ? getShiftedTime(startMins) : seg.startTime,
-      displayEndTime: actualStartTime ? getShiftedTime(endMins) : seg.endTime,
-    });
-    return { list: acc.list, runningMins: endMins };
-  }, { list: [], runningMins: 0 }).list;
+  // shouldMerge alone is a suggestion until START has persisted the run membership.
+  const merged = shouldMerge && segments.length > 1 && segments.every(seg => seg.isMergedRun && seg.actualStartTime)
+    && new Set(segments.map(seg => seg.mergedRunId || seg.actualStartTime)).size === 1;
+  const displaySegments = merged ? [{ ...segments[0],
+    duration: totalAssignedMins || segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0),
+    actualEndTime: segments.every(seg => seg.actualEndTime) ? segments[segments.length - 1].actualEndTime : undefined,
+    plannedEndAt: segments[segments.length - 1].plannedEndAt,
+    endTime: segments[segments.length - 1].endTime,
+  }] : segments;
+  const segmentsWithTimes = displaySegments.map(seg => ({
+    seg,
+    displayStartTime: clock(seg.plannedStartAt || seg.startTime),
+    displayEndTime: clock(seg.plannedEndAt || seg.endTime),
+    actualText: seg.actualStartTime ? `Thực tế ${clock(seg.actualStartTime)} → ${seg.actualEndTime
+      ? clock(seg.actualEndTime) : `${clock(seg.actualStartTime, Number(seg.duration) || 0)} (dự kiến kết thúc)`}` : '',
+  }));
 
   return (
     <div className="space-y-3">
@@ -69,9 +51,9 @@ export function WorkingTimeline({ segments, activeIndex, shouldMerge, totalAssig
         {activeIndex !== undefined && <span className="text-emerald-600">Chặng {activeIndex + 1}</span>}
       </h3>
       <div className="space-y-2">
-        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime }, idx) => {
-          const isActive = shouldMerge ? activeIndex !== undefined : idx === activeIndex;
-          const isPast = shouldMerge ? false : (activeIndex !== undefined && idx < activeIndex);
+        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime, actualText }, idx) => {
+          const isActive = merged ? activeIndex !== undefined : idx === activeIndex;
+          const isPast = merged ? false : (activeIndex !== undefined && idx < activeIndex);
 
           return (
             <motion.div 
@@ -94,10 +76,12 @@ export function WorkingTimeline({ segments, activeIndex, shouldMerge, totalAssig
               <div className="flex-1">
                 <p className={`text-xs font-black ${isActive ? 'text-emerald-900' : 'text-slate-800'}`}>
                   Phòng {roomLabel(seg.roomId)}
+                  <span className="ml-2 text-[9px] font-normal">Giờ phân công</span>
                   {isActive && <span className="ml-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md animate-pulse">ĐANG LÀM</span>}
                 </p>
                 <p className={`text-[10px] font-bold uppercase tracking-tighter ${isActive ? 'text-emerald-600/70' : 'text-slate-400'}`}>
-                  Giường {seg.bedId?.split('-').pop()} • {seg.duration} phút {shouldMerge && '(Gộp)'}
+                  {actualText && <span className="block normal-case">{actualText}</span>}
+                  Giường {seg.bedId?.split('-').pop()} • {seg.duration} phút {merged && '(Gộp)'}
                 </p>
               </div>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors ${
@@ -211,9 +195,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
   const allTimerKtvSegments = allTimerItemsRaw.flatMap((i: any) => {
     let segs = [];
     if (typeof i?.segments === 'string') {
-        try { segs = JSON.parse(i.segments); } catch (e) { segs = []; }
+        try { segs = parseKtvSegments(i.segments); } catch (e) { segs = []; }
     } else if (Array.isArray(i?.segments)) {
-        segs = i.segments;
+        segs = parseKtvSegments(i.segments);
     }
     return segs
       .filter((s: any) => isLiveKtvSegment(s, logic.ktvId))

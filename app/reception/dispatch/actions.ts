@@ -15,7 +15,6 @@ import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 import { isPlaceholderStaffId, isNewExternalKtvToken, externalNameOfToken, externalKtvNameProblem, findExternalKtvByName } from '@/lib/constants/staff.constants';
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
-import { ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
@@ -36,11 +35,13 @@ async function resolveGuestIdsForUpdate(
     itemUpdates: any[],
     existingItemsBefore: any[]
 ) {
-    const { data: currentGuests } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+    const { data: currentGuests, error: guestsError } = await supabase.from('BookingGuests').select('id').eq('booking_id', bookingId);
+    if (guestsError) throw guestsError;
     const dbItemsMap = new Map(existingItemsBefore?.map(i => [i.id, i.guest_id]) || []);
     const guestIdsDb = currentGuests?.map((g: any) => g.id) || [];
     
     const updatesToApply: { itemId: string, guestId: string }[] = [];
+    const newGuests: any[] = [];
     
     // Group by UI grouping
     const groups = new Map<string, string[]>();
@@ -81,7 +82,7 @@ async function resolveGuestIdsForUpdate(
                     const crypto = require('crypto');
                     targetGuestId = crypto.randomUUID();
                     const nextIndex = guestIdsDb.length + 1;
-                    await supabase.from('BookingGuests').insert({
+                    newGuests.push({
                         id: targetGuestId,
                         booking_id: bookingId,
                         guest_index: nextIndex,
@@ -103,7 +104,7 @@ async function resolveGuestIdsForUpdate(
         }
     }
 
-    return updatesToApply;
+    return { updatesToApply, newGuests };
 }
 
 
@@ -812,7 +813,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         }
         
         // 🚀 BẢO VỆ TRẠNG THÁI BOOKING: Nếu DB đang ở trạng thái cao hơn, không cho lùi
-        const { data: currentBooking } = await supabase.from('Bookings').select('status').eq('id', bookingId).single();
+        const { data: currentBooking, error: currentBookingError } = await supabase.from('Bookings').select('status').eq('id', bookingId).single();
+        if (currentBookingError || !currentBooking) throw currentBookingError || new Error('Không đọc được đơn.');
         if (currentBooking && currentBooking.status) {
             if (!dispatchData.status) {
                 dispatchData.status = currentBooking.status;
@@ -826,12 +828,10 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         }
 
-        if (dispatchData.guestCount) {
-            await supabase.from('Bookings').update({ guestCount: dispatchData.guestCount }).eq('id', bookingId);
-        }
 
         // 3.5 Fetch existing items BEFORE RPC to accurately detect NEW KTVs for notifications
-        const { data: existingItemsBefore } = await supabase.from('BookingItems').select('id, segments, guest_id').eq('bookingId', bookingId);
+        const { data: existingItemsBefore, error: existingItemsError } = await supabase.from('BookingItems').select('id, segments, guest_id').eq('bookingId', bookingId);
+        if (existingItemsError || !existingItemsBefore) throw existingItemsError || new Error('Không đọc được dịch vụ.');
         const oldKtvIds = new Set<string>();
         (existingItemsBefore || []).forEach(item => {
             let segs = [];
@@ -839,36 +839,15 @@ export async function processDispatch(bookingId: string, dispatchData: {
             segs.forEach((s: any) => { if (s.ktvId) oldKtvIds.add(s.ktvId); });
         });
 
-        // 🔥 ĐỒNG BỘ GUEST_ID TỪ UI GỘP DỊCH VỤ CŨ
-        if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
-            try {
-                const updatesToApply = await resolveGuestIdsForUpdate(
-                    supabase,
-                    bookingId,
-                    dispatchData.itemUpdates,
-                    existingItemsBefore || []
-                );
-                if (updatesToApply.length > 0) {
-                    for (const { itemId, guestId } of updatesToApply) {
-                        await supabase.from('BookingItems').update({ guest_id: guestId }).eq('id', itemId);
-                    }
-                    console.log('✅ [Sync Guest] Updated items:', updatesToApply);
-                }
-            } catch (err) {
-                console.error('❌ [Sync Guest] Error:', err);
-            }
-        }
-
-        // KTV chưa có dòng TurnQueue hôm đó (quầy vừa xác nhận): tạo trước ở CUỐI hàng.
-        // RPC không set check_in_order/queue_position → DB DEFAULT 1 → người chưa điểm
-        // danh chen lên #1 tua. RPC upsert dòng này thành 'assigned', giữ nguyên thứ tự.
-        if (ktvIdsWithoutTurnRow.length > 0) {
-            await ensureTurnRowsAtEnd(supabase, ktvIdsWithoutTurnRow, dispatchData.date);
-        }
+        const guestPlan = await resolveGuestIdsForUpdate(supabase, bookingId, dispatchData.itemUpdates || [], existingItemsBefore);
+        const guestIds = new Map(guestPlan.updatesToApply.map(update => [update.itemId, update.guestId]));
+        dispatchData.itemUpdates = dispatchData.itemUpdates?.map(item => guestIds.has(item.id)
+            ? { ...item, guest_id: guestIds.get(item.id) } : item);
 
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION
         const { data, error } = await applyDispatchEdit(supabase, bookingId, 'DISPATCH', {
             ...dispatchData, status: dispatchData.status || 'PREPARING',
+            newGuests: guestPlan.newGuests, turnStaffIds: ktvIdsWithoutTurnRow,
             staffAssignments: dispatchData.staffAssignments || [], itemUpdates: dispatchData.itemUpdates || []
         });
 
@@ -878,9 +857,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
         }
 
         if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return data;
-        if (data && !data.success) {
-            console.error('❌ [Server] RPC failed internally:', data.error);
-            throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
+        if (!data?.success) {
+            console.error('❌ [Server] RPC failed internally:', data?.error);
+            throw new Error(data?.error || 'Máy chủ chưa xác nhận lưu điều phối');
         }
 
         const notificationWarnings: string[] = [];
@@ -897,21 +876,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
             if (!notified) notificationWarnings.push(`Đã lưu phân công B (${b.ktvId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
         }
 
-        // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
-        if (dispatchData.guestUpdates && dispatchData.guestUpdates.length > 0) {
-            for (const gu of dispatchData.guestUpdates) {
-                const updateData: any = {};
-                if (gu.bedId !== undefined) updateData.bed_id = gu.bedId;
-                if (gu.roomId !== undefined) updateData.room_id = gu.roomId;
-                if (gu.status !== undefined) updateData.status = gu.status;
-                if (gu.notes !== undefined) updateData.notes = gu.notes;
-                if (gu.focusArea !== undefined) updateData.focus_area = gu.focusArea;
-                
-                if (Object.keys(updateData).length > 0) {
-                    await supabase.from('BookingGuests').update(updateData).eq('id', gu.id);
-                }
-            }
-        }
+        // Guest writes now share the dispatch revision transaction.
 
         // 4. Send background push and realtime notification to KTVs
         if (dispatchData.staffAssignments && dispatchData.staffAssignments.length > 0) {
@@ -1212,6 +1177,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
         let currentItems: any[] | null = null;
         let currentGuests: any[] | null = null;
+        let newGuests: any[] = [];
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
@@ -1221,23 +1187,11 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             currentItems = cItems;
             currentGuests = cGuests;
             
-            // 🔥 ĐỒNG BỘ GUEST_ID TỪ UI GỘP DỊCH VỤ CŨ
-            try {
-                const updatesToApply = await resolveGuestIdsForUpdate(
-                    supabase,
-                    bookingId,
-                    dispatchData.itemUpdates,
-                    currentItems || []
-                );
-                if (updatesToApply.length > 0) {
-                    for (const { itemId, guestId } of updatesToApply) {
-                        await supabase.from('BookingItems').update({ guest_id: guestId }).eq('id', itemId);
-                    }
-                    console.log('✅ [Sync Guest Draft] Updated items:', updatesToApply);
-                }
-            } catch (err) {
-                console.error('❌ [Sync Guest Draft] Error:', err);
-            }
+            const guestPlan = await resolveGuestIdsForUpdate(supabase, bookingId, dispatchData.itemUpdates, currentItems || []);
+            newGuests = guestPlan.newGuests;
+            const resolvedGuestIds = new Map(guestPlan.updatesToApply.map(update => [update.itemId, update.guestId]));
+            dispatchData.itemUpdates = dispatchData.itemUpdates.map(item => resolvedGuestIds.has(item.id)
+                ? { ...item, guest_id: resolvedGuestIds.get(item.id) } : item);
 
             if (currentItems) {
                 dispatchData.itemUpdates = dispatchData.itemUpdates.map(updateItem => {
@@ -1327,14 +1281,14 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 const isChild = !!itemOpts.mergedIntoId;
                 
                 // 🔥 TRANSLATION: Gán guest_id của cha cho con nếu bị gộp
-                let targetGuestId = undefined;
-                if (isChild && currentItems) {
+                let targetGuestId = (item as any).guest_id;
+                if (!targetGuestId && isChild && currentItems) {
                     const parentId = itemOpts.mergedIntoId;
                     const dbParent = currentItems.find(i => i.id === parentId);
                     if (dbParent && dbParent.guest_id) {
                         targetGuestId = dbParent.guest_id;
                     }
-                } else if (currentItems) {
+                } else if (!targetGuestId && currentItems) {
                     const dbItem = currentItems.find(i => i.id === item.id);
                     if (dbItem && dbItem.guest_id) {
                         targetGuestId = dbItem.guest_id;
@@ -1392,7 +1346,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             }
         }
         const { data: saved, error: saveError } = await applyDispatchEdit(supabase, bookingId, 'DRAFT', {
-            ...dispatchData, itemUpdates: finalItemUpdates
+            ...dispatchData, newGuests, itemUpdates: finalItemUpdates
         });
         if (saveError) throw saveError;
         if (saved?.code === 'OVERLAP_CONFIRM_REQUIRED') return saved;

@@ -1,5 +1,5 @@
 'use client';
-import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
+import { isLiveKtvSegment, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
 
 import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
@@ -249,9 +249,9 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   const allKtvSegments = allItemsRaw.flatMap((i: any) => {
     let segs = [];
     if (typeof i?.segments === 'string') {
-        try { segs = JSON.parse(i.segments); } catch (e) { segs = []; }
+        try { segs = parseKtvSegments(i.segments); } catch (e) { segs = []; }
     } else if (Array.isArray(i?.segments)) {
-        segs = i.segments;
+        segs = parseKtvSegments(i.segments);
     }
     return segs.filter((s: any) => isLiveKtvSegment(s, logic.ktvId)).map((s: any) => {
         return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
