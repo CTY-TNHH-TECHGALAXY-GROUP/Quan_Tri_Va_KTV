@@ -206,6 +206,9 @@ interface KanbanBoardProps {
     onPauseNow?: (orderId: string, subOrder: any) => Promise<void> | void;
     onAssignSequentialB?: (orderId: string, itemId: string, fromKtvId: string, toKtvId?: string) => void;
     onFinishSequentialAfterA?: (orderId: string, itemId: string) => void;
+    onCustomerRating?: (orderId: string, rating: number, guestId?: string) => void;
+    onKtvCommentClick?: (order: PendingOrder, subOrder: SubOrder) => void;
+    onOpenRatingLink?: (orderId: string) => void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
@@ -289,7 +292,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onFinishSequentialAfterA }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onFinishSequentialAfterA, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
     // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
     const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
 
@@ -982,7 +985,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             
                                                                             {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.dispatchStatus) && order && (
                                                                                 <button 
-                                                                                    onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
+                                                                                    onClick={(e) => { e.stopPropagation(); if (onKtvCommentClick) onKtvCommentClick(order, subOrder); else setCommentModalData({subOrder, order}); }}
                                                                                     className="text-amber-700 bg-amber-100 border border-amber-300 p-1 rounded-lg shadow-sm shrink-0 flex items-center justify-center hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all"
                                                                                     title="Nhận xét KTV"
                                                                                 >
@@ -1157,7 +1160,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 </div>
                                                                             );
                                                                         })}
-                                                                        {isTwoSlotSequential(s.options) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 2 && seg.voided !== true)) && (
+                                                                        {isTwoSlotSequential(s.options) && !s.options?.finishedAfterA && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 2 && seg.voided !== true)) && (
                                                                             <button className="w-full rounded-lg border border-dashed border-indigo-300 px-2.5 py-1 text-left text-[10px] font-bold text-indigo-600"
                                                                                 onClick={e => { e.stopPropagation(); const a = dsKtvHienThi(s).find((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 1)); if (a) onAssignSequentialB?.(order.id, s.id, a.ktvId); }}>
                                                                                 B · Chưa gán KTV
@@ -1234,6 +1237,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                             onClick={(e) => {
                                                                                                 e.stopPropagation();
                                                                                                 if (confirm(`Xác nhận đánh giá ${star} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
+                                                                                                    if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star, g.id); return; }
                                                                                                     import('../actions').then(m => {
                                                                                                         if (m.submitGuestRating) {
                                                                                                             m.submitGuestRating(g.id, star);
@@ -1280,7 +1284,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                     e.stopPropagation();
                                                                                     const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
                                                                 const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
-                                                                                    window.open(ratingUrl, '_blank');
+                                                                                    if (onOpenRatingLink) onOpenRatingLink(order.id); else window.open(ratingUrl, '_blank');
                                                                                 }}
                                                                                 className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
                                                                             >
@@ -1294,6 +1298,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
                                                                                         if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
+                                                                                            if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star); return; }
                                                                                             import('../actions').then(m => {
                                                                                                 m.submitCustomerRating(subOrder.bookingId, star);
                                                                                             });
@@ -1514,7 +1519,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         return null;
                                                     })()}
                                                     {(() => {
-                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options)
+                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options) && !s.options?.finishedAfterA
                                                             && s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 1 && seg.actualStartTime && seg.actualEndTime))
                                                             && !s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 2 && seg.actualStartTime)));
                                                         return item && onFinishSequentialAfterA ? <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
@@ -1598,7 +1603,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 e.stopPropagation();
                                                                 const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
                                                                 const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
-                                                                window.open(ratingUrl, '_blank');
+                                                                if (onOpenRatingLink) onOpenRatingLink(order.id); else window.open(ratingUrl, '_blank');
                                                             }}
                                                             className={`px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center justify-center gap-1 ${services.some((s: any) => s.status === 'PAUSED') ? 'w-full' : ''}`}
                                                             title="Link đánh giá"
