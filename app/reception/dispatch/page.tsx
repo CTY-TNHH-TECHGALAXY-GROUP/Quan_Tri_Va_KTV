@@ -724,9 +724,9 @@ if (!hasPermission('dispatch_board')) {
 
   const openLiveHandoff = (bookingId: string, itemId: string, fromKtvId: string, toKtvId: string) => {
     const item = orders.find(o => o.id === bookingId)?.services.find(s => s.id === itemId);
-    const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => (seg as any).sequenceSlot === 1 || seg.actualStartTime);
+    const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => Number(seg.sequenceSlot) === 1 || seg.actualStartTime);
     if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
-    const existingB = item.staffList.flatMap(row => row.segments).find(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true);
+    const existingB = item.staffList.flatMap(row => row.segments).find(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true);
     const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && t.status === 'waiting' && isVisibleInKtvPicker(t))) ? toKtvId : '';
     let existingStart = existingB ? Date.parse(`${selectedDate}T${existingB.startTime.slice(0, 5)}:00+07:00`) : NaN;
     if (existingB && existingB.startTime.slice(0, 5) < segment.startTime.slice(0, 5)) existingStart += 86400000;

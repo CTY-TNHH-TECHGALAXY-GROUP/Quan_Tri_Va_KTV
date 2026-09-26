@@ -85,3 +85,53 @@ const ended = render({ minutes: 30, sequential: true, status: 'CLEANING', finish
 assert.ok(!ended.includes('B · Chưa chọn nhân viên'));
 assert.ok(!ended.includes('+ Nối tiếp'));
 console.log('PASS 5/5: Sau gửi chọn B qua thao tác riêng; kết thúc sau A không còn thêm B');
+
+const kanbanFilename = join(__dirname, '../app/reception/dispatch/_components/KanbanBoard.tsx');
+const kanbanModule = new Module(kanbanFilename, module);
+kanbanModule.filename = kanbanFilename;
+kanbanModule.paths = Module._nodeModulePaths(dirname(kanbanFilename));
+kanbanModule._compile(ts.transpileModule(readFileSync(kanbanFilename, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+}).outputText, kanbanFilename);
+
+function renderKanban({ status = 'PREPARING', assignedB = false, voidedB = false, finishedAfterA = false } = {}) {
+  const a = { id: 'a', ktvId: 'A', sequenceSlot: '1', startTime: '10:00', endTime: '10:30', duration: 30, roomId: 'R', bedId: 'X',
+    ...(status === 'IN_PROGRESS' ? { actualStartTime: '2026-09-26T03:00:00Z', actualEndTime: '2026-09-26T03:30:00Z' } : {}) };
+  const b = { id: 'b', ktvId: 'B', sequenceSlot: '2', startTime: '10:30', endTime: '11:00', duration: 30, roomId: 'R', bedId: 'X', voided: voidedB };
+  const segments = assignedB || voidedB ? [a, b] : [a];
+  const service = { id: 'item', serviceName: 'Test', duration: 60, status, selectedRoomId: 'R',
+    options: { sequentialSlots: 2, finishedAfterA }, staffList: segments.map(s => ({ id: s.id, ktvId: s.ktvId, ktvName: s.ktvId, segments: [s], noteForKtv: '' })) };
+  const order = { id: 'child-booking', parentBookingId: 'parent-booking', billCode: 'LOCAL-001', customerName: 'Khách test',
+    dispatchStatus: status, rawStatus: status, time: '10:00', services: [service], hasAssignedKtv: true };
+  const originalJsx = jsxRuntime.jsx, originalJsxs = jsxRuntime.jsxs;
+  let button, detail, handoff;
+  const capture = original => (...args) => {
+    const element = original(...args);
+    if (element.type === 'button' && element.props.title === 'Mở điều phối để gán nhân viên B') button = element;
+    return element;
+  };
+  jsxRuntime.jsx = capture(originalJsx); jsxRuntime.jsxs = capture(originalJsxs);
+  let html;
+  try { html = renderToStaticMarkup(React.createElement(kanbanModule.exports.KanbanBoard, {
+    orders: [order], staffs: [], onUpdateStatus() {}, onOpenDetail: (...args) => { detail = args; },
+    onAssignSequentialB: (...args) => { handoff = args; },
+  })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; }
+  return { html, button, click: () => {
+    let stopped = false;
+    button.props.onClick({ stopPropagation: () => { stopped = true; } });
+    assert.equal(stopped, true);
+    assert.equal(detail[0], 'parent-booking');
+    assert.ok(detail[1]);
+    assert.deepEqual(handoff, ['child-booking', 'item', 'A']);
+  } };
+}
+for (const config of [{}, { status: 'IN_PROGRESS' }, { voidedB: true }]) {
+  const card = renderKanban(config);
+  assert.ok(card.html.includes('Chưa gán B · + Điều phối'));
+  assert.ok(card.button.props.className.includes('text-rose-600'));
+  card.click();
+}
+for (const config of [{ assignedB: true }, { status: 'CLEANING', finishedAfterA: true }, { status: 'CANCELLED' }]) {
+  assert.equal(renderKanban(config).button, undefined);
+}
+console.log('PASS Kanban: Chưa gán B mở đúng điều phối và gán B; không hiện khi B đã gán/ca đã đóng');

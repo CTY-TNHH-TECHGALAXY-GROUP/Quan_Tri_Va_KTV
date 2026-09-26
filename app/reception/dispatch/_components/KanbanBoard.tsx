@@ -1160,10 +1160,15 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 </div>
                                                                             );
                                                                         })}
-                                                                        {isTwoSlotSequential(s.options) && !s.options?.finishedAfterA && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 2 && seg.voided !== true)) && (
-                                                                            <button className="w-full rounded-lg border border-dashed border-indigo-300 px-2.5 py-1 text-left text-[10px] font-bold text-indigo-600"
-                                                                                onClick={e => { e.stopPropagation(); const a = dsKtvHienThi(s).find((st: any) => st.segments?.some((seg: any) => seg.sequenceSlot === 1)); if (a) onAssignSequentialB?.(order.id, s.id, a.ktvId); }}>
-                                                                                B · Chưa gán KTV
+                                                                        {isTwoSlotSequential(s.options) && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 2 && seg.voided !== true)) && (
+                                                                            <button type="button" title="Mở điều phối để gán nhân viên B" className="w-full rounded-lg border border-dashed border-rose-300 bg-rose-50 px-2.5 py-2 text-left text-[10px] font-bold text-rose-600 hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500"
+                                                                                onClick={e => {
+                                                                                    e.stopPropagation();
+                                                                                    onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus);
+                                                                                    const a = dsKtvHienThi(s).find((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 1));
+                                                                                    if (a) onAssignSequentialB?.(subOrder.bookingId, s.id, a.ktvId);
+                                                                                }}>
+                                                                                Chưa gán B · + Điều phối
                                                                             </button>
                                                                         )}
                                                                     </div>
