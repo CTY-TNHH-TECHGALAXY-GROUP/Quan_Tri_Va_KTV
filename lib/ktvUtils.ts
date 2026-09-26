@@ -27,3 +27,24 @@ export function ktvMatchesSeg(
         .map(s => s.trim())
         .some(s => s.toLowerCase() === ktvCode.trim().toLowerCase());
 }
+
+/** Runtime selection excludes replaced/cancelled segments; history keeps them. */
+export function isLiveKtvSegment(seg: any, code: string | undefined | null): boolean {
+    return seg?.voided !== true && seg?.voided !== 'true' && ktvMatchesSeg(seg?.ktvId, code);
+}
+
+/** Normalize legacy JSON options without leaking malformed data into UI. */
+export function parseKtvOptions(raw: any): Record<string, any> {
+    try {
+        for (let i = 0; i < 2 && typeof raw === 'string'; i++) raw = JSON.parse(raw);
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    } catch { return {}; }
+}
+
+/** Use this account's current name; catalogue name survives clearing an override. */
+export function ktvServiceName(item: any, code: string | undefined | null): string {
+    const opts = parseKtvOptions(item?.options);
+    const names = parseKtvOptions(opts.serviceNamesForKtvs);
+    const own = Object.entries(names).find(([id]) => id.trim().toLowerCase() === code?.trim().toLowerCase())?.[1];
+    return String(own || opts._generatedDisplayName || opts.displayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
+}

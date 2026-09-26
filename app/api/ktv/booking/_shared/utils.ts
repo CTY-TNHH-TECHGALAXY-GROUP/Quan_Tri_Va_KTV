@@ -14,7 +14,7 @@
 import { NextResponse } from 'next/server';
 import { toBusinessDate, getDayCutoffHours, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 // Re-export từ lib/ktvUtils (client-safe) để API handlers dùng cùng logic
-export { ktvMatchesSeg } from '@/lib/ktvUtils';
+export { ktvMatchesSeg, isLiveKtvSegment } from '@/lib/ktvUtils';
 
 
 /**

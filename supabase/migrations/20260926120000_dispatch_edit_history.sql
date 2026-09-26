@@ -136,6 +136,9 @@ BEGIN
     IF COALESCE(next_b->>'startTime','') = '' OR COALESCE((next_b->>'duration')::integer,0) NOT BETWEEN 1 AND 600 THEN
       RAISE EXCEPTION 'Giờ/phút B không hợp lệ';
     END IF;
+    IF abs(extract(epoch FROM ((next_b->>'startTime')::time - (b->>'startTime')::time))) >= 43200 THEN
+      RAISE EXCEPTION 'Giờ B có thể chuyển ngày; dùng Sửa B để chọn ngày/giờ đầy đủ';
+    END IF;
     SELECT COALESCE((NULLIF(b->>'plannedStartAt','')::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
       (SELECT business_date FROM "KtvAssignments" WHERE booking_item_id = item_row.id AND segment_id = b->>'id' LIMIT 1)) INTO plan_day;
     IF plan_day IS NULL THEN RAISE EXCEPTION 'Thiếu ngày phân công B; tải lại đơn'; END IF;
@@ -300,9 +303,24 @@ BEGIN
   ELSIF p_action = 'ENABLE_SEQUENTIAL' THEN
     result := dispatch_enable_sequential_item(p_booking_id, p_payload->>'itemId');
   ELSIF p_action = 'ASSIGN_B' THEN
+    IF p_payload ? 'metadata' AND (jsonb_typeof(p_payload->'metadata') IS DISTINCT FROM 'object'
+       OR jsonb_typeof(p_payload->'metadata'->'serviceNamesForKtvs') IS DISTINCT FROM 'object'
+       OR jsonb_typeof(p_payload->'metadata'->'notesForKtvs') IS DISTINCT FROM 'object'
+       OR EXISTS (SELECT 1 FROM (
+                    SELECT value FROM jsonb_each(p_payload->'metadata'->'serviceNamesForKtvs')
+                    UNION ALL SELECT value FROM jsonb_each(p_payload->'metadata'->'notesForKtvs')) entries
+                  WHERE jsonb_typeof(value) IS DISTINCT FROM 'string')) THEN
+      RAISE EXCEPTION 'Tên/ghi chú B không hợp lệ';
+    END IF;
     result := dispatch_assign_sequential_slot_b(p_booking_id, p_payload->>'itemId', p_payload->>'toKtvId',
       (p_payload->>'plannedStartAt')::timestamptz, (p_payload->>'durationMinutes')::integer,
       COALESCE((p_payload->>'confirmOverlap')::boolean, false));
+    IF COALESCE((result->>'success')::boolean, false) AND p_payload ? 'metadata' THEN
+      UPDATE "BookingItems" SET options = COALESCE(jsonb_unwrap_string(options), '{}') ||
+        jsonb_build_object('serviceNamesForKtvs', p_payload->'metadata'->'serviceNamesForKtvs',
+                          'notesForKtvs', p_payload->'metadata'->'notesForKtvs')
+      WHERE id = p_payload->>'itemId' AND "bookingId" = p_booking_id;
+    END IF;
   ELSE
     result := dispatch_finish_sequential_after_a(p_booking_id, p_payload->>'itemId');
   END IF;

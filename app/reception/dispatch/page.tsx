@@ -1,4 +1,5 @@
 'use client';
+import { parseKtvOptions } from '@/lib/ktvUtils';
 import { DispatchEditHistory } from './_components/DispatchEditHistory';
 import { dispatchRevision } from '@/lib/dispatch-edit-history';
 import { displayBookingCode } from '@/lib/booking-display-code';
@@ -149,21 +150,6 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 
 export default function DispatchBoardPage() {
     
-    // 🔧 THÊM HÀM SAFE PARSE JSON ĐỂ TRÁNH CRASH TRÌNH DUYỆT
-    const safeParseOptions = (options: any) => {
-        if (!options) return {};
-        if (typeof options === 'object') return options;
-        if (typeof options === 'string') {
-            if (!options.trim()) return {};
-            try {
-                return JSON.parse(options);
-            } catch (e) {
-                console.error('Failed to parse options string:', options);
-                return {};
-            }
-        }
-        return {};
-    };
   const { hasPermission } = useAuth();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
@@ -752,6 +738,11 @@ if (!hasPermission('dispatch_board')) {
       return;
     }
     const item = orders.find(o => o.id === liveHandoff.bookingId)?.services.find(s => s.id === liveHandoff.itemId);
+    if (!item) {
+      alert('Ca đã thay đổi. Tải lại đơn trước khi sửa B.');
+      setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+      return;
+    }
     let expectedRevision = liveHandoff.expectedRevision;
     if (!isTwoSlotSequential(item?.options)) {
       const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId, expectedRevision);
@@ -765,7 +756,13 @@ if (!hasPermission('dispatch_board')) {
     }
     const input = { expectedRevision, bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
-      durationMinutes: liveHandoff.durationMinutes };
+      durationMinutes: liveHandoff.durationMinutes,
+      metadata: {
+        serviceNamesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
+          .map(row => [row.ktvId, row.serviceNameForKtv ?? parseKtvOptions(item?.options).serviceNamesForKtvs?.[row.ktvId] ?? ''])),
+        notesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
+          .map(row => [row.ktvId, row.noteForKtv ?? ''])),
+      } };
     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
     if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
       const marker = res.referenceKind === 'actual' ? 'thực tế' : 'dự kiến';
@@ -783,6 +780,7 @@ if (!hasPermission('dispatch_board')) {
       setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
       return;
     }
+    if (res.warnings?.length) alert(res.warnings.join('\n'));
     setLiveHandoff(null);
     await fetchData();
   };
@@ -1245,7 +1243,7 @@ if (!hasPermission('dispatch_board')) {
               technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
               options: {
-                  ...safeParseOptions(svc.options),
+                  ...parseKtvOptions(svc.options),
                   displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                   mergedIntoId: svc.mergedIntoId,
                   mergedServiceIds: svc.mergedServiceIds,
@@ -1611,7 +1609,7 @@ if (!hasPermission('dispatch_board')) {
                   status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
                   segments: allSegments,
                   options: {
-                      ...safeParseOptions(svc.options),
+                      ...parseKtvOptions(svc.options),
                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
                       mergedIntoId: svc.mergedIntoId,
                       mergedServiceIds: svc.mergedServiceIds,
@@ -1687,6 +1685,7 @@ if (!hasPermission('dispatch_board')) {
               if (!confirmUpdatedBOverlap(res)) return;
               confirmOverlap = true; res = await sendPayload();
           }
+          if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
               return; 

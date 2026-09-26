@@ -1,0 +1,44 @@
+const assert=require('node:assert/strict');
+const {readFileSync}=require('node:fs');
+const {join}=require('node:path');
+const ts=require('typescript');
+const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const helperSource=readFileSync(join(__dirname,'../lib/notification-helper.ts'),'utf8').replace(/^import .*;\s*/m,'');
+let result,inserted,throws=false,initialized=true;
+const oldNotice={id:'old',employeeId:'B',isRead:false};
+const notices=[oldNotice];
+const db={from(table){assert.equal(table,'StaffNotifications');return {async insert(payload){inserted=payload;if(throws)throw Error('network');if(!result.error)notices.push(payload);return result;},delete(){throw Error('Prior notices must not be deleted');}};}};
+const helperExports={};
+new Function('getSupabaseAdmin','exports',compile(helperSource))(()=>initialized?db:null,helperExports);
+const source=readFileSync(join(__dirname,'../app/reception/dispatch/actions.ts'),'utf8');
+const handoff=source.slice(source.indexOf('export async function handoffSequentialKtv('),source.indexOf('export async function finishSequentialAfterA('));
+const actionExports={};let persisted=0;
+new Function('requirePermission','getSupabaseAdmin','applyDispatchEdit','createNotification','exports',compile(handoff))(
+  async()=>{},()=>db,async(_db,_booking,action,payload)=>{assert.equal(action,'ASSIGN_B');assert.equal(payload.toKtvId,'B');persisted++;return {data:{success:true}};},helperExports.createNotification,actionExports);
+async function main(){
+  result={error:null};
+  assert.equal(await helperExports.createNotification({employeeId:'B',bookingId:'booking',type:'KTV_NEW_ORDER',message:'Latest B at 10:45'}),true);
+  assert.equal(inserted.employeeId,'B');assert.equal(notices[0],oldNotice);
+  result={error:{message:'insert denied'}};
+  assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'failure'}),false);
+  throws=true;assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'network'}),false);throws=false;
+  initialized=false;assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'missing client'}),false);initialized=true;
+  const input={bookingId:'booking',itemId:'item',toKtvId:'B',plannedStartAt:'2026-09-26T10:45:00+07:00',durationMinutes:30,confirmOverlap:false,expectedRevision:4};
+  const failedNotification=await actionExports.handoffSequentialKtv(input);
+  assert.equal(failedNotification.success,true);assert.equal(persisted,1);assert.equal(failedNotification.warnings.length,1);assert.equal(notices[0],oldNotice);
+  throws=true;
+  const networkWarning=await actionExports.handoffSequentialKtv(input);
+  assert.equal(networkWarning.success,true);assert.equal(networkWarning.warnings.length,1);assert.equal(notices[0],oldNotice);
+  throws=false;
+  result={error:null};const success=await actionExports.handoffSequentialKtv(input);
+  assert.equal(success.success,true);assert.deepEqual(success.warnings,[]);assert.equal(inserted.employeeId,'B');assert.equal(notices[0],oldNotice);
+  const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
+  assert.ok(page.includes("if (res.warnings?.length) alert(res.warnings.join('\\n'))"));
+  assert.ok(page.includes("if (res.success && res.warnings?.length) alert(res.warnings.join('\\n'))"));
+  const process=source.slice(source.indexOf('export async function processDispatch('),source.indexOf('/** Manual actual-time corrections'));
+  const bBlock=process.slice(process.indexOf('const notificationWarnings'),process.indexOf('// 3.8'));
+  assert.ok(!bBlock.includes('.delete()'));
+  assert.ok(!process.includes('.delete()'));
+  console.log('PASS notifications: success/INSERT error/network/missing client; ASSIGN_B persistence remains successful, old notices remain, both UI paths expose warnings');
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

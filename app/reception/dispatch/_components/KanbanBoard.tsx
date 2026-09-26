@@ -1071,7 +1071,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 veTungNguoi(s) ? (
                                                                     <div className="space-y-1 mt-1">
                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
-                                                                            const seg = st?.segments?.[0];
+                                                                            const seg = st?.segments?.find((g: any) => g.voided !== true && g.voided !== 'true') || st?.segments?.[0];
                                                                             const ktvStart = isTwoSlotSequential(s.options)
                                                                                 ? (seg?.actualStartTime || seg?.startTime || '--:--')
                                                                                 : (seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart);
@@ -1082,7 +1082,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
                                                                                    hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
                                                                                    ngoài thẻ. */
-                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
+                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.voided && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         {isTwoSlotSequential(s.options) && <span className="text-[9px] font-black text-indigo-600">{seg?.sequenceSlot === 2 ? 'B' : 'A'}</span>}
                                                                                         {isTwoSlotSequential(s.options) && seg?.sequenceSlot === 2 && !seg?.actualStartTime && !seg?.voided && <span className="text-[8px] font-bold text-amber-700">Chờ bắt đầu</span>}

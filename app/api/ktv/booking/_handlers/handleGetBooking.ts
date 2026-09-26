@@ -1,3 +1,4 @@
+import { isLiveKtvSegment, parseKtvOptions, ktvServiceName } from '@/lib/ktvUtils';
 import { isUtilityService } from '@/lib/booking.logic';
 /**
  * ============================================================
@@ -34,7 +35,7 @@ import { isUtilityService } from '@/lib/booking.logic';
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getBusinessDateFromConfig, ktvMatchesSeg } from '../_shared/utils';
+import { getBusinessDateFromConfig } from '../_shared/utils';
 import { HandoverService } from '@/lib/services/HandoverService';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
@@ -77,7 +78,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
                     } catch { segs = []; }
                     
-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
+                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
                     const isStillWorking = mySegs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
                     
                     if (isStillWorking) {
@@ -416,7 +417,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 const rawSId = String(i.serviceId || '').trim();
                 const sId = rawSId.toLowerCase();
                 const svc = svcMap.get(sId);
-                const opts = i.options || {};
+                const opts = parseKtvOptions(i.options);
                 let bCustomerNote = '';
                 if (booking?.notes && typeof booking.notes === 'string' && booking.notes.trim().startsWith('{')) {
                     try {
@@ -482,7 +483,9 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     guest_label: guest_label,
                     guest_index: guest_index,
                     guest_customer_name: guest_customer_name,
-                    service_name: (technicianCode && opts?.serviceNamesForKtvs?.[technicianCode]) || opts._generatedDisplayName || opts.displayName || getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
+                    options: opts,
+                    base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
+                    service_name: ktvServiceName({ ...i, options: opts, base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`) }, technicianCode),
                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
                     procedure: svc?.procedure || null,
                     focusConfig: svc?.focusConfig || null,
@@ -532,7 +535,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             for (const item of ktvItems) {
                 let segs: any[] = [];
                 try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
-                const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
+                const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 if (runningIdx !== -1) {
                     activeItemId = item.id;
@@ -549,7 +552,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     statusSource = 'item_status';
                     let segs: any[] = [];
                     try { segs = typeof inProgressItem.segments === 'string' ? JSON.parse(inProgressItem.segments) : (Array.isArray(inProgressItem.segments) ? inProgressItem.segments : []); } catch { segs = []; }
-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
+                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
                 }
@@ -611,13 +614,13 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             if (isUtilityService(item)) return;
             
             // 🔥 GUARD: Nếu dịch vụ này đã bị gộp (có mergedIntoId), KTV không cần quan tâm chặng ảo của nó
-            const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+            const opts = parseKtvOptions(item.options);
             if (opts.mergedIntoId) return;
 
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
             segs.forEach((s: any) => {
-                if (ktvMatchesSeg(s.ktvId, technicianCode)) {
+                if (isLiveKtvSegment(s, technicianCode)) {
                     mySegments.push({
                         origStart: s.startTime || item.timeStart || '',
                         duration: Number(s.duration) || Number(item.duration) || 60,
@@ -731,7 +734,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                                     if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
                                 });
                                 const names = nextItems.map((ni: any) => {
-                                    const displayName = ni.options?.displayName;
+                                    const displayName = parseKtvOptions(ni.options).displayName;
                                     if (displayName) return displayName;
                                     const svc = svcMap.get(String(ni.serviceId || '').trim().toLowerCase());
                                     const nameVN = svc?.nameVN;
@@ -813,7 +816,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             const itemsToGroup = nonUtilityAllItems.length > 0 ? nonUtilityAllItems : itemsWithService;
             
             for (const item of itemsToGroup) {
-                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                const opts = parseKtvOptions(item.options);
                 const groupId = opts.mergedIntoId || item.id;
                 if (!allItemGroups.has(groupId)) allItemGroups.set(groupId, []);
                 allItemGroups.get(groupId)!.push(item);
@@ -825,7 +828,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 let myGroupId = null;
                 const activeItem = itemsWithService.find((i: any) => i.id === activeItemId) || ktvItems[0];
                 if (activeItem) {
-                    const opts = typeof activeItem.options === 'string' ? JSON.parse(activeItem.options) : (activeItem.options || {});
+                    const opts = parseKtvOptions(activeItem.options);
                     myGroupId = opts.mergedIntoId || activeItem.id;
                 }
                 
@@ -856,7 +859,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 acceptedAt: (() => {
                     const it = itemsWithService.find((i: any) => i.id === activeItemId);
                     if (!it || !technicianCode) return null;
-                    const o = typeof it.options === 'string' ? JSON.parse(it.options || '{}') : (it.options || {});
+                    const o = parseKtvOptions(it.options);
                     const mine = o.acceptedByStaff?.[technicianCode.toUpperCase()];
                     if (mine) return mine;
 
@@ -870,7 +873,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     try {
                         const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
                         segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
-                            String(x?.ktvId || '').toLowerCase().includes(String(technicianCode).toLowerCase()));
+                            isLiveKtvSegment(x, technicianCode));
                     } catch { }
                     const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
                     if (laNguoiVaoThay) return null;

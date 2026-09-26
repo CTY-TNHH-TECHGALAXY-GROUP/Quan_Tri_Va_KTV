@@ -1,4 +1,5 @@
 'use client';
+import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
 
 import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
@@ -109,10 +110,10 @@ export function ScreenDashboard({ logic }: { logic: any }) {
       .filter(i => ids.includes(i.id))
       .map(i => ({
         id: i.id,
-        name: i.service_name || 'Dịch vụ',
+        name: ktvServiceName(i, logic.ktvId) || 'Dịch vụ',
         minutes: Number(i.duration) || 60,
       }));
-  }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems]);
+  }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems, logic.ktvId]);
 
   const handleRejectOrder = async (reason: string, itemIdOrLock?: string | boolean, confirmLockArg = false) => {
     // Modal gọi (reason, itemId); nhánh xác nhận khoá gọi (reason, undefined, true).
@@ -243,7 +244,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   const item = allItems[0] || {};
   
   // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI biết có bao nhiêu dịch vụ
-  const allServiceNames = allItemsRaw.map((i: any) => i.service_name).filter(Boolean);
+  const allServiceNames = allItemsRaw.map((i: any) => ktvServiceName(i, logic.ktvId)).filter(Boolean);
   // Tổng thời gian: dùng allItemsRaw (bao gồm cả child) để tính tổng duration chính xác
   const allKtvSegments = allItemsRaw.flatMap((i: any) => {
     let segs = [];
@@ -252,14 +253,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
     } else if (Array.isArray(i?.segments)) {
         segs = i.segments;
     }
-    return segs.filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase()).map((s: any) => {
-        let customName = undefined;
-        try {
-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
-            // KtvId from segment or logic.ktvId
-            customName = opts?.serviceNamesForKtvs?.[s.ktvId || logic.ktvId];
-        } catch(e) {}
-        return { ...s, _itemId: i.id, _serviceName: customName || i.service_name };
+    return segs.filter((s: any) => isLiveKtvSegment(s, logic.ktvId)).map((s: any) => {
+        return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
     });
   }).sort((a: any, b: any) => {
       const timeA = a.startTime || '23:59';
@@ -452,7 +447,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                     mình sắp làm gì và trong bao lâu. Mã đơn chỉ để đối chiếu với quầy. */}
                 <div className="min-w-0">
                   <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
-                    {item?.service_name || 'Dịch vụ'}
+                    {ktvServiceName(item, logic.ktvId) || 'Dịch vụ'}
                   </p>
                   {/* KHONG hien thoi luong o man xac nhan.
                       Con so o day lay tu `item.duration` — thoi luong CA DICH VU,
@@ -804,7 +799,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                              👨 {item.guest_label}
                            </span>
                         )}
-                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
+                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
                       </h3>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>

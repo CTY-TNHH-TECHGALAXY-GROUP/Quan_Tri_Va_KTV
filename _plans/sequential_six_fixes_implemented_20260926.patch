@@ -1,0 +1,1522 @@
+diff --git a/app/api/ktv/booking/_handlers/handleFinishService.ts b/app/api/ktv/booking/_handlers/handleFinishService.ts
+index c7add7f3..c4ab672d 100644
+--- a/app/api/ktv/booking/_handlers/handleFinishService.ts
++++ b/app/api/ktv/booking/_handlers/handleFinishService.ts
+@@ -1,3 +1,5 @@
++import { NextResponse } from 'next/server';
++import { isLiveKtvSegment } from '@/lib/ktvUtils';
+ /**
+  * ============================================================
+  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
+@@ -37,7 +39,7 @@
+  * ============================================================
+  */
+ 
+-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
++import { HandlerContext, HandlerResult } from '../_shared/utils';
+ import { isUtilityService } from '@/lib/booking.logic';
+ import { segmentProgress, sequentialSlotsComplete } from '@/lib/dispatch-status';
+ 
+@@ -48,12 +50,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+     const nowISO = new Date().toISOString();
+ 
+     // 🔍 Fetch bookings and guest ratings để check rating
+-    const { data: bookingData } = await supabase
++    const { data: bookingData, error: bookingError } = await supabase
+         .from('Bookings')
+         .select('rating, BookingGuests(id, rating)')
+         .eq('id', bookingId)
+         .single();
+     
++    if (bookingError || !bookingData) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Chưa đọc được đơn hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
++
+     const guestRatings: Record<string, number> = {};
+     if (bookingData?.BookingGuests) {
+         bookingData.BookingGuests.forEach((g: any) => {
+@@ -62,7 +67,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+     }
+ 
+     // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
+-    const { data: items } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
++    const { data: items, error: itemsError } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
++    if (itemsError || !items?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+     
+     let allGlobalSegs: any[] = [];
+     let originalItemsData: Record<string, any[]> = {};
+@@ -70,11 +77,13 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+         let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+         originalItemsData[item.id] = [...segs];
+         segs.forEach((seg: any, idx: number) => {
+-            if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
++            if (isLiveKtvSegment(seg, technicianCode)) {
+                 allGlobalSegs.push({ item, idx, seg, _itemId: item.id });
+             }
+         });
+     }
++    if (!allGlobalSegs.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Không còn chặng được gán cho nhân viên này. Tải lại đơn.' }, { status: 409 }) };
+     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
+     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
+     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
+@@ -121,7 +130,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+     // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
+     const hasFinishedSegment = allGlobalSegs.some((s: any) => 
+         s.item.status === 'DONE' || 
+-        (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS')
++        s.seg.actualEndTime
+     );
+ 
+     // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
+@@ -185,6 +194,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+         });
+     }
+ 
++    // ponytail: per-item writes can partially succeed; reload/retry preserves saved stamps.
++    // Use a DB transaction if all-item atomic completion becomes required.
+     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
+     for (const item of items || []) {
+         let segs = originalItemsData[item.id];
+@@ -263,13 +274,20 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+             }
+         }
+         
+-        await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
++        const { error: saveError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
++        if (saveError) {
++            console.error('[FinishService] Save failed', item.id, saveError);
++            return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++                error: 'Chưa lưu xong giờ hoàn thành; có thể đã lưu một phần. Tải lại đơn và thử lại.', itemId: item.id }, { status: 500 }) };
++        }
+         console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
+     }
+     
+     // ─── 3.5 🔄 SYNC CHILD ITEMS ───
+     // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
+-    const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
++    const { data: bookingItemsToSync, error: syncReadError } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
++    if (syncReadError || !bookingItemsToSync?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Đã lưu một phần; chưa đọc được dữ liệu đồng bộ. Tải lại để tiếp tục.' }, { status: 500 }) };
+     if (bookingItemsToSync) {
+         const updates = [];
+         for (const item of bookingItemsToSync) {
+@@ -285,7 +303,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+         }
+         if (updates.length > 0) {
+             for (const upd of updates) {
+-                await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
++                const { error: syncError } = await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
++                if (syncError) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++                    error: 'Đã lưu một phần; chưa đồng bộ được dịch vụ con. Tải lại để tiếp tục.' }, { status: 500 }) };
+             }
+         }
+     }
+@@ -295,14 +315,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+     const allItems = bookingItemsToSync;
+     if (allItems && allItems.length > 0) {
+         // Cần fetch lại Services info cho phần kiểm tra is_utility
+-        const { data: itemsWithServices } = await supabase
++        const { data: itemsWithServices, error: servicesError } = await supabase
+             .from('BookingItems')
+             .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
+             .eq('bookingId', bookingId);
+             
++        if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++            error: 'Đã lưu một phần; chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
+         const validItems = allItems.filter((i: any) => {
+             const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
+-            const name = svcInfo?.Services?.nameVN || '';
+             return !isUtilityService(svcInfo);
+         });
+         const finalItems = validItems.length > 0 ? validItems : allItems;
+diff --git a/app/api/ktv/booking/_handlers/handleGetBooking.ts b/app/api/ktv/booking/_handlers/handleGetBooking.ts
+index 9d064169..0e4250d0 100644
+--- a/app/api/ktv/booking/_handlers/handleGetBooking.ts
++++ b/app/api/ktv/booking/_handlers/handleGetBooking.ts
+@@ -1,3 +1,4 @@
++import { isLiveKtvSegment, parseKtvOptions, ktvServiceName } from '@/lib/ktvUtils';
+ import { isUtilityService } from '@/lib/booking.logic';
+ /**
+  * ============================================================
+@@ -34,7 +35,7 @@ import { isUtilityService } from '@/lib/booking.logic';
+ 
+ import { NextResponse } from 'next/server';
+ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+-import { getBusinessDateFromConfig, ktvMatchesSeg } from '../_shared/utils';
++import { getBusinessDateFromConfig } from '../_shared/utils';
+ import { HandoverService } from '@/lib/services/HandoverService';
+ import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+ 
+@@ -77,7 +78,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                         segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+                     } catch { segs = []; }
+                     
+-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
++                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
+                     const isStillWorking = mySegs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
+                     
+                     if (isStillWorking) {
+@@ -416,7 +417,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                 const rawSId = String(i.serviceId || '').trim();
+                 const sId = rawSId.toLowerCase();
+                 const svc = svcMap.get(sId);
+-                const opts = i.options || {};
++                const opts = parseKtvOptions(i.options);
+                 let bCustomerNote = '';
+                 if (booking?.notes && typeof booking.notes === 'string' && booking.notes.trim().startsWith('{')) {
+                     try {
+@@ -482,7 +483,9 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                     guest_label: guest_label,
+                     guest_index: guest_index,
+                     guest_customer_name: guest_customer_name,
+-                    service_name: (technicianCode && opts?.serviceNamesForKtvs?.[technicianCode]) || opts._generatedDisplayName || opts.displayName || getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
++                    options: opts,
++                    base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
++                    service_name: ktvServiceName({ ...i, options: opts, base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`) }, technicianCode),
+                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
+                     procedure: svc?.procedure || null,
+                     focusConfig: svc?.focusConfig || null,
+@@ -532,7 +535,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+             for (const item of ktvItems) {
+                 let segs: any[] = [];
+                 try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
+-                const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
++                const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
+                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
+                 if (runningIdx !== -1) {
+                     activeItemId = item.id;
+@@ -549,7 +552,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                     statusSource = 'item_status';
+                     let segs: any[] = [];
+                     try { segs = typeof inProgressItem.segments === 'string' ? JSON.parse(inProgressItem.segments) : (Array.isArray(inProgressItem.segments) ? inProgressItem.segments : []); } catch { segs = []; }
+-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
++                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
+                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
+                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
+                 }
+@@ -611,13 +614,13 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+             if (isUtilityService(item)) return;
+             
+             // 🔥 GUARD: Nếu dịch vụ này đã bị gộp (có mergedIntoId), KTV không cần quan tâm chặng ảo của nó
+-            const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
++            const opts = parseKtvOptions(item.options);
+             if (opts.mergedIntoId) return;
+ 
+             let segs: any[] = [];
+             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+             segs.forEach((s: any) => {
+-                if (ktvMatchesSeg(s.ktvId, technicianCode)) {
++                if (isLiveKtvSegment(s, technicianCode)) {
+                     mySegments.push({
+                         origStart: s.startTime || item.timeStart || '',
+                         duration: Number(s.duration) || Number(item.duration) || 60,
+@@ -731,7 +734,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                                     if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
+                                 });
+                                 const names = nextItems.map((ni: any) => {
+-                                    const displayName = ni.options?.displayName;
++                                    const displayName = parseKtvOptions(ni.options).displayName;
+                                     if (displayName) return displayName;
+                                     const svc = svcMap.get(String(ni.serviceId || '').trim().toLowerCase());
+                                     const nameVN = svc?.nameVN;
+@@ -813,7 +816,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+             const itemsToGroup = nonUtilityAllItems.length > 0 ? nonUtilityAllItems : itemsWithService;
+             
+             for (const item of itemsToGroup) {
+-                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
++                const opts = parseKtvOptions(item.options);
+                 const groupId = opts.mergedIntoId || item.id;
+                 if (!allItemGroups.has(groupId)) allItemGroups.set(groupId, []);
+                 allItemGroups.get(groupId)!.push(item);
+@@ -825,7 +828,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                 let myGroupId = null;
+                 const activeItem = itemsWithService.find((i: any) => i.id === activeItemId) || ktvItems[0];
+                 if (activeItem) {
+-                    const opts = typeof activeItem.options === 'string' ? JSON.parse(activeItem.options) : (activeItem.options || {});
++                    const opts = parseKtvOptions(activeItem.options);
+                     myGroupId = opts.mergedIntoId || activeItem.id;
+                 }
+                 
+@@ -856,7 +859,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                 acceptedAt: (() => {
+                     const it = itemsWithService.find((i: any) => i.id === activeItemId);
+                     if (!it || !technicianCode) return null;
+-                    const o = typeof it.options === 'string' ? JSON.parse(it.options || '{}') : (it.options || {});
++                    const o = parseKtvOptions(it.options);
+                     const mine = o.acceptedByStaff?.[technicianCode.toUpperCase()];
+                     if (mine) return mine;
+ 
+@@ -870,7 +873,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse>
+                     try {
+                         const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
+                         segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
+-                            String(x?.ktvId || '').toLowerCase().includes(String(technicianCode).toLowerCase()));
++                            isLiveKtvSegment(x, technicianCode));
+                     } catch { }
+                     const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
+                     if (laNguoiVaoThay) return null;
+diff --git a/app/api/ktv/booking/_handlers/handleStartTimer.ts b/app/api/ktv/booking/_handlers/handleStartTimer.ts
+index 37d860e7..8dc806f9 100644
+--- a/app/api/ktv/booking/_handlers/handleStartTimer.ts
++++ b/app/api/ktv/booking/_handlers/handleStartTimer.ts
+@@ -31,7 +31,7 @@
+  */
+ 
+ import { NextResponse } from 'next/server';
+-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
++import { HandlerContext, HandlerResult, isLiveKtvSegment } from '../_shared/utils';
+ import { calculateAccurateEndTimeFromSegments } from '@/lib/time-helper';
+ import { isTwoSlotSequential } from '@/lib/dispatch-status';
+ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
+@@ -81,7 +81,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
+                     ? JSON.parse(assignedItem.segments) : (assignedItem.segments || []);
+             } catch {}
+             const slotB = assignedSegments.find((seg: any) =>
+-                seg.sequenceSlot === 2 && ktvMatchesSeg(seg.ktvId, technicianCode)
++                seg.sequenceSlot === 2 && isLiveKtvSegment(seg, technicianCode)
+                 && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true);
+             if (slotB) {
+                 const { data: assignment } = await supabase.from('KtvAssignments')
+@@ -147,7 +147,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
+             let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+             originalItemsData[item.id] = [...segs]; // Backup the entire array
+             segs.forEach((seg: any, idx: number) => {
+-                if (ktvMatchesSeg(seg.ktvId, technicianCode)) allGlobalSegs.push({ item, idx, seg });
++                if (isLiveKtvSegment(seg, technicianCode)) allGlobalSegs.push({ item, idx, seg });
+             });
+         }
+         allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
+@@ -156,7 +156,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
+ 
+         if (action === 'START_TIMER' &&
+             (!target ||
+-             !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
++             !isLiveKtvSegment(target.seg, technicianCode) ||
+              target.seg.actualEndTime)) {
+             return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
+         }
+@@ -304,7 +304,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
+                         if (
+                             belongsToRun &&
+                             !itemSeg.seg.actualEndTime &&
+-                            ktvMatchesSeg(itemSeg.seg.ktvId, technicianCode)
++                            isLiveKtvSegment(itemSeg.seg, technicianCode)
+                         ) {
+                             itemSeg.seg.startPhotoUrl = startPhotoUrl;
+                             itemSeg.seg.guestSlipperPhotoUrl = guestSlipperPhotoUrl;
+diff --git a/app/api/ktv/booking/_shared/utils.ts b/app/api/ktv/booking/_shared/utils.ts
+index 642b6bfd..5d329aa4 100644
+--- a/app/api/ktv/booking/_shared/utils.ts
++++ b/app/api/ktv/booking/_shared/utils.ts
+@@ -14,7 +14,7 @@
+ import { NextResponse } from 'next/server';
+ import { toBusinessDate, getDayCutoffHours, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
+ // Re-export từ lib/ktvUtils (client-safe) để API handlers dùng cùng logic
+-export { ktvMatchesSeg } from '@/lib/ktvUtils';
++export { ktvMatchesSeg, isLiveKtvSegment } from '@/lib/ktvUtils';
+ 
+ 
+ /**
+diff --git a/app/ktv/dashboard/KTVDashboard.logic.ts b/app/ktv/dashboard/KTVDashboard.logic.ts
+index 21a387ce..1f12c9d9 100644
+--- a/app/ktv/dashboard/KTVDashboard.logic.ts
++++ b/app/ktv/dashboard/KTVDashboard.logic.ts
+@@ -1,7 +1,7 @@
+ import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+ import { isUtilityService } from '@/lib/booking.logic';
+ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+-import { ktvMatchesSeg } from '@/lib/ktvUtils';
++import { ktvMatchesSeg, isLiveKtvSegment, ktvServiceName, parseKtvOptions } from '@/lib/ktvUtils';
+ import { apiClient } from '@/lib/apiClient';
+ import { API } from '@/lib/api-endpoints';
+ import { useAuth } from '@/lib/auth-context';
+@@ -482,15 +482,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
+         const calculateAllowedTime = () => {
+             const assignedItem = booking.BookingItems?.find((item: any) =>
+                 item.id === (booking.assignedItemId || booking.activeItemId));
+-            let assignedOptions: any = assignedItem?.options || {};
+-            try { if (typeof assignedOptions === 'string') assignedOptions = JSON.parse(assignedOptions); } catch { assignedOptions = {}; }
++            const assignedOptions = parseKtvOptions(assignedItem?.options);
+             let assignedSegments: any[] = [];
+             try {
+                 assignedSegments = typeof assignedItem?.segments === 'string'
+                     ? JSON.parse(assignedItem.segments) : (assignedItem?.segments || []);
+             } catch {}
+             if (assignedOptions.sequentialSlots === 2 && assignedSegments.some((seg: any) =>
+-                seg.sequenceSlot === 2 && seg.ktvId?.toLowerCase() === ktvId?.toLowerCase()
++                Number(seg.sequenceSlot) === 2 && isLiveKtvSegment(seg, ktvId)
+                 && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true)) {
+                 setAllowedStartTime(null);
+                 setCanStart(true);
+@@ -585,7 +584,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 } catch { segs = []; }
+                 
+                 const mySegs = segs.filter((seg: any) => 
+-                                    ktvMatchesSeg(seg.ktvId, ktvId)
++                                    isLiveKtvSegment(seg, ktvId)
+                 );
+                 allMySegs.push(...mySegs);
+             }
+@@ -672,7 +671,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+             try {
+                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+             } catch { segs = []; }
+-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+             allMySegsForStatus.push(...mySegs);
+         }
+ 
+@@ -886,7 +885,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 if (booking?.BookingItems && ktvId) {
+                     const mySegs = booking.BookingItems.flatMap((i: any) => {
+                         let parsed = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []);
+-                        return parsed.filter((s: any) => s.ktvId === ktvId || (s.ktvId && s.ktvId.startsWith(ktvId)));
++                        return parsed.filter((s: any) => isLiveKtvSegment(s, ktvId));
+                     });
+                     
+                     if (mySegs.length > 0) {
+@@ -1152,7 +1151,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                             } catch { segs = []; }
+                             
+                             const mySegs = segs.filter((seg: any) => 
+-                                                                ktvMatchesSeg(seg.ktvId, ktvId)
++                                                                isLiveKtvSegment(seg, ktvId)
+                             );
+                             
+                             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
+@@ -1435,7 +1434,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                         const daBatDau = items.some((i: any) => {
+                             let segs: any[] = [];
+                             try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []); } catch {}
+-                            return segs.some((s: any) => ktvMatchesSeg(s.ktvId, ktvId) && s.actualStartTime);
++                            return segs.some((s: any) => isLiveKtvSegment(s, ktvId) && s.actualStartTime);
+                         });
+                         if (daBatDau) { scheduleRealtimeFetch(); return; }
+                     }
+@@ -1469,7 +1468,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                         setBooking((prev: any) => {
+                             if (!prev) return prev;
+                             const items = prev.BookingItems?.map((i: any) => 
+-                                i.id === payload.new.id ? { ...i, ...payload.new } : i
++                                i.id === payload.new.id ? { ...i, ...payload.new, service_name: ktvServiceName({ ...i, ...payload.new }, ktvId) } : i
+                             ) || [];
+                             return { ...prev, BookingItems: items };
+                         });
+@@ -1492,7 +1491,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 if (payload.eventType === 'UPDATE' && isMyItem) {
+                     setBooking((prev: any) => {
+                         if (!prev) return prev;
+-                        const items = prev.BookingItems?.map((i: any) => i.id === payload.new.id ? { ...i, ...payload.new } : i) || [];
++                        const items = prev.BookingItems?.map((i: any) => i.id === payload.new.id ? { ...i, ...payload.new, service_name: ktvServiceName({ ...i, ...payload.new }, ktvId) } : i) || [];
+                         return { ...prev, BookingItems: items };
+                     });
+                 }
+@@ -1632,7 +1631,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 try {
+                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                 } catch { segs = []; }
+-                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++                const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+                 const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
+                 allMySegs.push(...mySegsWithId);
+             }
+@@ -1864,7 +1863,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                         try {
+                             segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                         } catch { segs = []; }
+-                        const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++                        const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+                         if (mySegs.some((s: any) => s.actualStartTime)) {
+                             hasStarted = true;
+                             break;
+@@ -1962,7 +1961,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 try {
+                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+                 } catch { segs = []; }
+-                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++                const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+                 
+                 mySegs.forEach((seg: any) => { seg._itemId = ai.id; seg._guestId = ai.guest_id; }); // 🔥 Explicitly inject _itemId and _guestId
+                 allMySegs.push(...mySegs);
+@@ -2016,7 +2015,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+             try {
+                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+             } catch { segs = []; }
+-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
+             allMySegs.push(...mySegsWithId);
+         }
+@@ -2079,6 +2078,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+             } else {
+                 console.error('❌ [KTV Logic] Start error:', res.error);
+                 addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
++                if (fetchBookingRef.current) fetchBookingRef.current();
+             }
+         } catch (error: any) {
+             console.error('❌ [KTV Logic] Exception during Start:', error);
+@@ -2090,6 +2090,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+ 
+     const handleFinishTimer = async () => {
+         if (!booking || !ktvId) return;
++        try {
+ 
+         // 🔎 Kiểm tra: còn chặng nào phía sau không?
+         const allItemIds: string[] = booking.assignedItemIds?.length > 0
+@@ -2105,7 +2106,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
+             try {
+                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
+             } catch { segs = []; }
+-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
++            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
+             allMySegs.push(...mySegsWithId);
+         }
+@@ -2192,9 +2193,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
+                 postServiceBookingIdRef.current = null;
+                 try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch (e) {}
+                 addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
++                if (fetchBookingRef.current) fetchBookingRef.current();
+             }
+             setIsLoading(false);
+         }
++        } catch (error: any) {
++            isTransitioningRef.current = false;
++            postServiceBookingIdRef.current = null;
++            try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch {}
++            addToast('Chưa hoàn tất lưu: ' + (error.message || 'Lỗi kết nối. Thử lại.'), 'error');
++            if (fetchBookingRef.current) fetchBookingRef.current();
++        } finally { setIsLoading(false); }
+     };
+ 
+     // Keep ref up-to-date so timer callback always calls latest version
+diff --git a/app/ktv/dashboard/_screens/ScreenDashboard.tsx b/app/ktv/dashboard/_screens/ScreenDashboard.tsx
+index b3b87389..0321615d 100644
+--- a/app/ktv/dashboard/_screens/ScreenDashboard.tsx
++++ b/app/ktv/dashboard/_screens/ScreenDashboard.tsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
+ 
+ import Link from 'next/link';
+ import React, { useState, Suspense } from 'react';
+@@ -109,10 +110,10 @@ export function ScreenDashboard({ logic }: { logic: any }) {
+       .filter(i => ids.includes(i.id))
+       .map(i => ({
+         id: i.id,
+-        name: i.service_name || 'Dịch vụ',
++        name: ktvServiceName(i, logic.ktvId) || 'Dịch vụ',
+         minutes: Number(i.duration) || 60,
+       }));
+-  }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems]);
++  }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems, logic.ktvId]);
+ 
+   const handleRejectOrder = async (reason: string, itemIdOrLock?: string | boolean, confirmLockArg = false) => {
+     // Modal gọi (reason, itemId); nhánh xác nhận khoá gọi (reason, undefined, true).
+@@ -243,7 +244,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
+   const item = allItems[0] || {};
+   
+   // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI biết có bao nhiêu dịch vụ
+-  const allServiceNames = allItemsRaw.map((i: any) => i.service_name).filter(Boolean);
++  const allServiceNames = allItemsRaw.map((i: any) => ktvServiceName(i, logic.ktvId)).filter(Boolean);
+   // Tổng thời gian: dùng allItemsRaw (bao gồm cả child) để tính tổng duration chính xác
+   const allKtvSegments = allItemsRaw.flatMap((i: any) => {
+     let segs = [];
+@@ -252,14 +253,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
+     } else if (Array.isArray(i?.segments)) {
+         segs = i.segments;
+     }
+-    return segs.filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase()).map((s: any) => {
+-        let customName = undefined;
+-        try {
+-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
+-            // KtvId from segment or logic.ktvId
+-            customName = opts?.serviceNamesForKtvs?.[s.ktvId || logic.ktvId];
+-        } catch(e) {}
+-        return { ...s, _itemId: i.id, _serviceName: customName || i.service_name };
++    return segs.filter((s: any) => isLiveKtvSegment(s, logic.ktvId)).map((s: any) => {
++        return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
+     });
+   }).sort((a: any, b: any) => {
+       const timeA = a.startTime || '23:59';
+@@ -452,7 +447,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
+                     mình sắp làm gì và trong bao lâu. Mã đơn chỉ để đối chiếu với quầy. */}
+                 <div className="min-w-0">
+                   <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
+-                    {item?.service_name || 'Dịch vụ'}
++                    {ktvServiceName(item, logic.ktvId) || 'Dịch vụ'}
+                   </p>
+                   {/* KHONG hien thoi luong o man xac nhan.
+                       Con so o day lay tu `item.duration` — thoi luong CA DICH VU,
+@@ -804,7 +799,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
+                              👨 {item.guest_label}
+                            </span>
+                         )}
+-                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
++                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
+                       </h3>
+                       <div className="flex items-center gap-2 mt-1 flex-wrap">
+                         <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
+diff --git a/app/ktv/dashboard/_screens/ScreenTimer.tsx b/app/ktv/dashboard/_screens/ScreenTimer.tsx
+index 199653f4..3ecc6331 100644
+--- a/app/ktv/dashboard/_screens/ScreenTimer.tsx
++++ b/app/ktv/dashboard/_screens/ScreenTimer.tsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
+ 
+ import React, { useState, Suspense } from 'react';
+ import { API } from '@/lib/api-endpoints';
+@@ -204,7 +205,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
+     : allTimerItemsRaw;
+   const item = allTimerItems[0] || {};
+   // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI Timer biết có bao nhiêu dịch vụ
+-  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => i.service_name).filter(Boolean);
++  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => ktvServiceName(i, logic.ktvId)).filter(Boolean);
+   
+   // Segments: dùng allTimerItemsRaw để tính tổng duration chính xác
+   const allTimerKtvSegments = allTimerItemsRaw.flatMap((i: any) => {
+@@ -215,14 +216,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
+         segs = i.segments;
+     }
+     return segs
+-      .filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase())
++      .filter((s: any) => isLiveKtvSegment(s, logic.ktvId))
+       .map((s: any) => {
+-        let customName = undefined;
+-        try {
+-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
+-            customName = opts?.serviceNamesForKtvs?.[s.ktvId || logic.ktvId];
+-        } catch(e) {}
+-        return { ...s, _itemId: i.id, _serviceName: customName || i.service_name };
++        return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
+       });
+   }).sort((a: any, b: any) => {
+       const timeA = a.startTime || '23:59';
+@@ -300,7 +296,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
+                  👨 {item.guest_label}
+                </span>
+             )}
+-            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
++            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
+           </h1>
+           <div className="flex flex-wrap items-center gap-3 gap-y-1">
+             <div className="flex items-center gap-1.5 text-slate-800 font-black shrink-0">
+diff --git a/app/reception/dispatch/_components/KanbanBoard.tsx b/app/reception/dispatch/_components/KanbanBoard.tsx
+index 16417624..3dd7be59 100644
+--- a/app/reception/dispatch/_components/KanbanBoard.tsx
++++ b/app/reception/dispatch/_components/KanbanBoard.tsx
+@@ -1071,7 +1071,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
+                                                                 veTungNguoi(s) ? (
+                                                                     <div className="space-y-1 mt-1">
+                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
+-                                                                            const seg = st?.segments?.[0];
++                                                                            const seg = st?.segments?.find((g: any) => g.voided !== true && g.voided !== 'true') || st?.segments?.[0];
+                                                                             const ktvStart = isTwoSlotSequential(s.options)
+                                                                                 ? (seg?.actualStartTime || seg?.startTime || '--:--')
+                                                                                 : (seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart);
+@@ -1082,7 +1082,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
+                                                                                 /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
+                                                                                    hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
+                                                                                    ngoài thẻ. */
+-                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
++                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.voided && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
+                                                                                     <div className="flex items-center gap-1.5">
+                                                                                         {isTwoSlotSequential(s.options) && <span className="text-[9px] font-black text-indigo-600">{seg?.sequenceSlot === 2 ? 'B' : 'A'}</span>}
+                                                                                         {isTwoSlotSequential(s.options) && seg?.sequenceSlot === 2 && !seg?.actualStartTime && !seg?.voided && <span className="text-[8px] font-bold text-amber-700">Chờ bắt đầu</span>}
+diff --git a/app/reception/dispatch/_components/QuickDispatchTable.tsx b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+index d8031d23..f657ecf3 100644
+--- a/app/reception/dispatch/_components/QuickDispatchTable.tsx
++++ b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+@@ -390,28 +390,29 @@ export const QuickDispatchTable = ({
+           if (item.staffList.length > 0) {
+             item.staffList.forEach(staff => {
+               if (staff.ktvId) {
++                const firstSegment = staff.segments?.find(seg => (seg as any).voided !== true && (seg as any).voided !== 'true') || staff.segments?.[0];
+                 ktvIds.push(staff.ktvId);
+                 if (staff.ktvName && staff.ktvName !== staff.ktvId) {
+                   ktvDisplayNames[staff.ktvId] = staff.ktvName;
+                 }
+-                roomIds.push(staff.segments?.[0]?.roomId || '');
++                roomIds.push(firstSegment?.roomId || '');
+                 const saved = Number(item.options?.dispatchRevision || 0) > 0 || !['NEW', 'WAITING'].includes(item.status || 'NEW');
+-                startTimes.push(staff.segments?.[0]?.startTime ?? (saved ? '' : defaultTime));
++                startTimes.push(firstSegment?.startTime ?? (saved ? '' : defaultTime));
+                 
+-                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : (saved ? 0 : duration);
+-                let finalEndTime = staff.segments?.[0]?.endTime;
++                let totalStaffDur = (firstSegment?.duration !== undefined && firstSegment?.duration !== null) ? firstSegment!.duration : (saved ? 0 : duration);
++                let finalEndTime = firstSegment?.endTime;
+                 
+                 // Parent segment duration already contains the TOTAL merged duration
+                 // Do NOT add child durations here — it would double-count
+                 if (!finalEndTime) {
+-                   finalEndTime = saved ? '' : calcEndTime(staff.segments?.[0]?.startTime ?? defaultTime, totalStaffDur);
++                   finalEndTime = saved ? '' : calcEndTime(firstSegment?.startTime ?? defaultTime, totalStaffDur);
+                 }
+                 
+                 endTimes.push(finalEndTime);
+                 ktvDurationsList.push(totalStaffDur);
+                 ktvNotesList.push(staff.noteForKtv || '');
+                 ktvServiceNamesList.push(staff.serviceNameForKtv ?? item.options?.serviceNamesForKtvs?.[staff.ktvId] ?? '');
+-                bedIdsList.push(staff.segments?.[0]?.bedId || '');
++                bedIdsList.push(firstSegment?.bedId || '');
+               }
+             });
+           }
+@@ -1498,7 +1499,7 @@ const ServiceGroupCard = ({
+           </div>
+           <div className="relative mb-2" ref={dropdownRef}>
+             <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => { if (!state.confirmedSequential) setIsKtvDropdownOpen(true); }}>
+-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot) as any; return (
++              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot && (seg as any).voided !== true && (seg as any).voided !== 'true') as any; return (
+                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
+                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
+                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{slot?.voided === true ? 'Đã đổi' : `Ca ${slot?.sequenceSlot || idx + 1}`}</span>}
+@@ -1612,7 +1613,7 @@ const ServiceGroupCard = ({
+                   && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
+                 const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
+                 const canEditBStart = !isDraft && !!slotBItem && !!slotAKtvId;
+-                const replacedB = groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
++                const replacedB = !groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true'))) && groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
+                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
+                 return (
+                 <div key={`${ktvId}-${idx}`} 
+@@ -1715,7 +1716,15 @@ const ServiceGroupCard = ({
+                     <div className="flex items-center gap-1">
+                       <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}
+                         disabled={timeLocked && !canEditBStart} value={startT}
+-                        onChange={e => updateTimeForIdx(idx, 'start', e.target.value)}
++                        onChange={e => {
++                          const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
++                          if (canEditBStart && Math.abs(minutes(e.target.value) - minutes(startT)) >= 720) {
++                            alert('Giờ B có thể chuyển ngày. Chọn ngày/giờ đầy đủ trong Sửa B trước khi lưu.');
++                            onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId);
++                            return;
++                          }
++                          updateTimeForIdx(idx, 'start', e.target.value);
++                        }}
+                         className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
+                       <span className="text-indigo-300 text-[10px]">&rarr;</span>
+                       <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{endT || '--:--'}</span>
+diff --git a/app/reception/dispatch/actions.ts b/app/reception/dispatch/actions.ts
+index 1dc4ab84..c2529113 100644
+--- a/app/reception/dispatch/actions.ts
++++ b/app/reception/dispatch/actions.ts
+@@ -882,6 +882,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+             throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
+         }
+ 
++        const notificationWarnings: string[] = [];
+         for (const item of liveSequentialItems) {
+             const update = dispatchData.itemUpdates?.find(update => update.id === item.id);
+             if (!update) continue;
+@@ -890,10 +891,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
+             if (!b) continue;
+             const name = update.options?.serviceNamesForKtvs?.[b.ktvId] || update.options?.displayName || 'dịch vụ';
+             const start = update.segments?.find(s => s.id === b.id)?.startTime || b.startTime;
+-            await supabase.from('StaffNotifications').delete().eq('bookingId', bookingId).eq('employeeId', b.ktvId)
+-                .eq('type', 'KTV_NEW_ORDER').eq('isRead', false);
+-            await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
++            const notified = await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
+                 message: `Phân công lượt B cập nhật: ${name} lúc ${start}. Vui lòng kiểm tra ứng dụng.` });
++            if (!notified) notificationWarnings.push(`Đã lưu phân công B (${b.ktvId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
+         }
+ 
+         // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
+@@ -943,21 +943,14 @@ export async function processDispatch(bookingId: string, dispatchData: {
+ 
+                 const message = `Bạn được phân công: ${svcName}${svcTime}. Vui lòng kiểm tra ứng dụng.`;
+ 
+-                // 🗑️ Dọn dẹp thông báo sơ sài tự động do trigger tạo ra để tránh trùng lặp tin nhắn và phát âm thanh
+-                await supabase.from('StaffNotifications')
+-                    .delete()
+-                    .eq('bookingId', bookingId)
+-                    .eq('employeeId', staffId)
+-                    .eq('type', 'KTV_NEW_ORDER')
+-                    .eq('isRead', false);
+-
+                 // Gửi thông báo chi tiết cho KTV với loại KTV_NEW_ORDER để vượt qua bộ lọc client
+-                await createNotification({
++                const notified = await createNotification({
+                     bookingId: bookingId,
+                     employeeId: String(staffId),
+                     type: 'KTV_NEW_ORDER',
+                     message: message,
+                 });
++                if (!notified) notificationWarnings.push(`Đã lưu phân công (${staffId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
+             }
+         }
+ 
+@@ -969,7 +962,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
+         // Removed destructive syncOrderTimelineToDb
+ 
+-        return { success: true };
++        return { success: true, warnings: notificationWarnings };
+     } catch (error: any) {
+         return { success: false, error: error.message };
+     }
+@@ -1039,6 +1032,7 @@ export async function handoffSequentialKtv(input: {
+     durationMinutes: number;
+     confirmOverlap: boolean;
+     expectedRevision: number;
++    metadata?: { serviceNamesForKtvs: Record<string, string>; notesForKtvs: Record<string, string> };
+ }) {
+     try {
+         await requirePermission('dispatch_board');
+@@ -1052,13 +1046,13 @@ export async function handoffSequentialKtv(input: {
+             referenceKind: data.referenceKind as 'actual' | 'planned',
+         };
+         if (!data?.success) throw new Error(data?.error || 'DB không xác nhận gán B');
+-        await createNotification({
++        const notified = await createNotification({
+             bookingId: input.bookingId,
+             employeeId: input.toKtvId,
+             type: 'KTV_NEW_ORDER',
+             message: 'Bạn được phân công lượt B của dịch vụ nối tiếp. Vui lòng kiểm tra ứng dụng.',
+         });
+-        return { success: true };
++        return { success: true, warnings: notified ? [] : ['Đã lưu phân công B, chưa tạo được thông báo. Báo trực tiếp cho nhân viên.'] };
+     } catch (error: any) {
+         return { success: false, error: error.message || 'Không thể bàn giao nối tiếp' };
+     }
+diff --git a/app/reception/dispatch/page.tsx b/app/reception/dispatch/page.tsx
+index b370ca51..6767f01c 100644
+--- a/app/reception/dispatch/page.tsx
++++ b/app/reception/dispatch/page.tsx
+@@ -1,4 +1,5 @@
+ 'use client';
++import { parseKtvOptions } from '@/lib/ktvUtils';
+ import { DispatchEditHistory } from './_components/DispatchEditHistory';
+ import { dispatchRevision } from '@/lib/dispatch-edit-history';
+ import { displayBookingCode } from '@/lib/booking-display-code';
+@@ -149,21 +150,6 @@ const genId = () => Math.random().toString(36).slice(2, 8);
+ 
+ export default function DispatchBoardPage() {
+     
+-    // 🔧 THÊM HÀM SAFE PARSE JSON ĐỂ TRÁNH CRASH TRÌNH DUYỆT
+-    const safeParseOptions = (options: any) => {
+-        if (!options) return {};
+-        if (typeof options === 'object') return options;
+-        if (typeof options === 'string') {
+-            if (!options.trim()) return {};
+-            try {
+-                return JSON.parse(options);
+-            } catch (e) {
+-                console.error('Failed to parse options string:', options);
+-                return {};
+-            }
+-        }
+-        return {};
+-    };
+   const { hasPermission } = useAuth();
+   const [mounted, setMounted] = React.useState(false);
+   React.useEffect(() => {
+@@ -752,6 +738,11 @@ if (!hasPermission('dispatch_board')) {
+       return;
+     }
+     const item = orders.find(o => o.id === liveHandoff.bookingId)?.services.find(s => s.id === liveHandoff.itemId);
++    if (!item) {
++      alert('Ca đã thay đổi. Tải lại đơn trước khi sửa B.');
++      setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
++      return;
++    }
+     let expectedRevision = liveHandoff.expectedRevision;
+     if (!isTwoSlotSequential(item?.options)) {
+       const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId, expectedRevision);
+@@ -765,7 +756,13 @@ if (!hasPermission('dispatch_board')) {
+     }
+     const input = { expectedRevision, bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
+       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
+-      durationMinutes: liveHandoff.durationMinutes };
++      durationMinutes: liveHandoff.durationMinutes,
++      metadata: {
++        serviceNamesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
++          .map(row => [row.ktvId, row.serviceNameForKtv ?? parseKtvOptions(item?.options).serviceNamesForKtvs?.[row.ktvId] ?? ''])),
++        notesForKtvs: Object.fromEntries((item?.staffList || []).filter(row => row.ktvId)
++          .map(row => [row.ktvId, row.noteForKtv ?? ''])),
++      } };
+     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
+     if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
+       const marker = res.referenceKind === 'actual' ? 'thực tế' : 'dự kiến';
+@@ -783,6 +780,7 @@ if (!hasPermission('dispatch_board')) {
+       setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+       return;
+     }
++    if (res.warnings?.length) alert(res.warnings.join('\n'));
+     setLiveHandoff(null);
+     await fetchData();
+   };
+@@ -1245,7 +1243,7 @@ if (!hasPermission('dispatch_board')) {
+               technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
+               segments: allSegments,
+               options: {
+-                  ...safeParseOptions(svc.options),
++                  ...parseKtvOptions(svc.options),
+                   displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
+                   mergedIntoId: svc.mergedIntoId,
+                   mergedServiceIds: svc.mergedServiceIds,
+@@ -1611,7 +1609,7 @@ if (!hasPermission('dispatch_board')) {
+                   status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
+                   segments: allSegments,
+                   options: {
+-                      ...safeParseOptions(svc.options),
++                      ...parseKtvOptions(svc.options),
+                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
+                       mergedIntoId: svc.mergedIntoId,
+                       mergedServiceIds: svc.mergedServiceIds,
+@@ -1687,6 +1685,7 @@ if (!hasPermission('dispatch_board')) {
+               if (!confirmUpdatedBOverlap(res)) return;
+               confirmOverlap = true; res = await sendPayload();
+           }
++          if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
+           if (!res.success) {
+               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
+               return; 
+diff --git a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+index bf46732f..f689b19b 100644
+--- a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
++++ b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+@@ -234,6 +234,9 @@ export default function SequentialDemo() {
+             if (!planChanged) {
+               next.plannedStartAt = old.plannedStartAt; next.plannedEndAt = old.plannedEndAt;
+             } else if (Number(next.sequenceSlot) === 2 && !['NEW','WAITING'].includes(status || '')) {
++              const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
++              if (Math.abs(minutes(next.startTime) - minutes(old.startTime)) >= 720)
++                return 'Giờ B có thể chuyển ngày; dùng Sửa B để chọn ngày/giờ đầy đủ';
+               const day = old.plannedStartAt ? localInput(new Date(old.plannedStartAt)).slice(0,10) : localInput(new Date()).slice(0,10);
+               const start = Date.parse(`${day}T${next.startTime}:00+07:00`);
+               if (!Number.isFinite(start) || next.duration < 1) return 'Giờ/phút B không hợp lệ';
+diff --git a/app/reception/dispatch/useDispatchBoard.logic.ts b/app/reception/dispatch/useDispatchBoard.logic.ts
+index 97fc23e6..9f7d4227 100644
+--- a/app/reception/dispatch/useDispatchBoard.logic.ts
++++ b/app/reception/dispatch/useDispatchBoard.logic.ts
+@@ -1,3 +1,4 @@
++import { parseKtvOptions } from '@/lib/ktvUtils';
+ import { useState, useEffect, useRef } from 'react';
+ import { supabase } from '@/lib/supabase';
+ import { parseDbDate } from '@/lib/utils';
+@@ -57,27 +58,6 @@ const calcEndTime = (start: string, duration: number): string => {
+ 
+ const genId = () => Math.random().toString(36).slice(2, 8);
+ 
+-function parseBookingOptions(opts: unknown): Record<string, any> {
+-  if (!opts) return {};
+-
+-  if (typeof opts === 'object' && !Array.isArray(opts)) {
+-    return opts as Record<string, any>;
+-  }
+-
+-  if (typeof opts === 'string') {
+-    try {
+-      const parsed = JSON.parse(opts);
+-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+-        ? parsed
+-        : {};
+-    } catch {
+-      return {};
+-    }
+-  }
+-
+-  return {};
+-}
+-
+ // 🔧 UI CONFIGURATION
+ const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
+ 
+@@ -298,7 +278,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                             let parsedSegments: any[] = [];
+                             try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
+ 
+-                            const parsedOptions = parseBookingOptions(bi.options);
++                            const parsedOptions = parseKtvOptions(bi.options);
+ 
+                             const freeCustomerNote = [
+                                 parsedOptions.note,
+@@ -354,7 +334,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                 staffList = techCodes.map((tCode: string) => {
+                                         const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
+                                         const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
+-                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
++                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
+ 
+                                         if (segments.length === 0) {
+                                             const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+@@ -384,7 +364,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                             if (staffList.length === 0 && finalItemTurns.length > 0) {
+                                 staffList = finalItemTurns.map((t: any) => {
+                                     const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
+-                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
++                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
+ 
+                                     if (segments.length === 0) {
+                                         const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+diff --git a/lib/ktvUtils.ts b/lib/ktvUtils.ts
+index d123603b..c1e774ee 100644
+--- a/lib/ktvUtils.ts
++++ b/lib/ktvUtils.ts
+@@ -27,3 +27,24 @@ export function ktvMatchesSeg(
+         .map(s => s.trim())
+         .some(s => s.toLowerCase() === ktvCode.trim().toLowerCase());
+ }
++
++/** Runtime selection excludes replaced/cancelled segments; history keeps them. */
++export function isLiveKtvSegment(seg: any, code: string | undefined | null): boolean {
++    return seg?.voided !== true && seg?.voided !== 'true' && ktvMatchesSeg(seg?.ktvId, code);
++}
++
++/** Normalize legacy JSON options without leaking malformed data into UI. */
++export function parseKtvOptions(raw: any): Record<string, any> {
++    try {
++        for (let i = 0; i < 2 && typeof raw === 'string'; i++) raw = JSON.parse(raw);
++        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
++    } catch { return {}; }
++}
++
++/** Use this account's current name; catalogue name survives clearing an override. */
++export function ktvServiceName(item: any, code: string | undefined | null): string {
++    const opts = parseKtvOptions(item?.options);
++    const names = parseKtvOptions(opts.serviceNamesForKtvs);
++    const own = Object.entries(names).find(([id]) => id.trim().toLowerCase() === code?.trim().toLowerCase())?.[1];
++    return String(own || opts._generatedDisplayName || opts.displayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
++}
+diff --git a/lib/notification-helper.ts b/lib/notification-helper.ts
+index 4429b28a..b7a9c58e 100644
+--- a/lib/notification-helper.ts
++++ b/lib/notification-helper.ts
+@@ -17,11 +17,12 @@ interface NotifyPayload {
+     bookingId?: string | null;
+ }
+ 
+-export async function createNotification(payload: NotifyPayload) {
++export async function createNotification(payload: NotifyPayload): Promise<boolean> {
++    try {
+     const supabase = getSupabaseAdmin();
+     if (!supabase) {
+         console.error('❌ [Notify] Supabase not initialized');
+-        return;
++        return false;
+     }
+ 
+     // Insert into StaffNotifications (for Realtime + history)
+@@ -38,9 +39,13 @@ export async function createNotification(payload: NotifyPayload) {
+ 
+     if (insertErr) {
+         console.error('❌ [Notify] Insert failed:', insertErr);
+-        return;
++        return false;
+     }
+ 
+     console.log(`📡 [Notify] Inserted "${payload.type}" notification. Push will be handled by DB Webhook.`);
++    return true;
++    } catch (error) {
++        console.error('[Notify] Insert failed:', error);
++        return false;
++    }
+ }
+-
+diff --git a/scripts/test_sequential_b_redispatch.cjs b/scripts/test_sequential_b_redispatch.cjs
+index f83a4565..b3363967 100644
+--- a/scripts/test_sequential_b_redispatch.cjs
++++ b/scripts/test_sequential_b_redispatch.cjs
+@@ -13,7 +13,7 @@ const compiled=ts.transpileModule(applyBody+processBody,{compilerOptions:{module
+ const original={id:'item',bookingId:'booking',status:'PREPARING',options:{sequentialSlots:2,dispatchRevision:4,serviceNamesForKtvs:{A:'Tên A',B:'Tên B cũ'}},technicianCodes:['A','B'],segments:[
+   {id:'a',ktvId:'A',sequenceSlot:1,roomId:'R',bedId:'X',startTime:'10:00',endTime:'10:30',duration:30},
+   {id:'b',ktvId:'B',sequenceSlot:2,roomId:'R',bedId:'X',startTime:'10:30',endTime:'11:00',duration:30,plannedStartAt:'2026-09-26T03:30:00Z'}]};
+-let current,notifications,rpcs,staffQueries,rpcResult;
++let current,notifications,rpcs,staffQueries,rpcResult,notifySucceeded=true;
+ const db={from(table){return {select(){return this;},eq(){return this;},in(_field,ids){if(table==='Staff')staffQueries.push(ids);return this;},delete(){assert.equal(table,'StaffNotifications');return this;},single(){return Promise.resolve({data:{status:current.status}});},then(resolve,reject){
+   const data=table==='BookingItems'?[structuredClone(current)]:table==='Staff'?[{id:'B',full_name:'B',work_type:'TYPE_A'}]:table==='TurnQueue'?[{employee_id:'B',status:'assigned'}]:[];
+   return Promise.resolve({data}).then(resolve,reject);
+@@ -23,7 +23,7 @@ const dependencies={requirePermission:async p=>assert.equal(p,'dispatch_board'),
+   isTwoSlotSequential,liveDispatchConflict,savedPlanFields,checkedInStaffIds:async()=>new Set(['B']),
+   findKtvsNeedingCheckinConfirm:({ktvIds})=>{assert.deepEqual(ktvIds,['B']);return [];},
+   ensureTurnRowsAtEnd:async()=>{throw Error('Không tạo lại tua');},resolveGuestIdsForUpdate:async()=>[],
+-  createNotification:async notification=>notifications.push(notification)};
++  createNotification:async notification=>{notifications.push(notification);return notifySucceeded;}};
+ const exportsStub={};
+ new Function(...Object.keys(dependencies),'exports',compiled)(...Object.values(dependencies),exportsStub);
+ function reset(){current=structuredClone(original);notifications=[];rpcs=[];staffQueries=[];rpcResult={data:{success:true},error:null};}
+@@ -55,6 +55,13 @@ async function main(){
+   assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
+   assert.equal(rpcs[0].args.p_payload.itemUpdates[0].segments[1].actualStartTime,current.segments[1].actualStartTime);
+   console.log('PASS REDISPATCH 5/5: B đang làm vẫn nhận tên mới; giờ thực không bị xóa/reset');
++  reset();notifySucceeded=false;
++  const savedWithWarning=await exportsStub.processDispatch('booking',payload());
++  assert.equal(savedWithWarning.success,true);assert.equal(savedWithWarning.warnings.length,1);
++  assert.ok(savedWithWarning.warnings[0].includes('Đã lưu'));
++  assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
++  notifySucceeded=true;
++  console.log('PASS notification failure: DISPATCH saved successfully with B-only warning');
+   const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
+   const retryBody=page.slice(page.indexOf('          let res: any = await sendPayload();'),page.indexOf('          if (!res.success) {',page.indexOf('          let res: any = await sendPayload();')));
+   const retryCode=ts.transpileModule(retryBody,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+diff --git a/scripts/test_sequential_inline_ui.cjs b/scripts/test_sequential_inline_ui.cjs
+index b9d7063c..56887780 100644
+--- a/scripts/test_sequential_inline_ui.cjs
++++ b/scripts/test_sequential_inline_ui.cjs
+@@ -22,11 +22,11 @@ const jsxRuntime = require('react/jsx-runtime');
+ let lastDispatch;
+ let actions = [], lastUpdate, lastHandoff;
+ 
+-function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, names = [] } = {}) {
++function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStart = '10:30', names = [] } = {}) {
+   actions = []; lastUpdate = undefined; lastHandoff = undefined;
+   const ids = b ? ['A', 'B'] : ['A'];
+   const segments = ids.map((ktvId, idx) => ({ id: `segment-${ktvId}`, roomId: 'R', bedId: 'X',
+-    startTime: idx ? '10:30' : '10:00', endTime: idx ? '11:00' : minutes === 30 ? '10:30' : '11:00',
++    startTime: idx ? bStart : '10:00', endTime: idx ? '11:00' : minutes === 30 ? '10:30' : '11:00',
+     duration: idx ? 30 : minutes, sequenceSlot: sequential ? idx + 1 : undefined,
+     ...(idx === 1 && startedB ? { actualStartTime: '2026-09-26T03:30:00Z' } : {}) }));
+   const item = { id: 'item', serviceId: 'NHS0001', serviceName: 'Test', duration: 60, status,
+@@ -162,3 +162,12 @@ actions.find(e => e.props.onDrop).props.onDrop({ dataTransfer: { getData: () =>
+ assert.deepEqual(lastUpdate.selectedKtvIds, ['B', 'A']);
+ assert.deepEqual(lastUpdate.ktvServiceNames, ['Tên B', 'Tên A']);
+ console.log('PASS tên riêng khi đổi thứ tự: tên đi cùng nhân viên');
++
++const originalAlert=global.alert;global.alert=()=>{};
++try {
++  render({sequential:true,b:true,status:'PREPARING',bStart:'23:50',names:['Tên A','Tên B đang sửa']});
++  actions.find(e=>e.props['aria-label']==='Giờ bắt đầu B').props.onChange({target:{value:'00:10'}});
++  assert.deepEqual(lastHandoff,['item','A','B']);
++  assert.equal(lastUpdate,undefined);
++  console.log('PASS MIDNIGHT UI: crossing midnight opens explicit date modal without changing pending name/time form');
++} finally {global.alert=originalAlert;}
+diff --git a/scripts/test_sequential_sql.cjs b/scripts/test_sequential_sql.cjs
+index 6bf383dc..60850c16 100644
+--- a/scripts/test_sequential_sql.cjs
++++ b/scripts/test_sequential_sql.cjs
+@@ -537,6 +537,37 @@ async function main() {
+   await stableA();
+   console.log('PASS UPDATE B 5/5: B đang làm khóa giờ dự kiến; tên vẫn cập nhật, không reset giờ thực/A');
+ 
++  // Midnight edits require an explicit date; metadata travels with the locked modal update.
++  const midnight=await fixture(901);await enable(midnight);await assign(midnight,midnight.b,'2026-09-26T16:50:00Z');
++  const nightBefore=await item(midnight),nightInline=updateOf(nightBefore);
++  const nightB=nightInline.segments.find(s=>s.sequenceSlot===2);nightB.startTime='00:10';nightB.endTime='00:30';
++  nightInline.options.serviceNamesForKtvs={[midnight.b]:'Tên B chưa lưu'};
++  await assert.rejects(apply(midnight,'DRAFT',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[nightInline]}),/chuyển ngày/);
++  await assert.rejects(apply(midnight,'DISPATCH',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[nightInline]}),/chuyển ngày/);
++  assert.deepEqual(await item(midnight),nightBefore);
++  const modalPayload={itemId:midnight.item,expectedRevision:nightBefore.options.dispatchRevision || 0,
++    toKtvId:midnight.b,plannedStartAt:'2026-09-26T17:10:00Z',durationMinutes:20,confirmOverlap:false,
++    metadata:{serviceNamesForKtvs:{[midnight.a]:'Tên riêng A',[midnight.b]:'Tên B chưa lưu'},notesForKtvs:{[midnight.b]:'Ghi chú B chưa lưu'}}};
++  const modalSaved=await apply(midnight,'ASSIGN_B',modalPayload),nightAfter=await item(midnight);
++  assert.equal(modalSaved.success,true);
++  assert.equal(new Date((await assignment(midnight,midnight.b)).planned_start_time).toISOString(),'2026-09-26T17:10:00.000Z');
++  assert.equal(nightAfter.options.serviceNamesForKtvs[midnight.b],'Tên B chưa lưu');
++  assert.equal(nightAfter.options.notesForKtvs[midnight.b],'Ghi chú B chưa lưu');
++  const withoutNulls=value=>JSON.parse(JSON.stringify(value),(key,val)=>val===null?undefined:val);
++  assert.deepEqual(withoutNulls(nightAfter.segments[0]),withoutNulls(nightBefore.segments[0]));
++  assert.equal(modalSaved.revisions[midnight.item],nightAfter.options.dispatchRevision);
++  await assert.rejects(apply(midnight,'ASSIGN_B',modalPayload),/bản lưu mới/);
++  assert.deepEqual(await item(midnight),nightAfter);
++  const malformed={...modalPayload,expectedRevision:nightAfter.options.dispatchRevision,
++    metadata:{serviceNamesForKtvs:{[midnight.b]:42},notesForKtvs:{[midnight.b]:'Không được che kiểu sai'}}};
++  await assert.rejects(apply(midnight,'ASSIGN_B',malformed),/không hợp lệ/);
++  assert.deepEqual(await item(midnight),nightAfter);
++  const overlapModal={...modalPayload,expectedRevision:nightAfter.options.dispatchRevision,
++    plannedStartAt:'2026-09-26T03:30:00Z',metadata:{serviceNamesForKtvs:{[midnight.b]:'Chưa được lưu'},notesForKtvs:{}}};
++  assert.equal((await apply(midnight,'ASSIGN_B',overlapModal)).code,'OVERLAP_CONFIRM_REQUIRED');
++  assert.deepEqual(await item(midnight),nightAfter);
++  console.log('PASS MIDNIGHT: inline rollback, explicit next-day ISO + pending name/note atomic, stale/invalid/overlap preserve latest/A');
++
+   await db.close();
+ }
+ 
+diff --git a/supabase/migrations/20260926120000_dispatch_edit_history.sql b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+index dcb0e417..13f6550d 100644
+--- a/supabase/migrations/20260926120000_dispatch_edit_history.sql
++++ b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+@@ -136,6 +136,9 @@ BEGIN
+     IF COALESCE(next_b->>'startTime','') = '' OR COALESCE((next_b->>'duration')::integer,0) NOT BETWEEN 1 AND 600 THEN
+       RAISE EXCEPTION 'Giờ/phút B không hợp lệ';
+     END IF;
++    IF abs(extract(epoch FROM ((next_b->>'startTime')::time - (b->>'startTime')::time))) >= 43200 THEN
++      RAISE EXCEPTION 'Giờ B có thể chuyển ngày; dùng Sửa B để chọn ngày/giờ đầy đủ';
++    END IF;
+     SELECT COALESCE((NULLIF(b->>'plannedStartAt','')::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
+       (SELECT business_date FROM "KtvAssignments" WHERE booking_item_id = item_row.id AND segment_id = b->>'id' LIMIT 1)) INTO plan_day;
+     IF plan_day IS NULL THEN RAISE EXCEPTION 'Thiếu ngày phân công B; tải lại đơn'; END IF;
+@@ -300,9 +303,24 @@ BEGIN
+   ELSIF p_action = 'ENABLE_SEQUENTIAL' THEN
+     result := dispatch_enable_sequential_item(p_booking_id, p_payload->>'itemId');
+   ELSIF p_action = 'ASSIGN_B' THEN
++    IF p_payload ? 'metadata' AND (jsonb_typeof(p_payload->'metadata') IS DISTINCT FROM 'object'
++       OR jsonb_typeof(p_payload->'metadata'->'serviceNamesForKtvs') IS DISTINCT FROM 'object'
++       OR jsonb_typeof(p_payload->'metadata'->'notesForKtvs') IS DISTINCT FROM 'object'
++       OR EXISTS (SELECT 1 FROM (
++                    SELECT value FROM jsonb_each(p_payload->'metadata'->'serviceNamesForKtvs')
++                    UNION ALL SELECT value FROM jsonb_each(p_payload->'metadata'->'notesForKtvs')) entries
++                  WHERE jsonb_typeof(value) IS DISTINCT FROM 'string')) THEN
++      RAISE EXCEPTION 'Tên/ghi chú B không hợp lệ';
++    END IF;
+     result := dispatch_assign_sequential_slot_b(p_booking_id, p_payload->>'itemId', p_payload->>'toKtvId',
+       (p_payload->>'plannedStartAt')::timestamptz, (p_payload->>'durationMinutes')::integer,
+       COALESCE((p_payload->>'confirmOverlap')::boolean, false));
++    IF COALESCE((result->>'success')::boolean, false) AND p_payload ? 'metadata' THEN
++      UPDATE "BookingItems" SET options = COALESCE(jsonb_unwrap_string(options), '{}') ||
++        jsonb_build_object('serviceNamesForKtvs', p_payload->'metadata'->'serviceNamesForKtvs',
++                          'notesForKtvs', p_payload->'metadata'->'notesForKtvs')
++      WHERE id = p_payload->>'itemId' AND "bookingId" = p_booking_id;
++    END IF;
+   ELSE
+     result := dispatch_finish_sequential_after_a(p_booking_id, p_payload->>'itemId');
+   END IF;
+diff --git a/scripts/test_sequential_live_segments.cjs b/scripts/test_sequential_live_segments.cjs
+new file mode 100644
+index 00000000..b8c5ab07
+--- /dev/null
++++ b/scripts/test_sequential_live_segments.cjs
+@@ -0,0 +1,52 @@
++const assert = require('node:assert/strict');
++const { join } = require('node:path');
++require('ts-node').register({ project: join(__dirname, 'qa/tsconfig.qa.json'), transpileOnly: true });
++require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@/*': ['./*'] } });
++const { isLiveKtvSegment } = require('../lib/ktvUtils');
++const { handleStartTimer } = require('../app/api/ktv/booking/_handlers/handleStartTimer');
++
++const segments = [
++  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', duration: 30 },
++  { id: 'old-b', ktvId: 'B', sequenceSlot: 2, startTime: '10:30', duration: 30, voided: true },
++  { id: 'old-c', ktvId: 'C', sequenceSlot: 2, startTime: '10:40', duration: 20, voided: true },
++  { id: 'new-b', ktvId: 'B', sequenceSlot: 2, startTime: '10:50', duration: 10 },
++];
++assert.deepEqual(segments.filter(s => isLiveKtvSegment(s, 'b')).map(s => s.id), ['new-b']);
++assert.equal(isLiveKtvSegment({ ktvId: 'B - C' }, ' b '), true);
++assert.equal(isLiveKtvSegment({ ktvId: 'B', voided: 'true' }, 'B'), false);
++assert.equal(isLiveKtvSegment(null, 'B'), false);
++let saved;
++function query(table) {
++  let update;
++  const q = {
++    select() { return q; }, eq() { return q; }, in() { return q; },
++    update(value) { update = value; return q; },
++    single() { return Promise.resolve({ data: { timeStart: '2026-09-26T03:00:00Z', status: 'IN_PROGRESS' } }); },
++    then(resolve, reject) {
++      if (update) saved = JSON.parse(update.segments);
++      return Promise.resolve({ data: update ? null : table === 'BookingItems' ? [{ id: 'item', segments: JSON.stringify(segments), options: { sequentialSlots: 2 } }] : [], error: null }).then(resolve, reject);
++    },
++  };
++  return q;
++}
++const supabase = { from: query, storage: { from: () => ({
++  async upload(path) { return { data: { path } }; },
++  getPublicUrl(path) { return { data: { publicUrl: `https://local.test/${path}` } }; },
++  async remove() { return { error: null }; },
++}) } };
++const proof = 'data:image/jpeg;base64,/9j/';
++(async () => {
++  const ctx = { supabase, bookingId: 'order', technicianCode: 'B', action: 'START_TIMER', turnForSync: null,
++    allItemIdsForThisKTV: ['item'], body: { activeSegmentIndex: 0, startPhotoBase64: proof, guestSlipperPhotoBase64: proof } };
++  const result = await handleStartTimer(ctx);
++  assert.equal(result.earlyResponse, undefined);
++  assert.deepEqual(saved.slice(0, 3), segments.slice(0, 3));
++  assert.ok(saved[3].actualStartTime);
++  assert.ok(saved[3].startPhotoUrl);
++  assert.equal(saved.filter(s => isLiveKtvSegment(s, 'B')).reduce((n, s) => n + s.duration, 0), 10);
++  saved = undefined;
++  const removed = await handleStartTimer({ ...ctx, technicianCode: 'C' });
++  assert.equal(removed.earlyResponse.status, 409);
++  assert.equal(saved, undefined);
++  console.log('PASS: B → C → B START targets current B, keeps history/A intact, excludes old duration; replaced C cannot start.');
++})().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/scripts/test_sequential_finish_persistence.cjs b/scripts/test_sequential_finish_persistence.cjs
+new file mode 100644
+index 00000000..2565927a
+--- /dev/null
++++ b/scripts/test_sequential_finish_persistence.cjs
+@@ -0,0 +1,121 @@
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const ts = require('typescript');
++const root = path.join(__dirname, '..');
++const cache = {};
++function load(file) {
++  if (cache[file]) return cache[file];
++  const exports = {};
++  cache[file] = exports;
++  const source = fs.readFileSync(path.join(root, file), 'utf8');
++  const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
++  new Function('require', 'exports', js)(name => {
++    if (name === 'next/server') return { NextResponse: { json: (body, opts) => ({ body, status: opts.status }) } };
++    if (name === '../_shared/utils') return {};
++    if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
++    throw new Error('Unexpected dependency: ' + name);
++  }, exports);
++  return exports;
++}
++const { handleFinishService } = load('app/api/ktv/booking/_handlers/handleFinishService.ts');
++const start = '2026-09-26T03:00:00.000Z';
++const item = (id, ktv = 'A') => ({ id, bookingId: 'booking', status: 'IN_PROGRESS', options: {}, segments: [{ id: id + '-seg', ktvId: ktv, roomId: 'room', duration: 30, actualStartTime: start }] });
++function database(seed, failure = '') {
++  const rows = structuredClone(seed);
++  let reads = 0, writes = 0;
++  const db = { from(table) {
++    let operation, payload, filterKey, filterValue;
++    const query = {
++      select() { operation = 'select'; return this; },
++      update(value) { operation = 'update'; payload = value; return this; },
++      eq(key, value) { filterKey = key; filterValue = value; return this; },
++      in(key, value) { filterKey = key; filterValue = value; return this; },
++      single() { return this; },
++      then(resolve, reject) {
++        try {
++          if (operation === 'select') {
++            reads++;
++            if (failure === `read-${reads}`) return Promise.resolve({ data: null, error: { message: failure } }).then(resolve, reject);
++            if (table === 'Bookings') return Promise.resolve({ data: { rating: null, BookingGuests: [] } }).then(resolve, reject);
++            let selected = rows.filter(row => filterKey === 'id' ? (Array.isArray(filterValue) ? filterValue.includes(row.id) : row.id === filterValue) : row.bookingId === filterValue);
++            return Promise.resolve({ data: structuredClone(selected) }).then(resolve, reject);
++          }
++          writes++;
++          if (failure === `write-${writes}`) return Promise.resolve({ error: { message: failure } }).then(resolve, reject);
++          if (failure === 'network') return Promise.reject(new Error('offline')).then(resolve, reject);
++          Object.assign(rows.find(row => row.id === filterValue), structuredClone(payload));
++          return Promise.resolve({ error: null }).then(resolve, reject);
++        } catch (err) { return Promise.reject(err).then(resolve, reject); }
++      }
++    };
++    return query;
++  } };
++  return { db, rows, get writes() { return writes; } };
++}
++const run = (state, ktv = 'A', ids = state.rows.map(row => row.id)) => handleFinishService({ supabase: state.db, bookingId: 'booking', technicianCode: ktv, status: 'CLEANING', allItemIdsForThisKTV: ids, body: {} });
++const segments = row => typeof row.segments === 'string' ? JSON.parse(row.segments) : row.segments;
++async function main() {
++  for (const failure of ['read-1', 'read-2', 'write-1', 'read-3', 'read-4']) {
++    const state = database([item('one')], failure);
++    const result = await run(state);
++    assert.equal(result.earlyResponse.status, 500, failure);
++    assert.equal(result.earlyResponse.body.success, false);
++    assert.deepEqual(result.bookingUpdatePayload, {});
++    if (failure.startsWith('read-') && ['read-1', 'read-2'].includes(failure)) assert.equal(state.writes, 0);
++  }
++  console.log('PASS FINISH errors: booking/items/sync/services reads and item update cannot report success');
++
++  const partial = database([item('one'), item('two')], 'write-2');
++  const failed = await run(partial);
++  assert.equal(failed.earlyResponse.status, 500);
++  const saved = structuredClone(segments(partial.rows[0])[0]);
++  assert.ok(saved.actualEndTime);
++  assert.equal(segments(partial.rows[1])[0].actualEndTime, undefined);
++  const retry = database(partial.rows);
++  assert.equal((await run(retry)).earlyResponse, undefined);
++  assert.equal(segments(retry.rows[0])[0].actualStartTime, saved.actualStartTime);
++  assert.equal(segments(retry.rows[0])[0].actualEndTime, saved.actualEndTime);
++  assert.ok(segments(retry.rows[1])[0].actualEndTime);
++  console.log('PASS FINISH partial second write: error returned, reload/retry keeps saved start/end');
++
++  const parent = item('parent');
++  const child = { ...item('child'), options: { mergedIntoId: 'parent' } };
++  const childFailure = database([parent, child], 'write-2');
++  const childResult = await run(childFailure, 'A', ['parent']);
++  assert.equal(childResult.earlyResponse.status, 500);
++  assert.equal(childFailure.rows[0].status, 'CLEANING');
++  assert.equal(childFailure.rows[1].status, 'IN_PROGRESS');
++  console.log('PASS FINISH child synchronization update failure does not report success');
++
++  const sequential = item('seq');
++  sequential.options = { sequentialSlots: 2 };
++  sequential.segments[0].sequenceSlot = 1;
++  const oldB = { id: 'old-b', ktvId: 'B', sequenceSlot: 2, voided: true, actualStartTime: start, duration: 30 };
++  sequential.segments.push(oldB, { id: 'new-b', ktvId: 'B', sequenceSlot: 2, duration: 30 });
++  const a = database([sequential]);
++  assert.equal((await run(a)).bookingUpdatePayload.status, 'IN_PROGRESS');
++  assert.ok(segments(a.rows[0])[0].actualEndTime);
++  assert.deepEqual(segments(a.rows[0])[1], oldB);
++  assert.equal(segments(a.rows[0])[2].actualEndTime, undefined);
++  const bSeed = structuredClone(a.rows);
++  bSeed[0].segments = segments(bSeed[0]);
++  bSeed[0].segments[2].actualStartTime = start;
++  const b = database(bSeed);
++  assert.equal((await run(b, 'B')).bookingUpdatePayload.status, 'CLEANING');
++  assert.deepEqual(segments(b.rows[0])[1], oldB);
++  assert.equal(segments(b.rows[0])[0].actualEndTime, segments(a.rows[0])[0].actualEndTime);
++  assert.ok(segments(b.rows[0])[2].actualEndTime);
++  console.log('PASS FINISH sequential: A waits B, latest B completes, cancelled B and A stamps untouched');
++
++  const noB = { ...item('only-a'), options: { sequentialSlots: 2, finishedAfterA: true }, segments: [{ ...item('only-a').segments[0], sequenceSlot: 1 }] };
++  assert.equal((await run(database([noB]))).bookingUpdatePayload.status, 'CLEANING');
++  const replaced = item('replaced');
++  replaced.segments[0].voided = true;
++  const stale = database([replaced]);
++  assert.equal((await run(stale)).earlyResponse.status, 409);
++  assert.equal(stale.writes, 0);
++  await assert.rejects(() => run(database([item('offline')], 'network')), /offline/);
++  console.log('PASS FINISH after A + swapped employee guard + network failure rejects');
++}
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/scripts/test_sequential_employee_consistency.cjs b/scripts/test_sequential_employee_consistency.cjs
+new file mode 100644
+index 00000000..917fb07c
+--- /dev/null
++++ b/scripts/test_sequential_employee_consistency.cjs
+@@ -0,0 +1,70 @@
++const assert = require('node:assert/strict');
++const { join } = require('node:path');
++const { readFileSync } = require('node:fs');
++const ts = require('typescript');
++require('ts-node').register({ project: join(__dirname, 'qa/tsconfig.qa.json'), transpileOnly: true, compilerOptions: { jsx: 'react-jsx' } });
++require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@/*': ['./*'] } });
++const { parseKtvOptions, ktvServiceName, isLiveKtvSegment } = require('../lib/ktvUtils');
++const React = require('react');
++const { renderToStaticMarkup } = require('react-dom/server');
++const modalPath = require.resolve('../app/ktv/dashboard/_components/modals');
++require.cache[modalPath] = { id: modalPath, filename: modalPath, loaded: true, exports: Object.fromEntries(['ProcedureModal', 'RoomIssueModal', 'RejectOrderModal', 'TurnQueueTypeDModal', 'OfficeScoreModal'].map(name => [name, () => null])) };
++const reminderPath = require.resolve('../app/ktv/dashboard/_components/CheckInReminder');
++require.cache[reminderPath] = { id: reminderPath, filename: reminderPath, loaded: true, exports: { CheckInReminder: () => null } };
++const { ScreenTimer } = require('../app/ktv/dashboard/_screens/ScreenTimer');
++const { ScreenDashboard } = require('../app/ktv/dashboard/_screens/ScreenDashboard');
++const { ToastProvider } = require('../components/ui/Toast');
++const options = { sequentialSlots: 2, serviceNamesForKtvs: { A: 'Tên A riêng', b: 'Tên B mới' } };
++for (const raw of [options, JSON.stringify(options), JSON.stringify(JSON.stringify(options))]) {
++  assert.deepEqual(parseKtvOptions(raw), options);
++  assert.equal(ktvServiceName({ options: raw, base_service_name: 'Tên gốc' }, 'B'), 'Tên B mới');
++  assert.equal(ktvServiceName({ options: raw, base_service_name: 'Tên gốc' }, 'A'), 'Tên A riêng');
++}
++for (const raw of [null, 'broken', 'null', '[]', []]) assert.deepEqual(parseKtvOptions(raw), {});
++assert.equal(ktvServiceName({ options: { serviceNamesForKtvs: { B: '' } }, base_service_name: 'Tên gốc', service_name: 'Tên B cache cũ' }, 'B'), 'Tên gốc');
++console.log('PASS options object/JSON/double JSON/malformed, own names and cleared override');
++const segments = [
++ { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', endTime: '10:30', duration: 30 },
++ { id: 'b-old', ktvId: 'B', sequenceSlot: 2, startTime: '10:30', endTime: '11:00', duration: 30, voided: true },
++ { id: 'c-old', ktvId: 'C', sequenceSlot: 2, startTime: '10:35', endTime: '11:05', duration: 30, voided: true },
++ { id: 'b-new', ktvId: 'B', sequenceSlot: 2, startTime: '11:10', endTime: '11:25', duration: 15 },
++];
++assert.deepEqual(segments.filter(s => isLiveKtvSegment(s, 'B')).map(s => s.id), ['b-new']);
++assert.ok(isLiveKtvSegment({ ktvId: 'A - B' }, 'b'));
++const item = { id: 'item', duration: 60, status: 'PREPARING', options: JSON.stringify(JSON.stringify(options)), base_service_name: 'Tên gốc', service_name: 'Tên cache cũ', segments };
++for (const Screen of [ScreenDashboard, ScreenTimer]) {
++ const html = renderToStaticMarkup(React.createElement(ToastProvider, null, React.createElement(Screen, { logic: {
++  ktvId: 'B', activeSegmentIndex: 0, timeRemaining: 900, prepTimeRemaining: 0, prepProcedure: [], checklist: [], turnData: {}, pendingHandovers: [], settings: {},
++  booking: { id: 'booking', acceptedAt: '2026-09-26T03:00:00Z', assignedItemIds: ['item'], assignedItemId: 'item', status: 'PREPARING', BookingItems: [item] }
++ } })));
++ assert.ok(html.includes('Tên B mới') && html.includes('11:10') && html.includes('11:25'));
++ assert.ok(!html.includes('10:30') && !html.includes('10:35') && !html.includes('Tên A riêng'));
++}
++console.log('PASS real Dashboard/Timer B → C → B select new slot and latest own title');
++const logicSource = readFileSync(join(__dirname, '../app/ktv/dashboard/KTVDashboard.logic.ts'), 'utf8');
++const realtimeStart = logicSource.indexOf('const currentBooking = bookingRef.current;', logicSource.indexOf("table: 'BookingItems'"));
++const realtimeEnd = logicSource.indexOf('\n            })', realtimeStart);
++const realtimeCode = ts.transpileModule(logicSource.slice(realtimeStart, realtimeEnd), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
++for (const screen of ['TIMER', 'REVIEW', 'HANDOVER', 'REWARD']) {
++ let current = { id: 'booking', BookingItems: [structuredClone(item)] }, fetches = 0;
++ const callback = new Function('payload', 'bookingRef', 'screenRef', 'isTransitioningRef', 'setBooking', 'ktvServiceName', 'ktvId', 'scheduleRealtimeFetch', realtimeCode);
++ callback({ eventType: 'UPDATE', new: { id: 'item', bookingId: 'booking', options: JSON.stringify({ serviceNamesForKtvs: { B: 'Tên realtime' } }) } }, { current }, { current: screen }, { current: false }, fn => current = fn(current), ktvServiceName, 'B', () => fetches++);
++ assert.equal(current.BookingItems[0].service_name, 'Tên realtime');
++ callback({ eventType: 'UPDATE', new: { id: 'item', bookingId: 'booking', options: {} } }, { current }, { current: screen }, { current: false }, fn => current = fn(current), ktvServiceName, 'B', () => fetches++);
++ assert.equal(current.BookingItems[0].service_name, 'Tên gốc');
++ if (screen !== 'TIMER') assert.equal(fetches, 0);
++}
++console.log('PASS actual realtime callback refreshes/clears title in TIMER and post-service screens without navigation');
++const finishCode = ts.transpileModule(logicSource.slice(logicSource.indexOf('const handleFinishTimer = async () => {'), logicSource.indexOf('// Keep ref up-to-date so timer callback')), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + '\nreturn handleFinishTimer;';
++async function checkFinishFailure(mode) {
++ const state = { loading: false, screen: 'TIMER', running: true, refresh: 0, toast: [] }, transitioning = { current: false }, post = { current: null };
++ const names = ['booking','ktvId','isLiveKtvSegment','activeSegmentIndex','setIsLoading','apiClient','API','setActiveSegmentIndex','activeSegmentIndexRef','manualSegmentOverrideRef','setTimeRemaining','fetchBookingRef','isTransitioningRef','postServiceBookingIdRef','localStorage','POST_SERVICE_BOOKING_KEY','addToast','supabase','setIsTimerRunning','setScreen'];
++ const fn = new Function(...names, finishCode)(
++ { id: 'booking', assignedItemIds: ['item'], BookingItems: [{ id: 'item', segments: [segments[3]] }] }, 'B', isLiveKtvSegment, 0,
++ value => state.loading = value, { async patch() { if (mode === 'response') return { success: false, error: 'UPDATE failed' }; throw new Error(mode); } }, { KTV: { BOOKING: '/stub' } }, () => {}, { current: 0 }, { current: false }, () => {}, { current: () => state.refresh++ }, transitioning, post,
++ { setItem() {}, removeItem() {} }, 'post', msg => state.toast.push(msg), { channel() { throw new Error('must not broadcast'); } }, value => state.running = value, value => state.screen = value);
++ await fn();
++ assert.equal(state.loading, false); assert.equal(transitioning.current, false); assert.equal(post.current, null);
++ assert.equal(state.screen, 'TIMER'); assert.equal(state.running, true); assert.equal(state.refresh, 1); assert.equal(state.toast.length, 1);
++}
++(async () => { for (const mode of ['HTTP 500', 'Network disconnected', 'response']) await checkFinishFailure(mode); console.log('PASS actual finish handler catches HTTP/network/failed response, unlocks, refreshes and keeps timer'); })().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/scripts/test_sequential_midnight_metadata.cjs b/scripts/test_sequential_midnight_metadata.cjs
+new file mode 100644
+index 00000000..ced727f7
+--- /dev/null
++++ b/scripts/test_sequential_midnight_metadata.cjs
+@@ -0,0 +1,38 @@
++const assert=require('node:assert/strict');
++const {readFileSync}=require('node:fs');
++const {join}=require('node:path');
++const ts=require('typescript');
++require('ts-node').register({project:join(__dirname,'qa/tsconfig.qa.json'),transpileOnly:true});
++require('tsconfig-paths').register({baseUrl:join(__dirname,'..'),paths:{'@/*':['./*']}});
++const {isTwoSlotSequential}=require('../lib/dispatch-status');
++const {dispatchRevision}=require('../lib/dispatch-edit-history');
++const {parseKtvOptions}=require('../lib/ktvUtils');
++const source=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
++const body=source.slice(source.indexOf('  const confirmLiveHandoff = async () => {'),source.indexOf('  const addStaffRow = async'));
++const compiled=ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
++async function run({overlap=false,start='2026-09-27T00:10',failure=false}={}) {
++ const calls=[],alerts=[];let refreshed=0,state;
++ const liveHandoff={bookingId:'booking',itemId:'item',fromKtvId:'A',toKtvId:'B',plannedStartAt:start,durationMinutes:20,expectedRevision:7,saving:false};state=liveHandoff;
++ const deps={liveHandoff,orders:[{id:'booking',services:[{id:'item',options:{sequentialSlots:2,dispatchRevision:7,serviceNamesForKtvs:{A:'Tên A gốc',B:'Tên B gốc'}},staffList:[
++  {ktvId:'A',serviceNameForKtv:'Tên A giữ nguyên',noteForKtv:'Ghi chú A'},
++  {ktvId:'B',serviceNameForKtv:'Tên B chưa lưu',noteForKtv:'Ghi chú B chưa lưu'}]}]}],
++  isTwoSlotSequential,dispatchRevision,parseKtvOptions,
++  setLiveHandoff:update=>{state=typeof update==='function'?update(state):update;},
++  enableSequentialItem:async()=>{throw Error('Không bật nối tiếp lại');},
++  handoffSequentialKtv:async payload=>{calls.push(structuredClone(payload));return failure?{success:false,error:'Bản cũ'}:overlap&&calls.length===1?{success:false,code:'OVERLAP_CONFIRM_REQUIRED',referenceAt:'2026-09-26T17:20:00Z',referenceKind:'planned'}:{success:true};},
++  alert:text=>alerts.push(text),confirm:()=>true,fetchData:async()=>refreshed++};
++ await new Function(...Object.keys(deps),compiled+'return confirmLiveHandoff;')(...Object.values(deps))();
++ return {calls,alerts,refreshed,state};
++}
++(async()=>{
++ for(const overlap of [false,true]) {
++  const result=await run({overlap});assert.equal(result.refreshed,1);assert.equal(result.state,null);
++  assert.equal(result.calls.length,overlap?2:1);
++  for(const input of result.calls){assert.equal(input.plannedStartAt,'2026-09-26T17:10:00.000Z');assert.equal(input.expectedRevision,7);
++   assert.deepEqual(input.metadata,{serviceNamesForKtvs:{A:'Tên A giữ nguyên',B:'Tên B chưa lưu'},notesForKtvs:{A:'Ghi chú A',B:'Ghi chú B chưa lưu'}});}
++  if(overlap)assert.equal(result.calls[1].confirmOverlap,true);
++ }
++ const bad=await run({start:'invalid'});assert.equal(bad.calls.length,0);assert.equal(bad.refreshed,0);assert.equal(bad.state.saving,false);
++ const stale=await run({failure:true});assert.equal(stale.refreshed,0);assert.equal(stale.state.saving,false);assert.ok(stale.alerts[0].includes('Bản cũ'));
++ console.log('PASS MIDNIGHT METADATA: actual modal submits next-day ISO with pending own names/notes, overlap retry preserved, invalid/stale stay editable');
++})().catch(error=>{console.error(error);process.exitCode=1;});
+diff --git a/scripts/test_sequential_notifications.cjs b/scripts/test_sequential_notifications.cjs
+new file mode 100644
+index 00000000..c2211086
+--- /dev/null
++++ b/scripts/test_sequential_notifications.cjs
+@@ -0,0 +1,44 @@
++const assert=require('node:assert/strict');
++const {readFileSync}=require('node:fs');
++const {join}=require('node:path');
++const ts=require('typescript');
++const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
++const helperSource=readFileSync(join(__dirname,'../lib/notification-helper.ts'),'utf8').replace(/^import .*;\s*/m,'');
++let result,inserted,throws=false,initialized=true;
++const oldNotice={id:'old',employeeId:'B',isRead:false};
++const notices=[oldNotice];
++const db={from(table){assert.equal(table,'StaffNotifications');return {async insert(payload){inserted=payload;if(throws)throw Error('network');if(!result.error)notices.push(payload);return result;},delete(){throw Error('Prior notices must not be deleted');}};}};
++const helperExports={};
++new Function('getSupabaseAdmin','exports',compile(helperSource))(()=>initialized?db:null,helperExports);
++const source=readFileSync(join(__dirname,'../app/reception/dispatch/actions.ts'),'utf8');
++const handoff=source.slice(source.indexOf('export async function handoffSequentialKtv('),source.indexOf('export async function finishSequentialAfterA('));
++const actionExports={};let persisted=0;
++new Function('requirePermission','getSupabaseAdmin','applyDispatchEdit','createNotification','exports',compile(handoff))(
++  async()=>{},()=>db,async(_db,_booking,action,payload)=>{assert.equal(action,'ASSIGN_B');assert.equal(payload.toKtvId,'B');persisted++;return {data:{success:true}};},helperExports.createNotification,actionExports);
++async function main(){
++  result={error:null};
++  assert.equal(await helperExports.createNotification({employeeId:'B',bookingId:'booking',type:'KTV_NEW_ORDER',message:'Latest B at 10:45'}),true);
++  assert.equal(inserted.employeeId,'B');assert.equal(notices[0],oldNotice);
++  result={error:{message:'insert denied'}};
++  assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'failure'}),false);
++  throws=true;assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'network'}),false);throws=false;
++  initialized=false;assert.equal(await helperExports.createNotification({type:'KTV_NEW_ORDER',message:'missing client'}),false);initialized=true;
++  const input={bookingId:'booking',itemId:'item',toKtvId:'B',plannedStartAt:'2026-09-26T10:45:00+07:00',durationMinutes:30,confirmOverlap:false,expectedRevision:4};
++  const failedNotification=await actionExports.handoffSequentialKtv(input);
++  assert.equal(failedNotification.success,true);assert.equal(persisted,1);assert.equal(failedNotification.warnings.length,1);assert.equal(notices[0],oldNotice);
++  throws=true;
++  const networkWarning=await actionExports.handoffSequentialKtv(input);
++  assert.equal(networkWarning.success,true);assert.equal(networkWarning.warnings.length,1);assert.equal(notices[0],oldNotice);
++  throws=false;
++  result={error:null};const success=await actionExports.handoffSequentialKtv(input);
++  assert.equal(success.success,true);assert.deepEqual(success.warnings,[]);assert.equal(inserted.employeeId,'B');assert.equal(notices[0],oldNotice);
++  const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
++  assert.ok(page.includes("if (res.warnings?.length) alert(res.warnings.join('\\n'))"));
++  assert.ok(page.includes("if (res.success && res.warnings?.length) alert(res.warnings.join('\\n'))"));
++  const process=source.slice(source.indexOf('export async function processDispatch('),source.indexOf('/** Manual actual-time corrections'));
++  const bBlock=process.slice(process.indexOf('const notificationWarnings'),process.indexOf('// 3.8'));
++  assert.ok(!bBlock.includes('.delete()'));
++  assert.ok(!process.includes('.delete()'));
++  console.log('PASS notifications: success/INSERT error/network/missing client; ASSIGN_B persistence remains successful, old notices remain, both UI paths expose warnings');
++}
++main().catch(error=>{console.error(error);process.exitCode=1;});

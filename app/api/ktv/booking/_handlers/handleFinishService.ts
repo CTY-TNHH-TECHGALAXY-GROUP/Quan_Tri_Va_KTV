@@ -1,3 +1,5 @@
+import { NextResponse } from 'next/server';
+import { isLiveKtvSegment } from '@/lib/ktvUtils';
 /**
  * ============================================================
  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
@@ -37,7 +39,7 @@
  * ============================================================
  */
 
-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
+import { HandlerContext, HandlerResult } from '../_shared/utils';
 import { isUtilityService } from '@/lib/booking.logic';
 import { segmentProgress, sequentialSlotsComplete } from '@/lib/dispatch-status';
 
@@ -48,12 +50,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     const nowISO = new Date().toISOString();
 
     // 🔍 Fetch bookings and guest ratings để check rating
-    const { data: bookingData } = await supabase
+    const { data: bookingData, error: bookingError } = await supabase
         .from('Bookings')
         .select('rating, BookingGuests(id, rating)')
         .eq('id', bookingId)
         .single();
     
+    if (bookingError || !bookingData) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa đọc được đơn hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+
     const guestRatings: Record<string, number> = {};
     if (bookingData?.BookingGuests) {
         bookingData.BookingGuests.forEach((g: any) => {
@@ -62,7 +67,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     }
 
     // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
-    const { data: items } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
+    const { data: items, error: itemsError } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
+    if (itemsError || !items?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
     
     let allGlobalSegs: any[] = [];
     let originalItemsData: Record<string, any[]> = {};
@@ -70,11 +77,13 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
         originalItemsData[item.id] = [...segs];
         segs.forEach((seg: any, idx: number) => {
-            if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
+            if (isLiveKtvSegment(seg, technicianCode)) {
                 allGlobalSegs.push({ item, idx, seg, _itemId: item.id });
             }
         });
     }
+    if (!allGlobalSegs.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Không còn chặng được gán cho nhân viên này. Tải lại đơn.' }, { status: 409 }) };
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
@@ -121,7 +130,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
     const hasFinishedSegment = allGlobalSegs.some((s: any) => 
         s.item.status === 'DONE' || 
-        (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS')
+        s.seg.actualEndTime
     );
 
     // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
@@ -185,6 +194,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         });
     }
 
+    // ponytail: per-item writes can partially succeed; reload/retry preserves saved stamps.
+    // Use a DB transaction if all-item atomic completion becomes required.
     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
     for (const item of items || []) {
         let segs = originalItemsData[item.id];
@@ -263,13 +274,20 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         }
         
-        await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+        const { error: saveError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+        if (saveError) {
+            console.error('[FinishService] Save failed', item.id, saveError);
+            return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+                error: 'Chưa lưu xong giờ hoàn thành; có thể đã lưu một phần. Tải lại đơn và thử lại.', itemId: item.id }, { status: 500 }) };
+        }
         console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
     }
     
     // ─── 3.5 🔄 SYNC CHILD ITEMS ───
     // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
-    const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+    const { data: bookingItemsToSync, error: syncReadError } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+    if (syncReadError || !bookingItemsToSync?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Đã lưu một phần; chưa đọc được dữ liệu đồng bộ. Tải lại để tiếp tục.' }, { status: 500 }) };
     if (bookingItemsToSync) {
         const updates = [];
         for (const item of bookingItemsToSync) {
@@ -285,7 +303,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         }
         if (updates.length > 0) {
             for (const upd of updates) {
-                await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+                const { error: syncError } = await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+                if (syncError) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+                    error: 'Đã lưu một phần; chưa đồng bộ được dịch vụ con. Tải lại để tiếp tục.' }, { status: 500 }) };
             }
         }
     }
@@ -295,14 +315,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     const allItems = bookingItemsToSync;
     if (allItems && allItems.length > 0) {
         // Cần fetch lại Services info cho phần kiểm tra is_utility
-        const { data: itemsWithServices } = await supabase
+        const { data: itemsWithServices, error: servicesError } = await supabase
             .from('BookingItems')
             .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
             .eq('bookingId', bookingId);
             
+        if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+            error: 'Đã lưu một phần; chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
         const validItems = allItems.filter((i: any) => {
             const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
-            const name = svcInfo?.Services?.nameVN || '';
             return !isUtilityService(svcInfo);
         });
         const finalItems = validItems.length > 0 ? validItems : allItems;

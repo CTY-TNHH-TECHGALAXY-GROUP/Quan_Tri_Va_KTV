@@ -537,6 +537,37 @@ async function main() {
   await stableA();
   console.log('PASS UPDATE B 5/5: B đang làm khóa giờ dự kiến; tên vẫn cập nhật, không reset giờ thực/A');
 
+  // Midnight edits require an explicit date; metadata travels with the locked modal update.
+  const midnight=await fixture(901);await enable(midnight);await assign(midnight,midnight.b,'2026-09-26T16:50:00Z');
+  const nightBefore=await item(midnight),nightInline=updateOf(nightBefore);
+  const nightB=nightInline.segments.find(s=>s.sequenceSlot===2);nightB.startTime='00:10';nightB.endTime='00:30';
+  nightInline.options.serviceNamesForKtvs={[midnight.b]:'Tên B chưa lưu'};
+  await assert.rejects(apply(midnight,'DRAFT',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[nightInline]}),/chuyển ngày/);
+  await assert.rejects(apply(midnight,'DISPATCH',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[nightInline]}),/chuyển ngày/);
+  assert.deepEqual(await item(midnight),nightBefore);
+  const modalPayload={itemId:midnight.item,expectedRevision:nightBefore.options.dispatchRevision || 0,
+    toKtvId:midnight.b,plannedStartAt:'2026-09-26T17:10:00Z',durationMinutes:20,confirmOverlap:false,
+    metadata:{serviceNamesForKtvs:{[midnight.a]:'Tên riêng A',[midnight.b]:'Tên B chưa lưu'},notesForKtvs:{[midnight.b]:'Ghi chú B chưa lưu'}}};
+  const modalSaved=await apply(midnight,'ASSIGN_B',modalPayload),nightAfter=await item(midnight);
+  assert.equal(modalSaved.success,true);
+  assert.equal(new Date((await assignment(midnight,midnight.b)).planned_start_time).toISOString(),'2026-09-26T17:10:00.000Z');
+  assert.equal(nightAfter.options.serviceNamesForKtvs[midnight.b],'Tên B chưa lưu');
+  assert.equal(nightAfter.options.notesForKtvs[midnight.b],'Ghi chú B chưa lưu');
+  const withoutNulls=value=>JSON.parse(JSON.stringify(value),(key,val)=>val===null?undefined:val);
+  assert.deepEqual(withoutNulls(nightAfter.segments[0]),withoutNulls(nightBefore.segments[0]));
+  assert.equal(modalSaved.revisions[midnight.item],nightAfter.options.dispatchRevision);
+  await assert.rejects(apply(midnight,'ASSIGN_B',modalPayload),/bản lưu mới/);
+  assert.deepEqual(await item(midnight),nightAfter);
+  const malformed={...modalPayload,expectedRevision:nightAfter.options.dispatchRevision,
+    metadata:{serviceNamesForKtvs:{[midnight.b]:42},notesForKtvs:{[midnight.b]:'Không được che kiểu sai'}}};
+  await assert.rejects(apply(midnight,'ASSIGN_B',malformed),/không hợp lệ/);
+  assert.deepEqual(await item(midnight),nightAfter);
+  const overlapModal={...modalPayload,expectedRevision:nightAfter.options.dispatchRevision,
+    plannedStartAt:'2026-09-26T03:30:00Z',metadata:{serviceNamesForKtvs:{[midnight.b]:'Chưa được lưu'},notesForKtvs:{}}};
+  assert.equal((await apply(midnight,'ASSIGN_B',overlapModal)).code,'OVERLAP_CONFIRM_REQUIRED');
+  assert.deepEqual(await item(midnight),nightAfter);
+  console.log('PASS MIDNIGHT: inline rollback, explicit next-day ISO + pending name/note atomic, stale/invalid/overlap preserve latest/A');
+
   await db.close();
 }
 

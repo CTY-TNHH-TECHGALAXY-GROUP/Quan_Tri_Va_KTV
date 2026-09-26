@@ -1,7 +1,7 @@
 import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ktvMatchesSeg } from '@/lib/ktvUtils';
+import { ktvMatchesSeg, isLiveKtvSegment, ktvServiceName, parseKtvOptions } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
@@ -482,15 +482,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const calculateAllowedTime = () => {
             const assignedItem = booking.BookingItems?.find((item: any) =>
                 item.id === (booking.assignedItemId || booking.activeItemId));
-            let assignedOptions: any = assignedItem?.options || {};
-            try { if (typeof assignedOptions === 'string') assignedOptions = JSON.parse(assignedOptions); } catch { assignedOptions = {}; }
+            const assignedOptions = parseKtvOptions(assignedItem?.options);
             let assignedSegments: any[] = [];
             try {
                 assignedSegments = typeof assignedItem?.segments === 'string'
                     ? JSON.parse(assignedItem.segments) : (assignedItem?.segments || []);
             } catch {}
             if (assignedOptions.sequentialSlots === 2 && assignedSegments.some((seg: any) =>
-                seg.sequenceSlot === 2 && seg.ktvId?.toLowerCase() === ktvId?.toLowerCase()
+                Number(seg.sequenceSlot) === 2 && isLiveKtvSegment(seg, ktvId)
                 && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true)) {
                 setAllowedStartTime(null);
                 setCanStart(true);
@@ -585,7 +584,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 } catch { segs = []; }
                 
                 const mySegs = segs.filter((seg: any) => 
-                                    ktvMatchesSeg(seg.ktvId, ktvId)
+                                    isLiveKtvSegment(seg, ktvId)
                 );
                 allMySegs.push(...mySegs);
             }
@@ -672,7 +671,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             allMySegsForStatus.push(...mySegs);
         }
 
@@ -886,7 +885,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (booking?.BookingItems && ktvId) {
                     const mySegs = booking.BookingItems.flatMap((i: any) => {
                         let parsed = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []);
-                        return parsed.filter((s: any) => s.ktvId === ktvId || (s.ktvId && s.ktvId.startsWith(ktvId)));
+                        return parsed.filter((s: any) => isLiveKtvSegment(s, ktvId));
                     });
                     
                     if (mySegs.length > 0) {
@@ -1152,7 +1151,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             } catch { segs = []; }
                             
                             const mySegs = segs.filter((seg: any) => 
-                                                                ktvMatchesSeg(seg.ktvId, ktvId)
+                                                                isLiveKtvSegment(seg, ktvId)
                             );
                             
                             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
@@ -1435,7 +1434,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         const daBatDau = items.some((i: any) => {
                             let segs: any[] = [];
                             try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []); } catch {}
-                            return segs.some((s: any) => ktvMatchesSeg(s.ktvId, ktvId) && s.actualStartTime);
+                            return segs.some((s: any) => isLiveKtvSegment(s, ktvId) && s.actualStartTime);
                         });
                         if (daBatDau) { scheduleRealtimeFetch(); return; }
                     }
@@ -1469,7 +1468,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         setBooking((prev: any) => {
                             if (!prev) return prev;
                             const items = prev.BookingItems?.map((i: any) => 
-                                i.id === payload.new.id ? { ...i, ...payload.new } : i
+                                i.id === payload.new.id ? { ...i, ...payload.new, service_name: ktvServiceName({ ...i, ...payload.new }, ktvId) } : i
                             ) || [];
                             return { ...prev, BookingItems: items };
                         });
@@ -1492,7 +1491,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (payload.eventType === 'UPDATE' && isMyItem) {
                     setBooking((prev: any) => {
                         if (!prev) return prev;
-                        const items = prev.BookingItems?.map((i: any) => i.id === payload.new.id ? { ...i, ...payload.new } : i) || [];
+                        const items = prev.BookingItems?.map((i: any) => i.id === payload.new.id ? { ...i, ...payload.new, service_name: ktvServiceName({ ...i, ...payload.new }, ktvId) } : i) || [];
                         return { ...prev, BookingItems: items };
                     });
                 }
@@ -1632,7 +1631,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 try {
                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                 } catch { segs = []; }
-                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+                const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                 const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
                 allMySegs.push(...mySegsWithId);
             }
@@ -1864,7 +1863,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         try {
                             segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                         } catch { segs = []; }
-                        const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+                        const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                         if (mySegs.some((s: any) => s.actualStartTime)) {
                             hasStarted = true;
                             break;
@@ -1962,7 +1961,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 try {
                     segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
                 } catch { segs = []; }
-                const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+                const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
                 
                 mySegs.forEach((seg: any) => { seg._itemId = ai.id; seg._guestId = ai.guest_id; }); // 🔥 Explicitly inject _itemId and _guestId
                 allMySegs.push(...mySegs);
@@ -2016,7 +2015,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
             allMySegs.push(...mySegsWithId);
         }
@@ -2079,6 +2078,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } else {
                 console.error('❌ [KTV Logic] Start error:', res.error);
                 addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
+                if (fetchBookingRef.current) fetchBookingRef.current();
             }
         } catch (error: any) {
             console.error('❌ [KTV Logic] Exception during Start:', error);
@@ -2090,6 +2090,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     const handleFinishTimer = async () => {
         if (!booking || !ktvId) return;
+        try {
 
         // 🔎 Kiểm tra: còn chặng nào phía sau không?
         const allItemIds: string[] = booking.assignedItemIds?.length > 0
@@ -2105,7 +2106,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = typeof ai?.segments === 'string' ? JSON.parse(ai.segments) : (Array.isArray(ai?.segments) ? ai.segments : []);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => ktvMatchesSeg(seg.ktvId, ktvId));
+            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
             allMySegs.push(...mySegsWithId);
         }
@@ -2192,9 +2193,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 postServiceBookingIdRef.current = null;
                 try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch (e) {}
                 addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
+                if (fetchBookingRef.current) fetchBookingRef.current();
             }
             setIsLoading(false);
         }
+        } catch (error: any) {
+            isTransitioningRef.current = false;
+            postServiceBookingIdRef.current = null;
+            try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch {}
+            addToast('Chưa hoàn tất lưu: ' + (error.message || 'Lỗi kết nối. Thử lại.'), 'error');
+            if (fetchBookingRef.current) fetchBookingRef.current();
+        } finally { setIsLoading(false); }
     };
 
     // Keep ref up-to-date so timer callback always calls latest version

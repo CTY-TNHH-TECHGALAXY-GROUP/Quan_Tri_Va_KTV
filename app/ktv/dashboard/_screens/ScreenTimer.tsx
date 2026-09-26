@@ -1,4 +1,5 @@
 'use client';
+import { isLiveKtvSegment, ktvServiceName } from '@/lib/ktvUtils';
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
@@ -204,7 +205,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
     : allTimerItemsRaw;
   const item = allTimerItems[0] || {};
   // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI Timer biết có bao nhiêu dịch vụ
-  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => i.service_name).filter(Boolean);
+  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => ktvServiceName(i, logic.ktvId)).filter(Boolean);
   
   // Segments: dùng allTimerItemsRaw để tính tổng duration chính xác
   const allTimerKtvSegments = allTimerItemsRaw.flatMap((i: any) => {
@@ -215,14 +216,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
         segs = i.segments;
     }
     return segs
-      .filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase())
+      .filter((s: any) => isLiveKtvSegment(s, logic.ktvId))
       .map((s: any) => {
-        let customName = undefined;
-        try {
-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
-            customName = opts?.serviceNamesForKtvs?.[s.ktvId || logic.ktvId];
-        } catch(e) {}
-        return { ...s, _itemId: i.id, _serviceName: customName || i.service_name };
+        return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
       });
   }).sort((a: any, b: any) => {
       const timeA = a.startTime || '23:59';
@@ -300,7 +296,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
                  👨 {item.guest_label}
                </span>
             )}
-            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
+            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
           </h1>
           <div className="flex flex-wrap items-center gap-3 gap-y-1">
             <div className="flex items-center gap-1.5 text-slate-800 font-black shrink-0">

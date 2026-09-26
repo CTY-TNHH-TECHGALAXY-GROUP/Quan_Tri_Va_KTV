@@ -1,3 +1,4 @@
+import { parseKtvOptions } from '@/lib/ktvUtils';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
@@ -56,27 +57,6 @@ const calcEndTime = (start: string, duration: number): string => {
 };
 
 const genId = () => Math.random().toString(36).slice(2, 8);
-
-function parseBookingOptions(opts: unknown): Record<string, any> {
-  if (!opts) return {};
-
-  if (typeof opts === 'object' && !Array.isArray(opts)) {
-    return opts as Record<string, any>;
-  }
-
-  if (typeof opts === 'string') {
-    try {
-      const parsed = JSON.parse(opts);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed
-        : {};
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
 
 // 🔧 UI CONFIGURATION
 const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
@@ -298,7 +278,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             let parsedSegments: any[] = [];
                             try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
 
-                            const parsedOptions = parseBookingOptions(bi.options);
+                            const parsedOptions = parseKtvOptions(bi.options);
 
                             const freeCustomerNote = [
                                 parsedOptions.note,
@@ -354,7 +334,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 staffList = techCodes.map((tCode: string) => {
                                         const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
                                         const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
-                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
+                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
 
                                         if (segments.length === 0) {
                                             const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
@@ -384,7 +364,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             if (staffList.length === 0 && finalItemTurns.length > 0) {
                                 staffList = finalItemTurns.map((t: any) => {
                                     const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
-                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
+                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
 
                                     if (segments.length === 0) {
                                         const saved = Number(parsedOptions.dispatchRevision || 0) > 0;

@@ -31,7 +31,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
+import { HandlerContext, HandlerResult, isLiveKtvSegment } from '../_shared/utils';
 import { calculateAccurateEndTimeFromSegments } from '@/lib/time-helper';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
@@ -81,7 +81,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                     ? JSON.parse(assignedItem.segments) : (assignedItem.segments || []);
             } catch {}
             const slotB = assignedSegments.find((seg: any) =>
-                seg.sequenceSlot === 2 && ktvMatchesSeg(seg.ktvId, technicianCode)
+                seg.sequenceSlot === 2 && isLiveKtvSegment(seg, technicianCode)
                 && !seg.actualStartTime && !seg.actualEndTime && seg.voided !== true);
             if (slotB) {
                 const { data: assignment } = await supabase.from('KtvAssignments')
@@ -147,7 +147,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
             let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
             originalItemsData[item.id] = [...segs]; // Backup the entire array
             segs.forEach((seg: any, idx: number) => {
-                if (ktvMatchesSeg(seg.ktvId, technicianCode)) allGlobalSegs.push({ item, idx, seg });
+                if (isLiveKtvSegment(seg, technicianCode)) allGlobalSegs.push({ item, idx, seg });
             });
         }
         allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
@@ -156,7 +156,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
 
         if (action === 'START_TIMER' &&
             (!target ||
-             !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
+             !isLiveKtvSegment(target.seg, technicianCode) ||
              target.seg.actualEndTime)) {
             return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
         }
@@ -304,7 +304,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
                         if (
                             belongsToRun &&
                             !itemSeg.seg.actualEndTime &&
-                            ktvMatchesSeg(itemSeg.seg.ktvId, technicianCode)
+                            isLiveKtvSegment(itemSeg.seg, technicianCode)
                         ) {
                             itemSeg.seg.startPhotoUrl = startPhotoUrl;
                             itemSeg.seg.guestSlipperPhotoUrl = guestSlipperPhotoUrl;

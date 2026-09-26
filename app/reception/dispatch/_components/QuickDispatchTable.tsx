@@ -390,28 +390,29 @@ export const QuickDispatchTable = ({
           if (item.staffList.length > 0) {
             item.staffList.forEach(staff => {
               if (staff.ktvId) {
+                const firstSegment = staff.segments?.find(seg => (seg as any).voided !== true && (seg as any).voided !== 'true') || staff.segments?.[0];
                 ktvIds.push(staff.ktvId);
                 if (staff.ktvName && staff.ktvName !== staff.ktvId) {
                   ktvDisplayNames[staff.ktvId] = staff.ktvName;
                 }
-                roomIds.push(staff.segments?.[0]?.roomId || '');
+                roomIds.push(firstSegment?.roomId || '');
                 const saved = Number(item.options?.dispatchRevision || 0) > 0 || !['NEW', 'WAITING'].includes(item.status || 'NEW');
-                startTimes.push(staff.segments?.[0]?.startTime ?? (saved ? '' : defaultTime));
+                startTimes.push(firstSegment?.startTime ?? (saved ? '' : defaultTime));
                 
-                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : (saved ? 0 : duration);
-                let finalEndTime = staff.segments?.[0]?.endTime;
+                let totalStaffDur = (firstSegment?.duration !== undefined && firstSegment?.duration !== null) ? firstSegment!.duration : (saved ? 0 : duration);
+                let finalEndTime = firstSegment?.endTime;
                 
                 // Parent segment duration already contains the TOTAL merged duration
                 // Do NOT add child durations here — it would double-count
                 if (!finalEndTime) {
-                   finalEndTime = saved ? '' : calcEndTime(staff.segments?.[0]?.startTime ?? defaultTime, totalStaffDur);
+                   finalEndTime = saved ? '' : calcEndTime(firstSegment?.startTime ?? defaultTime, totalStaffDur);
                 }
                 
                 endTimes.push(finalEndTime);
                 ktvDurationsList.push(totalStaffDur);
                 ktvNotesList.push(staff.noteForKtv || '');
                 ktvServiceNamesList.push(staff.serviceNameForKtv ?? item.options?.serviceNamesForKtvs?.[staff.ktvId] ?? '');
-                bedIdsList.push(staff.segments?.[0]?.bedId || '');
+                bedIdsList.push(firstSegment?.bedId || '');
               }
             });
           }
@@ -1498,7 +1499,7 @@ const ServiceGroupCard = ({
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
             <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => { if (!state.confirmedSequential) setIsKtvDropdownOpen(true); }}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot) as any; return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot && (seg as any).voided !== true && (seg as any).voided !== 'true') as any; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{slot?.voided === true ? 'Đã đổi' : `Ca ${slot?.sequenceSlot || idx + 1}`}</span>}
@@ -1612,7 +1613,7 @@ const ServiceGroupCard = ({
                   && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
                 const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
                 const canEditBStart = !isDraft && !!slotBItem && !!slotAKtvId;
-                const replacedB = groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
+                const replacedB = !groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true'))) && groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
                 return (
                 <div key={`${ktvId}-${idx}`} 
@@ -1715,7 +1716,15 @@ const ServiceGroupCard = ({
                     <div className="flex items-center gap-1">
                       <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}
                         disabled={timeLocked && !canEditBStart} value={startT}
-                        onChange={e => updateTimeForIdx(idx, 'start', e.target.value)}
+                        onChange={e => {
+                          const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
+                          if (canEditBStart && Math.abs(minutes(e.target.value) - minutes(startT)) >= 720) {
+                            alert('Giờ B có thể chuyển ngày. Chọn ngày/giờ đầy đủ trong Sửa B trước khi lưu.');
+                            onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId);
+                            return;
+                          }
+                          updateTimeForIdx(idx, 'start', e.target.value);
+                        }}
                         className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
                       <span className="text-indigo-300 text-[10px]">&rarr;</span>
                       <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{endT || '--:--'}</span>

@@ -22,11 +22,11 @@ const jsxRuntime = require('react/jsx-runtime');
 let lastDispatch;
 let actions = [], lastUpdate, lastHandoff;
 
-function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, names = [] } = {}) {
+function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStart = '10:30', names = [] } = {}) {
   actions = []; lastUpdate = undefined; lastHandoff = undefined;
   const ids = b ? ['A', 'B'] : ['A'];
   const segments = ids.map((ktvId, idx) => ({ id: `segment-${ktvId}`, roomId: 'R', bedId: 'X',
-    startTime: idx ? '10:30' : '10:00', endTime: idx ? '11:00' : minutes === 30 ? '10:30' : '11:00',
+    startTime: idx ? bStart : '10:00', endTime: idx ? '11:00' : minutes === 30 ? '10:30' : '11:00',
     duration: idx ? 30 : minutes, sequenceSlot: sequential ? idx + 1 : undefined,
     ...(idx === 1 && startedB ? { actualStartTime: '2026-09-26T03:30:00Z' } : {}) }));
   const item = { id: 'item', serviceId: 'NHS0001', serviceName: 'Test', duration: 60, status,
@@ -162,3 +162,12 @@ actions.find(e => e.props.onDrop).props.onDrop({ dataTransfer: { getData: () => 
 assert.deepEqual(lastUpdate.selectedKtvIds, ['B', 'A']);
 assert.deepEqual(lastUpdate.ktvServiceNames, ['Tên B', 'Tên A']);
 console.log('PASS tên riêng khi đổi thứ tự: tên đi cùng nhân viên');
+
+const originalAlert=global.alert;global.alert=()=>{};
+try {
+  render({sequential:true,b:true,status:'PREPARING',bStart:'23:50',names:['Tên A','Tên B đang sửa']});
+  actions.find(e=>e.props['aria-label']==='Giờ bắt đầu B').props.onChange({target:{value:'00:10'}});
+  assert.deepEqual(lastHandoff,['item','A','B']);
+  assert.equal(lastUpdate,undefined);
+  console.log('PASS MIDNIGHT UI: crossing midnight opens explicit date modal without changing pending name/time form');
+} finally {global.alert=originalAlert;}

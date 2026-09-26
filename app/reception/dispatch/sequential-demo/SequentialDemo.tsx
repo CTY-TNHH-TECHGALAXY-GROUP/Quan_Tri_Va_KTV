@@ -234,6 +234,9 @@ export default function SequentialDemo() {
             if (!planChanged) {
               next.plannedStartAt = old.plannedStartAt; next.plannedEndAt = old.plannedEndAt;
             } else if (Number(next.sequenceSlot) === 2 && !['NEW','WAITING'].includes(status || '')) {
+              const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
+              if (Math.abs(minutes(next.startTime) - minutes(old.startTime)) >= 720)
+                return 'Giờ B có thể chuyển ngày; dùng Sửa B để chọn ngày/giờ đầy đủ';
               const day = old.plannedStartAt ? localInput(new Date(old.plannedStartAt)).slice(0,10) : localInput(new Date()).slice(0,10);
               const start = Date.parse(`${day}T${next.startTime}:00+07:00`);
               if (!Number.isFinite(start) || next.duration < 1) return 'Giờ/phút B không hợp lệ';

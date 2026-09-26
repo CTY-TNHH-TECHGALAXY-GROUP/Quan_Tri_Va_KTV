@@ -882,6 +882,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
             throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
         }
 
+        const notificationWarnings: string[] = [];
         for (const item of liveSequentialItems) {
             const update = dispatchData.itemUpdates?.find(update => update.id === item.id);
             if (!update) continue;
@@ -890,10 +891,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
             if (!b) continue;
             const name = update.options?.serviceNamesForKtvs?.[b.ktvId] || update.options?.displayName || 'dịch vụ';
             const start = update.segments?.find(s => s.id === b.id)?.startTime || b.startTime;
-            await supabase.from('StaffNotifications').delete().eq('bookingId', bookingId).eq('employeeId', b.ktvId)
-                .eq('type', 'KTV_NEW_ORDER').eq('isRead', false);
-            await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
+            const notified = await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
                 message: `Phân công lượt B cập nhật: ${name} lúc ${start}. Vui lòng kiểm tra ứng dụng.` });
+            if (!notified) notificationWarnings.push(`Đã lưu phân công B (${b.ktvId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
         }
 
         // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
@@ -943,21 +943,14 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                 const message = `Bạn được phân công: ${svcName}${svcTime}. Vui lòng kiểm tra ứng dụng.`;
 
-                // 🗑️ Dọn dẹp thông báo sơ sài tự động do trigger tạo ra để tránh trùng lặp tin nhắn và phát âm thanh
-                await supabase.from('StaffNotifications')
-                    .delete()
-                    .eq('bookingId', bookingId)
-                    .eq('employeeId', staffId)
-                    .eq('type', 'KTV_NEW_ORDER')
-                    .eq('isRead', false);
-
                 // Gửi thông báo chi tiết cho KTV với loại KTV_NEW_ORDER để vượt qua bộ lọc client
-                await createNotification({
+                const notified = await createNotification({
                     bookingId: bookingId,
                     employeeId: String(staffId),
                     type: 'KTV_NEW_ORDER',
                     message: message,
                 });
+                if (!notified) notificationWarnings.push(`Đã lưu phân công (${staffId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
             }
         }
 
@@ -969,7 +962,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
         // Removed destructive syncOrderTimelineToDb
 
-        return { success: true };
+        return { success: true, warnings: notificationWarnings };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -1039,6 +1032,7 @@ export async function handoffSequentialKtv(input: {
     durationMinutes: number;
     confirmOverlap: boolean;
     expectedRevision: number;
+    metadata?: { serviceNamesForKtvs: Record<string, string>; notesForKtvs: Record<string, string> };
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -1052,13 +1046,13 @@ export async function handoffSequentialKtv(input: {
             referenceKind: data.referenceKind as 'actual' | 'planned',
         };
         if (!data?.success) throw new Error(data?.error || 'DB không xác nhận gán B');
-        await createNotification({
+        const notified = await createNotification({
             bookingId: input.bookingId,
             employeeId: input.toKtvId,
             type: 'KTV_NEW_ORDER',
             message: 'Bạn được phân công lượt B của dịch vụ nối tiếp. Vui lòng kiểm tra ứng dụng.',
         });
-        return { success: true };
+        return { success: true, warnings: notified ? [] : ['Đã lưu phân công B, chưa tạo được thông báo. Báo trực tiếp cho nhân viên.'] };
     } catch (error: any) {
         return { success: false, error: error.message || 'Không thể bàn giao nối tiếp' };
     }

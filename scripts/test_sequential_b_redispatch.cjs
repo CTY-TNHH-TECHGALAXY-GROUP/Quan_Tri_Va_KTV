@@ -13,7 +13,7 @@ const compiled=ts.transpileModule(applyBody+processBody,{compilerOptions:{module
 const original={id:'item',bookingId:'booking',status:'PREPARING',options:{sequentialSlots:2,dispatchRevision:4,serviceNamesForKtvs:{A:'Tên A',B:'Tên B cũ'}},technicianCodes:['A','B'],segments:[
   {id:'a',ktvId:'A',sequenceSlot:1,roomId:'R',bedId:'X',startTime:'10:00',endTime:'10:30',duration:30},
   {id:'b',ktvId:'B',sequenceSlot:2,roomId:'R',bedId:'X',startTime:'10:30',endTime:'11:00',duration:30,plannedStartAt:'2026-09-26T03:30:00Z'}]};
-let current,notifications,rpcs,staffQueries,rpcResult;
+let current,notifications,rpcs,staffQueries,rpcResult,notifySucceeded=true;
 const db={from(table){return {select(){return this;},eq(){return this;},in(_field,ids){if(table==='Staff')staffQueries.push(ids);return this;},delete(){assert.equal(table,'StaffNotifications');return this;},single(){return Promise.resolve({data:{status:current.status}});},then(resolve,reject){
   const data=table==='BookingItems'?[structuredClone(current)]:table==='Staff'?[{id:'B',full_name:'B',work_type:'TYPE_A'}]:table==='TurnQueue'?[{employee_id:'B',status:'assigned'}]:[];
   return Promise.resolve({data}).then(resolve,reject);
@@ -23,7 +23,7 @@ const dependencies={requirePermission:async p=>assert.equal(p,'dispatch_board'),
   isTwoSlotSequential,liveDispatchConflict,savedPlanFields,checkedInStaffIds:async()=>new Set(['B']),
   findKtvsNeedingCheckinConfirm:({ktvIds})=>{assert.deepEqual(ktvIds,['B']);return [];},
   ensureTurnRowsAtEnd:async()=>{throw Error('Không tạo lại tua');},resolveGuestIdsForUpdate:async()=>[],
-  createNotification:async notification=>notifications.push(notification)};
+  createNotification:async notification=>{notifications.push(notification);return notifySucceeded;}};
 const exportsStub={};
 new Function(...Object.keys(dependencies),'exports',compiled)(...Object.values(dependencies),exportsStub);
 function reset(){current=structuredClone(original);notifications=[];rpcs=[];staffQueries=[];rpcResult={data:{success:true},error:null};}
@@ -55,6 +55,13 @@ async function main(){
   assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
   assert.equal(rpcs[0].args.p_payload.itemUpdates[0].segments[1].actualStartTime,current.segments[1].actualStartTime);
   console.log('PASS REDISPATCH 5/5: B đang làm vẫn nhận tên mới; giờ thực không bị xóa/reset');
+  reset();notifySucceeded=false;
+  const savedWithWarning=await exportsStub.processDispatch('booking',payload());
+  assert.equal(savedWithWarning.success,true);assert.equal(savedWithWarning.warnings.length,1);
+  assert.ok(savedWithWarning.warnings[0].includes('Đã lưu'));
+  assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
+  notifySucceeded=true;
+  console.log('PASS notification failure: DISPATCH saved successfully with B-only warning');
   const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
   const retryBody=page.slice(page.indexOf('          let res: any = await sendPayload();'),page.indexOf('          if (!res.success) {',page.indexOf('          let res: any = await sendPayload();')));
   const retryCode=ts.transpileModule(retryBody,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
