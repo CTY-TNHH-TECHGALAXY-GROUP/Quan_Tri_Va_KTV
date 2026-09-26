@@ -21,7 +21,7 @@ const { ServiceGroupCard } = loaded.exports;
 const jsxRuntime = require('react/jsx-runtime');
 let actions = [], lastUpdate, lastHandoff, lastBStartDraft;
 
-function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStartDraft } = {}) {
+function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStartDraft, names = [] } = {}) {
   actions = []; lastUpdate = undefined; lastHandoff = undefined;
   const ids = b ? ['A', 'B'] : ['A'];
   const segments = ids.map((ktvId, idx) => ({ id: `segment-${ktvId}`, roomId: 'R', bedId: 'X',
@@ -33,7 +33,7 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
     staffList: ids.map((ktvId, idx) => ({ id: `row-${ktvId}`, ktvId, ktvName: ktvId, segments: [segments[idx]], noteForKtv: '' })) };
   const state = { selectedKtvIds: ids, selectedRoomIds: ids.map(() => 'R'), ktvBedIds: ids.map(() => 'X'),
     ktvDurations: segments.map(s => s.duration), ktvStartTimes: segments.map(s => s.startTime), ktvEndTimes: segments.map(s => s.endTime),
-    ktvNotes: [], displayName: 'Test', duration: 60, workMode: sequential ? 'sequential' : 'parallel', confirmedSequential: sequential };
+    ktvNotes: [], ktvServiceNames: names, displayName: 'Test', duration: 60, workMode: sequential ? 'sequential' : 'parallel', confirmedSequential: sequential };
   const originalJsx = jsxRuntime.jsx, originalJsxs = jsxRuntime.jsxs;
   const originalUseState = React.useState;
   let capturedBStart = false;
@@ -47,7 +47,7 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
   };
   const capture = original => (...args) => {
     const element = original(...args);
-    if (typeof element.type === 'string' && (element.props.onClick || element.props.onChange)) actions.push(element);
+    if (typeof element.type === 'string' && (element.props.onClick || element.props.onChange || element.props.onDrop)) actions.push(element);
     return element;
   };
   jsxRuntime.jsx = capture(originalJsx); jsxRuntime.jsxs = capture(originalJsxs);
@@ -168,3 +168,9 @@ for (const config of [{ assignedB: true }, { status: 'CLEANING', finishedAfterA:
   assert.equal(renderKanban(config).button, undefined);
 }
 console.log('PASS Kanban: Chưa gán B mở đúng điều phối và gán B; không hiện khi B đã gán/ca đã đóng');
+
+render({ b: true, names: ['Tên A', 'Tên B'] });
+actions.find(e => e.props.onDrop).props.onDrop({ dataTransfer: { getData: () => '1' } });
+assert.deepEqual(lastUpdate.selectedKtvIds, ['B', 'A']);
+assert.deepEqual(lastUpdate.ktvServiceNames, ['Tên B', 'Tên A']);
+console.log('PASS tên riêng khi đổi thứ tự: tên đi cùng nhân viên');

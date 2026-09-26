@@ -76,6 +76,8 @@ function chooseA(id = 'DEMO-A') {
   changeInput(room, 'R01');
   changeInput(elements(card.tree, e => e.type === 'input' && e.props.type === 'time')[0], '10:00');
 }
+function name(id, value) { changeInput(elements(card.tree, e => e.props['aria-label'] === `Tên dịch vụ riêng của ${id}`)[0], value); }
+function assertName(id, value) { assert.equal(row(id).serviceNameForKtv || '', value); assert.equal(service().options.serviceNamesForKtvs?.[id] || '', value); }
 function minutes(index, value) { changeInput(elements(card.tree, e => e.type === 'input' && e.props.placeholder === 'Phút')[index], value); }
 function sequential() { const add = elements(card.tree, e => e.type === 'button' && textOf(e).includes('+ Nối tiếp'))[0]; assert.ok(add); add.props.onClick(); flush(); }
 function chooseDraftB(id = 'DEMO-B') { changeInput(elements(card.tree, e => e.props['aria-label'] === 'Chọn nhân viên B')[0], id); }
@@ -118,20 +120,34 @@ const originalLog = console.log;
 console.log = (...args) => { if (String(args[0]).startsWith('PASS')) originalLog(...args); };
 try {
   // 1. New package, A 30 + B 30 selected before initial dispatch.
-  reset(); chooseA(); minutes(0, 30); sequential(); chooseDraftB();
+  reset(); chooseA();
+  const packageName = service().options.displayName;
+  name('DEMO-A', 'Massage riêng A'); assert.equal(service().options.displayName, packageName);
+  minutes(0, 30); sequential(); chooseDraftB();
+  assertName('DEMO-A', 'Massage riêng A'); assertName('DEMO-B', '');
+  assert.equal(elements(card.tree, e => e.props['aria-label'] === 'Tên dịch vụ chung')[0].props.readOnly, true);
+  name('DEMO-B', 'Gội riêng B'); assertName('DEMO-A', 'Massage riêng A');
+  name('DEMO-A', 'Massage A đã sửa'); assertName('DEMO-B', 'Gội riêng B');
+  name('DEMO-A', ''); assertName('DEMO-A', ''); assertName('DEMO-B', 'Gội riêng B');
+  name('DEMO-A', 'Massage A đã sửa');
   assert.equal(service().status, 'NEW'); checkPlan('DEMO-A', '10:00', 30); checkPlan('DEMO-B', '10:30', 30);
   assert.equal(demoAccountState(service(), 'DEMO-B', now).assigned, false);
   send();
+  const untouchedTimes = service().staffList.map(row => structuredClone(row.segments));
+  name('DEMO-B', 'Gội B sau gửi'); assertName('DEMO-A', 'Massage A đã sửa');
+  name('DEMO-A', 'Massage A sau gửi'); assertName('DEMO-B', 'Gội B sau gửi');
+  assert.deepEqual(service().staffList.map(row => row.segments), untouchedTimes);
   const bHtml = renderToStaticMarkup(React.createElement(AccountDemo, { service: service(), employeeId: 'DEMO-B', employeeName: 'B', now, onStamp() {} }));
   assert.ok(bHtml.includes('10:30') && !bHtml.includes('10:00'));
+  assert.ok(bHtml.includes('Gội B sau gửi') && !bHtml.includes('Massage A sau gửi'));
   closeBoth();
   console.log('PASS FLOW 1/5: Tạo mới → A30/B30 → gửi cùng lúc → giờ riêng → A/B xong → đánh giá → DONE');
 
   // 2. A initially sent as full 60, shorten before starting, then add B.
-  reset(); chooseA(); send(); checkPlan('DEMO-A', '10:00', 60);
+  reset(); chooseA(); send(); name('DEMO-A', 'Tên riêng A trước B'); checkPlan('DEMO-A', '10:00', 60);
   minutes(0, 30); checkPlan('DEMO-A', '10:00', 30);
   assert.equal(segmentOf(row('DEMO-A')).actualStartTime, undefined);
-  sequential(); assignLiveB(); checkPlan('DEMO-B', '10:30', 30); closeBoth();
+  sequential(); assignLiveB(); checkPlan('DEMO-B', '10:30', 30); assertName('DEMO-A', 'Tên riêng A trước B'); assertName('DEMO-B', ''); closeBoth();
   // The running-A variant must preserve actual timestamps and the locked plan.
   reset(); chooseA(); send(); stamp('DEMO-A', 'actualStartTime', '10:00');
   assert.equal(elements(card.tree, e => e.type === 'input' && e.props.placeholder === 'Phút')[0].props.disabled, true);
@@ -160,10 +176,13 @@ try {
   // 4. Change a draft B, send, edit B time, replace unstarted B, reject the stale account.
   reset(); chooseA(); minutes(0, 40); sequential(); chooseDraftB();
   minutes(0, 30); minutes(1, 30);
+  name('DEMO-A', 'Tên A giữ nguyên'); name('DEMO-B', 'Tên B cũ');
   checkPlan('DEMO-A', '10:00', 30); checkPlan('DEMO-B', '10:30', 30);
   const removeB = elements(card.tree, e => e.type === 'button' && e.props.className?.includes('ml-1 hover:opacity-60'))[1];
   assert.ok(removeB && !removeB.props.disabled); removeB.props.onClick({ stopPropagation() {} }); flush();
-  chooseDraftB('DEMO-C'); checkPlan('DEMO-C', '10:30', 30); send();
+  chooseDraftB('DEMO-C'); checkPlan('DEMO-C', '10:30', 30);
+  assertName('DEMO-C', ''); assertName('DEMO-A', 'Tên A giữ nguyên');
+  name('DEMO-C', 'Tên C riêng'); send();
   const aBefore = structuredClone(segmentOf(row('DEMO-A')));
   changeInput(elements(card.tree, e => e.props['aria-label'] === 'Giờ bắt đầu B')[0], '10:50');
   click(card.tree, 'Lưu giờ B'); click(elements(app.tree, e => e.props.role === 'dialog')[0], 'Lưu B');
@@ -173,11 +192,13 @@ try {
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-C').segments[0].voided, true);
   oldAccount.props.onStamp('DEMO-C', 'actualStartTime'); flush(); assert.equal(alerts.length, 1); alerts.length = 0;
   assert.equal(liveRows().length, 2); checkPlan('DEMO-B', '10:50', 30);
+  assertName('DEMO-B', ''); assertName('DEMO-A', 'Tên A giữ nguyên');
   closeBoth('DEMO-A', 'DEMO-B', '10:30', '10:50', '11:20');
   console.log('PASS FLOW 4/5: Sửa phút A/B + đổi B trong nháp → gửi → nhập tay giờ B → đổi B live → chặn tài khoản B cũ → DONE');
 
   // 5. Finish after A; cancelled B cannot begin even from a pre-rendered handler.
-  reset(); chooseA(); minutes(0, 30); sequential(); chooseDraftB(); send();
+  reset(); chooseA(); minutes(0, 30); sequential(); chooseDraftB();
+  name('DEMO-A', 'Tên A reload'); name('DEMO-B', 'Tên B reload'); send();
   const oldB = elements(app.tree, e => e.type === AccountDemo && e.props.employeeId === 'DEMO-B')[0];
   stamp('DEMO-A', 'actualStartTime', '10:00'); stamp('DEMO-A', 'actualEndTime', '10:30');
   click(app.tree, 'Hoàn thành'); assert.equal(service().status, 'CLEANING');
@@ -186,7 +207,12 @@ try {
   oldB.props.onStamp('DEMO-B', 'actualStartTime'); flush(); assert.equal(alerts.length, 1);
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').segments[0].actualStartTime, undefined);
   app = hooks(SequentialDemo); quick = card = null; flush();
+  assertName('DEMO-A', 'Tên A reload');
+  assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').serviceNameForKtv, 'Tên B reload');
+  name('DEMO-A', 'Tên A reload sửa');
+  assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').serviceNameForKtv, 'Tên B reload');
   assert.equal(service().status, 'CLEANING'); assert.equal(service().options.finishedAfterA, true);
   finishRoom();
   console.log('PASS FLOW 5/5: Hoàn thành sau A → hủy B chưa làm → chặn handler cũ → reload giữ kết quả → DONE');
+  console.log('PASS TÊN RIÊNG: sửa/xóa A không đổi B; sửa B không đổi A; B mới không kế thừa tên; giữ tên sau gửi/reload, không đổi giờ');
 } finally { global.Date = originalDate; console.log = originalLog; }

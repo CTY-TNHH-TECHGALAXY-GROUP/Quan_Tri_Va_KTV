@@ -194,3 +194,25 @@ node scripts/test_sequential_inline_ui.cjs
 - Harness gọi component React/hooks/handler thật của SequentialDemo, QuickDispatchTable, ServiceGroupCard, AccountDemo và Kanban. Không sao chép thuật toán syncToServices vào test.
 - SQL chạy PGlite trong bộ nhớ, dùng migration/RPC thật và schema tối thiểu; hàm promote_next_assignment được stub để kiểm tra trả tua. Mốc thực ghi bằng UPDATE qua trigger, không gọi API KTV chụp ảnh/bắt đầu/kết thúc. Chưa phải browser end-to-end hoặc UAT tài khoản thật trên DB đã migrate.
 - Không DB chung, không migration apply. Thay đổi runtime duy nhất trong lượt kiểm thử này là sửa gợi ý số phút B sau khi A kết thúc thực sớm, dùng chung helper đã có cho demo và trang điều phối.
+
+## Tên dịch vụ riêng của A/B
+
+Người dùng yêu cầu đổi tên của một người không tự đổi người còn lại. Tiếp tục theo phê duyệt sửa file ổn định đã có.
+
+```diff
+--- QuickDispatchTable.tsx
+- Ô tên đầu thẻ khi chỉ có A sửa displayName chung (B thêm sau có thể kế thừa)
++ Khi chỉ có một nhân viên trên một dịch vụ, ô tên sửa tên riêng người đó
++ Khi A/B nối tiếp đã có cả hai, tên chung chỉ đọc; tên riêng sửa ở từng hàng
+- Bỏ/thêm/đổi thứ tự nhân viên không cập nhật ktvServiceNames tương ứng
++ Bỏ/thêm/đổi thứ tự cập nhật cả tên riêng; người mới không kế thừa tên người bị bỏ
++ Đồng bộ serviceNamesForKtvs theo mã nhân viên từ staffList ở một chỗ
++ Nhận thay đổi tên riêng từ props khi tải lại/đồng bộ
+```
+
+### Kết quả tên riêng
+
+- `test_sequential_flows.cjs` PASS 5/5, thêm assertion: đổi tên A khi chưa có B không sửa displayName chung; B được thêm sau không kế thừa tên A; sửa/xóa A giữ B, sửa B giữ A, trước/sau gửi; thay B bằng C không kế thừa tên B; reload giữ đúng tên; tên tài khoản B không chứa tên A; mọi segment/giờ giữ nguyên khi đổi tên.
+- `test_sequential_inline_ui.cjs` PASS, thêm kiểm tra handler đổi thứ tự: mã nhân viên và tên riêng cùng đổi vị trí, không tráo tên giữa người.
+- `test_sequential_accounts.cjs`, TypeScript và diff check PASS. Lint không lỗi, còn cảnh báo syncToServices có sẵn.
+- Vẫn trên branch test riêng; không migration/DB chung. Khi có cả A+B, sửa tên ở ô riêng trong hàng nhân viên tương ứng.

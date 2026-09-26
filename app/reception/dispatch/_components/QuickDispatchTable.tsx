@@ -356,7 +356,7 @@ export const QuickDispatchTable = ({
 
   // Build fingerprint from current services data
   const buildFingerprint = (svcs: ServiceBlock[]) =>
-    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${isTwoSlotSequential(s.options)}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.id || ''}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
+    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${isTwoSlotSequential(s.options)}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.id || ''}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}:${st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? ''}`).join(',')}`).join(';');
 
   // Initialize / re-initialize group states when services change
   useEffect(() => {
@@ -404,7 +404,7 @@ export const QuickDispatchTable = ({
                 endTimes.push(finalEndTime);
                 ktvDurationsList.push(totalStaffDur);
                 ktvNotesList.push(staff.noteForKtv || '');
-                ktvServiceNamesList.push(staff.serviceNameForKtv || '');
+                ktvServiceNamesList.push(staff.serviceNameForKtv ?? item.options?.serviceNamesForKtvs?.[staff.ktvId] ?? '');
                 bedIdsList.push(staff.segments?.[0]?.bedId || '');
               }
             });
@@ -619,7 +619,9 @@ export const QuickDispatchTable = ({
         });
       }
     });
-    onUpdateServices(updatedServices);
+    onUpdateServices(updatedServices.map(svc => ({ ...svc, options: { ...svc.options,
+      serviceNamesForKtvs: Object.fromEntries(svc.staffList.filter(row => row.ktvId && row.serviceNameForKtv).map(row => [row.ktvId, row.serviceNameForKtv]))
+    } })));
   };
 
   // Track user-driven changes for deferred sync
@@ -1002,6 +1004,8 @@ const ServiceGroupCard = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [isKtvDropdownOpen, showRemindersIdx]);
 
+  const singleKtvName = groupItems.length === 1 && !state.isUtility && state.selectedKtvIds.length === 1;
+
   const removeKtv = (ktvId: string) => {
     const idx = state.selectedKtvIds.indexOf(ktvId);
     const newRoomIds = [...(state.selectedRoomIds || [])];
@@ -1009,9 +1013,10 @@ const ServiceGroupCard = ({
     const newEnds = [...(state.ktvEndTimes || [])];
     const newDurs = [...(state.ktvDurations || [])];
     const newNotes = [...(state.ktvNotes || [])];
+    const newNames = [...(state.ktvServiceNames || [])];
     const newBeds = [...(state.ktvBedIds || [])];
-    if (idx >= 0) { newRoomIds.splice(idx, 1); newStarts.splice(idx, 1); newEnds.splice(idx, 1); newDurs.splice(idx, 1); newNotes.splice(idx, 1); newBeds.splice(idx, 1); }
-    onUpdate({ selectedKtvIds: state.selectedKtvIds.filter(id => id !== ktvId), selectedRoomIds: newRoomIds, ktvStartTimes: newStarts, ktvEndTimes: newEnds, ktvDurations: newDurs, ktvNotes: newNotes, ktvBedIds: newBeds });
+    if (idx >= 0) { newRoomIds.splice(idx, 1); newStarts.splice(idx, 1); newEnds.splice(idx, 1); newDurs.splice(idx, 1); newNotes.splice(idx, 1); newNames.splice(idx, 1); newBeds.splice(idx, 1); }
+    onUpdate({ selectedKtvIds: state.selectedKtvIds.filter(id => id !== ktvId), selectedRoomIds: newRoomIds, ktvStartTimes: newStarts, ktvEndTimes: newEnds, ktvDurations: newDurs, ktvNotes: newNotes, ktvServiceNames: newNames, ktvBedIds: newBeds });
   };
 
   const moveKtv = (fromIdx: number, toIdx: number) => {
@@ -1045,6 +1050,7 @@ const ServiceGroupCard = ({
       ktvEndTimes: newEnds,
       ktvDurations: newDurations,
       ktvNotes: swap(state.ktvNotes),
+      ktvServiceNames: swap(state.ktvServiceNames),
       ktvBedIds: swap(state.ktvBedIds),
     });
   };
@@ -1101,7 +1107,8 @@ const ServiceGroupCard = ({
         ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], 
         ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], 
         ktvDurations: [...(state.ktvDurations || []), defaultDur], 
-        ktvNotes: [...(state.ktvNotes || []), ''], 
+        ktvNotes: [...(state.ktvNotes || []), ''],
+        ktvServiceNames: [...(state.ktvServiceNames || []), ''],
         ktvBedIds: [...(state.ktvBedIds || []), defaultBed],
         selectedRoomIds: [...(state.selectedRoomIds || []), defaultRoom]
       });
@@ -1365,8 +1372,10 @@ const ServiceGroupCard = ({
               {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
               <input 
                 type="text" 
-                value={state.displayName} 
-                onChange={e => onUpdate({ displayName: e.target.value })} 
+                aria-label={singleKtvName ? `Tên dịch vụ riêng của ${state.selectedKtvIds[0]}` : 'Tên dịch vụ chung'}
+                readOnly={hasHandoff && !singleKtvName}
+                value={singleKtvName ? state.ktvServiceNames?.[0] || state.displayName : state.displayName}
+                onChange={e => singleKtvName ? updateServiceNameForIdx(0, e.target.value) : onUpdate({ displayName: e.target.value })}
                 placeholder={serviceName}
                 className={`font-black text-base bg-transparent border-b border-dashed hover:border-indigo-300 focus:border-indigo-500 outline-none w-full truncate ${state.isUtility ? 'text-amber-700 italic border-amber-300/50' : 'text-gray-900 border-gray-300/50'}`} 
               />
@@ -1713,9 +1722,9 @@ const ServiceGroupCard = ({
                   <div className="flex items-center gap-2 ml-6">
                     {(state.isMergedGroup || groupItems?.some((item: any) => item._splitTime !== undefined) || state.selectedKtvIds.length > 1) && (
                         <div className="flex-1 relative">
-                            <input type="text" value={state.ktvServiceNames?.[idx] || ''} onChange={e => updateServiceNameForIdx(idx, e.target.value)} placeholder={groupItems?.[0]?.serviceName || "Tên DV..."} className="w-full px-2.5 py-1.5 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/10 outline-none bg-indigo-50/30 placeholder:text-indigo-300 pr-8" />
+                            <input type="text" aria-label={`Tên dịch vụ riêng của ${ktvId}`} value={state.ktvServiceNames?.[idx] || ''} onChange={e => updateServiceNameForIdx(idx, e.target.value)} placeholder={groupItems?.[0]?.serviceName || "Tên DV..."} className="w-full px-2.5 py-1.5 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/10 outline-none bg-indigo-50/30 placeholder:text-indigo-300 pr-8" />
                             {state.ktvServiceNames?.[idx] && (
-                                <button onClick={() => updateServiceNameForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-indigo-300 hover:text-indigo-500"><X size={12} /></button>
+                                <button aria-label={`Xóa tên dịch vụ riêng của ${ktvId}`} onClick={() => updateServiceNameForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-indigo-300 hover:text-indigo-500"><X size={12} /></button>
                             )}
                         </div>
                     )}
