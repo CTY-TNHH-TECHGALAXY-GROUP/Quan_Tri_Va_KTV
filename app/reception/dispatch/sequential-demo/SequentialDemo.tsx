@@ -5,7 +5,9 @@ import { KanbanBoard } from '../_components/KanbanBoard';
 import { QuickDispatchTable } from '../_components/QuickDispatchTable';
 import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
 import { remainingHandoffMinutes, plannedHandoffStartAt } from '@/lib/dispatch-handoff';
-import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
+import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
+import { AccountDemo } from './AccountDemo';
+import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
 
 const storageKey = 'dispatch-sequential-demo-v2';
 const staff: StaffData[] = [
@@ -13,14 +15,11 @@ const staff: StaffData[] = [
   { id: 'DEMO-B', full_name: 'KTV B', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
   { id: 'DEMO-C', full_name: 'KTV C', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
 ];
-type DemoSegment = WorkSegment & { ktvId: string; sequenceSlot?: number; voided?: boolean; plannedEndAt?: string };
 type HandoffForm = { ktvId: string; start: string; duration: number };
 const localInput = (date: Date) => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 }).format(date).replace(' ', 'T');
-const segmentOf = (row: ServiceBlock['staffList'][number]) => row.segments[0] as DemoSegment;
-const segmentsOf = (service: ServiceBlock) => service.staffList.map(row => ({ ...segmentOf(row), ktvId: row.ktvId }));
 const plannedEndAt = (segment: DemoSegment) => {
   const start = Date.parse(`${localInput(new Date()).slice(0, 10)}T${segment.startTime.slice(0, 5)}:00+07:00`);
   return new Date(start + segment.duration * 60_000).toISOString();
@@ -44,32 +43,47 @@ function sampleOrder(): PendingOrder {
 
 export default function SequentialDemo() {
   const [order, setOrder] = useState<PendingOrder | null>(null);
-  const [ready, setReady] = useState(false);
+  const [accountId, setAccountId] = useState('');
+  const [now, setNow] = useState(Date.now());
   const [handoff, setHandoff] = useState<HandoffForm | null>(null);
 
-  useEffect(() => {
+  const readOrder = (): PendingOrder | null => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-      saved?.services?.[0]?.staffList?.forEach((row: ServiceBlock['staffList'][number]) =>
-        row.segments.forEach(segment => { (segment as DemoSegment).ktvId = row.ktvId; }));
-      setOrder(saved?.services?.[0]?.staffList ? saved : sampleOrder());
-    } catch { setOrder(sampleOrder()); }
-    setReady(true);
+      return saved?.services?.[0]?.staffList ? saved : null;
+    } catch { return null; }
+  };
+  const saveOrder = (next: PendingOrder) => {
+    localStorage.setItem(storageKey, JSON.stringify(next));
+    setOrder(next);
+  };
+  useEffect(() => {
+    const saved = readOrder();
+    if (saved) setOrder(saved);
+    else saveOrder(sampleOrder());
+    setAccountId(new URLSearchParams(window.location.search).get('account') || '');
+    const sync = (event: StorageEvent) => {
+      if (event.key === storageKey || event.key === null) setOrder(readOrder() || sampleOrder());
+    };
+    window.addEventListener('storage', sync);
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => { window.removeEventListener('storage', sync); window.clearInterval(tick); };
   }, []);
-  useEffect(() => { if (ready && order) localStorage.setItem(storageKey, JSON.stringify(order)); }, [ready, order]);
 
-  const change = (edit: (service: ServiceBlock) => void) => setOrder(previous => {
-    if (!previous) return previous;
+  const change = (edit: (service: ServiceBlock) => void | string) => {
+    const previous = readOrder() || order;
+    if (!previous) return;
     const next = structuredClone(previous);
-    edit(next.services[0]);
+    const error = edit(next.services[0]);
+    if (error) { alert(error); setOrder(previous); return; }
     const status = next.services[0].status || 'NEW';
     next.dispatchStatus = status === 'NEW' ? 'pending' : status as PendingOrder['dispatchStatus'];
     next.rawStatus = status;
     next.rating = Number(next.services[0].itemRating) || null;
     next.hasAssignedKtv = status !== 'NEW' && next.services[0].staffList.length > 0;
     next.updatedAt = new Date().toISOString();
-    return next;
-  });
+    saveOrder(next);
+  };
   const service = order?.services[0];
   const a = service?.staffList.find(row => segmentOf(row).sequenceSlot === 1) || service?.staffList[0];
   const b = service?.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
@@ -129,12 +143,13 @@ export default function SequentialDemo() {
     if (startMs < reference && !confirm(`B bắt đầu trước khi A kết thúc ${segmentOf(a).actualEndTime ? 'thực tế' : 'dự kiến'}. Vẫn gán B?`)) return;
     change(s => {
       const old = s.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
+      if (s.options?.finishedAfterA || (old && segmentOf(old).actualStartTime) || !['PREPARING', 'IN_PROGRESS'].includes(s.status || '')) return 'Lượt B đã thay đổi. Tải lại phân công.';
       const end = new Date(startMs + handoff.duration * 60_000);
       const segment: DemoSegment = {
         id: old?.ktvId === handoff.ktvId ? segmentOf(old).id : `demo-b-${Date.now()}`,
         ktvId: handoff.ktvId, sequenceSlot: 2, roomId: segmentOf(a).roomId, bedId: segmentOf(a).bedId,
         startTime: handoff.start.slice(11, 16), endTime: localInput(end).slice(11),
-        duration: handoff.duration, plannedEndAt: end.toISOString(),
+        duration: handoff.duration, plannedStartAt: new Date(startMs).toISOString(), plannedEndAt: end.toISOString(),
       };
       if (old?.ktvId === handoff.ktvId) old.segments = [segment];
       else {
@@ -146,25 +161,20 @@ export default function SequentialDemo() {
     });
     setHandoff(null);
   };
-  const stamp = (slot: number, field: 'actualStartTime' | 'actualEndTime') => change(s => {
-    if (!['PREPARING', 'IN_PROGRESS'].includes(s.status || '')) return;
-    const row = slot === 1 && !isTwoSlotSequential(s.options) ? s.staffList[0]
-      : s.staffList.find(person => segmentOf(person).sequenceSlot === slot && segmentOf(person).voided !== true);
-    if (!row) return;
-    const segment = segmentOf(row);
-    if (field === 'actualEndTime' && !segment.actualStartTime) return;
-    segment[field] ||= new Date().toISOString();
-    if (field === 'actualStartTime') s.status = 'IN_PROGRESS';
-    if (field === 'actualEndTime' && (isTwoSlotSequential(s.options)
-      ? sequentialSlotsComplete(s.options, segmentsOf(s))
-      : !!segment.actualEndTime)) s.status = 'CLEANING';
-  });
+  const stampEmployee = (employeeId: string, field: 'actualStartTime' | 'actualEndTime') =>
+    change(s => stampDemoAccount(s, employeeId, field));
+  const stamp = (slot: number, field: 'actualStartTime' | 'actualEndTime') => {
+    const employeeId = slot === 1 ? a?.ktvId : b?.ktvId;
+    if (employeeId) stampEmployee(employeeId, field);
+  };
   const finishAfterA = () => {
     if (!service || !isTwoSlotSequential(service.options) || !a || !segmentOf(a).actualEndTime || (b && segmentOf(b).actualStartTime)) {
       alert('A phải hoàn tất và B chưa bắt đầu.'); return;
     }
     change(s => {
+      const currentA = s.staffList.find(row => Number(segmentOf(row).sequenceSlot) === 1);
       const currentB = s.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
+      if (!currentA || !segmentOf(currentA).actualEndTime || (currentB && segmentOf(currentB).actualStartTime)) return 'Ca đã thay đổi: A chưa xong hoặc B đã bắt đầu.';
       if (currentB) segmentOf(currentB).voided = true;
       s.options = { ...s.options, finishedAfterA: true };
       s.status = 'CLEANING';
@@ -183,6 +193,12 @@ export default function SequentialDemo() {
       <h1 className="text-xl font-bold">Test trọn quy trình điều phối · chỉ trên trình duyệt</h1>
       <p className="text-sm">Chọn A rồi gửi phân công. Khi cần người làm tiếp, bấm + Nối tiếp dưới A; chọn B ngay hoặc để trống chọn sau. Dữ liệu lưu tại <code>localStorage[{storageKey}]</code>; không ghi DB.</p>
     </div>
+    <nav className="flex flex-wrap gap-2" aria-label="Góc nhìn demo">
+      <a href="?" className="rounded border bg-white px-3 py-2">Điều phối</a>
+      {staff.map(person => <a key={person.id} href={`?account=${person.id}`} className={`rounded border px-3 py-2 ${accountId === person.id ? 'bg-indigo-600 text-white' : 'bg-white'}`}>Tài khoản {person.full_name}</a>)}
+      <span className="self-center text-sm text-slate-500">Mở link tài khoản trong tab mới để test đồng thời.</span>
+    </nav>
+    {accountId ? <AccountDemo service={service} employeeId={accountId} employeeName={staff.find(person => person.id === accountId)?.full_name || accountId} now={now} onStamp={stampEmployee} /> : <>
     <section id="demo-quick" className="rounded-xl border bg-white p-4">
       <h2 className="mb-1 font-bold">1. Chọn KTV A, phòng, giường và giờ dự kiến</h2>
       <p className="mb-3 text-sm text-slate-500">Dùng bảng điều phối thật bên dưới. A chưa đủ phút của gói thì bảng gợi ý thêm người nối tiếp.</p>
@@ -215,7 +231,7 @@ export default function SequentialDemo() {
       <div className="flex flex-wrap gap-2">
         <button disabled={!a || service.status !== 'NEW'} className="rounded bg-indigo-600 px-3 py-2 font-bold text-white disabled:opacity-40"
           onClick={dispatchA}>{isSequential && b ? 'Gửi phân công A + B' : 'Gửi phân công A'}</button>
-        <button className="rounded border px-3 py-2" onClick={() => { localStorage.removeItem(storageKey); setHandoff(null); setOrder(sampleOrder()); }}>Tạo dịch vụ mới</button>
+        <button className="rounded border px-3 py-2" onClick={() => { setHandoff(null); saveOrder(sampleOrder()); }}>Tạo dịch vụ mới</button>
       </div>
       <p className="mt-2 text-sm">Trạng thái: <strong>{service.status}</strong> · A: <strong>{a?.ktvName || 'chưa chọn'}</strong>{isSequential && <> · B: <strong>{b?.ktvName || 'chọn sau'}</strong></>}</p>
     </section>
@@ -233,8 +249,13 @@ export default function SequentialDemo() {
         </>}
       </div>
     </section>
+    <section className="space-y-3">
+      <h2 className="font-bold">4. Góc nhìn tài khoản A và B</h2>
+      <div className="grid gap-4 md:grid-cols-2">{[a?.ktvId || 'DEMO-A', b?.ktvId || 'DEMO-B'].filter((id, index, ids) => ids.indexOf(id) === index).map(employeeId =>
+        <AccountDemo key={employeeId} service={service} employeeId={employeeId} employeeName={staff.find(person => person.id === employeeId)?.full_name || employeeId} now={now} onStamp={stampEmployee} />)}</div>
+    </section>
     <section className="rounded-xl border bg-white p-4">
-      <h2 className="mb-3 font-bold">4. Theo dõi trên Kanban</h2>
+      <h2 className="mb-3 font-bold">5. Theo dõi trên Kanban</h2>
       <div className="h-[560px]"><KanbanBoard orders={[order]} staffs={staff} selectedOrderId={order.id}
         onUpdateStatus={(_id, status) => {
           if (status === 'IN_PROGRESS' && service.status === 'PREPARING') { stamp(1, 'actualStartTime'); return; }
@@ -258,6 +279,7 @@ export default function SequentialDemo() {
     </section>
     <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-bold">Xem JSON đang lưu</summary>
       <pre className="overflow-auto text-xs">{JSON.stringify(order, null, 2)}</pre></details>
+    </>}
     {handoff && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Gán lượt B demo">
       <div className="w-full max-w-sm space-y-4 rounded-xl bg-white p-5">
         <h2 className="font-bold">Gán / sửa lượt B</h2>

@@ -101,3 +101,40 @@ Giữ branch `feat/sequential-two-slot-handoff-20260926`, kiểm tra trên demo 
 - Sau gửi, B chưa bắt đầu: ô giờ B cho nhập tay. `Lưu giờ B` mở phần xác nhận gán/sửa B với giờ vừa nhập; xác nhận để lưu qua RPC hiện có. Hủy xác nhận giữ kế hoạch cũ.
 - B đã bắt đầu, bị thay hoặc ca đã đóng: không sửa giờ dự kiến bằng đường này.
 - Kiểm tra handler đã pass: nhập 10:45 thay 10:30, giữ giờ A; truyền đúng giờ mới sang callback; khóa khi B đã bắt đầu. SQL pass khi sửa kế hoạch B cùng KTV/segment ID và giữ nguyên mọi mốc A.
+
+## Demo tài khoản A/B và đồng hồ riêng
+
+Tiếp tục trên branch test đã được duyệt. Mỗi link `?account=DEMO-A` / `?account=DEMO-B` chỉ hiện phân công của đúng tài khoản, không đăng nhập tài khoản thật. Các tab cùng origin đồng bộ bằng sự kiện localStorage. Đồng hồ dùng mốc thực của chính chặng, không lấy mốc của người kia. Theo phản hồi làm rõ: giữ cách xác nhận chồng giờ hiện có; không lấy giờ phân công A để hiển thị ở B và ngược lại.
+
+```diff
+--- SequentialDemo.tsx
+- Chỉ có góc nhìn điều phối và nút bắt đầu chung
+- localStorage chỉ nạp lúc mount
++ Link mở góc nhìn riêng tài khoản A và B, cùng dữ liệu local
++ Mỗi tài khoản chỉ được bắt đầu/kết thúc đúng chặng đã phân công cho mình
++ Đồng bộ các tab, đọc dữ liệu mới nhất trước mỗi thao tác
++ Đồng hồ riêng theo segment; mốc thực của A không bị ghi sang B và ngược lại
+```
+
+### Sửa nguồn giờ trên màn KTV đang dùng
+
+```diff
+--- ScreenTimer.tsx: WorkingTimeline (dùng chung màn dashboard/timer)
+- actualStartTime nhận từ caller, có fallback giờ chung của booking
++ actualStartTime lấy từ segments[0] của đúng KTV đang xem
+--- ScreenTimer.tsx: giờ trên đồng hồ
+- currentSeg.actualStartTime || booking.dispatchStartTime || booking.timeStart
++ currentSeg.actualStartTime || currentSeg.plannedStartAt || currentSeg.startTime
++ Chỉ dùng fallback booking khi không có currentSeg
+--- ScreenDashboard.tsx / ScreenTimer.tsx: caller timeline
+- truyền giờ fallback booking vào WorkingTimeline
++ Timeline tự lấy mốc của các segment đã lọc theo tài khoản
+```
+
+### Kết quả demo tài khoản
+
+- `node scripts/test_sequential_accounts.cjs`: 5/5 PASS. Render AccountDemo, ScreenTimer và ScreenDashboard thật với giờ chung booking cố tình đặt 10:00: A hiện 10:00–10:30, B hiện 10:45–11:00. Không dùng giờ A ở B; đồng hồ thực và thao tác kết thúc riêng. Chỉ mock dialog chưa mở và widget chấm công trong kiểm tra ScreenDashboard.
+- Kiểm tra handler thật với hai trạng thái tab độc lập dùng chung localStorage: đọc bản mới nhất trước ghi, không xóa mốc A khi B thao tác, sự kiện storage cập nhật cả hai tab, reload giữ tài khoản và kế hoạch đúng.
+- 5 case inline điều phối + chỉnh tay B + Kanban tiếp tục PASS. TypeScript PASS; lint không lỗi, chỉ hai cảnh báo img có sẵn trên ScreenTimer.
+- URL demo B trả HTTP 200. Chưa xác nhận lại bằng click trình duyệt do công cụ Safari mất trạng thái điều khiển. Các kết quả 5/5 trên là component/handler, không phải browser end-to-end.
+- Mở cùng trình duyệt, cùng origin `http://localhost:3001`, ba tab điều phối / `?account=DEMO-A` / `?account=DEMO-B`. Demo không tạo tài khoản Supabase hoặc ghi DB; không đồng bộ qua trình duyệt khác/máy khác.

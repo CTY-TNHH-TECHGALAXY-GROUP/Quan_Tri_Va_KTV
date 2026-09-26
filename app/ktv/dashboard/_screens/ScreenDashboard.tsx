@@ -857,7 +857,6 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   <WorkingTimeline 
                     segments={ktvSegments} 
                     activeIndex={booking.status === 'IN_PROGRESS' ? activeSegmentIndex : undefined}
-                    actualStartTime={ktvSegments[0]?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null}
                     shouldMerge={shouldMerge}
                     totalAssignedMins={totalAssignedMins}
                   />

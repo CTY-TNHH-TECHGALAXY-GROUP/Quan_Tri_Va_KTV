@@ -13,8 +13,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
 import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
-export function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean, totalAssignedMins?: number }) {
+export function WorkingTimeline({ segments, activeIndex, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, shouldMerge?: boolean, totalAssignedMins?: number }) {
   if (!segments || segments.length === 0) return null;
+  const actualStartTime = segments[0]?.actualStartTime || null;
 
   let displaySegments = segments;
   if (shouldMerge && segments.length > 0) {
@@ -258,7 +259,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
   const progress = totalDuration > 0 ? (currentSecs / totalDuration) * 100 : 0;
 
   // Xử lý hiển thị giờ bắt đầu / kết thúc
-  const startTimeRaw = currentSeg?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null;
+  const startTimeRaw = currentSeg
+    ? currentSeg.actualStartTime || currentSeg.plannedStartAt || currentSeg.startTime || null
+    : booking?.dispatchStartTime || booking?.timeStart || null;
   const getFormattedTime = (dateString: string | null) => {
     if (!dateString) return '--:--';
     if (typeof dateString === 'string' && /^\d{1,2}:\d{2}/.test(dateString)) return dateString.substring(0, 5);
@@ -415,7 +418,6 @@ export function ScreenTimer({ logic }: { logic: any }) {
           <WorkingTimeline 
             segments={ktvSegments} 
             activeIndex={activeSegmentIndex} 
-            actualStartTime={ktvSegments[0]?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null}
             shouldMerge={shouldMerge}
             totalAssignedMins={totalAssignedMins}
           />
