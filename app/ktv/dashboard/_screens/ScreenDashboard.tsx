@@ -1,5 +1,5 @@
 'use client';
-import { isLiveKtvSegment, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
+import { isKtvDisplaySegment, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
 
 import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
@@ -111,7 +111,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
       .map(i => ({
         id: i.id,
         name: ktvServiceName(i, logic.ktvId) || 'Dịch vụ',
-        minutes: Number(i.duration) || 60,
+        minutes: ktvAssignedMinutes(i, logic.ktvId),
       }));
   }, [logic.booking?.assignedItemIds, logic.booking?.BookingItems, logic.ktvId]);
 
@@ -253,7 +253,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
     } else if (Array.isArray(i?.segments)) {
         segs = parseKtvSegments(i.segments);
     }
-    return segs.filter((s: any) => isLiveKtvSegment(s, logic.ktvId)).map((s: any) => {
+    return segs.filter((s: any) => isKtvDisplaySegment(s, logic.ktvId)).map((s: any) => {
         return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
     });
   }).sort((a: any, b: any) => {
@@ -261,7 +261,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
       const timeB = b.startTime || '23:59';
       return timeA.localeCompare(timeB);
   });
-  const totalAssignedMins = allKtvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+  const totalAssignedMins = allItemsRaw.reduce((sum: number, i: any) => sum + ktvAssignedMinutes(i, logic.ktvId), 0);
   // Khi đã gộp, chỉ dùng segments từ item cha cho UI (1 dòng timeline duy nhất)
   const ktvSegments = hasMergedChildren
     ? allKtvSegments.filter((s: any) => allItems.some((i: any) => i.id === s._itemId))
@@ -802,7 +802,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                         <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
                       </h3>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
+                        <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins} phút</span>
                         {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
                         <ServiceTypeLabel serviceId={item.serviceId} />
                         {/* Không hiện tên khách cho KTV — chỉ cần nhãn khách và mã đơn

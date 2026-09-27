@@ -1,4 +1,4 @@
-import { isLiveKtvSegment, parseKtvOptions, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
+import { isKtvDisplaySegment, parseKtvOptions, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
 import { isUtilityService } from '@/lib/booking.logic';
 /**
  * ============================================================
@@ -67,7 +67,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 .from('BookingItems')
                 .select('bookingId, status, id, segments')
                 .contains('technicianCodes', [technicianCode])
-                .in('status', ['IN_PROGRESS'])
+                .in('status', ['IN_PROGRESS', 'PAUSED'])
                 .order('timeStart', { ascending: false, nullsFirst: false });
 
             let validActiveItem = null;
@@ -78,8 +78,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         segs = parseKtvSegments(item.segments);
                     } catch { segs = []; }
                     
-                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
-                    const isStillWorking = mySegs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
+                    const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
+                    const isStillWorking = segs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
                     
                     if (isStillWorking) {
                         validActiveItem = item;
@@ -468,6 +468,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     finalDuration = Number(opts.duration);
                 }
 
+                if (technicianCode) finalDuration = ktvAssignedMinutes(i, technicianCode, finalDuration);
+
                 const getI18nStr = (val: any, fallback: string = '') => {
                     if (typeof val === 'object' && val !== null) return val.vn || val.en || String(val);
                     return val || fallback;
@@ -528,14 +530,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             return i.technicianCodes && 
                    Array.isArray(i.technicianCodes) && 
                    technicianCode && 
-                   i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase());
+                   i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase())
+                   && (parseKtvSegments(i.segments).length === 0
+                     || parseKtvSegments(i.segments).some((seg: any) => isKtvDisplaySegment(seg, technicianCode)));
         });
 
         if (ktvItems.length > 0) {
             for (const item of ktvItems) {
                 let segs: any[] = [];
                 try { segs = parseKtvSegments(item.segments); } catch { segs = []; }
-                const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
+                const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 if (runningIdx !== -1) {
                     activeItemId = item.id;
@@ -552,7 +556,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     statusSource = 'item_status';
                     let segs: any[] = [];
                     try { segs = parseKtvSegments(inProgressItem.segments); } catch { segs = []; }
-                    const mySegs = segs.filter((s: any) => isLiveKtvSegment(s, technicianCode));
+                    const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
                 }
@@ -620,7 +624,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             let segs: any[] = [];
             try { segs = parseKtvSegments(item.segments); } catch {}
             segs.forEach((s: any) => {
-                if (isLiveKtvSegment(s, technicianCode)) {
+                if (isKtvDisplaySegment(s, technicianCode)) {
                     mySegments.push({
                         origStart: s.startTime || item.timeStart || '',
                         duration: Number(s.duration) || Number(item.duration) || 60,
@@ -873,7 +877,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     try {
                         const sg = parseKtvSegments(it.segments);
                         segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
-                            isLiveKtvSegment(x, technicianCode));
+                            isKtvDisplaySegment(x, technicianCode));
                     } catch { }
                     const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
                     if (laNguoiVaoThay) return null;

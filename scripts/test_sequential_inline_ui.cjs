@@ -91,10 +91,20 @@ assert.ok(!ended.includes('+ Nối tiếp'));
 console.log('PASS 5/5: Sau gửi chọn B qua thao tác riêng; kết thúc sau A không còn thêm B');
 
 render({ minutes: 30, sequential: true, b: true });
+actions.find(e => e.props['aria-label'] === 'Bỏ nhân viên hàng 2 khỏi bản nháp').props.onClick();
+assert.deepEqual(lastUpdate.selectedKtvIds, ['A']);
+assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00']);
+assert.ok(!actions.some(e => e.props['aria-label'] === 'Bỏ nhân viên hàng 1 khỏi bản nháp'));
+render({ minutes: 30, sequential: true, b: true });
 actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.onChange({ target: { value: '10:45' } });
 assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00', '10:45']);
 assert.deepEqual(lastUpdate.ktvEndTimes, ['10:30', '11:15']);
 render({ minutes: 30, sequential: true, b: true, status: 'PREPARING' });
+const replaceB = actions.find(e => e.props['aria-label'] === 'Đổi nhân viên B');
+assert.ok(replaceB);
+replaceB.props.onClick();
+assert.deepEqual(lastHandoff, ['item', 'A', 'B']);
+assert.ok(!actions.some(e => e.props['aria-label'] === 'Bỏ nhân viên hàng 2 khỏi bản nháp'));
 const liveBTime = actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B');
 assert.equal(liveBTime.props.disabled, false);
 assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu KTV 1').props.disabled, true);
@@ -105,6 +115,7 @@ const saveBTime = actions.find(e => e.props.children === 'Lưu & điều phối 
 assert.equal(saveBTime.props.disabled, false); saveBTime.props.onClick();
 assert.equal(lastDispatch,1);
 render({ minutes: 30, sequential: true, b: true, status: 'IN_PROGRESS', startedB: true });
+assert.ok(!actions.some(e => e.props['aria-label'] === 'Đổi nhân viên B'));
 assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.disabled, true);
 assert.ok(!actions.some(e => e.props.children === 'Lưu & điều phối B'));
 console.log('PASS giờ B: Tên/giờ chung bản chỉnh, lưu và điều phối lại B; khóa giờ khi B đã bắt đầu');
@@ -117,20 +128,22 @@ kanbanModule._compile(ts.transpileModule(readFileSync(kanbanFilename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
 }).outputText, kanbanFilename);
 
-function renderKanban({ status = 'PREPARING', assignedB = false, voidedB = false, finishedAfterA = false } = {}) {
+function renderKanban({ status = 'PREPARING', assignedB = false, voidedB = false, finishedAfterA = false, startedB = false, sequential = true } = {}) {
   const a = { id: 'a', ktvId: 'A', sequenceSlot: '1', startTime: '10:00', endTime: '10:30', duration: 30, roomId: 'R', bedId: 'X',
     ...(status === 'IN_PROGRESS' ? { actualStartTime: '2026-09-26T03:00:00Z', actualEndTime: '2026-09-26T03:30:00Z' } : {}) };
-  const b = { id: 'b', ktvId: 'B', sequenceSlot: '2', startTime: '10:30', endTime: '11:00', duration: 30, roomId: 'R', bedId: 'X', voided: voidedB };
+  const b = { id: 'b', ktvId: 'B', sequenceSlot: '2', startTime: '10:30', endTime: '11:00', duration: 30, roomId: 'R', bedId: 'X', voided: voidedB,
+    ...(startedB ? { actualStartTime: '2026-09-26T03:30:00Z' } : {}) };
   const segments = assignedB || voidedB ? [a, b] : [a];
   const service = { id: 'item', serviceName: 'Test', duration: 60, status, selectedRoomId: 'R',
-    options: { sequentialSlots: 2, finishedAfterA }, staffList: segments.map(s => ({ id: s.id, ktvId: s.ktvId, ktvName: s.ktvId, segments: [s], noteForKtv: '' })) };
+    options: sequential ? { sequentialSlots: 2, finishedAfterA } : {}, staffList: segments.map(s => ({ id: s.id, ktvId: s.ktvId, ktvName: s.ktvId, segments: [s], noteForKtv: '' })) };
   const order = { id: 'child-booking', parentBookingId: 'parent-booking', billCode: 'LOCAL-001', customerName: 'Khách test',
     dispatchStatus: status, rawStatus: status, time: '10:00', services: [service], hasAssignedKtv: true };
   const originalJsx = jsxRuntime.jsx, originalJsxs = jsxRuntime.jsxs;
-  let button, detail, handoff;
+  let button, replaceButton, detail, handoff;
   const capture = original => (...args) => {
     const element = original(...args);
     if (element.type === 'button' && element.props.title === 'Mở điều phối để gán nhân viên B') button = element;
+    if (element.type === 'button' && element.props['aria-label'] === 'Đổi nhân viên B') replaceButton = element;
     return element;
   };
   jsxRuntime.jsx = capture(originalJsx); jsxRuntime.jsxs = capture(originalJsxs);
@@ -139,7 +152,13 @@ function renderKanban({ status = 'PREPARING', assignedB = false, voidedB = false
     orders: [order], staffs: [], onUpdateStatus() {}, onOpenDetail: (...args) => { detail = args; },
     onAssignSequentialB: (...args) => { handoff = args; },
   })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; }
-  return { html, button, click: () => {
+  return { html, button, replaceButton, replace: () => {
+    let stopped = false;
+    replaceButton.props.onClick({ stopPropagation: () => { stopped = true; } });
+    assert.equal(stopped, true);
+    assert.equal(detail, undefined);
+    assert.deepEqual(handoff, ['child-booking', 'item', 'A', 'B']);
+  }, click: () => {
     let stopped = false;
     button.props.onClick({ stopPropagation: () => { stopped = true; } });
     assert.equal(stopped, true);
@@ -158,6 +177,19 @@ for (const config of [{ assignedB: true }, { status: 'CLEANING', finishedAfterA:
   assert.equal(renderKanban(config).button, undefined);
 }
 console.log('PASS Kanban: Chưa gán B mở đúng điều phối và gán B; không hiện khi B đã gán/ca đã đóng');
+const replacementCard = renderKanban({ assignedB: true });
+assert.ok(replacementCard.html.includes('Nối tiếp · A'));
+assert.ok(replacementCard.html.includes('A · Làm trước'));
+assert.ok(replacementCard.html.includes('B · Làm tiếp'));
+assert.ok(replacementCard.html.includes('Chờ bắt đầu'));
+replacementCard.replace();
+for (const config of [{ assignedB: true, startedB: true }, { assignedB: true, status: 'CLEANING' },
+  { voidedB: true }, { assignedB: true, finishedAfterA: true }, { assignedB: true, status: 'CANCELLED' }]) {
+  assert.equal(renderKanban(config).replaceButton, undefined);
+}
+assert.ok(renderKanban({ assignedB: true, status: 'IN_PROGRESS', startedB: true }).html.includes('Đang làm'));
+assert.ok(!renderKanban({ sequential: false }).html.includes('Nối tiếp · A'));
+console.log('PASS icon: bỏ B trong nháp giữ A; đổi B từ đúng booking trên Kanban; khóa sau bắt đầu/đóng ca');
 
 render({ b: true, names: ['Tên A', 'Tên B'] });
 actions.find(e => e.props.onDrop).props.onDrop({ dataTransfer: { getData: () => '1' } });

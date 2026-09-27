@@ -1,14 +1,15 @@
 import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
-import { isLiveKtvSegment } from '@/lib/ktvUtils';
+import { isKtvDisplaySegment } from '@/lib/ktvUtils';
 import { workedMsOf } from '@/lib/segment-time';
+import { employeeIsPaused } from '@/lib/sequential-lifecycle';
 import type { ServiceBlock, WorkSegment } from '../types';
 
-export type DemoSegment = WorkSegment & { ktvId: string; voided?: boolean; plannedStartAt?: string; plannedEndAt?: string };
+export type DemoSegment = WorkSegment & { ktvId: string; voided?: boolean; note?: string; plannedStartAt?: string; plannedEndAt?: string };
 export const segmentOf = (row: ServiceBlock['staffList'][number]) => (row.segments.find(seg => (seg as any).voided !== true && (seg as any).voided !== 'true') || row.segments[0]) as DemoSegment;
 export const segmentsOf = (service: ServiceBlock) => service.staffList.flatMap(row => row.segments.map(segment => ({ ...segment, ktvId: row.ktvId })));
 
 export function demoAccountState(service: ServiceBlock, employeeId: string, now: number) {
-  const row = service.staffList.find(person => !!segmentOf(person) && isLiveKtvSegment({ ...segmentOf(person), ktvId: person.ktvId }, employeeId));
+  const row = service.staffList.find(person => !!segmentOf(person) && isKtvDisplaySegment({ ...segmentOf(person), ktvId: person.ktvId }, employeeId));
   const segment = row && segmentOf(row);
   const assigned = service.status !== 'NEW' && service.status !== 'WAITING' && !!segment;
   const elapsedMs = assigned && segment ? workedMsOf(segment, segment.actualEndTime || now) ?? 0 : 0;
@@ -16,6 +17,7 @@ export function demoAccountState(service: ServiceBlock, employeeId: string, now:
   const canStart = canWork && !segment?.actualStartTime && !segment?.actualEndTime
     && !service.options?.finishedAfterA;
   return { row, segment, assigned, elapsedMs,
+    paused: employeeIsPaused(service, employeeId),
     remainingMs: Math.max(0, (segment?.duration || 0) * 60_000 - elapsedMs),
     canStart: !!canStart, canFinish: !!(canWork && segment?.actualStartTime && !segment.actualEndTime) };
 }

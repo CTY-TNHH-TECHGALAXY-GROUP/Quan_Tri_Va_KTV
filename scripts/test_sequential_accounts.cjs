@@ -158,3 +158,13 @@ assert.ok(!renderAccount(renamedCommon, 'DEMO-B').includes('Tên cũ'));
 renamedCommon.options.serviceNamesForKtvs = { 'demo-b': 'Tên B riêng' };
 assert.ok(renderAccount(renamedCommon, 'DEMO-B').includes('Tên B riêng'));
 console.log('PASS demo guards/title: string voided and empty rows unassigned; common and own names use shared latest fallback');
+
+const cancelledAccount = structuredClone(service);
+const cancelledRow = cancelledAccount.staffList.find(row=>row.ktvId==='DEMO-B');
+Object.assign(segmentOf(cancelledRow), {voided:true,note:'CANCELLED_NO_CREDIT',actualStartTime:'2026-09-26T03:45:00Z',actualEndTime:'2026-09-26T03:55:00Z'});
+cancelledAccount.status='CANCELLED';
+const cancelledState = demoAccountState(cancelledAccount,'DEMO-B',at('11:00'));
+assert.equal(cancelledState.assigned,true); assert.equal(cancelledState.canStart,false); assert.equal(cancelledState.canFinish,false);
+assert.ok(renderAccount(cancelledAccount,'DEMO-B').includes('vẫn cần dọn và bàn giao'));
+assert.ok(renderTimer(cancelledAccount,'DEMO-B').includes('10:55'));
+console.log('PASS: cancelled started B retains own timeline and room duty, cannot restart/finish again');

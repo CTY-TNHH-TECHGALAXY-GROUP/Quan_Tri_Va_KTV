@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
 import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
 export class BookingModificationService {
     static async createQuickBooking(data: {
@@ -428,6 +429,7 @@ export class BookingModificationService {
 
             const { data: item, error: iError } = await supabase.from('BookingItems').select('*').eq('id', itemId).single();
             if (iError || !item) return { success: false, error: 'Không tìm thấy dịch vụ' };
+            if (isTwoSlotSequential(item.options)) return { success: false, error: 'Ca nối tiếp: chọn Chỉ A, Chỉ B hoặc Cả A và B trong hộp thoại huỷ.' };
             
             const { data: booking, error: bError } = await supabase.from('Bookings').select('*').eq('id', bookingId).single();
             if (bError) throw bError;

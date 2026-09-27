@@ -12,6 +12,8 @@ import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
 import { dispatchRevision, recordDispatchEdit } from '@/lib/dispatch-edit-history';
 import { DispatchEditHistory } from '../_components/DispatchEditHistory';
 import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
+import SequentialLifecycleModal from '../_components/SequentialLifecycleModal';
+import { applySequentialLifecycle, type SequentialRequest } from '@/lib/sequential-lifecycle';
 
 const storageKey = 'dispatch-sequential-demo-v2';
 const staff: StaffData[] = [
@@ -50,6 +52,7 @@ export default function SequentialDemo() {
   const [accountId, setAccountId] = useState('');
   const [now, setNow] = useState(Date.now());
   const [handoff, setHandoff] = useState<HandoffForm | null>(null);
+  const [lifecycleModal, setLifecycleModal] = useState<{ service: ServiceBlock; action: 'FINISH' | 'CANCEL' | 'SWAP' } | null>(null);
 
   const readOrder = (): PendingOrder | null => {
     try {
@@ -86,15 +89,15 @@ export default function SequentialDemo() {
 
   const change = (edit: (service: ServiceBlock) => void | string, action = 'DRAFT', expectedRevision?: number) => {
     const previous = readOrder() || order;
-    if (!previous) return;
+    if (!previous) return false;
     if (expectedRevision !== undefined && expectedRevision !== dispatchRevision(previous.services[0].options)) {
       alert('Dịch vụ đã có bản lưu mới. Tải lại đơn trước khi chỉnh tiếp; bản cũ chưa được lưu.');
-      setOrder(previous); return;
+      setOrder(previous); return false;
     }
     const next = structuredClone(previous);
     const error = edit(next.services[0]);
-    if (error) { alert(error); setOrder(previous); return; }
-    recordDispatchEdit(previous.services[0], next.services[0], action, { id: accountId || 'DEMO-ADMIN', name: accountId || 'Quầy demo' });
+    if (error) { alert(error); setOrder(previous); return false; }
+    if (!action.startsWith('LIFECYCLE_')) recordDispatchEdit(previous.services[0], next.services[0], action, { id: accountId || 'DEMO-ADMIN', name: accountId || 'Quầy demo' });
     const status = next.services[0].status || 'NEW';
     next.dispatchStatus = status === 'NEW' ? 'pending' : status as PendingOrder['dispatchStatus'];
     next.rawStatus = status;
@@ -102,11 +105,33 @@ export default function SequentialDemo() {
     next.hasAssignedKtv = status !== 'NEW' && next.services[0].staffList.length > 0;
     next.updatedAt = new Date().toISOString();
     saveOrder(next);
+    return true;
   };
   const service = order?.services[0];
   const a = service?.staffList.find(row => segmentOf(row).sequenceSlot === 1) || service?.staffList[0];
   const b = service?.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
   const isSequential = isTwoSlotSequential(service?.options);
+  const runLifecycle = (request: SequentialRequest, expectedRevision = dispatchRevision(service?.options)) => change(s => {
+    try {
+      const patch = applySequentialLifecycle({ ...s, segments: segmentsOf(s) }, request, undefined,
+        { id: accountId || 'DEMO-ADMIN', name: accountId || 'Quầy demo' });
+      const oldRows = s.staffList;
+      const ids = [...new Set(patch.segments.map(seg => seg.ktvId))];
+      const { segments: updatedSegments, ...fields } = patch;
+      Object.assign(s, fields);
+      delete (s as any).segments;
+      s.staffList = ids.map(id => {
+        const old = oldRows.find(row => row.ktvId === id);
+        return { id: old?.id || `row-${id}`, ktvId: id, ktvName: old?.ktvName || staff.find(person => person.id === id)?.full_name || id,
+          noteForKtv: old?.noteForKtv || '', serviceNameForKtv: old?.serviceNameForKtv || '',
+          segments: updatedSegments.filter(seg => seg.ktvId === id) };
+      });
+    } catch (error: any) { return error.message || 'Không lưu được thao tác.'; }
+  }, `LIFECYCLE_${request.action}`, expectedRevision);
+  const openLifecycle = (action: 'FINISH' | 'CANCEL' | 'SWAP') => {
+    if (service) setLifecycleModal({ service: structuredClone(service), action });
+  };
+  const pauseEmployee = (employeeId: string) => runLifecycle({ action: 'PAUSE', employeeId });
   const turns: (TurnQueueData & { staff?: StaffData })[] = staff.map((person, index) => ({
     employee_id: person.id, date: localInput(new Date()).slice(0, 10), queue_position: index + 1,
     check_in_order: index + 1, turns_completed: 0, status: service?.status === 'NEW' ? 'waiting'
@@ -198,19 +223,6 @@ export default function SequentialDemo() {
     const employeeId = slot === 1 ? a?.ktvId : b?.ktvId;
     if (employeeId) stampEmployee(employeeId, field);
   };
-  const finishAfterA = () => {
-    if (!service || !isTwoSlotSequential(service.options) || !a || !segmentOf(a).actualEndTime || (b && segmentOf(b).actualStartTime)) {
-      alert('A phải hoàn tất và B chưa bắt đầu.'); return;
-    }
-    change(s => {
-      const currentA = s.staffList.find(row => Number(segmentOf(row).sequenceSlot) === 1);
-      const currentB = s.staffList.find(row => segmentOf(row).sequenceSlot === 2 && segmentOf(row).voided !== true);
-      if (!currentA || !segmentOf(currentA).actualEndTime || (currentB && segmentOf(currentB).actualStartTime)) return 'Ca đã thay đổi: A chưa xong hoặc B đã bắt đầu.';
-      if (currentB) segmentOf(currentB).voided = true;
-      s.options = { ...s.options, finishedAfterA: true };
-      s.status = 'CLEANING';
-    }, 'FINISH_AFTER_A', dispatchRevision(service.options));
-  };
 
   if (!order || !service) return <p className="p-6">Đang tạo dữ liệu mẫu…</p>;
   const aSegment = a && segmentOf(a);
@@ -229,7 +241,7 @@ export default function SequentialDemo() {
       {staff.map(person => <a key={person.id} href={`?account=${person.id}`} className={`rounded border px-3 py-2 ${accountId === person.id ? 'bg-indigo-600 text-white' : 'bg-white'}`}>Tài khoản {person.full_name}</a>)}
       <span className="self-center text-sm text-slate-500">Mở link tài khoản trong tab mới để test đồng thời.</span>
     </nav>
-    {accountId ? <AccountDemo service={service} employeeId={accountId} employeeName={staff.find(person => person.id === accountId)?.full_name || accountId} now={now} onStamp={stampEmployee} /> : <>
+    {accountId ? <AccountDemo service={service} employeeId={accountId} employeeName={staff.find(person => person.id === accountId)?.full_name || accountId} now={now} onStamp={stampEmployee} onPause={isSequential ? pauseEmployee : undefined} /> : <>
     <section id="demo-quick" className="rounded-xl border bg-white p-4">
       <h2 className="mb-1 font-bold">1. Chọn KTV A, phòng, giường và giờ dự kiến</h2>
       <p className="mb-3 text-sm text-slate-500">Dùng bảng điều phối thật bên dưới. A chưa đủ phút của gói thì bảng gợi ý thêm người nối tiếp.</p>
@@ -251,7 +263,7 @@ export default function SequentialDemo() {
             } else if (Number(next.sequenceSlot) === 2 && !['NEW','WAITING'].includes(status || '')) {
               const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
               if (Math.abs(minutes(next.startTime) - minutes(old.startTime)) >= 720)
-                return 'Giờ B có thể chuyển ngày; dùng Sửa B để chọn ngày/giờ đầy đủ';
+                return 'Giờ B có thể chuyển ngày; bấm icon đổi nhân viên để kiểm tra giờ';
               const day = old.plannedStartAt ? localInput(new Date(old.plannedStartAt)).slice(0,10) : localInput(new Date()).slice(0,10);
               const start = Date.parse(`${day}T${next.startTime}:00+07:00`);
               if (!Number.isFinite(start) || next.duration < 1) return 'Giờ/phút B không hợp lệ';
@@ -302,17 +314,21 @@ export default function SequentialDemo() {
         <button disabled={!aSegment?.actualStartTime || !!aSegment.actualEndTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(1, 'actualEndTime')}>A hoàn tất</button>
         {isSequential && <>
           <button disabled={!canWork || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-indigo-600 px-3 py-2 text-white disabled:opacity-40"
-            onClick={() => openHandoff(service.id, a?.ktvId || '', b?.ktvId || '')}>Gán / sửa B</button>
+            onClick={() => openHandoff(service.id, a?.ktvId || '', b?.ktvId || '')}>Chọn nhân viên làm tiếp</button>
           <button disabled={!canWork || !bSegment || !!bSegment.actualStartTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualStartTime')}>B bắt đầu</button>
           <button disabled={!bSegment?.actualStartTime || !!bSegment.actualEndTime} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => stamp(2, 'actualEndTime')}>B hoàn tất</button>
-          <button disabled={!aSegment?.actualEndTime || !!bSegment?.actualStartTime || !!service.options?.finishedAfterA} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-40" onClick={finishAfterA}>Hoàn thành</button>
+          <button disabled={!['PREPARING','READY','IN_PROGRESS','PAUSED'].includes(service.status || '')} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => openLifecycle('FINISH')}>Kết thúc</button>
+          <button disabled={!canWork} className="rounded border px-3 py-2 text-amber-700 disabled:opacity-40" onClick={() => runLifecycle({ action: 'PAUSE' })}>Tạm dừng</button>
+          <button disabled={service.status !== 'PAUSED'} className="rounded border px-3 py-2 disabled:opacity-40" onClick={() => runLifecycle({ action: 'RESUME' })}>Tiếp tục</button>
+          <button disabled={service.status !== 'PAUSED'} className="rounded border px-3 py-2 disabled:opacity-40" onClick={() => openLifecycle('SWAP')}>Đổi nhân viên đang làm</button>
+          <button disabled={!['PREPARING','READY','IN_PROGRESS','PAUSED','CLEANING','FEEDBACK'].includes(service.status || '')} className="rounded border px-3 py-2 text-rose-600 disabled:opacity-40" onClick={() => openLifecycle('CANCEL')}>Huỷ</button>
         </>}
       </div>
     </section>
     <section className="space-y-3">
       <h2 className="font-bold">4. Góc nhìn tài khoản A và B</h2>
       <div className="grid gap-4 md:grid-cols-2">{[a?.ktvId || 'DEMO-A', b?.ktvId || 'DEMO-B'].filter((id, index, ids) => ids.indexOf(id) === index).map(employeeId =>
-        <AccountDemo key={employeeId} service={service} employeeId={employeeId} employeeName={staff.find(person => person.id === employeeId)?.full_name || employeeId} now={now} onStamp={stampEmployee} />)}</div>
+        <AccountDemo key={employeeId} service={service} employeeId={employeeId} employeeName={staff.find(person => person.id === employeeId)?.full_name || employeeId} now={now} onStamp={stampEmployee} onPause={isSequential ? pauseEmployee : undefined} />)}</div>
     </section>
     <section className="rounded-xl border bg-white p-4">
       <h2 className="mb-3 font-bold">5. Theo dõi trên Kanban</h2>
@@ -331,7 +347,12 @@ export default function SequentialDemo() {
         }}
         onOpenDetail={() => document.getElementById('demo-quick')?.scrollIntoView({ behavior: 'smooth' })}
         onAssignSequentialB={(_orderId, itemId, fromKtvId, toKtvId) => openHandoff(itemId, fromKtvId, toKtvId || '')}
-        onFinishSequentialAfterA={finishAfterA}
+        onFinishSequentialAfterA={() => openLifecycle('FINISH')}
+        onPauseClick={() => openLifecycle('SWAP')}
+        onPauseNow={() => { runLifecycle({ action: 'PAUSE' }); }}
+        onResumeClick={() => { runLifecycle({ action: 'RESUME' }); }}
+        onFinishEarlyPaused={() => openLifecycle('FINISH')}
+        onCancelClick={() => openLifecycle('CANCEL')}
         onCustomerRating={(_id, rating) => change(s => { s.itemRating = rating; })}
         onKtvCommentClick={() => { const note = prompt('Nhận xét mẫu (lưu localStorage):'); if (note !== null) change(s => { s.handover_comment = note; }); }}
         onOpenRatingLink={() => alert('Demo local: dùng các nút sao trên Kanban để đánh giá mẫu.')} />
@@ -340,9 +361,13 @@ export default function SequentialDemo() {
     <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-bold">Xem JSON đang lưu</summary>
       <pre className="overflow-auto text-xs">{JSON.stringify(order, null, 2)}</pre></details>
     </>}
+    {lifecycleModal && <SequentialLifecycleModal service={lifecycleModal.service} action={lifecycleModal.action} staffs={staff}
+      onClose={() => setLifecycleModal(null)} onConfirm={async request => {
+        if (!runLifecycle(request, dispatchRevision(lifecycleModal.service.options))) throw new Error('Chưa lưu thao tác. Kiểm tra phạm vi và tải lại thông tin mới nhất.');
+      }} />}
     {handoff && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Gán lượt B demo">
       <div className="w-full max-w-sm space-y-4 rounded-xl bg-white p-5">
-        <h2 className="font-bold">Gán / sửa lượt B</h2>
+        <h2 className="font-bold">Chọn nhân viên làm tiếp</h2>
         <label className="block">KTV B<select className="mt-1 w-full rounded border p-2" value={handoff.ktvId}
           onChange={event => setHandoff({ ...handoff, ktvId: event.target.value })}>
           <option value="">Chọn KTV</option>{staff.filter(person => person.id !== a?.ktvId).map(person =>
@@ -352,7 +377,7 @@ export default function SequentialDemo() {
         <label className="block">Phút B<input type="number" min="1" max="600" className="mt-1 w-full rounded border p-2"
           value={handoff.duration} onChange={event => setHandoff({ ...handoff, duration: Number(event.target.value) })} /></label>
         <div className="flex justify-end gap-2"><button onClick={() => setHandoff(null)}>Hủy</button>
-          <button className="rounded bg-indigo-600 px-3 py-2 text-white" onClick={saveHandoff}>Lưu B</button></div>
+          <button className="rounded bg-indigo-600 px-3 py-2 text-white" onClick={saveHandoff}>Lưu & điều phối</button></div>
       </div>
     </div>}
   </main>;

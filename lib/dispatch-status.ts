@@ -114,17 +114,20 @@ export function isTwoSlotSequential(options: any): boolean {
 export function sequentialSlotsComplete(options: any, segments: any[]): boolean {
     if (!isTwoSlotSequential(options)) return true;
     if (!Array.isArray(segments)) return false;
-    const completed = (slot: number) => segments.some((s: any) =>
-        s?.sequenceSlot === slot && s?.ktvId
-        && s?.voided !== true && s?.voided !== 'true'
-        && s?.actualStartTime && s?.actualEndTime);
-    if (!completed(1)) return false;
+    let value: any;
     try {
         const parsed = typeof options === 'string' ? JSON.parse(options) : options;
-        const value = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
-        if (value?.finishedAfterA === true && !segments.some((s: any) => s?.sequenceSlot === 2 && s?.actualStartTime)) return true;
-    } catch {}
-    return completed(2);
+        value = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+    } catch { return false; }
+    const completed = (slot: number) => {
+      const live = segments.filter((s: any) => Number(s?.sequenceSlot) === slot && s?.ktvId && s?.voided !== true && s?.voided !== 'true');
+      return (live.length > 0 && live.every((s: any) => s.actualStartTime && s.actualEndTime))
+        || (value?.closedSequentialSlots?.includes(slot) && live.every((s: any) => s.actualStartTime && s.actualEndTime));
+    };
+    /* Legacy finished-after-A bookings still use their explicit closure flag. */
+    if (!completed(1)) return false;
+    if (value?.finishedAfterA === true && !segments.some((s: any) => Number(s?.sequenceSlot) === 2 && s?.actualStartTime)) return true;
+    return !!completed(2);
 }
 
 /**

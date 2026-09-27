@@ -7,6 +7,7 @@ import { getBusinessDateFromConfig } from '../booking/_shared/utils';
 import { workedMsOf, closeOpenPause, markNotStartedOnEarlyLeave } from '@/lib/segment-time';
 import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
 import { releaseNotStartedKtvFromItem } from '@/lib/services/KtvReleaseService';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
 /**
  * ============================================================
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
         }
 
         const pausedItems = itemsToProcess.filter(it => it.status === 'PAUSED');
+        if (pausedItems.some(item => isTwoSlotSequential(item.options))) {
+            return NextResponse.json({ success: false, error: 'Ca nối tiếp: chọn A, B hoặc cả hai trong hộp thoại kết thúc.' }, { status: 409 });
+        }
         if (pausedItems.length === 0) {
             return NextResponse.json({ success: false, error: 'Không có dịch vụ nào đang tạm dừng để kết thúc' }, { status: 400 });
         }

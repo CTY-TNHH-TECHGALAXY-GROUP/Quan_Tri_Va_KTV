@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvDisciplineService } from '@/lib/services/KtvDisciplineService';
 import { ktvDisplayLabel } from '@/lib/constants/staff.constants';
 import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
+import { ktvAssignedMinutes, parseKtvSegments, isLiveKtvSegment } from '@/lib/ktvUtils';
 import { resolveMyItems, idsOf } from '@/lib/services/KtvOrderTargetService';
 
 export async function POST(request: Request) {
@@ -95,27 +96,23 @@ export async function POST(request: Request) {
             // khoá tài khoản. Làm nửa vời — vẫn chặn nhưng không phạt — thì công
             // tắc lại nói dối một lần nữa, đúng thứ đang đi sửa.
             if (await KtvTypeDDisciplineService.isEnabled(supabase)) {
-                const { data: item } = await supabase
+                const { data: item, error: itemError } = await supabase
                     .from('BookingItems').select('serviceId, segments').eq('id', itemId).maybeSingle();
+                if (itemError || !item) throw itemError || new Error('Không đọc được phân công.');
 
-                // Thời lượng gói: ưu tiên phút đã gán cho chính KTV này, không
-                // có thì lấy thời lượng chuẩn của dịch vụ.
-                let mins = 0;
-                try {
-                    const segs = typeof item?.segments === 'string' ? JSON.parse(item.segments) : (item?.segments || []);
-                    for (const sg of (Array.isArray(segs) ? segs : [])) {
-                        if (sg?.ktvId && String(sg.ktvId).toLowerCase() === String(staffId).toLowerCase()) {
-                            mins += Number(sg.duration) || 0;
-                        }
-                    }
-                } catch { /* dùng thời lượng chuẩn bên dưới */ }
-
-                if (mins <= 0 && item?.serviceId) {
-                    const { data: svc } = await supabase
-                        .from('Services').select('duration').eq('id', item.serviceId).maybeSingle();
-                    mins = Number(svc?.duration) || 60;
+                const segments = parseKtvSegments(item?.segments, true);
+                if (segments.length && !segments.some(seg => isLiveKtvSegment(seg, staffId))) {
+                    return NextResponse.json({ success: false, error: 'Lượt phân công đã thay đổi; tải lại trước khi từ chối.' }, { status: 409 });
                 }
-                if (mins <= 0) mins = 60;
+                let fallback = 60;
+                if (!segments.length && item?.serviceId) {
+                    const { data: svc, error: svcError } = await supabase
+                        .from('Services').select('duration').eq('id', item.serviceId).maybeSingle();
+                    if (svcError) throw svcError;
+                    fallback = Number(svc?.duration) || 60;
+                }
+                const mins = ktvAssignedMinutes(item, staffId, fallback);
+                if (mins <= 0) return NextResponse.json({ success: false, error: 'Thời lượng lượt phân công chưa hợp lệ; báo quầy kiểm tra.' }, { status: 409 });
 
                 const { getBusinessToday } = await import('@/lib/business-date');
                 const workDate = await getBusinessToday(supabase);

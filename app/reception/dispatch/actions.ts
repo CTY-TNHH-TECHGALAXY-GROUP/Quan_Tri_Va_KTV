@@ -6,7 +6,9 @@ import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
 import { liveDispatchConflict, savedPlanFields } from '@/lib/dispatch-live-guard';
+import { parseKtvSegments, ktvMatchesSeg } from '@/lib/ktvUtils';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { performSequentialLifecycle } from '@/lib/services/SequentialLifecycleService';
 import { currentCounterActor } from '@/lib/counter-action-log';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
@@ -1386,17 +1388,6 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        // 1. Cập nhật trạng thái Booking thành CANCELLED
-        const { error: bError } = await supabase
-            .from('Bookings')
-            .update({ 
-                status: 'CANCELLED',
-                updatedAt: new Date().toISOString()
-            })
-            .eq('id', bookingId);
-
-        if (bError) throw bError;
-
         // Cập nhật trạng thái các BookingItems chưa hoàn thành về CANCELLED.
         // ⏱️ Đồng thời CHỐT mốc kết thúc cho các chặng còn hở, nếu không thì
         // computeMinutes coi chặng là "không có mốc" và trả tiền theo giờ GÁN.
@@ -1410,6 +1401,11 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
         if (itemsFetchError) throw itemsFetchError;
 
         for (const item of itemsToCancel || []) {
+            if (isTwoSlotSequential(item.options)) {
+                await performSequentialLifecycle(supabase, item.id, { action: 'CANCEL', targetSlots: [1,2], reason, cancelCredit }, undefined, bookingId);
+                continue;
+            }
+
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : ((item.segments as any) || []); } catch {}
 
@@ -1443,6 +1439,17 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
             if (itemError) throw itemError; // huỷ nửa vời còn tệ hơn báo lỗi
         }
 
+        // 1. Cập nhật trạng thái Booking thành CANCELLED
+        const { error: bError } = await supabase
+            .from('Bookings')
+            .update({
+                status: 'CANCELLED',
+                updatedAt: new Date().toISOString()
+            })
+            .eq('id', bookingId);
+
+        if (bError) throw bError;
+
         // 2. Lấy thông tin trạng thái KTV trước khi giải phóng để quyết định có xóa Ledger không
         const { data: currentTurns } = await supabase
             .from('TurnQueue')
@@ -1452,6 +1459,10 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
 
         if (currentTurns && currentTurns.length > 0) {
             for (const turn of currentTurns) {
+                // Scoped cancellation keeps started staff assigned until photos or existing debt quota releases them.
+                if ((itemsToCancel || []).some(item => isTwoSlotSequential(item.options)
+                    && parseKtvSegments(item.segments).some(seg => ktvMatchesSeg(seg.ktvId, turn.employee_id)
+                        && seg.actualStartTime && !seg.handoverTime && seg.note !== 'CHANGED'))) continue;
                 // ✅ Nếu CHƯA bắt đầu (assigned) mà bị hủy -> Xóa Ledger để giải phóng lượt tua cho KTV
                 if (turn.status === 'assigned' || turn.status === 'ready' || turn.status === 'waiting') {
                     console.log(`✅ KTV ${turn.employee_id} được hoàn lượt tua do hủy đơn TRƯỚC KHI bắt đầu.`);

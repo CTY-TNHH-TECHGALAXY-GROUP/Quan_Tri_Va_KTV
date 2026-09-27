@@ -268,6 +268,9 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                                               // đã huỷ thành "Chờ đánh giá" hoặc "Hoàn tất".
             : (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
+            : segs.some((seg: any) => seg.voided !== true && seg.actualStartTime && !seg.actualEndTime
+                && (seg.pauses || []).some((pause: any) => pause.from && !pause.to))
+            ? 'PAUSED'
             : (hasUnstartedSegs || !sequentialSlotsComplete(item.options, segs))
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
                 : (alreadyRated && allSegsDone && allHandovered)

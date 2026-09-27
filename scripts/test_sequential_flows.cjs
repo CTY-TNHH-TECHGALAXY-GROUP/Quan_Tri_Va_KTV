@@ -7,6 +7,7 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const SequentialDemo = require('../app/reception/dispatch/sequential-demo/SequentialDemo').default;
 const { QuickDispatchTable } = require('../app/reception/dispatch/_components/QuickDispatchTable');
 const { KanbanBoard } = require('../app/reception/dispatch/_components/KanbanBoard');
+const SequentialLifecycleModal = require('../app/reception/dispatch/_components/SequentialLifecycleModal').default;
 const { AccountDemo } = require('../app/reception/dispatch/sequential-demo/AccountDemo');
 const { DispatchEditHistory } = require('../app/reception/dispatch/_components/DispatchEditHistory');
 const { demoAccountState, segmentOf } = require('../app/reception/dispatch/sequential-demo/demo-account');
@@ -48,21 +49,24 @@ function hooks(Component) {
     return this.tree;
   } };
 }
-let app, quick, card;
+let app, quick, card, lifecycle;
 function flush() {
   for (let pass = 0; pass < 12; pass++) {
     const tree = app.render();
+    const scoped = elements(tree, e => e.type === SequentialLifecycleModal)[0];
+    if (scoped) { lifecycle ||= hooks(SequentialLifecycleModal); lifecycle.render(scoped.props); }
+    else lifecycle = null;
     const table = elements(tree, e => e.type === QuickDispatchTable)[0];
     if (!table) { if (!app.dirty) return; continue; }
     quick ||= hooks(QuickDispatchTable);
     const tableTree = quick.render(table.props);
     const group = elements(tableTree, e => typeof e.type === 'function' && e.type.name === 'ServiceGroupCard')[0];
     if (group) { card ||= hooks(group.type); card.render(group.props); }
-    if (!app.dirty && !quick.dirty && (!card || !card.dirty)) return;
+    if (!app.dirty && !quick.dirty && (!card || !card.dirty) && (!lifecycle || !lifecycle.dirty)) return;
   }
   throw new Error('Flow did not settle');
 }
-function reset() { data.clear(); alerts.length = 0; confirmations.length = 0; allowConfirm = false; at('10:00'); app = hooks(SequentialDemo); quick = card = null; flush(); }
+function reset() { data.clear(); alerts.length = 0; confirmations.length = 0; allowConfirm = false; at('10:00'); app = hooks(SequentialDemo); quick = card = lifecycle = null; flush(); }
 const order = () => JSON.parse(data.get(key));
 const service = () => order().services[0];
 const liveRows = () => service().staffList.filter(row => segmentOf(row).voided !== true);
@@ -89,13 +93,13 @@ function stamp(id, field, time) {
   assert.ok(account, `Missing account ${id}`); account.props.onStamp(id, field); flush();
 }
 function assignLiveB(id = 'DEMO-B', start = '2026-09-26T10:30', duration = 30, expectedDefault) {
-  click(app.tree, 'Gán / sửa B');
+  click(app.tree, 'Chọn nhân viên làm tiếp');
   const form = () => elements(app.tree, e => e.props.role === 'dialog')[0];
   if (expectedDefault !== undefined) assert.equal(elements(form(), e => e.type === 'input' && e.props.type === 'number')[0].props.value, expectedDefault, 'Default B minutes must use actual work after A finishes');
   changeInput(elements(form(), e => e.type === 'select')[0], id);
   changeInput(elements(form(), e => e.type === 'input' && e.props.type === 'datetime-local')[0], start);
   changeInput(elements(form(), e => e.type === 'input' && e.props.type === 'number')[0], duration);
-  click(form(), 'Lưu B');
+  click(form(), 'Lưu & điều phối');
 }
 function checkPlan(id, start, duration) { const segment = segmentOf(row(id)); assert.equal(segment.startTime, start); assert.equal(segment.duration, duration); }
 function finishRoom() {
@@ -179,7 +183,7 @@ try {
   minutes(0, 30); minutes(1, 30);
   name('DEMO-A', 'Tên A giữ nguyên'); name('DEMO-B', 'Tên B cũ');
   checkPlan('DEMO-A', '10:00', 30); checkPlan('DEMO-B', '10:30', 30);
-  const removeB = elements(card.tree, e => e.type === 'button' && e.props.className?.includes('ml-1 hover:opacity-60'))[1];
+  const removeB = elements(card.tree, e => e.type === 'button' && e.props['aria-label'] === 'Bỏ nhân viên hàng 2 khỏi bản nháp')[0];
   assert.ok(removeB && !removeB.props.disabled); removeB.props.onClick({ stopPropagation() {} }); flush();
   chooseDraftB('DEMO-C'); checkPlan('DEMO-C', '10:30', 30);
   assertName('DEMO-C', ''); assertName('DEMO-A', 'Tên A giữ nguyên');
@@ -202,23 +206,28 @@ try {
   name('DEMO-A', 'Tên A reload'); name('DEMO-B', 'Tên B reload'); send();
   const oldB = elements(app.tree, e => e.type === AccountDemo && e.props.employeeId === 'DEMO-B')[0];
   stamp('DEMO-A', 'actualStartTime', '10:00'); stamp('DEMO-A', 'actualEndTime', '10:30');
-  click(app.tree, 'Hoàn thành'); assert.equal(service().status, 'CLEANING');
-  assert.equal(service().options.finishedAfterA, true);
+  click(app.tree, 'Kết thúc');
+  assert.ok(lifecycle);
+  const confirmScope = elements(lifecycle.tree, e => e.type === 'button' && textOf(e) === 'Xác nhận')[0];
+  assert.equal(confirmScope.props.disabled, true, 'Admin must explicitly choose scope');
+  changeInput(elements(lifecycle.tree, e => e.type === 'input' && e.props.value === 'both')[0], 'both');
+  click(lifecycle.tree, 'Xác nhận'); assert.equal(service().status, 'CLEANING');
+  assert.ok(service().options.closedSequentialSlots.includes(2));
   assert.equal(demoAccountState(service(), 'DEMO-B', now).assigned, false);
   oldB.props.onStamp('DEMO-B', 'actualStartTime'); flush(); assert.equal(alerts.length, 1);
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').segments[0].actualStartTime, undefined);
-  app = hooks(SequentialDemo); quick = card = null; flush();
+  app = hooks(SequentialDemo); quick = card = lifecycle = null; flush();
   assertName('DEMO-A', 'Tên A reload');
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').serviceNameForKtv, 'Tên B reload');
   name('DEMO-A', 'Tên A reload sửa');
   assert.equal(service().staffList.find(row => row.ktvId === 'DEMO-B').serviceNameForKtv, 'Tên B reload');
-  assert.equal(service().status, 'CLEANING'); assert.equal(service().options.finishedAfterA, true);
+  assert.equal(service().status, 'CLEANING'); assert.ok(service().options.closedSequentialSlots.includes(2));
   finishRoom();
   console.log('PASS FLOW 5/5: Hoàn thành sau A → hủy B chưa làm → chặn handler cũ → reload giữ kết quả → DONE');
   console.log('PASS TÊN RIÊNG: sửa/xóa A không đổi B; sửa B không đổi A; B mới không kế thừa tên; giữ tên sau gửi/reload, không đổi giờ');
   // Audit continuity and stale edits through actual demo handlers/components.
   reset(); chooseA(); name('DEMO-A','Tên A lần 1');
-  app = hooks(SequentialDemo); quick = card = null; flush();
+  app = hooks(SequentialDemo); quick = card = lifecycle = null; flush();
   assertName('DEMO-A','Tên A lần 1'); name('DEMO-A','Tên A lần 2');
   const named = service().options.dispatchHistory.at(-1).changes.find(c=>c.field==='serviceNameForKtv');
   assert.equal(named.before,'Tên A lần 1'); assert.equal(named.after,'Tên A lần 2');
@@ -228,20 +237,20 @@ try {
   console.log('PASS HISTORY UI 1/5: Reload → sửa lần 2 dựa trên lần 1; lưu người sửa và trước/sau');
 
   minutes(0,30); sequential(); send(); assignLiveB('DEMO-B','2026-09-26T10:45',25);
-  click(app.tree,'Gán / sửa B');
+  click(app.tree,'Chọn nhân viên làm tiếp');
   let form = elements(app.tree,e=>e.props.role==='dialog')[0];
   assert.equal(elements(form,e=>e.props.type==='datetime-local')[0].props.value,'2026-09-26T10:45');
   assert.equal(elements(form,e=>e.props.type==='number')[0].props.value,25);
   changeInput(elements(form,e=>e.props.type==='datetime-local')[0],'2026-09-26T10:50');
-  click(app.tree,'Lưu B');
+  click(app.tree,'Lưu & điều phối');
   const latestB = service().options.dispatchHistory.at(-1);
   assert.equal(latestB.action,'ASSIGN_B');
   assert.equal(latestB.changes.find(c=>c.field==='startTime').before,'10:45');
   checkPlan('DEMO-B','10:50',25); checkPlan('DEMO-A','10:00',30);
   console.log('PASS HISTORY UI 2/5: Modal B lần 2 mở đúng giờ/phút lần 1, không quay về mốc A');
 
-  click(app.tree,'Gán / sửa B');
-  const oldSave = elements(app.tree,e=>e.type==='button' && textOf(e)==='Lưu B')[0];
+  click(app.tree,'Chọn nhân viên làm tiếp');
+  const oldSave = elements(app.tree,e=>e.type==='button' && textOf(e)==='Lưu & điều phối')[0];
   const oldTable = elements(app.tree,e=>e.type===QuickDispatchTable)[0];
   const oldServices = structuredClone(oldTable.props.services);
   name('DEMO-A','Tên A mới nhất'); const beforeStale=order();

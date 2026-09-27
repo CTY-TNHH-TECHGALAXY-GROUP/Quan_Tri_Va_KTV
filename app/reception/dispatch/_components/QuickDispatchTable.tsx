@@ -1,9 +1,10 @@
 'use client';
 import { ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
+import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
+import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2, ArrowLeftRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
@@ -994,10 +995,11 @@ const ServiceGroupCard = ({
   const hasHandoff = groupItems.some(item => isTwoSlotSequential(item.options));
   const isDraft = groupItems.every(item => ['NEW', 'WAITING'].includes(item.status || 'NEW'));
   const canAddSequential = groupItems.length === 1 && !state.isMergedGroup && state.selectedKtvIds.length === 1
+    && !sequentialSlotClosed(groupItems[0].options, 2)
     && !FOURHAND_SERVICES.includes(groupItems[0].serviceId || '')
     && (isDraft || ['PREPARING', 'READY', 'IN_PROGRESS'].includes(groupItems[0].status || ''));
   const remainingMinutes = remainingHandoffMinutes(duration, state.ktvDurations?.[0] ?? duration);
-  const waitingForB = hasHandoff && !groupItems.some(item => item.options?.finishedAfterA
+  const waitingForB = hasHandoff && !groupItems.some(item => item.options?.finishedAfterA || sequentialSlotClosed(item.options, 2)
     || item.staffList.some(row => row.segments.some(seg => Number((seg as any).sequenceSlot) === 2 && (seg as any).voided !== true)));
   const [ktvSearch, setKtvSearch] = useState('');
   const [showTicketForIdx, setShowTicketForIdx] = useState<number | null>(null);
@@ -1075,7 +1077,7 @@ const ServiceGroupCard = ({
       const a = item?.staffList.find(row => row.segments.some(seg => (seg as any).sequenceSlot === 1));
       const b = item?.staffList.some(row => row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided !== true));
       if (item && a && !b && onLiveHandoff) onLiveHandoff(item.id, a.ktvId, ktvId);
-      else alert('Lượt B đã được gán. Dùng thao tác sửa B riêng.');
+      else alert('Lượt B đã được gán. Bấm icon đổi nhân viên tại hàng B.');
       return;
     }
     const liveItem = groupItems.find(item => item.staffList.some(row => row.segments.some(seg => seg.actualStartTime && !seg.actualEndTime)));
@@ -1504,8 +1506,8 @@ const ServiceGroupCard = ({
               {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot && (seg as any).voided !== true && (seg as any).voided !== 'true') as any; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
-                  {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{slot?.voided === true ? 'Đã đổi' : `Ca ${slot?.sequenceSlot || idx + 1}`}</span>}
-                  <button disabled={(hasHandoff && (!isDraft || idx === 0)) || groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime)))} onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md disabled:opacity-30"><X size={12} /></button>
+                  {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{Number(slot?.sequenceSlot || idx + 1) === 1 ? 'A · Làm trước' : 'B · Làm tiếp'}</span>}
+                  {!(hasHandoff && (!isDraft || idx === 0)) && !groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime))) && <button type="button" title="Bỏ nhân viên" aria-label={`Bỏ nhân viên ${n}`} onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-1 rounded-md"><Trash2 size={14} /></button>}
                 </span>); })}
               <input hidden={state.confirmedSequential} type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) { addKtv(picked); setKtvSearch(''); } else if (!externalKtvNameProblem(ktvSearch, staffs)) { addKtv(newExternalKtvToken(ktvSearch)); setKtvSearch(''); } } }}
@@ -1610,7 +1612,7 @@ const ServiceGroupCard = ({
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
                 const timeLocked = (hasHandoff && !['NEW', 'WAITING'].includes(groupItems[0]?.status || ''))
                   || groupItems.some(item => item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => seg.actualStartTime)));
-                const slotBItem = groupItems.find(item => isTwoSlotSequential(item.options) && !item.options?.finishedAfterA
+                const slotBItem = groupItems.find(item => isTwoSlotSequential(item.options) && !item.options?.finishedAfterA && !sequentialSlotClosed(item.options, 2)
                   && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status || '')
                   && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
                 const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
@@ -1629,11 +1631,13 @@ const ServiceGroupCard = ({
                   className="bg-gray-50/50 rounded-xl px-3 py-2.5 border border-gray-100 space-y-1.5 cursor-grab active:cursor-grabbing hover:border-indigo-200 transition-colors">
                   {/* Row 1: Name | Room | Bed | Duration | Time | Print */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{idx + 1}</span>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{hasHandoff ? (idx === 0 ? 'A' : 'B') : idx + 1}</span>
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     {replacedB && <span className="text-[9px] font-bold text-rose-600">Đã đổi · chưa làm</span>}
-                    {slotBItem && slotAKtvId && !isDraft && <button type="button" className="text-[10px] font-bold text-indigo-600 underline"
-                      onClick={() => onLiveHandoff?.(slotBItem.id, slotAKtvId, ktvId)}>Sửa B</button>}
+                    {slotBItem && slotAKtvId && !isDraft && onLiveHandoff && <button type="button" title="Đổi nhân viên làm tiếp hoặc chỉnh giờ" aria-label="Đổi nhân viên B" className="rounded-lg border border-indigo-200 bg-white p-1.5 text-indigo-600 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
+                      onClick={() => onLiveHandoff(slotBItem.id, slotAKtvId, ktvId)}><ArrowLeftRight size={15} /></button>}
+                    {isDraft && !timeLocked && !(hasHandoff && idx === 0) && <button type="button" title="Bỏ nhân viên khỏi bản nháp" aria-label={`Bỏ nhân viên hàng ${idx + 1} khỏi bản nháp`} className="rounded-lg border border-rose-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50"
+                      onClick={() => removeKtv(ktvId)}><Trash2 size={15} /></button>}
                     {idx < (count || 1) ? (
                         <>
                             <select disabled={timeLocked} value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
@@ -1721,7 +1725,7 @@ const ServiceGroupCard = ({
                         onChange={e => {
                           const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
                           if (canEditBStart && Math.abs(minutes(e.target.value) - minutes(startT)) >= 720) {
-                            alert('Giờ B có thể chuyển ngày. Chọn ngày/giờ đầy đủ trong Sửa B trước khi lưu.');
+                            alert('Giờ B có thể chuyển ngày. Bấm icon đổi nhân viên để kiểm tra giờ trước khi lưu.');
                             onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId);
                             return;
                           }

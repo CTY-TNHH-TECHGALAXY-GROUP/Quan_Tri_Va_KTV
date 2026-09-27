@@ -37,6 +37,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     if (!target || !target.seg.id || target.seg.actualEndTime || ['DONE', 'CANCELLED'].includes(target.item.status)) {
         return fail('Chặng đã thay đổi hoặc đã hoàn tất; tải lại.');
     }
+    if (target.item.status === 'PAUSED') return fail('Ca đang tạm dừng; lễ tân cần cho tiếp tục trước khi bắt đầu.');
     if (target.seg.actualStartTime) {
         // Retry after a committed START keeps the stamp and the existing proof URLs.
         return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: booking };

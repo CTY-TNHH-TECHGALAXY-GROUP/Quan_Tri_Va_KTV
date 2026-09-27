@@ -9,6 +9,7 @@ const tests = [
   'test_sequential_employee_consistency.cjs', 'test_sequential_live_segments.cjs',
   'test_sequential_inline_ui.cjs', 'test_sequential_midnight_metadata.cjs',
   'test_sequential_notifications.cjs', 'test_sequential_deep_fixes.cjs',
+  'test_sequential_lifecycle.cjs',
 ];
 for (const name of tests) {
   const result = spawnSync(process.execPath, [resolve(__dirname, name)], { cwd: root, encoding: 'utf8' });
@@ -31,4 +32,4 @@ for (const [name, args] of [
   }
   console.log('PASS ' + name);
 }
-console.log('PASS all 14 regression scripts + live guard + TypeScript');
+console.log(`PASS all ${tests.length} regression scripts + live guard + TypeScript`);

@@ -1,7 +1,8 @@
 import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
+import { employeeIsPaused } from '@/lib/sequential-lifecycle';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ktvMatchesSeg, isLiveKtvSegment, ktvServiceName, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
+import { ktvMatchesSeg, isLiveKtvSegment, isKtvDisplaySegment, ktvServiceName, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
@@ -668,7 +669,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             try {
                 segs = parseKtvSegments(ai?.segments);
             } catch { segs = []; }
-            const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
+            const mySegs = segs.filter((seg: any) => isKtvDisplaySegment(seg, ktvId));
             allMySegsForStatus.push(...mySegs);
         }
 
@@ -722,13 +723,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (allFeedback) currentStatus = 'FEEDBACK';
             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
             else if (isAnyStarted) {
-                const isAnyPaused = allAssignedItems.some((i: any) => i.status === 'PAUSED');
+                const isAnyPaused = allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId));
                 // ⚠️ FIX: Nếu KTV này ĐÃ BẮT ĐẦU nhưng CHƯA XONG (chưa có actualEndTime)
                 // Phải ép giữ ở trạng thái IN_PROGRESS để không bị hoàn thành đột ngột
                 if (isAnyPaused) {
                     currentStatus = 'PAUSED';
                 } else if (!allDone) {
-                    if (currentStatus !== 'PAUSED') currentStatus = 'IN_PROGRESS';
+                    currentStatus = 'IN_PROGRESS';
                 } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'PAUSED'].includes(currentStatus)) {
                     currentStatus = 'IN_PROGRESS';
                 }
@@ -780,7 +781,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         const currentScreen = screenRef.current;
         const statusLevel = STATUS_ORDER[currentStatus] ?? -1;
-        setIsPaused(currentStatus === 'PAUSED' || assignedItem?.status === 'PAUSED' || allAssignedItems.some((i: any) => i.status === 'PAUSED'));
+        setIsPaused(allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId)));
 
         console.log("📟 [ScreenEngine] Final Check:", { currentStatus, itemStatus: assignedItem?.status, bookingStatus: booking.status, currentScreen, statusLevel });
 
@@ -882,7 +883,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (booking?.BookingItems && ktvId) {
                     const mySegs = booking.BookingItems.flatMap((i: any) => {
                         let parsed = parseKtvSegments(i.segments);
-                        return parsed.filter((s: any) => isLiveKtvSegment(s, ktvId));
+                        return parsed.filter((s: any) => isKtvDisplaySegment(s, ktvId));
                     });
                     
                     if (mySegs.length > 0) {
@@ -1145,8 +1146,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                 segs = parseKtvSegments(ai?.segments);
                             } catch { segs = []; }
                             
-                            const mySegs = segs.filter((seg: any) => 
-                                                                isLiveKtvSegment(seg, ktvId)
+                            const mySegs = segs.filter((seg: any) =>
+                                isKtvDisplaySegment(seg, ktvId)
                             );
                             
                             const mySegsWithId = mySegs.map((seg: any) => ({ ...seg, _itemId: ai.id, _guestId: ai.guest_id }));
@@ -1184,10 +1185,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             if (allFeedback) currentStatus = 'FEEDBACK';
                             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
                             else if (isAnyStarted) {
-                                const isAnyPaused = allAssignedItems.some((i: any) => i.status === 'PAUSED');
+                                const isAnyPaused = allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId));
                                 if (isAnyPaused) {
                                     currentStatus = 'PAUSED';
-                                } else if (!['DONE', 'CLEANING', 'FEEDBACK', 'IN_PROGRESS', 'CANCELLED', 'PAUSED'].includes(currentStatus)) {
+                                } else if (!allDone) {
                                     currentStatus = 'IN_PROGRESS';
                                 }
                             } else {
@@ -2677,7 +2678,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             const res = await apiClient.post<any>('/api/ktv/pause-swap-resume', {
                 action,
-                bookingItemId: itemId
+                bookingItemId: itemId,
+                employeeId: ktvId,
             });
 
             if (res.success) {

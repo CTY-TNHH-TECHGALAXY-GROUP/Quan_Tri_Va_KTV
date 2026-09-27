@@ -33,6 +33,12 @@ export function isLiveKtvSegment(seg: any, code: string | undefined | null): boo
     return seg?.voided !== true && seg?.voided !== 'true' && ktvMatchesSeg(seg?.ktvId, code);
 }
 
+/** Cancelled work retains cleaning/feedback duty without becoming runnable again. */
+export function isKtvDisplaySegment(seg: any, code: string | undefined | null): boolean {
+    return isLiveKtvSegment(seg, code) || (seg?.note === 'CANCELLED_NO_CREDIT'
+        && !!seg.actualStartTime && !!seg.actualEndTime && ktvMatchesSeg(seg.ktvId, code));
+}
+
 /** Normalize legacy JSON options without leaking malformed data into UI. */
 export function parseKtvOptions(raw: any): Record<string, any> {
     try {
@@ -87,4 +93,17 @@ export function sequentialClockAt(serviceDay: string, aStartClock: string, bCloc
         || !/^([01]\d|2[0-3]):[0-5]\d$/.test(bClock)) return null;
     const start = Date.parse(`${serviceDay}T${bClock}:00+07:00`);
     return Number.isFinite(start) ? new Date(start + (bClock < aStartClock.slice(0, 5) ? 86400000 : 0)).toISOString() : null;
+}
+
+/** Existing segments define this employee's allocation; never fall back to the whole package for a missing/zero slot. */
+export function ktvAssignedMinutes(item: any, code: string | undefined | null, fallback = item?.duration ?? 60): number {
+    const segments = parseKtvSegments(item?.segments);
+    const live = segments.filter(seg => isLiveKtvSegment(seg, code));
+    const own = live.length ? live : segments.filter(seg => isKtvDisplaySegment(seg, code));
+    if (segments.length) return own.reduce((sum, seg) => {
+        const minutes = Number(seg.duration);
+        return sum + (Number.isFinite(minutes) && minutes > 0 ? minutes : 0);
+    }, 0);
+    const minutes = Number(fallback);
+    return Number.isFinite(minutes) && minutes >= 0 ? minutes : 0;
 }

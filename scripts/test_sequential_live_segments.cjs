@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { join } = require('node:path');
 require('ts-node').register({ project: join(__dirname, 'qa/tsconfig.qa.json'), transpileOnly: true });
 require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@/*': ['./*'] } });
-const { isLiveKtvSegment } = require('../lib/ktvUtils');
+const { isLiveKtvSegment, isKtvDisplaySegment } = require('../lib/ktvUtils');
 const { handleStartTimer } = require('../app/api/ktv/booking/_handlers/handleStartTimer');
 
 const segments = [
@@ -15,6 +15,12 @@ assert.deepEqual(segments.filter(s => isLiveKtvSegment(s, 'b')).map(s => s.id), 
 assert.equal(isLiveKtvSegment({ ktvId: 'B - C' }, ' b '), true);
 assert.equal(isLiveKtvSegment({ ktvId: 'B', voided: 'true' }, 'B'), false);
 assert.equal(isLiveKtvSegment(null, 'B'), false);
+const cancelled = { ktvId:'B', voided:true, note:'CANCELLED_NO_CREDIT', actualStartTime:'2026-09-26T03:00:00Z', actualEndTime:'2026-09-26T03:10:00Z' };
+assert.equal(isKtvDisplaySegment(cancelled,'b'),true);
+assert.equal(isLiveKtvSegment(cancelled,'b'),false);
+assert.equal(isKtvDisplaySegment({...cancelled,note:'CHANGED'},'b'),false);
+assert.equal(isKtvDisplaySegment({...cancelled,actualStartTime:null},'b'),false);
+assert.equal(isKtvDisplaySegment(cancelled,'A'),false);
 let saved;
 function query(table) {
   let update;

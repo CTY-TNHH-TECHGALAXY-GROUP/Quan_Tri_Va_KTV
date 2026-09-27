@@ -3,7 +3,7 @@ import { displayBookingCode } from '@/lib/booking-display-code';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, ArrowLeftRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
@@ -11,6 +11,8 @@ import { RawStatus, getNextStatus, canTransition, isTwoSlotSequential, sequentia
 import { KtvCommentModal } from './KtvCommentModal';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
+import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
+import { expectedEndMs, gioDongHoVN } from '@/lib/segment-time';
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -1015,6 +1017,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 )}
                                                             </div>
                                                             
+                                                            {isTwoSlotSequential(s.options) && (
+                                                                <div className="mt-1 flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
+                                                                    Nối tiếp · A <ArrowRight size={12} aria-hidden="true" /> B
+                                                                    {s.options?.finishedAfterA && <span className="ml-1 text-slate-500">· Hoàn thành sau A</span>}
+                                                                </div>
+                                                            )}
                                                             {/* Danh sách KTV */}
                                                             {!s.isUtility && dsKtvHienThi(s).length > 0 && !veTungNguoi(s) && (
                                                                 <div className="flex flex-wrap gap-1">
@@ -1072,20 +1080,25 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                     <div className="space-y-1 mt-1">
                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
                                                                             const seg = st?.segments?.find((g: any) => g.voided !== true && g.voided !== 'true') || st?.segments?.[0];
+                                                                            const sequential = isTwoSlotSequential(s.options);
+                                                                            const voided = seg?.voided === true || seg?.voided === 'true';
+                                                                            const a = sequential && dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => Number(g.sequenceSlot) === 1));
+                                                                            const canReplaceB = sequential && !sequentialSlotClosed(s.options, 2) && Number(seg?.sequenceSlot) === 2 && !voided && !seg?.actualStartTime
+                                                                                && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !!a && !!onAssignSequentialB;
                                                                             const ktvStart = isTwoSlotSequential(s.options)
                                                                                 ? (seg?.actualStartTime || seg?.startTime || '--:--')
                                                                                 : (seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart);
-                                                                            const ktvEnd = seg?.actualEndTime || (seg?.actualStartTime
-                                                                                ? getDynamicEndTime(ktvStart, Number(seg?.duration) || duration)
+                                                                            const expectedEnd = seg?.actualStartTime ? expectedEndMs(seg, Number(seg?.duration) || duration) : null;
+                                                                            const ktvEnd = seg?.actualEndTime || (expectedEnd !== null ? gioDongHoVN(expectedEnd)
                                                                                 : seg?.endTime || getDynamicEndTime(ktvStart, Number(seg?.duration) || duration));
                                                                             return (
                                                                                 /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
                                                                                    hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
                                                                                    ngoài thẻ. */
-                                                                                <div key={stIdx} onClick={e => { if (isTwoSlotSequential(s.options)) { e.stopPropagation(); const a = dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => g.sequenceSlot === 1)); if (seg?.sequenceSlot === 2 && !seg?.voided && !seg?.actualStartTime && a) onAssignSequentialB?.(order.id, s.id, a.ktvId, st.ktvId); else onOpenDetail(order.id, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
+                                                                                <div key={stIdx} onClick={e => { if (sequential) { e.stopPropagation(); onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        {isTwoSlotSequential(s.options) && <span className="text-[9px] font-black text-indigo-600">{seg?.sequenceSlot === 2 ? 'B' : 'A'}</span>}
-                                                                                        {isTwoSlotSequential(s.options) && seg?.sequenceSlot === 2 && !seg?.actualStartTime && !seg?.voided && <span className="text-[8px] font-bold text-amber-700">Chờ bắt đầu</span>}
+                                                                                        {sequential && <span className="text-[9px] font-black text-indigo-600">{Number(seg?.sequenceSlot) === 2 ? 'B · Làm tiếp' : 'A · Làm trước'}</span>}
+                                                                                        {sequential && !voided && <span className={`text-[8px] font-bold ${seg?.actualEndTime ? 'text-emerald-700' : seg?.actualStartTime ? 'text-sky-700' : 'text-amber-700'}`}>{seg?.actualEndTime ? 'Đã xong' : seg?.actualStartTime ? s.status === 'PAUSED' ? 'Tạm dừng' : 'Đang làm' : 'Chờ bắt đầu'}</span>}
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
@@ -1156,11 +1169,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvStart)}</span>
                                                                                         <span className="text-indigo-300 text-[8px]">→</span>
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvEnd)}</span>
+                                                                                        {canReplaceB && <button type="button" title="Đổi nhân viên làm tiếp hoặc chỉnh giờ" aria-label="Đổi nhân viên B" className="rounded-md border border-indigo-200 bg-white p-1.5 text-indigo-600 hover:bg-indigo-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
+                                                                                            onClick={e => { e.stopPropagation(); onAssignSequentialB?.(subOrder.bookingId, s.id, a.ktvId, st.ktvId); }}><ArrowLeftRight size={14} /></button>}
                                                                                     </div>
                                                                                 </div>
                                                                             );
                                                                         })}
-                                                                        {isTwoSlotSequential(s.options) && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 2 && seg.voided !== true)) && (
+                                                                        {isTwoSlotSequential(s.options) && !sequentialSlotClosed(s.options, 2) && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 2 && seg.voided !== true)) && (
                                                                             <button type="button" title="Mở điều phối để gán nhân viên B" className="w-full rounded-lg border border-dashed border-rose-300 bg-rose-50 px-2.5 py-2 text-left text-[10px] font-bold text-rose-600 hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500"
                                                                                 onClick={e => {
                                                                                     e.stopPropagation();
@@ -1524,11 +1539,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         return null;
                                                     })()}
                                                     {(() => {
-                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options) && !s.options?.finishedAfterA
-                                                            && s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 1 && seg.actualStartTime && seg.actualEndTime))
-                                                            && !s.staffList.some((st: any) => st.segments.some((seg: any) => seg.sequenceSlot === 2 && seg.actualStartTime)));
-                                                        return item && onFinishSequentialAfterA ? <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
-                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(order.id, item.id); }}>Hoàn thành</button> : null;
+                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options) && ['PREPARING','READY','IN_PROGRESS'].includes(s.status));
+                                                        return item ? <>
+                                                          {onFinishSequentialAfterA && <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
+                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(subOrder.bookingId, item.id); }}>Kết thúc</button>}
+                                                          {onCancelClick && <button className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-black text-rose-600"
+                                                            onClick={e => { e.stopPropagation(); onCancelClick(subOrder.bookingId, subOrder); }}>Huỷ</button>}
+                                                        </> : null;
                                                     })()}
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
                                                         const isPaused = services.some((s: any) => s.status === 'PAUSED');

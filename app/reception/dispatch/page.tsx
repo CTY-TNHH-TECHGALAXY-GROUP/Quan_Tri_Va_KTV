@@ -47,7 +47,9 @@ import { supabase } from '@/lib/supabase';
 import { KanbanBoard } from './_components/KanbanBoard';
 import { TimeEditorModal } from './_components/TimeEditorModal';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
-import { getDispatchData, processDispatch, enableSequentialItem, handoffSequentialKtv, finishSequentialAfterA, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
+import { getDispatchData, processDispatch, enableSequentialItem, handoffSequentialKtv, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
+import SequentialLifecycleModal from './_components/SequentialLifecycleModal';
+import type { SequentialRequest } from '@/lib/sequential-lifecycle';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import { ReviewHandoverModal } from './_components/ReviewHandoverModal';
@@ -348,6 +350,21 @@ export default function DispatchBoardPage() {
   const push = usePushNotifications(user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string, guestId?: string } | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  const [sequentialModal, setSequentialModal] = useState<{ bookingId: string; service: ServiceBlock; action: 'FINISH' | 'CANCEL' | 'SWAP' } | null>(null);
+  const openSequentialModal = (bookingId: string, service: ServiceBlock, action: 'FINISH' | 'CANCEL' | 'SWAP') => {
+    const full = orders.flatMap(order => order.services).find(item => item.id === service.id) || service;
+    setSequentialModal({ bookingId, service: structuredClone(full), action });
+  };
+  const submitSequentialAction = async (request: SequentialRequest) => {
+    if (!sequentialModal) return;
+    const res = await apiClient.post<any>('/api/reception/sequential-lifecycle', {
+      ...request, bookingId: sequentialModal.bookingId, itemId: sequentialModal.service.id,
+      expectedRevision: dispatchRevision(sequentialModal.service.options),
+    });
+    if (!res.success) throw new Error(res.error || 'Không lưu được thao tác.');
+    if (res.warnings?.length) alert(res.warnings.join('\n'));
+    await fetchData();
+  };
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
   const [pauseModalLockAction, setPauseModalLockAction] = useState<'SWAP' | undefined>(undefined);
@@ -1724,6 +1741,9 @@ if (!hasPermission('dispatch_board')) {
    */
   const handleCancelBooking = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
+    if (order?.services.length === 1 && isTwoSlotSequential(order.services[0].options)) {
+      openSequentialModal(orderId, order.services[0], 'CANCEL'); setContextMenu(null); return;
+    }
 
     let workedMinutes: number | null = null;
     const ktvSet = new Set<string>();
@@ -1753,6 +1773,10 @@ if (!hasPermission('dispatch_board')) {
   };
   /** Mở hộp thoại huỷ — thay cho prompt() cũ, vì còn phải hỏi có cộng giờ hay không. */
   const handleCancelBookingItem = (orderId: string, itemId: string, subOrder?: any) => {
+    const sequential = (subOrder?.services || orders.find(order => order.id === orderId)?.services || []).find((service: ServiceBlock) => service.id === itemId && isTwoSlotSequential(service.options));
+    if (sequential) {
+      openSequentialModal(subOrder?.bookingId || orderId, sequential, 'CANCEL'); setContextMenu(null); return;
+    }
     const svcs = subOrder?.services || [];
     const itemIds: string[] = svcs.length > 0 ? svcs.map((s: any) => s.id) : [itemId];
 
@@ -3012,10 +3036,8 @@ if (!hasPermission('dispatch_board')) {
               }}
               onAssignSequentialB={(orderId, itemId, fromKtvId, toKtvId) => openLiveHandoff(orderId, itemId, fromKtvId, toKtvId || '')}
               onFinishSequentialAfterA={async (orderId, itemId) => {
-                if (!confirm('Kết thúc dịch vụ sau lượt A? Công của A vẫn được giữ.')) return;
-                const result = await finishSequentialAfterA(orderId, itemId, dispatchRevision(orders.find(o => o.id === orderId)?.services.find(s => s.id === itemId)?.options));
-                if (!result.success) alert(result.error);
-                else await fetchData();
+                const service = orders.flatMap(order => order.services).find(service => service.id === itemId);
+                if (service) openSequentialModal(orderId, service, 'FINISH');
               }}
               onConfirmAddonPayment={handleConfirmAddonPayment}
               selectedOrderId={selectedOrderId}
@@ -3036,6 +3058,8 @@ if (!hasPermission('dispatch_board')) {
                 setContextMenu({ x, y, orderId, itemId, guestId });
               }}
               onPauseClick={(orderId, subOrder) => {
+                const sequential = subOrder?.services?.find((service: ServiceBlock) => isTwoSlotSequential(service.options));
+                if (sequential?.status === 'PAUSED') { openSequentialModal(subOrder.bookingId || orderId, sequential, 'SWAP'); return; }
                 const o = orders.find(x => x.id === orderId);
                 if (o) {
                   setPauseModalOrder(o);
@@ -3076,6 +3100,8 @@ if (!hasPermission('dispatch_board')) {
                 }
               }}
               onFinishEarlyPaused={async (orderId, subOrder) => {
+                const sequential = subOrder.services.find((service: ServiceBlock) => isTwoSlotSequential(service.options));
+                if (sequential) { openSequentialModal(subOrder.bookingId || orderId, sequential, 'FINISH'); return; }
                 try {
                   // Chốt chặn bấm nhầm: Kết thúc thì KTV CÓ tiền có giờ, mà nếu họ
                   // chưa hề bấm báo thì nhiều khả năng đây là ca bỏ khách → phải Huỷ.
@@ -3269,8 +3295,8 @@ Vẫn kết thúc sớm?`)) return;
       {liveHandoff && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Bàn giao KTV nối tiếp">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
-            <h2 className="text-lg font-bold">Bàn giao nối tiếp ngay</h2>
-            <p className="text-sm text-slate-600">A: {liveHandoff.fromKtvId}. Gán lượt B mà không chốt giờ thực của A.</p>
+            <h2 className="text-lg font-bold">Chọn nhân viên làm tiếp</h2>
+            <p className="text-sm text-slate-600">Nhân viên A: {liveHandoff.fromKtvId}. Chọn người làm tiếp và chỉnh giờ dự kiến bên dưới.</p>
             <label className="block text-sm font-semibold">KTV B
               <select className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.toKtvId}
                 onChange={e => setLiveHandoff(prev => prev ? { ...prev, toKtvId: e.target.value } : null)}>
@@ -3301,11 +3327,13 @@ Vẫn kết thúc sớm?`)) return;
               <button className="rounded-lg border px-4 py-2" disabled={liveHandoff.saving} onClick={() => setLiveHandoff(null)}>Hủy</button>
               <button className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
                 disabled={liveHandoff.saving || !liveHandoff.toKtvId || !liveHandoff.plannedStartAt || !Number.isInteger(liveHandoff.durationMinutes) || liveHandoff.durationMinutes < 1 || liveHandoff.durationMinutes > 600}
-                onClick={confirmLiveHandoff}>{liveHandoff.saving ? 'Đang gán…' : 'Gán B'}</button>
+                onClick={confirmLiveHandoff}>{liveHandoff.saving ? 'Đang lưu…' : 'Lưu & điều phối'}</button>
             </div>
           </div>
         </div>
       )}
+      {sequentialModal && <SequentialLifecycleModal service={sequentialModal.service} action={sequentialModal.action} staffs={staffs}
+        onClose={() => setSequentialModal(null)} onConfirm={submitSequentialAction} />}
 
       {/* Modal Xem Ảnh Xác Nhận / Ảnh Bàn Giao */}
       <PhotoViewerModal

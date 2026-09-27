@@ -8,16 +8,17 @@ import type { ServiceBlock } from '../types';
 
 const clock = (ms: number) => `${String(Math.floor(ms / 60_000)).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 
-export function AccountDemo({ service, employeeId, employeeName, now, onStamp }: {
+export function AccountDemo({ service, employeeId, employeeName, now, onStamp, onPause }: {
   service: ServiceBlock; employeeId: string; employeeName: string; now: number;
   onStamp: (employeeId: string, field: 'actualStartTime' | 'actualEndTime') => void;
+  onPause?: (employeeId: string) => void;
 }) {
   const state = demoAccountState(service, employeeId, now);
   const segment = state.segment;
   return <section className="rounded-xl border bg-white p-5" aria-label={`Tài khoản ${employeeName}`}>
     <h2 className="text-lg font-bold">Tài khoản demo · {employeeName}</h2>
     <p className="mb-4 text-sm text-slate-500">Mã nhân viên: {employeeId}</p>
-    {!state.assigned ? <p>Chưa có phân công gửi cho tài khoản này.</p> : <>
+    {!state.assigned ? <p>{service.staffList.some(row => row.ktvId === employeeId && row.segments.some((seg: any) => seg.voided === true)) ? 'Lượt của bạn đã bị huỷ hoặc đổi người. Không còn lượt đang làm.' : 'Chưa có phân công gửi cho tài khoản này.'}</p> : <>
       <h3 className="font-bold">{ktvServiceName({ options: service.options, base_service_name: service.serviceName }, employeeId)}</h3>
       <p>Phòng {segment!.roomId} · Giường {segment!.bedId} · {segment!.duration} phút</p>
       <p>Giờ dự kiến của bạn: {segment!.startTime} → {segment!.endTime}</p>
@@ -28,10 +29,11 @@ export function AccountDemo({ service, employeeId, employeeName, now, onStamp }:
         <div><dt>Đã làm</dt><dd className="font-mono text-2xl" aria-label="Đã làm">{clock(state.elapsedMs)}</dd></div>
         <div><dt>Còn lại</dt><dd className="font-mono text-2xl" aria-label="Còn lại">{clock(state.remainingMs)}</dd></div>
       </dl>
-      <p className="mb-3 font-bold">{segment!.actualEndTime ? 'Bạn đã hoàn tất lượt làm.' : segment!.actualStartTime ? 'Bạn đang thực hiện dịch vụ.' : state.canStart ? 'Đã phân công · sẵn sàng bắt đầu.' : 'Ca đã đóng.'}</p>
+      <p className="mb-3 font-bold">{segment!.note === 'CANCELLED_NO_CREDIT' || segment!.note === 'CANCELLED_WITH_CREDIT' ? 'Lượt đã bị huỷ. Nếu chưa bàn giao phòng, bạn vẫn cần dọn và bàn giao.' : segment!.actualEndTime ? 'Bạn đã hoàn tất lượt làm.' : state.paused ? 'Lượt của bạn đang tạm dừng.' : segment!.actualStartTime ? 'Bạn đang thực hiện dịch vụ.' : service.status === 'PAUSED' ? 'Đơn đang tạm dừng; lượt của bạn chưa bắt đầu.' : state.canStart ? 'Đã phân công · sẵn sàng bắt đầu.' : 'Ca đã đóng.'}</p>
       <div className="flex gap-2">
         <button disabled={!state.canStart} className="rounded bg-sky-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => onStamp(employeeId, 'actualStartTime')}>Bắt đầu lượt của tôi</button>
         <button disabled={!state.canFinish} className="rounded bg-emerald-600 px-3 py-2 text-white disabled:opacity-40" onClick={() => onStamp(employeeId, 'actualEndTime')}>Hoàn tất lượt của tôi</button>
+        {onPause && <button disabled={!state.canFinish || state.paused} className="rounded border border-amber-300 px-3 py-2 text-amber-700 disabled:opacity-40" onClick={() => onPause(employeeId)}>Tạm dừng lượt của tôi</button>}
       </div>
     </>}
   </section>;

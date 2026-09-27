@@ -1,5 +1,5 @@
 'use client';
-import { isLiveKtvSegment, ktvServiceName, parseKtvSegments } from '@/lib/ktvUtils';
+import { isKtvDisplaySegment, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
@@ -200,7 +200,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
         segs = parseKtvSegments(i.segments);
     }
     return segs
-      .filter((s: any) => isLiveKtvSegment(s, logic.ktvId))
+      .filter((s: any) => isKtvDisplaySegment(s, logic.ktvId))
       .map((s: any) => {
         return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
       });
@@ -221,12 +221,12 @@ export function ScreenTimer({ logic }: { logic: any }) {
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
   const shouldMerge = hasTimerMergedChildren || (ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment);
 
-  const totalAssignedMins = allTimerKtvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+  const totalAssignedMins = allTimerItemsRaw.reduce((sum: number, i: any) => sum + ktvAssignedMinutes(i, logic.ktvId), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
   const nextSeg = ktvSegments.length > (activeSegmentIndex + 1) && !shouldMerge ? ktvSegments[activeSegmentIndex + 1] : null;
 
   // 🕒 CHỈ HIỂN THỊ THỜI GIAN CỦA CHẶNG HIỆN TẠI (trừ phi được gộp)
-  const displayDuration = shouldMerge ? totalAssignedMins : (currentSeg ? (Number(currentSeg.duration) || 60) : ((item.duration != null && item.duration !== '' ? Number(item.duration) : 60)));
+  const displayDuration = shouldMerge ? totalAssignedMins : (currentSeg ? Math.max(0, Number(currentSeg.duration) || 0) : ktvAssignedMinutes(item, logic.ktvId));
 
   const parsedSetup = Number(logic.settings?.ktv_setup_duration_minutes);
   const setupMins = !isNaN(parsedSetup) ? parsedSetup : 0;
