@@ -1,4 +1,10 @@
 -- READ ONLY. Run BEFORE applying the five sequential feature migrations to the selected DB.
+-- Run each query separately in Supabase SQL Editor and retain its result.
+-- Query 0: record T0. This reads the DB clock; it does NOT persist or enforce a cutoff.
+SELECT clock_timestamp() AS preflight_t0,
+       current_database() AS database_name,
+       current_user AS executing_role;
+
 -- Query 1: zero rows = all required baseline columns exist. A blank DB will fail this check.
 WITH required(table_name,column_name) AS (VALUES
  ('Bookings','id'),('Bookings','status'),('Bookings','bookingDate'),('Bookings','parent_booking_id'),
