@@ -1541,7 +1541,8 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
         if (!supabase) throw new Error('Supabase admin not initialized');
 
         // Lấy trạng thái hiện tại để check rule
-        const { data: bCurrent } = await supabase.from('Bookings').select('status').eq('id', bookingId).single();
+        const { data: bCurrent, error: bCurrentError } = await supabase.from('Bookings').select('status').eq('id', bookingId).single();
+        if (bCurrentError || !bCurrent) throw bCurrentError || new Error('Không đọc được trạng thái đơn.');
         if (bCurrent && bCurrent.status) {
             const { canTransition } = await import('@/lib/dispatch-status');
             if (!canTransition(bCurrent.status, newStatus)) {
@@ -1549,11 +1550,15 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
             }
         }
 
-        if (['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'].includes(newStatus)) {
+        if (['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED', 'CANCELLED', 'IN_PROGRESS', 'PAUSED'].includes(newStatus)) {
             const { sequentialSlotsComplete, isTwoSlotSequential } = await import('@/lib/dispatch-status');
             const { data: sequentialItems, error: sequentialError } = await supabase
                 .from('BookingItems').select('id, status, options, segments').eq('bookingId', bookingId);
             if (sequentialError) throw sequentialError;
+            if (['CANCELLED','IN_PROGRESS','PAUSED'].includes(newStatus)
+                && (sequentialItems || []).some(item => isTwoSlotSequential(item.options) && item.status !== 'CANCELLED')) {
+                throw new Error('Ca nối tiếp: chọn hàng A/B để bắt đầu, hoặc dùng nút Tạm dừng/Tiếp tục/Huỷ có chọn phạm vi.');
+            }
             const unfinished = (sequentialItems || []).find((item: any) => {
                 if (item.status === 'CANCELLED' || !isTwoSlotSequential(item.options)) return false;
                 const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : item.segments;
@@ -1811,8 +1816,22 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
         if (!supabase) throw new Error('Supabase admin not initialized');
 
         // Lấy trạng thái hiện tại của items để check rule
-        const { data: itemsCurrent } = await supabase.from('BookingItems').select('id, status, segments, options').in('id', itemIds);
+        const { data: itemsCurrent, error: itemsCurrentError } = await supabase.from('BookingItems').select('id, status, segments, options').in('id', itemIds);
+        if (itemsCurrentError || !itemsCurrent?.length) throw itemsCurrentError || new Error('Không đọc được dịch vụ.');
         const { canTransition, shouldHoldItemStatus, isTwoSlotSequential, sequentialSlotsComplete } = await import('@/lib/dispatch-status');
+        if (itemsCurrent.some(item => isTwoSlotSequential(item.options)
+            && (['CANCELLED','PAUSED'].includes(newStatus) || newStatus === 'IN_PROGRESS' && item.status === 'PAUSED'))) {
+            throw new Error('Ca nối tiếp: dùng nút Tạm dừng/Tiếp tục hoặc Huỷ có chọn rõ A/B/cả hai.');
+        }
+        if (newStatus === 'IN_PROGRESS') {
+            if (customStartTime && !Number.isFinite(Date.parse(customStartTime))) throw new Error('Giờ bắt đầu không hợp lệ.');
+            for (const item of itemsCurrent.filter(item => isTwoSlotSequential(item.options))) {
+                if (targetKtvIds?.length !== 1) throw new Error('Ca nối tiếp: chọn đúng hàng A/B để bắt đầu.');
+                const own = parseKtvSegments(item.segments, true).filter(seg => seg.voided !== true && seg.voided !== 'true'
+                    && ktvMatchesSeg(seg.ktvId, targetKtvIds[0]) && !seg.actualEndTime);
+                if (!own.length || own.some(seg => seg.actualStartTime)) throw new Error('Ca nối tiếp: lượt đã bắt đầu, đã đóng hoặc đã đổi người; tải lại đơn.');
+            }
+        }
         // Items whose status really changed below — merged children follow only these.
         const statusChangedIds: string[] = [];
         
@@ -1847,7 +1866,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
             if (['IN_PROGRESS'].includes(newStatus)) {
                 segs.forEach((s: any) => {
                     if (targetKtvIds && targetKtvIds.length > 0) {
-                        if (!s.ktvId || !targetKtvIds.includes(s.ktvId)) return;
+                        if (!targetKtvIds.some(id => ktvMatchesSeg(s.ktvId, id))) return;
                     }
                     if (!s.actualStartTime) {
                         s.actualStartTime = customStartTime || new Date().toISOString();
@@ -1869,7 +1888,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
 
                 segs.forEach((s: any) => {
                     if (targetKtvIds && targetKtvIds.length > 0) {
-                        if (!s.ktvId || !targetKtvIds.includes(s.ktvId)) return;
+                        if (!targetKtvIds.some(id => ktvMatchesSeg(s.ktvId, id))) return;
                     }
                     delete s.actualStartTime;
                     delete s.actualEndTime;
@@ -1884,7 +1903,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 segs.forEach((s: any) => {
                     // Chỉ update nếu KTV này nằm trong targetKtvIds (nếu có)
                     if (targetKtvIds && targetKtvIds.length > 0) {
-                        if (!s.ktvId || !targetKtvIds.includes(s.ktvId)) return;
+                        if (!targetKtvIds.some(id => ktvMatchesSeg(s.ktvId, id))) return;
                     }
                     if (sequential && !s.actualStartTime) return;
                     if (!s.actualEndTime) {
@@ -1988,7 +2007,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 .eq('current_order_id', bookingId)
                 .overlaps('booking_item_ids', itemIds)
                 .eq('date', date)
-                .in('status', ['waiting', 'working']);
+                .in('status', ['waiting', 'assigned', 'ready', 'working']);
 
             if (targetKtvIds && targetKtvIds.length > 0) {
                 fetchQuery = fetchQuery.in('employee_id', targetKtvIds);

@@ -16,7 +16,7 @@ Branch: `feat/sequential-two-slot-handoff-20260926`.
 
 Lệnh: `node scripts/test_sequential_branch.cjs`.
 
-Kết quả: PASS 15 script, dispatch live guard và TypeScript. `git diff --check`: PASS. Demo local `/reception/dispatch/sequential-demo` trả HTTP 200.
+Kết quả: PASS 16 script, dispatch live guard và TypeScript. `git diff --check`: PASS. Demo local `/reception/dispatch/sequential-demo` trả HTTP 200.
 
 | Ca lifecycle | Nội dung được xác minh | Kết quả |
 |---|---|---|

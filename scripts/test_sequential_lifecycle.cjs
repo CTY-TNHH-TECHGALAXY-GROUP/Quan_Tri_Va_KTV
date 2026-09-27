@@ -21,14 +21,36 @@ async function main() {
     ALTER TABLE "Staff" ADD COLUMN work_type text DEFAULT 'TYPE_A';
     ALTER TABLE "TurnLedger" ADD COLUMN is_punished boolean DEFAULT false;`);
   const migrations = 'supabase/migrations/';
-  await db.exec(read(migrations + '20260926140000_ktv_finish_service_atomic.sql'));
   const unwrap = read(migrations + '20260914120000_auto_complete_feedback_after_5m.sql');
   const start = unwrap.indexOf('CREATE OR REPLACE FUNCTION jsonb_unwrap_string(');
   await db.exec(unwrap.slice(start, unwrap.indexOf('$$;', start) + 3));
-  await db.exec(read(migrations + '20260927120000_sequential_operational_consistency.sql'));
-  await db.exec(read(migrations + '20260927150000_sequential_scoped_lifecycle.sql'));
-  await db.exec(`CREATE TRIGGER scoped_guard BEFORE UPDATE OF segments,options,status ON "BookingItems" FOR EACH ROW EXECUTE FUNCTION guard_sequential_item_update();
-    CREATE TRIGGER zz_history BEFORE UPDATE OF segments,options ON "BookingItems" FOR EACH ROW EXECUTE FUNCTION keep_dispatch_edit_history();`);
+  for (const migration of ['20260925120000_live_sequential_handoff.sql',
+    '20260926120000_dispatch_edit_history.sql','20260926140000_ktv_finish_service_atomic.sql',
+    '20260927120000_sequential_operational_consistency.sql','20260927150000_sequential_scoped_lifecycle.sql']) {
+    await db.exec(read(migrations + migration));
+  }
+  const assignmentSchema = read(migrations + '20260502150000_create_ktv_assignments.sql');
+  await db.exec(assignmentSchema.slice(assignmentSchema.indexOf('DO $$ BEGIN'),assignmentSchema.indexOf('-- 2.')));
+  await db.exec(`ALTER TABLE "KtvAssignments" ALTER COLUMN status TYPE "KtvAssignmentStatus" USING status::"KtvAssignmentStatus";
+    ALTER TABLE "KtvAssignments" ADD CONSTRAINT assignment_booking_fk FOREIGN KEY (booking_id) REFERENCES "Bookings"(id);
+    CREATE UNIQUE INDEX idx_ktvassignments_one_active_per_day ON "KtvAssignments"(employee_id,business_date) WHERE status='ACTIVE';`);
+  assert.equal((await db.query(`SELECT count(*)::int AS total FROM pg_trigger WHERE tgname IN ('guard_sequential_item_update_trigger','zz_dispatch_edit_history') AND NOT tgisinternal`)).rows[0].total,2);
+  for (const fn of ['dispatch_apply_edit(text,text,jsonb,jsonb)', 'dispatch_save_sequential_update(text,jsonb,boolean)',
+    'dispatch_sequential_lifecycle_atomic(text,text,jsonb,jsonb,text,jsonb,bigint)', 'ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text)']) {
+    const access = (await db.query(`SELECT has_function_privilege('service_role',$1,'EXECUTE') AS service,
+      has_function_privilege('authenticated',$1,'EXECUTE') AS client,has_function_privilege('anon',$1,'EXECUTE') AS anon`,[fn])).rows[0];
+    assert.deepEqual(access,{service:true,client:false,anon:false});
+  }
+  await db.exec(read('_plans/sequential_migration_preflight_20260927.sql'));
+  const postChecks = await db.exec(read('_plans/sequential_migration_postcheck_20260927.sql'));
+  assert.equal(postChecks[0].rows.length,9);
+  for (const result of postChecks[0].rows) {
+    assert.equal(result.exists_after_migration,true);assert.equal(result.service_can_execute,true);
+    assert.equal(result.client_can_execute,false);assert.equal(result.anon_can_execute,false);
+  }
+  assert.ok(postChecks[1].rows.every(trigger=>trigger.enabled_mode==='O'));
+  assert.equal(postChecks[2].rows.length,0);
+  console.log('PASS all five migrations in order with their real guard/audit triggers, RPC access and ACTIVE uniqueness constraint');
   const at = minute => `2026-09-26T03:${String(minute).padStart(2,'0')}:00Z`;
   const row = async id => (await db.query('SELECT * FROM "BookingItems" WHERE id=$1', [id])).rows[0];
   const seed = async (key, aDone = false, bStarted = false, bAssigned = true) => {
@@ -80,12 +102,28 @@ async function main() {
   const ownQueue = (await db.query(`SELECT start_time,estimated_end_time FROM "TurnQueue" WHERE employee_id='initial90B'`)).rows[0];
   assert.equal(ownQueue.start_time,'16:05:00'); assert.equal(ownQueue.estimated_end_time,'16:50:00');
   console.log('PASS initial dispatch normalizes B 16:05+45=16:50 despite legacy 90-minute assignment; TurnQueue agrees');
+  for (const [minutes,name] of [[35,'B sửa lần 1'],[40,'B sửa lần 2']]) {
+    const saved = await row(initialId);
+    const revised = structuredClone(saved.segments);
+    revised.find(seg=>seg.sequenceSlot===2).startTime='16:10';
+    revised.find(seg=>seg.sequenceSlot===2).duration=minutes;
+    revised.find(seg=>seg.sequenceSlot===2).endTime=minutes===35?'16:45':'16:50';
+    const options = {...saved.options,serviceNamesForKtvs:{...saved.options.serviceNamesForKtvs,initial90A:'Tên A giữ nguyên',initial90B:name}};
+    await db.query(`SELECT dispatch_apply_edit('initial90','DISPATCH',$1,'{}')`,[JSON.stringify({date:'2026-09-26',itemUpdates:[{id:initialId,segments:revised,options}]})]);
+    const latest = await row(initialId);
+    assert.equal(latest.segments.find(seg=>seg.sequenceSlot===2).duration,minutes);
+    assert.equal(latest.options.serviceNamesForKtvs.initial90B,name);assert.equal(latest.options.serviceNamesForKtvs.initial90A,'Tên A giữ nguyên');
+    assert.equal(Number((await db.query(`SELECT EXTRACT(EPOCH FROM planned_end_time-planned_start_time)/60 AS minutes FROM "KtvAssignments" WHERE employee_id='initial90B' AND booking_item_id='initial90item'`)).rows[0].minutes),minutes);
+    assert.ok(latest.options.dispatchRevision>saved.options.dispatchRevision);
+  }
+  console.log('PASS full migration chain redispatches B edits twice from latest save; own minutes/assignment/name/history agree');
+
 
   const nightId = await seed('initialNight');
   await db.exec(`DELETE FROM "BookingItems" WHERE id='initialNightitem';
     INSERT INTO "BookingItems"(id,"bookingId","serviceId",status,options,segments) VALUES('initialNightitem','initialNight','svc','NEW','{}','[]');
     INSERT INTO "KtvAssignments"(employee_id,business_date,booking_id,booking_item_id,status,planned_start_time,planned_end_time)
-      VALUES('initialNightB','2026-09-26','initialNight','night-other','ACTIVE','2026-09-27 01:00+07','2026-09-27 01:30+07');
+      VALUES('initialNightB','2026-09-26','initialNight','night-other','QUEUED','2026-09-27 01:00+07','2026-09-27 01:30+07');
     UPDATE "TurnQueue" SET status='assigned',booking_item_ids=ARRAY['initialNightitem','night-other'] WHERE employee_id='initialNightB';`);
   await db.query(`SELECT dispatch_apply_edit('initialNight','DISPATCH',$1,'{}')`,[JSON.stringify({date:'2026-09-26',itemUpdates:[{id:nightId,options:{sequentialSlots:2,dispatchRevision:0},segments:[
     {id:'initialNight-a',ktvId:'initialNightA',sequenceSlot:1,startTime:'23:45',endTime:'00:15',duration:30},
@@ -141,7 +179,8 @@ async function main() {
 
   id = await seed('cancelBoth',true,true);
   const bothBefore = await row(id);
-  await db.exec(`INSERT INTO "Bookings"(id,status) VALUES('new-active','IN_PROGRESS');
+  await db.exec(`UPDATE "KtvAssignments" SET status='COMPLETED' WHERE employee_id='cancelBothA' AND booking_item_id='cancelBothitem';
+    INSERT INTO "Bookings"(id,status) VALUES('new-active','IN_PROGRESS');
     INSERT INTO "KtvAssignments"(employee_id,business_date,booking_id,booking_item_id,segment_id,status) VALUES('cancelBothA','2026-09-26','new-active','new-item','new-seg','ACTIVE');
     UPDATE "TurnQueue" SET current_order_id='new-active',booking_item_id='new-item',booking_item_ids=ARRAY['new-item'] WHERE employee_id='cancelBothA';`);
   item = await commit(id,{action:'CANCEL',targetSlots:[1,2],cancelCredit:'NONE'},at(40));

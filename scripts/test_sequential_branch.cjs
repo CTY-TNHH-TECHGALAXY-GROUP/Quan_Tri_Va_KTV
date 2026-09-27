@@ -9,7 +9,7 @@ const tests = [
   'test_sequential_employee_consistency.cjs', 'test_sequential_live_segments.cjs',
   'test_sequential_inline_ui.cjs', 'test_sequential_midnight_metadata.cjs',
   'test_sequential_notifications.cjs', 'test_sequential_deep_fixes.cjs',
-  'test_sequential_lifecycle.cjs',
+  'test_sequential_lifecycle.cjs', 'test_sequential_status_entrypoints.cjs',
 ];
 for (const name of tests) {
   const result = spawnSync(process.execPath, [resolve(__dirname, name)], { cwd: root, encoding: 'utf8' });

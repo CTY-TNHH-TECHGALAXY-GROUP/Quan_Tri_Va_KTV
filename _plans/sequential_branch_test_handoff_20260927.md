@@ -38,7 +38,7 @@ npm install --no-save --package-lock=false ts-node@10.9.2 tsconfig-paths@3.15.0 
 
 ## Kết quả trước commit
 
-`node scripts/test_sequential_branch.cjs`: **PASS toàn bộ 15 script + live guard + TypeScript** trên source đã áp sửa. `git diff --check`: PASS. Không dùng các script tái hiện lỗi lịch sử làm gate bản đã sửa.
+`node scripts/test_sequential_branch.cjs`: **PASS toàn bộ 16 script + live guard + TypeScript** trên source đã áp sửa. `git diff --check`: PASS. Không dùng các script tái hiện lỗi lịch sử làm gate bản đã sửa.
 
 Các file bản sao không được Git theo dõi có hậu tố ` 2.ts`/` 2.tsx` không thuộc danh sách sửa và không được đưa vào commit.
 
