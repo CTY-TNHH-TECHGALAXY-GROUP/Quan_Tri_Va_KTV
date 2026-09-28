@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const ts = require('typescript');
 require('ts-node').register({ project: join(__dirname, 'qa/tsconfig.qa.json'), transpileOnly: true, compilerOptions: { jsx: 'react-jsx' } });
 require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@/*': ['./*'] } });
-const { parseKtvOptions, ktvServiceName, isLiveKtvSegment, ktvAssignedMinutes, parseKtvSegments } = require('../lib/ktvUtils');
+const { parseKtvOptions, ktvServiceName, isLiveKtvSegment, ktvAssignedMinutes, parseKtvSegments, sameRoomSequentialB, unstartedSequentialSeconds } = require('../lib/ktvUtils');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 let rejectServices;
@@ -24,6 +24,11 @@ for (const raw of [options, JSON.stringify(options), JSON.stringify(JSON.stringi
 for (const raw of [null, 'broken', 'null', '[]', []]) assert.deepEqual(parseKtvOptions(raw), {});
 assert.equal(ktvServiceName({ options: { serviceNamesForKtvs: { B: '' } }, base_service_name: 'Tên gốc', service_name: 'Tên B cache cũ' }, 'B'), 'Tên gốc');
 assert.equal(ktvServiceName({ options: { _generatedDisplayName: 'Massage (60p)', displayName: 'Gói mới', serviceNamesForKtvs: { B: '' } }, base_service_name: 'Massage' }, 'B'), 'Gói mới');
+assert.equal(ktvServiceName({options:{_generatedDisplayName:'Body (90P) + Gội đầu (30p)'}},'A'),'Body + Gội đầu');
+const savedTitle={options:{serviceNamesForKtvs:{A:'Tên A (đá nóng)',B:'Tên B (45P)'}}};
+assert.equal(ktvServiceName(savedTitle,'A'),'Tên A (đá nóng)');
+assert.equal(ktvServiceName(savedTitle,'B'),'Tên B');
+assert.equal(savedTitle.options.serviceNamesForKtvs.B,'Tên B (45P)');
 console.log('PASS options object/JSON/double JSON/malformed, own names and cleared override');
 const segments = [
  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', endTime: '10:30', duration: 30 },
@@ -33,6 +38,35 @@ const segments = [
 ];
 assert.deepEqual(segments.filter(s => isLiveKtvSegment(s, 'B')).map(s => s.id), ['b-new']);
 assert.ok(isLiveKtvSegment({ ktvId: 'A - B' }, 'b'));
+const sameRoom = { options, segments: [
+  { id:'a', ktvId:'A', sequenceSlot:1, roomId:'R1', actualStartTime:'2026-09-26T03:00:00Z' },
+  { id:'b', ktvId:'B', sequenceSlot:2, roomId:'R1' }
+] };
+assert.equal(sameRoomSequentialB(sameRoom,'B'),true);
+assert.equal(sameRoomSequentialB({ ...sameRoom, segments:[sameRoom.segments[0],{...sameRoom.segments[1],roomId:'R2'}] },'B'),false);
+assert.equal(sameRoomSequentialB({ ...sameRoom, segments:[{...sameRoom.segments[0],actualStartTime:null},sameRoom.segments[1]] },'B'),true);
+assert.equal(sameRoomSequentialB(sameRoom,'A'),false);
+const replacement = { options, segments: [sameRoom.segments[0], { id: 'c', ktvId: 'C', sequenceSlot: 2, duration: 30, roomId: 'R1' }] };
+assert.equal(unstartedSequentialSeconds(replacement, replacement.segments[1], 30), 1800);
+assert.equal(unstartedSequentialSeconds(replacement, { ...replacement.segments[1], actualStartTime: '2026-09-27T10:52:00Z' }, 30), null);
+assert.equal(unstartedSequentialSeconds({ options: {} }, replacement.segments[1], 30), null);
+const dashboardLogic = readFileSync(join(__dirname,'../app/ktv/dashboard/KTVDashboard.logic.ts'),'utf8');
+assert.equal((dashboardLogic.match(/if \(unstartedSequentialSeconds\(/g) || []).length, 2,
+  'both server refresh and timer recalculation must preserve an unstarted replacement slot');
+const routeStart = dashboardLogic.indexOf("if (currentStatus === 'PREPARING' && currentScreen === 'DASHBOARD' && booking.acceptedAt && sameRoomSequentialB(");
+const routeEnd = dashboardLogic.indexOf("else if (currentStatus === 'READY'",routeStart);
+assert.ok(routeStart > 0 && routeEnd > routeStart);
+const routeCode = ts.transpileModule(`let next='DASHBOARD',prep=-1,seconds=0;
+  const currentStatus='PREPARING',currentScreen='DASHBOARD',booking={acceptedAt},ktvId='B';
+  const allMySegsForStatus=parseKtvSegments(assignedItem.segments).filter(s=>isLiveKtvSegment(s,ktvId));
+  const setScreen=v=>next=v,setPrepTimeRemaining=v=>prep=v,setIsPrepping=()=>{},setTimeRemaining=v=>seconds=v;
+  ${dashboardLogic.slice(routeStart,routeEnd)}
+  return {next,prep,seconds};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+const route = new Function('assignedItem','acceptedAt','sameRoomSequentialB','parseKtvSegments','isLiveKtvSegment',routeCode);
+const routeB = (item,acceptedAt) => route(item,acceptedAt,sameRoomSequentialB,parseKtvSegments,isLiveKtvSegment);
+assert.deepEqual(routeB(sameRoom,'yes'),{next:'TIMER',prep:0,seconds:3600});
+assert.equal(routeB({...sameRoom,segments:[sameRoom.segments[0],{...sameRoom.segments[1],roomId:'R2'}]},'yes').next,'DASHBOARD');
+assert.equal(routeB(sameRoom,null).next,'DASHBOARD');
 const item = { id: 'item', duration: 60, status: 'PREPARING', options: JSON.stringify(JSON.stringify(options)), base_service_name: 'Tên gốc', service_name: 'Tên cache cũ', segments };
 for (const Screen of [ScreenDashboard, ScreenTimer]) {
  const html = renderToStaticMarkup(React.createElement(ToastProvider, null, React.createElement(Screen, { logic: {
@@ -43,7 +77,7 @@ for (const Screen of [ScreenDashboard, ScreenTimer]) {
  assert.ok(!html.includes('10:30') && !html.includes('10:35') && !html.includes('Tên A riêng'));
 }
 console.log('PASS real Dashboard/Timer B → C → B select new slot and latest own title');
-const split90 = { id:'split90',duration:90,status:'PREPARING',options:{sequentialSlots:2},base_service_name:'Ráy tai - Cổ vai gáy - Body',segments:[
+const split90 = { id:'split90',duration:90,status:'PREPARING',options:{sequentialSlots:2,_generatedDisplayName:'Ráy tai - Cổ vai gáy - Body (90P)'},base_service_name:'Ráy tai - Cổ vai gáy - Body',segments:[
   {id:'slot-a',ktvId:'T016',sequenceSlot:1,startTime:'15:20',endTime:'16:05',duration:45},
   {id:'slot-b',ktvId:'NH018',sequenceSlot:2,startTime:'16:05',endTime:'16:50',duration:45}
 ] };
@@ -63,6 +97,7 @@ for (const Screen of [ScreenDashboard,ScreenTimer]) {
  }})));
  assert.ok(html.includes('45') && html.includes('16:05') && html.includes('16:50'));
  assert.ok(!html.includes('90 phút') && !html.includes('17:35'));
+ assert.ok(!html.includes('(90P)'));
 }
 assert.equal(rejectServices.find(service=>service.id==='split90').minutes,45);
 console.log('PASS 90-minute package split 45/45: actual API duration block, Dashboard/Timer and rejection choices use NH018 own 45 minutes');

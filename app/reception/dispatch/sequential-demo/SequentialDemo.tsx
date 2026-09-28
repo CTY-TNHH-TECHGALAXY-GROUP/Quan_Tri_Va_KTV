@@ -287,11 +287,8 @@ export default function SequentialDemo() {
             });
           });
         }, 'DRAFT', dispatchRevision(updated[0].options))}
-        onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={service.status === 'NEW' ? dispatchA : redispatchB}
-        onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
-          s.options = { ...s.options, sequentialSlots: 2 };
-          segmentOf(s.staffList[0]).sequenceSlot = 1;
-        }, 'ENABLE_SEQUENTIAL', dispatchRevision(service.options))} />
+        onPrintGroup={() => alert('Demo local: không in phiếu.')} onSaveStaffRow={async () => { if (service.status === 'NEW') dispatchA(); else redispatchB(); return true; }}
+        onLiveHandoff={openHandoff} />
     </section>
     <DispatchEditHistory services={[service]} />
     <section className="rounded-xl border bg-white p-4">
@@ -347,7 +344,6 @@ export default function SequentialDemo() {
         }}
         onOpenDetail={() => document.getElementById('demo-quick')?.scrollIntoView({ behavior: 'smooth' })}
         onAssignSequentialB={(_orderId, itemId, fromKtvId, toKtvId) => openHandoff(itemId, fromKtvId, toKtvId || '')}
-        onFinishSequentialAfterA={() => openLifecycle('FINISH')}
         onPauseClick={() => openLifecycle('SWAP')}
         onPauseNow={() => { runLifecycle({ action: 'PAUSE' }); }}
         onResumeClick={() => { runLifecycle({ action: 'RESUME' }); }}

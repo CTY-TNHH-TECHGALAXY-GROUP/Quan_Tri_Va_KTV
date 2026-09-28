@@ -10,7 +10,8 @@ import { toBusinessDate, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 // 🔧 UI CONFIGURATION
 const DEFAULT_DURATION = 60; // Phút mặc định cho mỗi KTV
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui/Toast';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ConfirmActionModal } from './_components/ConfirmActionModal';
 import { buildCheckinConfirmMessage } from './CheckinConfirm.i18n';
@@ -65,17 +66,18 @@ import { Customer } from '@/lib/types';
 import { SplitPreviewModal, defaultGuestName } from './_components/SplitPreviewModal';
 import { WebBookingBoard } from '../web-booking/WebBookingBoard';
 // ─── TYPES ────────────────────────────────────────────────────────────────────
-import { 
-  StaffAssignment, 
+import {
+  StaffAssignment,
   WorkSegment,
-  ServiceBlock, 
-  DispatchStatus, 
-  PendingOrder, 
-  StaffData, 
-  TurnQueueData, 
-  StaffNotification 
+  ServiceBlock,
+  DispatchStatus,
+  PendingOrder,
+  StaffData,
+  TurnQueueData,
+  StaffNotification
 } from './types';
 
+import { dispatchFormSignature, mergeSavedDispatchForm, dispatchFormMissingInfo, mergeDispatchRealtimeDraft } from '@/lib/dispatch-form-draft';
 import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
@@ -124,7 +126,7 @@ const getDynamicEndTime = (startStr?: string | null, durationMins: number = 60) 
     if (!startStr) return '--:--';
     const formatted = formatToHourMinute(startStr);
     if (formatted === '--:--') return '--:--';
-    
+
     let [h, m] = formatted.split(':').map(Number);
     m += durationMins;
     h += Math.floor(m / 60);
@@ -151,7 +153,7 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 
 
 export default function DispatchBoardPage() {
-    
+
   const { hasPermission } = useAuth();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
@@ -160,6 +162,51 @@ export default function DispatchBoardPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
+  const { addToast } = useToast();
+  const [dispatchPending,setDispatchPending]=useState(false);
+  const dispatchPendingRef=useRef(false);
+  const queueDirtyRef=useRef(false);
+  const queueSavingRef=useRef(false);
+  const discardQueueRef=useRef<(()=>void) | null>(null);
+  const baselineItemsRef=useRef<Map<string,ServiceBlock>>(new Map());
+  const [staleDrafts,setStaleDrafts]=useState<string[]>([]);
+  const setDispatchBusy=(pending:boolean)=>{dispatchPendingRef.current=pending;setDispatchPending(pending);};
+  const onQueueDirtyChange=useCallback((dirty:boolean,discard:()=>void)=>{queueDirtyRef.current=dirty;discardQueueRef.current=discard;},[]);
+  const onQueueSavingChange=useCallback((saving:boolean)=>{queueSavingRef.current=saving;},[]);
+  const draftItemsRef = useRef<Map<string, ServiceBlock>>(new Map());
+  const draftCacheKeyRef = useRef('');
+  const persistDraftCache = () => {
+    if (!draftCacheKeyRef.current) return;
+    try {
+      if (!draftItemsRef.current.size) sessionStorage.removeItem(draftCacheKeyRef.current);
+      else sessionStorage.setItem(draftCacheKeyRef.current, JSON.stringify({items:[...draftItemsRef.current],dirty:[...dirtyRowsRef.current]}));
+    } catch (error) { console.warn('Draft cache unavailable; draft remains in memory',error); }
+  };
+  const dirtyRowsRef = useRef<Set<string>>(new Set());
+  const [unsavedCount, setUnsavedCount] = useState(0);
+  const updateDirtyRows = (next: Set<string>) => { dirtyRowsRef.current = next; setUnsavedCount(next.size); persistDraftCache(); };
+  const clearDirtyItem = (bookingId: string, itemId: string) => {
+    const prefix = `${bookingId}/${itemId}/`;
+    draftItemsRef.current.delete(`${bookingId}/${itemId}`);
+    setStaleDrafts(previous=>previous.filter(key=>key!==`${bookingId}/${itemId}`));
+    updateDirtyRows(new Set([...dirtyRowsRef.current].filter(key => !key.startsWith(prefix))));
+  };
+  const confirmLeaveDraft = () => {
+    if (dispatchPendingRef.current || queueSavingRef.current) { addToast('Đang lưu thay đổi. Chờ hoàn tất trước khi chuyển trang.','info'); return false; }
+    if (!dirtyRowsRef.current.size && !queueDirtyRef.current) return true;
+    if (!window.confirm('Có thay đổi chưa lưu. Chuyển trang và bỏ các thay đổi?')) return false;
+    discardQueueRef.current?.();
+    return true;
+  };
+  useEffect(() => {
+    const warnOnRefresh = (event: BeforeUnloadEvent) => {
+      if (!dirtyRowsRef.current.size && !queueDirtyRef.current && !dispatchPendingRef.current && !queueSavingRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnOnRefresh);
+    return () => window.removeEventListener('beforeunload', warnOnRefresh);
+  }, []);
   const [selectedDate, setSelectedDate] = useState(
     // Ngày làm việc — dùng chung công thức với server, không tự viết mốc 6h nữa.
     () => toBusinessDate(new Date(), DEFAULT_DAY_CUTOFF_HOURS)
@@ -179,6 +226,12 @@ export default function DispatchBoardPage() {
     now,
     identityMismatch,
   } = useDispatchBoard(selectedDate, selectedOrderId);
+  useEffect(() => {
+    const refresh = () => { void fetchData(); };
+    window.addEventListener('app:refresh', refresh);
+    return () => window.removeEventListener('app:refresh', refresh);
+  }, [fetchData]);
+  const pageOrdersRef=useRef(orders); pageOrdersRef.current=orders;
 
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const [reviewModalService, setReviewModalService] = useState<ServiceBlock | null>(null);
@@ -242,6 +295,14 @@ export default function DispatchBoardPage() {
   };
   const [leftPanelTab, setLeftPanelTab] = useState<DispatchStatus>('pending');
   const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE' | 'WEB_BOOKING'>('DISPATCH');
+  const changeMode = (mode: typeof activeMode) => {
+    if (mode === activeMode) return;
+    if (!confirmLeaveDraft()) return;
+    if (dirtyRowsRef.current.size) { draftItemsRef.current.clear(); updateDirtyRows(new Set()); }
+    setSelectedOrderId(null); setSelectedSubOrderId(null);
+    void fetchData();
+    setActiveMode(mode);
+  };
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddSvcModal, setShowAddSvcModal] = useState(false);
   const [selectedGuestForAddon, setSelectedGuestForAddon] = useState<string>('');
@@ -280,15 +341,15 @@ export default function DispatchBoardPage() {
             console.error('Fetch web booking count error:', err);
         }
     };
-    
+
     fetchWebBookingCount();
-    
+
     const channel = supabase.channel('web_booking_badge')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'Bookings' }, () => {
             fetchWebBookingCount();
         })
         .subscribe();
-        
+
     return () => {
         supabase.removeChannel(channel);
     };
@@ -346,6 +407,36 @@ export default function DispatchBoardPage() {
   } | null>(null);
 
   const { user, logout } = useAuth();
+  useEffect(() => {
+    const key=`dispatch-drafts:${user?.id || 'anonymous'}:${selectedDate}`;
+    draftCacheKeyRef.current=key;
+    try {
+      const cached=JSON.parse(sessionStorage.getItem(key) || '{}');
+      draftItemsRef.current=new Map(cached.items || []);
+      dirtyRowsRef.current=new Set(cached.dirty || []);
+      setUnsavedCount(dirtyRowsRef.current.size);
+    } catch { draftItemsRef.current.clear(); updateDirtyRows(new Set()); }
+  },[user?.id,selectedDate]);
+  useEffect(() => {
+    if (loading) return;
+    const conflicts:string[]=[];
+    let changed=false;
+    const restored=orders.map(order=>({...order,services:order.services.map(server=>{
+      const key=`${order.id}/${server.id}`;
+      const draft=draftItemsRef.current.get(key);
+      if (!draft) { baselineItemsRef.current.set(key,server); return server; }
+      if (server===draft) return server;
+      baselineItemsRef.current.set(key,server);
+      if (Number(server.options?.dispatchRevision || 0)!==Number(draft.options?.dispatchRevision || 0)) conflicts.push(key);
+      const merged=mergeDispatchRealtimeDraft(draft,server);
+      if (JSON.stringify(merged)!==JSON.stringify(server)) changed=true;
+      draftItemsRef.current.set(key,merged);
+      return merged;
+    })}));
+    if (conflicts.length) setStaleDrafts(previous=>[...new Set([...previous,...conflicts])]);
+    if (changed) { persistDraftCache(); setOrders(restored); }
+  },[orders,loading]);
+
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string, guestId?: string } | null>(null);
@@ -398,7 +489,7 @@ export default function DispatchBoardPage() {
         } else if (d.getTime() > Date.now() + 12 * 60 * 60 * 1000) {
              d.setDate(d.getDate() - 1);
         }
-        
+
         return d;
     };
 
@@ -411,7 +502,7 @@ export default function DispatchBoardPage() {
                     const start = seg.actualStartTime || svc.timeStart || seg.startTime;
                     const duration = (seg.duration !== undefined && seg.duration !== null) ? Number(seg.duration) : (Number(svc.duration) || 60);
                     const finalEnd = seg.actualEndTime ? seg.actualEndTime : (seg.actualStartTime || svc.timeStart ? getDynamicEndTime(start, duration) : (svc.timeEnd || seg.endTime));
-                    
+
                     if (finalEnd && finalEnd !== '--:--') {
                         const formattedEnd = formatToHourMinute(finalEnd);
                         if (formattedEnd !== '--:--') {
@@ -423,7 +514,7 @@ export default function DispatchBoardPage() {
                 }
             }
         }
-        
+
         if (!hasValidSegmentTime && svc.timeEnd) {
             let tEnd = svc.timeEnd;
             if (!tEnd.endsWith('Z') && !tEnd.includes('+')) {
@@ -445,7 +536,7 @@ export default function DispatchBoardPage() {
         return formatToHourMinute(order.timeEnd);
     }
 
-    return order.time; 
+    return order.time;
   };
 
   const subOrders = React.useMemo(() => {
@@ -486,14 +577,14 @@ if (!hasPermission('dispatch_board')) {
   const pendingOrders = orders.filter(o => o.dispatchStatus === 'pending');
   const selectedOrder = orders.find(o => o.id === selectedOrderId) ?? null;
   let selectedSubOrder: SubOrder | null | undefined = subOrders.find(so => so.id === selectedSubOrderId);
-  
+
   if (!selectedSubOrder && selectedSubOrderId && selectedOrder) {
       // Tìm fallback bằng cách so khớp baseId (bỏ qua suffix phase/thời gian)
-      const fallback = subOrders.find(so => 
-          selectedSubOrderId.startsWith(so.id + '_') || 
+      const fallback = subOrders.find(so =>
+          selectedSubOrderId.startsWith(so.id + '_') ||
           so.id.startsWith(selectedSubOrderId + '_')
       );
-      
+
       if (fallback) {
           selectedSubOrder = fallback;
           // Tùy chọn: có thể setSelectedSubOrderId(fallback.id) ở useEffect nếu cần, nhưng gán thẳng ở đây cũng đủ để UI không mất thẻ
@@ -521,7 +612,24 @@ if (!hasPermission('dispatch_board')) {
     setOrders(prev => prev.map(o => o.id === orderId ? patchFn(o) : o));
   };
 
+  const cacheFormEdit=(bookingId:string,before:ServiceBlock,after:ServiceBlock)=>{
+    const key=`${bookingId}/${after.id}`;
+    const baseline=baselineItemsRef.current.get(key) || before;
+    if (!baselineItemsRef.current.has(key)) baselineItemsRef.current.set(key,baseline);
+    const dirty=new Set([...dirtyRowsRef.current].filter(value=>!value.startsWith(key+'/')));
+    if (dispatchFormSignature(after)!==dispatchFormSignature(baseline)) {
+      draftItemsRef.current.set(key,after); dirty.add(key+'/_item');
+    } else draftItemsRef.current.delete(key);
+    updateDirtyRows(dirty);
+  };
+  const discardFormDrafts=()=>{
+    draftItemsRef.current.clear(); updateDirtyRows(new Set()); setStaleDrafts([]);
+    setOrders(current=>current.map(order=>({...order,services:order.services.map(item=>baselineItemsRef.current.get(`${order.id}/${item.id}`) || item)})));
+  };
+
   const updateSvcField = (orderId: string, svcId: string, patch: Partial<ServiceBlock>) => {
+    const before=pageOrdersRef.current.find(order=>order.id===orderId)?.services.find(item=>item.id===svcId);
+    if (before) cacheFormEdit(orderId,before,{...before,...patch});
     updateOrder(orderId, o => ({
       ...o,
       services: o.services.map(s => s.id === svcId ? { ...s, ...patch } : s),
@@ -571,13 +679,13 @@ if (!hasPermission('dispatch_board')) {
            const ktvId = patch.ktvId;
            // Check if this ktvId is assigned to another unmerged service in this order
            const targetSvc = order.services.find(s => s.id === svcId);
-           const otherService = order.services.find(s => 
-               s.id !== svcId && 
+           const otherService = order.services.find(s =>
+               s.id !== svcId &&
                !s.mergedIntoId &&
                s.guestId === targetSvc?.guestId &&
                s.staffList.some(r => r.ktvId === ktvId)
            );
-           
+
            if (otherService) {
                setMergePromptConfig({
                    orderId,
@@ -590,14 +698,14 @@ if (!hasPermission('dispatch_board')) {
            }
        }
     }
-    
+
     executeStaffRowUpdate(orderId, svcId, rowId, patch);
   };
 
   const confirmMergeServices = () => {
     if (!mergePromptConfig) return;
     const { orderId, sourceSvcId, targetSvcId, rowId, ktvId, onConfirm } = mergePromptConfig;
-    
+
     updateOrder(orderId, o => {
       const sourceSvc = o.services.find(s => s.id === sourceSvcId);
       const sourceSegments = sourceSvc?.staffList[0]?.segments;
@@ -622,7 +730,7 @@ if (!hasPermission('dispatch_board')) {
           return s;
         }),
       };
-      
+
       // Get child service duration before merging into parent
       const targetSvc = updatedOrder.services.find(s => s.id === targetSvcId);
       const childDuration = targetSvc?.staffList?.[0]?.segments?.[0]?.duration || targetSvc?.duration || 0;
@@ -633,7 +741,7 @@ if (!hasPermission('dispatch_board')) {
           if (s.id === sourceSvcId) {
             const childName = targetSvc?.serviceName || 'Dịch vụ con';
             const parentName = s.displayName || s.serviceName || 'Dịch vụ gốc';
-            
+
             return {
               ...s,
               displayName: `${parentName} + ${childName}`,
@@ -665,7 +773,7 @@ if (!hasPermission('dispatch_board')) {
     if (onConfirm) onConfirm();
     setMergePromptConfig(null);
   };
-  
+
   const cancelMergeServices = () => {
     if (!mergePromptConfig) return;
     const { orderId, targetSvcId, rowId, ktvId, onCancel } = mergePromptConfig;
@@ -680,46 +788,31 @@ if (!hasPermission('dispatch_board')) {
   const confirmSplitService = async () => {
       if (!splitConfig) return;
       const { orderId, svcId, duration, ktv1Dur, ktv2Dur, name1, name2 } = splitConfig;
-      
+
       setSplitConfig(prev => prev ? { ...prev, isSaving: true } : null);
-      
+
       try {
-          if (ktv1Dur === duration && ktv2Dur === duration) {
-              // 1. LÀM CHUNG (Giữ nguyên mảng)
-              const svc = orders.find(o => o.id === orderId)?.services.find(s => s.id === svcId);
-              const st = getCurrentTime();
-              const newRow: StaffAssignment = {
-                  id: genId(),
-                  ktvId: '',
-                  ktvName: '',
-                  segments: [{
-                      id: `seg-${genId()}`,
-                      roomId: null,
-                      bedId: null,
-                      startTime: st,
-                      duration: ktv2Dur,
-                      endTime: calcEndTime(st, ktv2Dur)
-                  }],
-                  noteForKtv: '',
-              };
-              updateOrder(orderId, o => ({
-                  ...o,
-                  services: o.services.map(s => s.id === svcId
-                      ? { ...s, staffList: [...s.staffList, newRow] }
-                      : s
-                  ),
-              }));
-          } else {
-              // 2. LÀM NỐI TIẾP (Tách API)
-              const realSvcId = orders.find(o => o.id === orderId)?.services.find(s => s.id === svcId)?.id;
-              if (!realSvcId) throw new Error('Không tìm thấy ID dịch vụ');
-              
-              const { splitBookingItem } = await import('./actions');
-              const res = await splitBookingItem(orderId, realSvcId, ktv1Dur, ktv2Dur, selectedDate, name1, name2);
-              if (!res.success) throw new Error(res.error);
-              
-              await fetchData();
-          }
+          const svc = orders.find(o => o.id === orderId)?.services.find(s => s.id === svcId);
+          if (!svc || !svc.staffList[0]) throw new Error('Không tìm thấy dịch vụ hoặc KTV A');
+          const sequential = ktv1Dur !== duration || ktv2Dur !== duration;
+          if (sequential && (ktv1Dur < 1 || ktv2Dur < 1 || ktv1Dur + ktv2Dur !== duration)) throw new Error('Thời lượng A/B phải cộng đúng thời lượng dịch vụ');
+          const first = svc.staffList[0];
+          const firstSeg = first.segments[0];
+          const start = firstSeg?.startTime || getCurrentTime();
+          const nextStart = sequential ? calcEndTime(start, ktv1Dur) : start;
+          const newRow: StaffAssignment = {
+              id: genId(), ktvId: '', ktvName: '', noteForKtv: '',
+              segments: [{ id: `seg-${genId()}`, roomId: firstSeg?.roomId || null, bedId: firstSeg?.bedId || null,
+                  startTime: nextStart, duration: ktv2Dur, endTime: calcEndTime(nextStart, ktv2Dur),
+                  ...(sequential ? { sequenceSlot: 2 } : {}) }]
+          };
+          updateSvcField(orderId, svcId, {
+              staffList: [{ ...first, segments: first.segments.map((seg, idx) => idx === 0
+                  ? { ...seg, duration: ktv1Dur, endTime: calcEndTime(start, ktv1Dur), ...(sequential ? { sequenceSlot: 1 } : {}) } : seg),
+                  ...(name1 ? { serviceNameForKtv: name1 } : {}) }, ...svc.staffList.slice(1),
+                  { ...newRow, ...(name2 ? { serviceNameForKtv: name2 } : {}) }],
+              options: { ...svc.options, ...(sequential ? { sequentialSlots: 2 } : {}) }
+          });
       } catch (err: any) {
           alert('Lỗi: ' + err.message);
       } finally {
@@ -732,11 +825,11 @@ if (!hasPermission('dispatch_board')) {
     const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => Number(seg.sequenceSlot) === 1 || seg.actualStartTime);
     if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
     const existingB = item.staffList.flatMap(row => row.segments).find(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true);
-    const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && t.status === 'waiting' && isVisibleInKtvPicker(t))) ? toKtvId : '';
+    const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && isVisibleInKtvPicker(t))) ? toKtvId : '';
     let existingStart = existingB ? Date.parse(`${selectedDate}T${existingB.startTime.slice(0, 5)}:00+07:00`) : NaN;
     if (existingB && existingB.startTime.slice(0, 5) < segment.startTime.slice(0, 5)) existingStart += 86400000;
     const reference = (existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment));
-    if (!reference || !Number.isFinite(new Date(reference).getTime())) { alert('Chưa có giờ A hợp lệ; sửa và lưu A trước.'); return; }
+    if (!reference || !Number.isFinite(new Date(reference).getTime())) { addToast('Nhập giờ bắt đầu và thời lượng A hợp lệ rồi Điều phối. Không cần lưu A trước.','warning'); return; }
     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .format(new Date(reference)).replace(' ', 'T');
@@ -810,24 +903,9 @@ if (!hasPermission('dispatch_board')) {
       openLiveHandoff(orderId, svcId, liveRow.ktvId, '');
       return;
     }
-    
+
     if (svc && svc.staffList.length >= 1) {
-       const isFourhand = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'].includes(svc.serviceId || '');
-       
-       if (!isFourhand) {
-           // BẮT BUỘC TÁCH LUÔN MÀ KHÔNG CẦN HỎI (Áp dụng cho các DV thường)
-           try {
-               const { splitBookingItem } = await import('./actions');
-               const res = await splitBookingItem(orderId, svcId, dur, dur, selectedDate);
-               if (!res.success) throw new Error(res.error);
-               await fetchData();
-           } catch (err: any) {
-               alert('Lỗi khi tự động tách đơn: ' + err.message);
-           }
-           return;
-       }
-       
-       // NẾU LÀ FOURHAND: Cho phép chọn Nối tiếp hoặc Làm chung (Song song)
+       // Chỉ dựng bản nháp tại chỗ; DB được ghi khi người dùng bấm Lưu/Điều phối.
        setSplitConfig({
            orderId,
            svcId,
@@ -857,13 +935,7 @@ if (!hasPermission('dispatch_board')) {
       }],
       noteForKtv: '',
     };
-    updateOrder(orderId, o => ({
-      ...o,
-      services: o.services.map(s => s.id === svcId
-        ? { ...s, staffList: [...s.staffList, newRow] }
-        : s
-      ),
-    }));
+    if (svc) updateSvcField(orderId, svcId, { staffList: [...svc.staffList, newRow] });
   };
 
   const removeStaffRow = (orderId: string, svcId: string, rowId: string) => {
@@ -876,44 +948,9 @@ if (!hasPermission('dispatch_board')) {
     }));
   };
 
-  const isDispatchReady = (order: PendingOrder): boolean =>
-    order.services.every(s => {
-      if (s.duration === 0) return true;
-      if (isUtilityService(s)) return true;
-      // Skip merged children — they're managed by the parent service
-      if (s.mergedIntoId || s.options?.mergedIntoId) return true;
-      
-      // BẢO VỆ: Nếu đơn đã từng dispatch, cho phép submit với staffList rỗng (để gỡ KTV)
-      const isAlreadyDispatched = order.dispatchStatus !== 'pending';
-      if (s.staffList.length === 0) {
-        return isAlreadyDispatched;
-      }
+  const getMissingInfo = (order: PendingOrder): string[] => dispatchFormMissingInfo(order.services);
+  const isDispatchReady = (order: PendingOrder): boolean => getMissingInfo(order).length===0;
 
-      return s.staffList.every(r => 
-        r.ktvId !== '' && 
-        r.segments.length > 0 &&
-        r.segments.every(seg => seg.roomId !== null && seg.bedId !== null && seg.startTime !== '')
-      )
-    });
-
-  const getMissingInfo = (order: PendingOrder): string[] => {
-    const missing: string[] = [];
-    order.services.forEach((s, i) => {
-      if (s.duration === 0) return;
-      s.staffList.forEach((r, j) => {
-        const prefix = `Dịch vụ ${i + 1} · KTV ${j + 1}`;
-        if (!r.ktvId) missing.push(`${prefix}: Chưa chọn KTV`);
-        r.segments.forEach((seg, k) => {
-            const segPrefix = `${prefix} · Chặng ${k + 1}`;
-            if (!seg.roomId) missing.push(`${segPrefix}: Chưa chọn Phòng`);
-            if (!seg.bedId) missing.push(`${segPrefix}: Chưa chọn Giường`);
-            if (!seg.startTime) missing.push(`${segPrefix}: Chưa nhập giờ bắt đầu`);
-            if (isTwoSlotSequential(s.options) && (!Number.isInteger(seg.duration) || seg.duration < 1 || seg.duration > 600)) missing.push(`${segPrefix}: Nhập thời lượng 1–600 phút`);
-        });
-      });
-    });
-    return missing;
-  };
 
   const addServiceBlock = async (svcId: string, svcName: string, duration: number) => {
     if (!selectedOrderId) return;
@@ -926,14 +963,14 @@ if (!hasPermission('dispatch_board')) {
         const targetBookingId = selectedSubOrder?.bookingId || selectedOrderId;
         if (!targetBookingId) return;
         const res = await addAddonServices(targetBookingId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
-        
+
         if (res.success && res.newItems && res.newItems.length > 0) {
             const newItem = res.newItems[0];
             const realId = newItem.id;
-            
+
             const now = new Date();
             const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-            
+
             const existingSvcForGuest = selectedSubOrder?.services?.find((s: any) => guestIdToUse && (s.guestId === guestIdToUse || s.customerGroupId === guestIdToUse));
             const targetGroupId = existingSvcForGuest ? (existingSvcForGuest.customerGroupId || existingSvcForGuest.id) : (selectedSubOrder?.services?.[0]?.customerGroupId || selectedSubOrder?.services?.[0]?.id);
 
@@ -945,10 +982,10 @@ if (!hasPermission('dispatch_board')) {
               customerGroupId: targetGroupId,
               selectedRoomId: null,
               bedId: null,
-              staffList: [{ 
-                id: `sr-${genId()}`, 
-                ktvId: '', 
-                ktvName: '', 
+              staffList: [{
+                id: `sr-${genId()}`,
+                ktvId: '',
+                ktvName: '',
                 segments: [{
                     id: `seg-${genId()}`,
                     roomId: null,
@@ -957,7 +994,7 @@ if (!hasPermission('dispatch_board')) {
                     duration,
                     endTime: calcEndTime(startTime, duration)
                 }],
-                noteForKtv: '' 
+                noteForKtv: ''
               }],
               adminNote: '',
               genderReq: 'ANY',
@@ -973,10 +1010,10 @@ if (!hasPermission('dispatch_board')) {
 
               options: { isAddon: true, isPaid: false }
             };
-            
+
             setOrders(prev => prev.map(o =>
-              o.id === targetBookingId 
-                  ? { ...o, services: [...o.services, newBlock], totalAmount: res.newTotalAmount } 
+              o.id === targetBookingId
+                  ? { ...o, services: [...o.services, newBlock], totalAmount: res.newTotalAmount }
                   : o
             ));
             setShowAddSvcModal(false);
@@ -1014,13 +1051,13 @@ if (!hasPermission('dispatch_board')) {
         const res = await editBookingService(orderId, svcId, newServiceId);
         if (res.success) {
             const priceDiff = res.priceDiff || 0;
-            const diffMsg = priceDiff > 0 ? `Cần thu thêm: ${priceDiff.toLocaleString()}đ` 
-                          : priceDiff < 0 ? `Cần thối lại: ${Math.abs(priceDiff).toLocaleString()}đ` 
+            const diffMsg = priceDiff > 0 ? `Cần thu thêm: ${priceDiff.toLocaleString()}đ`
+                          : priceDiff < 0 ? `Cần thối lại: ${Math.abs(priceDiff).toLocaleString()}đ`
                           : 'Không chênh lệch giá.';
             alert(`✅ Đổi dịch vụ thành công!\nTổng tiền mới: ${(res.newTotalAmount || 0).toLocaleString()}đ\n${diffMsg}`);
-            
+
             // Cập nhật local state
-            setOrders(prev => prev.map(o => 
+            setOrders(prev => prev.map(o =>
                 o.id === orderId ? {
                     ...o,
                     totalAmount: res.newTotalAmount,
@@ -1045,10 +1082,10 @@ if (!hasPermission('dispatch_board')) {
                     } : s)
                 } : o
             ));
-            
+
             setEditingSvc(null);
             setShowAddSvcModal(false);
-            // fetchData(); // Không bắt buộc vì đã patch state
+            await fetchData();
         } else {
             alert('Lỗi đổi dịch vụ: ' + (res.error || 'Unknown error'));
         }
@@ -1062,11 +1099,11 @@ if (!hasPermission('dispatch_board')) {
       if (!selectedOrderId) return;
       // Tìm service bằng cách so id trước (để đảm bảo không bị trùng tên như Gội đầu 30p/45p/60p)
       let svcDef = allServices.find((s: any) => s.id === svcId);
-      
+
       if (!svcDef) {
           svcDef = allServices.find((s: any) => {
-              const parsedName = (typeof s.nameVN === 'object' && s.nameVN !== null) 
-                ? (s.nameVN.vn || s.nameVN.en || s.nameVN) 
+              const parsedName = (typeof s.nameVN === 'object' && s.nameVN !== null)
+                ? (s.nameVN.vn || s.nameVN.en || s.nameVN)
                 : (s.nameVN || s.nameEN || '');
               return parsedName === svcName || s.nameEN === svcName || s.id === svcName;
           });
@@ -1076,7 +1113,7 @@ if (!hasPermission('dispatch_board')) {
           alert('Không tìm thấy ID dịch vụ!');
           return;
       }
-      
+
       const isConfirm = confirm(`Xác nhận thêm dịch vụ "${svcName}" (${(svcDef.priceVND || 0).toLocaleString()}đ) vào đơn hàng đang chạy?`);
       if (!isConfirm) return;
 
@@ -1099,7 +1136,7 @@ if (!hasPermission('dispatch_board')) {
 
   const handleConfirmAddonPayment = async (orderId: string) => {
       if (!confirm('Xác nhận đã thu tiền phát sinh cho đơn hàng này?')) return;
-      
+
       try {
           // Import dynamic to avoid top-level dependency issues if needed, or we can just use an API route
           // But since we use server actions:
@@ -1141,23 +1178,23 @@ if (!hasPermission('dispatch_board')) {
       // Find the order
       const order = orders.find(o => o.id === orderId);
       if (!order) return;
-      
+
       const parentSvc = order.services.find(s => s.id === svcId);
       if (!parentSvc || !parentSvc.mergedServiceIds || parentSvc.mergedServiceIds.length === 0) return;
 
       const { unmergeServicesAction } = await import('./actions');
-      const resetSegments = parentSvc.staffList.flatMap(r => 
+      const resetSegments = parentSvc.staffList.flatMap(r =>
           r.segments.map(seg => ({
               ...seg,
               duration: parentSvc.duration
           }))
       );
-      
+
       const res = await unmergeServicesAction(
-          parentSvc.id, 
-          parentSvc.mergedServiceIds, 
-          parentSvc.options, 
-          parentSvc.serviceName, 
+          parentSvc.id,
+          parentSvc.mergedServiceIds,
+          parentSvc.options,
+          parentSvc.serviceName,
           resetSegments
       );
 
@@ -1171,18 +1208,37 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }, customGuestNames?: Record<string, string>) => {
+  const acknowledgeDispatch=(bookingId:string,submitted:ServiceBlock[],result:any)=>{
+    if (!result.savedItems?.length) return;
+    const updates=new Map<string,ServiceBlock>();
+    for (const sent of submitted) {
+      const saved=result.savedItems.find((item:any)=>item.id===sent.id);
+      if (!saved) continue;
+      const key=`${bookingId}/${sent.id}`;
+      const current=draftItemsRef.current.get(key) || pageOrdersRef.current.find(order=>order.id===bookingId)?.services.find(item=>item.id===sent.id) || sent;
+      const merged=mergeSavedDispatchForm(current,sent,saved);
+      updates.set(sent.id,merged);
+      baselineItemsRef.current.set(key,mergeSavedDispatchForm(sent,sent,saved));
+      if (dispatchFormSignature(current)===dispatchFormSignature(sent)) clearDirtyItem(bookingId,sent.id);
+      else draftItemsRef.current.set(key,merged);
+    }
+    updateOrder(bookingId,order=>({...order,services:order.services.map(item=>updates.get(item.id) || item)}));
+    persistDraftCache();
+  };
+
+  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }, customGuestNames?: Record<string, string>): Promise<boolean | undefined> => {
     if (typeof skipPreview !== 'boolean') skipPreview = false;
-    
+    if (dispatchPendingRef.current) return false;
+
     // When dispatching a specific sub-order, use that order instead of selectedOrder
-    const effectiveOrder = dispatchArgs?.overrideOrderId 
-        ? orders.find(o => o.id === dispatchArgs.overrideOrderId) 
+    const effectiveOrder = dispatchArgs?.overrideOrderId
+        ? orders.find(o => o.id === dispatchArgs.overrideOrderId)
         : selectedOrder;
-    if (!effectiveOrder) return;
-    
+    if (!effectiveOrder) return false;
+    let ownsPending=false;
     try {
       const clonedOrder = JSON.parse(JSON.stringify(effectiveOrder)) as PendingOrder;
-      
+
       let splitPlan: any[] = [];
       if (!clonedOrder.parentBookingId) {
           const groups = new Map<string, string[]>();
@@ -1191,13 +1247,13 @@ if (!hasPermission('dispatch_board')) {
 
           clonedOrder.services.forEach(svc => {
               if (svc.mergedIntoId || svc.options?.mergedIntoId) return;
-              
+
               // Mọi dịch vụ chưa được lễ tân gán group (kéo thả tay) sẽ được gom chung vào defaultGroup
               // Tránh tình trạng tự động sinh ra Khách B, Khách C (ghost guests) đối với dịch vụ Addon hoặc đa dịch vụ
               const groupId = svc.customerGroupId || svc.id;
-              
+
               if (!groups.has(groupId)) groups.set(groupId, []);
-              
+
               const children = clonedOrder.services.filter(c => c.mergedIntoId === svc.id || c.options?.mergedIntoId === svc.id);
               groups.get(groupId)!.push(svc.id, ...children.map(c => c.id));
           });
@@ -1233,6 +1289,12 @@ if (!hasPermission('dispatch_board')) {
           return; // Stop here, modal will continue the flow
       }
 
+      setDispatchBusy(true); ownsPending=true;
+      // DISPATCH already persists the full plan; no preliminary DRAFT commit is needed.
+      if (intent==='DISPATCH' && splitPlan.length<=1) {
+        return await handleDispatch(true,dispatchArgs?.specificSvcIds,dispatchArgs?.overrideOrderId,true,splitPlan);
+      }
+
       const techCodesSet = new Set<string>();
 
       for (const svc of clonedOrder.services) {
@@ -1242,20 +1304,20 @@ if (!hasPermission('dispatch_board')) {
       }
 
       const combinedTechCodes = Array.from(techCodesSet).join(', ');
-      
+
       const primaryService = clonedOrder.services[0];
       const primaryStaff = primaryService?.staffList[0];
       const primarySeg = primaryStaff?.segments[0];
-      
+
       const itemUpdates = clonedOrder.services.map((svc, index) => {
           const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
-          const allSegments = svc.staffList.flatMap(r => 
+          const allSegments = svc.staffList.flatMap(r =>
             r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration }))
           );
 
           return {
               id: svc.id,
-              roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
+              roomName: allSegments[0]?.roomId || primarySeg?.roomId,
               bedId: allSegments[0]?.bedId || primarySeg?.bedId,
               technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
@@ -1266,7 +1328,7 @@ if (!hasPermission('dispatch_board')) {
                   mergedServiceIds: svc.mergedServiceIds,
                   customerGroupId: svc.customerGroupId || svc.id,
                   order: index,
-                  note: svc.customerNote?.split(' | ')[0] || '', 
+                  note: svc.customerNote?.split(' | ')[0] || '',
                   therapist: svc.genderReq,
                   strength: svc.strength,
                   focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
@@ -1300,18 +1362,19 @@ if (!hasPermission('dispatch_board')) {
       while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
         if (!res.itemId || !itemUpdates.some(item => item.id === res.itemId)
             || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
-        if (!confirmUpdatedBOverlap(res)) return;
+        if (!confirmUpdatedBOverlap(res)) return false;
         confirmedOverlapItemIds.push(res.itemId);
         res = await savePayload();
       }
 
       if (res.success) {
+        acknowledgeDispatch(clonedOrder.id,clonedOrder.services,res);
         if (splitPlan.length > 1) {
             const { data: splitRes, error: splitErr } = await supabase.rpc('split_booking_into_sub_bookings', {
                 p_booking_id: clonedOrder.parentBookingId || clonedOrder.id,
                 p_split_plan: splitPlan
             });
-            
+
             if (splitErr || splitRes?.success !== true) {
                 console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
                 alert(
@@ -1337,18 +1400,19 @@ if (!hasPermission('dispatch_board')) {
         }
 
         if (intent === 'DISPATCH') {
-            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
+            return await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
         } else {
-            alert('✅ Đã lưu thông tin' + (splitPlan.length > 1 ? ' và tách đơn' : '') + ' thành công!');
-            fetchData();
+            addToast('Đã lưu kế hoạch' + (splitPlan.length > 1 ? ' và tách đơn' : '') + '.','success');
+            return true;
         }
       } else {
-        alert('Lỗi khi lưu tạm: ' + res.error);
+        addToast('Chưa lưu được: ' + res.error,'error');
+        return false;
       }
     } catch (err) {
-      alert('Đã có lỗi bất ngờ xảy ra khi lưu tạm.');
-      console.error(err);
-    }
+      addToast('Chưa lưu được. Bản nháp vẫn được giữ; kiểm tra kết nối rồi thử lại.','error');
+      console.error(err); return false;
+    } finally { if (ownsPending) setDispatchBusy(false); }
   };
 
   const handleUndoSplit = async () => {
@@ -1389,15 +1453,15 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[], savedRevisions?: Record<string, number>) => {
+  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[], savedRevisions?: Record<string, number>): Promise<boolean | undefined> => {
     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
-    if (!orderToDispatch) return;
+    if (!orderToDispatch) return false;
     if (!skipValidation) {
       // ⚠️ Khi dispatch lẻ (specificSvcIds), chỉ validate các DV đang dispatch, không check toàn bộ đơn
-      const orderToValidate = specificSvcIds && specificSvcIds.length > 0 
+      const orderToValidate = specificSvcIds && specificSvcIds.length > 0
         ? { ...orderToDispatch, services: orderToDispatch.services.filter(s => specificSvcIds.includes(s.id)) }
         : orderToDispatch;
-        
+
       // Lọc bỏ các KTV trống để không báo lỗi "Chưa chọn KTV" (cho phép xoá KTV và lưu luôn)
       const cleanOrderToValidate = {
           ...orderToValidate,
@@ -1406,11 +1470,11 @@ if (!hasPermission('dispatch_board')) {
               staffList: svc.staffList.filter(r => r.ktvId)
           }))
       };
-      
+
       const missing = getMissingInfo(cleanOrderToValidate);
       if (missing.length > 0) {
         alert(`⚠️ Vui lòng điền đầy đủ thông tin:\n\n${missing.map(m => `• ${m}`).join('\n')}`);
-        return;
+        return false;
       }
 
       // 🛡️ CHẶN: Khách chỉ có dịch vụ tiện ích (Phòng riêng) mà không có dịch vụ chính
@@ -1436,14 +1500,13 @@ if (!hasPermission('dispatch_board')) {
         });
         if (utilityOnlyGuests.length > 0) {
           alert(`⚠️ Không thể điều phối!\n\nDịch vụ tiện ích (Phòng riêng...) không thể đứng một mình cho một khách. Vui lòng thêm dịch vụ chính hoặc gộp vào khách khác.\n\n${utilityOnlyGuests.map(m => `• ${m}`).join('\n')}`);
-          return;
+          return false;
         }
       }
     }
 
     if (!skipSave) {
-        await handleSaveDraft(false, 'DISPATCH', { skipValidation, specificSvcIds, overrideOrderId });
-        return;
+        return await handleSaveDraft(false, 'DISPATCH', { skipValidation, specificSvcIds, overrideOrderId });
     }
 
     try {
@@ -1453,7 +1516,7 @@ if (!hasPermission('dispatch_board')) {
         if (savedRevisions?.[svc.id] !== undefined) svc.options = { ...svc.options, dispatchRevision: savedRevisions[svc.id] };
       });
       const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
-      
+
       let splitPlan = precomputedSplitPlan || [];
       if (!precomputedSplitPlan && !clonedOrder.parentBookingId) {
           const groups = new Map<string, string[]>();
@@ -1489,7 +1552,7 @@ if (!hasPermission('dispatch_board')) {
       // 🚀 BƯỚC 2: CHUẨN BỊ PAYLOADS ĐIỀU PHỐI
       // Determine what services we actually want to dispatch
       const targetSvcIds = isPartial ? specificSvcIds! : (selectedSubOrder ? selectedSubOrder.services.map((s: any) => s.id) : clonedOrder.services.map((s:any) => s.id));
-      
+
       const dispatchPayloads: Array<{
           bookingId: string;
           dbBookingId: string;
@@ -1529,22 +1592,23 @@ if (!hasPermission('dispatch_board')) {
 
       for (const group of bookingGroups) {
           const groupTargetSvcIds = group.svcIds.filter(id => targetSvcIds.includes(id));
-          if (groupTargetSvcIds.length === 0) continue; 
+          if (groupTargetSvcIds.length === 0) continue;
 
           const allStaffAssignments: any[] = [];
           const techCodesSet = new Set<string>();
           const targetServicesInGroup = clonedOrder.services.filter(s => groupTargetSvcIds.includes(s.id));
-          
+
           for (const svc of targetServicesInGroup) {
               if (svc.mergedIntoId) continue;
               for (const row of svc.staffList) {
-                  if (!row.ktvId) continue;
+                  const activeSegments=row.segments.filter(seg=>(seg as any).voided!==true && (seg as any).voided!=='true');
+                  if (!row.ktvId || !activeSegments.length) continue;
                   techCodesSet.add(row.ktvId);
-                  
+
                   const currentTurn = turns.find(t => t.employee_id === row.ktvId);
                   let turnsCompleted = currentTurn?.turns_completed || 0;
                   let queuePos = currentTurn?.queue_position || 0;
-                  
+
                   if (!currentTurn || currentTurn.current_order_id !== group.bookingId) {
                       // Bỏ tua ảo (`fake-…`, queue_position 999 — on-call B, loại C chưa có dòng)
                       // khỏi mốc max: tính cả nó là KTV phân mới nhận 1000+ và phình dây chuyền.
@@ -1560,9 +1624,9 @@ if (!hasPermission('dispatch_board')) {
                           queuePos = currentMax + uniqueAddedKtvs.size + 1;
                       }
                   }
-                  
-                  const firstSeg = row.segments[0];
-                  const lastSeg = row.segments[row.segments.length - 1];
+
+                  const firstSeg = activeSegments[0];
+                  const lastSeg = activeSegments[activeSegments.length - 1];
                   allStaffAssignments.push({
                       ktvId: row.ktvId,
                       bookingItemId: svc.id,
@@ -1573,7 +1637,7 @@ if (!hasPermission('dispatch_board')) {
                       turnsCompleted,
                       queuePos,
                       startTime: firstSeg.startTime,
-                      endTime: lastSeg.endTime 
+                      endTime: lastSeg.endTime
                   });
               }
           }
@@ -1583,11 +1647,12 @@ if (!hasPermission('dispatch_board')) {
           const otherServicesInGroup = clonedOrder.services.filter(s => !groupTargetSvcIds.includes(s.id));
           for (const svc of otherServicesInGroup) {
               for (const row of svc.staffList) {
-                  if (!row.ktvId) continue;
+                  const activeSegments=row.segments.filter(seg=>(seg as any).voided!==true && (seg as any).voided!=='true');
+                  if (!row.ktvId || !activeSegments.length) continue;
                   if (!ktvsBeingDispatched.has(row.ktvId)) continue;
                   if (allStaffAssignments.some(a => a.ktvId === row.ktvId && a.bookingItemId === svc.id)) continue;
-                  const firstSeg = row.segments[0];
-                  const lastSeg = row.segments[row.segments.length - 1];
+                  const firstSeg = activeSegments[0];
+                  const lastSeg = activeSegments[activeSegments.length - 1];
                   allStaffAssignments.push({
                       ktvId: row.ktvId,
                       bookingItemId: svc.id,
@@ -1607,17 +1672,17 @@ if (!hasPermission('dispatch_board')) {
           const itemUpdates = targetServicesInGroup.map(svc => {
               const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
               const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
-              
+
               // Segment duration from updateGroup already contains the correct TOTAL merged duration
               const correctedStaffList = svc.staffList;
-              
+
               const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration })));
               return {
                   id: svc.id,
-                  roomName: allSegments[0]?.roomId || primarySeg?.roomId, 
+                  roomName: allSegments[0]?.roomId || primarySeg?.roomId,
                   bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-                  technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
-                  status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'), 
+                  technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
+                  status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'),
                   segments: allSegments,
                   options: {
                       ...parseKtvOptions(svc.options),
@@ -1626,7 +1691,7 @@ if (!hasPermission('dispatch_board')) {
                       mergedServiceIds: svc.mergedServiceIds,
                       customerGroupId: svc.customerGroupId,
                       order: originalIndex !== -1 ? originalIndex : 999,
-                      note: svc.customerNote?.split(' | ')[0] || '', 
+                      note: svc.customerNote?.split(' | ')[0] || '',
                       therapist: svc.genderReq,
                       strength: svc.strength,
                       focus: svc.focus.split(',').map(f => f.trim()).filter(Boolean),
@@ -1682,7 +1747,7 @@ if (!hasPermission('dispatch_board')) {
           let res: any = await sendPayload();
           if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
               const confirmed = await askCheckinConfirm(res.ktvs);
-              if (!confirmed) return;
+              if (!confirmed) return false;
               res.ktvs.forEach((k: CheckinGateKtv) => {
                   if (!confirmedUncheckedKtvIds.includes(k.id)) confirmedUncheckedKtvIds.push(k.id);
               });
@@ -1691,14 +1756,15 @@ if (!hasPermission('dispatch_board')) {
           while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
               if (!res.itemId || !payload.itemUpdates.some(item => item.id === res.itemId)
                   || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
-              if (!confirmUpdatedBOverlap(res)) return;
+              if (!confirmUpdatedBOverlap(res)) return false;
               confirmedOverlapItemIds.push(res.itemId);
               res = await sendPayload();
           }
+          if (res.success) acknowledgeDispatch(clonedOrder.id,clonedOrder.services.filter(item=>payload.itemUpdates.some(edit=>edit.id===item.id)),res);
           if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
-              return; 
+              return false;
           }
       }
 
@@ -1707,10 +1773,9 @@ if (!hasPermission('dispatch_board')) {
               setOrders(prev => prev.map(o =>
                   o.id === clonedOrder.id ? { ...o, dispatchStatus: 'dispatched' } : o
               ));
-              setSelectedOrderId(null);
-              setLeftPanelTab('dispatched');
+              if (!draftItemsRef.current.size) { setSelectedOrderId(null); setLeftPanelTab('PREPARING'); }
           } else {
-              alert(`✅ Cập nhật và điều phối thành công!`);
+
           }
       } else {
           setOrders(prev => prev.map(o => {
@@ -1719,17 +1784,19 @@ if (!hasPermission('dispatch_board')) {
                   ...o,
                   services: o.services.map(s => {
                       if (!targetSvcIds.includes(s.id)) return s;
-                      return { ...s, options: { ...s.options }, status: (s.status && !['NEW', 'WAITING'].includes(s.status)) ? s.status : 'PREPARING' }; 
+                      return { ...s, options: { ...s.options }, status: (s.status && !['NEW', 'WAITING'].includes(s.status)) ? s.status : 'PREPARING' };
                   })
               };
           }));
-          alert(`✅ Đã điều phối riêng dịch vụ thành công!`);
+
       }
-      fetchData();
+      addToast('Đã điều phối và lưu thay đổi.','success');
+      if (!draftItemsRef.current.size) void fetchData();
+      return true;
 
     } catch (err) {
       alert('Đã có lỗi bất ngờ xảy ra.');
-      console.error(err);
+      console.error(err); return false;
     }
   };
 
@@ -1844,7 +1911,7 @@ if (!hasPermission('dispatch_board')) {
           businessDate: selectedDate
       });
       if (!data.success) throw new Error(data.error || 'Có lỗi xảy ra');
-      
+
       // Thành công => Cập nhật lại UI
       await fetchData(); // Tải lại toàn bộ dữ liệu Board
     } catch (err: any) {
@@ -1861,7 +1928,7 @@ if (!hasPermission('dispatch_board')) {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error);
-            
+
             alert('✅ Đã duyệt ảnh bàn giao thành công!');
             fetchData();
         } catch (err: any) {
@@ -1875,10 +1942,10 @@ if (!hasPermission('dispatch_board')) {
             const res = await fetch('/api/reception/handover/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    bookingItemId: itemId, 
-                    action: 'REJECT', 
-                    rejectOption, 
+                body: JSON.stringify({
+                    bookingItemId: itemId,
+                    action: 'REJECT',
+                    rejectOption,
                     reason,
                     deductPoints,
                     rejectImages
@@ -1886,7 +1953,7 @@ if (!hasPermission('dispatch_board')) {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error);
-            
+
             const messages: Record<string, string> = {
                 REDO: '🔄 Đã yêu cầu KTV dọn lại phòng.',
                 DEDUCT: '💸 Đã trừ tiền phạt KTV.',
@@ -1903,7 +1970,7 @@ if (!hasPermission('dispatch_board')) {
   async function handleUpdateStatus(orderId: string, newStatus: string, itemIds?: string[], skipConfirm?: boolean, targetKtvIds?: string[], forceBackward: boolean = false) {
     // Determine context for confirmation
     const isPartial = itemIds && itemIds.length > 0;
-    
+
     if (!skipConfirm) {
       let confirmMsg = `Xác nhận cập nhật trạng thái đơn hàng này?`;
       if (newStatus === 'COMPLETED' || newStatus === 'DONE') {
@@ -1927,7 +1994,7 @@ if (!hasPermission('dispatch_board')) {
                } catch(e) {}
             }
         }
-        
+
         let plannedTimeIso = null;
         try {
             if (plannedTime) {
@@ -1937,12 +2004,12 @@ if (!hasPermission('dispatch_board')) {
                 d.setHours(Number(h), Number(m), 0, 0);
                 plannedTimeIso = d.toISOString();
             } else if (order?.createdAt) {
-                plannedTimeIso = order.createdAt.endsWith('Z') || order.createdAt.includes('+') 
-                    ? order.createdAt 
+                plannedTimeIso = order.createdAt.endsWith('Z') || order.createdAt.includes('+')
+                    ? order.createdAt
                     : order.createdAt + 'Z';
             }
         } catch(e) {}
-        
+
         setStartServiceModal({
            isOpen: true,
            orderId,
@@ -1953,7 +2020,7 @@ if (!hasPermission('dispatch_board')) {
         });
         return;
       }
-      
+
       setConfirmModal({
         isOpen: true,
         message: confirmMsg,
@@ -1977,7 +2044,7 @@ if (!hasPermission('dispatch_board')) {
             // Note: full booking status update currently does not accept customStartTime in our implementation.
             res = await updateBookingStatus(orderId, newStatus, selectedDate);
         }
-        
+
         if (res.success) {
           if (!isPartial && selectedOrderId === orderId) {
               setSelectedOrderId(null);
@@ -2124,16 +2191,17 @@ if (!hasPermission('dispatch_board')) {
   }
 
   return (
-    <AppLayout title="Điều Phối">
+    <AppLayout title="Điều Phối" onBeforeNavigate={() => { if (!confirmLeaveDraft()) return false; draftItemsRef.current.clear(); updateDirtyRows(new Set()); return true; }}>
       <div className="h-[calc(100dvh-3.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden" style={{ overscrollBehaviorY: 'contain' }}>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 mb-2 lg:mb-4 px-1 lg:px-0 mt-1 sm:mt-0">
           <div className="flex lg:flex items-center justify-between sm:block w-full sm:w-auto">
             <div className="w-full">
+              {unsavedCount > 0 && <span role="status" className="inline-block rounded-lg bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">Có thay đổi chưa lưu</span>}
               <h1 className="text-xl lg:text-2xl font-black text-gray-900 tracking-tight hidden sm:flex items-center gap-3">
                 <div className="hidden sm:flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200">
                   <button
-                    onClick={() => setActiveMode('DISPATCH')}
+                    onClick={() => changeMode('DISPATCH')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       activeMode === 'DISPATCH'
                         ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2143,7 +2211,7 @@ if (!hasPermission('dispatch_board')) {
                     <LayoutList size={14} /> Điều Phối
                   </button>
                   <button
-                    onClick={() => setActiveMode('MONITOR')}
+                    onClick={() => changeMode('MONITOR')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       activeMode === 'MONITOR'
                         ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2153,13 +2221,13 @@ if (!hasPermission('dispatch_board')) {
                     <Columns3 size={14} /> Giám Sát
                   </button>
                   <button
-                    onClick={() => window.location.href = '/reception/feedback'}
+                    onClick={() => { if (confirmLeaveDraft()) { draftItemsRef.current.clear(); updateDirtyRows(new Set()); window.location.href = '/reception/feedback'; } }}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                   >
                     <Star size={14} /> Đánh Giá
                   </button>
                   <button
-                    onClick={() => setActiveMode('TURN_QUEUE')}
+                    onClick={() => changeMode('TURN_QUEUE')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       activeMode === 'TURN_QUEUE'
                         ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2169,7 +2237,7 @@ if (!hasPermission('dispatch_board')) {
                     <Users size={14} /> Sổ Tua
                   </button>
                   <button
-                    onClick={() => setActiveMode('ROOMS')}
+                    onClick={() => changeMode('ROOMS')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       activeMode === 'ROOMS'
                         ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2179,7 +2247,7 @@ if (!hasPermission('dispatch_board')) {
                     <BedDouble size={14} /> Phòng
                   </button>
                   <button
-                    onClick={() => setActiveMode('WEB_BOOKING')}
+                    onClick={() => changeMode('WEB_BOOKING')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all relative ${
                       activeMode === 'WEB_BOOKING'
                         ? 'bg-white text-emerald-600 shadow-sm border border-gray-200/50'
@@ -2194,7 +2262,7 @@ if (!hasPermission('dispatch_board')) {
                     )}
                   </button>
                   <button
-                    onClick={() => setActiveMode('SCHEDULE')}
+                    onClick={() => changeMode('SCHEDULE')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       activeMode === 'SCHEDULE'
                         ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2205,11 +2273,11 @@ if (!hasPermission('dispatch_board')) {
                   </button>
                 </div>
               </h1>
-              
+
               {/* Mobile Mode Switcher */}
               <div className="flex sm:hidden items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200 w-full mb-1">
                 <button
-                  onClick={() => setActiveMode('DISPATCH')}
+                  onClick={() => changeMode('DISPATCH')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'DISPATCH'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2219,7 +2287,7 @@ if (!hasPermission('dispatch_board')) {
                   <LayoutList size={12} /> <span className="hidden xs:inline">Điều Phối</span>
                 </button>
                 <button
-                  onClick={() => setActiveMode('MONITOR')}
+                  onClick={() => changeMode('MONITOR')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'MONITOR'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2229,7 +2297,7 @@ if (!hasPermission('dispatch_board')) {
                   <Columns3 size={12} /> <span className="hidden xs:inline">Giám Sát</span>
                 </button>
                 <button
-                  onClick={() => setActiveMode('TURN_QUEUE')}
+                  onClick={() => changeMode('TURN_QUEUE')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'TURN_QUEUE'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2239,7 +2307,7 @@ if (!hasPermission('dispatch_board')) {
                   <Users size={12} /> <span className="hidden xs:inline">Sổ Tua</span>
                 </button>
                 <button
-                  onClick={() => setActiveMode('ROOMS')}
+                  onClick={() => changeMode('ROOMS')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'ROOMS'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2249,7 +2317,7 @@ if (!hasPermission('dispatch_board')) {
                   <BedDouble size={12} /> <span className="hidden xs:inline">Phòng</span>
                 </button>
                 <button
-                  onClick={() => setActiveMode('WEB_BOOKING')}
+                  onClick={() => changeMode('WEB_BOOKING')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all relative ${
                     activeMode === 'WEB_BOOKING'
                       ? 'bg-white text-emerald-600 shadow-sm border border-gray-200/50'
@@ -2264,7 +2332,7 @@ if (!hasPermission('dispatch_board')) {
                   )}
                 </button>
                 <button
-                  onClick={() => setActiveMode('SCHEDULE')}
+                  onClick={() => changeMode('SCHEDULE')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
                     activeMode === 'SCHEDULE'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
@@ -2290,13 +2358,14 @@ if (!hasPermission('dispatch_board')) {
               </div>
               <input
                 type="date"
+                aria-label="Ngày điều phối"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => { if (!confirmLeaveDraft()) return; draftItemsRef.current.clear(); updateDirtyRows(new Set()); setSelectedOrderId(null); setSelectedSubOrderId(null); setSelectedDate(e.target.value); }}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
               />
             </div>
 
-            <button 
+            <button
               onClick={() => setShowAddOrderModal(true)}
               className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-black text-sm transition-all shadow-lg shadow-indigo-200 active:scale-95"
             >
@@ -2336,7 +2405,7 @@ if (!hasPermission('dispatch_board')) {
                       {LEFT_TABS.map((tab) => (
                         <button
                           key={tab.id}
-                          onClick={() => { setLeftPanelTab(tab.id); setDropdownOpen(false); }}
+                          onClick={() => { if (tab.id !== leftPanelTab && !confirmLeaveDraft()) return; if (dirtyRowsRef.current.size) { draftItemsRef.current.clear(); updateDirtyRows(new Set()); setSelectedOrderId(null); setSelectedSubOrderId(null); void fetchData(); } setLeftPanelTab(tab.id); setDropdownOpen(false); }}
                           className="w-full flex items-center gap-4 px-5 py-4 hover:bg-indigo-50/50 text-left border-b border-gray-50 last:border-0 transition-colors"
                         >
                           <span className={`w-2.5 h-2.5 rounded-full ${tab.dot}`} />
@@ -2362,6 +2431,7 @@ if (!hasPermission('dispatch_board')) {
                     key={subOrder.id}
                     onClick={() => {
                         const targetId = order.parentBookingId || order.id;
+                        if (subOrder.id!==selectedSubOrderId) { if (!confirmLeaveDraft()) return; discardFormDrafts(); }
                         setSelectedOrderId(targetId);
                         setSelectedSubOrderId(subOrder.id);
                     }}
@@ -2394,11 +2464,11 @@ if (!hasPermission('dispatch_board')) {
                         </span>
                         {order.hasVat && <span className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>}
                         {(() => {
-                          const isVipMenu = subOrder.services.some((svc: any) => 
+                          const isVipMenu = subOrder.services.some((svc: any) =>
                             (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
                           );
-                          const isTreatment = subOrder.services.some((svc: any) => 
+                          const isTreatment = subOrder.services.some((svc: any) =>
                             (svc.serviceId && String(svc.serviceId).toUpperCase().startsWith('NHT')) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
                           );
@@ -2470,7 +2540,7 @@ if (!hasPermission('dispatch_board')) {
                     </div>
                     <div className="mt-2.5 flex items-center justify-between gap-4">
                       <p className="text-[10px] text-gray-500 font-medium truncate flex-1 leading-tight">
-                        {subOrder.services.length > 0 
+                        {subOrder.services.length > 0
                           ? (() => {
                               const parentServices = subOrder.services.filter(s => {
                                 const opts = typeof s.options === 'string' ? JSON.parse(s.options) : (s.options || {});
@@ -2516,8 +2586,8 @@ if (!hasPermission('dispatch_board')) {
           <div className={`${selectedOrderId ? 'flex' : 'hidden md:flex'} flex-1 flex flex-col border border-gray-200 bg-white rounded-3xl overflow-hidden shadow-sm min-w-0 min-h-0 transition-all`}>
             <div className="p-4 lg:p-5 border-b border-gray-100 bg-white shrink-0 flex items-start sm:items-center gap-3">
               {selectedOrderId && (
-                <button 
-                  onClick={() => { setSelectedOrderId(null); setSelectedSubOrderId(null); }}
+                <button
+                  onClick={() => { if (!confirmLeaveDraft()) return; draftItemsRef.current.clear(); updateDirtyRows(new Set()); setSelectedOrderId(null); setSelectedSubOrderId(null); void fetchData(); }}
                   className="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-400 mt-1 sm:mt-0"
                 >
                   <ChevronLeft size={24} />
@@ -2534,11 +2604,11 @@ if (!hasPermission('dispatch_board')) {
                           — {[selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'}
                         </span>
                         {(() => {
-                          const isVipMenu = selectedSubOrder.services.some((svc: any) => 
+                          const isVipMenu = selectedSubOrder.services.some((svc: any) =>
                             (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('VIP'))
                           );
-                          const isTreatment = selectedSubOrder.services.some((svc: any) => 
+                          const isTreatment = selectedSubOrder.services.some((svc: any) =>
                             (svc.serviceId && String(svc.serviceId).toUpperCase().startsWith('NHT')) ||
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
                           );
@@ -2583,12 +2653,12 @@ if (!hasPermission('dispatch_board')) {
                             let guestCount = 0;
                             const uniqueCustomerGroups = new Set<string>();
                             const uniqueGuestIds = new Set<string>();
-                            
+
                             (selectedSubOrder.originalOrder.services || []).forEach((svc: any) => {
                                  const name = String(svc.serviceName || '').toLowerCase();
                                  const isUtility = isUtilityService(svc);
                                  const isChild = !!(svc.options?.mergedIntoId || svc.mergedIntoId);
-                                 
+
                                  if (!isUtility && !isChild) {
                                      if (svc.guestId) {
                                          uniqueGuestIds.add(svc.guestId);
@@ -2607,7 +2677,7 @@ if (!hasPermission('dispatch_board')) {
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
                           const currentPaymentMethod = editingGuestInfo ? editingGuestInfo.paymentMethod : (selectedSubOrder.originalOrder.paymentMethod || 'Cash');
                         const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male') || currentPaymentMethod !== (selectedSubOrder.originalOrder.paymentMethod || 'Cash'));
-                        
+
                         return (
                               <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:border-l border-gray-200 sm:pl-4 mt-2 sm:mt-0 w-full sm:w-auto">
                                 {editingGuestInfo ? (
@@ -2653,11 +2723,12 @@ if (!hasPermission('dispatch_board')) {
                                                   paymentMethod: currentPaymentMethod
                                               });
                                               if (!res.success) throw new Error(res.error || 'Lỗi không xác định');
-                                              
+
                                               updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod }));
                                               setEditingGuestInfo(null);
-                                              
+
                                               alert('Đã lưu thông tin khách hàng thành công!');
+                                              await fetchData();
                                           } catch(e) {
                                               alert('Lỗi khi lưu!');
                                               console.error(e);
@@ -2748,7 +2819,7 @@ if (!hasPermission('dispatch_board')) {
                           );
                       })()}
                   </div>
-                  
+
                   {/* Cảnh báo Phát sinh chưa thu */}
                   {selectedSubOrder.services.some(s => s.options?.isAddon && !s.options?.isPaid) && (
                     <div className="mt-2 ml-4 px-3 py-1.5 bg-rose-50 border border-rose-100 rounded-lg inline-flex items-center gap-2">
@@ -2780,16 +2851,15 @@ if (!hasPermission('dispatch_board')) {
                       <button onClick={() => setInvoiceLangModal({ invoiceId: selectedSubOrder.originalOrder.parentBookingId as string })} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow hover:bg-indigo-700">Xem Hóa Đơn Nhóm</button>
                     </div>
                   )}
+                  {staleDrafts.some(key=>key.startsWith(selectedSubOrder.bookingId+'/')) && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Ca vừa thay đổi từ tài khoản khác. Bản nháp được giữ; giờ thực và trạng thái đã cập nhật.
+                    <button type="button" className="ml-2 font-bold underline focus-visible:outline" onClick={()=>{if (!confirmLeaveDraft()) return; discardFormDrafts(); void fetchData();}}>Bỏ bản nháp và xem bản mới</button>
+                  </div>}
                   <DispatchEditHistory services={selectedSubOrder.services} />
                   <QuickDispatchTable
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
-                    onEnableSequential={async itemId => {
-                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId, dispatchRevision(selectedSubOrder.services.find(s => s.id === itemId)?.options));
-                      if (!result.success) alert(result.error);
-                      else await fetchData();
-                    }}
                     rooms={rooms}
                     beds={beds}
                     availableTurns={turns}
@@ -2811,6 +2881,10 @@ if (!hasPermission('dispatch_board')) {
                        });
                     }}
                     onUpdateServices={(updatedServices) => {
+                      for (const after of updatedServices) {
+                        const before=selectedSubOrder.services.find(service=>service.id===after.id);
+                        if (before) cacheFormEdit(selectedSubOrder.bookingId,before,after);
+                      }
                       updateOrder(selectedSubOrder.bookingId, o => {
                           let mergedServices = o.services.map(origSvc => {
                               const found = updatedServices.find(u => u.id === origSvc.id);
@@ -2827,11 +2901,11 @@ if (!hasPermission('dispatch_board')) {
                               }
                               return origSvc;
                           });
-                          
+
                           // Thêm các dịch vụ mới (ví dụ khi tách KTV)
                           const newServices = updatedServices.filter(u => !o.services.some(orig => orig.id === u.id));
                           mergedServices = [...mergedServices, ...newServices];
-                          
+
                           // Now, sync any target services to match their source service
                           mergedServices = mergedServices.map(svc => {
                              if (svc.mergedIntoId) {
@@ -2861,11 +2935,36 @@ if (!hasPermission('dispatch_board')) {
                           return { ...o, services: mergedServices };
                       });
                     }}
-                    onDispatchGroup={(group, specificSvcId) => {
-                      const svcIds = specificSvcId 
-                        ? [specificSvcId] 
-                        : group.items.flatMap(i => [i.id, ...(i.mergedServiceIds || [])]);
-                      handleDispatch(false, svcIds);
+                    onSaveStaffRow={async (item, ktvId, sequential, savePair) => {
+                      if (dispatchPendingRef.current) return false;
+                      setDispatchBusy(true);
+                      try {
+                      const bookingId=selectedSubOrder.bookingId;
+                      const key=`${bookingId}/${item.id}`;
+                      const { saveDispatchForm } = await import('./actions');
+                      let revision=Number(item.options?.dispatchRevision || 0);
+                      const save=(confirmed=false)=>saveDispatchForm(bookingId,item.id,item.staffList,revision,sequential,item.options?.displayName,confirmed);
+                      const acknowledge=(result:any) => {
+                        if (!result.savedItem) return;
+                        const current=draftItemsRef.current.get(key) || item;
+                        const clean=result.success && dispatchFormSignature(current)===dispatchFormSignature(item);
+                        const merged=result.success ? mergeSavedDispatchForm(current,item,result.savedItem) : {...current,
+                          options:{...current.options,dispatchRevision:result.revisions?.[item.id] ?? current.options?.dispatchRevision}};
+                        if (clean) clearDirtyItem(bookingId,item.id);
+                        else { draftItemsRef.current.set(key,merged); persistDraftCache(); }
+                        updateOrder(bookingId,order=>({...order,services:order.services.map(service=>service.id===item.id ? merged : service)}));
+                        revision=result.revisions?.[item.id] ?? revision;
+                      };
+                      let result=await save();
+                      acknowledge(result);
+                      if (result.code==='OVERLAP_CONFIRM_REQUIRED') {
+                        if (!confirmUpdatedBOverlap(result)) return false;
+                        result=await save(true); acknowledge(result);
+                      }
+                      if (!result.success) { alert('Không lưu được bản nháp: '+result.error); return false; }
+                      if (result.warnings?.length) alert(result.warnings.join('\n'));
+                      return true;
+                      } finally { setDispatchBusy(false); }
                     }}
                     onPrintGroup={(group) => {
                       // TODO: QuickPrintTicket integration
@@ -2890,10 +2989,10 @@ if (!hasPermission('dispatch_board')) {
                   {(() => {
                       const targetUndoId = selectedSubOrder?.originalOrder?.parentBookingId || (selectedSubOrder?.originalOrder?.rawStatus === 'SPLIT' ? selectedSubOrder.originalOrder.id : null);
                       if (!targetUndoId) return null;
-                      
+
                       const siblingsUndo = orders.filter((o: any) => o.parentBookingId === targetUndoId);
                       const isUndoDisabled = siblingsUndo.some((o: any) => o.rawStatus !== 'NEW' && o.rawStatus !== 'CANCELLED');
-                      
+
                       return (
                           <button
                             onClick={handleUndoSplit}
@@ -2906,28 +3005,16 @@ if (!hasPermission('dispatch_board')) {
                       );
                   })()}
                   <button
-                    onClick={() => {
-                        const hasKtvAssigned = selectedSubOrder?.services?.some((s: any) => s.staffList?.length > 0);
-                        const isDispatched = selectedSubOrder?.dispatchStatus !== 'pending';
-                        
-                        // Removed native confirm for hasKtvAssigned because SplitPreviewModal will handle it
-                        
-                        if (isDispatched) {
-                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nTên riêng và giờ B mới sẽ được lưu. Bấm [CẬP NHẬT KTV & GỬI LẠI] để gửi thông báo cập nhật cho B.\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
-                                handleSaveDraft();
-                            }
-                            return;
-                        }
-
-                        handleSaveDraft();
-                    }}
+                    onClick={() => { void handleSaveDraft(); }}
+                    disabled={dispatchPending}
+                    title="Lưu thay đổi chính thức; chưa gửi phân công mới"
                     className="flex-1 py-5 rounded-3xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 border-2 border-emerald-200 active:scale-95"
                   >
-                    <Save size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus !== 'pending' ? 'LƯU THÔNG TIN' : 'LƯU NHÁP'}
+                    <Save size={20} strokeWidth={3} /> {dispatchPending ? 'Đang lưu…' : 'Lưu kế hoạch'}
                   </button>
                   {(() => {
                     const isFeedbackOrDone = ['FEEDBACK', 'DONE', 'CLEANING'].includes(selectedSubOrder.dispatchStatus);
-                    
+
                     if (isFeedbackOrDone) {
                       return (
                         <div className="flex gap-2 w-full col-span-2">
@@ -2963,7 +3050,7 @@ if (!hasPermission('dispatch_board')) {
                     // Check readiness only for the services in the current sub-order, not the entire parent
                     const subOrderAsOrder = { ...selectedSubOrder.originalOrder, services: selectedSubOrder.services };
                     const ready = isDispatchReady(subOrderAsOrder) && !isBlockedByStartedService;
-                    
+
                     return (
                       <button
                         onClick={() => {
@@ -2971,23 +3058,25 @@ if (!hasPermission('dispatch_board')) {
                           const validSubBookings = subOrders.filter(so => so.bookingId === selectedSubOrder.originalOrder.id && so.ktvSignature !== 'utility');
                           const finalGuestCount = Math.max(1, validSubBookings.length);
                           updateOrder(selectedSubOrder.originalOrder.id, (o: any) => ({ ...o, guestCount: finalGuestCount }));
-                          
+
                           if (selectedSubOrder?.dispatchStatus !== 'pending') {
                             handleDispatch(false, selectedSubOrder?.services.map((s:any) => s.id), selectedSubOrder?.originalOrder.id);
                           } else {
                             setShowDispatchConfirmModal(true);
                           }
                         }}
-                        disabled={!ready}
+                        disabled={dispatchPending || isBlockedByStartedService}
                         title={isBlockedByStartedService ? "Đã có dịch vụ bắt đầu, vui lòng tách đơn rồi gửi cho từng khách!" : ""}
                         className={`flex-[2] flex-col py-3 rounded-3xl font-black text-sm lg:text-base tracking-widest uppercase transition-all flex items-center justify-center gap-1 shadow-2xl ${ready
                           ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 active:scale-95'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                          : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
                           }`}
                       >
                         <div className="flex items-center gap-3">
-                           <Send size={20} strokeWidth={3} /> {selectedSubOrder?.dispatchStatus !== 'pending' ? 'CẬP NHẬT KTV & GỬI LẠI' : 'GỬI ĐƠN CHO KTV'}
+                           <Send size={20} strokeWidth={3} /> {dispatchPending ? 'Đang điều phối…' : selectedSubOrder?.dispatchStatus !== 'pending' ? 'Cập nhật điều phối' : 'Điều phối'}
                         </div>
+                        <span className="text-[10px] font-medium normal-case tracking-normal">Lưu thay đổi và gửi cho KTV</span>
+                        {!ready && !isBlockedByStartedService && <span className="text-[10px] font-medium normal-case tracking-normal">{getMissingInfo(subOrderAsOrder)[0]}</span>}
                         {isBlockedByStartedService && (
                           <span className="text-[10px] text-rose-500 font-bold normal-case tracking-normal">(Đã có DV đang chạy — hãy tách đơn rồi gửi từng khách)</span>
                         )}
@@ -3008,8 +3097,8 @@ if (!hasPermission('dispatch_board')) {
           </div>
             </>
           ) : activeMode === 'MONITOR' ? (
-            <KanbanBoard 
-              orders={orders} 
+            <KanbanBoard
+              orders={orders}
               staffs={staffs}
               staffWorkTypeMap={Object.fromEntries(turns.filter(t => t.staff?.work_type).map(t => [t.employee_id, t.staff!.work_type!]))}
 
@@ -3027,21 +3116,19 @@ if (!hasPermission('dispatch_board')) {
                   alert('Lỗi: Có lỗi xảy ra');
                 }
               }}
-              onUpdateStatus={handleUpdateStatus} 
+              onUpdateStatus={handleUpdateStatus}
               onOpenDetail={(orderId, subOrderId, status) => {
+                if (!confirmLeaveDraft()) return; discardFormDrafts();
                 setLeftPanelTab((status || 'pending') as DispatchStatus);
                 setSelectedOrderId(orderId);
                 setSelectedSubOrderId(subOrderId || subOrders.find(so => so.bookingId === orderId)?.id || null);
                 setActiveMode('DISPATCH');
               }}
               onAssignSequentialB={(orderId, itemId, fromKtvId, toKtvId) => openLiveHandoff(orderId, itemId, fromKtvId, toKtvId || '')}
-              onFinishSequentialAfterA={async (orderId, itemId) => {
-                const service = orders.flatMap(order => order.services).find(service => service.id === itemId);
-                if (service) openSequentialModal(orderId, service, 'FINISH');
-              }}
               onConfirmAddonPayment={handleConfirmAddonPayment}
               selectedOrderId={selectedOrderId}
               onSelectOrder={(orderId, subOrderId) => {
+                  if (subOrderId!==selectedSubOrderId) { if (!confirmLeaveDraft()) return; discardFormDrafts(); }
                   setSelectedOrderId(orderId);
                   setSelectedSubOrderId(subOrderId || subOrders.find(so => so.bookingId === orderId)?.id || null);
               }}
@@ -3136,7 +3223,9 @@ Vẫn kết thúc sớm?`)) return;
             <div className="flex-1 overflow-auto w-full h-full flex flex-col md:flex-row gap-4">
               <div className="flex-[2] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
                 {(() => {
-                  return <TurnQueueBoard staffs={staffs} allowEditTurns={true} />;
+                  return <TurnQueueBoard staffs={staffs} allowEditTurns={true} selectedDate={selectedDate} draftCacheKey={user?.id || 'anonymous'}
+                    onDirtyChange={onQueueDirtyChange} onSavingChange={onQueueSavingChange}
+                    onBeforeDateChange={date=>{if (!confirmLeaveDraft()) return false; discardFormDrafts(); setSelectedDate(date); return true;}} />;
                 })()}
               </div>
               <div className="flex-[1] bg-white rounded-3xl border border-gray-200 shadow-sm p-4 min-h-[500px]">
@@ -3145,10 +3234,10 @@ Vẫn kết thúc sớm?`)) return;
             </div>
           ) : activeMode === 'ROOMS' ? (
             <div className="flex-1 overflow-hidden bg-white rounded-3xl border border-gray-200 shadow-sm w-full h-full">
-              <RoomBoard 
+              <RoomBoard
                 rooms={rooms}
                 beds={beds}
-                occupancies={orders.flatMap(order => 
+                occupancies={orders.flatMap(order =>
                   order.services.flatMap(svc => {
                     if (['COMPLETED', 'CANCELLED', 'FEEDBACK', 'DONE'].includes(svc.status || '')) return [];
                     if (['FEEDBACK', 'DONE'].includes(order.dispatchStatus)) return []; // Nếu tổng đơn đã ở FEEDBACK thì bỏ qua luôn
@@ -3166,8 +3255,8 @@ Vẫn kết thúc sớm?`)) return;
                         }
                         return t.substring(0, 5);
                     };
-                    
-                    const segmentsWithBed = svc.staffList?.flatMap(staff => 
+
+                    const segmentsWithBed = svc.staffList?.flatMap(staff =>
                       (staff.segments || []).filter(seg => seg.bedId).map(seg => {
                         let computedEndTime = seg.actualEndTime;
                         if (!computedEndTime && seg.actualStartTime && seg.duration) {
@@ -3236,6 +3325,7 @@ Vẫn kết thúc sớm?`)) return;
       {/* Dispatch Confirmation Modal */}
       <DispatchConfirmModal
         open={showDispatchConfirmModal}
+        pending={dispatchPending}
         order={selectedOrder}
         subOrder={selectedSubOrder}
         rooms={rooms}
@@ -3415,7 +3505,7 @@ Vẫn kết thúc sớm?`)) return;
       />
 
       {commentModalData && (
-        <KtvCommentModal 
+        <KtvCommentModal
           subOrder={commentModalData.subOrder as any}
           order={commentModalData.order}
           onClose={() => setCommentModalData(null)}

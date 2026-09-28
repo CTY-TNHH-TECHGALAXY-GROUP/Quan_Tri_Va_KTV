@@ -174,8 +174,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         }
     }
 
-    async function fetchData() {
-        setLoading(true);
+    async function fetchData(background = false) {
+        if (!background) setLoading(true);
         console.log("📡 [Dispatch] Fetching data for date:", selectedDate);
         try {
             const res = await getDispatchData(selectedDate);
@@ -505,7 +505,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         } catch (e) {
             console.error("❌ [Dispatch] Unexpected error in fetchData:", e);
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     }
 
@@ -514,11 +514,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
         let fetchTimeout: NodeJS.Timeout;
         const debouncedFetchData = () => {
-            if (selectedOrderIdRef.current) { needsRefreshRef.current = true; return; }
             clearTimeout(fetchTimeout);
             fetchTimeout = setTimeout(() => {
-                fetchData();
-            }, 1000);
+                fetchData(true);
+            }, 300);
         };
 
         const channel = supabase
@@ -552,7 +551,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 });
 
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
             })
@@ -587,14 +586,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'StaffNotifications' }, (payload) => {
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
                 debouncedFetchData();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingGuests' }, (payload) => {
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
                 debouncedFetchData();
@@ -603,7 +602,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 if (selectedOrderIdRef.current) {
                     // Keep the form's revision and values together. A stale save is
                     // rejected by the locked RPC; closing the form refreshes it.
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
                 debouncedFetchData();

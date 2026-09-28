@@ -6,7 +6,7 @@ import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
 import { closeOpenPause, voidSegment } from '@/lib/segment-time';
 import { liveDispatchConflict, savedPlanFields } from '@/lib/dispatch-live-guard';
-import { parseKtvSegments, ktvMatchesSeg } from '@/lib/ktvUtils';
+import { ktvMetadataMap, parseKtvOptions, parseKtvSegments, ktvMatchesSeg } from '@/lib/ktvUtils';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { performSequentialLifecycle } from '@/lib/services/SequentialLifecycleService';
 import { currentCounterActor } from '@/lib/counter-action-log';
@@ -23,12 +23,22 @@ import { after } from 'next/server';
 
 async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
     const actor = await currentCounterActor();
-    const result = await supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
+    const result = await supabase.rpc(['DRAFT','DISPATCH'].includes(action) ? 'dispatch_commit_form' : 'dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
         p_payload: payload, p_actor: actor });
     if (result.error?.message === 'OVERLAP_CONFIRM_REQUIRED') {
         try { return { data: JSON.parse(result.error.details), error: null }; } catch { /* Keep the database error. */ }
     }
     return result;
+}
+
+async function notifyAdjustedDurations(bookingId: string, changes: any[] = []) {
+    const warnings: string[] = [];
+    for (const change of changes) {
+        const notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
+            message: `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
+        if (!notified) warnings.push(`Đã lưu giờ mới nhưng chưa báo được cho ${change.employeeId}; vui lòng báo trực tiếp.`);
+    }
+    return warnings;
 }
 
 async function resolveGuestIdsForUpdate(
@@ -459,9 +469,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
                         if (sId.toLowerCase().includes('nhs0000')) {
                             finalDuration = 1;
                         } else if (!svcInfo) {
-                            // Mặc định cho những dịch vụ không tìm thấy trong DB (có thể là lỗi data cũ)
-                            finalDuration = 60; 
-                            console.warn(`⚠️ [Dispatch] Service lookup failed for sId: "${sId}". Defaulting to 60p.`);
+                            console.warn(`[Dispatch] Service lookup failed for sId: "${sId}"; no catalog duration available.`);
                         }
 
                         // 🔥 VIP FIX: Lấy vipDuration/duration nếu có trong options
@@ -778,7 +786,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
+                    const conflict = ['PREPARING','READY','IN_PROGRESS'].includes(dbItem.status) ? null
+                        : liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
@@ -804,7 +813,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
         }
         for (const item of dispatchData.itemUpdates || []) {
             if (!isTwoSlotSequential(item.options)) continue;
-            const slots = (item.segments || []).filter(s => s.voided !== true);
+            const slots = (item.segments || []).filter(s => s.voided !== true && s.voided !== 'true');
             if (slots.length < 1 || slots.length > 2 || !slots.some(s => Number(s.sequenceSlot) === 1)
                 || new Set(slots.map(s => Number(s.sequenceSlot))).size !== slots.length
                 || new Set(slots.map(s => s.ktvId)).size !== slots.length
@@ -865,17 +874,34 @@ export async function processDispatch(bookingId: string, dispatchData: {
         }
 
         const notificationWarnings: string[] = [];
+        try {
+        notificationWarnings.push(...await notifyAdjustedDurations(bookingId, data.durationChanges));
         for (const item of liveSequentialItems) {
             const update = dispatchData.itemUpdates?.find(update => update.id === item.id);
             if (!update) continue;
-            const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []);
-            const b = segments.find((s: any) => Number(s.sequenceSlot) === 2 && s.voided !== true);
-            if (!b) continue;
-            const name = update.options?.serviceNamesForKtvs?.[b.ktvId] || update.options?.displayName || 'dịch vụ';
-            const start = update.segments?.find(s => s.id === b.id)?.startTime || b.startTime;
-            const notified = await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
-                message: `Phân công lượt B cập nhật: ${name} lúc ${start}. Vui lòng kiểm tra ứng dụng.` });
-            if (!notified) notificationWarnings.push(`Đã lưu phân công B (${b.ktvId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
+            const stored = data.savedItems?.find((saved: any) => saved.id === item.id);
+            const activeB = (segments: any) => parseKtvSegments(segments, true)
+                .find((s: any) => Number(s.sequenceSlot) === 2 && s.voided !== true && s.voided !== 'true');
+            const before = activeB(item.segments);
+            const afterB = activeB(stored?.segments || update.segments);
+            const oldOptions = parseKtvOptions(item.options);
+            const newOptions = parseKtvOptions(stored?.options || update.options);
+            const nameFor = (options: any, seg: any) => options.serviceNamesForKtvs?.[seg.ktvId] || options.displayName || 'dịch vụ';
+            if (before && before.ktvId !== afterB?.ktvId) {
+                const notified = await createNotification({ bookingId, employeeId: before.ktvId, type: 'KTV_ORDER_CHANGED',
+                    message: `Phân công lượt B (${nameFor(oldOptions, before)}) đã được chuyển khỏi bạn. Vui lòng kiểm tra ứng dụng.` });
+                if (!notified) notificationWarnings.push(`Đã đổi phân công B, chưa báo được cho ${before.ktvId}.`);
+            }
+            if (!afterB) continue;
+            const name = nameFor(newOptions, afterB);
+            const changed = !before || before.ktvId !== afterB.ktvId || nameFor(oldOptions, before) !== name
+                || ['startTime', 'endTime', 'duration', 'roomId', 'bedId'].some(key => String(before[key] || '') !== String(afterB[key] || ''));
+            if (!changed) continue;
+            const newlyAssigned = before?.ktvId !== afterB.ktvId;
+            const notified = await createNotification({ bookingId, employeeId: afterB.ktvId,
+                type: newlyAssigned ? 'KTV_NEW_ORDER' : 'KTV_ORDER_CHANGED',
+                message: `${newlyAssigned ? 'Bạn được phân công' : 'Quầy cập nhật'} lượt B: ${name}, ${afterB.startTime}, ${afterB.duration} phút. Vui lòng kiểm tra ứng dụng.` });
+            if (!notified) notificationWarnings.push(`Đã lưu phân công B (${afterB.ktvId}), chưa tạo được thông báo. Báo trực tiếp cho nhân viên.`);
         }
 
         // Guest writes now share the dispatch revision transaction.
@@ -927,10 +953,15 @@ export async function processDispatch(bookingId: string, dispatchData: {
             await syncTurnsForDate(dispatchData.date);
         }
 
+        } catch (error) {
+            console.error('Dispatch committed; notification/queue sync failed:', error);
+            notificationWarnings.push('Đã lưu điều phối; một số thông báo hoặc sổ tua chưa đồng bộ. Kiểm tra và báo trực tiếp cho nhân viên.');
+        }
+
         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
         // Removed destructive syncOrderTimelineToDb
 
-        return { success: true, warnings: notificationWarnings };
+        return { success: true, warnings: notificationWarnings, savedItems: data.savedItems as any[], revisions: data.revisions as Record<string, number> };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -1038,6 +1069,7 @@ export async function finishSequentialAfterA(bookingId: string, itemId: string, 
         return { success: false, error: error.message || 'Không thể kết thúc sau A' };
     }
 }
+
 
 /**
  * Đổi mọi `NEW_EXT:<TÊN>` (KTV ngoài chưa có dòng Staff, quầy vừa thêm ở ô chọn)
@@ -1222,7 +1254,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
+                    const conflict = ['PREPARING','READY','IN_PROGRESS'].includes(dbItem.status) ? null
+                        : liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
                     // 3. NGĂN CẤM XÓA KTV ĐÃ BẮT ĐẦU LÀM
@@ -1242,8 +1275,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                         for (const techId of dbTechs) {
                             if (!incomingTechs.includes(techId)) {
                                 // Kiểm tra xem KTV này đã start chưa
-                                const dbSeg = dbSegs.find((s: any) => s.ktvId === techId);
-                                if (dbSeg && dbSeg.actualStartTime) {
+                                const dbSeg = dbSegs.find((s: any) => s.ktvId === techId && s.voided !== true && s.voided !== 'true' && (s.actualStartTime || s.actualEndTime));
+                                if (dbSeg) {
                                     throw new Error(`[CẢNH BÁO] KTV ${techId} đã bắt đầu làm việc. Vui lòng ra bảng Kanban dùng nút "Dừng / Đổi Người" thay vì gỡ trực tiếp!`);
                                 }
                             }
@@ -1354,6 +1387,9 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
         if (saved?.code === 'OVERLAP_CONFIRM_REQUIRED') return saved;
         if (!saved?.success) throw new Error('Máy chủ chưa xác nhận lưu nháp');
 
+        const warnings: string[] = [];
+        try {
+        warnings.push(...await notifyAdjustedDurations(bookingId, saved.durationChanges));
         // Fetch bookingDate to sync turns correctly
         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
         const hasNormalUpdate = dispatchData.itemUpdates?.some(update => {
@@ -1366,11 +1402,217 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             await syncTurnsForDate(dateStr);
         }
 
-        return { success: true, revisions: saved.revisions as Record<string, number> };
+        } catch (error) {
+            console.error('Dispatch saved; queue sync failed:', error);
+            warnings.push('Đã lưu thay đổi; sổ tua chưa đồng bộ, vui lòng kiểm tra lại.');
+        }
+        return { success: true, warnings, savedItems: saved.savedItems as any[], revisions: saved.revisions as Record<string, number> };
     } catch (error: any) {
         console.error('❌ [Server] saveDraftDispatch error:', error);
         return { success: false, error: error.message };
     }
+}
+
+/** Save one KTV row while preserving every other row in the database item. */
+export async function saveDispatchStaffRow(bookingId: string, itemId: string, row: {
+    ktvId: string; segments: any[]; noteForKtv?: string; serviceNameForKtv?: string;
+}, expectedRevision: number, sequential: boolean, confirmedOverlap = false) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { data: item, error: itemError } = await supabase.from('BookingItems')
+            .select('id, status, segments, options, technicianCodes, roomName, bedId')
+            .eq('id', itemId).eq('bookingId', bookingId).single();
+        if (itemError || !item) throw itemError || new Error('Không tìm thấy dịch vụ');
+        const options = parseKtvOptions(item.options);
+        const oldSegments = parseKtvSegments(item.segments, true);
+        const draft = ['NEW', 'WAITING'].includes(item.status) && !oldSegments.some((s: any) => s.actualStartTime || s.actualEndTime);
+        if (!draft && Number(options.dispatchRevision || 0) !== expectedRevision) throw new Error('Ca đang chạy đã thay đổi; giữ bản đang sửa và kiểm tra trước khi lưu.');
+        const incoming = row.segments.filter((s: any) => s.voided !== true && s.voided !== 'true');
+        if (sequential && incoming.some((s: any) => Number(s.sequenceSlot) === 2)
+            && !oldSegments.some((s: any) => Number(s.sequenceSlot) === 1 && s.voided !== true))
+            throw new Error('Lưu hàng A trước khi lưu B');
+        if (!row.ktvId || !incoming.length || new Set(incoming.map((s: any) => s.id)).size !== incoming.length
+            || oldSegments.some((s: any) => s.ktvId === row.ktvId && s.voided !== true && s.voided !== 'true'
+                && !incoming.some((next: any) => next.id === s.id))) throw new Error('Hàng nhân viên đã thay đổi; tải lại đơn');
+        const firstIncoming = sequential ? incoming.find((s: any) => Number(s.sequenceSlot) === 1) : null;
+        const replacedDraftA = ['NEW', 'WAITING'].includes(item.status) && !oldSegments.some((s: any) => s.actualStartTime || s.actualEndTime) && firstIncoming
+            ? oldSegments.find((s: any) => Number(s.sequenceSlot) === 1)
+                || (oldSegments.length === 1 && Number(oldSegments[0].sequenceSlot) !== 2 ? oldSegments[0] : null)
+            : null;
+        let segments = oldSegments.filter((s: any) => s.id !== replacedDraftA?.id || s.ktvId === row.ktvId);
+        for (const next of incoming) {
+            const old = oldSegments.find((s: any) => s.id === next.id);
+            if (old?.ktvId !== undefined && old.ktvId !== row.ktvId) throw new Error('Chặng thuộc nhân viên khác');
+            if (!old && !['NEW', 'WAITING'].includes(item.status)) throw new Error('Chặng đã được điều phối; tải lại đơn');
+            const editable = !old?.actualStartTime && !old?.actualEndTime && old?.voided !== true && old?.voided !== 'true';
+            const segment = old ? { ...old } : { id: next.id, ktvId: row.ktvId };
+            if (editable) for (const key of ['roomId', 'bedId', 'startTime', 'endTime', 'duration', 'sequenceSlot']) segment[key] = next[key];
+            if (!/^\d{2}:\d{2}$/.test(String(segment.startTime || '')) || !Number.isFinite(Number(segment.duration))
+                || Number(segment.duration) <= 0 || Number(segment.duration) > 600) throw new Error('Giờ hoặc thời lượng nhân viên không hợp lệ');
+            segments = old ? segments.map((s: any) => s.id === old.id ? segment : s) : [...segments, segment];
+        }
+        const techs = (Array.isArray(item.technicianCodes) ? item.technicianCodes : String(item.technicianCodes || '').split(',').filter(Boolean))
+            .filter((code: string) => code !== replacedDraftA?.ktvId || segments.some((s: any) => s.ktvId === code));
+        if (!techs.includes(row.ktvId)) techs.push(row.ktvId);
+        const names = ktvMetadataMap(parseKtvOptions(options.serviceNamesForKtvs), [row], 'serviceNameForKtv');
+        const notes = ktvMetadataMap(parseKtvOptions(options.notesForKtvs), [row], 'noteForKtv');
+        const { data: booking, error: bookingError } = await supabase.from('Bookings')
+            .select('roomName, bedId, notes').eq('id', bookingId).single();
+        if (bookingError) throw bookingError;
+        const enableAfterSave = sequential && !isTwoSlotSequential(options) && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status);
+        const saved = await saveDraftDispatch(bookingId, {
+            roomName: booking.roomName, bedId: booking.bedId, notes: booking.notes,
+            confirmedOverlapItemIds: confirmedOverlap ? [itemId] : [],
+            itemUpdates: [{ id: itemId, roomName: segments[0]?.roomId || item.roomName || null,
+                bedId: segments[0]?.bedId || item.bedId || null, technicianCodes: techs, segments,
+                options: { ...options, ...(sequential && !enableAfterSave ? { sequentialSlots: 2 } : {}),
+                    serviceNamesForKtvs: names, notesForKtvs: notes } }]
+        });
+        if (!saved.success || !enableAfterSave) return saved;
+        const enabled = await enableSequentialItem(bookingId, itemId, saved.revisions?.[itemId] ?? expectedRevision);
+        if (!enabled.success) return { ...enabled, revisions: saved.revisions };
+        return { success: true, revisions: { ...saved.revisions, [itemId]: enabled.revision } };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không lưu được nhân viên' };
+    }
+}
+
+/** Save a newly staged A/B pair from one form action. Draft rows are one DB edit. */
+export async function saveSequentialPair(bookingId: string, itemId: string, rows: {
+    ktvId: string; segments: any[]; noteForKtv?: string; serviceNameForKtv?: string;
+}[], expectedRevision: number, displayName?: string, confirmedOverlap = false) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        if (rows.length < 1 || rows.length > 2 || new Set(rows.map(row => row.ktvId)).size !== rows.length)
+            throw new Error('Cần chọn A và tối đa một nhân viên B');
+        const segments = rows.map((row, index) => {
+            const seg = row.segments.find((s: any) => s.voided !== true && s.voided !== 'true');
+            if (!row.ktvId || !seg?.id || !/^\d{2}:\d{2}$/.test(String(seg.startTime || ''))
+                || !Number.isInteger(Number(seg.duration)) || Number(seg.duration) < 1 || Number(seg.duration) > 600)
+                throw new Error('Giờ hoặc thời lượng A/B không hợp lệ');
+            return { id: seg.id, ktvId: row.ktvId, sequenceSlot: index + 1, roomId: seg.roomId || null,
+                bedId: seg.bedId || null, startTime: seg.startTime, endTime: seg.endTime, duration: Number(seg.duration) };
+        });
+        if (new Set(segments.map(seg => seg.id)).size !== segments.length) throw new Error('Trùng chặng A/B');
+        const { data: item, error: itemError } = await supabase.from('BookingItems')
+            .select('id, status, segments, options, roomName, bedId').eq('id', itemId).eq('bookingId', bookingId).single();
+        if (itemError || !item) throw itemError || new Error('Không tìm thấy dịch vụ');
+        const { data: booking, error: bookingError } = await supabase.from('Bookings')
+            .select('roomName, bedId, notes, bookingDate').eq('id', bookingId).single();
+        if (bookingError || !booking) throw bookingError || new Error('Không tìm thấy đơn');
+        const options = parseKtvOptions(item.options);
+        const oldSegments = parseKtvSegments(item.segments, true);
+        const names = ktvMetadataMap(parseKtvOptions(options.serviceNamesForKtvs), rows, 'serviceNameForKtv');
+        const notes = ktvMetadataMap(parseKtvOptions(options.notesForKtvs), rows, 'noteForKtv');
+        const metadata = { serviceNamesForKtvs: names, notesForKtvs: notes };
+        if (['NEW', 'WAITING'].includes(item.status) && !oldSegments.some((s: any) => s.actualStartTime || s.actualEndTime)) {
+            return await saveDraftDispatch(bookingId, { roomName: booking.roomName, bedId: booking.bedId,
+                notes: booking.notes, itemUpdates: [{ id: itemId, roomName: segments[0].roomId || item.roomName || null,
+                    bedId: segments[0].bedId || item.bedId || null, technicianCodes: rows.map(row => row.ktvId), segments,
+                    options: { ...options, ...metadata, sequentialSlots: 2, displayName: displayName || options.displayName } }] });
+        }
+        if (Number(options.dispatchRevision || 0) !== expectedRevision) throw new Error('Ca đang chạy đã thay đổi; giữ bản đang sửa và kiểm tra trước khi lưu.');
+        if (!['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status)) throw new Error('Ca đã chuyển trạng thái; không thể gán B');
+        const oldA = oldSegments.find((seg: any) => Number(seg.sequenceSlot) === 1 && seg.voided !== true)
+            || (oldSegments.length === 1 ? oldSegments[0] : null);
+        if (!oldA || oldA.id !== segments[0].id || oldA.ktvId !== segments[0].ktvId)
+            throw new Error('A đang điều phối khác bản nháp; dùng thao tác Đổi KTV cho ca đang chạy');
+        let revision = Number(options.dispatchRevision || 0);
+        if (['roomId', 'bedId', 'startTime', 'endTime', 'duration'].some(key => String(oldA[key] ?? '') !== String((segments[0] as any)[key] ?? ''))) {
+            if (oldA.actualStartTime || oldA.actualEndTime) throw new Error('A đã bắt đầu; không sửa kế hoạch đang chạy');
+            const savedA=await saveDispatchStaffRow(bookingId,itemId,rows[0],revision,true,confirmedOverlap);
+            if (!savedA.success) return savedA;
+            revision=savedA.revisions?.[itemId] ?? revision;
+            options.sequentialSlots=2;
+        }
+        if (!isTwoSlotSequential(options)) {
+            const enabled = await applyDispatchEdit(supabase, bookingId, 'ENABLE_SEQUENTIAL', { itemId, expectedRevision: revision });
+            if (enabled.error || !enabled.data?.success) throw enabled.error || new Error('Không thể bật nối tiếp');
+            revision = Number(enabled.data.revisions?.[itemId] ?? revision);
+        }
+        if (segments.length === 1) return { success: true, revisions: { [itemId]: revision } };
+        const day = String(booking.bookingDate || '').slice(0, 10);
+        let startMs = Date.parse(`${day}T${segments[1].startTime}:00+07:00`);
+        if (!Number.isFinite(startMs)) throw new Error('Ngày giờ B không hợp lệ');
+        if (segments[1].startTime < segments[0].startTime) startMs += 86400000;
+        const { data, error } = await applyDispatchEdit(supabase, bookingId, 'ASSIGN_B', {
+            itemId, expectedRevision: revision, bookingId, toKtvId: segments[1].ktvId,
+            plannedStartAt: new Date(startMs).toISOString(), durationMinutes: segments[1].duration,
+            confirmOverlap: confirmedOverlap, metadata,
+        });
+        if (error) return { success: false, error: error.message, revisions: { [itemId]: revision } };
+        if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return { ...data, revisions: { [itemId]: revision } };
+        if (!data?.success) throw new Error(data?.error || 'Không lưu được B');
+        const { data: stored, error: storedError } = await supabase.from('BookingItems')
+            .select('segments').eq('id', itemId).eq('bookingId', bookingId).single();
+        let notified = false;
+        try {
+            notified = await createNotification({ bookingId, employeeId: segments[1].ktvId,
+                type: 'KTV_NEW_ORDER', message: 'Bạn được phân công lượt B của dịch vụ nối tiếp. Vui lòng kiểm tra ứng dụng.' });
+        } catch (error) { console.error('B assignment notification failed:', error); }
+        return { success: true, revisions: { [itemId]: data.revisions?.[itemId] },
+            savedSegments: !storedError && stored ? parseKtvSegments(stored.segments) : undefined,
+            warnings: notified ? [] : ['Đã lưu B nhưng chưa gửi được thông báo; vui lòng báo trực tiếp cho nhân viên.'] };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không lưu được A/B' };
+    }
+}
+
+/** Save one item through the same atomic form commit used by global Save and Dispatch. */
+export async function saveDispatchForm(bookingId: string, itemId: string, rows: {
+    ktvId: string; segments: any[]; noteForKtv?: string; serviceNameForKtv?: string;
+}[], expectedRevision: number, sequential: boolean, displayName?: string, confirmedOverlap = false) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const activeRows = rows.filter(row => row.ktvId && row.segments.some(seg => seg.voided !== true && seg.voided !== 'true'));
+        if (new Set(activeRows.map(row => row.ktvId)).size !== activeRows.length || (sequential && activeRows.length > 2))
+            throw new Error('Danh sách nhân viên không hợp lệ');
+        const { data: item, error } = await supabase.from('BookingItems').select('id,status,segments,options,roomName,bedId')
+            .eq('id',itemId).eq('bookingId',bookingId).single();
+        if (error || !item) throw error || new Error('Không tìm thấy dịch vụ');
+        const { data: booking, error: bookingError } = await supabase.from('Bookings').select('roomName,bedId,notes').eq('id',bookingId).single();
+        if (bookingError || !booking) throw bookingError || new Error('Không tìm thấy đơn');
+        const options=parseKtvOptions(item.options);
+        if (Number(options.dispatchRevision || 0) !== expectedRevision) throw new Error('Ca đã thay đổi; bản đang sửa chưa được lưu. Tải lại và kiểm tra trước khi lưu.');
+        const segments=activeRows.flatMap((row,index)=>row.segments.filter(seg=>seg.voided!==true && seg.voided!=='true')
+            .map(seg=>({...seg,ktvId:row.ktvId,...(sequential ? {sequenceSlot:index+1} : {})})));
+        const oldSegments=parseKtvSegments(item.segments,true);
+        const oldA=oldSegments.find(seg=>Number(seg.sequenceSlot)===1 && seg.voided!==true && seg.voided!=='true');
+        const oldB=oldSegments.find(seg=>Number(seg.sequenceSlot)===2 && seg.voided!==true && seg.voided!=='true');
+        const nextA=segments.find(seg=>Number(seg.sequenceSlot)===1);
+        const nextB=segments.find(seg=>Number(seg.sequenceSlot)===2);
+        if (sequential && item.status==='IN_PROGRESS' && oldA?.actualStartTime && !oldA.actualEndTime
+            && oldB && !oldB.actualStartTime && nextA && nextB && Number(nextA.duration)!==Number(oldA.duration)) {
+            if (nextA.id!==oldA.id || nextB.id!==oldB.id || nextA.ktvId!==oldA.ktvId || nextB.ktvId!==oldB.ktvId
+                || nextA.roomId!==oldA.roomId || nextB.roomId!==oldB.roomId || nextA.bedId!==oldA.bedId || nextB.bedId!==oldB.bedId)
+                throw new Error('Chỉ đổi thời lượng A và giờ B; nhân viên/phòng/giường phải giữ nguyên');
+            const {data,error:pairError}=await supabase.rpc('dispatch_adjust_running_sequential_pair',{
+                p_booking_id:bookingId,p_item_id:itemId,p_expected_revision:expectedRevision,
+                p_a_minutes:Number(nextA.duration),p_b_start:nextB.startTime,p_b_minutes:Number(nextB.duration),
+                p_metadata:{displayName:displayName || options.displayName,
+                    serviceNamesForKtvs:ktvMetadataMap(parseKtvOptions(options.serviceNamesForKtvs),activeRows,'serviceNameForKtv'),
+                    notesForKtvs:ktvMetadataMap(parseKtvOptions(options.notesForKtvs),activeRows,'noteForKtv')},
+                p_actor:await currentCounterActor()
+            });
+            if (pairError || !data?.success) throw pairError || new Error(data?.error || 'Không lưu được giờ A/B');
+            return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision}};
+        }
+        const result=await saveDraftDispatch(bookingId,{roomName:booking.roomName,bedId:booking.bedId,notes:booking.notes,
+            confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[{id:itemId,
+                roomName:segments[0]?.roomId || item.roomName,bedId:segments[0]?.bedId || item.bedId,
+                technicianCodes:activeRows.map(row=>row.ktvId),segments,
+                options:{...options,dispatchRevision:expectedRevision,sequentialSlots:sequential ? 2 : options.sequentialSlots,
+                    displayName:displayName || options.displayName,
+                    serviceNamesForKtvs:ktvMetadataMap(parseKtvOptions(options.serviceNamesForKtvs),activeRows,'serviceNameForKtv'),
+                    notesForKtvs:ktvMetadataMap(parseKtvOptions(options.notesForKtvs),activeRows,'noteForKtv')}}]});
+        return {...result,savedItem:result.savedItems?.find((saved:any)=>saved.id===itemId)};
+    } catch(error:any) { return {success:false,error:error.message || 'Không lưu được bản nháp'}; }
 }
 
 /**

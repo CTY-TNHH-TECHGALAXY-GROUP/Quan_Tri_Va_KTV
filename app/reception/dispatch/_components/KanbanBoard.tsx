@@ -204,10 +204,10 @@ interface KanbanBoardProps {
     onResumeClick?: (orderId: string, subOrder: any) => Promise<void> | void;
     /** Bấm "Huỷ" trên thẻ tạm dừng — huỷ ĐƠN CON của KTV đó, không đụng bill. */
     onCancelClick?: (orderId: string, subOrder: any) => void;
+    onFinishSequentialAfterA?: (orderId: string, itemId: string) => void;
     /** Bấm "Dừng" trên thẻ đang làm: tạm dừng thẳng, không qua popup chọn. */
     onPauseNow?: (orderId: string, subOrder: any) => Promise<void> | void;
     onAssignSequentialB?: (orderId: string, itemId: string, fromKtvId: string, toKtvId?: string) => void;
-    onFinishSequentialAfterA?: (orderId: string, itemId: string) => void;
     onCustomerRating?: (orderId: string, rating: number, guestId?: string) => void;
     onKtvCommentClick?: (order: PendingOrder, subOrder: SubOrder) => void;
     onOpenRatingLink?: (orderId: string) => void;
@@ -294,7 +294,7 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onFinishSequentialAfterA, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
     // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
     const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
 
@@ -663,6 +663,14 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                 const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
                                                 onOpenDetail(targetId, subOrder.id, subOrder.dispatchStatus);
                                             }}
+                                            role="group"
+                                            tabIndex={0}
+                                            aria-label={`Đơn ${displayBookingCode(order.billCode)}; nhấn Enter để mở điều phối`}
+                                            onKeyDown={(event) => {
+                                                if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+                                                event.preventDefault();
+                                                onOpenDetail(subOrder.originalOrder?.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus);
+                                            }}
                                             onContextMenu={(e: React.MouseEvent) => {
                                                 if (onContextMenu) {
                                                     e.preventDefault();
@@ -707,9 +715,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-50 text-rose-600 border border-rose-100" title="Khách xuống sớm — quầy đã chốt đơn tại thời điểm tạm dừng. Dọn phòng xong là hoàn tất, không chờ đánh giá.">RA SỚM</span>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
+                                                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
                                                         <Clock size={11} className="text-indigo-400" /> ra ca {getEstimatedEndTime(order, services)}
-                                                    </div>
+                                                    </span>
                                                 </div>
 
                                                 <div className="flex items-start justify-between mb-4 gap-2">
@@ -1097,7 +1105,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                    ngoài thẻ. */
                                                                                 <div key={stIdx} onClick={e => { if (sequential) { e.stopPropagation(); onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        {sequential && <span className="text-[9px] font-black text-indigo-600">{Number(seg?.sequenceSlot) === 2 ? 'B · Làm tiếp' : 'A · Làm trước'}</span>}
+                                                                                        {sequential && <span className="text-[9px] font-black text-indigo-600">{Number(seg?.sequenceSlot) === 2 ? 'Lượt 2' : 'Lượt 1'}</span>}
                                                                                         {sequential && !voided && <span className={`text-[8px] font-bold ${seg?.actualEndTime ? 'text-emerald-700' : seg?.actualStartTime ? 'text-sky-700' : 'text-amber-700'}`}>{seg?.actualEndTime ? 'Đã xong' : seg?.actualStartTime ? s.status === 'PAUSED' ? 'Tạm dừng' : 'Đang làm' : 'Chờ bắt đầu'}</span>}
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
@@ -1537,15 +1545,6 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             );
                                                         }
                                                         return null;
-                                                    })()}
-                                                    {(() => {
-                                                        const item = services.find((s: any) => isTwoSlotSequential(s.options) && ['PREPARING','READY','IN_PROGRESS'].includes(s.status));
-                                                        return item ? <>
-                                                          {onFinishSequentialAfterA && <button className="rounded-xl bg-amber-600 px-3 py-2 text-[11px] font-black text-white"
-                                                            onClick={e => { e.stopPropagation(); onFinishSequentialAfterA(subOrder.bookingId, item.id); }}>Kết thúc</button>}
-                                                          {onCancelClick && <button className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-black text-rose-600"
-                                                            onClick={e => { e.stopPropagation(); onCancelClick(subOrder.bookingId, subOrder); }}>Huỷ</button>}
-                                                        </> : null;
                                                     })()}
                                                     {subOrder.dispatchStatus === 'IN_PROGRESS' && onPauseClick && (() => {
                                                         const isPaused = services.some((s: any) => s.status === 'PAUSED');

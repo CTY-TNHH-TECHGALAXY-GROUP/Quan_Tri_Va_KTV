@@ -13,6 +13,7 @@ require.cache[modalPath] = { id: modalPath, filename: modalPath, loaded: true, e
 const reminderPath = require.resolve('../app/ktv/dashboard/_components/CheckInReminder');
 require.cache[reminderPath] = { id: reminderPath, filename: reminderPath, loaded: true, exports: { CheckInReminder: () => null } };
 const { ScreenDashboard } = require('../app/ktv/dashboard/_screens/ScreenDashboard');
+const { sameRoomSequentialB } = require('../lib/ktvUtils');
 const { ToastProvider } = require('../components/ui/Toast');
 const SequentialDemo = require('../app/reception/dispatch/sequential-demo/SequentialDemo').default;
 const at = time => Date.parse(`2026-09-26T${time}:00+07:00`);
@@ -27,16 +28,18 @@ function fixture() {
 function renderAccount(service, id) {
   return renderToStaticMarkup(React.createElement(AccountDemo, { service, employeeId: id, employeeName: id, now: at('11:00'), onStamp() {} }));
 }
-function renderTimer(service, id, Screen = ScreenTimer) {
+function renderTimer(service, id, Screen = ScreenTimer, acceptedAt = '2026-09-26T03:00:00Z') {
   return renderToStaticMarkup(React.createElement(ToastProvider, null, React.createElement(Screen, { logic: {
     ktvId: id, activeSegmentIndex: 0, timeRemaining: 900, prepTimeRemaining: 0,
     prepProcedure: [], checklist: [], turnData: {}, pendingHandovers: [],
-    booking: { id: 'order', status: 'PREPARING', acceptedAt: '2026-09-26T03:00:00Z', assignedItemId: 'item', assignedItemIds: ['item'], dispatchStartTime: '10:00', timeStart: '10:00',
+    booking: { id: 'order', status: 'PREPARING', acceptedAt, assignedItemId: 'item', assignedItemIds: ['item'], dispatchStartTime: '10:00', timeStart: '10:00',
       BookingItems: [{ ...service, service_name: service.serviceName, segments: service.staffList.flatMap(row => row.segments) }] },
     settings: {},
   } })));
 }
 let service = fixture().services[0];
+assert.equal(sameRoomSequentialB({ options: service.options, segments: service.staffList.flatMap(row => row.segments) }, 'DEMO-B'), true,
+  'B cùng phòng bỏ chuẩn bị kể cả khi A chưa bắt đầu');
 const aHtml = renderAccount(service, 'DEMO-A');
 const bHtml = renderAccount(service, 'DEMO-B');
 assert.ok(aHtml.includes('10:00') && aHtml.includes('10:30'));
@@ -51,6 +54,12 @@ assert.ok(timerA.includes('10:00') && timerA.includes('10:30') && !timerA.includ
 const dashboardB = renderTimer(service, 'DEMO-B', ScreenDashboard);
 assert.ok(dashboardB.includes('10:45') && dashboardB.includes('11:00'));
 assert.ok(!dashboardB.includes('10:00') && !dashboardB.includes('10:30'));
+const awaitingB = fixture().services[0];
+awaitingB.status = 'IN_PROGRESS';
+awaitingB.staffList[0].segments[0].actualStartTime = '2026-09-26T03:00:00Z';
+const acceptB = renderTimer(awaitingB, 'DEMO-B', ScreenDashboard, null);
+assert.ok(acceptB.includes('NHẬN ĐƠN'), 'B phải xác nhận riêng dù item đã IN_PROGRESS bởi A');
+assert.ok(!acceptB.includes('Xác nhận chuẩn bị xong'), 'B cùng phòng không vào trang chuẩn bị');
 console.log('PASS 1/5: Tài khoản, ScreenDashboard và ScreenTimer thật lấy giờ assign riêng A 10:00/B 10:45');
 
 stampDemoAccount(service, 'DEMO-A', 'actualStartTime', at('10:05'));

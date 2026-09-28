@@ -483,7 +483,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
 
                   {photo.value && (
                     <button
-                      type="button"
+                      type="button" aria-label={`Chụp lại ${photo.label.toLowerCase()}`}
                       onClick={() => photo.setter(null)}
                       className="text-[10px] font-bold text-rose-600 hover:underline"
                     >
@@ -508,7 +508,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
                       <Camera size={16} />
                       Chụp ảnh
                       <input
-                        type="file"
+                        type="file" aria-label={`Chụp ${photo.label.toLowerCase()}`}
                         accept="image/*"
                         capture="environment"
                         className="absolute inset-0 opacity-0 cursor-pointer"
@@ -520,7 +520,7 @@ export function ScreenTimer({ logic }: { logic: any }) {
                     <label className="relative px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">
                       Tải ảnh
                       <input
-                        type="file"
+                        type="file" aria-label={`Tải ${photo.label.toLowerCase()}`}
                         accept="image/*"
                         className="absolute inset-0 opacity-0 cursor-pointer"
                         onChange={photo.onChange}

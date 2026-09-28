@@ -7,7 +7,9 @@ WITH required(signature) AS (VALUES
  ('dispatch_sequential_lifecycle_atomic(text,text,jsonb,jsonb,text,jsonb,bigint)'),
  ('ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text)'),
  ('ktv_start_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text,text,timestamp with time zone,jsonb)'),
- ('ktv_release_work_atomic(text,text,jsonb,jsonb)')
+ ('ktv_release_work_atomic(text,text,jsonb,jsonb)'),
+ ('dispatch_commit_form(text,text,jsonb,jsonb)'),
+ ('turn_queue_apply_edits(date,text,jsonb)')
 ), functions AS (SELECT signature,to_regprocedure('public.' || signature) AS oid FROM required)
 SELECT f.signature,f.oid IS NOT NULL AS exists_after_migration,p.prosecdef AS security_definer,p.proconfig,
  CASE WHEN f.oid IS NOT NULL THEN has_function_privilege('service_role',f.oid,'EXECUTE') ELSE false END AS service_can_execute,

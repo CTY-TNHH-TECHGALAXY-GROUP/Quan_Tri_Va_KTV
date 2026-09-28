@@ -46,6 +46,8 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     const allowedAt = target.seg.plannedStartAt || `${serviceDay}T${target.seg.startTime}:00+07:00`;
     let assignedB = false;
     if (Number(target.seg.sequenceSlot) === 2 && isTwoSlotSequential(target.item.options)) {
+        const first = target.segments.find((seg: any) => Number(seg.sequenceSlot) === 1 && seg.voided !== true && seg.voided !== 'true');
+        if (!first?.actualEndTime) return fail('Chờ KTV lượt 1 hoàn thành trước khi bắt đầu lượt 2.');
         const { data, error } = await supabase.from('KtvAssignments').select('id')
             .eq('booking_id', bookingId).eq('booking_item_id', target.item.id).eq('segment_id', target.seg.id)
             .eq('employee_id', technicianCode).eq('status', 'ACTIVE').maybeSingle();
@@ -121,7 +123,12 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
             p_item_snapshots: snapshots, p_guest_ratings: booking.BookingGuests || [], p_updates: updates,
             p_employee_id: technicianCode, p_target_segment_id: target.seg.id, p_started_at: now, p_turn_patch: turnPatch,
         });
-        if (error || !data?.success || !data.booking) return fail('Chưa xác nhận được lưu bắt đầu. Tải lại trước khi thử lại.');
+        if (error) {
+            console.error('[KTV START] Atomic commit failed', { bookingId, technicianCode, segmentId: target.seg.id, error });
+            if (error.message?.includes('Ca trước chưa bàn giao')) return fail('Ca trước chưa bàn giao xong; hoàn tất bàn giao hoặc nhờ quầy kiểm tra phân công.');
+            return fail('Chưa xác nhận được lưu bắt đầu. Tải lại trước khi thử lại.');
+        }
+        if (!data?.success || !data.booking) return fail('Chưa xác nhận được lưu bắt đầu. Tải lại trước khi thử lại.');
         return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: data.booking };
     } catch (error: any) {
         // Once an RPC was attempted, a network timeout cannot prove rollback. Do not delete referenced proof photos.

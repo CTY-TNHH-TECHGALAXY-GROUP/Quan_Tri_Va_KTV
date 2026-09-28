@@ -1,5 +1,5 @@
 'use client';
-import { isKtvDisplaySegment, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
+import { isKtvDisplaySegment, ktvServiceName, parseKtvSegments, ktvAssignedMinutes, sameRoomSequentialB } from '@/lib/ktvUtils';
 
 import Link from 'next/link';
 import React, { useState, Suspense } from 'react';
@@ -301,7 +301,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   // tiết đơn, không thấy dòng "khách đang ở sẵn trong phòng".
   // Với họ, căn cứ duy nhất là chặng CỦA CHÍNH HỌ đã bắt đầu hay chưa.
   const vaoThayChuaBatDau = laDonVaoThay && !currentSeg?.actualStartTime;
-  const alreadyStarted = vaoThayChuaBatDau
+  const luotBChuaBatDau = sameRoomSequentialB(item, logic.ktvId) && !currentSeg?.actualStartTime;
+  const alreadyStarted = vaoThayChuaBatDau || luotBChuaBatDau
     ? false
     : (ktvSegments.some((s: any) => s.actualStartTime)
         || STARTED_STATUSES.includes(String(item?.status || '').toUpperCase()));

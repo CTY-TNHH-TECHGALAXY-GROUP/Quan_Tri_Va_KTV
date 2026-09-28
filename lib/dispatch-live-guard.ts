@@ -6,7 +6,8 @@ export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[],
     if (isTwoSlotSequential(dbOptions)) {
         if (!isTwoSlotSequential(incomingOptions) || dbSegments.length !== incomingSegments.length || dbSegments.some(current => {
             const incoming = incomingSegments.find(s => s.id === current.id);
-            const editableB = Number(current.sequenceSlot) === 2 && current.voided !== true && !current.actualStartTime
+            const editableB = [1,2].includes(Number(current.sequenceSlot)) && current.voided !== true && current.voided !== 'true' && !current.actualStartTime && !current.actualEndTime
+                && !dbSegments.some(s => Number(s.sequenceSlot) > Number(current.sequenceSlot) && s.voided !== true && s.voided !== 'true' && s.actualStartTime)
                 && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(dbStatus || '');
             const keys = ['ktvId', 'sequenceSlot', 'roomId', 'bedId', 'actualStartTime', 'actualEndTime', 'voided',
                 ...(editableB ? [] : ['startTime', 'duration', 'endTime'])];

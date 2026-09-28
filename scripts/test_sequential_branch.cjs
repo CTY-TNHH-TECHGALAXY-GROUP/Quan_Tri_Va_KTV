@@ -10,6 +10,9 @@ const tests = [
   'test_sequential_inline_ui.cjs', 'test_sequential_midnight_metadata.cjs',
   'test_sequential_notifications.cjs', 'test_sequential_deep_fixes.cjs',
   'test_sequential_lifecycle.cjs', 'test_sequential_status_entrypoints.cjs',
+  'test_ktv_room_procedures.cjs', 'test_dispatch_staff_row.cjs',
+  'test_dispatch_form_state.cjs', 'test_dispatch_form_sql.cjs',
+  'test_dispatch_commit_sql.cjs', 'test_dispatch_confirm_ux.cjs', 'test_sequential_no_overlap_proposal.cjs',
 ];
 for (const name of tests) {
   const result = spawnSync(process.execPath, [resolve(__dirname, name)], { cwd: root, encoding: 'utf8' });

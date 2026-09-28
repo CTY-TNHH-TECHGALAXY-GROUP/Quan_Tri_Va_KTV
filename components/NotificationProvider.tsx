@@ -582,7 +582,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                                     onClose={() => markAsRead(n.id)}
                                     onRedirect={() => {
                                         const t = (n.type || '').toUpperCase();
-                                        if (t === 'KTV_NEW_ORDER') {
+                                        if (t === 'KTV_NEW_ORDER' || t === 'KTV_ORDER_CHANGED') {
                                             if (ktvScreen === 'REVIEW') {
                                                 alert('Vui lòng đánh giá tính cách khách hàng trước khi chuyển ca!');
                                             } else if (ktvScreen === 'HANDOVER' || ktvScreen === 'REWARD') {

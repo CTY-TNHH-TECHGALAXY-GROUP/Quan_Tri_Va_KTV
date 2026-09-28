@@ -19,14 +19,19 @@ async function main() {
     ALTER TABLE "BookingItems" ADD COLUMN "pauseStart" timestamptz, ADD COLUMN price numeric DEFAULT 100, ADD COLUMN quantity numeric DEFAULT 1;
     ALTER TABLE "Services" ADD COLUMN duration numeric DEFAULT 90;
     ALTER TABLE "Staff" ADD COLUMN work_type text DEFAULT 'TYPE_A';
-    ALTER TABLE "TurnLedger" ADD COLUMN is_punished boolean DEFAULT false;`);
+    ALTER TABLE "TurnLedger" ADD COLUMN is_punished boolean DEFAULT false;
+    ALTER TABLE "TurnQueue" ADD COLUMN id uuid DEFAULT gen_random_uuid(), ADD COLUMN manual_adjustment integer DEFAULT 0;`);
   const migrations = 'supabase/migrations/';
   const unwrap = read(migrations + '20260914120000_auto_complete_feedback_after_5m.sql');
   const start = unwrap.indexOf('CREATE OR REPLACE FUNCTION jsonb_unwrap_string(');
   await db.exec(unwrap.slice(start, unwrap.indexOf('$$;', start) + 3));
   for (const migration of ['20260925120000_live_sequential_handoff.sql',
     '20260926120000_dispatch_edit_history.sql','20260926140000_ktv_finish_service_atomic.sql',
-    '20260927120000_sequential_operational_consistency.sql','20260927150000_sequential_scoped_lifecycle.sql']) {
+    '20260927120000_sequential_operational_consistency.sql','20260927150000_sequential_scoped_lifecycle.sql',
+    '20260927180000_unassign_unstarted_dispatch_staff.sql','20260927190000_sync_unstarted_dispatch_plan.sql',
+    '20260927200000_dispatch_form_commit.sql','20260927210000_turn_queue_edits.sql',
+    '20260927220000_extend_running_sequential_a.sql','20260927230000_adjust_running_sequential_duration.sql',
+    '20260928010000_start_after_completed_queue.sql']) {
     await db.exec(read(migrations + migration));
   }
   const assignmentSchema = read(migrations + '20260502150000_create_ktv_assignments.sql');
@@ -43,14 +48,14 @@ async function main() {
   }
   await db.exec(read('_plans/sequential_migration_preflight_20260927.sql'));
   const postChecks = await db.exec(read('_plans/sequential_migration_postcheck_20260927.sql'));
-  assert.equal(postChecks[0].rows.length,9);
+  assert.equal(postChecks[0].rows.length,11);
   for (const result of postChecks[0].rows) {
     assert.equal(result.exists_after_migration,true);assert.equal(result.service_can_execute,true);
     assert.equal(result.client_can_execute,false);assert.equal(result.anon_can_execute,false);
   }
   assert.ok(postChecks[1].rows.every(trigger=>trigger.enabled_mode==='O'));
   assert.equal(postChecks[2].rows.length,0);
-  console.log('PASS all five migrations in order with their real guard/audit triggers, RPC access and ACTIVE uniqueness constraint');
+  console.log('PASS lifecycle migrations in order with their real guard/audit triggers, all 11 RPC access checks and ACTIVE uniqueness constraint');
   const at = minute => `2026-09-26T03:${String(minute).padStart(2,'0')}:00Z`;
   const row = async id => (await db.query('SELECT * FROM "BookingItems" WHERE id=$1', [id])).rows[0];
   const seed = async (key, aDone = false, bStarted = false, bAssigned = true) => {

@@ -5,8 +5,8 @@ require('tsconfig-paths').register({ baseUrl: join(__dirname, '..'), paths: { '@
 const { isLiveKtvSegment, isKtvDisplaySegment } = require('../lib/ktvUtils');
 const { handleStartTimer } = require('../app/api/ktv/booking/_handlers/handleStartTimer');
 
-const segments = [
-  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', duration: 30 },
+let segments = [
+  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', duration: 30, actualStartTime: '2026-09-26T03:00:00Z', actualEndTime: '2026-09-26T03:30:00Z' },
   { id: 'old-b', ktvId: 'B', sequenceSlot: 2, startTime: '10:30', duration: 30, voided: true },
   { id: 'old-c', ktvId: 'C', sequenceSlot: 2, startTime: '10:40', duration: 20, voided: true },
   { id: 'new-b', ktvId: 'B', sequenceSlot: 2, startTime: '10:50', duration: 10 },
@@ -22,6 +22,7 @@ assert.equal(isKtvDisplaySegment({...cancelled,note:'CHANGED'},'b'),false);
 assert.equal(isKtvDisplaySegment({...cancelled,actualStartTime:null},'b'),false);
 assert.equal(isKtvDisplaySegment(cancelled,'A'),false);
 let saved;
+let expectedTarget = 'new-b';
 function query(table) {
   let update;
   const q = {
@@ -38,7 +39,7 @@ function query(table) {
 }
 const supabase = { from: query, async rpc(name,args) {
   assert.equal(name,'ktv_start_service_atomic');
-  assert.equal(args.p_target_segment_id,'new-b');
+  assert.equal(args.p_target_segment_id,expectedTarget);
   saved=JSON.parse(args.p_updates.find(p=>p.id==='item').segments);
   return {data:{success:true,booking:{id:'order',status:'IN_PROGRESS'}}};
 }, storage: { from: () => ({
@@ -60,5 +61,13 @@ const proof = 'data:image/jpeg;base64,/9j/';
   const removed = await handleStartTimer({ ...ctx, technicianCode: 'C' });
   assert.equal(removed.earlyResponse.status, 409);
   assert.equal(saved, undefined);
-  console.log('PASS: B → C → B START targets current B, keeps history/A intact, excludes old duration; replaced C cannot start.');
+  segments = [...segments.slice(0, 3), { ...segments[3], voided: true },
+    { id: 'new-c', ktvId: 'C', sequenceSlot: 2, startTime: '11:00', duration: 30 }];
+  expectedTarget = 'new-c';
+  const replacement = await handleStartTimer({ ...ctx, technicianCode: 'C' });
+  assert.equal(replacement.earlyResponse, undefined);
+  assert.deepEqual(saved.slice(0, 4), segments.slice(0, 4));
+  assert.ok(saved[4].actualStartTime);
+  assert.equal(saved.filter(s => isLiveKtvSegment(s, 'C')).reduce((n, s) => n + s.duration, 0), 30);
+  console.log('PASS: A starts, B is replaced by C; only active C can START with its own 30 minutes and photos.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

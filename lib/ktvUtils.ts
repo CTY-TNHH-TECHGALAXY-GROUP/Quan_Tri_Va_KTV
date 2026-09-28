@@ -39,6 +39,21 @@ export function isKtvDisplaySegment(seg: any, code: string | undefined | null): 
         && !!seg.actualStartTime && !!seg.actualEndTime && ktvMatchesSeg(seg.ktvId, code));
 }
 
+/** B shares A's room; A handles preparation even when B accepts first. */
+export function sameRoomSequentialB(item: any, code: string | undefined | null): boolean {
+    if (parseKtvOptions(item?.options).sequentialSlots != 2) return false;
+    const segments = parseKtvSegments(item?.segments);
+    const a = segments.find(s => Number(s.sequenceSlot) === 1 && s.roomId && s.voided !== true && s.voided !== 'true');
+    const b = segments.find(s => Number(s.sequenceSlot) === 2 && isLiveKtvSegment(s, code) && !s.actualStartTime);
+    return !!a && !!b && a.roomId === b.roomId;
+}
+
+/** A replacement slot keeps its full minutes until that KTV actually starts. */
+export function unstartedSequentialSeconds(item: any, segment: any, durationMinutes: number): number | null {
+    return parseKtvOptions(item?.options).sequentialSlots == 2 && segment && !segment.actualStartTime
+        ? durationMinutes * 60 : null;
+}
+
 /** Normalize legacy JSON options without leaking malformed data into UI. */
 export function parseKtvOptions(raw: any): Record<string, any> {
     try {
@@ -52,7 +67,8 @@ export function ktvServiceName(item: any, code: string | undefined | null): stri
     const opts = parseKtvOptions(item?.options);
     const names = parseKtvOptions(opts.serviceNamesForKtvs);
     const own = ktvMetadataValue(names, code || '');
-    return String(own || opts.displayName || opts._generatedDisplayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
+    return String(own || opts.displayName || opts._generatedDisplayName || item?.base_service_name || item?.service_name || 'Dịch vụ')
+        .replace(/\s*\(\s*\d+\s*p\s*\)/gi, '').trim() || 'Dịch vụ';
 }
 
 /** UI tolerates legacy encoding; mutation handlers must reject invalid shapes. */

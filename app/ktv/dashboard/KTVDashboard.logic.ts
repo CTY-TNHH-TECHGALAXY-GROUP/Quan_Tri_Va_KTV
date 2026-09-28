@@ -2,7 +2,7 @@ import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment
 import { employeeIsPaused } from '@/lib/sequential-lifecycle';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ktvMatchesSeg, isLiveKtvSegment, isKtvDisplaySegment, ktvServiceName, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
+import { ktvMatchesSeg, isLiveKtvSegment, isKtvDisplaySegment, ktvServiceName, parseKtvOptions, parseKtvSegments, sameRoomSequentialB, unstartedSequentialSeconds } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
@@ -80,8 +80,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [showRoomIssueModal, setShowRoomIssueModal] = useState(false);
 
     // Derive procedure labels from booking data (fallback to defaults)
-    const prepProcedure: string[] = booking?.roomPrepProcedure || DEFAULT_PREP_PROCEDURE;
-    const cleanProcedure: string[] = booking?.roomCleanProcedure || DEFAULT_CLEAN_PROCEDURE;
+    const prepProcedure: string[] = Array.isArray(booking?.roomPrepProcedure) && booking.roomPrepProcedure.length > 0
+        ? booking.roomPrepProcedure : DEFAULT_PREP_PROCEDURE;
+    const cleanProcedure: string[] = Array.isArray(booking?.roomCleanProcedure) && booking.roomCleanProcedure.length > 0
+        ? booking.roomCleanProcedure : DEFAULT_CLEAN_PROCEDURE;
 
     // === STATE SCREEN: HANDOVER (Dọn phòng) ===
     const [handoverPhotosBase64, setHandoverPhotosBase64] = useState<Record<string, string>>({});
@@ -722,6 +724,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             if (allFeedback) currentStatus = 'FEEDBACK';
             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
+            else if (isAnyStarted && (['DONE', 'COMPLETED'].includes(String(assignedItem?.status))
+                || ['DONE', 'COMPLETED'].includes(String(booking.status)))) currentStatus = 'CLEANING';
             else if (isAnyStarted) {
                 const isAnyPaused = allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId));
                 // ⚠️ FIX: Nếu KTV này ĐÃ BẮT ĐẦU nhưng CHƯA XONG (chưa có actualEndTime)
@@ -762,7 +766,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // hồ chạy mãi tới khi F5, luồng không đi tiếp được.
             // Nhận diện qua endedByCounter() — KHÔNG kiểm bằng một chuỗi note, vì bản
             // trước chỉ nhận 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ vẫn bị chặn.
-            const endedByReception = allMySegsForStatus.some(endedByCounter);
+            const endedByReception = allMySegsForStatus.some(endedByCounter)
+                || ((['DONE', 'COMPLETED', 'CANCELLED'].includes(String(assignedItem?.status))
+                    || ['DONE', 'COMPLETED', 'CANCELLED'].includes(String(booking.status)))
+                    && allMySegsForStatus.some((seg: any) => !!seg.actualStartTime));
             if (isTimerRunningRef.current && !endedByReception && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
                 console.warn(`🛡️ [ScreenEngine] Timer đang chạy nhưng status=${currentStatus} → ép giữ IN_PROGRESS`);
                 currentStatus = 'IN_PROGRESS';
@@ -786,7 +793,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         console.log("📟 [ScreenEngine] Final Check:", { currentStatus, itemStatus: assignedItem?.status, bookingStatus: booking.status, currentScreen, statusLevel });
 
         // 🚀 Forward-only Guard: Không lùi UI về PREPARING/READY do lỗi polling
-        if (statusLevel <= 1 && ['TIMER', 'REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
+        if (statusLevel <= 1 && !['DONE', 'COMPLETED', 'CANCELLED'].includes(String(assignedItem?.status))
+            && !['DONE', 'COMPLETED', 'CANCELLED'].includes(String(booking.status))
+            && ['TIMER', 'REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
             if (currentScreen !== 'TIMER' || !isPreppingRef.current) {
                 console.log(`🚫 [ScreenEngine] Chặn kéo ngược từ ${currentScreen} về ${currentStatus}`);
                 return;
@@ -823,7 +832,24 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
         }
 
-        if (currentStatus === 'READY' && currentScreen === 'DASHBOARD') {
+        if ((['DONE', 'COMPLETED'].includes(String(assignedItem?.status))
+            || ['DONE', 'COMPLETED'].includes(String(booking.status)))
+            && !allMySegsForStatus.some((seg: any) => !!seg.actualStartTime)
+            && !['REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
+            setBooking(null);
+            setScreen('DASHBOARD');
+            setIsTimerRunning(false);
+            return;
+        }
+
+        if (currentStatus === 'PREPARING' && currentScreen === 'DASHBOARD' && booking.acceptedAt && sameRoomSequentialB(assignedItem, ktvId)) {
+            const b = allMySegsForStatus.find((seg: any) => Number(seg.sequenceSlot) === 2 && !seg.actualStartTime);
+            setTimeRemaining((Number(b?.duration) || Number(assignedItem?.duration) || 60) * 60);
+            setPrepTimeRemaining(0);
+            setIsPrepping(false);
+            setScreen('TIMER');
+        }
+        else if (currentStatus === 'READY' && currentScreen === 'DASHBOARD') {
             // Đơn VÀO THAY thì BỎ HẲN thời gian chuẩn bị (chốt 10/09/2026).
             // Khoảng đó dành cho việc set up phòng — vệ sinh máy lạnh, chuẩn bị
             // tinh dầu, setup giường, khăn nóng. Người vào thay không phải làm gì
@@ -833,7 +859,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             );
 
             const parsed = Number(settings.ktv_setup_duration_minutes);
-            const setupMs = laDonVaoThay ? 0 : (!isNaN(parsed) ? parsed : 0) * 60;
+            const setupMs = laDonVaoThay || sameRoomSequentialB(assignedItem, ktvId) ? 0 : (!isNaN(parsed) ? parsed : 0) * 60;
             setPrepTimeRemaining(setupMs);
             // ⚠️ Chỉ bật cờ khi THẬT SỰ có giây để đếm. Bật với 0 giây thì vòng
             // đếm ngược không chạy (điều kiện là `> 0`) nên không ai tắt nó, màn
@@ -1071,6 +1097,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     // Ưu tiên fetch theo ID đơn vừa làm để tránh bị mất dữ liệu khi đã RELEASE_KTV
                     url = `/api/ktv/booking?bookingId=${postServiceBookingIdRef.current}&techCode=${ktvId}`;
                     console.log("🔍 [KTV] Persisting booking fetch for post-service screen:", postServiceBookingIdRef.current);
+                } else if (screenRef.current === 'TIMER' && isTimerRunningRef.current && bookingRef.current?.id) {
+                    // Quầy có thể nhả TurnQueue ngay khi hoàn tất/huỷ. Đọc chính đơn đang làm
+                    // để nhận trạng thái cuối, thay vì nhận null rồi giữ timer cũ tới F5.
+                    url = `/api/ktv/booking?bookingId=${bookingRef.current.id}&techCode=${ktvId}`;
                 }
                 // (Đã gộp vào logic ở trên)
 
@@ -1184,6 +1214,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             
                             if (allFeedback) currentStatus = 'FEEDBACK';
                             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
+                            else if (isAnyStarted && (['DONE', 'COMPLETED'].includes(String(assignedItem?.status))
+                                || ['DONE', 'COMPLETED'].includes(String(res.data.status)))) currentStatus = 'CLEANING';
                             else if (isAnyStarted) {
                                 const isAnyPaused = allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId));
                                 if (isAnyPaused) {
@@ -1283,6 +1315,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             // Cập nhật thời gian dựa trên chặng hiện tại
                             const currentSecs = currentSegDuration * 60;
                             let tStart = assignedItem?.timeStart || res.data.timeStart;
+
+                            // A/B share item.timeStart, but an unstarted replacement has its own full slot.
+                            if (unstartedSequentialSeconds(assignedItem, currentSeg, currentSegDuration) !== null) {
+                                timerStartMsRef.current = 0;
+                                timerTotalSecsRef.current = currentSecs;
+                                setTimeRemaining(currentSecs);
+                                return res.data;
+                            }
                             
                             if (currentStatus === 'IN_PROGRESS' || currentStatus === 'PAUSED') {
                                 // Nếu đã override chặng thủ công, KHÔNG ghi đè timer
@@ -1513,6 +1553,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         // Polling fallback — skip during post-service to prevent order 2 from drifting into order 1 cleanup
         fetchBookingRef.current = fetchBooking;
+
+        const refreshOnAcknowledge = () => { void fetchBooking(); };
+        window.addEventListener('app:refresh', refreshOnAcknowledge);
         
         const intervalId = setInterval(() => {
             if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
@@ -1524,6 +1567,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('app:refresh', refreshOnAcknowledge);
             clearInterval(intervalId);
             if (realtimeFetchTimerRef.current) clearTimeout(realtimeFetchTimerRef.current);
         };
@@ -1719,6 +1763,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             const currentSecs = currentSegDuration * 60;
+
+            if (unstartedSequentialSeconds(assignedItem, allMySegs[calculatedSegIdx], currentSegDuration) !== null) {
+                timerStartMsRef.current = 0;
+                timerTotalSecsRef.current = currentSecs;
+                setTimeRemaining(currentSecs);
+                return;
+            }
             
             // 🔒 GUARD: Chỉ sync khi có actualStartTime thực sự từ DB
             // Nếu chỉ có tStart (giờ đặt lịch), KHÔNG dùng để tính elapsed → sẽ ra sai
@@ -1984,9 +2035,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             setTimeRemaining(initDuration * 60);
             const parsed = Number(settings.ktv_setup_duration_minutes);
-            const setupMs = !isNaN(parsed) ? parsed : 0;
-            setPrepTimeRemaining(setupMs * 60);
-            setIsPrepping(true);
+            const setupMs = sameRoomSequentialB(assignedItem, ktvId) || allMySegs.some((seg: any) => seg.note === 'TAKEOVER')
+                ? 0 : (!isNaN(parsed) ? parsed : 0) * 60;
+            setPrepTimeRemaining(setupMs);
+            setIsPrepping(setupMs > 0);
             setScreen('TIMER');
         } else {
             addToast('Lỗi xác nhận chuẩn bị: ' + (res.error || 'Unknown error'), 'error');

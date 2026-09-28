@@ -160,6 +160,12 @@ async function main() {
   startRows[0].segments[0].actualStartTime=start;
   assert.equal((await startHandler(ctx)).bookingPersisted,true);
   assert.equal(startCommits.length,1);assert.equal(startUploads,2);
+  startRows[0].options={sequentialSlots:2};
+  startRows[0].segments.push({id:'slot-b',ktvId:'B',sequenceSlot:2,roomId:'R',bedId:'X',startTime:'10:30',endTime:'11:00',duration:30});
+  const earlyB=await startHandler({...ctx,technicianCode:'B',allItemIdsForThisKTV:['startone'],body:{...ctx.body,targetSegmentId:'slot-b'}});
+  assert.equal(earlyB.earlyResponse.body.success,false);
+  assert.match(earlyB.earlyResponse.body.error,/lượt 1 hoàn thành/);
+  assert.equal(startCommits.length,1);assert.equal(startUploads,2);
   console.log('PASS 3/5 atomic START rollback/commit + RELEASE error + actual FINISH does not fabricate or complete independent child');
 
   // The authoritative service day rejects arbitrary B dates, including early dispatch requests.

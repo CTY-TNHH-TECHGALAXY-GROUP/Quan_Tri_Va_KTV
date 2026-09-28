@@ -19,6 +19,15 @@ const migrations = [
   '20260926140000_ktv_finish_service_atomic.sql',
   '20260927120000_sequential_operational_consistency.sql',
   '20260927150000_sequential_scoped_lifecycle.sql',
+  '20260927180000_unassign_unstarted_dispatch_staff.sql',
+  '20260927190000_sync_unstarted_dispatch_plan.sql',
+  '20260927200000_dispatch_form_commit.sql',
+  '20260927210000_turn_queue_edits.sql',
+  '20260927220000_extend_running_sequential_a.sql',
+  '20260927230000_adjust_running_sequential_duration.sql',
+  '20260928010000_start_after_completed_queue.sql',
+  '20260928020000_prevent_live_assignment_overlap.sql',
+  '20260928030000_adjust_running_sequential_pair.sql',
 ];
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const accountsFile = '/private/tmp/sequential-test-accounts-' + expectedRef + '.json';
@@ -53,13 +62,16 @@ async function main() {
         console.log('Applied in transaction: ' + file);
       }
       const checks = await db.query(read('_plans/sequential_migration_postcheck_20260927.sql'));
-      assert.equal(checks[0].rows.length, 9);
+      assert.equal(checks[0].rows.length, 11);
       assert.ok(checks[0].rows.every(r => r.exists_after_migration && r.service_can_execute && !r.client_can_execute && !r.anon_can_execute));
       assert.ok(checks[1].rows.every(r => r.enabled_mode === 'O'));
       assert.equal(checks[2].rows.length, 0);
+      const pair = await db.query("SELECT has_function_privilege('service_role','dispatch_adjust_running_sequential_pair(text,text,bigint,integer,text,integer,jsonb,jsonb)','EXECUTE') AS server_ok, has_function_privilege('authenticated','dispatch_adjust_running_sequential_pair(text,text,bigint,integer,text,integer,jsonb,jsonb)','EXECUTE') AS client_ok");
+      assert.equal(pair.rows[0].server_ok, true);
+      assert.equal(pair.rows[0].client_ok, false);
       await db.query("NOTIFY pgrst, 'reload schema'");
       await db.query('COMMIT');
-      console.log('PASS committed migrations and postcheck: 9 RPC, 2 triggers, no duplicate ACTIVE');
+      console.log('PASS committed migrations and postcheck: 12 RPC, 2 triggers, no duplicate ACTIVE');
     }
 
     if (process.argv.includes('--seed')) {
@@ -93,6 +105,13 @@ async function main() {
       }
       await db.query('COMMIT');
       const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+      const buckets = await admin.storage.listBuckets();
+      if (buckets.error) throw buckets.error;
+      if (!buckets.data.some(bucket => bucket.id === 'attendance')) {
+        const created = await admin.storage.createBucket('attendance', { public: true });
+        if (created.error) throw created.error;
+      }
+      console.log('PASS attendance bucket exists for start/handover photos');
       const listed = await admin.auth.admin.listUsers({ perPage: 1000 });
       if (listed.error) throw listed.error;
       for (const a of accounts) {

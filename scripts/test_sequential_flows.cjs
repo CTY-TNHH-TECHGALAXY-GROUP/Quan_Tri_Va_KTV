@@ -190,7 +190,7 @@ try {
   name('DEMO-C', 'Tên C riêng'); send();
   const aBefore = structuredClone(segmentOf(row('DEMO-A')));
   changeInput(elements(card.tree, e => e.props['aria-label'] === 'Giờ bắt đầu B')[0], '10:50');
-  click(card.tree, 'Lưu & điều phối B');
+  elements(card.tree, e => e.type === 'button' && e.props['aria-label']?.endsWith(' (A và B)'))[0].props.onClick(); flush();
   checkPlan('DEMO-C', '10:50', 30); assert.deepEqual(segmentOf(row('DEMO-A')), aBefore);
   const oldAccount = elements(app.tree, e => e.type === AccountDemo && e.props.employeeId === 'DEMO-C')[0];
   assignLiveB('DEMO-B', '2026-09-26T10:50', 30);
@@ -288,7 +288,7 @@ try {
   const preservedA=structuredClone(segmentOf(row('DEMO-A')));
   name('DEMO-A','Tên A cố định'); name('DEMO-B','Tên B lần 1');
   changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'10:45');
-  click(app.tree,'Lưu thông tin'); click(card.tree,'Lưu & điều phối B');
+  click(app.tree,'Lưu thông tin'); elements(card.tree, e => e.type === 'button' && e.props['aria-label']?.endsWith(' (A và B)'))[0].props.onClick(); flush();
   checkPlan('DEMO-B','10:45',30); assertName('DEMO-B','Tên B lần 1');
   assert.equal(segmentOf(row('DEMO-B')).plannedStartAt,'2026-09-26T03:45:00.000Z');
   const accountBHtml=renderToStaticMarkup(React.createElement(AccountDemo,{service:service(),employeeId:'DEMO-B',employeeName:'B',now}));
@@ -301,7 +301,7 @@ try {
   assertName('DEMO-B','Tên B lần 2'); assertName('DEMO-A','Tên A cố định');
   assert.deepEqual(segmentOf(row('DEMO-A')),preservedA);
   assert.equal(service().options.dispatchHistory.at(-1).action,'DISPATCH');
-  console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → lưu & điều phối → tài khoản B/reload → sửa lần 2; A giữ nguyên');
+  console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → icon lưu B → tài khoản B/reload → sửa lần 2; A giữ nguyên');
 
 
   reset(); chooseA(); minutes(0,30); send(); sequential(); assignLiveB();
