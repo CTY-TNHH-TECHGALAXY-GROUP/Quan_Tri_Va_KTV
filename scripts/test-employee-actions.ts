@@ -145,6 +145,9 @@ const {
   createGalleryItem,
   getGalleryGroup,
   isVipGalleryGroup,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
 } = require('../lib/galleryHelper');
 
 let passedCount = 0;
@@ -781,6 +784,59 @@ async function run() {
     // Restore original auth functions
     authModule.requireApiUser = originalRequireApiUser;
     authModule.requireBusinessUser = originalRequireBusinessUser;
+  });
+
+  // Case 35: kind: 'privilege', privilegeId, and skillId: 'privilege' / dacQuyen are validated and saved
+  await testCase("Gallery: kind: 'privilege', privilegeId, and skillId: 'privilege' / dacQuyen are supported", async () => {
+    const res = await updateStaffMember('STAFF_PRIV', {
+      galleryUrls: [
+        { url: 'https://cdn.example.com/priv1.jpg', kind: 'privilege', privilegeId: 'priv_gold' },
+        { url: 'https://cdn.example.com/priv2.jpg', kind: 'vip', skillId: 'dacQuyen' },
+      ],
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.gallery_urls?.length, 2);
+    assert.equal(capturedPayload?.gallery_urls[0].kind, 'privilege');
+    assert.equal(capturedPayload?.gallery_urls[0].privilegeId, 'priv_gold');
+    assert.equal(capturedPayload?.gallery_urls[1].kind, 'vip');
+    assert.equal(capturedPayload?.gallery_urls[1].skillId, 'dacQuyen');
+  });
+
+  // Case 36: hidden flag is preserved and toggleGalleryItemVisibility flips it correctly
+  await testCase("Gallery: hidden flag is preserved and toggleGalleryItemVisibility flips it", async () => {
+    const initialUrls = [
+      'https://cdn.example.com/item1.jpg',
+      { url: 'https://cdn.example.com/item2.jpg', kind: 'therapy', therapyId: 'hotStone', hidden: true },
+    ];
+    const toggled1 = toggleGalleryItemVisibility(initialUrls, 0);
+    assert.equal(isGalleryItemHidden(toggled1[0]), true);
+
+    const toggled2 = toggleGalleryItemVisibility(initialUrls, 1);
+    assert.equal(isGalleryItemHidden(toggled2[1]), false);
+
+    const res = await updateStaffMember('STAFF_HIDDEN', {
+      galleryUrls: toggled1,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.gallery_urls[0].hidden, true);
+  });
+
+  // Case 37: swapGalleryItems correctly reorders gallery array
+  await testCase("Gallery: swapGalleryItems swaps elements without modifying rest of array", async () => {
+    const list = ['A', 'B', 'C'];
+    const swapped = swapGalleryItems(list, 0, 2);
+    assert.deepEqual(swapped, ['C', 'B', 'A']);
+    // Out of bounds check
+    assert.deepEqual(swapGalleryItems(list, -1, 1), list);
+  });
+
+  // Case 38: privilegeUrl parameter is mapped to feature_flags.privilege_url
+  await testCase("Staff: privilegeUrl parameter maps to feature_flags.privilege_url", async () => {
+    const res = await updateStaffMember('STAFF_FLAGS', {
+      privilegeUrl: 'https://cdn.example.com/direct-privilege.jpg',
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.privilege_url, 'https://cdn.example.com/direct-privilege.jpg');
   });
 
   console.log(`\n🎉 ALL ${passedCount} PAYLOAD REGRESSION TEST CASES PASSED!\n`);

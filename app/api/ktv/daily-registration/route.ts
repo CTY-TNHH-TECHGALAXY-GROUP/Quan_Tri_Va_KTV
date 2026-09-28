@@ -73,9 +73,8 @@ export async function POST(request: Request) {
     const { canEditRegistration, canCreateRegistration, getRegistrationEditWindow, registrationLockedMessage, vnNow, vnToday } = await import('@/lib/vn-time');
 
     // Lấy các ngày đã đăng ký TRƯỚC khi kiểm quyền: SỬA dòng có sẵn và TẠO dòng
-    // mới theo hai luật khác nhau. Hôm nay chưa có dòng thì tạo được mọi lúc —
-    // đường duy nhất để KTV vừa được quầy mở khoá đăng ký bù, không thì đêm đó
-    // bị khoá lại (plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md §2.2).
+    // mới theo hai luật khác nhau. Ngày làm việc phải có dòng trước 00:00;
+    // từ 00:00 đến 06:59 chỉ được sửa dòng đã có.
     const datesToUpdate = processedEntries.map(e => e.work_date);
     const { data: existingRecords } = await supabase
       .from('KTVTypeDDailyRegistration')
@@ -229,36 +228,79 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const lockedError = await requireActiveStaff();
-    if (lockedError) return lockedError;
-
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    const date = searchParams.get('date');
+    const all = searchParams.get('all') === 'true';
+    const reqStaffId = searchParams.get('staff_id') || searchParams.get('employeeId');
 
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const username = (user.email || '').split('@')[0];
-    const { data: dbUser } = await supabase.from('Users').select('code').ilike('username', username).single();
-    const { data: staff } = dbUser ? await supabase.from('Staff').select('id, work_type').eq('id', dbUser.code).single() : { data: null };
-    if (!staff) return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+    const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+    const adminClient = getSupabaseAdmin() || supabase;
 
-    let query = supabase.from('KTVTypeDDailyRegistration').select('*').eq('staff_id', staff.id);
-    if (from) query = query.gte('work_date', from);
-    if (to) query = query.lte('work_date', to);
+    const username = (user.email || '').split('@')[0];
+    const { data: dbUser } = await adminClient.from('Users').select('code, role').ilike('username', username).single();
+    const role = (dbUser?.role || '').toUpperCase();
+    const isManagerOrAdmin = role === 'ADMIN' || role === 'DEV' || role === 'MANAGER' || role === 'RECEPTIONIST' || role === 'LEAD_RECEPTIONIST';
+
+    let targetStaffId: string | null = null;
+    if (isManagerOrAdmin) {
+      if (reqStaffId) {
+        targetStaffId = reqStaffId;
+      } else if (!all) {
+        targetStaffId = dbUser?.code || null;
+      }
+    } else {
+      const lockedError = await requireActiveStaff();
+      if (lockedError) return lockedError;
+      targetStaffId = dbUser?.code || null;
+      if (!targetStaffId) {
+        return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+      }
+    }
+
+    let query = adminClient.from('KTVTypeDDailyRegistration').select('*');
+    if (targetStaffId) {
+      query = query.eq('staff_id', targetStaffId);
+    }
+    if (date) {
+      query = query.eq('work_date', date);
+    } else {
+      if (from) query = query.gte('work_date', from);
+      if (to) query = query.lte('work_date', to);
+    }
+    query = query.order('work_date', { ascending: true }).order('expected_time', { ascending: true });
 
     const { data, error } = await query;
     if (error) throw error;
-    // `staff_id` = danh tinh server doc tu JWT. Client phai doi chieu voi phien
-    // cua tab minh: cookie Supabase dung chung ca trinh duyet, con phien nghiep
-    // vu nam o sessionStorage tung tab -> mo 2 tai khoan tren cung trinh duyet
-    // la hai ben lech nhau. Khong tra truong nay thi lech ay bieu hien thanh
-    // "lich trong tron, khong bao loi".
-    return NextResponse.json({ data: data || [], staff_id: staff.id });
+
+    const regs = data || [];
+    const staffIds = [...new Set(regs.map((r: any) => r.staff_id))];
+    let staffMap: Record<string, any> = {};
+    if (staffIds.length > 0) {
+      const { data: staffList } = await adminClient
+        .from('Staff')
+        .select('id, full_name, work_type, status, avatar_url')
+        .in('id', staffIds);
+      if (staffList) {
+        staffMap = Object.fromEntries(staffList.map((s: any) => [s.id, s]));
+      }
+    }
+
+    const enriched = regs.map((r: any) => ({
+      ...r,
+      staff_name: staffMap[r.staff_id]?.full_name || r.staff_id,
+      work_type: staffMap[r.staff_id]?.work_type || 'TYPE_D',
+      staff_status: staffMap[r.staff_id]?.status || 'ĐANG LÀM',
+      avatar_url: staffMap[r.staff_id]?.avatar_url || null,
+    }));
+
+    return NextResponse.json({ data: enriched, staff_id: targetStaffId });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

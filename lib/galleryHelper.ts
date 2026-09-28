@@ -30,6 +30,7 @@ export type GalleryGroupId =
   | 'shiatsu'
   | 'hotStone'
   | 'mix'
+  | 'privilege'
   | 'legacy'
   | `vip:${string}`;
 
@@ -42,6 +43,7 @@ export interface GalleryGroupConfig {
 }
 
 export const GALLERY_GROUPS: GalleryGroupConfig[] = [
+  { id: 'privilege', label: 'Ảnh Đặc Quyền' },
   { id: 'coconutOil', label: 'Tinh Dầu Dừa' },
   { id: 'thaiTherapy', label: 'Thái / Cổ Vai Gáy' },
   { id: 'shiatsu', label: 'Bấm Huyệt Shiatsu' },
@@ -52,6 +54,9 @@ export const GALLERY_GROUPS: GalleryGroupConfig[] = [
 
 export function createGalleryItem(url: string, groupId: GalleryGroupId): string | GalleryItem {
   const trimmed = url.trim();
+  if (groupId === 'privilege' || groupId === 'vip:privilege') {
+    return { url: trimmed, kind: 'privilege' };
+  }
   if (isVipGalleryGroup(groupId)) {
     return { url: trimmed, kind: 'vip', skillId: groupId.slice(4) };
   }
@@ -67,6 +72,15 @@ export function createGalleryItem(url: string, groupId: GalleryGroupId): string 
 export function getGalleryGroup(item: string | GalleryItem): GalleryGroupId {
   if (typeof item === 'string') return 'legacy';
   if (!item || typeof item !== 'object') return 'legacy';
+  if (item.kind === 'privilege') return 'privilege';
+  if (
+    item.kind === 'vip' &&
+    item.skillId &&
+    ['privilege', 'dacquyen', 'dac_quyen', 'dac-quyen'].includes(item.skillId.toLowerCase())
+  ) {
+    return 'privilege';
+  }
+  if (item.kind === 'therapy' && item.therapyId === 'privilege') return 'privilege';
   if (item.kind === 'vip' && item.skillId && isVipGalleryGroup(`vip:${item.skillId}`)) {
     return `vip:${item.skillId}`;
   }
@@ -93,14 +107,22 @@ export function checkGalleryDuplicate(
   const nextTherapyId =
     typeof newItem !== 'string' && newItem.kind === 'therapy'
       ? newItem.therapyId
-      : typeof newItem !== 'string' && newItem.kind === 'vip' ? newItem.skillId : undefined;
+      : typeof newItem !== 'string' && newItem.kind === 'vip'
+      ? newItem.skillId
+      : typeof newItem !== 'string' && newItem.kind === 'privilege'
+      ? (newItem.privilegeId || 'privilege')
+      : undefined;
 
   return currentUrls.some((item) => {
     const kind = typeof item === 'string' ? 'legacy' : item.kind;
     const therapyId =
       typeof item !== 'string' && item.kind === 'therapy'
         ? item.therapyId
-        : typeof item !== 'string' && item.kind === 'vip' ? item.skillId : undefined;
+        : typeof item !== 'string' && item.kind === 'vip'
+        ? item.skillId
+        : typeof item !== 'string' && item.kind === 'privilege'
+        ? (item.privilegeId || 'privilege')
+        : undefined;
 
     return (
       getUrl(item).trim() === trimmed &&
@@ -113,4 +135,48 @@ export function checkGalleryDuplicate(
 /** Helper xóa ảnh theo chỉ số index, an toàn cho mảng chứa nhiều ảnh cùng URL */
 export function removeGalleryItemByIndex<T>(items: T[], indexToRemove: number): T[] {
   return items.filter((_, idx) => idx !== indexToRemove);
+}
+
+/** Helper kiểm tra xem ảnh có đang bị ẩn hay không */
+export function isGalleryItemHidden(item: string | GalleryItem): boolean {
+  if (typeof item === 'object' && item !== null) {
+    return item.hidden === true;
+  }
+  return false;
+}
+
+/** Đảo trạng thái ẩn/hiện của ảnh */
+export function toggleGalleryItemVisibility(
+  items: (string | GalleryItem)[],
+  targetIndex: number
+): (string | GalleryItem)[] {
+  if (targetIndex < 0 || targetIndex >= items.length) return items;
+  return items.map((item, idx) => {
+    if (idx !== targetIndex) return item;
+    if (typeof item === 'string') {
+      return { url: item, kind: 'legacy', hidden: true };
+    }
+    return {
+      ...item,
+      hidden: !item.hidden,
+    };
+  });
+}
+
+/** Hoán đổi vị trí 2 ảnh trong mảng */
+export function swapGalleryItems<T>(items: T[], indexA: number, indexB: number): T[] {
+  if (
+    indexA < 0 ||
+    indexA >= items.length ||
+    indexB < 0 ||
+    indexB >= items.length ||
+    indexA === indexB
+  ) {
+    return items;
+  }
+  const next = [...items];
+  const temp = next[indexA];
+  next[indexA] = next[indexB];
+  next[indexB] = temp;
+  return next;
 }

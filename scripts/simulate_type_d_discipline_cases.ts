@@ -164,7 +164,7 @@ const QUY_GIO = [
     console.log(`  (TZ=${process.env.TZ || 'máy'} · hôm nay VN ${homNay} · ${vnHour()} giờ)`);
     const kiemNgay = [
         { ten: 'Tạo dòng mới hôm qua', ra: canCreateRegistration(lech(-1)), mong: false },
-        { ten: 'Tạo dòng mới HÔM NAY (mọi giờ)', ra: canCreateRegistration(homNay), mong: true },
+        { ten: 'Tạo dòng mới HÔM NAY (sau 00:00)', ra: canCreateRegistration(homNay), mong: false },
         { ten: 'Tạo dòng mới ngày mai', ra: canCreateRegistration(lech(1)), mong: true },
         { ten: 'Sửa dòng có sẵn hôm nay', ra: canEditRegistration(homNay), mong: vnHour() < 7 },
         { ten: 'Sửa dòng có sẵn ngày mai', ra: canEditRegistration(lech(1)), mong: true },

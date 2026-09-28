@@ -52,6 +52,17 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
       throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
     }
 
+    if (record.kind === 'privilege') {
+      return [{
+        url,
+        kind: 'privilege',
+        ...(typeof record.privilegeId === 'string' ? { privilegeId: record.privilegeId as string } : {}),
+        ...(typeof record.skillId === 'string' ? { skillId: record.skillId as string } : {}),
+        ...(typeof record.therapyId === 'string' ? { therapyId: record.therapyId as string } : {}),
+        ...(record.hidden === true ? { hidden: true } : {}),
+      }];
+    }
+
     if (record.kind === 'therapy') {
       if (
         typeof record.therapyId !== 'string' ||
@@ -63,19 +74,31 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
       return [{
         url,
         kind: 'therapy',
-        therapyId: record.therapyId,
+        therapyId: record.therapyId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
       }];
     }
 
     if (record.kind === 'vip') {
-      if (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number])) {
+      const isPrivilegeSkill = typeof record.skillId === 'string' &&
+        ['privilege', 'dacquyen', 'dac_quyen', 'dac-quyen'].includes(record.skillId.toLowerCase());
+      if (!isPrivilegeSkill && (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number]))) {
         throw new Error('Kỹ năng VIP của ảnh không hợp lệ.');
       }
-      return [{ url, kind: 'vip', skillId: record.skillId }];
+      return [{
+        url,
+        kind: 'vip',
+        skillId: record.skillId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
+      }];
     }
 
     if (record.kind === 'mix' || record.kind === 'legacy') {
-      return [{ url, kind: record.kind }];
+      return [{
+        url,
+        kind: record.kind,
+        ...(record.hidden === true ? { hidden: true } : {}),
+      }];
     }
 
     throw new Error('Phân loại ảnh gallery không hợp lệ.');
@@ -220,10 +243,14 @@ export async function createStaffMember(formData: any) {
             is_active_vip_menu: formData.isActiveVipMenu === true || formData.is_active_vip_menu === true,
             is_home_spa: formData.isHomeSpa === true || formData.is_home_spa === true,
             is_active_therapy_menu: formData.isActiveTherapyMenu === true || formData.is_active_therapy_menu === true,
-            feature_flags: formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
-                : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
-                : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
-                : DEFAULT_FEATURE_FLAGS_TYPE_A
+            feature_flags: {
+                ...(formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
+                    : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
+                    : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
+                    : DEFAULT_FEATURE_FLAGS_TYPE_A),
+                ...(formData.feature_flags || formData.featureFlags || {}),
+                ...(formData.privilegeUrl || formData.privilege_url ? { privilege_url: (formData.privilegeUrl || formData.privilege_url).trim() } : {}),
+            }
         };
 
         const { data: staffData, error: staffError } = await supabase
@@ -330,6 +357,15 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.is_active_therapy_menu !== undefined) staffPayload.is_active_therapy_menu = updates.is_active_therapy_menu;
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
         if (updates.is_home_spa !== undefined) staffPayload.is_home_spa = updates.is_home_spa;
+
+        const privUrl = updates.privilegeUrl ?? updates.privilege_url;
+        if (privUrl !== undefined) {
+            const trimmedPriv = typeof privUrl === 'string' ? privUrl.trim() : null;
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.privilege_url = trimmedPriv;
+        }
 
         if (staffPayload.status === STAFF_STATUS.RESIGNED || staffPayload.status === 'ĐÃ NGHỈ') {
             staffPayload.is_active_vip_menu = false;

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CardImageCropModal } from '@/components/admin/CardImageCropModal';
 import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
@@ -15,6 +15,9 @@ import {
   createGalleryItem,
   getGalleryGroup,
   isGalleryImageUrl,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
 } from '@/lib/galleryHelper';
 export {
   checkGalleryDuplicate,
@@ -22,6 +25,9 @@ export {
   GALLERY_GROUPS,
   createGalleryItem,
   getGalleryGroup,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
 };
 
 interface EmployeeDetailModalProps {
@@ -443,11 +449,43 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
       originalIndex,
       url: getItemUrl(item),
       group: getGalleryGroup(item),
+      isHidden: isGalleryItemHidden(item),
     }));
     const groupItems = allItems.filter((i) => i.group === groupId);
     const isUploading = Boolean(uploadingGroups[groupId]);
     const uploadErr = uploadErrors[groupId];
     const urlErr = galleryUrlErrors[groupId];
+
+    const handleMoveItemInGroup = (fromGroupIdx: number, toGroupIdx: number) => {
+      if (
+        fromGroupIdx < 0 ||
+        fromGroupIdx >= groupItems.length ||
+        toGroupIdx < 0 ||
+        toGroupIdx >= groupItems.length ||
+        fromGroupIdx === toGroupIdx
+      ) {
+        return;
+      }
+      const indexA = groupItems[fromGroupIdx].originalIndex;
+      const indexB = groupItems[toGroupIdx].originalIndex;
+      setEditedEmployee((prev) => {
+        if (!prev || !prev.galleryUrls) return prev;
+        return {
+          ...prev,
+          galleryUrls: swapGalleryItems(prev.galleryUrls, indexA, indexB),
+        };
+      });
+    };
+
+    const handleToggleItemHidden = (originalIndex: number) => {
+      setEditedEmployee((prev) => {
+        if (!prev || !prev.galleryUrls) return prev;
+        return {
+          ...prev,
+          galleryUrls: toggleGalleryItemVisibility(prev.galleryUrls, originalIndex),
+        };
+      });
+    };
 
     return (
       <div
@@ -577,12 +615,18 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {groupItems.map(({ originalIndex, url }) => (
+              {groupItems.map(({ originalIndex, url, isHidden }, itemIdx) => (
                 <GalleryThumbnailItem
                   key={`${url}-${originalIndex}`}
                   url={url}
                   index={originalIndex}
                   isEditing={isEditing}
+                  isHidden={isHidden}
+                  canMoveLeft={itemIdx > 0}
+                  canMoveRight={itemIdx < groupItems.length - 1}
+                  onMoveLeft={() => handleMoveItemInGroup(itemIdx, itemIdx - 1)}
+                  onMoveRight={() => handleMoveItemInGroup(itemIdx, itemIdx + 1)}
+                  onToggleHidden={() => handleToggleItemHidden(originalIndex)}
                   onRemove={() => removeGalleryUrl(originalIndex)}
                 />
               ))}
@@ -987,6 +1031,16 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       </div>
                     </div>
 
+                    {/* Upload ảnh Đặc Quyền (VIP Menu) */}
+                    <div className="pt-2 border-t border-amber-100">
+                      <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-2.5">
+                        Ảnh Đặc Quyền (VIP Menu · Hiển thị ưu tiên đầu)
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        {renderGroupCard('privilege', 'VIP · Ảnh Đặc Quyền')}
+                      </div>
+                    </div>
+
                     {/* Upload ảnh theo kỹ năng VIP đã bật */}
                     <div className="pt-2 border-t border-amber-100">
                       <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-2.5">
@@ -1255,17 +1309,31 @@ function GalleryThumbnailItem({
   url,
   index,
   isEditing,
+  isHidden,
+  canMoveLeft,
+  canMoveRight,
+  onMoveLeft,
+  onMoveRight,
+  onToggleHidden,
   onRemove,
 }: {
   url: string;
   index: number;
   isEditing: boolean;
+  isHidden?: boolean;
+  canMoveLeft?: boolean;
+  canMoveRight?: boolean;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
+  onToggleHidden?: () => void;
   onRemove?: () => void;
 }) {
   const [loadError, setLoadError] = useState(false);
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-square flex items-center justify-center">
+    <div className={`relative group rounded-xl overflow-hidden border transition-all aspect-square flex items-center justify-center bg-gray-100 ${
+      isHidden ? 'border-amber-300 ring-1 ring-amber-300/60' : 'border-gray-200 shadow-2xs'
+    }`}>
       {loadError ? (
         <div className="p-1 text-center text-[10px] text-red-500 font-medium leading-tight">
           Lỗi tải ảnh
@@ -1274,22 +1342,87 @@ function GalleryThumbnailItem({
         <img
           src={url}
           alt={`gallery-${index}`}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover transition-opacity duration-200 ${
+            isHidden ? 'opacity-40 grayscale-[40%]' : 'opacity-100'
+          }`}
           referrerPolicy="no-referrer"
           onError={() => setLoadError(true)}
         />
       )}
 
-      {isEditing && onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Xóa ảnh"
-          title="Xóa ảnh"
-          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-opacity sm:opacity-90 opacity-100 touch-manipulation z-10"
-        >
-          <X size={12} />
-        </button>
+      {/* Huy hiệu Đang Ẩn trên Menu */}
+      {isHidden && (
+        <div className="absolute top-1 left-1 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-10 backdrop-blur-2xs">
+          <EyeOff size={10} />
+          <span>Ẩn</span>
+        </div>
+      )}
+
+      {/* Control Buttons khi Editing */}
+      {isEditing && (
+        <>
+          {/* Top-right actions: Toggle Hidden & Remove */}
+          <div className="absolute top-1 right-1 flex items-center gap-1 z-10">
+            {onToggleHidden && (
+              <button
+                type="button"
+                onClick={onToggleHidden}
+                aria-label={isHidden ? 'Hiện ảnh trên menu' : 'Ẩn ảnh trên menu'}
+                title={isHidden ? 'Đang ẩn - Bấm để hiện lại trên menu' : 'Đang hiện - Bấm để ẩn khỏi menu'}
+                className={`p-1 rounded-full shadow-md transition-all touch-manipulation ${
+                  isHidden
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-black/60 hover:bg-black/80 text-white/90 hover:text-white'
+                }`}
+              >
+                {isHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                aria-label="Xóa ảnh"
+                title="Xóa ảnh"
+                className="bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-all touch-manipulation"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom actions: Move Left / Move Right */}
+          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between pointer-events-none z-10">
+            <button
+              type="button"
+              disabled={!canMoveLeft}
+              onClick={onMoveLeft}
+              aria-label="Di chuyển sang trước"
+              title="Di chuyển sang trước"
+              className={`p-1 rounded-lg shadow-sm transition-all pointer-events-auto ${
+                canMoveLeft
+                  ? 'bg-white/95 hover:bg-white text-gray-800 hover:text-indigo-600 shadow-md active:scale-95'
+                  : 'bg-white/40 text-gray-300 cursor-not-allowed opacity-0 group-hover:opacity-40'
+              }`}
+            >
+              <ChevronLeft size={13} />
+            </button>
+            <button
+              type="button"
+              disabled={!canMoveRight}
+              onClick={onMoveRight}
+              aria-label="Di chuyển sang sau"
+              title="Di chuyển sang sau"
+              className={`p-1 rounded-lg shadow-sm transition-all pointer-events-auto ${
+                canMoveRight
+                  ? 'bg-white/95 hover:bg-white text-gray-800 hover:text-indigo-600 shadow-md active:scale-95'
+                  : 'bg-white/40 text-gray-300 cursor-not-allowed opacity-0 group-hover:opacity-40'
+              }`}
+            >
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

@@ -233,7 +233,7 @@ export function endedByCounter(seg: any): boolean {
     if (!seg?.actualEndTime) return false;
     if (seg.voided === true) return true;
 
-    const COUNTER_NOTES = ['FINISHED_EARLY_ON_PAUSE', 'CANCELLED_NO_CREDIT', 'CHANGED'];
+    const COUNTER_NOTES = ['FINISHED_EARLY_ON_PAUSE', 'CANCELLED_NO_CREDIT', 'CHANGED', 'SEQUENTIAL_HANDOFF'];
     if (COUNTER_NOTES.includes(String(seg.note))) return true;
 
     const pauses = Array.isArray(seg.pauses) ? seg.pauses : [];

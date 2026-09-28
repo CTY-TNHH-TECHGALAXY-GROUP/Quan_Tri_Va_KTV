@@ -67,8 +67,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const setScreen = useCallback((val: ScreenState) => {
         setScreenState(val);
         setKtvScreen(val);
-        try { localStorage.setItem('ktv_active_screen', val); } catch(e) {}
-    }, [setKtvScreen]);
+        try {
+            localStorage.setItem('ktv_active_screen', val);
+            if (ktvId && ['REVIEW', 'HANDOVER', 'REWARD'].includes(val)) {
+                localStorage.setItem('ktv_active_ktv_id', ktvId);
+            }
+        } catch(e) {}
+    }, [setKtvScreen, ktvId]);
 
     const [booking, setBooking] = useState<any>(null);
     const [showProcedure, setShowProcedure] = useState(false);
@@ -440,12 +445,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
 
     useEffect(() => {
+        if (!ktvId) return;
         try {
             const savedScreen = localStorage.getItem('ktv_active_screen') as ScreenState;
             const savedBookingId = localStorage.getItem(POST_SERVICE_BOOKING_KEY) || localStorage.getItem('ktv_active_booking_id');
             const savedKtvId = localStorage.getItem('ktv_active_ktv_id');
             // 🔒 Chỉ restore nếu đúng ktvId đang đăng nhập — tránh KTV2 kế thừa state của KTV1
-            const ktvIdMatches = !savedKtvId || !ktvId || savedKtvId === ktvId;
+            const ktvIdMatches = !savedKtvId || savedKtvId === ktvId;
             if (savedScreen && ['REVIEW', 'HANDOVER', 'REWARD'].includes(savedScreen) && savedBookingId && ktvIdMatches) {
                 setScreenState(savedScreen);
                 // Phải gán tay screenRef: setScreenState là setter THÔ, không đi qua
@@ -459,6 +465,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 prevBookingIdRef.current = savedBookingId;
                 postServiceBookingIdRef.current = savedBookingId;
             } else {
+                setScreenState('DASHBOARD');
+                screenRef.current = 'DASHBOARD';
+                postServiceBookingIdRef.current = null;
+                prevBookingIdRef.current = null;
+                setHasSubmittedReview(false);
+                setBooking(null);
                 localStorage.removeItem('ktv_active_screen');
                 localStorage.removeItem('ktv_active_booking_id');
                 localStorage.removeItem(POST_SERVICE_BOOKING_KEY);
@@ -1064,6 +1076,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const fetchStart = Date.now();
                 const res = await apiClient.get<any>(url);
                 const fetchMs = Date.now() - fetchStart;
+
+                if (res.success && res.reason === 'not_assigned') {
+                    prevBookingIdRef.current = null;
+                    setHasSubmittedReview(false);
+                    goToDashboard();
+                    return;
+                }
                 
                 if (res.success && res.data && res.data.id) {
                     if (isTransitioningRef.current) {
@@ -2702,6 +2721,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         lastAcknowledgedIdRef.current = prevBookingIdRef.current;
         setBooking(null);
         setScreen('DASHBOARD');
+        screenRef.current = 'DASHBOARD';
         postServiceBookingIdRef.current = null;
         
         // Nếu có đơn tiếp theo, cưỡng bức fetch đơn đó bằng cách set targetBookingId

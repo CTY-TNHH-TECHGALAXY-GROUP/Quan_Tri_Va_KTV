@@ -35,6 +35,7 @@ import { isUtilityService } from '@/lib/booking.logic';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getBusinessDateFromConfig, ktvMatchesSeg } from '../_shared/utils';
+import { ktvAssignedToItem } from '@/lib/ktvUtils';
 import { HandoverService } from '@/lib/services/HandoverService';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
@@ -360,7 +361,12 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             return NextResponse.json({ success: true, data: null });
         }
 
-        if (iError) console.error('Error fetching booking items:', iError);
+        if (iError) throw iError;
+
+        // Một bookingId lưu từ phiên cũ không được kéo đơn của KTV khác vào dashboard.
+        if (technicianCode && !(items || []).some((item: any) => ktvAssignedToItem(item, technicianCode))) {
+            return NextResponse.json({ success: true, data: null, reason: 'not_assigned' });
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // ⚡ NHÓM 3: PARALLEL ENRICH (Services + Rooms cùng lúc)
@@ -907,4 +913,3 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
-
