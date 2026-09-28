@@ -86,6 +86,37 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     };
   }, [employee, isOpen]);
 
+  const isAvatarHidden = Boolean(
+    editedEmployee?.isAvatarHidden ??
+    (editedEmployee?.featureFlags?.show_avatar === false ||
+     editedEmployee?.featureFlags?.hide_avatar === true ||
+     editedEmployee?.featureFlags?.is_avatar_hidden === true)
+  );
+
+  const toggleAvatarVisibility = () => {
+    setEditedEmployee((prev) => {
+      if (!prev) return prev;
+      const currentHidden = Boolean(
+        prev.isAvatarHidden ??
+        (prev.featureFlags?.show_avatar === false ||
+         prev.featureFlags?.hide_avatar === true ||
+         prev.featureFlags?.is_avatar_hidden === true)
+      );
+      const nextHidden = !currentHidden;
+      const flags = prev.featureFlags || {};
+      return {
+        ...prev,
+        isAvatarHidden: nextHidden,
+        showAvatar: !nextHidden,
+        featureFlags: {
+          ...flags,
+          show_avatar: !nextHidden,
+          hide_avatar: nextHidden,
+        },
+      };
+    });
+  };
+
   const getItemUrl = (item: string | GalleryItem): string =>
     typeof item === 'string' ? item : item?.url ?? '';
 
@@ -692,6 +723,34 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             </div>
             <div className="absolute -bottom-12 left-8">
               <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 group">
+                {/* Huy hiệu Đang Ẩn trên Menu */}
+                {isAvatarHidden && (
+                  <div className="absolute top-1.5 left-1.5 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-20 backdrop-blur-2xs">
+                    <EyeOff size={10} />
+                    <span>Ẩn</span>
+                  </div>
+                )}
+
+                {/* Nút bật/tắt mắt cho Avatar khi sửa */}
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAvatarVisibility();
+                    }}
+                    aria-label={isAvatarHidden ? 'Hiện avatar trên menu' : 'Ẩn avatar trên menu'}
+                    title={isAvatarHidden ? 'Avatar đang ẩn trên menu - Bấm để hiện lại' : 'Avatar đang hiện trên menu - Bấm để ẩn khỏi menu'}
+                    className={`absolute top-1.5 right-1.5 z-20 p-1.5 rounded-full shadow-md transition-all touch-manipulation ${
+                      isAvatarHidden
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white ring-2 ring-white/50'
+                        : 'bg-black/70 hover:bg-black/90 text-white ring-1 ring-white/30'
+                    }`}
+                  >
+                    {isAvatarHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                )}
+
                 <img
                   src={editedEmployee.photoUrl || employee.photoUrl}
                   alt={employee.name}
@@ -760,13 +819,28 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAvatarUrlInput(true)}
-                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
-                    >
-                      <LinkIcon size={10} /> Link ảnh
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowAvatarUrlInput(true)}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
+                      >
+                        <LinkIcon size={10} /> Link ảnh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={toggleAvatarVisibility}
+                        title={isAvatarHidden ? 'Avatar đang ẩn - Bấm để hiện lại trên menu' : 'Avatar đang hiện - Bấm để ẩn khỏi menu'}
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors ${
+                          isAvatarHidden
+                            ? 'bg-amber-600/90 hover:bg-amber-700 text-white'
+                            : 'bg-black/40 hover:bg-black/60 text-white'
+                        }`}
+                      >
+                        {isAvatarHidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                        <span>{isAvatarHidden ? 'Đang ẩn' : 'Ẩn menu'}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

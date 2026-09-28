@@ -38,7 +38,7 @@ const mockClient = {
         },
         insert: (payload: any) => {
           writeOperationsCount++;
-          capturedPayload = payload;
+          capturedPayload = Array.isArray(payload) ? payload[0] : payload;
           return {
             select: () => ({
               single: () => Promise.resolve({ data: { id: payload[0]?.id || 'NEW_STAFF', ...payload[0] }, error: null }),
@@ -837,6 +837,39 @@ async function run() {
     });
     assert.equal(res.success, true);
     assert.equal(capturedPayload?.feature_flags?.privilege_url, 'https://cdn.example.com/direct-privilege.jpg');
+  });
+
+  // Case 39: isAvatarHidden: true sets show_avatar = false and hide_avatar = true
+  await testCase("Staff: isAvatarHidden: true maps to feature_flags.show_avatar = false and hide_avatar = true", async () => {
+    const res = await updateStaffMember('STAFF_AVATAR_HIDDEN', {
+      isAvatarHidden: true,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, false);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, true);
+  });
+
+  // Case 40: isAvatarHidden: false sets show_avatar = true and hide_avatar = false
+  await testCase("Staff: isAvatarHidden: false maps to feature_flags.show_avatar = true and hide_avatar = false", async () => {
+    const res = await updateStaffMember('STAFF_AVATAR_VISIBLE', {
+      isAvatarHidden: false,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, true);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, false);
+  });
+
+  // Case 41: createStaffMember with isAvatarHidden sets show_avatar and hide_avatar
+  await testCase("Staff: createStaffMember with isAvatarHidden maps to feature_flags correctly", async () => {
+    const res = await createStaffMember({
+      id: 'NV-TEST-AVATAR',
+      password: 'password123',
+      full_name: 'Test Staff Avatar',
+      isAvatarHidden: true,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, false);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, true);
   });
 
   console.log(`\n🎉 ALL ${passedCount} PAYLOAD REGRESSION TEST CASES PASSED!\n`);

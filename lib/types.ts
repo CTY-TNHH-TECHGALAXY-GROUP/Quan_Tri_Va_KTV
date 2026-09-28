@@ -112,6 +112,8 @@ export interface Employee {
   featureFlags?: any;
   enableKpiDemo?: boolean;
   enableBonus?: boolean;
+  isAvatarHidden?: boolean;
+  showAvatar?: boolean;
 }
 
 export interface Role {

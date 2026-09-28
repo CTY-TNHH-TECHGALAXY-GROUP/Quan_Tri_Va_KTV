@@ -4,6 +4,11 @@ export type MenuPhotoStaff = {
   avatar_url?: unknown;
   avatarUrl?: unknown;
   photoUrl?: unknown;
+  feature_flags?: unknown;
+  featureFlags?: unknown;
+  isAvatarHidden?: boolean;
+  hideAvatar?: boolean;
+  showAvatar?: boolean;
 };
 
 export function normalizePhotoList(value: unknown): string[] {
@@ -50,18 +55,29 @@ export function resolveMenuPhotos({
   staff,
   configPhotos,
   menu,
+  showAvatar = true,
 }: {
   staff?: MenuPhotoStaff | null;
   configPhotos?: unknown;
   menu: 'nhp' | 'nht';
+  showAvatar?: boolean;
 }): {
   primary: string | null;
   photos: string[];
 } {
+  const flags = (staff && typeof (staff as any).feature_flags === 'object' && (staff as any).feature_flags)
+    || (staff && typeof (staff as any).featureFlags === 'object' && (staff as any).featureFlags)
+    || null;
+  const isHidden = (staff as any)?.isAvatarHidden === true
+    || (staff as any)?.hideAvatar === true
+    || flags?.hide_avatar === true
+    || flags?.show_avatar === false
+    || showAvatar === false;
+
   const config = normalizePhotoList(configPhotos);
   const gallery = normalizePhotoList(staff?.gallery_urls ?? staff?.galleryUrls);
   const rawAvatar = staff?.avatar_url || staff?.avatarUrl || staff?.photoUrl;
-  const avatar = typeof rawAvatar === 'string' && rawAvatar.trim() ? rawAvatar.trim() : null;
+  const avatar = !isHidden && typeof rawAvatar === 'string' && rawAvatar.trim() ? rawAvatar.trim() : null;
 
   const sourcePhotos = config.length > 0 ? config : gallery;
 

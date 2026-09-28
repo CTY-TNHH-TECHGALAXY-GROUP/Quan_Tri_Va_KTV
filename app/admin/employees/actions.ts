@@ -250,6 +250,12 @@ export async function createStaffMember(formData: any) {
                     : DEFAULT_FEATURE_FLAGS_TYPE_A),
                 ...(formData.feature_flags || formData.featureFlags || {}),
                 ...(formData.privilegeUrl || formData.privilege_url ? { privilege_url: (formData.privilegeUrl || formData.privilege_url).trim() } : {}),
+                ...(formData.isAvatarHidden !== undefined || formData.showAvatar !== undefined || formData.hideAvatar !== undefined
+                    ? {
+                        show_avatar: !(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar),
+                        hide_avatar: Boolean(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar)
+                      }
+                    : {}),
             }
         };
 
@@ -365,6 +371,15 @@ export async function updateStaffMember(id: string, updates: any) {
                 staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
             }
             staffPayload.feature_flags.privilege_url = trimmedPriv;
+        }
+
+        const isAvatarHidden = updates.isAvatarHidden ?? updates.hideAvatar ?? (updates.showAvatar !== undefined ? !updates.showAvatar : undefined);
+        if (isAvatarHidden !== undefined) {
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.show_avatar = !isAvatarHidden;
+            staffPayload.feature_flags.hide_avatar = isAvatarHidden;
         }
 
         if (staffPayload.status === STAFF_STATUS.RESIGNED || staffPayload.status === 'ĐÃ NGHỈ') {
