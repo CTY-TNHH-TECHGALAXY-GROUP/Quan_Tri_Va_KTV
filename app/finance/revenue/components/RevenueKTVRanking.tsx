@@ -49,35 +49,34 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-indigo-100 text-indigo-600 flex items-center justify-center rounded-xl">
             <Trophy size={20} />
           </div>
           <div>
             <h2 className="text-lg font-black text-gray-900">Bảng Xếp Hạng KTV</h2>
-            <p className="text-sm text-gray-500 font-medium">Đánh giá hiệu suất nhân viên theo tiêu chí</p>
+            <p className="text-sm text-gray-500 font-medium">Đánh giá hiệu suất toàn bộ {data.length} nhân viên theo tiêu chí</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
-
           <div className="flex items-center gap-2 sm:border-l border-gray-200 sm:pl-4">
             <span className="text-sm font-bold text-gray-600 hidden sm:block">Tiêu chí:</span>
-          <div className="relative">
-            <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="pl-9 pr-8 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer hover:bg-gray-100 transition-colors"
-            >
-              {SORT_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="pl-9 pr-8 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer hover:bg-gray-100 transition-colors"
+              >
+                {SORT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
       </div>
 
       {data.length === 0 ? (
@@ -134,7 +133,15 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                             {ktv.name.substring(0, 2)}
                           </div>
                           <div>
-                            <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{ktv.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{ktv.name}</span>
+                              <span className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
+                                ktv.workType === 'TYPE_D' ? 'bg-purple-500 ring-2 ring-purple-100' :
+                                ktv.workType === 'TYPE_B' ? 'bg-emerald-500 ring-2 ring-emerald-100' :
+                                ktv.workType === 'TYPE_C' ? 'bg-amber-500 ring-2 ring-amber-100' :
+                                'bg-blue-500 ring-2 ring-blue-100'
+                              }`} />
+                            </div>
                             <div className="text-xs text-gray-400 font-medium">Mã: {ktv.id}</div>
                           </div>
                         </div>

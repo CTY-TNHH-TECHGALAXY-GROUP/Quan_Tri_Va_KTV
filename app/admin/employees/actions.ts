@@ -52,6 +52,12 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
       throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
     }
 
+    const orderFields = {
+      ...(typeof record.order === 'number' ? { order: record.order } : {}),
+      ...(typeof record.orderNhp === 'number' ? { orderNhp: record.orderNhp } : {}),
+      ...(typeof record.orderNht === 'number' ? { orderNht: record.orderNht } : {}),
+    };
+
     if (record.kind === 'privilege') {
       return [{
         url,
@@ -60,6 +66,7 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
         ...(typeof record.skillId === 'string' ? { skillId: record.skillId as string } : {}),
         ...(typeof record.therapyId === 'string' ? { therapyId: record.therapyId as string } : {}),
         ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
       }];
     }
 
@@ -76,6 +83,7 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
         kind: 'therapy',
         therapyId: record.therapyId as string,
         ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
       }];
     }
 
@@ -90,6 +98,7 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
         kind: 'vip',
         skillId: record.skillId as string,
         ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
       }];
     }
 
@@ -98,6 +107,7 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
         url,
         kind: record.kind,
         ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
       }];
     }
 

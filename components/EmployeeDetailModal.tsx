@@ -18,6 +18,10 @@ import {
   isGalleryItemHidden,
   toggleGalleryItemVisibility,
   swapGalleryItems,
+  getNhpMenuGalleryItems,
+  getNhtMenuGalleryItems,
+  reorderMenuGalleryItems,
+  MenuGalleryItemWrapper,
 } from '@/lib/galleryHelper';
 export {
   checkGalleryDuplicate,
@@ -28,6 +32,9 @@ export {
   isGalleryItemHidden,
   toggleGalleryItemVisibility,
   swapGalleryItems,
+  getNhpMenuGalleryItems,
+  getNhtMenuGalleryItems,
+  reorderMenuGalleryItems,
 };
 
 interface EmployeeDetailModalProps {
@@ -474,6 +481,45 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     onClose();
   };
 
+  const handleToggleItemHidden = (originalIndex: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: toggleGalleryItemVisibility(prev.galleryUrls, originalIndex),
+      };
+    });
+  };
+
+  const nhpDisplayItems = getNhpMenuGalleryItems(
+    editedEmployee?.galleryUrls || [],
+    editedEmployee?.skills
+  );
+
+  const nhtDisplayItems = getNhtMenuGalleryItems(
+    editedEmployee?.galleryUrls || []
+  );
+
+  const handleReorderNhpMenu = (fromIdx: number, toIdx: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: reorderMenuGalleryItems(prev.galleryUrls, 'nhp', fromIdx, toIdx, prev.skills),
+      };
+    });
+  };
+
+  const handleReorderNhtMenu = (fromIdx: number, toIdx: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: reorderMenuGalleryItems(prev.galleryUrls, 'nht', fromIdx, toIdx),
+      };
+    });
+  };
+
   const renderGroupCard = (groupId: GalleryGroupId, groupLabel: string) => {
     const allItems = (editedEmployee?.galleryUrls || []).map((item, originalIndex) => ({
       item,
@@ -504,16 +550,6 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
         return {
           ...prev,
           galleryUrls: swapGalleryItems(prev.galleryUrls, indexA, indexB),
-        };
-      });
-    };
-
-    const handleToggleItemHidden = (originalIndex: number) => {
-      setEditedEmployee((prev) => {
-        if (!prev || !prev.galleryUrls) return prev;
-        return {
-          ...prev,
-          galleryUrls: toggleGalleryItemVisibility(prev.galleryUrls, originalIndex),
         };
       });
     };
@@ -1105,6 +1141,46 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       </div>
                     </div>
 
+                    {/* 🌟 THỨ TỰ HIỂN THỊ HÌNH ẢNH TRÊN MENU VIP (NHP) */}
+                    <div className="pt-2 border-t border-amber-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                            Thứ tự hiển thị trên Menu VIP (NHP)
+                          </span>
+                          <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                            {nhpDisplayItems.length} ảnh
+                          </span>
+                        </div>
+                        {isEditing && nhpDisplayItems.length > 1 && (
+                          <span className="text-[10px] text-amber-700 font-medium">
+                            Bấm [Trước] hoặc [Sau] để đổi thứ tự hiển thị
+                          </span>
+                        )}
+                      </div>
+                      {nhpDisplayItems.length === 0 ? (
+                        <div className="text-[11px] text-amber-700/70 italic py-2 text-center bg-amber-50/50 rounded-xl border border-dashed border-amber-200">
+                          Chưa có ảnh nào trên Menu VIP. Hãy tải ảnh Đặc Quyền hoặc ảnh Kỹ năng VIP bên dưới.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 bg-amber-50/40 p-2.5 rounded-2xl border border-amber-200/80 mb-3">
+                          {nhpDisplayItems.map((wrapper, itemIdx) => (
+                            <MenuDisplayOrderItem
+                              key={`${wrapper.url}-${wrapper.originalIndex}`}
+                              orderNumber={itemIdx + 1}
+                              wrapper={wrapper}
+                              isEditing={isEditing}
+                              canMoveLeft={itemIdx > 0}
+                              canMoveRight={itemIdx < nhpDisplayItems.length - 1}
+                              onMoveLeft={() => handleReorderNhpMenu(itemIdx, itemIdx - 1)}
+                              onMoveRight={() => handleReorderNhpMenu(itemIdx, itemIdx + 1)}
+                              onToggleHidden={() => handleToggleItemHidden(wrapper.originalIndex)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Upload ảnh Đặc Quyền (VIP Menu) */}
                     <div className="pt-2 border-t border-amber-100">
                       <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-2.5">
@@ -1190,14 +1266,56 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
 
                 {/* Nội dung Menu Điều trị khi Active */}
                 {editedEmployee.isActiveTherapyMenu && isTherapyExpanded && (
-                  <div className="p-4 space-y-3">
-                    <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider block">
-                      Tải ảnh 5 phương pháp trị liệu
-                    </span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((group) => {
-                        return renderGroupCard(group.id, `NHT · ${group.label}`);
-                      })}
+                  <div className="p-4 space-y-4">
+                    {/* 🌿 THỨ TỰ HIỂN THỊ HÌNH ẢNH TRÊN MENU ĐIỀU TRỊ (NHT) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-emerald-900 uppercase tracking-wider">
+                            Thứ tự hiển thị trên Menu Điều Trị (NHT)
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                            {nhtDisplayItems.length} ảnh
+                          </span>
+                        </div>
+                        {isEditing && nhtDisplayItems.length > 1 && (
+                          <span className="text-[10px] text-emerald-700 font-medium">
+                            Bấm [Trước] hoặc [Sau] để đổi thứ tự hiển thị
+                          </span>
+                        )}
+                      </div>
+                      {nhtDisplayItems.length === 0 ? (
+                        <div className="text-[11px] text-emerald-700/70 italic py-2 text-center bg-emerald-50/50 rounded-xl border border-dashed border-emerald-200">
+                          Chưa có ảnh nào trên Menu Điều Trị. Hãy tải ảnh các phương pháp trị liệu bên dưới.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 bg-emerald-50/40 p-2.5 rounded-2xl border border-emerald-200/80 mb-3">
+                          {nhtDisplayItems.map((wrapper, itemIdx) => (
+                            <MenuDisplayOrderItem
+                              key={`${wrapper.url}-${wrapper.originalIndex}`}
+                              orderNumber={itemIdx + 1}
+                              wrapper={wrapper}
+                              isEditing={isEditing}
+                              canMoveLeft={itemIdx > 0}
+                              canMoveRight={itemIdx < nhtDisplayItems.length - 1}
+                              onMoveLeft={() => handleReorderNhtMenu(itemIdx, itemIdx - 1)}
+                              onMoveRight={() => handleReorderNhtMenu(itemIdx, itemIdx + 1)}
+                              onToggleHidden={() => handleToggleItemHidden(wrapper.originalIndex)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-emerald-100/80">
+                      <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider block mb-2.5">
+                        Tải ảnh 5 phương pháp trị liệu
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((group) => {
+                          return renderGroupCard(group.id, `NHT · ${group.label}`);
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1497,6 +1615,127 @@ function GalleryThumbnailItem({
             </button>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function MenuDisplayOrderItem({
+  orderNumber,
+  wrapper,
+  isEditing,
+  canMoveLeft,
+  canMoveRight,
+  onMoveLeft,
+  onMoveRight,
+  onToggleHidden,
+}: {
+  orderNumber: number;
+  wrapper: MenuGalleryItemWrapper;
+  isEditing: boolean;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  onMoveLeft: () => void;
+  onMoveRight: () => void;
+  onToggleHidden: () => void;
+}) {
+  const [loadError, setLoadError] = useState(false);
+  const { url, isHidden, label } = wrapper;
+
+  return (
+    <div
+      className={`relative group rounded-xl overflow-hidden border bg-white flex flex-col p-1.5 shadow-2xs transition-all ${
+        isHidden ? 'border-amber-300 ring-1 ring-amber-300/60 bg-amber-50/20' : 'border-gray-200'
+      }`}
+    >
+      {/* Container ảnh thumbnail */}
+      <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+        {loadError ? (
+          <div className="p-1 text-center text-[10px] text-red-500 font-medium leading-tight">
+            Lỗi tải ảnh
+          </div>
+        ) : (
+          <img
+            src={url}
+            alt={label}
+            className={`w-full h-full object-cover transition-opacity duration-200 ${
+              isHidden ? 'opacity-40 grayscale-[40%]' : 'opacity-100'
+            }`}
+            referrerPolicy="no-referrer"
+            onError={() => setLoadError(true)}
+          />
+        )}
+
+        {/* Số thứ tự hiển thị nội bộ */}
+        <div className="absolute top-1 left-1 bg-black/75 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm z-10 pointer-events-none">
+          #{orderNumber}
+        </div>
+
+        {/* Badge Ẩn */}
+        {isHidden && (
+          <div className="absolute top-1 right-1 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-10 backdrop-blur-2xs">
+            <EyeOff size={10} />
+            <span>Ẩn</span>
+          </div>
+        )}
+
+        {/* Nút Ẩn/Hiện khi Editing */}
+        {isEditing && (
+          <button
+            type="button"
+            onClick={onToggleHidden}
+            aria-label={isHidden ? 'Hiện ảnh trên menu' : 'Ẩn ảnh trên menu'}
+            title={isHidden ? 'Đang ẩn - Bấm để hiện lại trên menu' : 'Đang hiện - Bấm để ẩn khỏi menu'}
+            className={`absolute ${isHidden ? 'top-6' : 'top-1'} right-1 z-10 p-1 rounded-full shadow-md transition-all touch-manipulation ${
+              isHidden
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-black/60 hover:bg-black/80 text-white'
+            }`}
+          >
+            {isHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+          </button>
+        )}
+      </div>
+
+      {/* Tên nhãn mô tả ảnh */}
+      <div className="mt-1 px-0.5">
+        <span className="text-[10px] font-bold text-gray-700 truncate block" title={label}>
+          {label}
+        </span>
+      </div>
+
+      {/* Hai nút di chuyển thứ tự Lên/Xuống */}
+      {isEditing && (
+        <div className="mt-1 flex items-center justify-between gap-1 pt-1 border-t border-gray-100">
+          <button
+            type="button"
+            disabled={!canMoveLeft}
+            onClick={onMoveLeft}
+            title="Đẩy lên trước"
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all ${
+              canMoveLeft
+                ? 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 active:scale-95'
+                : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+            }`}
+          >
+            <ChevronLeft size={12} />
+            <span>Trước</span>
+          </button>
+          <button
+            type="button"
+            disabled={!canMoveRight}
+            onClick={onMoveRight}
+            title="Đẩy xuống sau"
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all ${
+              canMoveRight
+                ? 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 active:scale-95'
+                : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+            }`}
+          >
+            <span>Sau</span>
+            <ChevronRight size={12} />
+          </button>
+        </div>
       )}
     </div>
   );

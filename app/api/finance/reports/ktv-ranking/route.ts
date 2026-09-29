@@ -16,15 +16,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Thiếu tham số ngày' }, { status: 400 });
     }
 
-    // 1. Fetch Staff (KTV list)
-    const { data: staffList, error: staffErr } = await supabaseAdmin
+    // 1. Fetch Staff (KTV list) - Lấy đầy đủ KTV mọi loại (A, B, C, D) đang làm việc
+    const { data: allStaff, error: staffErr } = await supabaseAdmin
       .from('Staff')
-      .select('id, full_name, position, work_type')
-      .eq('status', 'ĐANG LÀM')
-      .ilike('id', 'NH%')
+      .select('id, full_name, position, work_type, status')
+      .neq('status', 'HỆ THỐNG')
+      .neq('status', 'ĐÃ NGHỈ')
       .order('id');
       
     if (staffErr) throw staffErr;
+
+    const { isPlaceholderStaffId } = require('@/lib/constants/staff.constants');
+    const staffList = (allStaff || []).filter(s =>
+      s.status === 'ĐANG LÀM' &&
+      !isPlaceholderStaffId(s.id) &&
+      s.id !== 'ADMIN' &&
+      s.id !== 'dev'
+    );
 
     const ktvWorkTypeMap: Record<string, string> = {};
     (staffList || []).forEach(s => {
@@ -233,6 +241,7 @@ export async function GET(request: Request) {
       rankingMap[id] = {
         id: id,
         name: ktvInfoMap[id] ? ktvInfoMap[id].name : id,
+        workType: ktvWorkTypeMap[id] || 'TYPE_A',
         revenue: 0, 
         tuaMoney: ledgerCommMap[id] || 0,
         bonus: ledgerBonusMap[id] || 0,
@@ -413,7 +422,7 @@ export async function GET(request: Request) {
       // Tổng giờ thực tế lên khách (Tổng số phút / 60)
       ktv.totalWorkingHours = parseFloat((ktv.totalWorkingMins / 60).toFixed(2));
       return ktv;
-    }).filter(ktv => ktv.revenue > 0 || ktv.tuaMoney > 0 || ktv.workingDays > 0 || ktv.leaveDays > 0); // Only show active ktvs
+    }); // Hiển thị đầy đủ tất cả KTV đang làm việc của mọi loại (A, B, C, D)
 
     return NextResponse.json({ success: true, data: finalData });
   } catch (error: any) {

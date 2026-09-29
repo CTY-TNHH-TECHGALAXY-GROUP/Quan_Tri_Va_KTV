@@ -23,6 +23,7 @@ export interface KTVRankingData {
   goodCount?: number;
   averageCount?: number;
   badCount: number;
+  workType?: string;
 }
 
 export function useRevenueKTVRanking(dateFromProp: string, dateToProp: string, langFilter?: string) {

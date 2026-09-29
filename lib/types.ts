@@ -75,6 +75,9 @@ export interface GalleryItem {
   skillId?: string;
   privilegeId?: string;
   hidden?: boolean;
+  order?: number;
+  orderNhp?: number;
+  orderNht?: number;
 }
 
 export interface Employee {
