@@ -150,9 +150,14 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .eq('employee_id', technicianCode)
                     .eq('booking_id', bookingId)
                     .eq('business_date', bizToday)
+                    .in('status', ['ACTIVE', 'QUEUED', 'READY'])
+                    .order('status', { ascending: true })
+                    .order('planned_start_time', { ascending: true, nullsFirst: false })
+                    .limit(1)
                     .maybeSingle()
                 : Promise.resolve({ data: null }),
         ]);
+        if ('error' in preAssignRes && preAssignRes.error) throw preAssignRes.error;
 
         // 🔥 LỚP 2: SPLIT GUARD - Tự động đá văng hoặc chuyển hướng đơn cha bị tách
         if (bookingId && technicianCode) {
@@ -224,6 +229,10 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .eq('employee_id', technicianCode)
                     .eq('booking_id', bookingId)
                     .eq('business_date', today)
+                    .in('status', ['ACTIVE', 'QUEUED', 'READY'])
+                    .order('status', { ascending: true })
+                    .order('planned_start_time', { ascending: true, nullsFirst: false })
+                    .limit(1)
                     .maybeSingle();
                 assign = reAssign;
             }

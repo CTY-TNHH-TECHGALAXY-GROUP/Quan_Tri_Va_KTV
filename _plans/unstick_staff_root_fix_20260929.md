@@ -17,6 +17,8 @@ Người dùng đã duyệt sửa file ổn định trong cuộc hội thoại t
 +++ b/app/api/ktv/booking/_handlers/handleGetBooking.ts
 - Ưu tiên TurnQueue cũ và tự hoàn tất mọi ACTIVE khác khi GET.
 + Ưu tiên phân công ACTIVE còn hiệu lực; GET không tự hoàn tất công việc.
+- `.maybeSingle()` cho KTV/đơn/ngày có thể lỗi khi một KTV có hai dịch vụ hợp lệ trong cùng đơn.
++ Chọn phân công đang hiệu lực theo thứ tự xác định và không nuốt lỗi truy vấn.
 
 --- a/app/reception/dispatch/_components/QuickDispatchTable.tsx
 +++ b/app/reception/dispatch/_components/QuickDispatchTable.tsx
