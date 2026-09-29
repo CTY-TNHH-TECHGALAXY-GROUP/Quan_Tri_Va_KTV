@@ -8,6 +8,7 @@ export interface WorkSegment {
   sequenceSlot?: number;
   endTime: string;
   actualEndTime?: string | null;
+  pauses?: Array<{ from: string; to?: string | null }>;
   feedbackTime?: string | null;
   startPhotoUrl?: string | null;
   guestSlipperPhotoUrl?: string | null;

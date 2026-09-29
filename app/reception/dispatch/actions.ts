@@ -693,11 +693,11 @@ export async function processDispatch(bookingId: string, dispatchData: {
             .select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
         if (currentItemsError) throw currentItemsError;
         const liveSequentialItems = (currentItems || []).filter(i => isTwoSlotSequential(i.options)
-            && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(i.status));
+            && ['PREPARING', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(i.status));
         const liveIds = new Set(liveSequentialItems.map(i => i.id));
-        if ((currentItems || []).some(i => isTwoSlotSequential(i.options) && !['NEW','WAITING','PREPARING','READY','IN_PROGRESS'].includes(i.status)
+        if ((currentItems || []).some(i => isTwoSlotSequential(i.options) && !['NEW','WAITING','PREPARING','READY','IN_PROGRESS','PAUSED'].includes(i.status)
             && dispatchData.itemUpdates?.some(update => update.id === i.id)))
-            throw new Error('Dịch vụ đã hoàn tất hoặc dừng; chỉ lưu thông tin, không điều phối lại');
+            throw new Error('Dịch vụ đã hoàn tất; không thể điều phối lại');
         const liveSegments = liveSequentialItems.flatMap(i => typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []));
         const aIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 1).map(s => s.ktvId));
         const bIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 2 && s.voided !== true).map(s => s.ktvId));
@@ -789,7 +789,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = ['PREPARING','READY','IN_PROGRESS'].includes(dbItem.status) ? null
+                    const conflict = ['PREPARING','READY','IN_PROGRESS','PAUSED'].includes(dbItem.status) ? null
                         : liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
@@ -1257,7 +1257,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
 
                     let dbSegs: any[] = [];
                     try { dbSegs = typeof dbItem.segments === 'string' ? JSON.parse(dbItem.segments) : (dbItem.segments || []); } catch {}
-                    const conflict = ['PREPARING','READY','IN_PROGRESS'].includes(dbItem.status) ? null
+                    const conflict = ['PREPARING','READY','IN_PROGRESS','PAUSED'].includes(dbItem.status) ? null
                         : liveDispatchConflict(dbSegs, Array.isArray(updateItem.segments) ? updateItem.segments : dbSegs, dbItem.options, updateItem.options, dbItem.status);
                     if (conflict) throw new Error(conflict);
                     
@@ -1397,7 +1397,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
         const hasNormalUpdate = dispatchData.itemUpdates?.some(update => {
             const current = currentItems?.find(item => item.id === update.id);
-            return !current || !isTwoSlotSequential(current.options) || !['PREPARING','READY','IN_PROGRESS'].includes(current.status);
+            return !current || !isTwoSlotSequential(current.options) || !['PREPARING','READY','IN_PROGRESS','PAUSED'].includes(current.status);
         });
         if (hasNormalUpdate && bData && bData.bookingDate) {
             const dateStr = bData.bookingDate.split('T')[0];
@@ -1519,7 +1519,7 @@ export async function saveSequentialPair(bookingId: string, itemId: string, rows
                     options: { ...options, ...metadata, sequentialSlots: 2, displayName: displayName || options.displayName } }] });
         }
         if (Number(options.dispatchRevision || 0) !== expectedRevision) throw new Error('Ca đang chạy đã thay đổi; giữ bản đang sửa và kiểm tra trước khi lưu.');
-        if (!['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status)) throw new Error('Ca đã chuyển trạng thái; không thể gán B');
+        if (!['PREPARING', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(item.status)) throw new Error('Ca đã chuyển trạng thái; không thể gán B');
         const oldA = oldSegments.find((seg: any) => Number(seg.sequenceSlot) === 1 && seg.voided !== true)
             || (oldSegments.length === 1 ? oldSegments[0] : null);
         if (!oldA || oldA.id !== segments[0].id || oldA.ktvId !== segments[0].ktvId)

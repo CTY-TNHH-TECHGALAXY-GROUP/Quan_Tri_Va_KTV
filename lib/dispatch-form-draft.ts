@@ -60,6 +60,7 @@ export function mergeDispatchRealtimeDraft(draft: ServiceBlock, server: ServiceB
       const actual=server.staffList.flatMap(staff=>staff.segments).find(other=>other.id===seg.id);
       if (!actual) return seg;
       return {...seg,actualStartTime:actual.actualStartTime,actualEndTime:actual.actualEndTime,
+        pauses:actual.pauses,
         ...((actual as any).voided ? {voided:(actual as any).voided} : {})};
     })}))};
 }

@@ -745,10 +745,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // Tuyệt đối KHÔNG ép lên IN_PROGRESS, vì sẽ làm Timer tự chạy sai giờ.
                 // 🔒 NGOẠI LỆ: Nếu client đã set isTimerRunning = true (KTV vừa bấm Bắt đầu)
                 //    → giữ IN_PROGRESS, không ép về PREPARING (Realtime race condition)
-                if (isTimerRunningRef.current) {
-                    // Client confirmed start, server just hasn't written actualStartTime yet
+                if (isTimerRunningRef.current && timerStartMsRef.current > 0
+                    && Date.now() - timerStartMsRef.current < 10000) {
+                    // The local START response may arrive just before its refreshed segment.
                     currentStatus = 'IN_PROGRESS';
-                } else if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+                } else if (['IN_PROGRESS', 'PAUSED', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+                    setIsTimerRunning(false);
                     console.log(`🔧 [ScreenEngine] KTV ${ktvId} chưa bắt đầu nhưng item=${currentStatus} → ép về PREPARING/READY`);
                     if (isPreppingRef.current && screenRef.current === 'TIMER') {
                         currentStatus = 'READY';
@@ -781,7 +783,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         // Fix: segments có ktvId rỗng → allMySegsForStatus = [] → guard bên trong không chạy
         //      → currentStatus = assignedItem.status = 'PREPARING' (chưa được update bởi API)
         //      → ScreenEngine gọi PREPARING path → setTimeRemaining(reset) → timer bị reset mỗi Realtime event
-        if (isTimerRunningRef.current && ['PREPARING', 'READY', 'PENDING', 'CONFIRMED'].includes(currentStatus)) {
+        if (isTimerRunningRef.current && allMySegsForStatus.some((seg: any) => seg.actualStartTime && !seg.actualEndTime)
+            && ['PREPARING', 'READY', 'PENDING', 'CONFIRMED'].includes(currentStatus)) {
             console.warn(`🛡️ [ScreenEngine] Timer đang chạy nhưng currentStatus=${currentStatus} → ép về IN_PROGRESS`);
             currentStatus = 'IN_PROGRESS';
         }
@@ -1225,7 +1228,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                 }
                             } else {
                                 // ⚠️ FIX: Nếu KTV này CHƯA BẮT ĐẦU (chưa có actualStartTime)
-                                if (['IN_PROGRESS', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+                                if (['IN_PROGRESS', 'PAUSED', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
                                     if (isPreppingRef.current && screenRef.current === 'TIMER') {
                                         currentStatus = 'READY';
                                     } else {
@@ -1551,19 +1554,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
             })
             .subscribe();
 
-        // Polling fallback — skip during post-service to prevent order 2 from drifting into order 1 cleanup
+        // The post-service booking lock inside fetchBooking prevents order drift.
         fetchBookingRef.current = fetchBooking;
 
         const refreshOnAcknowledge = () => { void fetchBooking(); };
         window.addEventListener('app:refresh', refreshOnAcknowledge);
         
-        const intervalId = setInterval(() => {
-            if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
-                console.log('🕒 [KTV] Polling skipped — in post-service flow:', screenRef.current);
-                return;
-            }
-            fetchBooking();
-        }, 60000); // Tăng từ 5s lên 60s để ngăn nghẽn CPU Vercel
+        const intervalId = setInterval(fetchBooking, 20000);
 
         return () => {
             supabase.removeChannel(channel);

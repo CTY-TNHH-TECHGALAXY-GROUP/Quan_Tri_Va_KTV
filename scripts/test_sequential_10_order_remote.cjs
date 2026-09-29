@@ -65,7 +65,6 @@ async function main() {
       bid='SEQ_QA_10_CASE_'+n;iid=bid+'_ITEM';
       await db.query('BEGIN');
       try {
-        if(n===11) await db.query(fs.readFileSync(path.join(root,'supabase/migrations/20260928030000_adjust_running_sequential_pair.sql'),'utf8'));
         for (const employee of [a,b,c]) {
           await db.query(`INSERT INTO "Staff"(id,full_name,status,gender,position,work_type,online_status)
             VALUES($1,$1,'ĐANG LÀM','Female','KTV','TYPE_A','AT_VENUE')`,[employee]);
@@ -175,7 +174,7 @@ async function main() {
           await db.query(`INSERT INTO "Bookings"(id,"billCode","bookingDate","updatedAt",source,"totalAmount") VALUES($1,$1,$2,now(),'STANDARD_WALK_IN',0)`,[blockedBid,day]);
           await db.query(`INSERT INTO "BookingItems"(id,"bookingId","serviceId",price,status,options) VALUES($1,$2,'SEQ_TEST_SVC_60',0,'NEW','{}')`,[blockedIid,blockedBid]);
           await db.query(`INSERT INTO "KtvAssignments"(employee_id,business_date,booking_id,booking_item_id,segment_id,planned_start_time,planned_end_time,room_id,bed_id,status,dispatch_source)
-            VALUES($1,$2,$3,$4,'other',$5,$6,'OTHER_ROOM','OTHER_BED','QUEUED','TEST')`,[b,day,blockedBid,blockedIid,at('16:05'),at('16:20')]);
+            VALUES($1,$2,$3,$4,'other',$5,$6,'SEQ_TEST_ROOM','SEQ_TEST_BED_1','ACTIVE','TEST')`,[c,day,blockedBid,blockedIid,at('16:05'),at('16:20')]);
           await rejected(()=>db.query('SELECT dispatch_adjust_running_sequential_pair($1,$2,$3,$4,$5,$6,$7,$8)',
             [bid,iid,Number(before.options.dispatchRevision),45,'16:05',45,JSON.stringify({}),JSON.stringify({id:'SEQ_TEST_ADMIN'})]),/chồng giờ/);
           await db.query('ROLLBACK TO SAVEPOINT pair_conflict');await db.query('RELEASE SAVEPOINT pair_conflict');

@@ -420,20 +420,27 @@ export default function DispatchBoardPage() {
   useEffect(() => {
     if (loading) return;
     const conflicts:string[]=[];
+    const rebased:string[]=[];
     let changed=false;
     const restored=orders.map(order=>({...order,services:order.services.map(server=>{
       const key=`${order.id}/${server.id}`;
       const draft=draftItemsRef.current.get(key);
       if (!draft) { baselineItemsRef.current.set(key,server); return server; }
       if (server===draft) return server;
+      const previousBaseline=baselineItemsRef.current.get(key);
+      const runtimeOnly=!!previousBaseline && dispatchFormSignature(previousBaseline)===dispatchFormSignature(server);
       baselineItemsRef.current.set(key,server);
-      if (Number(server.options?.dispatchRevision || 0)!==Number(draft.options?.dispatchRevision || 0)) conflicts.push(key);
+      if (Number(server.options?.dispatchRevision || 0)!==Number(draft.options?.dispatchRevision || 0)) {
+        if (runtimeOnly) rebased.push(key);
+        else conflicts.push(key);
+      }
       const merged=mergeDispatchRealtimeDraft(draft,server);
+      if (runtimeOnly) merged.options={...merged.options,dispatchRevision:server.options?.dispatchRevision};
       if (JSON.stringify(merged)!==JSON.stringify(server)) changed=true;
       draftItemsRef.current.set(key,merged);
       return merged;
     })}));
-    if (conflicts.length) setStaleDrafts(previous=>[...new Set([...previous,...conflicts])]);
+    if (conflicts.length || rebased.length) setStaleDrafts(previous=>[...new Set([...previous.filter(key=>!rebased.includes(key)),...conflicts])]);
     if (changed) { persistDraftCache(); setOrders(restored); }
   },[orders,loading]);
 
@@ -1760,7 +1767,14 @@ if (!hasPermission('dispatch_board')) {
               confirmedOverlapItemIds.push(res.itemId);
               res = await sendPayload();
           }
-          if (res.success) acknowledgeDispatch(clonedOrder.id,clonedOrder.services.filter(item=>payload.itemUpdates.some(edit=>edit.id===item.id)),res);
+          if (res.success) {
+              try {
+                  acknowledgeDispatch(clonedOrder.id,clonedOrder.services.filter(item=>payload.itemUpdates.some(edit=>edit.id===item.id)),res);
+              } catch (uiError) {
+                  console.error('Điều phối đã lưu nhưng giao diện chưa đồng bộ:', uiError);
+                  await fetchData();
+              }
+          }
           if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
@@ -1794,9 +1808,11 @@ if (!hasPermission('dispatch_board')) {
       if (!draftItemsRef.current.size) void fetchData();
       return true;
 
-    } catch (err) {
-      alert('Đã có lỗi bất ngờ xảy ra.');
-      console.error(err); return false;
+    } catch (err: any) {
+      console.error(err);
+      alert('Chưa hoàn tất điều phối: ' + (err?.message || 'Không rõ lỗi. Tải lại bảng để kiểm tra trạng thái.'));
+      await fetchData();
+      return false;
     }
   };
 

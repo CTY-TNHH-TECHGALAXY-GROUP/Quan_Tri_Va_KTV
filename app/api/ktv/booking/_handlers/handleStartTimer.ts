@@ -47,7 +47,7 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     let assignedB = false;
     if (Number(target.seg.sequenceSlot) === 2 && isTwoSlotSequential(target.item.options)) {
         const first = target.segments.find((seg: any) => Number(seg.sequenceSlot) === 1 && seg.voided !== true && seg.voided !== 'true');
-        if (!first?.actualEndTime) return fail('Chờ KTV lượt 1 hoàn thành trước khi bắt đầu lượt 2.');
+        if (!first?.actualStartTime) return fail('Chờ KTV lượt 1 bắt đầu trước khi bắt đầu lượt 2.');
         const { data, error } = await supabase.from('KtvAssignments').select('id')
             .eq('booking_id', bookingId).eq('booking_item_id', target.item.id).eq('segment_id', target.seg.id)
             .eq('employee_id', technicianCode).eq('status', 'ACTIVE').maybeSingle();
