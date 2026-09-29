@@ -11,6 +11,7 @@ const apply=async(action,payload)=>(await db.query(`SELECT ${['DRAFT','DISPATCH'
 const make=(id,ktvId,start,end,duration,slot)=>({id,ktvId,startTime:start,endTime:end,duration,sequenceSlot:slot,roomId:'SEQ_TEST_ROOM',bedId:'SEQ_TEST_BED_1'});
 async function reject(operation,pattern){await db.query('SAVEPOINT rejected');try{await assert.rejects(operation,pattern);}finally{await db.query('ROLLBACK TO SAVEPOINT rejected');await db.query('RELEASE SAVEPOINT rejected');}}
 (async()=>{await db.connect();try{await db.query('BEGIN');try{
+ if(process.argv.includes('--preview-migration')) await db.query(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20260929010000_unstick_staff_and_running_duration.sql'),'utf8'));
  day=(await db.query("SELECT to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD') AS day")).rows[0].day;
  for(const staff of [a,b,c]){await db.query(`INSERT INTO "Staff"(id,full_name,status,gender,position,work_type,online_status) VALUES($1,$1,'ĐANG LÀM','Female','KTV','TYPE_A','AT_VENUE')`,[staff]);
  await db.query(`INSERT INTO "TurnQueue"(employee_id,date,queue_position,check_in_order,status) VALUES($1,$2,999,999,'waiting')`,[staff,day]);}
@@ -50,6 +51,13 @@ async function reject(operation,pattern){await db.query('SAVEPOINT rejected');tr
  assert.equal(removed.success,true);saved=await item();assert.equal(saved.options.closedSequentialSlots,undefined);assert.deepEqual(saved.segments[0],preservedA);
  await apply('ASSIGN_B',{itemId:iid,toKtvId:b,expectedRevision:saved.options.dispatchRevision,plannedStartAt:at('10:35'),durationMinutes:40,confirmOverlap:false});saved=await item();
  assert.equal(saved.segments.find(s=>s.ktvId===b && !s.voided).duration,40);
+ await db.query('SAVEPOINT paused_pair');
+ await db.query(`UPDATE "BookingItems" SET status='PAUSED' WHERE id=$1`,[iid]);
+ const pausedPair=(await db.query('SELECT dispatch_adjust_running_sequential_pair($1,$2,$3,$4,$5,$6,$7,$8) AS result',
+  [bid,iid,saved.options.dispatchRevision,30,'10:30',40,'{}',actor])).rows[0].result;
+ assert.equal(pausedPair.success,true);
+ assert.equal(pausedPair.savedItem.segments.find(s=>s.id==='a').duration,30);
+ await db.query('ROLLBACK TO SAVEPOINT paused_pair');await db.query('RELEASE SAVEPOINT paused_pair');
  await reject(()=>db.query('SELECT dispatch_unassign_unstarted_staffs($1,$2,$3,0,$4)',[bid,iid,[b],actor]),/bản lưu mới/);
  assert.deepEqual(await item(),saved);
  console.log('PASS real DB: remove C, reassign B, stale/bulk guards and preserved history');
@@ -95,6 +103,25 @@ async function reject(operation,pattern){await db.query('SAVEPOINT rejected');tr
   'a stale sibling item must roll back the running-A duration update');
  ninetyResult=await apply('DRAFT',{itemUpdates:[{id:ninetyId,segments:ninetySegs,options:ninety.options}]});
  assert.equal(ninetyResult.durationChanges[0].closedB,true);
+ const singleId=iid+'_SINGLE',singleStaff=prefix+'S';
+ await db.query(`INSERT INTO "Staff"(id,full_name,status,gender,position,work_type,online_status) VALUES($1,$1,'ĐANG LÀM','Female','KTV','TYPE_A','AT_VENUE')`,[singleStaff]);
+ const singleSeg={...make('single',singleStaff,'14:00','14:30',30,null),actualStartTime:at('14:00')};
+ await db.query(`INSERT INTO "BookingItems"(id,"bookingId","serviceId",price,status,segments,options,"technicianCodes")
+  VALUES($1,$2,'SEQ_TEST_SVC_60',300000,'IN_PROGRESS',$3,'{"dispatchRevision":0}',ARRAY[$4]::text[])`,[singleId,bid,JSON.stringify([singleSeg]),singleStaff]);
+ await db.query(`INSERT INTO "KtvAssignments"(employee_id,business_date,booking_id,booking_item_id,segment_id,status,planned_start_time,planned_end_time)
+  VALUES($1,$2,$3,$4,'single','ACTIVE',$5,$6)`,[singleStaff,day,bid,singleId,at('14:00'),at('14:30')]);
+ let single=(await db.query('SELECT to_jsonb(i) AS item FROM "BookingItems" i WHERE id=$1',[singleId])).rows[0].item;
+ let singleChanged=(await db.query('SELECT dispatch_adjust_running_sequential_a($1,$2,$3,$4,$5) AS result',
+  [bid,singleId,single.options.dispatchRevision,45,actor])).rows[0].result;
+ assert.equal(singleChanged.minutes,45);
+ assert.equal(singleChanged.options.sequentialSlots,undefined,'single KTV must not require sequential mode');
+ await db.query(`UPDATE "BookingItems" SET status='PAUSED' WHERE id=$1`,[singleId]);
+ single=(await db.query('SELECT to_jsonb(i) AS item FROM "BookingItems" i WHERE id=$1',[singleId])).rows[0].item;
+ singleChanged=(await db.query('SELECT dispatch_adjust_running_sequential_a($1,$2,$3,$4,$5) AS result',
+  [bid,singleId,single.options.dispatchRevision,60,actor])).rows[0].result;
+ assert.equal(singleChanged.minutes,60);
+ assert.equal(Number((await db.query('SELECT EXTRACT(EPOCH FROM planned_end_time-planned_start_time)/60 AS minutes FROM "KtvAssignments" WHERE booking_item_id=$1',[singleId])).rows[0].minutes),60);
+ console.log('PASS real DB: running single KTV duration and paused single/pair duration updates');
  console.log('PASS real DB: 90-minute service keeps B open at A=60 and closes B at A=90, with no B ever assigned');
  await db.query('SET CONSTRAINTS ALL IMMEDIATE');
  }finally{await db.query('ROLLBACK');}
@@ -104,4 +131,7 @@ async function reject(operation,pattern){await db.query('SAVEPOINT rejected');tr
  const formRpc=await client.rpc('dispatch_commit_form',{p_booking_id:'__MISSING_QA__',p_action:'DRAFT',p_payload:{itemUpdates:[]},p_actor:{id:'SEQ_TEST_ADMIN'}});
  assert.match(formRpc.error?.message || '',/Không tìm thấy đơn/,'PostgREST schema must expose the Save/Dispatch RPC');
  console.log('PASS PostgREST schema cache resolves Save/Dispatch RPC');
+ const durationRpc=await client.rpc('dispatch_adjust_running_sequential_a',{p_booking_id:'__MISSING_QA__',p_item_id:'__MISSING_QA__',p_expected_revision:0,p_minutes:60,p_actor:{id:'SEQ_TEST_ADMIN'}});
+ assert.match(durationRpc.error?.message || '',/Không tìm thấy đơn/,'service role must be able to call running duration RPC');
+ console.log('PASS PostgREST service role can call running duration RPC');
  }finally{await db.end();}})().catch(error=>{console.error('FAILED:',error.message);process.exitCode=1;});

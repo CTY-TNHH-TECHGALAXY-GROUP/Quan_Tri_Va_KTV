@@ -91,29 +91,47 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             if (validActiveItem) {
                 bookingId = validActiveItem.bookingId;
             } else {
-                // 1.b Nếu không có item IN_PROGRESS, lấy từ TurnQueue (đơn mới gán)
+                // The assignment owns the next job. TurnQueue can still point at a
+                // released booking when the next assignment was already ACTIVE.
                 const today = bizToday;
-                const { data: turn, error: tError } = await supabase
-                    .from('TurnQueue')
-                    .select('current_order_id, booking_item_id, booking_item_ids, status')
-                    .eq('employee_id', technicianCode)
-                    .eq('date', today)
-                    .maybeSingle();
-
-                if (tError) throw tError;
-                if (!turn || !turn.current_order_id) {
-                    const { data: nextAssigns } = await supabase.from('KtvAssignments').select('booking_id').eq('employee_id', technicianCode).eq('business_date', today).in('status', ['QUEUED', 'READY']).order('priority', { ascending: true }).order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
-                    let nextAssign = null;
-                    if (nextAssigns && nextAssigns.length > 0) {
-                        const bIds = nextAssigns.map((a: any) => a.booking_id);
-                        const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
-                        const validBIds = new Set(bData?.map((b: any) => b.id) || []);
-                        nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
-                    }
-                    if (nextAssign) return NextResponse.json({ success: true, data: { nextBookingId: nextAssign.booking_id } });
-                    return NextResponse.json({ success: true, data: null });
+                const { data: activeAssigns, error: activeError } = await supabase
+                    .from('KtvAssignments').select('booking_id')
+                    .eq('employee_id', technicianCode).eq('business_date', today)
+                    .eq('status', 'ACTIVE').order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
+                if (activeError) throw activeError;
+                if (activeAssigns?.length) {
+                    const { data: liveBookings, error: liveError } = await supabase.from('Bookings')
+                        .select('id, status').in('id', activeAssigns.map(a => a.booking_id));
+                    if (liveError) throw liveError;
+                    const liveIds = new Set((liveBookings || [])
+                        .filter(b => !['DONE', 'COMPLETED', 'CANCELLED', 'SPLIT', 'FEEDBACK'].includes(b.status))
+                        .map(b => b.id));
+                    bookingId = activeAssigns.find(a => liveIds.has(a.booking_id))?.booking_id || null;
                 }
-                bookingId = turn.current_order_id;
+                if (!bookingId) {
+                    // 1.b No live ACTIVE assignment: fall back to TurnQueue / queued work.
+                    const { data: turn, error: tError } = await supabase
+                        .from('TurnQueue')
+                        .select('current_order_id, booking_item_id, booking_item_ids, status')
+                        .eq('employee_id', technicianCode)
+                        .eq('date', today)
+                        .maybeSingle();
+
+                    if (tError) throw tError;
+                    if (!turn || !turn.current_order_id) {
+                        const { data: nextAssigns } = await supabase.from('KtvAssignments').select('booking_id').eq('employee_id', technicianCode).eq('business_date', today).in('status', ['QUEUED', 'READY']).order('priority', { ascending: true }).order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
+                        let nextAssign = null;
+                        if (nextAssigns && nextAssigns.length > 0) {
+                            const bIds = nextAssigns.map((a: any) => a.booking_id);
+                            const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
+                            const validBIds = new Set(bData?.map((b: any) => b.id) || []);
+                            nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
+                        }
+                        if (nextAssign) return NextResponse.json({ success: true, data: { nextBookingId: nextAssign.booking_id } });
+                        return NextResponse.json({ success: true, data: null });
+                    }
+                    bookingId = turn.current_order_id;
+                }
             }
         }
 
@@ -211,7 +229,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
             
             if (assign && (assign.status === 'QUEUED' || assign.status === 'READY')) {
-                // 2a. Tự động giải phóng các active assignment khác bị kẹt của KTV này trong ngày
+                // A GET must never mark another ACTIVE job completed.
                 const { data: activeAssigns } = await supabase
                     .from('KtvAssignments')
                     .select('id, booking_id')
@@ -221,13 +239,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .neq('booking_id', bookingId);
                 
                 if (activeAssigns && activeAssigns.length > 0) {
-                    const activeBookingIds = activeAssigns.map(a => a.booking_id);
-                    await supabase
-                        .from('KtvAssignments')
-                        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
-                        .in('id', activeAssigns.map(a => a.id));
-                    
-                    console.log(`[KTV API] Auto-completed prior active assignments for KTV ${technicianCode} on bookings: ${activeBookingIds.join(', ')}`);
+                    return NextResponse.json({ success: false,
+                        error: 'Bạn còn phân công đang hiệu lực; tải lại hoặc nhờ quầy kiểm tra.' }, { status: 409 });
                 }
 
                 // 2b. Kích hoạt assignment của đơn mới thành ACTIVE
@@ -914,4 +927,3 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
-

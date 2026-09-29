@@ -34,8 +34,11 @@ async function applyDispatchEdit(supabase: any, bookingId: string, action: strin
 async function notifyAdjustedDurations(bookingId: string, changes: any[] = []) {
     const warnings: string[] = [];
     for (const change of changes) {
-        const notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
-            message: `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
+        let notified = false;
+        try {
+            notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
+                message: `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
+        } catch (error) { console.error('Duration notification failed:', error); }
         if (!notified) warnings.push(`Đã lưu giờ mới nhưng chưa báo được cho ${change.employeeId}; vui lòng báo trực tiếp.`);
     }
     return warnings;
@@ -1583,11 +1586,13 @@ export async function saveDispatchForm(bookingId: string, itemId: string, rows: 
         const segments=activeRows.flatMap((row,index)=>row.segments.filter(seg=>seg.voided!==true && seg.voided!=='true')
             .map(seg=>({...seg,ktvId:row.ktvId,...(sequential ? {sequenceSlot:index+1} : {})})));
         const oldSegments=parseKtvSegments(item.segments,true);
-        const oldA=oldSegments.find(seg=>Number(seg.sequenceSlot)===1 && seg.voided!==true && seg.voided!=='true');
+        const oldA=oldSegments.find(seg=>Number(seg.sequenceSlot)===1 && seg.voided!==true && seg.voided!=='true')
+            || (oldSegments.filter(seg=>seg.voided!==true && seg.voided!=='true').length===1
+                ? oldSegments.find(seg=>seg.voided!==true && seg.voided!=='true') : undefined);
         const oldB=oldSegments.find(seg=>Number(seg.sequenceSlot)===2 && seg.voided!==true && seg.voided!=='true');
-        const nextA=segments.find(seg=>Number(seg.sequenceSlot)===1);
+        const nextA=segments.find(seg=>seg.id===oldA?.id);
         const nextB=segments.find(seg=>Number(seg.sequenceSlot)===2);
-        if (sequential && item.status==='IN_PROGRESS' && oldA?.actualStartTime && !oldA.actualEndTime
+        if (isTwoSlotSequential(options) && ['IN_PROGRESS','PAUSED'].includes(item.status) && oldA?.actualStartTime && !oldA.actualEndTime
             && oldB && !oldB.actualStartTime && nextA && nextB && Number(nextA.duration)!==Number(oldA.duration)) {
             if (nextA.id!==oldA.id || nextB.id!==oldB.id || nextA.ktvId!==oldA.ktvId || nextB.ktvId!==oldB.ktvId
                 || nextA.roomId!==oldA.roomId || nextB.roomId!==oldB.roomId || nextA.bedId!==oldA.bedId || nextB.bedId!==oldB.bedId)
@@ -1601,7 +1606,27 @@ export async function saveDispatchForm(bookingId: string, itemId: string, rows: 
                 p_actor:await currentCounterActor()
             });
             if (pairError || !data?.success) throw pairError || new Error(data?.error || 'Không lưu được giờ A/B');
-            return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision}};
+            const savedSegments=parseKtvSegments(data.savedItem.segments);
+            const savedA=savedSegments.find(seg=>seg.id===oldA.id);
+            const savedB=savedSegments.find(seg=>seg.id===oldB.id);
+            const warnings=await notifyAdjustedDurations(bookingId,[
+                {employeeId:oldA.ktvId,minutes:Number(savedA?.duration || nextA.duration),startTime:savedA?.startTime,endTime:savedA?.endTime},
+                ...(savedB ? [{employeeId:oldB.ktvId,minutes:Number(savedB.duration),startTime:savedB.startTime,endTime:savedB.endTime}] : [])]);
+            return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision},warnings};
+        }
+        if (['IN_PROGRESS','PAUSED'].includes(item.status) && oldA?.actualStartTime && !oldA.actualEndTime
+            && !oldB && nextA && !nextB && Number(nextA.duration)!==Number(oldA.duration)) {
+            if (nextA.ktvId!==oldA.ktvId || nextA.roomId!==oldA.roomId || nextA.bedId!==oldA.bedId
+                || nextA.startTime!==oldA.startTime) throw new Error('Chỉ đổi thời lượng; nhân viên, phòng và giờ bắt đầu phải giữ nguyên');
+            const {data,error:durationError}=await supabase.rpc('dispatch_adjust_running_sequential_a',{
+                p_booking_id:bookingId,p_item_id:itemId,p_expected_revision:expectedRevision,
+                p_minutes:Number(nextA.duration),p_actor:await currentCounterActor()});
+            if (durationError || !data?.segments) throw durationError || new Error('Không lưu được thời lượng');
+            const savedItem={id:itemId,status:item.status,segments:data.segments,options:data.options,
+                roomName:item.roomName,bedId:item.bedId};
+            const warnings=await notifyAdjustedDurations(bookingId,[{employeeId:oldA.ktvId,
+                minutes:Number(nextA.duration),startTime:data.startTime,endTime:data.endTime}]);
+            return {success:true,savedItems:[savedItem],savedItem,revisions:{[itemId]:data.options.dispatchRevision},warnings};
         }
         const result=await saveDraftDispatch(bookingId,{roomName:booking.roomName,bedId:booking.bedId,notes:booking.notes,
             confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[{id:itemId,

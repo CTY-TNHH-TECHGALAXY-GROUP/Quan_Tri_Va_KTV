@@ -1618,8 +1618,8 @@ const ServiceGroupCard = ({
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
                 const ownSegment = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => isLiveKtvSegment({ ...seg, ktvId }, ktvId));
                 const timeLocked = !!ownSegment?.actualStartTime || (Number(ownSegment?.sequenceSlot) === 1 && groupItems.some(item => item.staffList.some(row => row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true' && seg.actualStartTime)))) || groupItems.some(item => ['CLEANING', 'FEEDBACK', 'DONE', 'CANCELLED'].includes(item.status || ''));
-                const canEditRunningADuration = !!state.confirmedSequential && idx === 0 && !!ownSegment?.actualStartTime && !ownSegment?.actualEndTime
-                  && groupItems[0]?.status === 'IN_PROGRESS'
+                const canEditRunningADuration = idx === 0 && !!ownSegment?.actualStartTime && !ownSegment?.actualEndTime
+                  && ['IN_PROGRESS', 'PAUSED'].includes(groupItems[0]?.status || '')
                   && !groupItems[0]?.staffList.some(row => row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true' && seg.actualStartTime));
                 const slotBItem = groupItems.find(item => isTwoSlotSequential(item.options) && !item.options?.finishedAfterA && !sequentialSlotClosed(item.options, 2)
                   && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status || '')

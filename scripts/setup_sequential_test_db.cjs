@@ -28,6 +28,8 @@ const migrations = [
   '20260928010000_start_after_completed_queue.sql',
   '20260928020000_prevent_live_assignment_overlap.sql',
   '20260928030000_adjust_running_sequential_pair.sql',
+  '20260929010000_unstick_staff_and_running_duration.sql',
+  '20260929020000_allow_running_duration_rpc.sql',
 ];
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const accountsFile = '/private/tmp/sequential-test-accounts-' + expectedRef + '.json';

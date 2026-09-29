@@ -10,6 +10,7 @@ const prefix='SEQ_START_QA_'+process.pid,oldBooking=prefix+'_OLD',newBooking=pre
 const oldItem=oldBooking+'_ITEM',newItem=newBooking+'_ITEM',employee=prefix+'_KTV';
 const pick=(value,keys)=>Object.fromEntries(keys.map(key=>[key,value[key]]));
 (async()=>{await db.connect();try{await db.query('BEGIN');try{
+ if(process.argv.includes('--preview-migration')) await db.query(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20260929010000_unstick_staff_and_running_duration.sql'),'utf8'));
  const day=(await db.query("SELECT (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day")).rows[0].day;
  const local=clock=>`${day.toISOString().slice(0,10)}T${clock}:00+07:00`;
  const oldSeg={id:'old-seg',ktvId:employee,roomId:'SEQ_TEST_ROOM',bedId:'SEQ_TEST_BED_1',startTime:'10:00',endTime:'10:30',duration:30,
@@ -36,11 +37,21 @@ const pick=(value,keys)=>Object.fromEntries(keys.map(key=>[key,value[key]]));
     JSON.stringify(updated),employee,'new-seg',now,JSON.stringify({status:'working',current_order_id:newBooking,booking_item_id:newItem,booking_item_ids:[newItem],start_time:'11:00',estimated_end_time:'11:30'})])).rows[0].result;};
  await db.query('SAVEPOINT unhanded');
  try{await assert.rejects(start(),/Ca trước chưa bàn giao/);}finally{await db.query('ROLLBACK TO SAVEPOINT unhanded');await db.query('RELEASE SAVEPOINT unhanded');}
+ await db.query('SAVEPOINT skipped_release');
+ await db.query(`UPDATE "BookingItems" SET handover_status='SKIPPED',handover_skipped=true WHERE id=$1`,[oldItem]);
+ const released=(await db.query(`SELECT ktv_release_work_atomic($1,$2,'[]'::jsonb,NULL) AS result`,[oldBooking,employee])).rows[0].result;
+ assert.equal(released.success,true);
+ assert.equal((await db.query('SELECT current_order_id FROM "TurnQueue" WHERE employee_id=$1 AND date=$2',[employee,day])).rows[0].current_order_id,newBooking);
+ await db.query('ROLLBACK TO SAVEPOINT skipped_release');await db.query('RELEASE SAVEPOINT skipped_release');
+ await db.query('SAVEPOINT skipped_start');
+ await db.query(`UPDATE "BookingItems" SET handover_status='SKIPPED',handover_skipped=true WHERE id=$1`,[oldItem]);
+ assert.equal((await start()).success,true,'one skipped handover must not block the next start');
+ await db.query('ROLLBACK TO SAVEPOINT skipped_start');await db.query('RELEASE SAVEPOINT skipped_start');
  await db.query(`UPDATE "BookingItems" SET segments=$2 WHERE id=$1`,[oldItem,JSON.stringify([{...oldSeg,handoverTime:local('10:35')}])]);
  const result=await start();assert.equal(result.success,true);
  assert.equal((await db.query('SELECT current_order_id FROM "TurnQueue" WHERE employee_id=$1 AND date=$2',[employee,day])).rows[0].current_order_id,newBooking);
  assert.equal((await db.query('SELECT status FROM "BookingItems" WHERE id=$1',[newItem])).rows[0].status,'IN_PROGRESS');
- console.log('PASS stale TurnQueue: unhanded old work blocks START; handed-over work lets ACTIVE next assignment start');
+ console.log('PASS stale TurnQueue: unhanded work blocks; SKIPPED debt allows release/start; physical handover allows start');
  await db.query('SET CONSTRAINTS ALL IMMEDIATE');
  }finally{await db.query('ROLLBACK');}console.log('PASS synthetic booking, KTV and queue rows rolled back');
  }finally{await db.end();}})().catch(error=>{console.error('FAILED:',error.message);process.exitCode=1;});
