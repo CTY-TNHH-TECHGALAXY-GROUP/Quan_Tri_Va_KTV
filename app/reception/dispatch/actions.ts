@@ -1614,20 +1614,6 @@ export async function saveDispatchForm(bookingId: string, itemId: string, rows: 
                 ...(savedB ? [{employeeId:oldB.ktvId,minutes:Number(savedB.duration),startTime:savedB.startTime,endTime:savedB.endTime}] : [])]);
             return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision},warnings};
         }
-        if (['IN_PROGRESS','PAUSED'].includes(item.status) && oldA?.actualStartTime && !oldA.actualEndTime
-            && !oldB && nextA && !nextB && Number(nextA.duration)!==Number(oldA.duration)) {
-            if (nextA.ktvId!==oldA.ktvId || nextA.roomId!==oldA.roomId || nextA.bedId!==oldA.bedId
-                || nextA.startTime!==oldA.startTime) throw new Error('Chỉ đổi thời lượng; nhân viên, phòng và giờ bắt đầu phải giữ nguyên');
-            const {data,error:durationError}=await supabase.rpc('dispatch_adjust_running_sequential_a',{
-                p_booking_id:bookingId,p_item_id:itemId,p_expected_revision:expectedRevision,
-                p_minutes:Number(nextA.duration),p_actor:await currentCounterActor()});
-            if (durationError || !data?.segments) throw durationError || new Error('Không lưu được thời lượng');
-            const savedItem={id:itemId,status:item.status,segments:data.segments,options:data.options,
-                roomName:item.roomName,bedId:item.bedId};
-            const warnings=await notifyAdjustedDurations(bookingId,[{employeeId:oldA.ktvId,
-                minutes:Number(nextA.duration),startTime:data.startTime,endTime:data.endTime}]);
-            return {success:true,savedItems:[savedItem],savedItem,revisions:{[itemId]:data.options.dispatchRevision},warnings};
-        }
         const result=await saveDraftDispatch(bookingId,{roomName:booking.roomName,bedId:booking.bedId,notes:booking.notes,
             confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[{id:itemId,
                 roomName:segments[0]?.roomId || item.roomName,bedId:segments[0]?.bedId || item.bedId,

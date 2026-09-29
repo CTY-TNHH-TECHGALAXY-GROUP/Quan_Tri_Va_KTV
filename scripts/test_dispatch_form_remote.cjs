@@ -11,7 +11,7 @@ const apply=async(action,payload)=>(await db.query(`SELECT ${['DRAFT','DISPATCH'
 const make=(id,ktvId,start,end,duration,slot)=>({id,ktvId,startTime:start,endTime:end,duration,sequenceSlot:slot,roomId:'SEQ_TEST_ROOM',bedId:'SEQ_TEST_BED_1'});
 async function reject(operation,pattern){await db.query('SAVEPOINT rejected');try{await assert.rejects(operation,pattern);}finally{await db.query('ROLLBACK TO SAVEPOINT rejected');await db.query('RELEASE SAVEPOINT rejected');}}
 (async()=>{await db.connect();try{await db.query('BEGIN');try{
- if(process.argv.includes('--preview-migration')) await db.query(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20260929010000_unstick_staff_and_running_duration.sql'),'utf8'));
+ if(process.argv.includes('--preview-migration')) await db.query(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20260929030000_running_form_commit_all_states.sql'),'utf8'));
  day=(await db.query("SELECT to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD') AS day")).rows[0].day;
  for(const staff of [a,b,c]){await db.query(`INSERT INTO "Staff"(id,full_name,status,gender,position,work_type,online_status) VALUES($1,$1,'ĐANG LÀM','Female','KTV','TYPE_A','AT_VENUE')`,[staff]);
  await db.query(`INSERT INTO "TurnQueue"(employee_id,date,queue_position,check_in_order,status) VALUES($1,$2,999,999,'waiting')`,[staff,day]);}
@@ -58,6 +58,15 @@ async function reject(operation,pattern){await db.query('SAVEPOINT rejected');tr
  assert.equal(pausedPair.success,true);
  assert.equal(pausedPair.savedItem.segments.find(s=>s.id==='a').duration,30);
  await db.query('ROLLBACK TO SAVEPOINT paused_pair');await db.query('RELEASE SAVEPOINT paused_pair');
+ await db.query('SAVEPOINT paused_global');
+ const pausedGlobalSegments=structuredClone(saved.segments);
+ pausedGlobalSegments.find(s=>s.id==='a').duration=45;
+ pausedGlobalSegments.find(s=>s.id==='a').endTime='10:45';
+ pausedGlobalSegments.find(s=>s.sequenceSlot===2 && !s.voided).startTime='10:45';
+ pausedGlobalSegments.find(s=>s.sequenceSlot===2 && !s.voided).endTime='11:25';
+ const pausedGlobal=await apply('DRAFT',{itemUpdates:[{id:iid,segments:pausedGlobalSegments,options:saved.options}]});
+ assert.equal(pausedGlobal.durationChanges.length,2);
+ await db.query('ROLLBACK TO SAVEPOINT paused_global');await db.query('RELEASE SAVEPOINT paused_global');
  await reject(()=>db.query('SELECT dispatch_unassign_unstarted_staffs($1,$2,$3,0,$4)',[bid,iid,[b],actor]),/bản lưu mới/);
  assert.deepEqual(await item(),saved);
  console.log('PASS real DB: remove C, reassign B, stale/bulk guards and preserved history');
@@ -120,7 +129,14 @@ async function reject(operation,pattern){await db.query('SAVEPOINT rejected');tr
  singleChanged=(await db.query('SELECT dispatch_adjust_running_sequential_a($1,$2,$3,$4,$5) AS result',
   [bid,singleId,single.options.dispatchRevision,60,actor])).rows[0].result;
  assert.equal(singleChanged.minutes,60);
- assert.equal(Number((await db.query('SELECT EXTRACT(EPOCH FROM planned_end_time-planned_start_time)/60 AS minutes FROM "KtvAssignments" WHERE booking_item_id=$1',[singleId])).rows[0].minutes),60);
+ single=(await db.query('SELECT to_jsonb(i) AS item FROM "BookingItems" i WHERE id=$1',[singleId])).rows[0].item;
+ const singleGlobalSegments=structuredClone(single.segments);
+ singleGlobalSegments[0].duration=55;singleGlobalSegments[0].endTime='14:55';
+ const singleGlobal=await apply('DRAFT',{itemUpdates:[{id:singleId,segments:singleGlobalSegments,
+  options:{...single.options,displayName:'Paused single edited'}}]});
+ assert.equal(singleGlobal.durationChanges[0].minutes,55);
+ assert.equal((await db.query('SELECT options->>\'displayName\' AS name FROM "BookingItems" WHERE id=$1',[singleId])).rows[0].name,'Paused single edited');
+ assert.equal(Number((await db.query('SELECT EXTRACT(EPOCH FROM planned_end_time-planned_start_time)/60 AS minutes FROM "KtvAssignments" WHERE booking_item_id=$1',[singleId])).rows[0].minutes),55);
  console.log('PASS real DB: running single KTV duration and paused single/pair duration updates');
  console.log('PASS real DB: 90-minute service keeps B open at A=60 and closes B at A=90, with no B ever assigned');
  await db.query('SET CONSTRAINTS ALL IMMEDIATE');

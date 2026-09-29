@@ -30,6 +30,7 @@ const migrations = [
   '20260928030000_adjust_running_sequential_pair.sql',
   '20260929010000_unstick_staff_and_running_duration.sql',
   '20260929020000_allow_running_duration_rpc.sql',
+  '20260929030000_running_form_commit_all_states.sql',
 ];
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const accountsFile = '/private/tmp/sequential-test-accounts-' + expectedRef + '.json';
