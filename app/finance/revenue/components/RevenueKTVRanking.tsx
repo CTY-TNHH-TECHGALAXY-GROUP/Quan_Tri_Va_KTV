@@ -13,8 +13,11 @@ const SORT_OPTIONS = [
   { value: 'tuaMoney', label: 'Tiền tua (Cao nhất)' },
   { value: 'bonus', label: 'Điểm Bonus (Cao nhất)' },
   { value: 'totalWorkingHours', label: 'Tổng giờ làm (Cao nhất)' },
-  { value: 'excellentCount', label: 'Lượt xuất sắc (Nhiều nhất)' },
-  { value: 'badCount', label: 'Đánh giá Tệ (Nhiều nhất)' },
+  { value: 'rating4Count', label: 'Mức 4 · Xuất sắc (Nhiều nhất)' },
+  { value: 'rating3Count', label: 'Mức 3 · Tốt (Nhiều nhất)' },
+  { value: 'rating2Count', label: 'Mức 2 · Bình thường (Nhiều nhất)' },
+  { value: 'rating1Count', label: 'Mức 1 · Tệ (Nhiều nhất)' },
+  { value: 'avgRating', label: 'Điểm đánh giá TB (Cao nhất)' },
   { value: 'avgWorkingHours', label: 'Giờ làm/Ngày (Cao nhất)' },
   { value: 'workingDays', label: 'Ngày công (Nhiều nhất)' },
   { value: 'leaveDays', label: 'Ngày nghỉ (Nhiều nhất)' },
@@ -93,10 +96,11 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Doanh Thu</th>
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Tiền Tua</th>
                   <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Điểm Bonus</th>
-                  <th className="font-bold text-gray-500 py-4 px-4 text-center">NGÀY CÔNG</th>
-                  <th className="font-bold text-gray-500 py-4 px-4 text-center">NGÀY NGHỈ</th>
-                  <th className="font-bold text-gray-500 py-4 px-4 text-center">TỔNG GIỜ LÀM</th>
-                  <th className="font-bold text-gray-500 py-4 px-4 text-left">LƯỢT KHÁCH</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Ngày Công</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Ngày Nghỉ</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">Tổng Giờ Làm</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-left min-w-[190px]">Đánh Giá (Feedback)</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-left min-w-[130px]">Lượt Tua</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -105,6 +109,12 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                   const isTop2 = index === 1;
                   const isTop3 = index === 2;
                   
+                  const count4 = ktv.rating4Count ?? ktv.excellentCount ?? 0;
+                  const count3 = ktv.rating3Count ?? ktv.goodCount ?? 0;
+                  const count2 = ktv.rating2Count ?? ktv.averageCount ?? 0;
+                  const count1 = ktv.rating1Count ?? ktv.badCount ?? 0;
+                  const totalRatings = ktv.ratingCount ?? (count4 + count3 + count2 + count1);
+
                   return (
                     <tr key={ktv.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="p-4 text-center">
@@ -164,30 +174,59 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                         </div>
                       </td>
                       <td className="p-4">
-                        <div className="flex flex-col gap-1.5 text-xs font-medium">
-                          <div className="flex justify-between items-center text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
-                            <span>Xuất sắc:</span>
-                            <span className="font-black flex items-center gap-1">
-                              {ktv.excellentCount > 0 ? (
-                                <>
-                                  {ktv.excellentCount} lần <Star size={12} className="fill-amber-500 text-amber-500" />
-                                </>
-                              ) : (
-                                '0 lần'
-                              )}
+                        <div className="flex flex-col gap-1 text-xs font-medium">
+                          {totalRatings > 0 ? (
+                            <div className="flex items-center gap-1.5 mb-0.5 pb-1 border-b border-gray-100">
+                              <span className="text-[11px] font-black text-amber-600 flex items-center gap-0.5">
+                                <Star size={11} className="fill-amber-400 text-amber-400" />
+                                {ktv.avgRating > 0 ? ktv.avgRating.toFixed(1) : '0'}★
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-semibold">({totalRatings} lượt)</span>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-between items-center text-amber-700 bg-amber-50/80 px-2 py-0.5 rounded text-[11px]">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <span className="text-amber-500">4★</span>
+                              <span className="text-gray-600">Xuất sắc:</span>
                             </span>
+                            <span className="font-black text-amber-700">{count4}</span>
                           </div>
-                          <div className="flex justify-between items-center text-red-500 bg-red-50 px-2 py-1 rounded-md">
-                            <span>Đánh giá Tệ:</span>
-                            <span className="font-black">{ktv.badCount} lần</span>
+                          <div className="flex justify-between items-center text-emerald-700 bg-emerald-50/80 px-2 py-0.5 rounded text-[11px]">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <span className="text-emerald-500">3★</span>
+                              <span className="text-gray-600">Tốt:</span>
+                            </span>
+                            <span className="font-black text-emerald-700">{count3}</span>
                           </div>
-                          <div className="flex justify-between items-center text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
+                          <div className="flex justify-between items-center text-sky-700 bg-sky-50/80 px-2 py-0.5 rounded text-[11px]">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <span className="text-sky-500">2★</span>
+                              <span className="text-gray-600">B.Thường:</span>
+                            </span>
+                            <span className="font-black text-sky-700">{count2}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-rose-700 bg-rose-50/80 px-2 py-0.5 rounded text-[11px]">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <span className="text-rose-500">1★</span>
+                              <span className="text-gray-600">Tệ:</span>
+                            </span>
+                            <span className="font-black text-rose-700">{count1}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1 text-xs font-medium">
+                          <div className="flex justify-between items-center text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
                             <span>Tour tự do:</span>
-                            <span className="font-bold">{ktv.freeTurns}</span>
+                            <span className="font-bold text-slate-800">{ktv.freeTurns}</span>
                           </div>
-                          <div className="flex justify-between items-center text-purple-600 bg-purple-50 px-2 py-1 rounded-md">
+                          <div className="flex justify-between items-center text-purple-700 bg-purple-50 px-2 py-1 rounded-md">
                             <span>Menu VIP:</span>
-                            <span className="font-black">{ktv.vipTurns}</span>
+                            <span className="font-black text-purple-800">{ktv.vipTurns}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-blue-700 bg-blue-50 px-2 py-1 rounded-md">
+                            <span>Yêu cầu:</span>
+                            <span className="font-bold text-blue-800">{ktv.requestedTurns}</span>
                           </div>
                         </div>
                       </td>

@@ -239,6 +239,8 @@ export async function GET(request: Request) {
         totalTip: ledgerTipMap[id] || 0,
         workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0, totalWorkingHours: 0,
         sumRating: 0, ratingCount: 0, avgRating: 0, excellentCount: 0, badCount: 0,
+        rating4Count: 0, rating3Count: 0, rating2Count: 0, rating1Count: 0,
+        goodCount: 0, averageCount: 0,
         uniqueBookings: new Set()
       };
     });
@@ -300,9 +302,17 @@ export async function GET(request: Request) {
                    if (myRating > 0) {
                        rankingMap[code].sumRating += myRating;
                        rankingMap[code].ratingCount += 1;
-                       if (myRating >= 4) { // Điểm xuất sắc (>= 4 sao)
+                       if (myRating >= 4) { // Mức 4: Xuất sắc (>= 4 sao)
+                           rankingMap[code].rating4Count += 1;
                            rankingMap[code].excellentCount += 1;
-                       } else if (myRating <= 1) { // Điểm tệ/chưa đạt (1 sao)
+                       } else if (myRating === 3) { // Mức 3: Tốt (3 sao)
+                           rankingMap[code].rating3Count += 1;
+                           rankingMap[code].goodCount += 1;
+                       } else if (myRating === 2) { // Mức 2: Bình thường / Tạm được (2 sao)
+                           rankingMap[code].rating2Count += 1;
+                           rankingMap[code].averageCount += 1;
+                       } else if (myRating <= 1) { // Mức 1: Tệ (1 sao)
+                           rankingMap[code].rating1Count += 1;
                            rankingMap[code].badCount += 1;
                        }
                    }
