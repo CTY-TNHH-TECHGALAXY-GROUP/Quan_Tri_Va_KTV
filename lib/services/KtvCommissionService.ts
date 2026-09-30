@@ -589,6 +589,21 @@ export class KtvCommissionService {
         return mine.length > 0 && mine.every((s: any) => isVoidedSegment(s));
     }
 
+    /**
+     * Danh sách KTV CÒN QUYỀN LỢI trên item: có trong `technicianCodes` và chặng
+     * không bị tước (`isKtvVoidedOnItem`).
+     *
+     * `technicianCodes` cố ý giữ cả người bị đổi ra để truy vết (CLAUDE.md mục
+     * 13.3), nên mọi phép chia tiền / tip / phút theo "số KTV" ở các báo cáo
+     * phải chia theo danh sách này, không chia theo `technicianCodes.length`.
+     */
+    static activeTechs(item: any): string[] {
+        const techs: unknown[] = Array.isArray(item?.technicianCodes) ? item.technicianCodes : [];
+        return techs
+            .map((t) => String(t ?? '').trim())
+            .filter((code) => code && !this.isKtvVoidedOnItem(item, code));
+    }
+
     static checkIsItemPassed(item: any, booking: any, ktvId: string): { isPassed: boolean, reasons: string[] } {
         // 🔧 YÊU CẦU TỪ KHÁCH: Hủy bỏ hoàn toàn phương án giữ tiền hoặc bonus của nhân viên.
         // Mọi đơn hàng đều được trả lương và thưởng đầy đủ.

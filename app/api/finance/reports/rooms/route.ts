@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,9 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
 
     try {
+        await requirePermission('revenue_reports');
         const { completedBookings, items, svcMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
-        
+
         // Tạo một Map để gom nhóm dữ liệu theo tên phòng
         const roomStatsMap: Record<string, {
             roomName: string;
@@ -74,6 +76,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, data: roomsData });
     } catch (err) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error(err);
         return NextResponse.json({ success: false, error: 'Failed to fetch rooms analysis data' }, { status: 500 });
     }

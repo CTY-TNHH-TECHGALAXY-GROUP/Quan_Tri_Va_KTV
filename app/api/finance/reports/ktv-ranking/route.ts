@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
   try {
+    await requirePermission('revenue_reports');
     const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
       return NextResponse.json({ success: false, error: 'Không thể kết nối DB' }, { status: 500 });
@@ -27,16 +29,17 @@ export async function GET(request: Request) {
     if (staffErr) throw staffErr;
 
     const { isPlaceholderStaffId } = require('@/lib/constants/staff.constants');
+    // KTV ngoài không tài khoản (EXT_*) vẫn hiện trong xếp hạng (quyết định
+    // 30/09/2026) và tính theo Loại C như ledger — trước đây bị loại nên rơi về TYPE_A.
     const staffList = (allStaff || []).filter(s =>
       s.status === 'ĐANG LÀM' &&
-      !isPlaceholderStaffId(s.id) &&
       s.id !== 'ADMIN' &&
       s.id !== 'dev'
     );
 
     const ktvWorkTypeMap: Record<string, string> = {};
     (staffList || []).forEach(s => {
-        ktvWorkTypeMap[s.id] = s.work_type || 'TYPE_A';
+        ktvWorkTypeMap[s.id] = isPlaceholderStaffId(s.id) ? 'TYPE_C' : (s.work_type || 'TYPE_A');
     });
 
     // 2. Fetch Configs for Commission Realtime
@@ -277,7 +280,9 @@ export async function GET(request: Request) {
     const vipBookingIdsByKtv: Record<string, Set<string>> = {};
     
     bookingItems.forEach(item => {
-      let ktvs = Array.isArray(item.technicianCodes) ? item.technicianCodes : [];
+      // Chỉ KTV còn quyền lợi trên item (loại chặng voided): người bị đổi ra
+      // không được chia tip, tiền tua, lượt VIP hay rating.
+      let ktvs = KtvCommissionService.activeTechs(item);
       const rawSource = (item.bookingSource || '').toUpperCase();
       const itemCategory = svcCategoryMap[String(item.serviceId)] || '';
       const isVip = rawSource === 'VIP_MENU' || rawSource === 'VIP_WALK_IN' || rawSource === 'VIP_BOOKING' || itemCategory.includes('VIP') || itemCategory.includes('PREMIUM');
@@ -427,7 +432,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, data: finalData });
   } catch (error: any) {
     console.error('KTV Ranking API Error:', error);
-    require('fs').writeFileSync('ktv_error_log.txt', error.stack || error.message);
-    return NextResponse.json({ success: false, error: error.stack || error.message }, { status: 500 });
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
+    // Bỏ ghi file ktv_error_log.txt: filesystem trên Vercel chỉ đọc, throw
+    // trong catch làm lỗi thật bị che mất. Không trả stack ra client.
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

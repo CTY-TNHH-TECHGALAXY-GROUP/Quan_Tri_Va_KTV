@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
+import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +20,9 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
 
     try {
+        await requirePermission('revenue_reports');
         const { completedBookings, items, svcMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
-        
+
         // ─── Weekday Stats ──────────────────────────────────────────────────
         const weekdayMap: Record<number, { weekday: string, revenue: number, orders: number }> = {
             1: { weekday: 'Thứ 2', revenue: 0, orders: 0 },
@@ -70,18 +73,20 @@ export async function GET(request: Request) {
         const ktvMap: Record<string, { ktvId: string, ktvCode: string, ktvName: string, totalServices: number, totalWorkingMinutes: number, totalRevenueContribution: number, uniqueBookings: Set<string> }> = {};
         
         items.forEach(i => {
-            if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
-                i.technicianCodes.forEach((code: string) => {
+            // Chia phút và doanh thu theo KTV còn quyền lợi (loại chặng voided).
+            const activeTechs = KtvCommissionService.activeTechs(i);
+            if (activeTechs.length > 0) {
+                activeTechs.forEach((code: string) => {
                     if (!ktvMap[code]) {
                         ktvMap[code] = { ktvId: code, ktvCode: code, ktvName: code, totalServices: 0, totalWorkingMinutes: 0, totalRevenueContribution: 0, uniqueBookings: new Set() };
                     }
                     ktvMap[code].uniqueBookings.add(i.bookingId);
                     ktvMap[code].totalServices = ktvMap[code].uniqueBookings.size;
-                    
+
                     const svcInfo = svcMap[String(i.serviceId)];
                     const dur = svcInfo ? svcInfo.duration : 60;
-                    ktvMap[code].totalWorkingMinutes += Math.round(dur / i.technicianCodes.length);
-                    ktvMap[code].totalRevenueContribution += Math.round((Number(i.price) || 0) / i.technicianCodes.length);
+                    ktvMap[code].totalWorkingMinutes += Math.round(dur / activeTechs.length);
+                    ktvMap[code].totalRevenueContribution += Math.round((Number(i.price) || 0) / activeTechs.length);
                 });
             }
         });
@@ -98,6 +103,8 @@ export async function GET(request: Request) {
             ktvWorkingTime
         });
     } catch (err) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error(err);
         return NextResponse.json({ success: false, error: 'Failed to fetch time analysis data' }, { status: 500 });
     }
