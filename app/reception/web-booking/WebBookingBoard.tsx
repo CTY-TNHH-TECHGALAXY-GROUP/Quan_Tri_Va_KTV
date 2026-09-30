@@ -202,12 +202,23 @@ export function WebBookingBoard() {
     try {
       const res = await confirmWebBooking(id);
       if (res.success) {
-        showToast(
-          res.emailSent === false
-            ? 'Đơn đã vào Điều phối nhưng email chưa gửi được. Kiểm tra SMTP và gửi lại email.'
-            : '✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.',
-          res.emailSent === false ? 'error' : 'success'
-        );
+        // Nói rõ email có gửi không và vì sao — áp cho cả đơn WB lẫn đơn BK (web nội bộ).
+        const skipped = (res as any).emailSkippedReason as 'NO_EMAIL' | 'INVALID_EMAIL' | 'DISABLED' | null | undefined;
+        let msg = '✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.';
+        let kind: 'success' | 'error' = 'success';
+        if (res.emailSent === false) {
+          msg = 'Đơn đã vào Điều phối nhưng email chưa gửi được. Kiểm tra SMTP và gửi lại email.';
+          kind = 'error';
+        } else if (res.emailSent === true) {
+          msg = '✅ Đã xác nhận và gửi email xác nhận cho khách.';
+        } else if (skipped === 'NO_EMAIL') {
+          msg = '✅ Đã xác nhận. Không gửi email vì đơn không có email khách.';
+        } else if (skipped === 'INVALID_EMAIL') {
+          msg = '✅ Đã xác nhận. Không gửi email vì email khách không hợp lệ — sửa email rồi bấm "Gửi lại email".';
+        } else if (skipped === 'DISABLED') {
+          msg = '✅ Đã xác nhận. Không gửi email vì công tắc gửi email đang TẮT (Cài đặt › Cấu hình Email).';
+        }
+        showToast(msg, kind);
         setSelectedBooking(null);
         // Mark as confirmed locally so it won't reappear after realtime refetch
         confirmedIdsRef.current.add(id);

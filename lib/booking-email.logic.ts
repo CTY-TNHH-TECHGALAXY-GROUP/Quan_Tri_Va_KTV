@@ -44,6 +44,21 @@ function parseOptions(raw: unknown): Record<string, any> {
   return raw as Record<string, any>;
 }
 
+/**
+ * Mã đơn hiện trong email (dòng "Mã đặt lịch" + tiêu đề mail).
+ *
+ * WebBooking lưu `billCode` đầy đủ (`WB-26092026-002`), còn web nội bộ lưu
+ * `billCode` cụt (`002-24092026`) và mã đầy đủ nằm ở `id` (`BK-11NDK-002-24092026`).
+ * Trước đây lấy `billCode || id` nên khách đặt qua web nội bộ nhận mã thiếu
+ * tiền tố, không khớp mã quầy thấy. Quy tắc: `billCode` có tiền tố chữ thì
+ * dùng, không thì dùng `id`.
+ */
+export function emailBookingCode(b: { id?: string | null; billCode?: string | null }): string {
+  const billCode = String(b?.billCode || '').trim();
+  if (/^[A-Z]{2,}-/.test(billCode)) return billCode;
+  return String(b?.id || billCode).trim();
+}
+
 /** Ghi chú chung của đơn (có thể lưu dạng JSON) — chỉ lấy phần khách viết. */
 export function extractBookingNote(notes: unknown): string {
   if (!notes || typeof notes !== 'string') return '';
