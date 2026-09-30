@@ -59,3 +59,7 @@ fix_diff.txt
 appDataDir/
 tsconfig.tsbuildinfo
 .worktrees/
+
+# Supabase CLI cache
+supabase/.temp/
+repomix-output.md

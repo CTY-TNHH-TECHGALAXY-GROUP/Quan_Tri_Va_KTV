@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvAttendanceConfirmSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
+import { requirePermissionAny, authErrorResponse } from '@/lib/auth-server';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -14,6 +15,10 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
  */
 export async function PATCH(request: Request) {
     try {
+        // Duyệt/từ chối điểm danh là việc của quầy (ktv_hub), KTV không tự duyệt được.
+        // Cùng bộ quyền mở màn ktv-hub của quầy (page.tsx:1512), không đòi id khác.
+        await requirePermissionAny(['ktv_attendance', 'turn_tracking', 'ktv_hub']);
+
         const body = await request.json();
         const parseResult = KtvAttendanceConfirmSchema.safeParse(body);
         if (!parseResult.success) {
@@ -152,6 +157,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true, status: newStatus });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('❌ [Attendance CONFIRM] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

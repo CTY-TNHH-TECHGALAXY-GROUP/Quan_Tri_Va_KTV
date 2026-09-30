@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
@@ -64,6 +65,7 @@ export interface WebBooking {
  */
 export async function getWebBookings(startDate: string, endDate: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -240,6 +242,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
  */
 export async function confirmWebBooking(bookingId: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -529,6 +532,7 @@ export async function confirmWebBooking(bookingId: string) {
  */
 export async function rejectWebBooking(bookingId: string, reason?: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -556,6 +560,7 @@ export async function rejectWebBooking(bookingId: string, reason?: string) {
  */
 export async function getNewWebBookingCount(): Promise<number> {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) return 0;
 

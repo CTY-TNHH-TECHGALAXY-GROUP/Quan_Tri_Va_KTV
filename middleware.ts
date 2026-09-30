@@ -1,6 +1,22 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Route API không cần session: tự xác thực bằng secret riêng, hoặc được quyết
+// định để mở. Mọi route /api/* khác bắt buộc có JWT khi AUTH_ENFORCE_API=1.
+const PUBLIC_API_PREFIXES = [
+  '/api/auth',
+  '/api/cron',                          // requireCronAuth (CRON_SECRET)
+  '/api/notifications/trigger-webhook', // x-webhook-secret
+  '/api/notifications/push',            // x-webhook-secret
+  '/api/ktv/booking',                   // điều phối — quyết định để mở (30/09/2026)
+  '/api/customers/identify',            // không có caller trong repo — chờ quyết định
+  '/api/resend-email',                  // không có caller trong repo — chờ quyết định
+]
+
+// Bật bằng env AUTH_ENFORCE_API=1. Tắt (mặc định) = hành vi cũ: chỉ ghi log.
+// Lùi khi có sự cố: xoá biến env rồi redeploy, không cần revert code.
+const AUTH_ENFORCE = process.env.AUTH_ENFORCE_API === '1'
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -59,17 +75,15 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Xử lý bảo vệ các route /api/*
-  // Nếu là gọi API và không có user, chặn lại bằng lỗi 401
-  if (request.nextUrl.pathname.startsWith('/api/') && !request.nextUrl.pathname.startsWith('/api/auth')) {
-    // Tạm thời có thể cho phép trong giai đoạn Migration Compatibility
-    // Nhưng về lâu dài, sẽ chặn cứng ở đây.
-    if (!user) {
-      // NOTE: In Compatibility Phase, we log it and ALLOW it through if they don't have token yet.
-      // Once frontend sends token, we change this to return 401.
-      // return NextResponse.json({ success: false, error: 'Unauthorized: Missing or invalid token' }, { status: 401 })
-      console.warn(`[Middleware] Unauthorized API call to ${request.nextUrl.pathname} (Compatibility Phase - Allowed)`);
+  // Bảo vệ /api/*: không có user → 401 khi đã bật cờ, còn lại chỉ ghi log để
+  // đếm xem còn ai gọi API mà chưa có JWT trước khi bật.
+  const path = request.nextUrl.pathname
+  const isProtectedApi = path.startsWith('/api/') && !PUBLIC_API_PREFIXES.some(p => path.startsWith(p))
+  if (isProtectedApi && !user) {
+    if (AUTH_ENFORCE) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
+    console.warn(`[Middleware] Unauthorized API call to ${path} (AUTH_ENFORCE_API off - allowed)`);
   }
 
   return supabaseResponse

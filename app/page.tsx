@@ -79,7 +79,7 @@ export default function HomePage() {
             </h1>
             <p className="text-gray-500 mt-1">Hệ thống quản trị trung tâm {SYSTEM_CONFIG.spa_name}</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
+          <div className="hidden md:flex items-center gap-2 text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
             <ShieldCheck size={16} className="text-emerald-500" />
             Phiên bản 1.0.0 • Bảo mật cao
           </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useFeedbackDashboard, ChildBookingForFeedback } from './FeedbackDashboard.logic';
 import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
 import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star, ChevronDown, ChevronUp } from 'lucide-react';
@@ -163,11 +164,16 @@ export default function FeedbackDashboardPage() {
     const [selectedChildBooking, setSelectedChildBooking] = useState<ChildBookingForFeedback | null>(null);
 
     if (loading) {
-        return <div className="p-8 text-center text-gray-500">Đang tải dữ liệu Feedback...</div>;
+        return (
+            <AppLayout title="Quản Lý Đánh Giá">
+                <div className="p-8 text-center text-gray-500">Đang tải dữ liệu Feedback...</div>
+            </AppLayout>
+        );
     }
 
     return (
-        <div className="p-6 bg-gray-50 min-h-screen">
+        <AppLayout title="Quản Lý Đánh Giá">
+            <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold text-gray-800">Quản Lý Đánh Giá Khách Hàng</h1>
@@ -250,6 +256,7 @@ export default function FeedbackDashboardPage() {
                     }} 
                 />
             )}
-        </div>
+            </div>
+        </AppLayout>
     );
 }

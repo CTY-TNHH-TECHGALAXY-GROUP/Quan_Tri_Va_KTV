@@ -286,21 +286,20 @@ export function ScreenHandover({ logic }: { logic: any }) {
         ${skipLocked
             ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
             : isDebtNeedsPhotos
-            ? 'bg-slate-700 text-white shadow-slate-200'
+            ? 'bg-slate-700 text-white shadow-slate-200 hover:bg-slate-800'
             : isHandoverComplete
-            ? 'bg-blue-600 text-white shadow-blue-200'
-            : (hasNextOrder ? 'bg-amber-500 text-white shadow-amber-200' : 'bg-rose-500 text-white shadow-rose-200')}`}
+            ? 'bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700 active:scale-[0.99]'
+            : 'bg-amber-500 text-white shadow-amber-200 hover:bg-amber-600 active:scale-[0.99]'}`}
       >
         {logic.isLoading || isSkippingHandover 
           ? 'Đang xử lý...' 
           : skipLocked
-              ? (noiChuyenBoQua ? 'Đã hết lượt bỏ qua' : 'Chưa chụp đủ ảnh')
+              ? (noiChuyenBoQua ? 'Đã hết lượt bỏ qua — Chụp đủ ảnh' : 'Chụp đủ ảnh để bàn giao')
           : isDebtNeedsPhotos
-              ? '← Trở lại'
-          : (isHandoverComplete
-              ? (isRepayingDebt ? 'Nộp ảnh & Trả nợ' : (hasNextOrder ? 'Xong & Nhận đơn mới' : 'Xong & Sẵn sàng đón khách'))
-              : (hasNextOrder ? '⏭ Bỏ qua — Nhận đơn mới' : 'Bỏ qua')
-            )
+              ? 'Quay lại trang chủ'
+          : isHandoverComplete
+              ? (isRepayingDebt ? 'Nộp ảnh & Trả nợ' : (hasNextOrder ? 'Xong & Nhận đơn mới' : 'Xác nhận bàn giao phòng'))
+              : 'Bỏ qua nợ & Nhận đơn gấp'
         }
       </button>
 

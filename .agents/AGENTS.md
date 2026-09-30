@@ -1,5 +1,7 @@
 ﻿# Global Projec
 
+Trước mọi tác vụ trong repository này, đọc và tuân thủ `../AGENTS.md`, đặc biệt quy tắc xác định project, nhánh/worktree, vị trí sửa và hỏi lại khi phạm vi mơ hồ.
+
 ## 11. Stable Code Protection (BẢO VỆ FILE ỔN ĐỊNH)
 - **Quy tắc:** Khi User yêu cầu sửa đổi các file đã chạy ổn định (Core/Stable files), AI KHÔNG ĐƯỢC tự ý dùng lệnh sửa file ngay lập tức để tránh lỗi hồi quy (Regression Bug).
 - **Quy trình bắt buộc (Protocol):**

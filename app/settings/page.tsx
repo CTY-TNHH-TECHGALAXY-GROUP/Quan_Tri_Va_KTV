@@ -8,11 +8,7 @@ import {
     Camera,
     Save,
     Eye,
-    EyeOff,
-    ChevronRight,
-    ShieldCheck,
-    Bell,
-    Palette
+    EyeOff
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
@@ -48,29 +44,7 @@ export default function SettingsPage() {
                     <p className="text-gray-500 mt-1">{t.pageSubtitle}</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Sidebar */}
-                    <div className="space-y-1">
-                        <button className="w-full flex items-center justify-between px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-sm border border-indigo-100/50">
-                            <div className="flex items-center gap-3"><User size={18} />{t.sideProfile}</div>
-                            <ChevronRight size={16} />
-                        </button>
-                        <button className="w-full flex items-center justify-between px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-xl text-sm transition-colors">
-                            <div className="flex items-center gap-3"><ShieldCheck size={18} />{t.sideSecurity}</div>
-                            <ChevronRight size={16} />
-                        </button>
-                        <button className="w-full flex items-center justify-between px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-xl text-sm transition-colors">
-                            <div className="flex items-center gap-3"><Bell size={18} />{t.sideNotifications}</div>
-                            <ChevronRight size={16} />
-                        </button>
-                        <button className="w-full flex items-center justify-between px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-xl text-sm transition-colors">
-                            <div className="flex items-center gap-3"><Palette size={18} />{t.sideAppearance}</div>
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
-
-                    {/* Main Content */}
-                    <div className="md:col-span-2 space-y-8">
+                <div className="space-y-8">
                         {/* Profile Section */}
                         <motion.section
                             initial={{ opacity: 0, y: 20 }}
@@ -203,7 +177,6 @@ export default function SettingsPage() {
                                 </div>
                             </form>
                         </motion.section>
-                    </div>
                 </div>
             </div>
         </AppLayout>

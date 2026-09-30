@@ -1,9 +1,11 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole, requireBusinessUser } from '@/lib/auth-server';
 
 export async function getServices() {
     try {
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -24,6 +26,7 @@ export async function getServices() {
 
 export async function updateService(serviceId: string, payload: Partial<import('@/lib/types').Service>) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -50,6 +53,7 @@ export async function updateService(serviceId: string, payload: Partial<import('
 
 export async function updateServiceBulkSync(originalNameVN: string, payload: Partial<import('@/lib/types').Service>) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -95,6 +99,40 @@ export async function updateServiceBulkSync(originalNameVN: string, payload: Par
         return { success: true };
     } catch (error: any) {
         console.error('❌ [Server] updateServiceBulkSync error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+export async function createService(payload: Partial<import('@/lib/types').Service>) {
+    try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const cleanPayload: any = Object.fromEntries(
+            Object.entries(payload).filter(([_, v]) => v !== undefined)
+        );
+
+        if (!cleanPayload.id) {
+            cleanPayload.id = `SVC_${Date.now()}`;
+        }
+        if (!cleanPayload.name) {
+            cleanPayload.name = cleanPayload.nameVN || cleanPayload.nameEN || 'Dịch vụ mới';
+        }
+        if (cleanPayload.price === undefined) {
+            cleanPayload.price = cleanPayload.priceVND || 0;
+        }
+
+        const { data, error } = await supabase
+            .from('Services')
+            .insert(cleanPayload)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return { success: true, data };
+    } catch (error: any) {
+        console.error('❌ [Server] createService error:', error);
         return { success: false, error: error.message || 'Unknown error' };
     }
 }

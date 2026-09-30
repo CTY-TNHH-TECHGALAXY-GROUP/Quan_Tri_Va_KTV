@@ -5,7 +5,7 @@ import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
 import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
-import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert, RotateCcw } from 'lucide-react';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
 import { apiClient } from '@/lib/apiClient';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
@@ -495,17 +495,19 @@ export function ScreenTimer({ logic }: { logic: any }) {
             ].map((photo, index) => (
               <div key={photo.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-700">
-                    {index + 1}. {photo.label} {photo.value && '✅'}
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    {index + 1}. {photo.label}
+                    {photo.value && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
                   </span>
 
                   {photo.value && (
                     <button
                       type="button"
                       onClick={() => photo.setter(null)}
-                      className="text-[10px] font-bold text-rose-600 hover:underline"
+                      className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1"
                     >
-                      Chụp lại 🔄
+                      <RotateCcw size={12} />
+                      Chụp lại
                     </button>
                   )}
                 </div>
@@ -622,19 +624,21 @@ export function ScreenTimer({ logic }: { logic: any }) {
                 />
             </div>
             
-            <button
-              onClick={async () => {
-                // Dừng đơn TRƯỚC rồi mới báo động, và KHÔNG hỏi lại: đang sự cố mà
-                // bắt xác nhận thì KTV bỏ qua, báo động gửi đi mà đồng hồ vẫn chạy
-                // tính tiền. Đơn đã dừng sẵn thì bỏ qua im lặng, chỉ gửi báo động.
-                await logic.handlePause({ skipConfirm: true, silentIfPaused: true });
-                await handleInteraction('EMERGENCY');
-              }}
-              className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-200 active:scale-95 transition-all"
-            >
-              <ShieldAlert size={18} />
-              BÁO ĐỘNG KHẨN CẤP
-            </button>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={async () => {
+                  // Dừng đơn TRƯỚC rồi mới báo động, và KHÔNG hỏi lại: đang sự cố mà
+                  // bắt xác nhận thì KTV bỏ qua, báo động gửi đi mà đồng hồ vẫn chạy
+                  // tính tiền. Đơn đã dừng sẵn thì bỏ qua im lặng, chỉ gửi báo động.
+                  await logic.handlePause({ skipConfirm: true, silentIfPaused: true });
+                  await handleInteraction('EMERGENCY');
+                }}
+                className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-200 active:scale-95 transition-all"
+              >
+                <ShieldAlert size={18} />
+                BÁO ĐỘNG KHẨN CẤP
+              </button>
+            </div>
         </motion.div>
       )}
 

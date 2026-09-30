@@ -7,6 +7,7 @@ import { KtvTypeDWalletService } from '@/lib/services/KtvTypeDWalletService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { WalletType } from '@/lib/featureFlags';
 import { usesOfficeBonus } from '@/lib/services/KtvOfficeBonusService';
+import { requireStaffMatches } from '@/lib/auth-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
@@ -20,6 +21,10 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
         const { techCode, amount, walletType } = parseResult.data;
+
+        // Chỉ được tạo lệnh rút cho CHÍNH MÌNH — techCode trong body không đáng tin.
+        const denied = await requireStaffMatches(techCode);
+        if (denied) return denied;
 
         // Ví đang tắt thì không được rút — trước đây cờ chỉ ẩn tab, gọi thẳng
         // API vẫn tạo được lệnh rút.
