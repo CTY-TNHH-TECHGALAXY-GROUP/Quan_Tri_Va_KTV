@@ -9,7 +9,6 @@ import {
   Star,
   CheckCircle2,
   XCircle,
-  Filter,
   Trash2
 } from 'lucide-react';
 import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
@@ -75,6 +74,28 @@ export default function EmployeeManagementPage() {
                     </button>
                 </div>
 
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsTotal}</div>
+                        <div className="text-2xl font-black text-gray-900">{stats.total}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsActive}</div>
+                        <div className="text-2xl font-black text-emerald-600">{stats.active}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsSenior}</div>
+                        <div className="text-2xl font-black text-indigo-600">{stats.senior}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsAvgRating}</div>
+                        <div className="text-2xl font-black text-amber-500 flex items-center gap-1">
+                            <Star size={18} fill="currentColor" /> {stats.avgRating}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50/50">
                         <div className="relative w-full sm:w-96">
@@ -87,13 +108,9 @@ export default function EmployeeManagementPage() {
                                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                             />
                         </div>
-                        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors w-full sm:w-auto justify-center">
-                            <Filter size={16} />
-                            {t.advancedFilter}
-                        </button>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <div className="hidden lg:block overflow-x-auto">
                         <table className="w-full text-left border-collapse min-w-[680px]">
                             <thead>
                                 <tr>

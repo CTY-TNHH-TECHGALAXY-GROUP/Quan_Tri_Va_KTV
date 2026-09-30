@@ -5,6 +5,7 @@
 
 > **Bản gốc duy nhất của bộ rule.** Sửa ở đây rồi copy sang `.gemini/rules.md` để Antigravity dùng chung.
 > Phân tích lý do của các rule "Tìm kiếm" và "3 mức duyệt": `plans/phan_tich_rule_tim_kiem_va_muc_duyet.md`.
+> Trước mọi tác vụ, đọc và tuân thủ `AGENTS.md` ở gốc repository để xác định đúng project, nhánh/worktree và phạm vi sửa.
 
 ---
 

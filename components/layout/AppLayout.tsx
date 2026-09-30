@@ -11,6 +11,7 @@ import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { AccountLockedScreen } from '@/components/shared/AccountLockedScreen';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 import { isServingLockedScreen } from '@/lib/ktv-screen';
+import { useToast } from '@/components/ui/Toast';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -31,6 +32,7 @@ export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disabl
   const [lockInfo, setLockInfo] = useState<any>(null);
   const { user, lockedInfo: contextLockedInfo, logout } = useAuth();
   const { unlockAudio, ktvScreen, ktvOrderLocked } = useNotifications();
+  const { addToast } = useToast();
   // 🔒 KTV đang trong một đơn (làm → đánh giá → bàn giao) → không cho mở menu 3 gạch.
   const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
 
@@ -152,12 +154,17 @@ export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disabl
         {/* Mobile Header: Aligns Hamburger and Page Title */}
         <div className="lg:hidden sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 h-14 flex items-center gap-3">
           <button
-            onClick={() => { if (isServingLocked) return; setIsSidebarOpen(true); }}
-            disabled={isServingLocked}
-            title={isServingLocked ? 'Đang trong đơn — bàn giao phòng xong mới mở menu được.' : undefined}
-            className={`p-2 -ml-2 rounded-xl transition-colors ${
+            onClick={() => {
+              if (isServingLocked) {
+                addToast('Đang trong ca phục vụ — vui lòng hoàn thành bàn giao phòng để truy cập menu.', 'error');
+                return;
+              }
+              setIsSidebarOpen(true);
+            }}
+            aria-label="Mở Menu"
+            className={`p-2 -ml-2 rounded-xl transition-colors active:scale-95 ${
               isServingLocked
-                ? 'text-gray-300 cursor-not-allowed'
+                ? 'text-gray-400 hover:bg-gray-100'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >

@@ -572,7 +572,10 @@ export default function KTVHistoryPage() {
           {/* Header — nút lịch đã dời lên thanh header, nhưng thanh đó chỉ có ở
               mobile nên màn lớn vẫn cần một nút ngay trong trang. */}
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2.5 shadow-sm shadow-indigo-100/60">
+            <div 
+              onClick={toggleCalendar}
+              className="flex-1 flex items-center gap-2 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2.5 shadow-sm shadow-indigo-100/60 cursor-pointer hover:border-indigo-200 transition-colors"
+            >
               <CalendarDays size={15} className="text-indigo-500 shrink-0" />
               {/* Only Type D KTVs have the hours tile — don't promise it to others. */}
               <p className="flex-1 text-xs font-semibold text-indigo-700 leading-snug">
@@ -582,22 +585,10 @@ export default function KTVHistoryPage() {
                   ? 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập và giờ tích luỹ'
                   : 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập'}
               </p>
-              {/* Mobile: the button lives in the header above -> arrow points up-right.
-                  Desktop: the button sits right beside this row -> arrow points right. */}
-              <motion.span
-                className="lg:hidden text-indigo-600 shrink-0"
-                animate={{ x: [0, HINT_NUDGE_DISTANCE, 0], y: [0, -HINT_NUDGE_DISTANCE, 0] }}
-                transition={{ duration: HINT_NUDGE_DURATION, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <ArrowUpRight size={18} strokeWidth={2.75} />
-              </motion.span>
-              <motion.span
-                className="hidden lg:inline-flex text-indigo-600 shrink-0"
-                animate={{ x: [0, HINT_NUDGE_DISTANCE, 0] }}
-                transition={{ duration: HINT_NUDGE_DURATION, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <ArrowRight size={18} strokeWidth={2.75} />
-              </motion.span>
+              <span className="text-[11px] font-bold text-indigo-600 bg-white/90 px-2 py-1 rounded-xl border border-indigo-100 flex items-center gap-1.5 shadow-sm shrink-0">
+                <CalendarDays size={13} />
+                <span>Chọn ngày</span>
+              </span>
             </div>
             <div className="hidden lg:block">
               <CalendarToggle open={showCalendar} dates={selectedDates} onToggle={toggleCalendar} highlight={!calendarFound} />

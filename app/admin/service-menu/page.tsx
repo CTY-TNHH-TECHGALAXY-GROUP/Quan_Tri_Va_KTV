@@ -128,7 +128,13 @@ export default function ServiceMenuPage() {
           <div>
             <p className="text-sm text-gray-500">Thiết lập danh sách dịch vụ, giá tiền và thời lượng.</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
+          <button 
+            onClick={() => {
+              setSelectedService(null);
+              setIsDrawerOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors cursor-pointer"
+          >
             <Plus size={16} />
             Thêm Dịch Vụ Mới
           </button>

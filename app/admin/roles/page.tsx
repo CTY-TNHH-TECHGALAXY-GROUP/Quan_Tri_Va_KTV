@@ -4,7 +4,7 @@ import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { MODULES } from '@/lib/constants';
 import { ModuleId } from '@/lib/types';
-import { ShieldAlert, Check, Plus, Save, User, Key, Lock, Unlock, ShieldCheck, X } from 'lucide-react';
+import { ShieldAlert, Check, Plus, Save, User, Key, Lock, Unlock, ShieldCheck, X, Eye, EyeOff } from 'lucide-react';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -44,6 +44,11 @@ export default function RoleManagementPage() {
         handleApplyTemplate,
         handleSaveUserPermissions,
     } = useRoleManagement();
+
+    const [visiblePasswords, setVisiblePasswords] = React.useState<Record<string, boolean>>({});
+    const toggleShowPassword = (id: string) => {
+        setVisiblePasswords(prev => ({ ...prev, [id]: !prev[id] }));
+    };
 
     if (!mounted) return null;
 
@@ -197,10 +202,18 @@ export default function RoleManagementPage() {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2 text-right">
-                                                <div className="text-sm font-mono text-gray-600 mr-2 px-2 py-1 bg-gray-50 rounded border border-gray-200">
-                                                    {u.password || '***'}
+                                            <div className="flex items-center gap-1.5 text-right">
+                                                <div className="text-sm font-mono text-gray-600 px-2 py-1 bg-gray-50 rounded border border-gray-200 min-w-[70px] text-center select-all">
+                                                    {visiblePasswords[u.username] ? (u.password || '***') : '••••••••'}
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleShowPassword(u.username)}
+                                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    title={visiblePasswords[u.username] ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                                                >
+                                                    {visiblePasswords[u.username] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                </button>
                                                 <button onClick={() => handleOpenUserPermissions(u)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title={t.changePermission}>
                                                     <Key size={18} />
                                                 </button>

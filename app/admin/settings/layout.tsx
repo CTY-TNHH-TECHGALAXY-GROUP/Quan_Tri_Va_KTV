@@ -2,12 +2,13 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Settings, Bell, Zap, Database, Users, Mail } from 'lucide-react';
+import { Settings, Bell, Zap, Database, Users, Mail, Image as ImageIcon } from 'lucide-react';
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const tabs = [
         { name: 'Quản Lý Tính Năng', href: '/admin/settings/features', icon: <Zap size={18} /> },
+        { name: 'Giao Diện Khách (Web)', href: '/admin/settings/customer-ui', icon: <ImageIcon size={18} /> },
         { name: 'Cài Đặt Thông Báo', href: '/admin/settings/notifications', icon: <Bell size={18} /> },
         { name: 'Cấu Hình Tài Chính', href: '/admin/settings/system', icon: <Settings size={18} /> },
         { name: 'Cấu Hình Email', href: '/admin/settings/email', icon: <Mail size={18} /> },

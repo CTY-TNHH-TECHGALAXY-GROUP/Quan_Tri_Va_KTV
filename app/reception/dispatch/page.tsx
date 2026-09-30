@@ -2390,10 +2390,11 @@ if (!hasPermission('dispatch_board')) {
                                 value={order.paymentMethod || 'Unpaid'}
                                 onClick={e => e.stopPropagation()}
                                 onChange={async (e) => {
-                                    if (!selectedSubOrder) return;
+                                    const targetBookingId = subOrder.bookingId || order.id;
+                                    if (!targetBookingId) return;
                                     const newPm = e.target.value;
-                                    updateOrder(selectedSubOrder.bookingId, o => ({ ...o, paymentMethod: newPm }));
-                                    await updateBookingMeta(selectedSubOrder.bookingId, { paymentMethod: newPm });
+                                    updateOrder(targetBookingId, o => ({ ...o, paymentMethod: newPm }));
+                                    await updateBookingMeta(targetBookingId, { paymentMethod: newPm });
                                 }}
                                 className="absolute inset-0 opacity-0 cursor-pointer"
                             >
