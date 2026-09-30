@@ -9,8 +9,8 @@
  * 4. Chặng đã kết thúc → HTTP 409.
  * 5. MIME hoặc magic bytes không khớp → HTTP 400.
  * 6. Upload ảnh thứ hai lỗi → xóa ảnh thứ nhất, không update BookingItems/TurnQueue.
- * 7. Giao dịch bắt đầu lỗi → không item nào được lưu.
- * 8. Giao dịch nhiều item lỗi → không có trạng thái lưu dở.
+ * 7. Upload đủ hai ảnh nhưng update BookingItems đầu tiên lỗi → xóa cả hai ảnh và trả HTTP 500.
+ * 8. Update item thứ hai lỗi sau khi item đầu đã lưu → không xóa ảnh đang được item đầu tham chiếu; trả cảnh báo partial update.
  * 9. Thành công không merge → chỉ target segment nhận startPhotoUrl và guestSlipperPhotoUrl.
  * 10. Segment đã hoàn tất không bị ghi đè ảnh.
  *
@@ -30,13 +30,12 @@ interface MockOptions {
     bookingItems?: any[];
     turnQueue?: any;
     uploadFailOnCall?: number; // 1-indexed (1 = slipper fails, 2 = start fails)
-    failBookingItemUpdateAtItemIndex?: number; // inject failure inside the atomic RPC
+    failBookingItemUpdateAtItemIndex?: number; // 0-indexed
 }
 
 function createMockSupabase(options: MockOptions = {}) {
     const bookings = options.bookings ? JSON.parse(JSON.stringify(options.bookings)) : [{ id: 'BK-1', timeStart: '2026-09-21T09:00:00Z', status: 'CONFIRMED' }];
     const bookingItems = options.bookingItems ? JSON.parse(JSON.stringify(options.bookingItems)) : [];
-    bookingItems.forEach((item: any) => item.segments?.forEach((seg: any, index: number) => { seg.id ||= `${item.id}-seg-${index}`; }));
 
     let uploadCallCount = 0;
     const uploadedPaths: string[] = [];
@@ -132,12 +131,12 @@ function createMockSupabase(options: MockOptions = {}) {
                     const inFilter = filters.find(f => f.col === 'id' && f.type === 'in');
                     if (inFilter) {
                         const matched = bookingItems.filter((x: any) => inFilter.val.includes(x.id));
-                        return Promise.resolve({ data: structuredClone(matched), error: null }).then(resolve, reject);
+                        return Promise.resolve({ data: matched, error: null }).then(resolve, reject);
                     }
                     const eqBookingFilter = filters.find(f => f.col === 'bookingId');
                     if (eqBookingFilter) {
                         const matched = bookingItems.filter((x: any) => x.bookingId === eqBookingFilter.val);
-                        return Promise.resolve({ data: structuredClone(matched), error: null }).then(resolve, reject);
+                        return Promise.resolve({ data: matched, error: null }).then(resolve, reject);
                     }
                     return Promise.resolve({ data: bookingItems, error: null }).then(resolve, reject);
                 }
@@ -150,19 +149,7 @@ function createMockSupabase(options: MockOptions = {}) {
     };
 
     return {
-        supabase: { from, storage, rpc: async (name: string, args: any) => {
-            assert.strictEqual(name, 'ktv_start_work_atomic');
-            if (options.failBookingItemUpdateAtItemIndex !== undefined) {
-                return { data: null, error: new Error('Mock atomic commit failed') };
-            }
-            for (const update of args.p_updates) {
-                const item = bookingItems.find((row: any) => row.id === update.id);
-                item.segments = update.segments;
-                item.status = update.status;
-                bookingItemUpdates.push({ id: update.id, payload: update });
-            }
-            return { data: { success: true }, error: null };
-        } } as any,
+        supabase: { from, storage } as any,
         bookingItems,
         bookingItemUpdates,
         turnQueueUpdates,
@@ -369,8 +356,8 @@ async function main() {
         assert.strictEqual(mock.turnQueueUpdates.length, 0, 'Không được gọi update TurnQueue');
     });
 
-    // 7. Atomic commit fails before any item is persisted.
-    await runTest('Giao dịch bắt đầu lỗi → không item nào được lưu', async () => {
+    // 7. Upload đủ hai ảnh nhưng update BookingItems đầu tiên lỗi → xóa cả hai ảnh và trả HTTP 500.
+    await runTest('Upload đủ hai ảnh nhưng update BookingItems đầu tiên lỗi → xóa cả hai ảnh và trả HTTP 500', async () => {
         const mock = createMockSupabase({
             failBookingItemUpdateAtItemIndex: 0, // item 0 update fails
             bookingItems: [{
@@ -398,12 +385,13 @@ async function main() {
 
         const result = await handleStartTimer(ctx);
         assert.ok(result.earlyResponse, 'Phải trả earlyResponse');
-        assert.strictEqual(result.earlyResponse.status, 409);
-        assert.strictEqual(mock.bookingItemUpdates.length, 0);
+        assert.strictEqual(result.earlyResponse.status, 500, 'HTTP status phải là 500');
+        assert.strictEqual(mock.removedPaths.length, 1, 'Phải gọi remove dọn dẹp');
+        assert.strictEqual(mock.removedPaths[0].length, 2, 'Phải xóa cả 2 ảnh đã upload');
     });
 
-    // 8. A failed multi-item RPC cannot persist only its first item.
-    await runTest('Giao dịch nhiều item lỗi → không có trạng thái lưu dở', async () => {
+    // 8. Update item thứ hai lỗi sau khi item đầu đã lưu → không xóa ảnh đang được item đầu tham chiếu; trả cảnh báo partial update.
+    await runTest('Update item thứ hai lỗi sau khi item đầu đã lưu → không xóa ảnh; trả cảnh báo partial update', async () => {
         const mock = createMockSupabase({
             failBookingItemUpdateAtItemIndex: 1, // item 0 update OK, item 1 fails
             bookingItems: [
@@ -441,9 +429,10 @@ async function main() {
 
         const result = await handleStartTimer(ctx);
         assert.ok(result.earlyResponse, 'Phải trả earlyResponse');
-        assert.strictEqual(result.earlyResponse.status, 409);
-        assert.strictEqual(mock.bookingItemUpdates.length, 0);
-        assert.strictEqual(mock.bookingItems[0].segments[0].actualStartTime, undefined);
+        assert.strictEqual(result.earlyResponse.status, 500, 'HTTP status phải là 500');
+        assert.strictEqual(mock.removedPaths.length, 0, 'KHÔNG được xóa ảnh vì item 1 đã lưu tham chiếu');
+        const json = await result.earlyResponse.json();
+        assert.ok(json.error.includes('Lưu ý: Đã cập nhật dở 1/2 item'), `Phải có thông báo cập nhật dở: ${json.error}`);
     });
 
     // 9. Thành công không merge → chỉ target segment nhận startPhotoUrl và guestSlipperPhotoUrl.

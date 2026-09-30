@@ -112,14 +112,9 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     // ─── 3. SEGMENT actualStartTime LOGIC ───
     let allGlobalSegs: any[] = [];
     if (allItemIdsForThisKTV.length > 0) {
-        const { data: currentItems, error: itemReadError } = await supabase.from('BookingItems').select('id, segments, timeStart, status').in('id', allItemIdsForThisKTV);
-        if (itemReadError || !currentItems?.length) return fail('Không đọc được dịch vụ; tải lại', 500);
+        const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, timeStart').in('id', allItemIdsForThisKTV);
         const activeSegmentIndex = body.activeSegmentIndex || 0;
         let originalItemsData: Record<string, any[]> = {};
-        const activeItems = currentItems.filter((item: any) => !['DONE', 'CANCELLED'].includes(item.status));
-        const expectedItems = activeItems.map((item: any) => ({
-            id: item.id, status: item.status, segments: structuredClone(item.segments)
-        }));
         
         for (const item of currentItems || []) {
             let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
@@ -135,12 +130,8 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         if (action === 'START_TIMER' &&
             (!target ||
              !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
-             target.seg.actualEndTime ||
-             ['DONE', 'CANCELLED'].includes(target.item.status))) {
+             target.seg.actualEndTime)) {
             return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
-        }
-        if (action === 'START_TIMER' && target.seg.actualStartTime) {
-            return fail('Chặng đã bắt đầu; tải lại để giữ mốc giờ thực tế', 409);
         }
 
         const parseProof = (value: unknown) => {
@@ -304,31 +295,85 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         }
 
 
-        if (action !== 'START_TIMER' && action !== 'NEXT_SEGMENT') return { bookingUpdatePayload };
-        if (!target) return fail('Không tìm thấy chặng đang xử lý', 409);
-        const updates = activeItems.map((item: any) => ({
-            id: item.id, status: 'IN_PROGRESS', segments: originalItemsData[item.id]
-        }));
-        const nowVN = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
-        const turnPatch: any = { status: 'working', start_time: nowVN, current_order_id: bookingId };
-        if (turnForSync) {
-            turnPatch.room_id = allGlobalSegs[0]?.seg.roomId || turnForSync.room_id || null;
-            turnPatch.bed_id = allGlobalSegs[0]?.seg.bedId || null;
-            turnPatch.booking_item_ids = Array.from(new Set(allGlobalSegs.map((s: any) => s.item.id)));
-            turnPatch.booking_item_id = turnPatch.booking_item_ids[0] || null;
-            turnPatch.estimated_end_time = calculateAccurateEndTimeFromSegments(allGlobalSegs, nowVN);
+        const itemsToUpdate = currentItems || [];
+        let persistedItemCount = 0;
+
+        for (let itemIdx = 0; itemIdx < itemsToUpdate.length; itemIdx++) {
+            const item = itemsToUpdate[itemIdx];
+            const updatePayload: any = { segments: JSON.stringify(originalItemsData[item.id]) };
+            if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
+                updatePayload.status = 'IN_PROGRESS';
+            }
+            const { error: itemUpdateError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+            if (itemUpdateError) {
+                console.error('❌ [handleStartTimer] Failed to update BookingItem:', item.id, itemUpdateError);
+                if (persistedItemCount === 0) {
+                    await cleanupUploadedProofs();
+                }
+
+                const partialWarning = persistedItemCount > 0
+                    ? ` (Lưu ý: Đã cập nhật dở ${persistedItemCount}/${itemsToUpdate.length} item trước đó do chưa hỗ trợ database transaction)`
+                    : '';
+                return fail(`Lỗi cập nhật chặng dịch vụ (${item.id})${partialWarning}: ${itemUpdateError.message}`, 500);
+            }
+            persistedItemCount++;
         }
-        const { data: committed, error: commitError } = await supabase.rpc('ktv_start_work_atomic', {
-            p_booking_id: bookingId, p_employee_id: technicianCode,
-            p_target_item_id: target.item.id, p_target_segment_id: target.seg.id,
-            p_expected: expectedItems, p_updates: updates, p_started_at: sharedTimeStart,
-            p_turn_id: action === 'START_TIMER' ? turnForSync?.id || null : null,
-            p_turn_patch: turnPatch,
-        });
-        if (commitError || !committed?.success) {
-            return fail('Chưa xác nhận được bắt đầu; tải lại trước khi thử lại', 409);
-        }
-        return { bookingUpdatePayload: {} };
     }
+    
+    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
+    if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
+        const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+        if (bookingItemsToSync) {
+            const updates = [];
+            for (const item of bookingItemsToSync) {
+                let opts: any = {};
+                try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
+                if (opts.mergedIntoId) {
+                    const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
+                    if (parent && parent.status && parent.status !== item.status) {
+                        updates.push({ id: item.id, status: parent.status });
+                    }
+                }
+            }
+            if (updates.length > 0) {
+                for (const upd of updates) {
+                    await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+                }
+            }
+        }
+    }
+
+    // ─── 4. TURNQUEUE RECALCULATION ───
+    // 🔥 CRITICAL: Recalculate TurnQueue.estimated_end_time when KTV actually starts
+    if (action === 'START_TIMER' && technicianCode && turnForSync) {
+        const nowVN = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
+        const turnUpdatePayload: any = { 
+            status: 'working', 
+            start_time: nowVN,
+            current_order_id: bookingId
+        };
+        
+        // Tự động self-heal dữ liệu sổ tua nếu KTV được gán vào từ Draft Mode
+        if (allGlobalSegs && allGlobalSegs.length > 0) {
+            turnUpdatePayload.room_id = allGlobalSegs[0].seg.roomId || turnForSync.room_id || null;
+            turnUpdatePayload.bed_id = allGlobalSegs[0].seg.bedId || null;
+            turnUpdatePayload.booking_item_ids = Array.from(new Set(allGlobalSegs.map((s: any) => s.item.id)));
+            turnUpdatePayload.booking_item_id = turnUpdatePayload.booking_item_ids[0];
+        }
+
+        try {
+            if (allGlobalSegs && allGlobalSegs.length > 0) {
+                const newEnd = calculateAccurateEndTimeFromSegments(allGlobalSegs, nowVN);
+                turnUpdatePayload.estimated_end_time = newEnd;
+                console.log(`🔄 [KTV API] ${technicianCode}: Accurately calculated end from segments → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN})`);
+            }
+        } catch (calcErr) {
+            console.error('❌ [KTV API] Failed to calculate TurnQueue estimated end time:', calcErr);
+        }
+
+        await supabase.from('TurnQueue').update(turnUpdatePayload).eq('id', turnForSync.id);
+    }
+
     return { bookingUpdatePayload };
 }
+
