@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireBusinessUser } from '@/lib/auth-server';
 
 import { MAX_RATING_WITH_VIOLATION } from './feedback.constants';
 
@@ -48,6 +49,8 @@ export async function submitFeedbackAction(payload: {
     if (!supabase) return { success: false, error: 'No admin client' };
     
     try {
+        // Kiosk chạy trên máy quầy đã đăng nhập; cờ tắt thì giữ hành vi cũ.
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const { bookingId, isGuestFlow, ktvList, globalComment, violations } = payload;
 
         // Kẹp trần theo số lỗi khách tích. Mọi chỗ ghi điểm bên dưới đều phải dùng

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { WifiIpPostSchema } from '@/lib/schemas/admin.schema';
+import { requireRole, authErrorResponse } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
     try {
+        // Danh sách IP Wi-Fi là cấu hình chấm công → chỉ quản lý trở lên (fail-closed).
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase không được khởi tạo.' }, { status: 500 });
@@ -38,6 +42,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, clientIp, currentIps, lastRejected });
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('❌ [GET Wifi IP] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
@@ -45,6 +51,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
+        // Đổi IP Wi-Fi là đổi điều kiện chấm công của cả tiệm → chỉ quản lý trở lên.
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+
         const body = await request.json();
         const parseResult = WifiIpPostSchema.safeParse(body);
         if (!parseResult.success) {
@@ -126,6 +135,8 @@ export async function POST(request: Request) {
         });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('❌ [Update Wifi IP] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

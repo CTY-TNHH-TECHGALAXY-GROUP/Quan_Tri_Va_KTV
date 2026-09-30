@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireBusinessUser } from '@/lib/auth-server';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
@@ -216,6 +217,9 @@ export async function updateProfileInDB(userId: string, name: string, avatarUrl:
 
 export async function updatePasswordInDB(userId: string, newPassword: string) {
     try {
+        // Chỉ được đổi mật khẩu của chính mình.
+        const u = await requireBusinessUser();
+        if (!u || String(u.businessUserId) !== String(userId)) throw new Error('Forbidden');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 

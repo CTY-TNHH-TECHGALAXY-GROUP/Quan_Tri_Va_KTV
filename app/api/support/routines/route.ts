@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,6 +87,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // Gỡ routine (kéo theo xoá task hôm nay) → quyền quản trị hỗ trợ.
+    await requirePermission('support_tasks_admin');
+
     const { searchParams } = new URL(request.url);
     const routineId = searchParams.get('id');
 
@@ -133,6 +137,8 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     console.error('Unexpected error in DELETE /api/support/routines:', err.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

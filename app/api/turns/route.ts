@@ -1,11 +1,18 @@
 import { NextResponse, after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
+import { requireBusinessUser, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {
+        // Sổ tua là dữ liệu nội bộ → phải đăng nhập (cờ tắt thì vẫn cho qua như cũ).
+        const u = await requireBusinessUser();
+        if (!u && process.env.AUTH_ENFORCE_API === '1') {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+
         const { searchParams } = new URL(request.url);
         let date = searchParams.get('date');
         const workType = searchParams.get('workType'); // TYPE_A | TYPE_B | TYPE_C | TYPE_D | null
@@ -135,6 +142,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: true, data: finalData });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('API Error (Turns):', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

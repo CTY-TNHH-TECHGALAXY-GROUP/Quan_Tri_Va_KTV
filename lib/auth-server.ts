@@ -3,6 +3,29 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { MODULES } from './constants';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
+// Cùng cờ với middleware.ts. Tắt = hành vi cũ (không có session thì cho qua,
+// chỉ ghi log). Bật = fail-closed. Xem plans/plan_bit_lo_hong_phase1_dot2_20260930.md.
+const AUTH_ENFORCE = process.env.AUTH_ENFORCE_API === '1';
+
+const unauthorizedJson = () => Response.json(
+    { success: false, error: 'Unauthorized' }, { status: 401 }
+);
+const lockedJson = () => Response.json(
+    { success: false, error: 'ACCOUNT_LOCKED' }, { status: 423 }
+);
+
+/**
+ * Đổi lỗi do các hàm require* ném ra thành Response đúng mã HTTP.
+ * Trả `null` nếu không phải lỗi xác thực — bên gọi tự xử lý tiếp.
+ */
+export function authErrorResponse(e: unknown): Response | null {
+    const msg = (e as any)?.message;
+    if (msg === 'Unauthorized') return unauthorizedJson();
+    if (msg === 'ACCOUNT_LOCKED') return lockedJson();
+    if (msg === 'Forbidden') return Response.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    return null;
+}
+
 type BusinessUserRecord = {
     id: string;
     username?: string | null;
@@ -219,28 +242,57 @@ export async function requireBusinessUser() {
  *
  * Trả `null` khi hợp lệ, hoặc `Response` 403 khi lệch.
  *
- * ⚠️ Phiên đăng nhập kiểu cũ (chưa có JWT) không tra ra danh tính — giai đoạn
- * tương thích vẫn cho qua, giống `requirePermission`. Có JWT thì bắt buộc khớp.
+ * ⚠️ Không có JWT: khi AUTH_ENFORCE_API tắt vẫn cho qua (giống `requirePermission`),
+ * bật thì trả 401. Tài khoản bị khoá luôn bị chặn (423), không phụ thuộc cờ —
+ * trước đây lỗi ACCOUNT_LOCKED bị nuốt chung với lỗi map nên KTV bị khoá vẫn
+ * gọi được handover/skip, accept-order.
  */
 export async function requireStaffMatches(claimedStaffId: string) {
+    return requireStaffOrPermission(claimedStaffId, null);
+}
+
+/**
+ * Như `requireStaffMatches`, nhưng người có `permissionId` (VD kế toán xem ví
+ * KTV với quyền `finance_management`) cũng được qua dù không khớp mã.
+ * `permissionId = null` → chỉ chấp nhận đúng chủ tài khoản.
+ */
+export async function requireStaffOrPermission(claimedStaffId: string, permissionId: string | null) {
     let bUser: Awaited<ReturnType<typeof requireBusinessUser>> = null;
     try {
         bUser = await requireBusinessUser();
-    } catch {
-        return null;   // Compatibility Phase: chưa map được business user
+    } catch (e: any) {
+        if (e?.message === 'ACCOUNT_LOCKED') return lockedJson();
+        if (AUTH_ENFORCE) return unauthorizedJson();
+        return null;   // cờ tắt: chưa map được business user → cho qua
     }
 
     const sessionId = bUser?.techCode || bUser?.businessUserId;
-    if (!sessionId) return null;
+    if (!sessionId) return AUTH_ENFORCE ? unauthorizedJson() : null;
 
-    if (String(sessionId).trim().toLowerCase() !== String(claimedStaffId || '').trim().toLowerCase()) {
-        console.warn(`[AuthServer] ⛔ ${sessionId} thao tác dưới danh nghĩa ${claimedStaffId}`);
-        return Response.json(
-            { success: false, error: 'Bạn chỉ thao tác được trên tài khoản của chính mình.' },
-            { status: 403 }
-        );
+    if (String(sessionId).trim().toLowerCase() === String(claimedStaffId || '').trim().toLowerCase()) {
+        return null;
     }
-    return null;
+
+    if (permissionId && bUser && hasPermissionOf(bUser, permissionId)) {
+        return null;
+    }
+
+    console.warn(`[AuthServer] ⛔ ${sessionId} thao tác dưới danh nghĩa ${claimedStaffId}`);
+    return Response.json(
+        { success: false, error: 'Bạn chỉ thao tác được trên tài khoản của chính mình.' },
+        { status: 403 }
+    );
+}
+
+function hasPermissionOf(
+    bUser: NonNullable<Awaited<ReturnType<typeof requireBusinessUser>>>,
+    permissionId: string
+): boolean {
+    const roleId = resolveRoleId(bUser.role);
+    const permissions = bUser.permissions.length > 0
+        ? bUser.permissions
+        : getFallbackPermissions(roleId);
+    return permissions.includes(permissionId);
 }
 
 export async function requireRole(requiredRoles: string[]) {
@@ -264,12 +316,10 @@ export async function requirePermission(permissionId: string) {
     const bUser = await requireBusinessUser();
 
     if (!bUser) {
-        // 🔄 Compatibility Phase: No JWT session detected.
-        // This happens when the user logged in via legacy DB lookup
-        // but signInWithPassword failed (password mismatch with Supabase Auth).
-        // Allow through with warning — matches middleware.ts behavior.
-        // TODO: Remove this fallback once all users have synced Supabase Auth accounts.
-        console.warn(`[AuthServer] ⚠️ Compatibility Phase: No JWT session for permission '${permissionId}'. Allowing through.`);
+        // Không có JWT. Cờ bật → chặn. Cờ tắt → cho qua và ghi log (hành vi cũ,
+        // giữ cho phiên đăng nhập trước khi có auto-heal ở app/login/actions.ts).
+        if (AUTH_ENFORCE) throw new Error('Unauthorized');
+        console.warn(`[AuthServer] ⚠️ No JWT session for permission '${permissionId}' (AUTH_ENFORCE_API off - allowed)`);
         return true;
     }
 
@@ -289,6 +339,27 @@ export async function requirePermission(permissionId: string) {
         throw new Error('Forbidden');
     }
 
+    return true;
+}
+
+/**
+ * Như `requirePermission` nhưng qua được khi có BẤT KỲ một quyền trong danh sách.
+ * Dùng cho route phục vụ một màn mà chính màn đó mở bằng nhiều quyền (VD ktv-hub
+ * mở bằng `ktv_attendance` hoặc `turn_tracking`) — guard phải khớp đúng bộ id
+ * của màn, không được đòi một id khác mà tài khoản quầy có thể không có.
+ */
+export async function requirePermissionAny(permissionIds: string[]) {
+    const bUser = await requireBusinessUser();
+
+    if (!bUser) {
+        if (AUTH_ENFORCE) throw new Error('Unauthorized');
+        console.warn(`[AuthServer] ⚠️ No JWT session for permissions [${permissionIds.join(', ')}] (AUTH_ENFORCE_API off - allowed)`);
+        return true;
+    }
+
+    if (!permissionIds.some(id => hasPermissionOf(bUser, id))) {
+        throw new Error('Forbidden');
+    }
     return true;
 }
 

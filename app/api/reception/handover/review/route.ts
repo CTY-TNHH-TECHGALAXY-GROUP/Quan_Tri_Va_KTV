@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { HandoverService, RejectOption } from '@/lib/services/HandoverService';
+import { requireBusinessUser, authErrorResponse } from '@/lib/auth-server';
 
 /**
  * POST /api/reception/handover/review
@@ -9,6 +10,12 @@ import { HandoverService, RejectOption } from '@/lib/services/HandoverService';
  */
 export async function POST(request: Request) {
     try {
+        // Duyệt/từ chối bàn giao đụng tiền tua KTV → phải đăng nhập (cờ tắt thì cho qua như cũ).
+        const u = await requireBusinessUser();
+        if (!u && process.env.AUTH_ENFORCE_API === '1') {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+
         const body = await request.json();
         const { bookingItemId, action, rejectOption, reason, ktvCode, rejectImages, deductPoints } = body;
 
@@ -108,6 +115,8 @@ export async function POST(request: Request) {
             { status: 400 }
         );
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('API Error (POST /api/reception/handover/review):', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

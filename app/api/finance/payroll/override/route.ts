@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { PayrollOverrideSchema } from '@/lib/schemas/finance.schema';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 /**
  * POST /api/finance/payroll/override
@@ -8,6 +9,9 @@ import { PayrollOverrideSchema } from '@/lib/schemas/finance.schema';
  */
 export async function POST(request: Request) {
     try {
+        // Sửa tay điểm danh trên bảng lương → cần quyền payroll_commissions.
+        await requirePermission('payroll_commissions');
+
         const body = await request.json();
         const parseResult = PayrollOverrideSchema.safeParse(body);
         if (!parseResult.success) {
@@ -59,6 +63,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: 'Cập nhật thành công' });
 
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('❌ [Payroll Override API]', err.message);
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }

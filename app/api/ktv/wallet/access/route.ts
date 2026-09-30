@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { requireStaffOrPermission } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,10 @@ export async function GET(request: Request) {
         if (!techCode) {
             return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
         }
+
+        // Chỉ chủ ví hoặc người có quyền tài chính mới hỏi được cờ ví.
+        const deniedAuth = await requireStaffOrPermission(techCode, 'finance_management');
+        if (deniedAuth) return deniedAuth;
 
         const access = await WalletAccessService.getAccess(supabase, techCode);
 

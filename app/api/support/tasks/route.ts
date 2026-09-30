@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { EmployeeTasksService } from '@/lib/services/employeeTasks.service';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // Xoá task là quyền quản trị hỗ trợ, nhân viên làm task không tự xoá được.
+    await requirePermission('support_tasks_admin');
+
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
 
@@ -78,6 +82,8 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     console.error('API Error /api/support/tasks DELETE:', error.message);
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }

@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
+    // Xoá toàn bộ ảnh đã nộp của task để làm lại — chỉ admin support.
+    await requirePermission('support_tasks_admin');
     const { taskId } = await request.json();
 
     if (!taskId) {
@@ -52,6 +55,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     console.error('API Error /api/support/tasks/rework:', error.message);
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }

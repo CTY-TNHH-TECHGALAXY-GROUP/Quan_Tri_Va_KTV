@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole, requireBusinessUser, requirePermissionAny } from '@/lib/auth-server';
 import { revalidatePath } from 'next/cache';
 import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId, SKILL_KEYS } from '@/lib/constants/staff.constants';
 import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
@@ -117,6 +118,8 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
 
 export async function getStaffList() {
     try {
+        // Quầy (ktv-hub) cũng gọi hàm này → chỉ cần đã đăng nhập; cờ tắt thì giữ hành vi cũ.
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
         // Tài khoản hệ thống (admin/dev) không phải nhân sự. Trước đây chúng vẫn
@@ -160,6 +163,7 @@ export async function getStaffList() {
 
 export async function createStaffMember(formData: any) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -291,6 +295,9 @@ export async function createStaffMember(formData: any) {
 
 export async function updateStaffMember(id: string, updates: any) {
     try {
+        // Quầy sửa kỹ năng KTV ở ktv-hub → dùng quyền module thay vì role.
+        // Quầy sửa kỹ năng KTV từ ktv-hub — màn đó mở bằng ktv_attendance / turn_tracking.
+        await requirePermissionAny(['ktv_attendance', 'turn_tracking', 'ktv_hub', 'employee_management']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -454,6 +461,7 @@ export async function updateStaffMember(id: string, updates: any) {
 
 export async function deleteStaffMember(id: string) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -501,6 +509,7 @@ export async function deleteStaffMember(id: string) {
 
 export async function updateEmployeeRole(employeeId: string, newRole: string) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 

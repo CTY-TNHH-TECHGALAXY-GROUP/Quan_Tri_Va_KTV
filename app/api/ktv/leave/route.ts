@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { LeaveRequestSchema, LeavePatchSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
 import { vnDate } from '@/lib/vn-time';
-import { requireBusinessUser } from '@/lib/auth-server';
+import { requireBusinessUser, requireStaffOrPermission } from '@/lib/auth-server';
 
 /**
  * GET /api/ktv/leave
@@ -90,6 +90,10 @@ export async function POST(request: Request) {
                 { status: 400 }
             );
         }
+
+        // Chỉ đăng ký nghỉ cho CHÍNH MÌNH; quầy có quyền leave_management thì đăng ký giúp được.
+        const denied = await requireStaffOrPermission(employeeId, 'leave_management');
+        if (denied) return denied;
 
         // Admin đăng ký giúp không cần reason bắt buộc
         if (!registeredByAdmin && !reason) {
@@ -376,6 +380,10 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: 'Leave request not found' }, { status: 404 });
         }
 
+        // Chủ đơn hoặc người có quyền leave_management mới duyệt/từ chối được.
+        const denied = await requireStaffOrPermission(String(leave.employeeId || ''), 'leave_management');
+        if (denied) return denied;
+
         const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
 
         // Update leave request status
@@ -430,6 +438,16 @@ export async function DELETE(request: NextRequest) {
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
+
+        // Chủ đơn hoặc người có quyền leave_management mới xoá được. Đơn không
+        // tồn tại → employeeId rỗng → chỉ người có quyền mới qua.
+        const { data: leaveRow } = await supabase
+            .from('KTVLeaveRequests')
+            .select('employeeId')
+            .eq('id', leaveId)
+            .maybeSingle();
+        const denied = await requireStaffOrPermission(String(leaveRow?.employeeId || ''), 'leave_management');
+        if (denied) return denied;
 
         const { error } = await supabase
             .from('KTVLeaveRequests')

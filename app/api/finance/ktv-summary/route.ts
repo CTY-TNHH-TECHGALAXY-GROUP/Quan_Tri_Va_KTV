@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvRosterService } from '@/lib/services/KtvRosterService';
 import { KtvTypeDWalletService } from '@/lib/services/KtvTypeDWalletService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ async function fetchAll(queryBuilder: any) {
 
 export async function GET(request: Request) {
     try {
+        // Bảng thu ngân toàn bộ KTV → chỉ người có quyền tài chính được xem.
+        await requirePermission('finance_management');
+
         const { searchParams } = new URL(request.url);
         const fromDate = searchParams.get('fromDate');
         const toDate = searchParams.get('toDate');
@@ -402,6 +406,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, data: summaries });
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('Exception in /api/finance/ktv-summary:', err);
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }
