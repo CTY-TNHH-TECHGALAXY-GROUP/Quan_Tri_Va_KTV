@@ -132,16 +132,14 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm uppercase ${isTop1 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'}`}>
                             {ktv.name.substring(0, 2)}
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{ktv.name}</span>
-                              <span className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
-                                ktv.workType === 'TYPE_D' ? 'bg-purple-500 ring-2 ring-purple-100' :
-                                ktv.workType === 'TYPE_B' ? 'bg-emerald-500 ring-2 ring-emerald-100' :
-                                ktv.workType === 'TYPE_C' ? 'bg-amber-500 ring-2 ring-amber-100' :
-                                'bg-blue-500 ring-2 ring-blue-100'
-                              }`} />
-                            </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors leading-tight">{ktv.name}</span>
+                            <div className={`h-1 w-7 rounded-full my-1 ${
+                              ktv.workType === 'TYPE_D' ? 'bg-purple-500' :
+                              ktv.workType === 'TYPE_B' ? 'bg-emerald-500' :
+                              ktv.workType === 'TYPE_C' ? 'bg-amber-500' :
+                              'bg-blue-500'
+                            }`} />
                             <div className="text-xs text-gray-400 font-medium">Mã: {ktv.id}</div>
                           </div>
                         </div>
