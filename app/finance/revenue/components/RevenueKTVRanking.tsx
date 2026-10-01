@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRevenueKTVRanking } from './RevenueKTVRanking.logic';
-import { Trophy, Clock, Calendar, Star, DollarSign, Filter, Users, CalendarOff } from 'lucide-react';
+import { Trophy, Clock, Calendar, Star, DollarSign, Filter, Users, CalendarOff, Maximize2, Minimize2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Props {
   dateFrom: string;
@@ -29,6 +29,16 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
   const { 
     data, isLoading, error, sortBy, setSortBy
   } = useRevenueKTVRanking(dateFrom, dateTo, langFilter);
+
+  const [expandAll, setExpandAll] = React.useState(false);
+  const [expandedCards, setExpandedCards] = React.useState<Record<string, boolean>>({});
+
+  const toggleCard = (id: string) => {
+    setExpandedCards(prev => ({
+      ...prev,
+      [id]: expandAll ? false : !prev[id]
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -60,7 +70,15 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setExpandAll(!expandAll)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+          >
+            {expandAll ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            <span>{expandAll ? 'Thu gọn chi tiết' : 'Mở rộng tất cả chi tiết'}</span>
+          </button>
           <div className="flex items-center gap-2 sm:border-l border-gray-200 sm:pl-4">
             <span className="text-sm font-bold text-gray-600 hidden sm:block">Tiêu chí:</span>
             <div className="relative">
@@ -86,7 +104,8 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
         </div>
       ) : (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Desktop View: Giữ nguyên 100% bảng 10 cột */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-gray-100">
@@ -240,6 +259,105 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile View: Dạng Card thông minh có thể bung chi tiết */}
+          <div className="block lg:hidden divide-y divide-gray-100">
+            {data.map((ktv, index) => {
+              const isTop1 = index === 0;
+              const isTop2 = index === 1;
+              const isTop3 = index === 2;
+              const isExpanded = expandAll || !!expandedCards[ktv.id];
+
+              const count4 = ktv.rating4Count ?? ktv.excellentCount ?? 0;
+              const count3 = ktv.rating3Count ?? ktv.goodCount ?? 0;
+              const count2 = ktv.rating2Count ?? ktv.averageCount ?? 0;
+              const count1 = ktv.rating1Count ?? ktv.badCount ?? 0;
+              const totalRatings = ktv.ratingCount ?? (count4 + count3 + count2 + count1);
+
+              return (
+                <div key={ktv.id} className="p-4 space-y-3">
+                  <div 
+                    onClick={() => toggleCard(ktv.id)}
+                    className="flex items-center justify-between gap-3 cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 text-center shrink-0">
+                        {isTop1 ? (
+                          <span className="w-7 h-7 bg-amber-100 text-amber-600 rounded-full inline-flex items-center justify-center font-black text-xs">1</span>
+                        ) : isTop2 ? (
+                          <span className="w-7 h-7 bg-slate-200 text-slate-600 rounded-full inline-flex items-center justify-center font-black text-xs">2</span>
+                        ) : isTop3 ? (
+                          <span className="w-7 h-7 bg-orange-100 text-orange-600 rounded-full inline-flex items-center justify-center font-black text-xs">3</span>
+                        ) : (
+                          <span className="text-gray-400 font-bold text-xs">#{index + 1}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-gray-900 truncate leading-tight">{ktv.name}</div>
+                        <div className={`h-1 w-6 rounded-full my-1 ${
+                          ktv.workType === 'TYPE_D' ? 'bg-purple-500' :
+                          ktv.workType === 'TYPE_B' ? 'bg-emerald-500' :
+                          ktv.workType === 'TYPE_C' ? 'bg-amber-500' :
+                          'bg-blue-500'
+                        }`} />
+                        <div className="text-[11px] text-gray-400">Mã: {ktv.id}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="font-black text-gray-900 text-sm">{Math.round(ktv.revenue).toLocaleString('vi-VN')}đ</div>
+                        <div className="text-[11px] font-bold text-emerald-600">{Math.round(ktv.tuaMoney).toLocaleString('vi-VN')}đ tua</div>
+                      </div>
+                      <div className="text-gray-400">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Khối chi tiết mở rộng */}
+                  {isExpanded && (
+                    <div className="pt-2 border-t border-gray-100 space-y-2 text-xs animate-in fade-in duration-200">
+                      <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2.5 rounded-xl text-center">
+                        <div>
+                          <div className="text-[10px] text-gray-400 font-semibold">Ngày công</div>
+                          <div className="font-bold text-gray-800">{ktv.workingDays}d ({ktv.leaveDays} nghỉ)</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-400 font-semibold">Giờ làm</div>
+                          <div className="font-bold text-indigo-600">{ktv.totalWorkingHours}h</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-400 font-semibold">Điểm Bonus</div>
+                          <div className="font-bold text-orange-500">{Math.round(ktv.bonus)}</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-amber-50/60 p-2 rounded-xl">
+                          <div className="font-bold text-amber-800 text-[11px] mb-1 flex items-center gap-1">
+                            <Star size={11} className="fill-amber-400 text-amber-400" /> Đánh giá ({totalRatings})
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-[10px]">
+                            <span>4★: <b>{count4}</b></span>
+                            <span>3★: <b>{count3}</b></span>
+                            <span>2★: <b>{count2}</b></span>
+                            <span>1★: <b>{count1}</b></span>
+                          </div>
+                        </div>
+                        <div className="bg-blue-50/60 p-2 rounded-xl">
+                          <div className="font-bold text-blue-800 text-[11px] mb-1">Lượt tua</div>
+                          <div className="space-y-0.5 text-[10px] text-gray-700">
+                            <div>Tự do: <b>{ktv.freeTurns}</b></div>
+                            <div>VIP: <b>{ktv.vipTurns}</b></div>
+                            <div>Yêu cầu: <b>{ktv.requestedTurns}</b></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
