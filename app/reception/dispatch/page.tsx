@@ -616,25 +616,50 @@ if (!hasPermission('dispatch_board')) {
 
   const displayedOrders = subOrders.filter(o => o.dispatchStatus === leftPanelTab);
 
+  // Popup xác nhận dùng modal của trang (nút Xác nhận / Hủy bỏ), trả về Promise.
+  const askConfirm = (message: string) => new Promise<boolean>(resolve => {
+    setConfirmModal({
+      isOpen: true, message,
+      onConfirm: () => { setConfirmModal(prev => ({ ...prev, isOpen: false })); resolve(true); },
+      onCancel: () => resolve(false),
+    });
+  });
+
   // Đổi giờ của nhân viên ĐÃ bắt đầu (thời lượng A đang làm, bỏ B chưa bắt đầu) phải được quầy xác nhận.
   // So bản đang sửa với bản server (baseline) của từng dịch vụ.
-  const confirmRunningChanges = (bookingId: string, services: ServiceBlock[]): boolean => {
+  const confirmRunningChanges = async (bookingId: string, services: ServiceBlock[]): Promise<boolean> => {
     const isLive = (seg: any) => seg.voided !== true && seg.voided !== 'true';
     const lines: string[] = [];
     for (const svc of services) {
       const base = baselineItemsRef.current.get(`${bookingId}/${svc.id}`);
       if (!base) continue;
       const now = svc.staffList.flatMap(row => row.segments.filter(isLive).map(seg => ({ ...seg, ktvId: row.ktvId })));
-      const aRunning = base.staffList.some(row => row.segments.some(seg => isLive(seg) && seg.actualStartTime && !seg.actualEndTime));
+      const baseSegs = base.staffList.flatMap(row => row.segments.filter(isLive));
+      const aRunning = baseSegs.some(seg => seg.actualStartTime && !seg.actualEndTime);
+      const aDone = baseSegs.some(seg => Number((seg as any).sequenceSlot) === 1 && seg.actualStartTime && seg.actualEndTime);
       for (const row of base.staffList) for (const seg of row.segments.filter(isLive)) {
         const cur = now.find(other => other.id === seg.id && other.ktvId === row.ktvId);
         if (seg.actualStartTime && !seg.actualEndTime && cur && Number(cur.duration) !== Number(seg.duration))
           lines.push(tConfirm.runningDurationLine(row.ktvId, Number(seg.duration), Number(cur.duration)));
-        if (aRunning && !seg.actualStartTime && Number((seg as any).sequenceSlot) === 2 && !cur)
-          lines.push(tConfirm.removedBLine(row.ktvId));
+        if (!seg.actualStartTime && Number((seg as any).sequenceSlot) === 2 && !cur) {
+          if (aRunning) lines.push(tConfirm.removedBLine(row.ktvId));
+          else if (aDone) lines.push(tConfirm.removedBAfterADoneLine(row.ktvId));
+        }
       }
     }
-    return lines.length === 0 || window.confirm(tConfirm.runningDurationChange(lines));
+    return lines.length === 0 || askConfirm(tConfirm.runningDurationChange(lines));
+  };
+
+  // Toast sau khi lưu thay đổi giờ của nhân viên đang làm / bỏ B. Có lỗi gửi thông báo thì báo lỗi.
+  // Trả true khi đã tự báo các cảnh báo (bên gọi không alert lại).
+  const toastDurationResult = (res: any): boolean => {
+    const changes: any[] = res?.durationChanges || [];
+    if (!changes.length) return false;
+    if (res.warnings?.length) { addToast(tConfirm.notifyFailed(res.warnings), 'error'); return true; }
+    if (changes.some(c => c.removedB && c.finishedAfterA)) addToast(tConfirm.removedBAfterASaved, 'success');
+    else if (changes.some(c => c.removedB)) addToast(tConfirm.removedBSaved, 'success');
+    if (changes.some(c => !c.removedB)) addToast(tConfirm.durationSaved, 'success');
+    return true;
   };
 
   const updateOrder = (orderId: string, patchFn: (o: PendingOrder) => PendingOrder) => {
@@ -1265,7 +1290,7 @@ if (!hasPermission('dispatch_board')) {
         : selectedOrder;
     if (!effectiveOrder) return false;
     // Lần gọi sau khi xem trước tách đơn (skipPreview=true) đã hỏi ở lần đầu.
-    if (!skipPreview && !confirmRunningChanges(effectiveOrder.id, effectiveOrder.services)) return false;
+    if (!skipPreview && !(await confirmRunningChanges(effectiveOrder.id, effectiveOrder.services))) return false;
     let ownsPending=false;
     try {
       const clonedOrder = JSON.parse(JSON.stringify(effectiveOrder)) as PendingOrder;
@@ -1432,10 +1457,12 @@ if (!hasPermission('dispatch_board')) {
         }
 
         if (intent === 'DISPATCH') {
+            // Đổi giờ A / bỏ B đã được lưu ở bước nháp này — báo ngay, bước điều phối sau không còn thay đổi đó.
+            toastDurationResult(res);
             return await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
         } else {
             addToast('Đã lưu kế hoạch' + (splitPlan.length > 1 ? ' và tách đơn' : '') + '.','success');
-            if ((res as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
+            toastDurationResult(res);
             return true;
         }
       } else {
@@ -1801,8 +1828,7 @@ if (!hasPermission('dispatch_board')) {
                   await fetchData();
               }
           }
-          if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
-          if (res.success && (res as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
+          if (res.success && !toastDurationResult(res) && res.warnings?.length) alert(res.warnings.join('\n'));
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
               return false;
@@ -2900,6 +2926,7 @@ if (!hasPermission('dispatch_board')) {
                   </div>}
                   <DispatchEditHistory services={selectedSubOrder.services} />
                   <QuickDispatchTable
+                    confirmAction={askConfirm}
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
@@ -2980,7 +3007,7 @@ if (!hasPermission('dispatch_board')) {
                     }}
                     onSaveStaffRow={async (item, ktvId, sequential, savePair) => {
                       if (dispatchPendingRef.current) return false;
-                      if (!confirmRunningChanges(selectedSubOrder.bookingId, [item])) return false;
+                      if (!(await confirmRunningChanges(selectedSubOrder.bookingId, [item]))) return false;
                       setDispatchBusy(true);
                       try {
                       const bookingId=selectedSubOrder.bookingId;
@@ -3006,8 +3033,7 @@ if (!hasPermission('dispatch_board')) {
                         result=await save(true); acknowledge(result);
                       }
                       if (!result.success) { alert('Không lưu được bản nháp: '+result.error); return false; }
-                      if (result.warnings?.length) alert(result.warnings.join('\n'));
-                      if ((result as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
+                      if (!toastDurationResult(result) && result.warnings?.length) alert(result.warnings.join('\n'));
                       return true;
                       } finally { setDispatchBusy(false); }
                     }}

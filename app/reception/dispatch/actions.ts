@@ -49,7 +49,7 @@ async function notifyAdjustedDurations(bookingId: string, changes: any[] = []) {
         try {
             notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
                 message: change.removedB
-                    ? `Quầy đã bỏ lượt B của bạn ở đơn này (chưa bắt đầu). Bạn không còn phân công cho dịch vụ này.`
+                    ? `Bạn không còn phân công cho dịch vụ này.`
                     : `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
         } catch (error) { console.error('Duration notification failed:', error); }
         if (!notified) warnings.push(`Đã lưu giờ mới nhưng chưa báo được cho ${change.employeeId}; vui lòng báo trực tiếp.`);
@@ -911,7 +911,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
             const oldOptions = parseKtvOptions(item.options);
             const newOptions = parseKtvOptions(stored?.options || update.options);
             const nameFor = (options: any, seg: any) => options.serviceNamesForKtvs?.[seg.ktvId] || options.displayName || 'dịch vụ';
-            if (before && before.ktvId !== afterB?.ktvId) {
+            // B đã nhận thông báo "bỏ lượt B" qua notifyAdjustedDurations → không gửi thêm lần nữa.
+            const alreadyToldRemoved = (data.durationChanges || []).some((c: any) => c.removedB && c.employeeId === before?.ktvId && c.itemId === item.id);
+            if (before && before.ktvId !== afterB?.ktvId && !alreadyToldRemoved) {
                 const notified = await createNotification({ bookingId, employeeId: before.ktvId, type: 'KTV_ORDER_CHANGED',
                     message: `Phân công lượt B (${nameFor(oldOptions, before)}) đã được chuyển khỏi bạn. Vui lòng kiểm tra ứng dụng.` });
                 if (!notified) notificationWarnings.push(`Đã đổi phân công B, chưa báo được cho ${before.ktvId}.`);

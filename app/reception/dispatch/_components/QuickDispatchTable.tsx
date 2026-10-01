@@ -62,6 +62,8 @@ interface QuickDispatchTableProps {
   onLiveHandoff?: (itemId: string, fromKtvId: string, toKtvId: string, plannedStartTime?: string) => void;
   onEnableSequential?: (itemId: string) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
+  /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
+  confirmAction?: (message: string) => Promise<boolean>;
   subOrderCodeProp?: string;
 }
 
@@ -106,7 +108,7 @@ const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffDa
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp
+  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -909,6 +911,7 @@ export const QuickDispatchTable = ({
                           onLiveHandoff={onLiveHandoff}
                           onUpdateServices={onUpdateServices}
                           onRemoveSvc={onRemoveSvc}
+                          confirmAction={confirmAction}
                           orderId={orderId}
                           subOrderCode={subOrderCode}
                           isSelected={isSelected}
@@ -975,6 +978,8 @@ interface ServiceGroupCardProps {
   onLiveHandoff?: (itemId: string, fromKtvId: string, toKtvId: string, plannedStartTime?: string) => void;
   onUpdateServices?: (services: ServiceBlock[]) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
+  /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
+  confirmAction?: (message: string) => Promise<boolean>;
   orderId?: string | null;
   subOrderCode?: string;
   borderColorClass?: string;
@@ -992,7 +997,7 @@ const MAX_KTV_PER_GROUP = 10;
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state,
   availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onSaveRow, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt, onLiveHandoff, onUpdateServices, onRemoveSvc,
+  allServices, groupItems, onTriggerMergePrompt, onLiveHandoff, onUpdateServices, onRemoveSvc, confirmAction,
   orderId,
   subOrderCode,
   borderColorClass,
@@ -1030,10 +1035,13 @@ const ServiceGroupCard = ({
 
   const singleKtvName = groupItems.length === 1 && !state.isUtility && state.selectedKtvIds.length === 1;
 
-  const removeKtv = (ktvId: string) => {
+  const removeKtv = async (ktvId: string) => {
     // Bỏ KTV cuối cùng = dịch vụ không còn ai làm → hỏi trước, Lưu sẽ đưa về "Chờ điều phối".
-    if (state.selectedKtvIds.length === 1 && state.selectedKtvIds[0] === ktvId
-        && !window.confirm(tConfirm.removeLastKtv(state.displayName || groupItems[0]?.serviceName || 'dịch vụ'))) return;
+    if (state.selectedKtvIds.length === 1 && state.selectedKtvIds[0] === ktvId) {
+      const message = tConfirm.removeLastKtv(state.displayName || groupItems[0]?.serviceName || 'dịch vụ');
+      const ok = confirmAction ? await confirmAction(message) : window.confirm(message);
+      if (!ok) return;
+    }
     const idx = state.selectedKtvIds.indexOf(ktvId);
     const newRoomIds = [...(state.selectedRoomIds || [])];
     const newStarts = [...(state.ktvStartTimes || [])];
@@ -1248,6 +1256,9 @@ const ServiceGroupCard = ({
 
   // Duration presets — không giới hạn theo duration dịch vụ, cho phép chọn linh hoạt
   const DURATION_PRESETS = [30, 45, 60, 70, 90, 120, 180, 200, 240, 300];
+  // Server nhận thời lượng 1–600 phút (dispatch_commit_form_base).
+  const MIN_DURATION = 1;
+  const MAX_DURATION = 600;
 
   const isSequentialMode = state.selectedKtvIds.length > count;
 
@@ -1718,10 +1729,15 @@ const ServiceGroupCard = ({
                                 if (!DURATION_PRESETS.includes(minutes)) setOpenDurationIdx(null);
                             }}
                             onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setOpenDurationIdx(null); }}
-                            onFocus={() => setOpenDurationIdx(idx)}
-                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400`}
+                            // Chọn sẵn số cũ: gõ là thay, không nối thành 6077 phút.
+                            onFocus={e => { setOpenDurationIdx(idx); e.currentTarget.select(); }}
+                            aria-invalid={!!ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION)}
+                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION) ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400'}`}
                             placeholder="Phút"
                         />
+                        {!!ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION) && (
+                            <p role="alert" className="absolute left-0 top-full mt-0.5 whitespace-nowrap text-[10px] font-bold text-rose-600">{tConfirm.durationOutOfRange(MIN_DURATION, MAX_DURATION)}</p>
+                        )}
                         <button 
                             type="button"
                             aria-label={`Chọn thời lượng của ${ktvId}`} aria-expanded={openDurationIdx === idx}
