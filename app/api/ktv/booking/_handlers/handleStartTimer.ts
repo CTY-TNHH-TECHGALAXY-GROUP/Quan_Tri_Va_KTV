@@ -53,7 +53,9 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         if (!first?.actualStartTime) return fail('Chờ KTV lượt 1 bắt đầu trước khi bắt đầu lượt 2.');
         const { data, error } = await supabase.from('KtvAssignments').select('id')
             .eq('booking_id', bookingId).eq('booking_item_id', target.item.id).eq('segment_id', target.seg.id)
-            .eq('employee_id', technicianCode).eq('status', 'ACTIVE').maybeSingle();
+            // QUEUED/READY: KTV còn dịch vụ khác chưa bắt đầu đang đứng trước; ktv_start_service_atomic
+            // sẽ đưa chặng được bấm lên ACTIVE và hạ dịch vụ kia về hàng chờ (quyết định 01/10/2026).
+            .eq('employee_id', technicianCode).in('status', ['ACTIVE', 'QUEUED', 'READY']).maybeSingle();
         if (error) return fail('Không đọc được phân công B.', 500);
         assignedB = !!data;
         if (!assignedB) return fail('B không còn được gán; tải lại.');

@@ -21,7 +21,18 @@ import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, is
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
 
+// Cờ chỉ dùng trên màn điều phối (bản nháp "Nối tiếp" chưa lưu) — không bao giờ ghi xuống DB.
+function stripDraftOnlyOptions(payload: any) {
+    if (!Array.isArray(payload?.itemUpdates)) return payload;
+    return { ...payload, itemUpdates: payload.itemUpdates.map((u: any) => {
+        if (!u?.options || typeof u.options !== 'object') return u;
+        const { _draftSequential, ...options } = u.options;
+        return { ...u, options };
+    }) };
+}
+
 async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
+    payload = stripDraftOnlyOptions(payload);
     const actor = await currentCounterActor();
     const result = await supabase.rpc(['DRAFT','DISPATCH'].includes(action) ? 'dispatch_commit_form' : 'dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
         p_payload: payload, p_actor: actor });
@@ -37,9 +48,19 @@ async function notifyAdjustedDurations(bookingId: string, changes: any[] = []) {
         let notified = false;
         try {
             notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
-                message: `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
+                message: change.removedB
+                    ? `Quầy đã bỏ lượt B của bạn ở đơn này (chưa bắt đầu). Bạn không còn phân công cho dịch vụ này.`
+                    : `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
         } catch (error) { console.error('Duration notification failed:', error); }
         if (!notified) warnings.push(`Đã lưu giờ mới nhưng chưa báo được cho ${change.employeeId}; vui lòng báo trực tiếp.`);
+    }
+    if (changes.length) {
+        // Báo admin: rule WARNING chỉ cho admin/dev nhận (KTV không nhận).
+        const actor = await currentCounterActor().catch(() => null);
+        const summary = changes.map((c: any) => c.removedB ? `bỏ B ${c.employeeId}` : `${c.employeeId} ${c.minutes}′`).join(', ');
+        const ok = await createNotification({ bookingId, type: 'WARNING',
+            message: `Đơn ${bookingId}: quầy${actor?.name ? ` (${actor.name})` : ''} đổi thời gian dịch vụ đang làm — ${summary}.` }).catch(() => false);
+        if (!ok) warnings.push('Đã lưu giờ mới nhưng chưa tạo được thông báo cho admin.');
     }
     return warnings;
 }
@@ -964,7 +985,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
         // Removed destructive syncOrderTimelineToDb
 
-        return { success: true, warnings: notificationWarnings, savedItems: data.savedItems as any[], revisions: data.revisions as Record<string, number> };
+        return { success: true, warnings: notificationWarnings, savedItems: data.savedItems as any[], revisions: data.revisions as Record<string, number>, durationChanges: (data.durationChanges || []) as any[] };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -1409,7 +1430,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
             console.error('Dispatch saved; queue sync failed:', error);
             warnings.push('Đã lưu thay đổi; sổ tua chưa đồng bộ, vui lòng kiểm tra lại.');
         }
-        return { success: true, warnings, savedItems: saved.savedItems as any[], revisions: saved.revisions as Record<string, number> };
+        return { success: true, warnings, savedItems: saved.savedItems as any[], revisions: saved.revisions as Record<string, number>, durationChanges: (saved.durationChanges || []) as any[] };
     } catch (error: any) {
         console.error('❌ [Server] saveDraftDispatch error:', error);
         return { success: false, error: error.message };
@@ -1612,7 +1633,7 @@ export async function saveDispatchForm(bookingId: string, itemId: string, rows: 
             const warnings=await notifyAdjustedDurations(bookingId,[
                 {employeeId:oldA.ktvId,minutes:Number(savedA?.duration || nextA.duration),startTime:savedA?.startTime,endTime:savedA?.endTime},
                 ...(savedB ? [{employeeId:oldB.ktvId,minutes:Number(savedB.duration),startTime:savedB.startTime,endTime:savedB.endTime}] : [])]);
-            return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision},warnings};
+            return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision},warnings,durationChanges:[{itemId}]};
         }
         const result=await saveDraftDispatch(bookingId,{roomName:booking.roomName,bedId:booking.bedId,notes:booking.notes,
             confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[{id:itemId,
