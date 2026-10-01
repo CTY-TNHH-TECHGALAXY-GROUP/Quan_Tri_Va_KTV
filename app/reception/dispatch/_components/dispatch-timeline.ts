@@ -2,6 +2,10 @@ import { isUtilityService } from '@/lib/booking.logic';
 import { PendingOrder, ServiceBlock, GuestBlock } from '../types';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
+// Thẻ chỉ tách theo nối tiếp khi đã LƯU. Bật "Nối tiếp" trong form mới là bản nháp
+// (options._draftSequential) — chưa được tách thẻ trước khi quầy bấm Lưu.
+const isSavedSequential = (options: any) => isTwoSlotSequential(options) && options?._draftSequential !== true;
+
 export const formatToHourMinute = (isoString: string | null | undefined): string => {
     if (!isoString) return '--:--';
     if (/^\d{1,2}:\d{2}$/.test(isoString)) return isoString;
@@ -368,7 +372,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     }
                     if (svcAllFb && svcAllComp) dStatus = 'FEEDBACK';
                     else if (svcAllComp) dStatus = 'CLEANING';
-                    else if (svcAnyStart) dStatus = 'IN_PROGRESS';
+                    // Status server là nguồn đúng: bản nháp có thể chưa nhận actualStartTime qua realtime.
+                    else if (svcAnyStart || svc.status === 'IN_PROGRESS') dStatus = 'IN_PROGRESS';
                     else dStatus = 'PREPARING';
                 }
                 return { ...svc, status: dStatus, _isChild: false, _splitTime: (svc as any)._splitTime };
@@ -421,7 +426,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 const sequentialParent = svc._isChild && (svc as any)._parentId
                     ? updatedServices.find(parent => parent.id === (svc as any)._parentId)
                     : svc;
-                if (sequentialParent && isTwoSlotSequential(sequentialParent.options)) {
+                if (sequentialParent && isSavedSequential(sequentialParent.options)) {
                     groupingKey = `${phase}#item:${sequentialParent.id}`;
                 } else if ((svc as any)._splitTime) {
                     groupingKey = `${phase}#${(svc as any)._splitTime}`;
@@ -479,7 +484,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // Create a unique ID for this SubOrder split by Phase, so they render as distinct cards
                 // Also factor in _splitTime to ensure uniqueness
                 const baseId = guestId !== 'default' ? `${order.id}_${guestId}` : `${order.id}_guest${groupIndex}`;
-                const sequentialItem = phaseServices.find(s => isTwoSlotSequential(s.options));
+                const sequentialItem = phaseServices.find(s => isSavedSequential(s.options));
                 const splitIdSuffix = sequentialItem
                     ? `_${sequentialItem.id}`
                     : (servicesByPhase.size > 1 ? `_${groupingKey}` : '');

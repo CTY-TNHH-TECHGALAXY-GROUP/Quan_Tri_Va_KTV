@@ -57,7 +57,10 @@ export function mergeDispatchRealtimeDraft(draft: ServiceBlock, server: ServiceB
   return {...draft,status:server.status,pauseStart:server.pauseStart,timeStart:server.timeStart,timeEnd:server.timeEnd,
     options:{...draft.options,dispatchHistory:server.options?.dispatchHistory},
     staffList:draft.staffList.map(row=>({...row,segments:row.segments.map(seg=>{
-      const actual=server.staffList.flatMap(staff=>staff.segments).find(other=>other.id===seg.id);
+      // Khớp theo id chặng; nếu bản nháp tự sinh id khác server mà KTV chỉ có 1 chặng thì khớp theo KTV.
+      const serverRow=server.staffList.find(staff=>staff.ktvId===row.ktvId);
+      const actual=server.staffList.flatMap(staff=>staff.segments).find(other=>other.id===seg.id)
+        || (serverRow?.segments.length===1 && row.segments.length===1 ? serverRow.segments[0] : undefined);
       if (!actual) return seg;
       return {...seg,actualStartTime:actual.actualStartTime,actualEndTime:actual.actualEndTime,
         pauses:actual.pauses,

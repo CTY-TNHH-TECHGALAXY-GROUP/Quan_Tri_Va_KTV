@@ -327,7 +327,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             }
 
                             const forcedStartTime = parsedOptions?.timeSlot || parsedNotes?.timeSlot;
-                            const techCodes: string[] = (Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : [])).filter(Boolean);
+                            // Khử trùng: mỗi KTV một dòng dù technicianCodes bị ghi lặp (vd ["B","C","C"]).
+                            const techCodes: string[] = [...new Set<string>((Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : [])).filter(Boolean))];
                             let staffList: any[] = [];
 
                             if (techCodes.length > 0) {

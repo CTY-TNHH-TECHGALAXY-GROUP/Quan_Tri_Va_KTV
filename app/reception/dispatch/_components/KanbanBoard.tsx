@@ -12,6 +12,7 @@ import { KtvCommentModal } from './KtvCommentModal';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
 import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
+import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { expectedEndMs, gioDongHoVN } from '@/lib/segment-time';
 
 const STATUS_CONFIG = [
@@ -1194,6 +1195,20 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 Chưa gán B · + Điều phối
                                                                             </button>
                                                                         )}
+                                                                        {(() => {
+                                                                            // Quầy đã bỏ B (chặng 2 voided UNASSIGNED, lượt 2 đóng): chỉ cảnh báo, không chặn —
+                                                                            // A vẫn được hoàn tất khi hết thời lượng gán.
+                                                                            if (!isTwoSlotSequential(s.options) || !sequentialSlotClosed(s.options, 2) || s.options?.finishedAfterA) return null;
+                                                                            if (!['PREPARING', 'READY', 'IN_PROGRESS', 'PAUSED', 'CLEANING'].includes(s.status || subOrder.dispatchStatus)) return null;
+                                                                            const removedB = ((s as any).segments || dsKtvHienThi(s).flatMap((st: any) => (st.segments || []).map((seg: any) => ({ ...seg, ktvId: seg.ktvId || st.ktvId }))))
+                                                                                .find((seg: any) => Number(seg.sequenceSlot) === 2 && (seg.voided === true || seg.voided === 'true') && seg.note === 'UNASSIGNED');
+                                                                            if (!removedB) return null;
+                                                                            return (
+                                                                                <div role="status" className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[10px] font-bold text-amber-700">
+                                                                                    {tConfirm.removedBWarning(removedB.ktvId || '')}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1.5 border border-indigo-100/50 mt-1">

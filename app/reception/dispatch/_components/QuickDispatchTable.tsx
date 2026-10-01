@@ -11,6 +11,7 @@ import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
 import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalKtvNameProblem, externalKtvNameKey, newExternalKtvToken, normalizeExternalKtvName } from '@/lib/constants/staff.constants';
 import { t as tCheckin } from '../CheckinConfirm.i18n';
+import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { remainingHandoffMinutes } from '@/lib/dispatch-handoff';
@@ -517,7 +518,9 @@ export const QuickDispatchTable = ({
               segments: [segment, ...(oldRow?.segments.filter(seg => !isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || ktvId }, ktvId)) || [])],
               noteForKtv: state.ktvNotes[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' };
           })],
-          options: { ...updatedServices[svcIdx].options, sequentialSlots: 2, displayName: state.displayName },
+          // Bật "Nối tiếp" trong form chỉ là bản nháp cho tới khi Lưu (xem dispatch-timeline isSavedSequential).
+          options: { ...updatedServices[svcIdx].options, sequentialSlots: 2, displayName: state.displayName,
+            _draftSequential: !isTwoSlotSequential(item.options) || item.options?._draftSequential === true },
         };
         return;
       }
@@ -1028,6 +1031,9 @@ const ServiceGroupCard = ({
   const singleKtvName = groupItems.length === 1 && !state.isUtility && state.selectedKtvIds.length === 1;
 
   const removeKtv = (ktvId: string) => {
+    // Bỏ KTV cuối cùng = dịch vụ không còn ai làm → hỏi trước, Lưu sẽ đưa về "Chờ điều phối".
+    if (state.selectedKtvIds.length === 1 && state.selectedKtvIds[0] === ktvId
+        && !window.confirm(tConfirm.removeLastKtv(state.displayName || groupItems[0]?.serviceName || 'dịch vụ'))) return;
     const idx = state.selectedKtvIds.indexOf(ktvId);
     const newRoomIds = [...(state.selectedRoomIds || [])];
     const newStarts = [...(state.ktvStartTimes || [])];
@@ -1705,7 +1711,13 @@ const ServiceGroupCard = ({
                             disabled={timeLocked && !canEditRunningADuration}
                             aria-label={`Thời lượng nhân viên ${ktvId}`} min={1} max={600} step={1}
                             value={ktvDur || ''}
-                            onChange={e => updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
+                            onChange={e => {
+                                const minutes = e.target.value ? Number(e.target.value) : 0;
+                                updateDurationForIdx(idx, minutes);
+                                // Gõ số ngoài danh sách gợi ý thì đóng danh sách, không che ô nhập.
+                                if (!DURATION_PRESETS.includes(minutes)) setOpenDurationIdx(null);
+                            }}
+                            onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setOpenDurationIdx(null); }}
                             onFocus={() => setOpenDurationIdx(idx)}
                             className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400`}
                             placeholder="Phút"

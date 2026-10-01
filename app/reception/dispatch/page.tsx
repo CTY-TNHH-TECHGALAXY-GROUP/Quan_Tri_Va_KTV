@@ -1,5 +1,6 @@
 'use client';
 import { parseKtvOptions, sequentialClockAt, ktvMetadataMap } from '@/lib/ktvUtils';
+import { t as tConfirm } from './DispatchConfirm.i18n';
 import { DispatchEditHistory } from './_components/DispatchEditHistory';
 import { dispatchRevision } from '@/lib/dispatch-edit-history';
 import { displayBookingCode } from '@/lib/booking-display-code';
@@ -614,6 +615,27 @@ if (!hasPermission('dispatch_board')) {
   ];
 
   const displayedOrders = subOrders.filter(o => o.dispatchStatus === leftPanelTab);
+
+  // Đổi giờ của nhân viên ĐÃ bắt đầu (thời lượng A đang làm, bỏ B chưa bắt đầu) phải được quầy xác nhận.
+  // So bản đang sửa với bản server (baseline) của từng dịch vụ.
+  const confirmRunningChanges = (bookingId: string, services: ServiceBlock[]): boolean => {
+    const isLive = (seg: any) => seg.voided !== true && seg.voided !== 'true';
+    const lines: string[] = [];
+    for (const svc of services) {
+      const base = baselineItemsRef.current.get(`${bookingId}/${svc.id}`);
+      if (!base) continue;
+      const now = svc.staffList.flatMap(row => row.segments.filter(isLive).map(seg => ({ ...seg, ktvId: row.ktvId })));
+      const aRunning = base.staffList.some(row => row.segments.some(seg => isLive(seg) && seg.actualStartTime && !seg.actualEndTime));
+      for (const row of base.staffList) for (const seg of row.segments.filter(isLive)) {
+        const cur = now.find(other => other.id === seg.id && other.ktvId === row.ktvId);
+        if (seg.actualStartTime && !seg.actualEndTime && cur && Number(cur.duration) !== Number(seg.duration))
+          lines.push(tConfirm.runningDurationLine(row.ktvId, Number(seg.duration), Number(cur.duration)));
+        if (aRunning && !seg.actualStartTime && Number((seg as any).sequenceSlot) === 2 && !cur)
+          lines.push(tConfirm.removedBLine(row.ktvId));
+      }
+    }
+    return lines.length === 0 || window.confirm(tConfirm.runningDurationChange(lines));
+  };
 
   const updateOrder = (orderId: string, patchFn: (o: PendingOrder) => PendingOrder) => {
     setOrders(prev => prev.map(o => o.id === orderId ? patchFn(o) : o));
@@ -1242,6 +1264,8 @@ if (!hasPermission('dispatch_board')) {
         ? orders.find(o => o.id === dispatchArgs.overrideOrderId)
         : selectedOrder;
     if (!effectiveOrder) return false;
+    // Lần gọi sau khi xem trước tách đơn (skipPreview=true) đã hỏi ở lần đầu.
+    if (!skipPreview && !confirmRunningChanges(effectiveOrder.id, effectiveOrder.services)) return false;
     let ownsPending=false;
     try {
       const clonedOrder = JSON.parse(JSON.stringify(effectiveOrder)) as PendingOrder;
@@ -1318,7 +1342,8 @@ if (!hasPermission('dispatch_board')) {
 
       const itemUpdates = clonedOrder.services.map((svc, index) => {
           const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
-          const allSegments = svc.staffList.flatMap(r =>
+          // Dòng chưa có KTV (vừa bỏ KTV cuối) không được gửi thành chặng ktvId rỗng — server sẽ từ chối.
+          const allSegments = svc.staffList.filter(r => r.ktvId).flatMap(r =>
             r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration }))
           );
 
@@ -1410,6 +1435,7 @@ if (!hasPermission('dispatch_board')) {
             return await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
         } else {
             addToast('Đã lưu kế hoạch' + (splitPlan.length > 1 ? ' và tách đơn' : '') + '.','success');
+            if ((res as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
             return true;
         }
       } else {
@@ -1683,13 +1709,13 @@ if (!hasPermission('dispatch_board')) {
               // Segment duration from updateGroup already contains the correct TOTAL merged duration
               const correctedStaffList = svc.staffList;
 
-              const allSegments = correctedStaffList.flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration })));
+              const allSegments = correctedStaffList.filter(r => r.ktvId).flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration })));
               return {
                   id: svc.id,
                   roomName: allSegments[0]?.roomId || primarySeg?.roomId,
                   bedId: allSegments[0]?.bedId || primarySeg?.bedId,
                   technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
-                  status: svc.mergedIntoId ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'),
+                  status: (svc.mergedIntoId || !svc.staffList.some(r => r.ktvId)) ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'),
                   segments: allSegments,
                   options: {
                       ...parseKtvOptions(svc.options),
@@ -1776,6 +1802,7 @@ if (!hasPermission('dispatch_board')) {
               }
           }
           if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
+          if (res.success && (res as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
               return false;
@@ -2953,6 +2980,7 @@ if (!hasPermission('dispatch_board')) {
                     }}
                     onSaveStaffRow={async (item, ktvId, sequential, savePair) => {
                       if (dispatchPendingRef.current) return false;
+                      if (!confirmRunningChanges(selectedSubOrder.bookingId, [item])) return false;
                       setDispatchBusy(true);
                       try {
                       const bookingId=selectedSubOrder.bookingId;
@@ -2979,6 +3007,7 @@ if (!hasPermission('dispatch_board')) {
                       }
                       if (!result.success) { alert('Không lưu được bản nháp: '+result.error); return false; }
                       if (result.warnings?.length) alert(result.warnings.join('\n'));
+                      if ((result as any).durationChanges?.length) addToast(tConfirm.durationSaved,'success');
                       return true;
                       } finally { setDispatchBusy(false); }
                     }}

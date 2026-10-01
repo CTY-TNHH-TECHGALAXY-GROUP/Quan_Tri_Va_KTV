@@ -181,7 +181,12 @@ export const DispatchSegmentRow = ({
                             type="number"
                             min={0.1} max={300} step={0.1}
                             value={segment.duration || ''}
-                            onChange={e => handleChange({ duration: e.target.value ? parseFloat(e.target.value) : 0 })}
+                            onChange={e => {
+                                const minutes = e.target.value ? parseFloat(e.target.value) : 0;
+                                handleChange({ duration: minutes });
+                                if (!DURATION_OPTIONS.includes(minutes)) setIsDurationOpen(false);
+                            }}
+                            onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setIsDurationOpen(false); }}
                             onFocus={() => setIsDurationOpen(true)}
                             className="w-full px-2 py-2.5 border-2 border-gray-50 rounded-xl text-[11px] font-black text-center focus:border-indigo-500 outline-none bg-gray-50/30 transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="Phút"
