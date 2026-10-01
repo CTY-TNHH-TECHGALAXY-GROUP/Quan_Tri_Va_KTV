@@ -912,7 +912,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (booking?.BookingItems && ktvId) {
                     const mySegs = booking.BookingItems.flatMap((i: any) => {
                         let parsed = parseKtvSegments(i.segments);
-                        return parsed.filter((s: any) => isKtvDisplaySegment(s, ktvId));
+                        // Only finished work owes a handover — same rule as ktv_release_work_atomic.
+                        // An unstarted segment (e.g. this KTV's slot B on another item of the same
+                        // bill) never gets a handoverTime, so counting it trapped the KTV on HANDOVER.
+                        return parsed.filter((s: any) => isKtvDisplaySegment(s, ktvId)
+                            && !!s.actualStartTime && !!s.actualEndTime);
                     });
                     
                     if (mySegs.length > 0) {
