@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRevenueKTVRanking } from './RevenueKTVRanking.logic';
-import { Trophy, Clock, Calendar, Star, DollarSign, Filter, Users, CalendarOff, Maximize2, Minimize2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trophy, Clock, Calendar, Star, DollarSign, Filter, Users, CalendarOff, Maximize2, Minimize2, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 
 interface Props {
   dateFrom: string;
@@ -32,6 +32,43 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
 
   const [expandAll, setExpandAll] = React.useState(false);
   const [expandedCards, setExpandedCards] = React.useState<Record<string, boolean>>({});
+
+  // 🏷️ Bộ lọc đa chọn mã nhân viên
+  const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
+  const [isStaffDropdownOpen, setIsStaffDropdownOpen] = React.useState(false);
+  const [staffSearchText, setStaffSearchText] = React.useState('');
+  const staffDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (staffDropdownRef.current && !staffDropdownRef.current.contains(e.target as Node)) {
+        setIsStaffDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredData = React.useMemo(() => {
+    if (selectedStaffIds.length === 0) return data;
+    return data.filter(ktv => selectedStaffIds.includes(ktv.id));
+  }, [data, selectedStaffIds]);
+
+  // Danh sách KTV cho bộ lọc: xếp Hạng C xuống cuối cùng, các hạng khác xếp theo mã KTV
+  const filterKtvList = React.useMemo(() => {
+    return [...data].sort((a, b) => {
+      const isAC = a.workType === 'TYPE_C' ? 1 : 0;
+      const isBC = b.workType === 'TYPE_C' ? 1 : 0;
+      if (isAC !== isBC) return isAC - isBC;
+      return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [data]);
+
+  const toggleStaffSelect = (id: string) => {
+    setSelectedStaffIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   const toggleCard = (id: string) => {
     setExpandedCards(prev => ({
@@ -66,11 +103,112 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
           </div>
           <div>
             <h2 className="text-lg font-black text-gray-900">Bảng Xếp Hạng KTV</h2>
-            <p className="text-sm text-gray-500 font-medium">Đánh giá hiệu suất toàn bộ {data.length} nhân viên theo tiêu chí</p>
+            <p className="text-sm text-gray-500 font-medium">Đang hiển thị {filteredData.length}/{data.length} nhân viên theo tiêu chí</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Multi-select KTV Popover */}
+          <div className="relative" ref={staffDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsStaffDropdownOpen(!isStaffDropdownOpen)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                selectedStaffIds.length > 0
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-xs'
+                  : 'bg-gray-50 border-transparent text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Users size={14} className={selectedStaffIds.length > 0 ? 'text-indigo-600' : 'text-gray-400'} />
+              <span>
+                {selectedStaffIds.length === 0
+                  ? 'Lọc theo KTV'
+                  : `Đã chọn (${selectedStaffIds.length}/${data.length})`}
+              </span>
+              <ChevronDown size={14} className={`transition-transform duration-200 ${isStaffDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isStaffDropdownOpen && (
+              <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 z-30 space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={staffSearchText}
+                    onChange={(e) => setStaffSearchText(e.target.value)}
+                    placeholder="Tìm tên hoặc mã KTV..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] font-bold text-gray-500 px-1 border-b border-gray-100 pb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStaffIds(data.map(k => k.id))}
+                    className="text-indigo-600 hover:underline cursor-pointer"
+                  >
+                    Chọn tất cả ({data.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStaffIds([])}
+                    className="text-gray-500 hover:underline cursor-pointer"
+                  >
+                    Bỏ chọn
+                  </button>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                  {filterKtvList
+                    .filter(k => 
+                      k.name.toLowerCase().includes(staffSearchText.toLowerCase()) || 
+                      k.id.toLowerCase().includes(staffSearchText.toLowerCase())
+                    )
+                    .map(ktv => {
+                      const isSelected = selectedStaffIds.includes(ktv.id);
+                      return (
+                        <label
+                          key={ktv.id}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors text-xs ${
+                            isSelected ? 'bg-indigo-50 font-bold text-indigo-900' : 'hover:bg-gray-50 text-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleStaffSelect(ktv.id)}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="truncate">{ktv.name}</span>
+                            <span className="text-[10px] text-gray-400 font-mono">({ktv.id})</span>
+                          </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                            ktv.workType === 'TYPE_D' ? 'bg-purple-100 text-purple-700' :
+                            ktv.workType === 'TYPE_B' ? 'bg-emerald-100 text-emerald-700' :
+                            ktv.workType === 'TYPE_C' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {ktv.workType === 'TYPE_D' ? 'D' : ktv.workType === 'TYPE_B' ? 'B' : ktv.workType === 'TYPE_C' ? 'C' : 'A'}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedStaffIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedStaffIds([])}
+              className="text-xs text-rose-600 font-bold hover:underline flex items-center gap-1 cursor-pointer bg-rose-50 px-2.5 py-2 rounded-xl"
+            >
+              <X size={12} /> Bỏ lọc ({selectedStaffIds.length})
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setExpandAll(!expandAll)}
@@ -97,10 +235,21 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
         </div>
       </div>
 
-      {data.length === 0 ? (
+      {filteredData.length === 0 ? (
         <div className="bg-gray-50 rounded-2xl border border-dashed border-gray-200 py-16 text-center">
           <Users size={48} className="text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 font-medium">Không có dữ liệu KTV trong khoảng thời gian này</p>
+          <p className="text-gray-500 font-medium">
+            {selectedStaffIds.length > 0 ? 'Không có KTV nào phù hợp với bộ lọc' : 'Không có dữ liệu KTV trong khoảng thời gian này'}
+          </p>
+          {selectedStaffIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedStaffIds([])}
+              className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer"
+            >
+              Xóa bộ lọc KTV
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -122,7 +271,7 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {data.map((ktv, index) => {
+                {filteredData.map((ktv, index) => {
                   const isTop1 = index === 0;
                   const isTop2 = index === 1;
                   const isTop3 = index === 2;
@@ -263,7 +412,7 @@ export const RevenueKTVRanking: React.FC<Props> = ({ dateFrom, dateTo, langFilte
 
           {/* Mobile View: Dạng Card thông minh có thể bung chi tiết */}
           <div className="block lg:hidden divide-y divide-gray-100">
-            {data.map((ktv, index) => {
+            {filteredData.map((ktv, index) => {
               const isTop1 = index === 0;
               const isTop2 = index === 1;
               const isTop3 = index === 2;

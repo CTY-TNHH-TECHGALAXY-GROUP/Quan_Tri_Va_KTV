@@ -1966,16 +1966,17 @@ if (!hasPermission('dispatch_board')) {
           disabled={!guestArrivalLock.enabled}
           aria-label="Báo Khách"
           aria-pressed={guestArrivalLock.active}
-          className={`relative w-11 h-11 rounded-full transition-all shadow-sm border flex items-center justify-center ${
+          className={`relative h-11 px-3.5 rounded-2xl transition-all shadow-sm border flex items-center gap-2 font-bold text-xs cursor-pointer ${
               !guestArrivalLock.enabled
                   ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                   : guestArrivalLock.active
-                      ? 'bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-md shadow-red-500/40'
-                      : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100 hover:text-slate-600'
+                      ? 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-md shadow-amber-500/30 animate-pulse'
+                      : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
           }`}
-          title={!guestArrivalLock.enabled ? 'Tính năng Báo Khách đang bị tắt trong cài đặt hệ thống.' : guestArrivalLock.active ? `Đang báo có khách — khóa bởi ${guestArrivalLock.lockedBy} lúc ${new Date(guestArrivalLock.lockedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Bấm để tắt.` : 'Báo có khách đang đợi (khóa Tan Ca của KTV)'}
+          title={!guestArrivalLock.enabled ? 'Tính năng Báo Khách đang bị tắt trong cài đặt hệ thống.' : guestArrivalLock.active ? `Đang báo có khách — bởi ${guestArrivalLock.lockedBy} lúc ${new Date(guestArrivalLock.lockedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Bấm để tắt.` : 'Báo có khách'}
         >
-          <Users size={20} className={guestArrivalLock.active ? 'animate-pulse' : ''} />
+          <Users size={16} />
+          <span className="whitespace-nowrap">{guestArrivalLock.active ? 'Đang Có Khách' : 'Có Khách'}</span>
         </button>
         <button
           onClick={async () => {
@@ -2562,7 +2563,19 @@ if (!hasPermission('dispatch_board')) {
                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính</span>
                                     <select
                                       value={currentGender}
-                                      onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: e.target.value, paymentMethod: currentPaymentMethod })}
+                                      onChange={(e) => {
+                                        const newGender = e.target.value;
+                                        setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: newGender, paymentMethod: currentPaymentMethod });
+                                        if (selectedSubOrder) {
+                                          updateBookingMeta(selectedSubOrder.bookingId, {
+                                            nationality: currentNationality,
+                                            guestCount: currentGuestCount,
+                                            customerGender: newGender,
+                                            paymentMethod: currentPaymentMethod
+                                          }).catch(console.error);
+                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, customerGender: newGender }));
+                                        }
+                                      }}
                                       className="w-20 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
                                       <option value="male">Nam</option>
@@ -2572,7 +2585,19 @@ if (!hasPermission('dispatch_board')) {
                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch</span>
                                     <select
                                       value={currentNationality}
-                                      onChange={(e) => setEditingGuestInfo({ nationality: e.target.value, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod })}
+                                      onChange={(e) => {
+                                        const newNationality = e.target.value;
+                                        setEditingGuestInfo({ nationality: newNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod });
+                                        if (selectedSubOrder) {
+                                          updateBookingMeta(selectedSubOrder.bookingId, {
+                                            nationality: newNationality,
+                                            guestCount: currentGuestCount,
+                                            customerGender: currentGender,
+                                            paymentMethod: currentPaymentMethod
+                                          }).catch(console.error);
+                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: newNationality }));
+                                        }
+                                      }}
                                       className="w-32 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
                                       <option value="">Chọn...</option>
@@ -2589,31 +2614,6 @@ if (!hasPermission('dispatch_board')) {
                                     <div className="px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
                                         {currentGuestCount} KHÁCH
                                     </div>
-                                    <button
-                                      onClick={async () => {
-                                          if (!selectedSubOrder) return;
-                                          try {
-                                              const res = await updateBookingMeta(selectedSubOrder.bookingId, {
-                                                  nationality: currentNationality,
-                                                  guestCount: currentGuestCount,
-                                                  customerGender: currentGender,
-                                                  paymentMethod: currentPaymentMethod
-                                              });
-                                              if (!res.success) throw new Error(res.error || 'Lỗi không xác định');
-                                              
-                                              updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod }));
-                                              setEditingGuestInfo(null);
-                                              
-                                              alert('Đã lưu thông tin khách hàng thành công!');
-                                          } catch(e) {
-                                              alert('Lỗi khi lưu!');
-                                              console.error(e);
-                                          }
-                                      }}
-                                      className="ml-2 px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1"
-                                    >
-                                      <Save size={12} /> Lưu
-                                    </button>
                                   </>
                                 ) : (
                                   <>

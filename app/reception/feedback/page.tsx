@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFeedbackDashboard, ChildBookingForFeedback } from './FeedbackDashboard.logic';
 import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
@@ -188,37 +189,38 @@ export default function FeedbackDashboardPage() {
                     </div>
                 </div>
                 <div className="hidden sm:flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200">
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch'}
+                  <Link
+                    href="/reception/dispatch"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <LayoutList size={14} /> Điều Phối
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=MONITOR'} // If supported later
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=MONITOR"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <Columns3 size={14} /> Giám Sát Đơn
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=TURN_QUEUE'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=TURN_QUEUE"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <Users size={14} /> Sổ Tua
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=ROOMS'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=ROOMS"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <BedDouble size={14} /> Sổ Phòng
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=SCHEDULE'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=SCHEDULE"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <CalendarClock size={14} /> Lịch Biểu Diễn
-                  </button>
+                  </Link>
                   <button
+                    type="button"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-amber-600 shadow-sm border border-gray-200/50 cursor-default"
                   >
                     <Star size={14} /> Đánh Giá

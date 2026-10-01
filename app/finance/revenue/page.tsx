@@ -25,11 +25,12 @@ import { RevenueKTVRanking } from './components/RevenueKTVRanking';
 const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const DATE_PRESETS = [
     { key: 'today', label: 'Hôm nay' },
-    { key: 'yesterday', label: 'Hôm qua' },
     { key: 'week', label: 'Tuần này' },
     { key: 'month', label: 'Tháng này' },
+    { key: 'quarter', label: 'Quý này' },
     { key: 'year', label: 'Năm này' },
-    { key: 'custom', label: 'Tuỳ chọn' },
+    { key: 'yesterday', label: 'Hôm qua' },
+    { key: 'custom', label: 'Tùy chọn' },
 ] as const;
 
 const GROUP_BY_OPTIONS: { key: GroupBy; label: string }[] = [
@@ -315,104 +316,149 @@ export default function RevenueReportsPage() {
                     </div>
                 </div>
 
-                {/* ─── Date Picker ────────────────────────────────────── */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 space-y-2.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                        <Calendar size={14} className="text-gray-400 shrink-0" />
-                        {[
-                            { key: 'today', label: 'Hôm nay' },
-                            { key: 'yesterday', label: 'Hôm qua' },
-                            { key: 'week', label: 'Tuần này' },
-                            { key: 'custom', label: 'Tùy chọn' },
-                        ].map(b => (
-                            <button
-                                key={b.key}
-                                onClick={() => report.setDatePreset(b.key as any)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                                    report.datePreset === b.key
-                                        ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
-                                }`}
-                            >
-                                {b.label}
-                            </button>
-                        ))}
-                        
-                        <select
-                            value={activeMonth}
-                            onChange={(e) => handleMonthSelect(e.target.value)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
-                                activeMonth
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                        >
-                            <option value="" disabled hidden>Chọn tháng...</option>
-                            <option value="month">Tháng này</option>
-                            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                                <option key={m} value={m}>Tháng {m}</option>
-                            ))}
-                        </select>
+                {/* ─── 2-Tier Revenue Filter Bar ──────────────────────── */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 space-y-3">
+                    {/* TẦNG 1: Quick Preset Chips + Actions */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                        {/* Preset Chips (Scrollable on mobile) */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide flex-1">
+                            <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100 shrink-0">
+                                {[
+                                    { key: 'today', label: 'Hôm nay' },
+                                    { key: 'week', label: 'Tuần này' },
+                                    { key: 'month', label: 'Tháng này' },
+                                    { key: 'quarter', label: 'Quý này' },
+                                    { key: 'year', label: 'Năm này' },
+                                    { key: 'yesterday', label: 'Hôm qua' },
+                                    { key: 'custom', label: 'Tùy chọn' },
+                                ].map(b => (
+                                    <button
+                                        key={b.key}
+                                        onClick={() => report.setDatePreset(b.key as any)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                                            report.datePreset === b.key
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 active:bg-gray-200'
+                                        }`}
+                                    >
+                                        {b.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
-                        <select
-                            value={activeYear}
-                            onChange={(e) => handleYearSelect(e.target.value)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
-                                activeYear
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                        >
-                            <option value="" disabled hidden>Chọn năm...</option>
-                            <option value="year">Năm nay</option>
-                            {[2024, 2025, 2026, 2027].map(y => (
-                                <option key={y} value={y}>Năm {y}</option>
-                            ))}
-                        </select>
-                        {/* Excel + ? buttons */}
-                        {!report.isLoading && report.data.summary.orders > 0 && (
-                            <>
-                                <div className="w-px h-5 bg-gray-200 mx-0.5" />
+                        {/* Actions: Excel & Help */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            {!report.isLoading && report.data.summary.orders > 0 && (
                                 <button
                                     onClick={() => { setExportFrom(report.dateFrom); setExportTo(report.dateTo); setShowExportModal(true); }}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-1.5"
+                                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
                                 >
-                                    <FileSpreadsheet size={12} />
-                                    Excel
+                                    <FileSpreadsheet size={13} />
+                                    <span>Xuất Excel</span>
                                 </button>
-                                <button
-                                    onClick={() => setShowMetricsHelp(true)}
-                                    className="w-7 h-7 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-400 transition-all active:scale-95"
-                                    title="Giải thích thông số"
-                                >
-                                    <HelpCircle size={14} />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                    {report.datePreset === 'custom' && (
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <input
-                                type="date" value={report.dateFrom}
-                                onChange={e => report.setDateFrom(e.target.value)}
-                                className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                            />
-                            <ChevronRight size={14} className="text-gray-300 shrink-0" />
-                            <input
-                                type="date" value={report.dateTo}
-                                onChange={e => report.setDateTo(e.target.value)}
-                                className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                            />
+                            )}
                             <button
-                                onClick={() => report.applyCustomDate()}
-                                className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
+                                onClick={() => setShowMetricsHelp(true)}
+                                className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 border border-gray-200 transition-all active:scale-95 shrink-0"
+                                title="Giải thích thông số"
                             >
-                                Xem
+                                <HelpCircle size={15} />
                             </button>
                         </div>
-                    )}
+                    </div>
+
+                    {/* TẦNG 2: Bộ chọn tùy chỉnh & Dropdown Thu Gọn */}
+                    <div className="pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                            {/* Bộ chọn ngày tùy chỉnh (Hiện khi chọn Tùy chọn) */}
+                            {report.datePreset === 'custom' ? (
+                                <div className="flex items-center gap-1.5 bg-indigo-50/60 border border-indigo-100 p-1 rounded-xl">
+                                    <input
+                                        type="date"
+                                        value={report.dateFrom}
+                                        onChange={e => report.setDateFrom(e.target.value)}
+                                        className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                    />
+                                    <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                                    <input
+                                        type="date"
+                                        value={report.dateTo}
+                                        onChange={e => report.setDateTo(e.target.value)}
+                                        className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                    />
+                                    <button
+                                        onClick={() => report.applyCustomDate()}
+                                        className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all active:scale-95"
+                                    >
+                                        Xem
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-1.5 text-gray-500 font-medium bg-gray-50 border border-gray-200/80 px-2.5 py-1.5 rounded-xl">
+                                    <Calendar size={13} className="text-gray-400 shrink-0" />
+                                    <span>Kỳ báo cáo: <strong className="text-gray-800">{report.dateFrom}</strong> đến <strong className="text-gray-800">{report.dateTo}</strong></span>
+                                </div>
+                            )}
+
+                            {/* Dropdown Tháng */}
+                            <div className="relative">
+                                <select
+                                    value={activeMonth}
+                                    onChange={(e) => handleMonthSelect(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none cursor-pointer"
+                                >
+                                    <option value="" disabled hidden>Chọn tháng...</option>
+                                    <option value="month">Tháng này</option>
+                                    {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                        <option key={m} value={m}>Tháng {m}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Dropdown Năm */}
+                            <div className="relative">
+                                <select
+                                    value={activeYear}
+                                    onChange={(e) => handleYearSelect(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none cursor-pointer"
+                                >
+                                    <option value="" disabled hidden>Chọn năm...</option>
+                                    <option value="year">Năm nay</option>
+                                    {[2024, 2025, 2026, 2027].map(y => (
+                                        <option key={y} value={y}>Năm {y}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Dropdown Kênh / Ngôn ngữ */}
+                            <div className="relative">
+                                <select
+                                    value={report.filterLang}
+                                    onChange={(e) => report.applyLangFilter(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none cursor-pointer"
+                                >
+                                    <option value="all">Tất cả kênh / ngôn ngữ</option>
+                                    {report.data.languageBreakdown?.map(lb => (
+                                        <option key={lb.key || lb.lang} value={lb.key || lb.lang}>
+                                            Kênh: {lb.lang}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Dropdown Chi nhánh */}
+                            <div className="relative">
+                                <select
+                                    defaultValue="all"
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none cursor-pointer"
+                                >
+                                    <option value="all">Tất cả chi nhánh</option>
+                                    <option value="main">Trụ sở chính</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* ─── Tabs Navigation ────────────────────────────────────────── */}

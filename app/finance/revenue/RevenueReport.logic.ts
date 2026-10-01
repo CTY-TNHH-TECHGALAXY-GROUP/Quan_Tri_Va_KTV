@@ -17,7 +17,7 @@ const getYesterdayVn = () => {
     return d.toISOString().split('T')[0];
 };
 
-export type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'year' | 'custom';
+export type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
 export type GroupBy = 'hour' | 'day' | 'week' | 'month';
 
 export interface ReportSummary {
@@ -288,6 +288,12 @@ export const useRevenueReport = () => {
             const now = new Date();
             from = format(startOfMonth(now), 'yyyy-MM-dd');
             to = format(endOfMonth(now), 'yyyy-MM-dd');
+        } else if (datePreset === 'quarter') {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+            from = format(new Date(now.getFullYear(), quarterStartMonth, 1), 'yyyy-MM-dd');
+            to = format(new Date(now.getFullYear(), quarterStartMonth + 3, 0), 'yyyy-MM-dd');
         } else if (datePreset === 'year') {
             const now = new Date();
             from = format(startOfYear(now), 'yyyy-MM-dd');
