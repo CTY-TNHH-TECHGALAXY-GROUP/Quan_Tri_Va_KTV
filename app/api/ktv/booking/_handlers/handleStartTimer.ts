@@ -4,6 +4,9 @@ import { isLiveKtvSegment, parseKtvSegments, parseKtvOptions } from '@/lib/ktvUt
 import { calculateAccurateEndTimeFromSegments } from '@/lib/time-helper';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
+// Thứ tự hậu kỳ của một dịch vụ. Không bao giờ hạ status đã đi xa hơn (CLAUDE.md 9.6).
+const POST_SERVICE_RANK: Record<string, number> = { IN_PROGRESS: 1, CLEANING: 2, FEEDBACK: 3, DONE: 4 };
+
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, action, allItemIdsForThisKTV, body } = ctx;
     const fail = (error: string, status = 409): HandlerResult => ({ bookingUpdatePayload: {},
@@ -98,12 +101,18 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
             if (start) entry.seg.startPhotoUrl = start;
             if (slipper) entry.seg.guestSlipperPhotoUrl = slipper;
         }
-        if (previous && !previous.seg.actualEndTime) previous.seg.actualEndTime = now;
-        const changedIds = new Set([...run.map(s => s.item.id), ...(previous ? [previous.item.id] : [])]);
+        // Chỉ đụng tới item của chặng trước khi thực sự phải chốt giờ kết thúc cho nó.
+        // Chặng trước đã xong/bàn giao (item CLEANING/FEEDBACK/DONE) thì để nguyên.
+        const closesPrevious = !!previous && !previous.seg.actualEndTime;
+        if (closesPrevious) previous!.seg.actualEndTime = now;
+        const changedIds = new Set([...run.map(s => s.item.id), ...(closesPrevious ? [previous!.item.id] : [])]);
         const updates = [...changedIds].map(id => {
             const entry = work.find(s => s.item.id === id)!;
             const done = entry.segments.filter((s: any) => s.ktvId && s.voided !== true && s.voided !== 'true').every((s: any) => s.actualStartTime && s.actualEndTime);
-            return { id, status: done && !isTwoSlotSequential(entry.item.options) ? 'CLEANING' : 'IN_PROGRESS', segments: JSON.stringify(entry.segments) };
+            const computed = done && !isTwoSlotSequential(entry.item.options) ? 'CLEANING' : 'IN_PROGRESS';
+            const current = String(entry.item.status || '');
+            const status = (POST_SERVICE_RANK[current] ?? 0) > POST_SERVICE_RANK[computed] ? current : computed;
+            return { id, status, segments: JSON.stringify(entry.segments) };
         });
         for (const item of items) {
             const parentId = parseKtvOptions(item.options).mergedIntoId;
