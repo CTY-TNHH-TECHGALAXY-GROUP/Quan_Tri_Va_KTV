@@ -46,6 +46,7 @@ export default function RoleManagementPage() {
     } = useRoleManagement();
 
     const [visiblePasswords, setVisiblePasswords] = React.useState<Record<string, boolean>>({});
+    const [mobileSelectedRoleId, setMobileSelectedRoleId] = React.useState<string>('admin');
     const toggleShowPassword = (id: string) => {
         setVisiblePasswords(prev => ({ ...prev, [id]: !prev[id] }));
     };
@@ -115,7 +116,8 @@ export default function RoleManagementPage() {
                         </div>
 
                         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col max-w-full">
-                            <div className="overflow-x-auto w-full flex-1">
+                            {/* Desktop View: Ma trận đầy đủ */}
+                            <div className="hidden md:block overflow-x-auto w-full flex-1">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr>
@@ -172,6 +174,55 @@ export default function RoleManagementPage() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* Mobile View: Chọn vai trò & danh sách quyền cuộn dọc */}
+                            <div className="block md:hidden p-4 space-y-4">
+                                <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-100">
+                                    {roles.map(role => (
+                                        <button
+                                            key={role.id}
+                                            type="button"
+                                            onClick={() => setMobileSelectedRoleId(role.id)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                                                mobileSelectedRoleId === role.id 
+                                                    ? 'bg-indigo-600 text-white' 
+                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            {role.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="space-y-2">
+                                    {MODULES.map(module => {
+                                        const currentRole = roles.find(r => r.id === mobileSelectedRoleId) || roles[0];
+                                        if (!currentRole) return null;
+                                        const isChecked = currentRole.permissions.includes(module.id as ModuleId);
+                                        const isAdmin = currentRole.id === 'admin';
+                                        const isLocked = isAdmin && !isAdminUnlocked;
+                                        return (
+                                            <div key={module.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                                <div className="pr-2">
+                                                    <div className="text-xs font-bold text-gray-900">{module.name}</div>
+                                                    <div className="text-[10px] text-gray-500">{module.group}</div>
+                                                </div>
+                                                <Checkbox.Root
+                                                    checked={isChecked}
+                                                    onCheckedChange={() => togglePermission(currentRole.id, module.id as ModuleId)}
+                                                    className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors ${isChecked
+                                                        ? isLocked ? 'bg-indigo-300 text-white cursor-pointer' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                                        : isLocked ? 'bg-gray-100 border border-gray-300 cursor-pointer' : 'bg-gray-100 border border-gray-300 hover:border-indigo-400'
+                                                    }`}
+                                                >
+                                                    <Checkbox.Indicator>
+                                                        <Check size={16} strokeWidth={3} />
+                                                    </Checkbox.Indicator>
+                                                </Checkbox.Root>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     </Tabs.Content>

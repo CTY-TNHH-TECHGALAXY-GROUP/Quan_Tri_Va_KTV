@@ -859,22 +859,9 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       <button
                         type="button"
                         onClick={() => setShowAvatarUrlInput(true)}
-                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/50 hover:bg-black/70 px-2.5 py-1 rounded-full backdrop-blur-sm transition-colors shadow-xs"
                       >
-                        <LinkIcon size={10} /> Link ảnh
-                      </button>
-                      <button
-                        type="button"
-                        onClick={toggleAvatarVisibility}
-                        title={isAvatarHidden ? 'Avatar đang ẩn - Bấm để hiện lại trên menu' : 'Avatar đang hiện - Bấm để ẩn khỏi menu'}
-                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors ${
-                          isAvatarHidden
-                            ? 'bg-amber-600/90 hover:bg-amber-700 text-white'
-                            : 'bg-black/40 hover:bg-black/60 text-white'
-                        }`}
-                      >
-                        {isAvatarHidden ? <EyeOff size={10} /> : <Eye size={10} />}
-                        <span>{isAvatarHidden ? 'Đang ẩn' : 'Ẩn menu'}</span>
+                        <LinkIcon size={10} /> Dán link ảnh
                       </button>
                     </div>
                   )}
@@ -1110,34 +1097,28 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                          Kỹ năng VIP của nhân viên
+                          Kỹ năng kích hoạt trên Menu VIP ({SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).length})
                         </span>
                         {isEditing && (
                           <span className="text-[10px] text-amber-700 font-medium">
-                            Bấm vào kỹ năng để bật/tắt
+                            Chỉnh sửa tại mục Tất cả kỹ năng chuyên môn bên dưới
                           </span>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {SKILL_KEYS.map((key) => {
-                          const isSkilled = isSkillActive(editedEmployee.skills?.[key]);
-                          return (
-                            <button
+                      <div className="flex flex-wrap gap-1.5">
+                        {SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).length === 0 ? (
+                          <span className="text-xs text-amber-800 italic">Chưa có kỹ năng nào. Vui lòng bật kỹ năng ở mục "Tất cả kỹ năng chuyên môn" bên dưới.</span>
+                        ) : (
+                          SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).map((key) => (
+                            <span
                               key={key}
-                              type="button"
-                              onClick={() => toggleSkill(key)}
-                              disabled={!isEditing}
-                              className={`px-3 py-2 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
-                                isSkilled
-                                  ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
-                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                              } ${!isEditing ? 'cursor-default' : 'cursor-pointer active:scale-95'}`}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
                             >
-                              <span className="truncate">{SKILL_LABELS[key]}</span>
-                              {isSkilled && <CheckCircle2 size={14} className="shrink-0 text-white" />}
-                            </button>
-                          );
-                        })}
+                              <CheckCircle2 size={12} className="text-white" />
+                              <span>{SKILL_LABELS[key]}</span>
+                            </span>
+                          ))
+                        )}
                       </div>
                     </div>
 

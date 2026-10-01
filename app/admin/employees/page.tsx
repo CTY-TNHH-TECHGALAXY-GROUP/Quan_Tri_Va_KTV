@@ -217,25 +217,59 @@ export default function EmployeeManagementPage() {
                             </tbody>
                         </table>
                     </div>
-                </div>
 
-                {/* Quick Stats */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsTotal}</div>
-                        <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsActive}</div>
-                        <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsSenior}</div>
-                        <div className="text-2xl font-bold text-indigo-600">{stats.senior}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsAvgRating}</div>
-                        <div className="text-2xl font-bold text-amber-500">{stats.avgRating}</div>
+                    {/* Mobile View: Dạng Card List tinh tế */}
+                    <div className="block lg:hidden divide-y divide-gray-100">
+                        {isLoading ? (
+                            <div className="text-center py-8 text-gray-500">{t.loading}</div>
+                        ) : filteredEmployees.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">{t.empty}</div>
+                        ) : filteredEmployees.map(emp => (
+                            <div 
+                                key={emp.id}
+                                onClick={() => handleOpenDetail(emp)}
+                                className="p-4 flex items-center justify-between gap-3 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200 shrink-0">
+                                        <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-gray-900 truncate">{emp.name}</div>
+                                        <div className="text-xs text-indigo-600 font-bold flex items-center gap-1.5 mt-0.5">
+                                            <span>{emp.code}</span>
+                                            <span className="text-gray-300">•</span>
+                                            <span className="text-gray-500 font-medium">{emp.position}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                                                {emp.status === 'active' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                                                {emp.status === 'active' ? t.statusActive : t.statusInactive}
+                                            </span>
+                                            {emp.isActiveVipMenu && <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded border border-amber-200">VIP</span>}
+                                            {emp.isHomeSpa && <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 text-[10px] font-bold rounded border border-sky-200">Home</span>}
+                                            {emp.isActiveTherapyMenu && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200">NHT</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-1 text-amber-500 font-bold text-xs">
+                                        <Star size={12} fill="currentColor" />
+                                        <span>{emp.rating}</span>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteEmployee(emp);
+                                        }}
+                                        className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors"
+                                        title={t.deleteEmployee}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
