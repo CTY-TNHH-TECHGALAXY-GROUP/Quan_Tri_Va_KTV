@@ -1,0 +1,268 @@
+{
+  "day": "2026-10-01",
+  "prefix": "QARJ-PTURSJ",
+  "evidence": [
+    {
+      "label": "C1 reject 200",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "isExempted": false,
+          "hoursDeducted": 0,
+          "penaltyPoints": 10,
+          "newTotal": 90,
+          "totalMins": 0,
+          "accountLocked": false
+        }
+      }
+    },
+    {
+      "label": "C1 chặng void UNASSIGNED",
+      "pass": true,
+      "detail": {
+        "id": "QARJ-PTURSJ-B1-S1",
+        "note": "UNASSIGNED",
+        "bedId": "QARJ-PTURSJ-D",
+        "ktvId": "QRJPTURSJ1",
+        "roomId": "QARJ-PTURSJ-R",
+        "voided": true,
+        "endTime": "01:53",
+        "duration": 60,
+        "voidedAt": "2026-10-01T17:48:04.13266+00:00",
+        "startTime": "00:53",
+        "customCommissionDuration": 0
+      }
+    },
+    {
+      "label": "C1 item WAITING, technicianCodes rỗng",
+      "pass": true,
+      "detail": [
+        "WAITING",
+        []
+      ]
+    },
+    {
+      "label": "C1 xoá mốc đã nhận đơn của KTV",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "label": "C1 KtvAssignments CANCELLED",
+      "pass": true,
+      "detail": [
+        "CANCELLED"
+      ]
+    },
+    {
+      "label": "C1 TurnQueue waiting, current_order_id null",
+      "pass": true,
+      "detail": {
+        "status": "waiting",
+        "current_order_id": null,
+        "booking_item_ids": []
+      }
+    },
+    {
+      "label": "C1 giữ tua (TurnLedger không bị xoá)",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "label": "C1 có trừ điểm kỷ luật",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "label": "C1 từ chối lần 2 → 404, không phạt thêm",
+      "pass": true,
+      "detail": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "error": "Không tìm thấy đơn đang gán cho bạn."
+        }
+      }
+    },
+    {
+      "label": "C2 reject 200",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "isExempted": false,
+          "hoursDeducted": 0,
+          "penaltyPoints": 10,
+          "newTotal": 90,
+          "totalMins": 0,
+          "accountLocked": false
+        }
+      }
+    },
+    {
+      "label": "C2 K3 vẫn còn chặng, item giữ PREPARING",
+      "pass": true,
+      "detail": [
+        "PREPARING",
+        [
+          "QRJPTURSJ3"
+        ]
+      ]
+    },
+    {
+      "label": "C2 KA: K2 CANCELLED, K3 vẫn ACTIVE",
+      "pass": true,
+      "detail": [
+        [
+          "CANCELLED"
+        ],
+        [
+          "ACTIVE"
+        ]
+      ]
+    },
+    {
+      "label": "C3 B reject 200",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "isExempted": false,
+          "hoursDeducted": 0,
+          "penaltyPoints": 10,
+          "newTotal": 90,
+          "totalMins": 0,
+          "accountLocked": false
+        }
+      }
+    },
+    {
+      "label": "C3 A không bị đụng (vẫn chạy, slot 1)",
+      "pass": true,
+      "detail": "IN_PROGRESS"
+    },
+    {
+      "label": "C3 B void, KA B CANCELLED, KA A ACTIVE",
+      "pass": true,
+      "detail": [
+        [
+          "CANCELLED"
+        ],
+        [
+          "ACTIVE"
+        ]
+      ]
+    },
+    {
+      "label": "C3 TurnQueue B waiting, A vẫn working",
+      "pass": true,
+      "detail": [
+        {
+          "status": "waiting",
+          "current_order_id": null,
+          "booking_item_ids": []
+        },
+        {
+          "status": "working",
+          "current_order_id": "QARJ-PTURSJ-B3",
+          "booking_item_ids": [
+            "QARJ-PTURSJ-B3-I1"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "C4 đã bắt đầu → 409 và câu báo rõ",
+      "pass": true,
+      "detail": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "error": "Dịch vụ đã bắt đầu, không thể từ chối. Nhờ quầy đổi KTV hoặc dừng dịch vụ."
+        }
+      }
+    },
+    {
+      "label": "C4 không trừ điểm, chặng/KA giữ nguyên",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "label": "C5 trước: B5 ACTIVE, B7 QUEUED",
+      "pass": true,
+      "detail": [
+        [
+          "ACTIVE"
+        ],
+        [
+          "QUEUED"
+        ]
+      ]
+    },
+    {
+      "label": "C5 reject 200",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "isExempted": false,
+          "hoursDeducted": 0,
+          "penaltyPoints": 10,
+          "newTotal": 90,
+          "totalMins": 0,
+          "accountLocked": false
+        }
+      }
+    },
+    {
+      "label": "C5 B7 lên ACTIVE",
+      "pass": true,
+      "detail": [
+        "ACTIVE"
+      ]
+    },
+    {
+      "label": "C5 TurnQueue assigned, current_order_id = id đơn B7",
+      "pass": true,
+      "detail": {
+        "status": "assigned",
+        "current_order_id": "QARJ-PTURSJ-B7",
+        "booking_item_ids": [
+          "QARJ-PTURSJ-B7-I1"
+        ]
+      }
+    },
+    {
+      "label": "C6 reject 200",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "isExempted": false,
+          "hoursDeducted": 0,
+          "penaltyPoints": 10,
+          "newTotal": 90,
+          "totalMins": 0,
+          "accountLocked": false
+        }
+      }
+    },
+    {
+      "label": "C6 cả cụm ghép được gỡ (cha void, con hết tên + WAITING)",
+      "pass": true,
+      "detail": [
+        "WAITING",
+        []
+      ]
+    }
+  ],
+  "leftovers": 0
+}
