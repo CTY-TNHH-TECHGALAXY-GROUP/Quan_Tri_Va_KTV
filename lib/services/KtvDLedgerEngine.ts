@@ -288,6 +288,11 @@ export function computeMinutes(segs: any[]): {
  * Suất thưởng ghi lên ĐÚNG MỘT dòng của mỗi (KTV, khách). Rải lên mọi dòng thì
  * tổng theo ngày và theo tháng bị nhân lên theo số dịch vụ.
  *
+ * "Khách" = `guest_id`, KHÔNG phải `group_id`. Dịch vụ thêm (addon) không gộp
+ * có `group_id` riêng dù cùng một khách — ca thật 005-02102026: T021 và T027
+ * mỗi người nhận 2 suất vì khách làm dịch vụ chính + một dịch vụ thêm.
+ * Đơn cũ chưa có `BookingGuests` thì lùi về `group_id`.
+ *
  * ⚠️ Giữ nguyên luật loại trừ cũ: bill có bất kỳ KTV KHÔNG thuộc loại D thì cả
  * bill mất thưởng. Đây là luật sẵn có của phần thưởng, chuyển vào tiền tua
  * không phải lý do để nới nó ra.
@@ -299,23 +304,24 @@ export function applyBonusAndTax(
     configs: TypeDConfigs
 ): void {
     const canBonus = configs.bonusEnabled && !hasOtherType && configs.bonusPerGuest > 0;
+    const guestKey = (r: TurnRow) => r.guest_id || r.group_id;
 
     if (canBonus) {
         // Mỗi khách có mấy KTV loại D? Đếm trên chính các dòng của bill này.
         const staffPerGuest = new Map<string, Set<string>>();
         for (const r of bookingRows) {
             if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
-            const set = staffPerGuest.get(r.group_id) || new Set<string>();
+            const set = staffPerGuest.get(guestKey(r)) || new Set<string>();
             set.add(r.staff_id);
-            staffPerGuest.set(r.group_id, set);
+            staffPerGuest.set(guestKey(r), set);
         }
 
         const paid = new Set<string>();
         for (const r of bookingRows) {
             if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
-            const key = `${r.staff_id}|${r.group_id}`;
+            const key = `${r.staff_id}|${guestKey(r)}`;
             if (paid.has(key)) continue;          // suất này đã ghi ở dòng trước
-            const dCount = staffPerGuest.get(r.group_id)?.size || 1;
+            const dCount = staffPerGuest.get(guestKey(r))?.size || 1;
             r.bonus_amount = configs.bonusPerGuest / dCount;
             paid.add(key);
         }

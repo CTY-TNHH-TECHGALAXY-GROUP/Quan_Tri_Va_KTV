@@ -282,6 +282,22 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   // Xác định vị trí chặng hiện tại
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
 
+  // Format giờ bắt đầu của đơn để KTV nắm rõ trước khi bấm Nhận hoặc Từ chối
+  const formatOrderStartTime = (raw?: string | null): string => {
+    if (!raw) return '—';
+    const str = String(raw).trim();
+    if (/^\d{1,2}:\d{2}/.test(str)) return str.substring(0, 5);
+    const spaceParts = str.split(' ');
+    if (spaceParts.length === 2 && /^\d{1,2}:\d{2}/.test(spaceParts[1])) return spaceParts[1].substring(0, 5);
+    const d = new Date(str.includes('Z') || str.includes('+') ? str : str.replace(' ', 'T') + 'Z');
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    return '—';
+  };
+  const orderStartTimeRaw = currentSeg?.startTime || currentSeg?.actualStartTime || booking?.dispatchStartTime || item?.timeStart || booking?.timeStart || null;
+  const orderStartTime = formatOrderStartTime(orderStartTimeRaw);
+
   /**
    * Đơn này là VÀO THAY người khác, không phải khách mới.
    *
@@ -461,7 +477,18 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                       con so sai ngay o buoc nhan don la de cai nhau ve sau. So dung
                       nam o chi tiet don va o dong ho, sau khi da nhan. */}
                   {booking.billCode && (
-                    <p className="text-[11px] font-bold text-slate-400 mt-1.5">Đơn {booking.billCode}</p>
+                    <p className="text-[11px] font-bold text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
+                      <span>Đơn {booking.billCode}</span>
+                      {orderStartTime !== '—' && (
+                        <>
+                          <span>•</span>
+                          <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                            <Clock size={12} className="text-emerald-600" />
+                            <span>Bắt đầu {orderStartTime}</span>
+                          </span>
+                        </>
+                      )}
+                    </p>
                   )}
                 </div>
 
