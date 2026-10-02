@@ -64,6 +64,8 @@ interface QuickDispatchTableProps {
   onRemoveSvc?: (orderId: string, svcId: string) => void;
   /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
   confirmAction?: (message: string) => Promise<boolean>;
+  /** Close an empty, already-saved slot B (admin turned "Nối tiếp" on by mistake). */
+  onCloseEmptySlotB?: (itemId: string) => Promise<boolean>;
   subOrderCodeProp?: string;
 }
 
@@ -106,9 +108,14 @@ const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: Sta
 const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffData }) | undefined, staffs: StaffData[]) =>
   turn?.staff?.work_type ?? staffs.find(st => st.id === ktvId)?.work_type ?? (isPlaceholderStaffId(ktvId) ? 'TYPE_C' : null);
 
+/** Turning "Nối tiếp" off must send null: JSON drops `undefined`, and the server merges options
+ *  with `||`, so a saved draft kept sequentialSlots=2 (feedback 02/10/2026). */
+const sequentialSlotsFor = (state: { confirmedSequential?: boolean }, itemCount: number, options: any) =>
+  state.confirmedSequential && itemCount === 1 ? 2 : (Number(options?.sequentialSlots) === 2 ? null : undefined);
+
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction
+  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction, onCloseEmptySlotB
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -574,7 +581,7 @@ export const QuickDispatchTable = ({
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
             staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === ktvId)?.segments.slice(1) || [])], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
-            options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: sequentialSlotsFor(state, items.length, updatedServices[svcIdx].options), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       } else {
@@ -642,7 +649,7 @@ export const QuickDispatchTable = ({
               noteForKtv: (state.ktvNotes && state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] !== undefined) ? state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] : '',
               serviceNameForKtv: state.ktvServiceNames?.[state.selectedKtvIds.indexOf(e.ktvId)] || '',
             })),
-            options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: sequentialSlotsFor(state, items.length, updatedServices[svcIdx].options), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       }
@@ -912,6 +919,7 @@ export const QuickDispatchTable = ({
                           onUpdateServices={onUpdateServices}
                           onRemoveSvc={onRemoveSvc}
                           confirmAction={confirmAction}
+                          onCloseEmptySlotB={onCloseEmptySlotB}
                           orderId={orderId}
                           subOrderCode={subOrderCode}
                           isSelected={isSelected}
@@ -980,6 +988,8 @@ interface ServiceGroupCardProps {
   onRemoveSvc?: (orderId: string, svcId: string) => void;
   /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
   confirmAction?: (message: string) => Promise<boolean>;
+  /** Close an empty, already-saved slot B (admin turned "Nối tiếp" on by mistake). */
+  onCloseEmptySlotB?: (itemId: string) => Promise<boolean>;
   orderId?: string | null;
   subOrderCode?: string;
   borderColorClass?: string;
@@ -997,7 +1007,7 @@ const MAX_KTV_PER_GROUP = 10;
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state,
   availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onSaveRow, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt, onLiveHandoff, onUpdateServices, onRemoveSvc, confirmAction,
+  allServices, groupItems, onTriggerMergePrompt, onLiveHandoff, onUpdateServices, onRemoveSvc, confirmAction, onCloseEmptySlotB,
   orderId,
   subOrderCode,
   borderColorClass,
@@ -1021,6 +1031,7 @@ const ServiceGroupCard = ({
   const [openDurationIdx, setOpenDurationIdx] = useState<number | null>(null);
   const [showRemindersIdx, setShowRemindersIdx] = useState<number | null>(null);
   const [savingRow, setSavingRow] = useState<number | null>(null);
+  const [closingSlotB, setClosingSlotB] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const reminderRef = useRef<HTMLDivElement>(null);
 
@@ -1891,8 +1902,17 @@ const ServiceGroupCard = ({
               {waitingForB && <div className="rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 px-3 py-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-indigo-700">B · Chưa chọn nhân viên</span>
-                  {isDraft && <button type="button" className="text-[10px] text-gray-500 underline"
-                    onClick={() => onUpdate({ workMode: 'parallel', confirmedSequential: false })}>Bỏ nối tiếp</button>}
+                  {(isDraft || onCloseEmptySlotB) && <button type="button" aria-label={tConfirm.turnOffSequential}
+                    title={tConfirm.turnOffSequential} disabled={closingSlotB}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-gray-500 hover:bg-white hover:text-rose-600 disabled:opacity-40"
+                    onClick={async () => {
+                      // Not saved yet → just switch the form back; nothing on the server to undo.
+                      if (isDraft) { onUpdate({ workMode: 'parallel', confirmedSequential: false }); return; }
+                      const ok = confirmAction ? await confirmAction(tConfirm.turnOffSequentialConfirm) : window.confirm(tConfirm.turnOffSequentialConfirm);
+                      if (!ok || !onCloseEmptySlotB) return;
+                      setClosingSlotB(true);
+                      try { await onCloseEmptySlotB(groupItems[0].id); } finally { setClosingSlotB(false); }
+                    }}>×</button>}
                 </div>
                 {<select aria-label="Chọn nhân viên B" value="" onChange={e => { if (e.target.value) addKtv(e.target.value); }}
                   className="w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs font-bold">

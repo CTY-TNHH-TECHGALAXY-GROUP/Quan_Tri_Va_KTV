@@ -14,6 +14,11 @@ import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVER';
 
+// 🔧 UI CONFIGURATION
+// After a local START, a fetch that left before the commit still shows this segment unstarted.
+// Within this window such a stale copy must not stop the running clock (feedback 02/10/2026).
+const LOCAL_START_GRACE_MS = 10000;
+
 const getMinsFromTimes = (start: string, end: string) => {
     if (!start || !end) return 0;
     const [h1, m1] = start.split(':').map(Number);
@@ -292,6 +297,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
     // Refs cho absolute timer: mỗi tick tính từ Date.now() thay vì prev-1
     // Chống lệch thời gian khi KTV tắt/mở màn hình
     const timerStartMsRef = useRef<number>(0);
+    const justStartedLocally = () => isTimerRunningRef.current && timerStartMsRef.current > 0
+        && Date.now() + timeOffsetRef.current - timerStartMsRef.current < LOCAL_START_GRACE_MS;
     const timerTotalSecsRef = useRef<number>(0);
 
     // Auto-skip Review ONLY if THIS KTV has already submitted review for THIS specific booking.
@@ -745,8 +752,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // Tuyệt đối KHÔNG ép lên IN_PROGRESS, vì sẽ làm Timer tự chạy sai giờ.
                 // 🔒 NGOẠI LỆ: Nếu client đã set isTimerRunning = true (KTV vừa bấm Bắt đầu)
                 //    → giữ IN_PROGRESS, không ép về PREPARING (Realtime race condition)
-                if (isTimerRunningRef.current && timerStartMsRef.current > 0
-                    && Date.now() - timerStartMsRef.current < 10000) {
+                if (justStartedLocally()) {
                     // The local START response may arrive just before its refreshed segment.
                     currentStatus = 'IN_PROGRESS';
                 } else if (['IN_PROGRESS', 'PAUSED', 'CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
@@ -1325,6 +1331,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                             // A/B share item.timeStart, but an unstarted replacement has its own full slot.
                             if (unstartedSequentialSeconds(assignedItem, currentSeg, currentSegDuration) !== null) {
+                                // Stale copy right after this KTV pressed Start: keep the running clock as is
+                                // (falling through would re-time it from A's item.timeStart).
+                                if (justStartedLocally()) return res.data;
                                 timerStartMsRef.current = 0;
                                 timerTotalSecsRef.current = currentSecs;
                                 setTimeRemaining(currentSecs);

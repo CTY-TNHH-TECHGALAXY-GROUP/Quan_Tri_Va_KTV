@@ -1083,6 +1083,21 @@ export async function handoffSequentialKtv(input: {
     }
 }
 
+/** Fresh server copy of one item, so a rejected repeat can tell "already saved" from a real conflict. */
+export async function getDispatchItemState(bookingId: string, itemId: string) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const { data, error } = await supabase.from('BookingItems').select('id, status, segments, options, technicianCodes')
+            .eq('id', itemId).eq('bookingId', bookingId).single();
+        if (error || !data) throw error || new Error('Không tìm thấy dịch vụ');
+        return { success: true, item: { ...data, segments: parseKtvSegments(data.segments), options: parseKtvOptions(data.options) } };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Không đọc được dịch vụ' };
+    }
+}
+
 export async function finishSequentialAfterA(bookingId: string, itemId: string, expectedRevision: number) {
     try {
         await requirePermission('dispatch_board');

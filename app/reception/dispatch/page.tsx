@@ -1,5 +1,5 @@
 'use client';
-import { parseKtvOptions, sequentialClockAt, ktvMetadataMap } from '@/lib/ktvUtils';
+import { parseKtvOptions, sequentialClockAt, ktvMetadataMap, ktvServiceName } from '@/lib/ktvUtils';
 import { t as tConfirm } from './DispatchConfirm.i18n';
 import { DispatchEditHistory } from './_components/DispatchEditHistory';
 import { dispatchRevision } from '@/lib/dispatch-edit-history';
@@ -49,7 +49,7 @@ import { supabase } from '@/lib/supabase';
 import { KanbanBoard } from './_components/KanbanBoard';
 import { TimeEditorModal } from './_components/TimeEditorModal';
 import { QuickDispatchTable } from './_components/QuickDispatchTable';
-import { getDispatchData, processDispatch, enableSequentialItem, handoffSequentialKtv, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
+import { getDispatchData, processDispatch, enableSequentialItem, handoffSequentialKtv, getDispatchItemState, cancelBooking, updateBookingStatus, createQuickBooking, addAddonServices, updateBookingMeta } from './actions';
 import SequentialLifecycleModal from './_components/SequentialLifecycleModal';
 import type { SequentialRequest } from '@/lib/sequential-lifecycle';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -83,6 +83,13 @@ import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import { KtvCommentModal } from './_components/KtvCommentModal';
+
+/** Kanban "Gán B" popup state. */
+type LiveHandoffState = {
+  bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
+  plannedStartAt: string; durationMinutes: number; expectedRevision: number; saving: boolean;
+  serviceName: string; servicePlaceholder: string; slotBKey: string;
+};
 
 
 
@@ -384,10 +391,9 @@ export default function DispatchBoardPage() {
     defaultName?: string;
     isSaving: boolean;
   } | null>(null);
-  const [liveHandoff, setLiveHandoff] = useState<{
-    bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
-    plannedStartAt: string; durationMinutes: number; expectedRevision: number; saving: boolean;
-  } | null>(null);
+  const [liveHandoff, setLiveHandoff] = useState<LiveHandoffState | null>(null);
+  // Ref, not state: two clicks inside one render both saw `saving=false` and sent ASSIGN_B twice.
+  const liveHandoffBusyRef = useRef(false);
 
   const [splitPreviewState, setSplitPreviewState] = useState<{
     isOpen: boolean;
@@ -428,6 +434,14 @@ export default function DispatchBoardPage() {
       const draft=draftItemsRef.current.get(key);
       if (!draft) { baselineItemsRef.current.set(key,server); return server; }
       if (server===draft) return server;
+      // A cached draft with no counter edits left (e.g. restored after reload) is just an old copy:
+      // drop it so its stale revision cannot block the next save.
+      if (dispatchFormSignature(draft)===dispatchFormSignature(server)) {
+        draftItemsRef.current.delete(key); rebased.push(key); changed=true;
+        updateDirtyRows(new Set([...dirtyRowsRef.current].filter(row=>!row.startsWith(`${key}/`))));
+        baselineItemsRef.current.set(key,server);
+        return server;
+      }
       const previousBaseline=baselineItemsRef.current.get(key);
       const runtimeOnly=!!previousBaseline && dispatchFormSignature(previousBaseline)===dispatchFormSignature(server);
       baselineItemsRef.current.set(key,server);
@@ -454,6 +468,36 @@ export default function DispatchBoardPage() {
     const full = orders.flatMap(order => order.services).find(item => item.id === service.id) || service;
     setSequentialModal({ bookingId, service: structuredClone(full), action });
   };
+  /** Keep the counter's edits: move each conflicting draft onto the server's newest revision, so
+   *  the next save goes through (it overwrites the other change on purpose) instead of a reload. */
+  const keepStaleDrafts = (bookingId: string) => {
+    const keys = staleDrafts.filter(key => key.startsWith(bookingId + '/'));
+    for (const key of keys) {
+      const draft = draftItemsRef.current.get(key);
+      const server = baselineItemsRef.current.get(key);
+      if (draft && server) draftItemsRef.current.set(key, { ...draft, options: { ...draft.options, dispatchRevision: server.options?.dispatchRevision } });
+    }
+    persistDraftCache();
+    setStaleDrafts(previous => previous.filter(key => !keys.includes(key)));
+    updateOrder(bookingId, order => ({ ...order, services: order.services.map(item => draftItemsRef.current.get(`${bookingId}/${item.id}`) || item) }));
+    addToast(tConfirm.staleDraftKept, 'info');
+  };
+
+  /** "×" on an empty saved slot B: close it through the same lifecycle CANCEL the A/B modal uses. */
+  const closeEmptySlotB = async (bookingId: string, itemId: string) => {
+    const item = orders.find(o => o.id === bookingId)?.services.find(s => s.id === itemId);
+    if (!item) return false;
+    const res = await apiClient.post<any>('/api/reception/sequential-lifecycle', {
+      action: 'CANCEL', targetSlots: [2], reason: tConfirm.turnOffSequentialReason,
+      bookingId, itemId, expectedRevision: dispatchRevision(item.options),
+    });
+    if (!res.success) { addToast(tConfirm.turnOffSequentialFailed(res.error || ''), 'error'); return false; }
+    addToast(tConfirm.turnOffSequentialDone, 'success');
+    if (res.warnings?.length) alert(res.warnings.join('\n'));
+    await fetchData();
+    return true;
+  };
+
   const submitSequentialAction = async (request: SequentialRequest) => {
     if (!sequentialModal) return;
     const res = await apiClient.post<any>('/api/reception/sequential-lifecycle', {
@@ -887,15 +931,29 @@ if (!hasPermission('dispatch_board')) {
     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .format(new Date(reference)).replace(' ', 'T');
+    const savedNames = parseKtvOptions(parseKtvOptions(item.options).serviceNamesForKtvs);
     setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB, expectedRevision: dispatchRevision(item.options),
+      serviceName: (selectedB && savedNames[selectedB]) || '',
+      servicePlaceholder: ktvServiceName({ ...item, options: item.options }, fromKtvId) || item.displayName || item.serviceName,
+      slotBKey: slotBSignature(item),
       plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
   };
 
+  /** What slot B looks like; unchanged → a newer revision only carries KTV runtime writes. */
+  const slotBSignature = (item: ServiceBlock) => JSON.stringify(item.staffList.flatMap(row => row.segments
+    .filter(seg => Number(seg.sequenceSlot) === 2)
+    .map(seg => [row.ktvId, seg.id, (seg as any).voided === true || (seg as any).voided === 'true', !!seg.actualStartTime])));
+
   const confirmUpdatedBOverlap = (result: any) => confirm(`Giờ B mới trước mốc kết thúc ${result.referenceKind === 'actual' ? 'thực tế' : 'dự kiến'} của A (${new Date(result.referenceAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}). Vẫn lưu và cập nhật B?`);
 
   const confirmLiveHandoff = async () => {
-    if (!liveHandoff || liveHandoff.saving) return;
+    if (!liveHandoff || liveHandoff.saving || liveHandoffBusyRef.current) return;
+    liveHandoffBusyRef.current = true;
+    try { await submitLiveHandoff(liveHandoff); } finally { liveHandoffBusyRef.current = false; }
+  };
+
+  const submitLiveHandoff = async (liveHandoff: LiveHandoffState) => {
     setLiveHandoff(prev => prev ? { ...prev, saving: true } : null);
     const startMs = Date.parse(`${liveHandoff.plannedStartAt}${liveHandoff.plannedStartAt.length === 16 ? ':00' : ''}+07:00`);
     if (!Number.isFinite(startMs)) {
@@ -909,7 +967,9 @@ if (!hasPermission('dispatch_board')) {
       setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
       return;
     }
-    let expectedRevision = liveHandoff.expectedRevision;
+    // KTV start/end/handover bump the revision too; while slot B is as the popup saw it, use the newest one.
+    let expectedRevision = slotBSignature(item) === liveHandoff.slotBKey
+      ? dispatchRevision(item.options) : liveHandoff.expectedRevision;
     if (!isTwoSlotSequential(item?.options)) {
       const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId, expectedRevision);
       if (!enabled.success) {
@@ -924,7 +984,10 @@ if (!hasPermission('dispatch_board')) {
       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
       durationMinutes: liveHandoff.durationMinutes,
       metadata: {
-        serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(item.options).serviceNamesForKtvs, item.staffList, 'serviceNameForKtv'),
+        serviceNamesForKtvs: {
+          ...ktvMetadataMap(parseKtvOptions(item.options).serviceNamesForKtvs, item.staffList, 'serviceNameForKtv'),
+          ...(liveHandoff.serviceName.trim() ? { [liveHandoff.toKtvId]: liveHandoff.serviceName.trim() } : {}),
+        },
         notesForKtvs: ktvMetadataMap(parseKtvOptions(item.options).notesForKtvs, item.staffList, 'noteForKtv'),
       } };
     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
@@ -940,11 +1003,25 @@ if (!hasPermission('dispatch_board')) {
       }
     }
     if (!res.success) {
-      alert('Không thể bàn giao: ' + res.error);
-      setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
-      return;
+      // A repeat (double click, or clicking again after it worked) is rejected for its old revision.
+      // If the server already holds exactly this B, report the first result instead of an error.
+      const fresh = /bản lưu mới|đã thay đổi/i.test(res.error || '')
+        ? await getDispatchItemState(liveHandoff.bookingId, liveHandoff.itemId) : null;
+      const savedB = fresh?.success ? fresh.item!.segments.find((seg: any) => Number(seg.sequenceSlot) === 2
+        && seg.voided !== true && seg.voided !== 'true') : null;
+      const alreadySaved = !!savedB && savedB.ktvId === liveHandoff.toKtvId
+        && Number(savedB.duration) === Number(liveHandoff.durationMinutes)
+        && Math.abs(Date.parse(savedB.plannedStartAt) - Date.parse(input.plannedStartAt)) < 60000;
+      if (!alreadySaved) {
+        alert('Không thể bàn giao: ' + res.error);
+        setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+        return;
+      }
+      addToast(tConfirm.assignBAlreadySaved(liveHandoff.toKtvId), 'success');
+    } else {
+      addToast(tConfirm.assignBSaved(liveHandoff.toKtvId), 'success');
+      if (res.warnings?.length) alert(res.warnings.join('\n'));
     }
-    if (res.warnings?.length) alert(res.warnings.join('\n'));
     setLiveHandoff(null);
     await fetchData();
   };
@@ -1376,7 +1453,7 @@ if (!hasPermission('dispatch_board')) {
               id: svc.id,
               roomName: allSegments[0]?.roomId || primarySeg?.roomId,
               bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-              technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.map(r => r.ktvId).filter(Boolean),
+              technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
               options: {
                   ...parseKtvOptions(svc.options),
@@ -2921,12 +2998,16 @@ if (!hasPermission('dispatch_board')) {
                     </div>
                   )}
                   {staleDrafts.some(key=>key.startsWith(selectedSubOrder.bookingId+'/')) && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                    Ca vừa thay đổi từ tài khoản khác. Bản nháp được giữ; giờ thực và trạng thái đã cập nhật.
-                    <button type="button" className="ml-2 font-bold underline focus-visible:outline" onClick={()=>{if (!confirmLeaveDraft()) return; discardFormDrafts(); void fetchData();}}>Bỏ bản nháp và xem bản mới</button>
+                    {tConfirm.staleDraftNotice}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" className="min-h-[44px] rounded-lg bg-white px-3 font-bold text-amber-900 ring-1 ring-amber-300 focus-visible:outline" onClick={()=>{if (!confirmLeaveDraft()) return; discardFormDrafts(); void fetchData();}}>{tConfirm.staleDraftShowNew}</button>
+                      <button type="button" className="min-h-[44px] rounded-lg px-3 font-bold text-amber-900 underline focus-visible:outline" onClick={()=>keepStaleDrafts(selectedSubOrder.bookingId)}>{tConfirm.staleDraftKeep}</button>
+                    </div>
                   </div>}
                   <DispatchEditHistory services={selectedSubOrder.services} />
                   <QuickDispatchTable
                     confirmAction={askConfirm}
+                    onCloseEmptySlotB={(itemId) => closeEmptySlotB(selectedSubOrder.bookingId, itemId)}
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
@@ -3478,6 +3559,11 @@ Vẫn kết thúc sớm?`)) return;
                     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)).replace(' ', 'T') : '' };
                 })} />
               <p className="mt-1 text-xs text-gray-500">Ngày theo đơn. Giờ qua 0h được tính trong cùng lượt dịch vụ.</p>
+            </label>
+            <label className="block text-sm font-semibold">{tConfirm.assignBServiceNameLabel}
+              <input type="text" className="mt-1 w-full rounded-lg border p-2 placeholder:text-gray-400" maxLength={120}
+                placeholder={liveHandoff.servicePlaceholder} value={liveHandoff.serviceName}
+                onChange={e => setLiveHandoff(prev => prev ? { ...prev, serviceName: e.target.value } : null)} />
             </label>
             <label className="flex items-center gap-2 text-sm">Thời lượng B
               <input type="number" min="1" max="600" step="1" className="w-20 rounded-lg border p-1"

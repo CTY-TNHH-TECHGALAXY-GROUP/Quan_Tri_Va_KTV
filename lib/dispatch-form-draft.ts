@@ -20,7 +20,11 @@ export function mergeSavedDispatchForm(current: ServiceBlock, submitted: Service
   if (dispatchFormSignature(current)!==dispatchFormSignature(submitted)) return {...current,
     options:{...options,...current.options,dispatchRevision:options.dispatchRevision,dispatchHistory:options.dispatchHistory}};
   const segments=parseKtvSegments(saved.segments,true);
-  const ids=[...new Set(segments.map(seg=>String(seg.ktvId || '')).filter(Boolean))];
+  // A removed B keeps a never-started voided segment for history; building rows from every segment
+  // brought it back as a "ghost" B the counter could not remove (feedback 02/10/2026). A swapped-out
+  // KTV who already worked stays listed, like the board load (technicianCodes keeps them).
+  const kept=(seg:any)=>(seg.voided!==true && seg.voided!=='true') || !!seg.actualStartTime;
+  const ids=[...new Set(segments.filter(kept).map(seg=>String(seg.ktvId || '')).filter(Boolean))];
   return {...current,status:saved.status,selectedRoomId:saved.roomName,bedId:saved.bedId,options,
     staffList:ids.map(ktvId=>({id:`st-${current.id}-${ktvId}`,ktvId,
       ktvName:current.staffList.find(row=>row.ktvId===ktvId)?.ktvName || submitted.staffList.find(row=>row.ktvId===ktvId)?.ktvName || ktvId,
