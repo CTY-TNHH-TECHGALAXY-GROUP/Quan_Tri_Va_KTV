@@ -84,6 +84,10 @@ import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import { KtvCommentModal } from './_components/KtvCommentModal';
 
+// 🔧 UI CONFIGURATION
+// After a stale save refetches, wait this long for the draft-reconcile render before retrying.
+const RECONCILE_SETTLE_MS = 150;
+
 /** Kanban "Gán B" popup state. */
 type LiveHandoffState = {
   bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
@@ -178,6 +182,11 @@ export default function DispatchBoardPage() {
   const discardQueueRef=useRef<(()=>void) | null>(null);
   const baselineItemsRef=useRef<Map<string,ServiceBlock>>(new Map());
   const [staleDrafts,setStaleDrafts]=useState<string[]>([]);
+  const staleDraftsRef=useRef<string[]>([]);
+  staleDraftsRef.current=staleDrafts;
+  // Bumped each time server data is reconciled with the drafts (see the effect below).
+  const reconcileTickRef=useRef(0);
+  const staleRetryRef=useRef(new Set<string>());
   const setDispatchBusy=(pending:boolean)=>{dispatchPendingRef.current=pending;setDispatchPending(pending);};
   const onQueueDirtyChange=useCallback((dirty:boolean,discard:()=>void)=>{queueDirtyRef.current=dirty;discardQueueRef.current=discard;},[]);
   const onQueueSavingChange=useCallback((saving:boolean)=>{queueSavingRef.current=saving;},[]);
@@ -327,6 +336,7 @@ export default function DispatchBoardPage() {
     onConfirm: () => void;
     /** Gọi khi bấm Hủy bỏ (vd popup chưa điểm danh cần biết quầy đã từ chối). */
     onCancel?: () => void;
+    title?: string; confirmLabel?: string; cancelLabel?: string;
   }>({ isOpen: false, message: '', onConfirm: () => {} });
 
   const [webBookingCount, setWebBookingCount] = useState(0);
@@ -426,6 +436,7 @@ export default function DispatchBoardPage() {
   },[user?.id,selectedDate]);
   useEffect(() => {
     if (loading) return;
+    reconcileTickRef.current+=1;
     const conflicts:string[]=[];
     const rebased:string[]=[];
     let changed=false;
@@ -468,20 +479,39 @@ export default function DispatchBoardPage() {
     const full = orders.flatMap(order => order.services).find(item => item.id === service.id) || service;
     setSequentialModal({ bookingId, service: structuredClone(full), action });
   };
-  /** Keep the counter's edits: move each conflicting draft onto the server's newest revision, so
-   *  the next save goes through (it overwrites the other change on purpose) instead of a reload. */
-  const keepStaleDrafts = (bookingId: string) => {
-    const keys = staleDrafts.filter(key => key.startsWith(bookingId + '/'));
-    for (const key of keys) {
-      const draft = draftItemsRef.current.get(key);
-      const server = baselineItemsRef.current.get(key);
-      if (draft && server) draftItemsRef.current.set(key, { ...draft, options: { ...draft.options, dispatchRevision: server.options?.dispatchRevision } });
+  const isStaleError = (message?: string) => /bản lưu mới|đã thay đổi|tải lại/i.test(message || '');
+  /**
+   * A save rejected because the order moved on. Refetch first: when only KTV runtime changed
+   * (start/end/handover) the reconcile effect rebases the draft, and the same action runs once
+   * more without asking. A real plan conflict offers a single "Tải lại dữ liệu" (this order only).
+   * Returns null when the error is not a stale-data error (caller reports it as before).
+   */
+  const recoverStaleSave = async (bookingId: string, message: string | undefined, retry: () => Promise<any>) => {
+    if (!isStaleError(message)) return null;
+    if (!staleRetryRef.current.has(bookingId)) {
+      staleRetryRef.current.add(bookingId);
+      try {
+        const tick = reconcileTickRef.current;
+        await fetchData();
+        for (let waited = 0; reconcileTickRef.current === tick && waited < 3000; waited += 50) await new Promise(r => setTimeout(r, 50));
+        // The reconcile effect then sets the merged drafts / conflicts; let that render land so the
+        // retry and the conflict check see the counter's edits, not the bare server copy.
+        await new Promise(r => setTimeout(r, RECONCILE_SETTLE_MS));
+        if (!staleDraftsRef.current.some(key => key.startsWith(bookingId + '/'))) {
+          setDispatchBusy(false);
+          const result = await retry();
+          if (result !== false) addToast(tConfirm.staleAutoRetried, 'info');
+          return result;
+        }
+      } finally { staleRetryRef.current.delete(bookingId); }
     }
-    persistDraftCache();
-    setStaleDrafts(previous => previous.filter(key => !keys.includes(key)));
-    updateOrder(bookingId, order => ({ ...order, services: order.services.map(item => draftItemsRef.current.get(`${bookingId}/${item.id}`) || item) }));
-    addToast(tConfirm.staleDraftKept, 'info');
+    const reload = await askConfirm(tConfirm.staleReloadMessage(message || ''), {
+      title: tConfirm.staleReloadTitle, confirmLabel: tConfirm.staleReloadButton, cancelLabel: tConfirm.close });
+    if (reload) { discardBookingDrafts(bookingId); await fetchData(); }
+    return false;
   };
+  // Retries must call the newest render's handlers, not the closures that saw the stale data.
+  const handlersRef = useRef<any>({});
 
   /** "×" on an empty saved slot B: close it through the same lifecycle CANCEL the A/B modal uses. */
   const closeEmptySlotB = async (bookingId: string, itemId: string) => {
@@ -491,7 +521,11 @@ export default function DispatchBoardPage() {
       action: 'CANCEL', targetSlots: [2], reason: tConfirm.turnOffSequentialReason,
       bookingId, itemId, expectedRevision: dispatchRevision(item.options),
     });
-    if (!res.success) { addToast(tConfirm.turnOffSequentialFailed(res.error || ''), 'error'); return false; }
+    if (!res.success) {
+      const recovered = await recoverStaleSave(bookingId, res.error, () => handlersRef.current.closeEmptySlotB(bookingId, itemId));
+      if (recovered === null) addToast(tConfirm.turnOffSequentialFailed(res.error || ''), 'error');
+      return !!recovered;
+    }
     addToast(tConfirm.turnOffSequentialDone, 'success');
     if (res.warnings?.length) alert(res.warnings.join('\n'));
     await fetchData();
@@ -661,9 +695,9 @@ if (!hasPermission('dispatch_board')) {
   const displayedOrders = subOrders.filter(o => o.dispatchStatus === leftPanelTab);
 
   // Popup xác nhận dùng modal của trang (nút Xác nhận / Hủy bỏ), trả về Promise.
-  const askConfirm = (message: string) => new Promise<boolean>(resolve => {
+  const askConfirm = (message: string, labels?: { title?: string; confirmLabel?: string; cancelLabel?: string }) => new Promise<boolean>(resolve => {
     setConfirmModal({
-      isOpen: true, message,
+      isOpen: true, message, ...labels,
       onConfirm: () => { setConfirmModal(prev => ({ ...prev, isOpen: false })); resolve(true); },
       onCancel: () => resolve(false),
     });
@@ -720,6 +754,14 @@ if (!hasPermission('dispatch_board')) {
     } else draftItemsRef.current.delete(key);
     updateDirtyRows(dirty);
   };
+  const discardBookingDrafts=(bookingId:string)=>{
+    const prefix=`${bookingId}/`;
+    for (const key of [...draftItemsRef.current.keys()]) if (key.startsWith(prefix)) draftItemsRef.current.delete(key);
+    updateDirtyRows(new Set([...dirtyRowsRef.current].filter(key=>!key.startsWith(prefix))));
+    setStaleDrafts(previous=>previous.filter(key=>!key.startsWith(prefix)));
+    updateOrder(bookingId,order=>({...order,services:order.services.map(item=>baselineItemsRef.current.get(`${bookingId}/${item.id}`) || item)}));
+  };
+
   const discardFormDrafts=()=>{
     draftItemsRef.current.clear(); updateDirtyRows(new Set()); setStaleDrafts([]);
     setOrders(current=>current.map(order=>({...order,services:order.services.map(item=>baselineItemsRef.current.get(`${order.id}/${item.id}`) || item)})));
@@ -1013,8 +1055,10 @@ if (!hasPermission('dispatch_board')) {
         && Number(savedB.duration) === Number(liveHandoff.durationMinutes)
         && Math.abs(Date.parse(savedB.plannedStartAt) - Date.parse(input.plannedStartAt)) < 60000;
       if (!alreadySaved) {
-        alert('Không thể bàn giao: ' + res.error);
         setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+        const recovered = await recoverStaleSave(liveHandoff.bookingId, res.error,
+          () => handlersRef.current.submitLiveHandoff(liveHandoff));
+        if (recovered === null) alert('Không thể bàn giao: ' + res.error);
         return;
       }
       addToast(tConfirm.assignBAlreadySaved(liveHandoff.toKtvId), 'success');
@@ -1543,6 +1587,9 @@ if (!hasPermission('dispatch_board')) {
             return true;
         }
       } else {
+        const recovered = await recoverStaleSave(clonedOrder.id, res.error,
+          () => handlersRef.current.handleSaveDraft(true, intent, dispatchArgs, customGuestNames));
+        if (recovered !== null) return recovered;
         addToast('Chưa lưu được: ' + res.error,'error');
         return false;
       }
@@ -1940,6 +1987,9 @@ if (!hasPermission('dispatch_board')) {
 
     } catch (err: any) {
       console.error(err);
+      const recovered = await recoverStaleSave(orderToDispatch.id, err?.message,
+        () => handlersRef.current.handleDispatch(true, specificSvcIds, overrideOrderId, false, precomputedSplitPlan));
+      if (recovered !== null) return recovered;
       alert('Chưa hoàn tất điều phối: ' + (err?.message || 'Không rõ lỗi. Tải lại bảng để kiểm tra trạng thái.'));
       await fetchData();
       return false;
@@ -2336,6 +2386,11 @@ if (!hasPermission('dispatch_board')) {
       </AppLayout>
     );
   }
+
+  handlersRef.current.handleSaveDraft = handleSaveDraft;
+  handlersRef.current.handleDispatch = handleDispatch;
+  handlersRef.current.submitLiveHandoff = submitLiveHandoff;
+  handlersRef.current.closeEmptySlotB = closeEmptySlotB;
 
   return (
     <AppLayout title="Điều Phối" onBeforeNavigate={() => { if (!confirmLeaveDraft()) return false; draftItemsRef.current.clear(); updateDirtyRows(new Set()); return true; }}>
@@ -3000,8 +3055,7 @@ if (!hasPermission('dispatch_board')) {
                   {staleDrafts.some(key=>key.startsWith(selectedSubOrder.bookingId+'/')) && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     {tConfirm.staleDraftNotice}
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" className="min-h-[44px] rounded-lg bg-white px-3 font-bold text-amber-900 ring-1 ring-amber-300 focus-visible:outline" onClick={()=>{if (!confirmLeaveDraft()) return; discardFormDrafts(); void fetchData();}}>{tConfirm.staleDraftShowNew}</button>
-                      <button type="button" className="min-h-[44px] rounded-lg px-3 font-bold text-amber-900 underline focus-visible:outline" onClick={()=>keepStaleDrafts(selectedSubOrder.bookingId)}>{tConfirm.staleDraftKeep}</button>
+                      <button type="button" className="min-h-[44px] rounded-lg bg-white px-3 font-bold text-amber-900 ring-1 ring-amber-300 focus-visible:outline" onClick={()=>{discardBookingDrafts(selectedSubOrder.bookingId); void fetchData();}}>{tConfirm.staleReloadButton}</button>
                     </div>
                   </div>}
                   <DispatchEditHistory services={selectedSubOrder.services} />
@@ -3086,7 +3140,7 @@ if (!hasPermission('dispatch_board')) {
                           return { ...o, services: mergedServices };
                       });
                     }}
-                    onSaveStaffRow={async (item, ktvId, sequential, savePair) => {
+                    onSaveStaffRow={handlersRef.current.onSaveStaffRow = async (item: ServiceBlock, ktvId: string, sequential: boolean, savePair: boolean): Promise<boolean> => {
                       if (dispatchPendingRef.current) return false;
                       if (!(await confirmRunningChanges(selectedSubOrder.bookingId, [item]))) return false;
                       setDispatchBusy(true);
@@ -3113,7 +3167,14 @@ if (!hasPermission('dispatch_board')) {
                         if (!confirmUpdatedBOverlap(result)) return false;
                         result=await save(true); acknowledge(result);
                       }
-                      if (!result.success) { alert('Không lưu được bản nháp: '+result.error); return false; }
+                      if (!result.success) {
+                        const recovered = await recoverStaleSave(bookingId, result.error, async () => {
+                          const latest = pageOrdersRef.current.find(order => order.id === bookingId)?.services.find(service => service.id === item.id);
+                          return latest ? handlersRef.current.onSaveStaffRow(latest, ktvId, sequential, savePair) : false;
+                        });
+                        if (recovered !== null) return !!recovered;
+                        alert('Không lưu được bản nháp: '+result.error); return false;
+                      }
                       if (!toastDurationResult(result) && result.warnings?.length) alert(result.warnings.join('\n'));
                       return true;
                       } finally { setDispatchBusy(false); }
@@ -3644,6 +3705,7 @@ Vẫn kết thúc sớm?`)) return;
       <ConfirmActionModal
         open={confirmModal.isOpen}
         message={confirmModal.message}
+        title={confirmModal.title} confirmLabel={confirmModal.confirmLabel} cancelLabel={confirmModal.cancelLabel}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => { confirmModal.onCancel?.(); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
       />

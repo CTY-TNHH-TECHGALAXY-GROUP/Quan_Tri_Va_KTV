@@ -50,7 +50,7 @@ async function notifyAdjustedDurations(bookingId: string, changes: any[] = []) {
             notified = await createNotification({ bookingId, employeeId: change.employeeId, type: 'KTV_ORDER_CHANGED',
                 message: change.removedB
                     ? `Bạn không còn phân công cho dịch vụ này.`
-                    : `Quầy đã cập nhật thời lượng phân công của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
+                    : `Quầy đã thay đổi thời gian dịch vụ của bạn thành ${change.minutes} phút (${change.startTime}–${change.endTime}). Vui lòng kiểm tra đồng hồ trong ứng dụng.` });
         } catch (error) { console.error('Duration notification failed:', error); }
         if (!notified) warnings.push(`Đã lưu giờ mới nhưng chưa báo được cho ${change.employeeId}; vui lòng báo trực tiếp.`);
     }

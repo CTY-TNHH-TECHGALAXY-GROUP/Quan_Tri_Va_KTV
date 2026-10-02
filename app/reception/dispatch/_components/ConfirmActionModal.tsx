@@ -15,11 +15,17 @@ export function ConfirmActionModal({
   message,
   onConfirm,
   onCancel,
+  title = 'Xác nhận',
+  confirmLabel = 'Đồng ý',
+  cancelLabel = 'Hủy bỏ',
 }: {
   open: boolean;
   message?: string;
   onConfirm?: () => void;
   onCancel: () => void;
+  title?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
 }) {
   return (
     <AnimatePresence>
@@ -36,7 +42,7 @@ export function ConfirmActionModal({
                 <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center border border-orange-100">
                   <AlertTriangle size={24} />
                 </div>
-                <h3 className="text-[17px] font-black">Xác nhận</h3>
+                <h3 className="text-[17px] font-black">{title}</h3>
               </div>
               <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1 whitespace-pre-line">
                 {message}
@@ -47,13 +53,13 @@ export function ConfirmActionModal({
                 onClick={onCancel}
                 className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all"
               >
-                Hủy bỏ
+                {cancelLabel}
               </button>
               <button
                 onClick={onConfirm}
                 className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
               >
-                Đồng ý
+                {confirmLabel}
               </button>
             </div>
           </motion.div>
