@@ -38,7 +38,7 @@ const mockClient = {
         },
         insert: (payload: any) => {
           writeOperationsCount++;
-          capturedPayload = payload;
+          capturedPayload = Array.isArray(payload) ? payload[0] : payload;
           return {
             select: () => ({
               single: () => Promise.resolve({ data: { id: payload[0]?.id || 'NEW_STAFF', ...payload[0] }, error: null }),
@@ -145,6 +145,9 @@ const {
   createGalleryItem,
   getGalleryGroup,
   isVipGalleryGroup,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
 } = require('../lib/galleryHelper');
 
 let passedCount = 0;
@@ -781,6 +784,92 @@ async function run() {
     // Restore original auth functions
     authModule.requireApiUser = originalRequireApiUser;
     authModule.requireBusinessUser = originalRequireBusinessUser;
+  });
+
+  // Case 35: kind: 'privilege', privilegeId, and skillId: 'privilege' / dacQuyen are validated and saved
+  await testCase("Gallery: kind: 'privilege', privilegeId, and skillId: 'privilege' / dacQuyen are supported", async () => {
+    const res = await updateStaffMember('STAFF_PRIV', {
+      galleryUrls: [
+        { url: 'https://cdn.example.com/priv1.jpg', kind: 'privilege', privilegeId: 'priv_gold' },
+        { url: 'https://cdn.example.com/priv2.jpg', kind: 'vip', skillId: 'dacQuyen' },
+      ],
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.gallery_urls?.length, 2);
+    assert.equal(capturedPayload?.gallery_urls[0].kind, 'privilege');
+    assert.equal(capturedPayload?.gallery_urls[0].privilegeId, 'priv_gold');
+    assert.equal(capturedPayload?.gallery_urls[1].kind, 'vip');
+    assert.equal(capturedPayload?.gallery_urls[1].skillId, 'dacQuyen');
+  });
+
+  // Case 36: hidden flag is preserved and toggleGalleryItemVisibility flips it correctly
+  await testCase("Gallery: hidden flag is preserved and toggleGalleryItemVisibility flips it", async () => {
+    const initialUrls = [
+      'https://cdn.example.com/item1.jpg',
+      { url: 'https://cdn.example.com/item2.jpg', kind: 'therapy', therapyId: 'hotStone', hidden: true },
+    ];
+    const toggled1 = toggleGalleryItemVisibility(initialUrls, 0);
+    assert.equal(isGalleryItemHidden(toggled1[0]), true);
+
+    const toggled2 = toggleGalleryItemVisibility(initialUrls, 1);
+    assert.equal(isGalleryItemHidden(toggled2[1]), false);
+
+    const res = await updateStaffMember('STAFF_HIDDEN', {
+      galleryUrls: toggled1,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.gallery_urls[0].hidden, true);
+  });
+
+  // Case 37: swapGalleryItems correctly reorders gallery array
+  await testCase("Gallery: swapGalleryItems swaps elements without modifying rest of array", async () => {
+    const list = ['A', 'B', 'C'];
+    const swapped = swapGalleryItems(list, 0, 2);
+    assert.deepEqual(swapped, ['C', 'B', 'A']);
+    // Out of bounds check
+    assert.deepEqual(swapGalleryItems(list, -1, 1), list);
+  });
+
+  // Case 38: privilegeUrl parameter is mapped to feature_flags.privilege_url
+  await testCase("Staff: privilegeUrl parameter maps to feature_flags.privilege_url", async () => {
+    const res = await updateStaffMember('STAFF_FLAGS', {
+      privilegeUrl: 'https://cdn.example.com/direct-privilege.jpg',
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.privilege_url, 'https://cdn.example.com/direct-privilege.jpg');
+  });
+
+  // Case 39: isAvatarHidden: true sets show_avatar = false and hide_avatar = true
+  await testCase("Staff: isAvatarHidden: true maps to feature_flags.show_avatar = false and hide_avatar = true", async () => {
+    const res = await updateStaffMember('STAFF_AVATAR_HIDDEN', {
+      isAvatarHidden: true,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, false);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, true);
+  });
+
+  // Case 40: isAvatarHidden: false sets show_avatar = true and hide_avatar = false
+  await testCase("Staff: isAvatarHidden: false maps to feature_flags.show_avatar = true and hide_avatar = false", async () => {
+    const res = await updateStaffMember('STAFF_AVATAR_VISIBLE', {
+      isAvatarHidden: false,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, true);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, false);
+  });
+
+  // Case 41: createStaffMember with isAvatarHidden sets show_avatar and hide_avatar
+  await testCase("Staff: createStaffMember with isAvatarHidden maps to feature_flags correctly", async () => {
+    const res = await createStaffMember({
+      id: 'NV-TEST-AVATAR',
+      password: 'password123',
+      full_name: 'Test Staff Avatar',
+      isAvatarHidden: true,
+    });
+    assert.equal(res.success, true);
+    assert.equal(capturedPayload?.feature_flags?.show_avatar, false);
+    assert.equal(capturedPayload?.feature_flags?.hide_avatar, true);
   });
 
   console.log(`\n🎉 ALL ${passedCount} PAYLOAD REGRESSION TEST CASES PASSED!\n`);

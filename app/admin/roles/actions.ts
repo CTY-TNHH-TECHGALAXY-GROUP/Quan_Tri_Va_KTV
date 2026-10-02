@@ -1,9 +1,11 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole } from '@/lib/auth-server';
 
 export async function getAllUsers() {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -23,6 +25,7 @@ export async function getAllUsers() {
 
 export async function getRolePermissions() {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -61,6 +64,7 @@ export async function getRolePermissions() {
 
 export async function verifyAdminPassword(inputPassword: string) {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -99,6 +103,7 @@ const ROLE_ID_TO_DB: Record<string, string[]> = {
 
 export async function saveRolePermissions(roles: { id: string, permissions: string[] }[]) {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -127,6 +132,7 @@ export async function saveRolePermissions(roles: { id: string, permissions: stri
 
 export async function updateUserRole(userId: string, newRole: string) {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -146,6 +152,7 @@ export async function updateUserRole(userId: string, newRole: string) {
 
 export async function updateUserPermissions(userId: string, permissions: string[]) {
     try {
+        await requireRole(['ADMIN', 'DEV']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 

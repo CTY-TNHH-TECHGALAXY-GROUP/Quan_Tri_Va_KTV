@@ -506,7 +506,8 @@ export class BookingModificationService {
             const { data: booking, error: bError } = await supabase.from('Bookings').select('*').eq('id', bookingId).single();
             if (bError) throw bError;
             
-            const vnTimeStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+            const now = new Date();
+            const vnTimeStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
             
             let opts = item.options;
             if (typeof opts === 'string') {
@@ -519,7 +520,9 @@ export class BookingModificationService {
             // mốc là `pauseStart` (lúc bấm tạm dừng), không phải giờ hiện tại —
             // thời gian chờ giữa hai mốc đó KTV không làm nên không được tính tiền.
             const isPausedItem = item.status === 'PAUSED' && !!item.pauseStart;
-            const endMark = isPausedItem ? item.pauseStart : vnTimeStr;
+            // Segment timestamps are absolute instants. A bare Vietnam wall clock
+            // is parsed as UTC by parseTimeMs and adds seven false work hours.
+            const endMark = isPausedItem ? item.pauseStart : now.toISOString();
 
             let segs: any[] = [];
             try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}

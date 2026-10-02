@@ -80,6 +80,18 @@ export const useEmployeeManagement = () => {
                         : (s.feature_flags || {});
                     return (flags.kpi_target_hours || 0) > 0;
                 })(),
+                isAvatarHidden: (() => {
+                    const flags = typeof s.feature_flags === 'string'
+                        ? (function(){ try { return JSON.parse(s.feature_flags); } catch { return {}; } })()
+                        : (s.feature_flags || {});
+                    return flags.show_avatar === false || flags.hide_avatar === true || flags.is_avatar_hidden === true;
+                })(),
+                showAvatar: (() => {
+                    const flags = typeof s.feature_flags === 'string'
+                        ? (function(){ try { return JSON.parse(s.feature_flags); } catch { return {}; } })()
+                        : (s.feature_flags || {});
+                    return !(flags.show_avatar === false || flags.hide_avatar === true || flags.is_avatar_hidden === true);
+                })(),
                 skills: (() => {
                     const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : FALLBACK_SKILLS;
                     const parsedSkills: any = {};

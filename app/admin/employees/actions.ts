@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole, requireBusinessUser, requirePermissionAny } from '@/lib/auth-server';
 import { revalidatePath } from 'next/cache';
 import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId, SKILL_KEYS } from '@/lib/constants/staff.constants';
 import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
@@ -52,6 +53,24 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
       throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
     }
 
+    const orderFields = {
+      ...(typeof record.order === 'number' ? { order: record.order } : {}),
+      ...(typeof record.orderNhp === 'number' ? { orderNhp: record.orderNhp } : {}),
+      ...(typeof record.orderNht === 'number' ? { orderNht: record.orderNht } : {}),
+    };
+
+    if (record.kind === 'privilege') {
+      return [{
+        url,
+        kind: 'privilege',
+        ...(typeof record.privilegeId === 'string' ? { privilegeId: record.privilegeId as string } : {}),
+        ...(typeof record.skillId === 'string' ? { skillId: record.skillId as string } : {}),
+        ...(typeof record.therapyId === 'string' ? { therapyId: record.therapyId as string } : {}),
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
+    }
+
     if (record.kind === 'therapy') {
       if (
         typeof record.therapyId !== 'string' ||
@@ -63,19 +82,34 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
       return [{
         url,
         kind: 'therapy',
-        therapyId: record.therapyId,
+        therapyId: record.therapyId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
       }];
     }
 
     if (record.kind === 'vip') {
-      if (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number])) {
+      const isPrivilegeSkill = typeof record.skillId === 'string' &&
+        ['privilege', 'dacquyen', 'dac_quyen', 'dac-quyen'].includes(record.skillId.toLowerCase());
+      if (!isPrivilegeSkill && (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number]))) {
         throw new Error('Kỹ năng VIP của ảnh không hợp lệ.');
       }
-      return [{ url, kind: 'vip', skillId: record.skillId }];
+      return [{
+        url,
+        kind: 'vip',
+        skillId: record.skillId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
     }
 
     if (record.kind === 'mix' || record.kind === 'legacy') {
-      return [{ url, kind: record.kind }];
+      return [{
+        url,
+        kind: record.kind,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
     }
 
     throw new Error('Phân loại ảnh gallery không hợp lệ.');
@@ -84,6 +118,8 @@ function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
 
 export async function getStaffList() {
     try {
+        // Quầy (ktv-hub) cũng gọi hàm này → chỉ cần đã đăng nhập; cờ tắt thì giữ hành vi cũ.
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
         // Tài khoản hệ thống (admin/dev) không phải nhân sự. Trước đây chúng vẫn
@@ -127,6 +163,7 @@ export async function getStaffList() {
 
 export async function createStaffMember(formData: any) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -220,10 +257,20 @@ export async function createStaffMember(formData: any) {
             is_active_vip_menu: formData.isActiveVipMenu === true || formData.is_active_vip_menu === true,
             is_home_spa: formData.isHomeSpa === true || formData.is_home_spa === true,
             is_active_therapy_menu: formData.isActiveTherapyMenu === true || formData.is_active_therapy_menu === true,
-            feature_flags: formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
-                : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
-                : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
-                : DEFAULT_FEATURE_FLAGS_TYPE_A
+            feature_flags: {
+                ...(formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
+                    : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
+                    : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
+                    : DEFAULT_FEATURE_FLAGS_TYPE_A),
+                ...(formData.feature_flags || formData.featureFlags || {}),
+                ...(formData.privilegeUrl || formData.privilege_url ? { privilege_url: (formData.privilegeUrl || formData.privilege_url).trim() } : {}),
+                ...(formData.isAvatarHidden !== undefined || formData.showAvatar !== undefined || formData.hideAvatar !== undefined
+                    ? {
+                        show_avatar: !(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar),
+                        hide_avatar: Boolean(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar)
+                      }
+                    : {}),
+            }
         };
 
         const { data: staffData, error: staffError } = await supabase
@@ -248,6 +295,9 @@ export async function createStaffMember(formData: any) {
 
 export async function updateStaffMember(id: string, updates: any) {
     try {
+        // Quầy sửa kỹ năng KTV ở ktv-hub → dùng quyền module thay vì role.
+        // Quầy sửa kỹ năng KTV từ ktv-hub — màn đó mở bằng ktv_attendance / turn_tracking.
+        await requirePermissionAny(['ktv_attendance', 'turn_tracking', 'ktv_hub', 'employee_management']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -331,6 +381,24 @@ export async function updateStaffMember(id: string, updates: any) {
         if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
         if (updates.is_home_spa !== undefined) staffPayload.is_home_spa = updates.is_home_spa;
 
+        const privUrl = updates.privilegeUrl ?? updates.privilege_url;
+        if (privUrl !== undefined) {
+            const trimmedPriv = typeof privUrl === 'string' ? privUrl.trim() : null;
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.privilege_url = trimmedPriv;
+        }
+
+        const isAvatarHidden = updates.isAvatarHidden ?? updates.hideAvatar ?? (updates.showAvatar !== undefined ? !updates.showAvatar : undefined);
+        if (isAvatarHidden !== undefined) {
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.show_avatar = !isAvatarHidden;
+            staffPayload.feature_flags.hide_avatar = isAvatarHidden;
+        }
+
         if (staffPayload.status === STAFF_STATUS.RESIGNED || staffPayload.status === 'ĐÃ NGHỈ') {
             staffPayload.is_active_vip_menu = false;
             staffPayload.is_active_therapy_menu = false;
@@ -393,6 +461,7 @@ export async function updateStaffMember(id: string, updates: any) {
 
 export async function deleteStaffMember(id: string) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 
@@ -440,6 +509,7 @@ export async function deleteStaffMember(id: string) {
 
 export async function updateEmployeeRole(employeeId: string, newRole: string) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 

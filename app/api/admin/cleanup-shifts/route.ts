@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole, authErrorResponse } from '@/lib/auth-server';
 
 /**
  * POST /api/admin/cleanup-shifts
@@ -11,6 +12,9 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
  */
 export async function POST() {
     try {
+        // Ghi đè hàng loạt KTVShifts → chỉ quản lý trở lên (fail-closed).
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
@@ -97,6 +101,8 @@ export async function POST() {
         });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('❌ [Cleanup] Error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

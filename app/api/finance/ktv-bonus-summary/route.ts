@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvRosterService } from '@/lib/services/KtvRosterService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {
+        // Bảng ví điểm toàn bộ KTV → chỉ người có quyền tài chính được xem.
+        await requirePermission('finance_management');
+
         const { searchParams } = new URL(request.url);
         let fromDate = searchParams.get('fromDate');
         const toDate = searchParams.get('toDate');
@@ -202,6 +206,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, data: result });
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('❌ [Finance KTV Bonus Summary] Error:', err);
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }

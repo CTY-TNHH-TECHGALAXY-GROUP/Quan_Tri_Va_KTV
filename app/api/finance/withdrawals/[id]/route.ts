@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createNotification } from '@/lib/notification-helper';
 import { WithdrawalPatchSchema } from '@/lib/schemas/finance.schema';
+import { requirePermission, requireBusinessUser, authErrorResponse } from '@/lib/auth-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
@@ -12,14 +13,24 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        // Chỉ người có quyền tài chính mới duyệt/từ chối lệnh rút tiền.
+        await requirePermission('finance_management');
+        const actor = await requireBusinessUser();
+
         const { id } = await params;
         const body = await request.json();
         const parseResult = WithdrawalPatchSchema.safeParse(body);
         if (!parseResult.success) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
         }
-        
+
         const { status, note, adminId, adminName } = parseResult.data;
+
+        // Người xử lý lấy từ SESSION, không tin adminId/adminName trong body.
+        // Chưa có session (cờ AUTH_ENFORCE_API tắt) thì mới rơi về body như cũ.
+        const processedBy = actor
+            ? `${actor.username || actor.businessUserId} (${actor.businessUserId})`
+            : (adminName ? `${adminName} (${adminId})` : adminId);
 
         // Đảm bảo chỉ update nếu trạng thái đang là PENDING (chống Race Condition)
         const { data, error } = await supabase
@@ -28,7 +39,7 @@ export async function PATCH(
                 status,
                 note,
                 processed_at: new Date().toISOString(),
-                processed_by: adminName ? `${adminName} (${adminId})` : adminId
+                processed_by: processedBy
             })
             .eq('id', id)
             .eq('status', 'PENDING') // Quan trọng: Ngăn chặn duyệt đúp
@@ -68,6 +79,8 @@ export async function PATCH(
 
         return NextResponse.json({ success: true, data });
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('Exception in /api/finance/withdrawals/[id]:', err);
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }

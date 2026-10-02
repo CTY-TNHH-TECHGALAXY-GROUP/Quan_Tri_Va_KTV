@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +23,11 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
 
     try {
+        await requirePermission('revenue_reports');
         const { completedBookings, items, svcMap, commConfigs, ktvWorkTypeMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
-        
+
         const rawDataSheet: any[] = [];
-        
+
         completedBookings.forEach((b: any) => {
             const timeInfo = FinanceReportService.getVnDateInfo(b.createdAt || b.bookingDate || '');
             if (!timeInfo || timeInfo.hour !== targetHour) return;
@@ -68,12 +70,13 @@ export async function GET(request: Request) {
                     
                     let ktvs = Array.isArray(i.technicianCodes) ? i.technicianCodes.join(', ') : '';
                     let commission = 0;
-                    if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
-                        const ktvCode = i.technicianCodes[0];
-                        const workType = ktvWorkTypeMap[ktvCode] || 'TYPE_A';
-                        const config = commConfigs[workType] || commConfigs['TYPE_A'];
-                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, ktvCode, dur) || (dur / i.technicianCodes.length);
-                        commission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1) * i.technicianCodes.length;
+                    // Tính từng KTV còn quyền lợi (loại chặng voided) thay vì lấy KTV
+                    // đầu tiên rồi nhân số KTV — cách cũ trả tiền cho người bị đổi ra.
+                    const activeTechs = KtvCommissionService.activeTechs(i);
+                    for (const code of activeTechs) {
+                        const workType = ktvWorkTypeMap[code] || 'TYPE_A';
+                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / activeTechs.length);
+                        commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
                     }
 
                     rawDataSheet.push({
@@ -100,6 +103,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, data: rawDataSheet });
     } catch (err) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error(err);
         return NextResponse.json({ success: false, error: 'Failed to fetch hourly details data' }, { status: 500 });
     }

@@ -55,16 +55,13 @@ export function canEditRegistration(workDateStr: string): boolean {
 /**
  * TẠO MỚI đăng ký cho ngày chưa có dòng nào.
  *
- * Khác `canEditRegistration` ở đúng một chỗ: hôm nay chưa có dòng thì tạo được
- * MỌI LÚC trong ngày. Người rơi vào đây chỉ có KTV bị khoá lúc 00:00 vì chưa
- * đăng ký rồi được quầy mở khoá (hoặc KTV mới) — mọi người khác đã có dòng từ
- * trước. Không mở chỗ này thì người vừa được mở khoá sau 07:00 không cách nào
- * đăng ký, và đêm đó chắc chắn bị khoá lại.
+ * Dòng lịch ngày D (đi làm hoặc OFF) phải được tạo chậm nhất lúc 23:59 ngày D-1.
+ * Từ 00:00 ngày D chỉ được sửa dòng đã có, và từ 07:00 không được sửa nữa.
  *
  * @param workDateStr 'yyyy-MM-dd'
  */
 export function canCreateRegistration(workDateStr: string): boolean {
-  return workDateStr >= vnToday();
+  return workDateStr > vnToday();
 }
 
 /**
@@ -79,7 +76,8 @@ export function canCreateRegistration(workDateStr: string): boolean {
  */
 export function registrationLockedMessage(workDateStr: string): string {
   if (workDateStr < vnToday()) return 'Ngày này đã qua, không sửa lịch được nữa.';
-  return 'Đã qua 7 giờ sáng ngày làm việc, không đổi lịch được nữa. Bạn chỉ còn quyền báo đi trễ 1 lần.';
+  if (vnHour() < 7) return 'Đã qua hạn tạo lịch cho hôm nay (23:59 hôm trước). Chỉ được sửa lịch đã đăng ký đến 06:59.';
+  return 'Đã qua 07:00 ngày làm việc, không thể tạo hoặc sửa lịch cho hôm nay.';
 }
 
 /**

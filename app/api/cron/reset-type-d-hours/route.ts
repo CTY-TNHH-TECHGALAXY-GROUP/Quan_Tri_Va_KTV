@@ -61,3 +61,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+// Vercel Cron gọi bằng GET (vercel.json: "0 17 1 * *"). Route trước đây chỉ có
+// POST nên mỗi tháng nhận 405 và sổ giờ Loại D không được chốt.
+export async function GET(request: Request) {
+    return POST(request);
+}

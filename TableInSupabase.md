@@ -164,6 +164,7 @@
 | `is_utility` | boolean | ✅ **Cờ dịch vụ tiện ích** — Không gán KTV, không tính hoa hồng, không hiện timer KTV. Default: `false`. Set `true` cho Phòng riêng (`NHS0900`) và các DV phụ trợ khác. |
 | `min_ktv_required` | integer | Số lượng nhân viên làm tối thiểu cho dịch vụ (Default: 1) |
 | `service_group` | text | Nhóm dịch vụ: `MAIN` (Chính), `ADDON` (Lẻ/Phụ), `COMBO`. Dùng để nội suy số khách. Default: `MAIN` |
+| `strengthConfig` | jsonb NOT NULL | Lực tay cho phép chọn khi đặt: `{"light":true,"medium":true,"strong":true}` (migration `20260924180000_services_strength_config`). Admin bật/tắt ở Menu dịch vụ. |
 
 ---
 
@@ -681,7 +682,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 |-----|------|-----------------|
 | `id` | text PK | ID người dùng |
 | `username` | text UNIQUE | Tên đăng nhập |
-| `password` | text | Mật khẩu (hashed) |
+| `password` | text | Mật khẩu — **đang lưu plaintext** (login so sánh `eq('password', ...)`, admin đọc trực tiếp ở trang Phân quyền). Hash là việc của đợt sau. |
 | `code` | text UNIQUE | Mã nhân viên liên kết với Staff |
 | `fullName` | text | Họ tên hiển thị |
 | `gender` | text | Giới tính |

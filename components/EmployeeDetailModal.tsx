@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CardImageCropModal } from '@/components/admin/CardImageCropModal';
 import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
@@ -15,6 +15,13 @@ import {
   createGalleryItem,
   getGalleryGroup,
   isGalleryImageUrl,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
+  getNhpMenuGalleryItems,
+  getNhtMenuGalleryItems,
+  reorderMenuGalleryItems,
+  MenuGalleryItemWrapper,
 } from '@/lib/galleryHelper';
 export {
   checkGalleryDuplicate,
@@ -22,6 +29,12 @@ export {
   GALLERY_GROUPS,
   createGalleryItem,
   getGalleryGroup,
+  isGalleryItemHidden,
+  toggleGalleryItemVisibility,
+  swapGalleryItems,
+  getNhpMenuGalleryItems,
+  getNhtMenuGalleryItems,
+  reorderMenuGalleryItems,
 };
 
 interface EmployeeDetailModalProps {
@@ -79,6 +92,37 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
       gallerySessionRef.current += 1;
     };
   }, [employee, isOpen]);
+
+  const isAvatarHidden = Boolean(
+    editedEmployee?.isAvatarHidden ??
+    (editedEmployee?.featureFlags?.show_avatar === false ||
+     editedEmployee?.featureFlags?.hide_avatar === true ||
+     editedEmployee?.featureFlags?.is_avatar_hidden === true)
+  );
+
+  const toggleAvatarVisibility = () => {
+    setEditedEmployee((prev) => {
+      if (!prev) return prev;
+      const currentHidden = Boolean(
+        prev.isAvatarHidden ??
+        (prev.featureFlags?.show_avatar === false ||
+         prev.featureFlags?.hide_avatar === true ||
+         prev.featureFlags?.is_avatar_hidden === true)
+      );
+      const nextHidden = !currentHidden;
+      const flags = prev.featureFlags || {};
+      return {
+        ...prev,
+        isAvatarHidden: nextHidden,
+        showAvatar: !nextHidden,
+        featureFlags: {
+          ...flags,
+          show_avatar: !nextHidden,
+          hide_avatar: nextHidden,
+        },
+      };
+    });
+  };
 
   const getItemUrl = (item: string | GalleryItem): string =>
     typeof item === 'string' ? item : item?.url ?? '';
@@ -437,17 +481,78 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
     onClose();
   };
 
+  const handleToggleItemHidden = (originalIndex: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: toggleGalleryItemVisibility(prev.galleryUrls, originalIndex),
+      };
+    });
+  };
+
+  const nhpDisplayItems = getNhpMenuGalleryItems(
+    editedEmployee?.galleryUrls || [],
+    editedEmployee?.skills
+  );
+
+  const nhtDisplayItems = getNhtMenuGalleryItems(
+    editedEmployee?.galleryUrls || []
+  );
+
+  const handleReorderNhpMenu = (fromIdx: number, toIdx: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: reorderMenuGalleryItems(prev.galleryUrls, 'nhp', fromIdx, toIdx, prev.skills),
+      };
+    });
+  };
+
+  const handleReorderNhtMenu = (fromIdx: number, toIdx: number) => {
+    setEditedEmployee((prev) => {
+      if (!prev || !prev.galleryUrls) return prev;
+      return {
+        ...prev,
+        galleryUrls: reorderMenuGalleryItems(prev.galleryUrls, 'nht', fromIdx, toIdx),
+      };
+    });
+  };
+
   const renderGroupCard = (groupId: GalleryGroupId, groupLabel: string) => {
     const allItems = (editedEmployee?.galleryUrls || []).map((item, originalIndex) => ({
       item,
       originalIndex,
       url: getItemUrl(item),
       group: getGalleryGroup(item),
+      isHidden: isGalleryItemHidden(item),
     }));
     const groupItems = allItems.filter((i) => i.group === groupId);
     const isUploading = Boolean(uploadingGroups[groupId]);
     const uploadErr = uploadErrors[groupId];
     const urlErr = galleryUrlErrors[groupId];
+
+    const handleMoveItemInGroup = (fromGroupIdx: number, toGroupIdx: number) => {
+      if (
+        fromGroupIdx < 0 ||
+        fromGroupIdx >= groupItems.length ||
+        toGroupIdx < 0 ||
+        toGroupIdx >= groupItems.length ||
+        fromGroupIdx === toGroupIdx
+      ) {
+        return;
+      }
+      const indexA = groupItems[fromGroupIdx].originalIndex;
+      const indexB = groupItems[toGroupIdx].originalIndex;
+      setEditedEmployee((prev) => {
+        if (!prev || !prev.galleryUrls) return prev;
+        return {
+          ...prev,
+          galleryUrls: swapGalleryItems(prev.galleryUrls, indexA, indexB),
+        };
+      });
+    };
 
     return (
       <div
@@ -577,12 +682,18 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {groupItems.map(({ originalIndex, url }) => (
+              {groupItems.map(({ originalIndex, url, isHidden }, itemIdx) => (
                 <GalleryThumbnailItem
                   key={`${url}-${originalIndex}`}
                   url={url}
                   index={originalIndex}
                   isEditing={isEditing}
+                  isHidden={isHidden}
+                  canMoveLeft={itemIdx > 0}
+                  canMoveRight={itemIdx < groupItems.length - 1}
+                  onMoveLeft={() => handleMoveItemInGroup(itemIdx, itemIdx - 1)}
+                  onMoveRight={() => handleMoveItemInGroup(itemIdx, itemIdx + 1)}
+                  onToggleHidden={() => handleToggleItemHidden(originalIndex)}
                   onRemove={() => removeGalleryUrl(originalIndex)}
                 />
               ))}
@@ -605,7 +716,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] sm:w-full max-w-2xl max-h-[90dvh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-          <div className="relative h-32 bg-indigo-600">
+          <div className="relative h-32 bg-indigo-600 shrink-0">
             <div className="absolute top-4 right-4 flex gap-2 z-10">
               {isEditing ? (
                 <button
@@ -633,7 +744,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
               ) : (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors flex items-center gap-2 px-4"
+                  className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-colors flex items-center gap-2 px-4 shadow-sm backdrop-blur-sm border border-white/20"
                 >
                   <Edit2 size={18} />
                   <span className="text-sm font-bold">Sửa thông tin</span>
@@ -648,6 +759,34 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             </div>
             <div className="absolute -bottom-12 left-8">
               <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 group">
+                {/* Huy hiệu Đang Ẩn trên Menu */}
+                {isAvatarHidden && (
+                  <div className="absolute top-1.5 left-1.5 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-20 backdrop-blur-2xs">
+                    <EyeOff size={10} />
+                    <span>Ẩn</span>
+                  </div>
+                )}
+
+                {/* Nút bật/tắt mắt cho Avatar khi sửa */}
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAvatarVisibility();
+                    }}
+                    aria-label={isAvatarHidden ? 'Hiện avatar trên menu' : 'Ẩn avatar trên menu'}
+                    title={isAvatarHidden ? 'Avatar đang ẩn trên menu - Bấm để hiện lại' : 'Avatar đang hiện trên menu - Bấm để ẩn khỏi menu'}
+                    className={`absolute top-1.5 right-1.5 z-20 p-1.5 rounded-full shadow-md transition-all touch-manipulation ${
+                      isAvatarHidden
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white ring-2 ring-white/50'
+                        : 'bg-black/70 hover:bg-black/90 text-white ring-1 ring-white/30'
+                    }`}
+                  >
+                    {isAvatarHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                )}
+
                 <img
                   src={editedEmployee.photoUrl || employee.photoUrl}
                   alt={employee.name}
@@ -716,20 +855,22 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAvatarUrlInput(true)}
-                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 hover:bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
-                    >
-                      <LinkIcon size={10} /> Link ảnh
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowAvatarUrlInput(true)}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/50 hover:bg-black/70 px-2.5 py-1 rounded-full backdrop-blur-sm transition-colors shadow-xs"
+                      >
+                        <LinkIcon size={10} /> Dán link ảnh
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="pt-16 px-4 sm:px-8 pb-8 overflow-y-auto">
+          <div className="pt-16 px-4 sm:px-8 pb-8 overflow-y-auto flex-1 min-h-0">
             {isEditing ? (
               <div className="space-y-1 mb-2">
                 <label className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">
@@ -956,34 +1097,78 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                          Kỹ năng VIP của nhân viên
+                          Kỹ năng kích hoạt trên Menu VIP ({SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).length})
                         </span>
                         {isEditing && (
                           <span className="text-[10px] text-amber-700 font-medium">
-                            Bấm vào kỹ năng để bật/tắt
+                            Chỉnh sửa tại mục Tất cả kỹ năng chuyên môn bên dưới
                           </span>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {SKILL_KEYS.map((key) => {
-                          const isSkilled = isSkillActive(editedEmployee.skills?.[key]);
-                          return (
-                            <button
+                      <div className="flex flex-wrap gap-1.5">
+                        {SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).length === 0 ? (
+                          <span className="text-xs text-amber-800 italic">Chưa có kỹ năng nào. Vui lòng bật kỹ năng ở mục "Tất cả kỹ năng chuyên môn" bên dưới.</span>
+                        ) : (
+                          SKILL_KEYS.filter((k) => isSkillActive(editedEmployee.skills?.[k])).map((key) => (
+                            <span
                               key={key}
-                              type="button"
-                              onClick={() => toggleSkill(key)}
-                              disabled={!isEditing}
-                              className={`px-3 py-2 rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
-                                isSkilled
-                                  ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
-                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                              } ${!isEditing ? 'cursor-default' : 'cursor-pointer active:scale-95'}`}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold flex items-center gap-1 shadow-2xs"
                             >
-                              <span className="truncate">{SKILL_LABELS[key]}</span>
-                              {isSkilled && <CheckCircle2 size={14} className="shrink-0 text-white" />}
-                            </button>
-                          );
-                        })}
+                              <CheckCircle2 size={12} className="text-white" />
+                              <span>{SKILL_LABELS[key]}</span>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 🌟 THỨ TỰ HIỂN THỊ HÌNH ẢNH TRÊN MENU VIP (NHP) */}
+                    <div className="pt-2 border-t border-amber-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                            Thứ tự hiển thị trên Menu VIP (NHP)
+                          </span>
+                          <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                            {nhpDisplayItems.length} ảnh
+                          </span>
+                        </div>
+                        {isEditing && nhpDisplayItems.length > 1 && (
+                          <span className="text-[10px] text-amber-700 font-medium">
+                            Bấm [Trước] hoặc [Sau] để đổi thứ tự hiển thị
+                          </span>
+                        )}
+                      </div>
+                      {nhpDisplayItems.length === 0 ? (
+                        <div className="text-[11px] text-amber-700/70 italic py-2 text-center bg-amber-50/50 rounded-xl border border-dashed border-amber-200">
+                          Chưa có ảnh nào trên Menu VIP. Hãy tải ảnh Đặc Quyền hoặc ảnh Kỹ năng VIP bên dưới.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 bg-amber-50/40 p-2.5 rounded-2xl border border-amber-200/80 mb-3">
+                          {nhpDisplayItems.map((wrapper, itemIdx) => (
+                            <MenuDisplayOrderItem
+                              key={`${wrapper.url}-${wrapper.originalIndex}`}
+                              orderNumber={itemIdx + 1}
+                              wrapper={wrapper}
+                              isEditing={isEditing}
+                              canMoveLeft={itemIdx > 0}
+                              canMoveRight={itemIdx < nhpDisplayItems.length - 1}
+                              onMoveLeft={() => handleReorderNhpMenu(itemIdx, itemIdx - 1)}
+                              onMoveRight={() => handleReorderNhpMenu(itemIdx, itemIdx + 1)}
+                              onToggleHidden={() => handleToggleItemHidden(wrapper.originalIndex)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Upload ảnh Đặc Quyền (VIP Menu) */}
+                    <div className="pt-2 border-t border-amber-100">
+                      <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-2.5">
+                        Ảnh Đặc Quyền (VIP Menu · Hiển thị ưu tiên đầu)
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        {renderGroupCard('privilege', 'VIP · Ảnh Đặc Quyền')}
                       </div>
                     </div>
 
@@ -1062,14 +1247,56 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
 
                 {/* Nội dung Menu Điều trị khi Active */}
                 {editedEmployee.isActiveTherapyMenu && isTherapyExpanded && (
-                  <div className="p-4 space-y-3">
-                    <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider block">
-                      Tải ảnh 5 phương pháp trị liệu
-                    </span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((group) => {
-                        return renderGroupCard(group.id, `NHT · ${group.label}`);
-                      })}
+                  <div className="p-4 space-y-4">
+                    {/* 🌿 THỨ TỰ HIỂN THỊ HÌNH ẢNH TRÊN MENU ĐIỀU TRỊ (NHT) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-emerald-900 uppercase tracking-wider">
+                            Thứ tự hiển thị trên Menu Điều Trị (NHT)
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                            {nhtDisplayItems.length} ảnh
+                          </span>
+                        </div>
+                        {isEditing && nhtDisplayItems.length > 1 && (
+                          <span className="text-[10px] text-emerald-700 font-medium">
+                            Bấm [Trước] hoặc [Sau] để đổi thứ tự hiển thị
+                          </span>
+                        )}
+                      </div>
+                      {nhtDisplayItems.length === 0 ? (
+                        <div className="text-[11px] text-emerald-700/70 italic py-2 text-center bg-emerald-50/50 rounded-xl border border-dashed border-emerald-200">
+                          Chưa có ảnh nào trên Menu Điều Trị. Hãy tải ảnh các phương pháp trị liệu bên dưới.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 bg-emerald-50/40 p-2.5 rounded-2xl border border-emerald-200/80 mb-3">
+                          {nhtDisplayItems.map((wrapper, itemIdx) => (
+                            <MenuDisplayOrderItem
+                              key={`${wrapper.url}-${wrapper.originalIndex}`}
+                              orderNumber={itemIdx + 1}
+                              wrapper={wrapper}
+                              isEditing={isEditing}
+                              canMoveLeft={itemIdx > 0}
+                              canMoveRight={itemIdx < nhtDisplayItems.length - 1}
+                              onMoveLeft={() => handleReorderNhtMenu(itemIdx, itemIdx - 1)}
+                              onMoveRight={() => handleReorderNhtMenu(itemIdx, itemIdx + 1)}
+                              onToggleHidden={() => handleToggleItemHidden(wrapper.originalIndex)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-emerald-100/80">
+                      <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider block mb-2.5">
+                        Tải ảnh 5 phương pháp trị liệu
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {GALLERY_GROUPS.filter((g) => g.id !== 'legacy').map((group) => {
+                          return renderGroupCard(group.id, `NHT · ${group.label}`);
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1255,17 +1482,31 @@ function GalleryThumbnailItem({
   url,
   index,
   isEditing,
+  isHidden,
+  canMoveLeft,
+  canMoveRight,
+  onMoveLeft,
+  onMoveRight,
+  onToggleHidden,
   onRemove,
 }: {
   url: string;
   index: number;
   isEditing: boolean;
+  isHidden?: boolean;
+  canMoveLeft?: boolean;
+  canMoveRight?: boolean;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
+  onToggleHidden?: () => void;
   onRemove?: () => void;
 }) {
   const [loadError, setLoadError] = useState(false);
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-square flex items-center justify-center">
+    <div className={`relative group rounded-xl overflow-hidden border transition-all aspect-square flex items-center justify-center bg-gray-100 ${
+      isHidden ? 'border-amber-300 ring-1 ring-amber-300/60' : 'border-gray-200 shadow-2xs'
+    }`}>
       {loadError ? (
         <div className="p-1 text-center text-[10px] text-red-500 font-medium leading-tight">
           Lỗi tải ảnh
@@ -1274,22 +1515,208 @@ function GalleryThumbnailItem({
         <img
           src={url}
           alt={`gallery-${index}`}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover transition-opacity duration-200 ${
+            isHidden ? 'opacity-40 grayscale-[40%]' : 'opacity-100'
+          }`}
           referrerPolicy="no-referrer"
           onError={() => setLoadError(true)}
         />
       )}
 
-      {isEditing && onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Xóa ảnh"
-          title="Xóa ảnh"
-          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-opacity sm:opacity-90 opacity-100 touch-manipulation z-10"
-        >
-          <X size={12} />
-        </button>
+      {/* Huy hiệu Đang Ẩn trên Menu */}
+      {isHidden && (
+        <div className="absolute top-1 left-1 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-10 backdrop-blur-2xs">
+          <EyeOff size={10} />
+          <span>Ẩn</span>
+        </div>
+      )}
+
+      {/* Control Buttons khi Editing */}
+      {isEditing && (
+        <>
+          {/* Top-right actions: Toggle Hidden & Remove */}
+          <div className="absolute top-1 right-1 flex items-center gap-1 z-10">
+            {onToggleHidden && (
+              <button
+                type="button"
+                onClick={onToggleHidden}
+                aria-label={isHidden ? 'Hiện ảnh trên menu' : 'Ẩn ảnh trên menu'}
+                title={isHidden ? 'Đang ẩn - Bấm để hiện lại trên menu' : 'Đang hiện - Bấm để ẩn khỏi menu'}
+                className={`p-1 rounded-full shadow-md transition-all touch-manipulation ${
+                  isHidden
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-black/60 hover:bg-black/80 text-white/90 hover:text-white'
+                }`}
+              >
+                {isHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                aria-label="Xóa ảnh"
+                title="Xóa ảnh"
+                className="bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-all touch-manipulation"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom actions: Move Left / Move Right */}
+          <div className="absolute bottom-1 inset-x-1 flex items-center justify-between pointer-events-none z-10">
+            <button
+              type="button"
+              disabled={!canMoveLeft}
+              onClick={onMoveLeft}
+              aria-label="Di chuyển sang trước"
+              title="Di chuyển sang trước"
+              className={`p-1 rounded-lg shadow-sm transition-all pointer-events-auto ${
+                canMoveLeft
+                  ? 'bg-white/95 hover:bg-white text-gray-800 hover:text-indigo-600 shadow-md active:scale-95'
+                  : 'bg-white/40 text-gray-300 cursor-not-allowed opacity-0 group-hover:opacity-40'
+              }`}
+            >
+              <ChevronLeft size={13} />
+            </button>
+            <button
+              type="button"
+              disabled={!canMoveRight}
+              onClick={onMoveRight}
+              aria-label="Di chuyển sang sau"
+              title="Di chuyển sang sau"
+              className={`p-1 rounded-lg shadow-sm transition-all pointer-events-auto ${
+                canMoveRight
+                  ? 'bg-white/95 hover:bg-white text-gray-800 hover:text-indigo-600 shadow-md active:scale-95'
+                  : 'bg-white/40 text-gray-300 cursor-not-allowed opacity-0 group-hover:opacity-40'
+              }`}
+            >
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MenuDisplayOrderItem({
+  orderNumber,
+  wrapper,
+  isEditing,
+  canMoveLeft,
+  canMoveRight,
+  onMoveLeft,
+  onMoveRight,
+  onToggleHidden,
+}: {
+  orderNumber: number;
+  wrapper: MenuGalleryItemWrapper;
+  isEditing: boolean;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  onMoveLeft: () => void;
+  onMoveRight: () => void;
+  onToggleHidden: () => void;
+}) {
+  const [loadError, setLoadError] = useState(false);
+  const { url, isHidden, label } = wrapper;
+
+  return (
+    <div
+      className={`relative group rounded-xl overflow-hidden border bg-white flex flex-col p-1.5 shadow-2xs transition-all ${
+        isHidden ? 'border-amber-300 ring-1 ring-amber-300/60 bg-amber-50/20' : 'border-gray-200'
+      }`}
+    >
+      {/* Container ảnh thumbnail */}
+      <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+        {loadError ? (
+          <div className="p-1 text-center text-[10px] text-red-500 font-medium leading-tight">
+            Lỗi tải ảnh
+          </div>
+        ) : (
+          <img
+            src={url}
+            alt={label}
+            className={`w-full h-full object-cover transition-opacity duration-200 ${
+              isHidden ? 'opacity-40 grayscale-[40%]' : 'opacity-100'
+            }`}
+            referrerPolicy="no-referrer"
+            onError={() => setLoadError(true)}
+          />
+        )}
+
+        {/* Số thứ tự hiển thị nội bộ */}
+        <div className="absolute top-1 left-1 bg-black/75 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm z-10 pointer-events-none">
+          #{orderNumber}
+        </div>
+
+        {/* Badge Ẩn */}
+        {isHidden && (
+          <div className="absolute top-1 right-1 bg-amber-500/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5 pointer-events-none z-10 backdrop-blur-2xs">
+            <EyeOff size={10} />
+            <span>Ẩn</span>
+          </div>
+        )}
+
+        {/* Nút Ẩn/Hiện khi Editing */}
+        {isEditing && (
+          <button
+            type="button"
+            onClick={onToggleHidden}
+            aria-label={isHidden ? 'Hiện ảnh trên menu' : 'Ẩn ảnh trên menu'}
+            title={isHidden ? 'Đang ẩn - Bấm để hiện lại trên menu' : 'Đang hiện - Bấm để ẩn khỏi menu'}
+            className={`absolute ${isHidden ? 'top-6' : 'top-1'} right-1 z-10 p-1 rounded-full shadow-md transition-all touch-manipulation ${
+              isHidden
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-black/60 hover:bg-black/80 text-white'
+            }`}
+          >
+            {isHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+          </button>
+        )}
+      </div>
+
+      {/* Tên nhãn mô tả ảnh */}
+      <div className="mt-1 px-0.5">
+        <span className="text-[10px] font-bold text-gray-700 truncate block" title={label}>
+          {label}
+        </span>
+      </div>
+
+      {/* Hai nút di chuyển thứ tự Lên/Xuống */}
+      {isEditing && (
+        <div className="mt-1 flex items-center justify-between gap-1 pt-1 border-t border-gray-100">
+          <button
+            type="button"
+            disabled={!canMoveLeft}
+            onClick={onMoveLeft}
+            title="Đẩy lên trước"
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all ${
+              canMoveLeft
+                ? 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 active:scale-95'
+                : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+            }`}
+          >
+            <ChevronLeft size={12} />
+            <span>Trước</span>
+          </button>
+          <button
+            type="button"
+            disabled={!canMoveRight}
+            onClick={onMoveRight}
+            title="Đẩy xuống sau"
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all ${
+              canMoveRight
+                ? 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 active:scale-95'
+                : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+            }`}
+          >
+            <span>Sau</span>
+            <ChevronRight size={12} />
+          </button>
+        </div>
       )}
     </div>
   );

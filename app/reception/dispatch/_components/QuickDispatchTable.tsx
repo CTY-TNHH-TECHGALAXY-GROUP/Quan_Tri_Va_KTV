@@ -435,15 +435,6 @@ export const QuickDispatchTable = ({
           }
         });
 
-        console.log('--- [BƯỚC 0 VÒNG 3] Thu thập KTV ---');
-        console.log('groupKey:', groupKey);
-        console.log('items (detailed):', JSON.stringify(items.map(i => ({ 
-            id: i.id, 
-            staffCount: i.staffList?.length, 
-            ktvs: i.staffList?.map(s => s.ktvId) 
-        })), null, 2));
-        console.log('ktvIds thu duoc:', ktvIds);
-
         if (ktvIds.length === 0) {
           startTimes.push(defaultTime);
           endTimes.push(calcEndTime(defaultTime, duration));

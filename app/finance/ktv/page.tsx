@@ -364,7 +364,8 @@ export default function FinanceKTVPage() {
                     </div>
 
                     <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
+                        {/* Desktop View: Giữ 100% Table 9 cột */}
+                        <div className="hidden md:block overflow-x-auto">
                             {activeTab === 'TUA' && (
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-indigo-50 text-indigo-800 text-xs uppercase font-black whitespace-nowrap">
@@ -395,7 +396,7 @@ export default function FinanceKTVPage() {
                                                     <span className="inline-flex items-center gap-1.5 mt-1">
                                                         <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">{ktv.id}</span>
                                                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${ktv.work_type === 'TYPE_D' ? 'text-purple-600 bg-purple-50' : 'text-slate-500 bg-slate-100'}`}>
-                                                            {workTypeLabel(ktv.work_type)}
+                                                             {workTypeLabel(ktv.work_type)}
                                                         </span>
                                                     </span>
                                                 </td>
@@ -490,6 +491,86 @@ export default function FinanceKTVPage() {
                             </table>
                             )}
 
+                        </div>
+
+                        {/* Mobile View: Dạng thẻ rút gọn cho Thu ngân/Admin */}
+                        <div className="block md:hidden divide-y divide-slate-100 p-3 space-y-3">
+                            {activeTab === 'TUA' && (
+                                filteredSummaries.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 text-sm">
+                                        {filterWorkType === 'ALL' ? 'Chưa có dữ liệu thống kê KTV' : t.emptyByFilter}
+                                    </div>
+                                ) : (
+                                    filteredSummaries.map((ktv) => (
+                                        <div key={ktv.id} className="p-4 bg-slate-50/60 rounded-2xl border border-slate-100 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className="font-bold text-slate-800 text-sm">{ktv.name}</div>
+                                                    <div className="inline-flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[10px] font-bold text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded">{ktv.id}</span>
+                                                        <span className="text-[10px] text-slate-500 font-semibold">{workTypeLabel(ktv.work_type)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[10px] text-slate-400 font-medium">Khả dụng</div>
+                                                    <div className="text-base font-black text-emerald-600">{formatVnd(ktv.available_balance)}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2 text-xs bg-white p-2.5 rounded-xl border border-slate-100">
+                                                <div>
+                                                    <span className="text-slate-400">Tiền tua:</span> <b className="text-slate-700">{formatVnd(ktv.total_commission)}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Tiền tip:</span> <b className="text-slate-700">{formatVnd(ktv.total_tip)}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Thưởng/Phạt:</span> <b className="text-slate-700">{formatVnd(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0))}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Đã rút:</span> <b className="text-rose-600">{formatVnd(ktv.total_withdrawn)}</b>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end pt-1">
+                                                <button
+                                                    onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                >
+                                                    <Edit3 size={13} /> Thưởng / Phạt
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )
+                            )}
+
+                            {activeTab === 'BONUS' && isBonusWalletExcluded && (
+                                <div className="px-4 py-8 text-center">
+                                    <Star size={36} className="text-purple-200 mx-auto mb-2" />
+                                    <p className="font-bold text-slate-700 text-sm">{t.bonusTab.excludedTitle}</p>
+                                    <p className="text-xs text-slate-500 mt-1">{t.bonusTab.excludedNote}</p>
+                                </div>
+                            )}
+
+                            {activeTab === 'BONUS' && !isBonusWalletExcluded && (
+                                filteredBonusSummaries.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 text-sm">Chưa có dữ liệu ví bonus</div>
+                                ) : (
+                                    filteredBonusSummaries.map((ktv) => (
+                                        <div key={ktv.id} className="p-4 bg-amber-50/40 rounded-2xl border border-amber-100 flex items-center justify-between">
+                                            <div>
+                                                <div className="font-bold text-slate-800 text-sm">{ktv.name}</div>
+                                                <span className="text-[10px] font-bold text-amber-500 uppercase bg-amber-100/50 px-1.5 py-0.5 rounded">{ktv.id}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-black text-amber-600">{Number(ktv.vndEquivalent || 0).toLocaleString()}đ</div>
+                                                <div className="text-xs text-slate-500 font-bold">{Number(ktv.currentBalance || 0).toLocaleString()} pts</div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )
+                            )}
                         </div>
                     </div>
                 </div>

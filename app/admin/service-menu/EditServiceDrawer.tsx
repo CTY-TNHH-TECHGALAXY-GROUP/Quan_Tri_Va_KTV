@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Save, Image as ImageIcon, Tags, Target, Settings2, FileText, Globe, CopyCheck } from 'lucide-react';
 import { Service, FocusConfig } from '@/lib/types';
-import { updateService, updateServiceBulkSync } from './actions';
+import { updateService, updateServiceBulkSync, createService } from './actions';
 
 interface EditServiceDrawerProps {
   isOpen: boolean;
@@ -75,10 +75,26 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
           ? { vn: service.description, en: '', cn: '', jp: '', kr: '' } 
           : (service.description || { vn: '', en: '', cn: '', jp: '', kr: '' }),
       });
+    } else if (isOpen) {
+      setFormData({
+        nameVN: '',
+        nameEN: '',
+        nameCN: '',
+        nameJP: '',
+        nameKR: '',
+        priceVND: 0,
+        duration: 60,
+        category: allCategories.length > 0 ? [allCategories[0]] : ['Khác'],
+        isActive: true,
+        focusConfig: {},
+        strengthConfig: { light: true, medium: true, strong: true },
+        tags: [],
+        description: { vn: '', en: '', cn: '', jp: '', kr: '' },
+      });
     }
-  }, [service]);
+  }, [service, isOpen, allCategories]);
 
-  if (!service) return null;
+  if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -222,12 +238,17 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         }),
     };
 
-    const res = await updateService(service.id, payload);
-
-    if (res.success) {
-      if (isBulkSync && service.nameVN) {
+    let res;
+    if (service?.id) {
+      res = await updateService(service.id, payload);
+      if (res.success && isBulkSync && service.nameVN) {
         await updateServiceBulkSync(service.nameVN, payload);
       }
+    } else {
+      res = await createService(payload);
+    }
+
+    if (res.success) {
       onSuccess();
       onClose();
     } else {
@@ -248,9 +269,11 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
           <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50 shrink-0">
             <div>
               <Dialog.Title className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Settings2 className="text-indigo-600" /> Cấu Hình Dịch Vụ
+                <Settings2 className="text-indigo-600" /> {service ? 'Cấu Hình Dịch Vụ' : 'Thêm Dịch Vụ Mới'}
               </Dialog.Title>
-              <p className="text-sm font-medium text-gray-500 mt-1">{service.id} - {service.nameVN || service.name}</p>
+              <p className="text-sm font-medium text-gray-500 mt-1">
+                {service ? `${service.id} - ${service.nameVN || service.name}` : 'Nhập thông tin dịch vụ mới'}
+              </p>
             </div>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-colors bg-white/50">
               <X size={20} />
@@ -622,23 +645,25 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
 
           <div className="p-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between shrink-0">
             <div className="flex-1 mr-6">
-              <label className="flex items-center gap-2.5 p-2.5 bg-white border border-indigo-100 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors group">
-                <input 
-                  type="checkbox" 
-                  checked={isBulkSync}
-                  onChange={(e) => setIsBulkSync(e.target.checked)}
-                  className="w-5 h-5 accent-indigo-600 rounded shrink-0" 
-                />
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 flex items-center gap-1.5">
-                    <CopyCheck size={16} />
-                    Đồng bộ hàng loạt
-                  </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    Áp dụng ngôn ngữ, mô tả, tag cho tất cả dịch vụ cùng tên "{service.nameVN}" (60p, 90p...)
-                  </span>
-                </div>
-              </label>
+              {service && (
+                <label className="flex items-center gap-2.5 p-2.5 bg-white border border-indigo-100 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors group">
+                  <input 
+                    type="checkbox" 
+                    checked={isBulkSync}
+                    onChange={(e) => setIsBulkSync(e.target.checked)}
+                    className="w-5 h-5 accent-indigo-600 rounded shrink-0" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 flex items-center gap-1.5">
+                      <CopyCheck size={16} />
+                      Đồng bộ hàng loạt
+                    </span>
+                    <span className="text-xs text-gray-500 font-medium">
+                      Áp dụng ngôn ngữ, mô tả, tag cho tất cả dịch vụ cùng tên "{service.nameVN}" (60p, 90p...)
+                    </span>
+                  </div>
+                </label>
+              )}
             </div>
             
             <div className="flex gap-3 shrink-0">

@@ -5,6 +5,7 @@ import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { usesOfficeBonus, officeBonusBalance } from '@/lib/services/KtvOfficeBonusService';
+import { requireStaffOrPermission } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -13,6 +14,10 @@ export async function GET(request: Request) {
     if (!techCode) {
         return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
     }
+
+    // Chỉ chủ ví hoặc người có quyền tài chính mới xem được điểm thưởng.
+    const deniedAuth = await requireStaffOrPermission(techCode, 'finance_management');
+    if (deniedAuth) return deniedAuth;
 
     try {
         const supabase = getSupabaseAdmin();

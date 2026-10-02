@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { SupportAreaPostSchema } from '@/lib/schemas/support.schema';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
     try {
+        // Xoá khu vực hỗ trợ → quyền quản trị hỗ trợ.
+        await requirePermission('support_tasks_admin');
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
@@ -77,6 +81,8 @@ export async function DELETE(request: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('Error deleting support area:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

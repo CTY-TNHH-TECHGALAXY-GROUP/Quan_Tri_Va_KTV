@@ -29,6 +29,18 @@ export interface LeaveRequest {
     createdAt: string;
     is_extension?: boolean;
     is_sudden_off?: boolean;
+    is_type_d?: boolean;
+}
+
+export interface TypeDRegistration {
+    id: string;
+    staff_id: string;
+    staff_name: string;
+    work_date: string;
+    expected_time: string | null;
+    expected_end_time: string | null;
+    status: string;
+    check_in_at?: string | null;
 }
 
 export interface ShiftRecord {
@@ -59,6 +71,7 @@ export const useLeaveManagement = () => {
     const { hasPermission } = useAuth();
     const [mounted, setMounted] = useState(false);
     const [leaveList, setLeaveList] = useState<LeaveRequest[]>([]);
+    const [typeDRegistrations, setTypeDRegistrations] = useState<TypeDRegistration[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
 
@@ -87,13 +100,30 @@ export const useLeaveManagement = () => {
             const lastDay = new Date(year, month + 1, 0).getDate();
             const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-            const result = await apiClient.get<any>(`${API.KTV.LEAVE}?from=${from}&to=${to}`);
+            const [leaveRes, typeDRes] = await Promise.all([
+                apiClient.get<any>(`${API.KTV.LEAVE}?from=${from}&to=${to}`),
+                apiClient.get<any>(`${API.KTV.DAILY_REGISTRATION}?all=true&from=${from}&to=${to}`).catch(() => ({ data: [] }))
+            ]);
 
-            if (result.data) {
-                setLeaveList(result.data || []);
-            } else {
-                console.error('❌ [LeaveManagement] Fetch error:', result.error);
-            }
+            const baseLeaves: LeaveRequest[] = (leaveRes.data || []).filter((l: LeaveRequest) => l.status !== 'REJECTED');
+            const typeDList: TypeDRegistration[] = typeDRes.data || [];
+
+            setTypeDRegistrations(typeDList);
+
+            const typeDOffLeaves: LeaveRequest[] = typeDList
+                .filter(r => r.status === 'OFF_REGISTERED')
+                .map(r => ({
+                    id: r.id || `type-d-off-${r.staff_id}-${r.work_date}`,
+                    employeeId: r.staff_id,
+                    employeeName: r.staff_name || r.staff_id,
+                    date: r.work_date,
+                    reason: 'Đăng ký OFF',
+                    status: 'APPROVED',
+                    createdAt: (r as any).registered_at || new Date().toISOString(),
+                    is_type_d: true,
+                }));
+
+            setLeaveList([...baseLeaves, ...typeDOffLeaves]);
         } catch (err: any) {
             console.error('❌ [LeaveManagement] Fetch failed:', err.message || err);
         } finally {
@@ -198,6 +228,7 @@ export const useLeaveManagement = () => {
         adminStaffList,
         adminRegisterLoading,
         adminRegisterOff,
+        typeDRegistrations,
     };
 };
 

@@ -2407,11 +2407,13 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
 }
 
 export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean; vatRequested?: boolean; }) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.createQuickBooking(data);
 }
 
 export async function updateBookingMeta(bookingId: string, data: { guestCount?: number; nationality?: string; customerGender?: string; paymentMethod?: string; }) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -2442,23 +2444,28 @@ export async function updateBookingMeta(bookingId: string, data: { guestCount?: 
 }
 
 export async function addAddonServices(bookingId: string, items: { serviceId: string; qty: number; guestId?: string }[], adminId: string = 'ADMIN') {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.addAddonServices(bookingId, items, adminId);
 }
 
 export async function confirmAddonPayment(bookingId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.confirmAddonPayment(bookingId);
 }
 
 export async function removeBookingItem(bookingId: string, itemId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.removeBookingItem(bookingId, itemId);
 }
 
 export async function editBookingService(bookingId: string, itemId: string, newServiceId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.editBookingService(bookingId, itemId, newServiceId);
 }
 
 export async function submitCustomerRating(bookingId: string, rating: number, feedbackNote?: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -2585,6 +2592,7 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
 
 
 export async function splitBookingItem(bookingId: string, itemId: string, dur1: number, dur2: number, date: string, name1?: string, name2?: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.splitBookingItem(bookingId, itemId, dur1, dur2, date, name1, name2);
 }
 
@@ -2595,6 +2603,7 @@ export async function splitBookingItem(bookingId: string, itemId: string, dur1: 
  */
 export async function syncOrderTimelineToDb(bookingId: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) return;
 
@@ -2742,6 +2751,7 @@ export async function searchCustomers(query: string) {
 
 export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: string[], newName: string) {
     try {
+        await requirePermission('dispatch_board');
         if (!itemIds || itemIds.length === 0) return { success: true };
 
         const supabase = getSupabaseAdmin();
@@ -2779,6 +2789,7 @@ export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: stri
 
 export async function updateBookingCustomerName(bookingId: string, newName: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
         
@@ -2889,6 +2900,7 @@ export async function unmergeServicesAction(
 
 export async function submitGuestRating(guestId: string, rating: number, feedbackNote?: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 

@@ -123,3 +123,16 @@ export function ktvAssignedMinutes(item: any, code: string | undefined | null, f
     const minutes = Number(fallback);
     return Number.isFinite(minutes) && minutes >= 0 ? minutes : 0;
 }
+
+/** True when this KTV appears on the item (current or historical segment), so a stale bookingId cannot open someone else's order. */
+export function ktvAssignedToItem(
+    item: { technicianCodes?: unknown; segments?: unknown },
+    ktvCode: string
+): boolean {
+    if (Array.isArray(item.technicianCodes) &&
+        item.technicianCodes.some(code => typeof code === 'string' && ktvMatchesSeg(code, ktvCode))) return true;
+    let segments = item.segments;
+    try { if (typeof segments === 'string') segments = JSON.parse(segments); } catch { return false; }
+    return Array.isArray(segments) && segments.some(seg =>
+        typeof seg?.ktvId === 'string' && ktvMatchesSeg(seg.ktvId, ktvCode));
+}

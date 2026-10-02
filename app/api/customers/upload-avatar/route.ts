@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireBusinessUser, authErrorResponse } from '@/lib/auth-server';
+import { validateImageUpload } from '@/lib/upload-guard';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
-        const formData = await request.formData();
-        const file = formData.get('file') as File;
-        const customerId = formData.get('customerId') as string;
+        // Bucket public: người lạ không được đẩy file lên.
+        const actor = await requireBusinessUser();
+        if (!actor && process.env.AUTH_ENFORCE_API === '1') {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
 
-        if (!file || !customerId) {
+        const formData = await request.formData();
+        const file = formData.get('file');
+        const customerId = formData.get('customerId');
+
+        if (!file || typeof customerId !== 'string' || !customerId.trim()) {
             return NextResponse.json({ success: false, error: 'Thiếu file ảnh hoặc mã khách hàng (customerId)' }, { status: 400 });
+        }
+
+        const checked = await validateImageUpload(file);
+        if (!checked.ok) {
+            return NextResponse.json({ success: false, error: checked.error }, { status: checked.status });
         }
 
         const supabase = getSupabaseAdmin();
@@ -19,17 +32,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'Lỗi khởi tạo hệ thống (Supabase)' }, { status: 500 });
         }
 
-        // Tạo tên file ngẫu nhiên để tránh trùng lặp
-        const fileExt = file.name.split('.').pop() || 'png';
-        // Theo yêu cầu của user: Đặt trong thư mục con customers/[customerId]/[filename]
-        const fileName = `customers/${customerId}/avatar_${uuidv4()}.${fileExt}`;
-        const buffer = Buffer.from(await file.arrayBuffer());
+        // Đuôi file lấy từ MIME đã kiểm, không lấy từ tên file client gửi.
+        const safeCustomerId = customerId.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        const fileName = `customers/${safeCustomerId}/avatar_${uuidv4()}.${checked.ext}`;
 
         // Upload file lên bucket 'avatars'
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('avatars')
-            .upload(fileName, buffer, {
-                contentType: file.type,
+            .upload(fileName, checked.buffer, {
+                contentType: checked.mime,
                 upsert: true
             });
 
@@ -60,6 +71,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, url: publicUrl });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('API Error (Upload Avatar):', error);
         return NextResponse.json({ success: false, error: error.message || 'Lỗi server' }, { status: 500 });
     }

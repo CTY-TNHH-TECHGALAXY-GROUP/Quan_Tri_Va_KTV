@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -96,6 +97,8 @@ export async function GET(request: Request) {
     }
 
     try {
+        await requirePermission('revenue_reports');
+
         const { getDayCutoffHours } = await import('@/lib/business-date');
         const cutoffHours = await getDayCutoffHours(supabase as any);
 
@@ -110,10 +113,27 @@ export async function GET(request: Request) {
         // `code` khong phai cot cua Staff — ma nhan vien chinh la `id`. Truy van cu
         // loi nen ban do nay rong, va dong duoi rot het ve 'TYPE_A': MOI KTV bi tinh
         // hoa hong theo TYPE_A trong bao cao, ke ca loai D.
-        const { data: staffData } = await supabase.from('Staff').select('id, work_type');
+        const { isPlaceholderStaffId } = await import('@/lib/constants/staff.constants');
+        const { data: staffData } = await supabase
+            .from('Staff')
+            .select('id, full_name, work_type, status')
+            .neq('status', 'HỆ THỐNG')
+            .neq('status', 'ĐÃ NGHỈ');
+
         const staffWorkTypeMap: Record<string, string> = {};
+        const staffNameMap: Record<string, string> = {};
+        const activeStaffIds = new Set<string>();
+
         (staffData || []).forEach((s: any) => {
-            if (s.id) staffWorkTypeMap[String(s.id).trim()] = s.work_type || 'TYPE_A';
+            const sid = s.id ? String(s.id).trim() : '';
+            if (!sid || sid === 'ADMIN' || sid === 'dev') return;
+            if (s.status === 'ĐANG LÀM') {
+                activeStaffIds.add(sid);
+                // KTV ngoài không tài khoản (EXT_*): ledger trả theo Loại C, báo cáo
+                // phải cùng loại. Trước đây bị bỏ khỏi map → rơi về TYPE_A.
+                staffWorkTypeMap[sid] = isPlaceholderStaffId(sid) ? 'TYPE_C' : (s.work_type || 'TYPE_A');
+                if (s.full_name) staffNameMap[sid] = s.full_name.trim();
+            }
         });
 
         // ─── 1. Fetch completed bookings in date range ───────────────────
@@ -522,19 +542,19 @@ export async function GET(request: Request) {
         });
         // Calculate commission + tip + rating per KTV from ALL relevant items
         (allItems || []).forEach(i => {
-            const techs = Array.isArray(i.technicianCodes) ? i.technicianCodes : [];
+            // Chỉ KTV còn quyền lợi (loại chặng voided — người bị đổi ra = 0đ).
+            // Dòng dự phòng `fallback / số KTV` trước đây chia theo technicianCodes
+            // nên người bị tước vẫn được chia đều tiền và tip.
+            const techs = KtvCommissionService.activeTechs(i);
             if (techs.length === 0) return;
-            
+
             const qty = Number(i.quantity) || 1;
-            
-            techs.forEach((tc: string) => {
-                const code = tc.trim();
-                if (!code) return;
-                
+
+            techs.forEach((code: string) => {
                 const fallbackDuration = svcDurationMap[String(i.serviceId)] || 60;
                 let actualMins = KtvCommissionService.calculateItemDuration(i, code, fallbackDuration);
                 let myTotalMins = actualMins > 0 ? actualMins : (fallbackDuration / techs.length);
-                
+
                 const workType = staffWorkTypeMap[code] || 'TYPE_A';
                 const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
                 const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * qty;
@@ -557,7 +577,9 @@ export async function GET(request: Request) {
         const costPerService = totalServiceCount > 0 ? Math.round(totalCommission / totalServiceCount) : 0;
         const costRatio = revenue > 0 ? Math.round((totalCommission / revenue) * 1000) / 10 : 0;
         // Return ALL KTVs sorted by revenue (no top-10 limit)
+        // Chỉ giữ nhân viên đang làm việc, loại bỏ nhân viên đã nghỉ việc
         const allKTV = Object.values(ktvMap)
+            .filter(k => activeStaffIds.has(k.code))
             .sort((a, b) => b.revenue - a.revenue);
 
         // ─── 11. Peak Hours ──────────────────────────────────────────────
@@ -617,10 +639,16 @@ export async function GET(request: Request) {
                     .select('code, name')
                     .in('code', batch);
                 (employees || []).forEach((e: any) => {
-                    if (e.code) employeeMap[e.code] = e.name || e.code;
+                    if (e.code) employeeMap[e.code] = staffNameMap[e.code] || e.name || e.code;
                 });
             }
         }
+        // Bổ sung tên chính xác từ bảng Staff cho mọi KTV (kể cả Hạng D)
+        ktvCodes.forEach(code => {
+            if (!employeeMap[code] && staffNameMap[code]) {
+                employeeMap[code] = staffNameMap[code];
+            }
+        });
 
         // ─── 11. Top Customers & Menu Evaluation ─────────────────────────
         const customerMap: Record<string, { id: string; orders: number; revenue: number }> = {};
@@ -744,14 +772,12 @@ export async function GET(request: Request) {
                     
                     let ktvs = Array.isArray(i.technicianCodes) ? i.technicianCodes.join(', ') : '';
                     let commission = 0;
-                    if (Array.isArray(i.technicianCodes) && i.technicianCodes.length > 0) {
-                        i.technicianCodes.forEach((code: string) => {
-                            const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / i.technicianCodes.length);
-                            const workType = staffWorkTypeMap[code] || 'TYPE_A';
-                            const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-                            commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
-                        });
-                    }
+                    const activeTechs = KtvCommissionService.activeTechs(i);
+                    activeTechs.forEach((code: string) => {
+                        const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / activeTechs.length);
+                        const workType = staffWorkTypeMap[code] || 'TYPE_A';
+                        commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
+                    });
 
                     rawDataSheet.push({
                         id: b.billCode || b.id.substring(0, 8),
@@ -841,6 +867,8 @@ export async function GET(request: Request) {
         });
 
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('❌ [Finance Reports API]', err.message);
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }

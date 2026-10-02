@@ -79,7 +79,7 @@ export default function HomePage() {
             </h1>
             <p className="text-gray-500 mt-1">Hệ thống quản trị trung tâm {SYSTEM_CONFIG.spa_name}</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
+          <div className="hidden md:flex items-center gap-2 text-sm text-gray-400 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
             <ShieldCheck size={16} className="text-emerald-500" />
             Phiên bản 1.0.0 • Bảo mật cao
           </div>
@@ -158,6 +158,7 @@ const SHIFT_DISPLAY: Record<string, { label: string; time: string; color: string
   FREE: { label: 'Ca tự do', time: '', color: 'text-emerald-700', border: 'border-emerald-200', bg: 'bg-emerald-50' },
   REQUEST: { label: 'Làm KH yêu cầu', time: '', color: 'text-teal-700', border: 'border-teal-200', bg: 'bg-teal-50' },
   VIP: { label: 'Ca VIP', time: '', color: 'text-orange-700', border: 'border-orange-200', bg: 'bg-orange-50' },
+  TYPE_D: { label: 'Ca đăng ký', time: '', color: 'text-purple-700', border: 'border-purple-200', bg: 'bg-purple-50' },
 };
 
 interface LeaveItem {
@@ -175,7 +176,9 @@ interface ShiftItem {
   employeeId: string;
   employeeName: string;
   shiftType: string;
+  startTime?: string | null;
   estimatedEndTime?: string | null;
+  checkInAt?: string | null;
 }
 
 const DailyStaffOverview = () => {
@@ -183,7 +186,7 @@ const DailyStaffOverview = () => {
   const [shifts, setShifts] = useState<ShiftItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showOvertime, setShowOvertime] = useState(false);
-  const [expandedShifts, setExpandedShifts] = useState<string[]>(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP']);
+  const [expandedShifts, setExpandedShifts] = useState<string[]>(['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP', 'TYPE_D']);
 
   // Get today in VN timezone
   const getVnToday = () => {
@@ -204,18 +207,49 @@ const DailyStaffOverview = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [leaveJson, shiftJson, configJson] = await Promise.all([
+        const [leaveJson, shiftJson, typeDJson, configJson] = await Promise.all([
           apiClient.get<any>(`${API.KTV.LEAVE}?from=${selectedDate}&to=${selectedDate}`),
           apiClient.get<any>(`${API.KTV.SHIFT}?all=true&date=${selectedDate}`),
+          apiClient.get<any>(`${API.KTV.DAILY_REGISTRATION}?all=true&from=${selectedDate}&to=${selectedDate}`).catch(() => ({ data: [] })),
           apiClient.get<any>(API.SYSTEM.CONFIG),
         ]);
 
-        if (leaveJson.data) {
-          setLeaves((leaveJson.data || []).filter((l: LeaveItem) => l.status !== 'REJECTED'));
-        }
-        if (shiftJson.data) {
-          setShifts(shiftJson.data || []);
-        }
+        const regularLeaves = (leaveJson.data || []).filter((l: LeaveItem) => l.status !== 'REJECTED');
+        const typeDList = typeDJson.data || [];
+
+        // KTV D đăng ký OFF
+        const typeDOffLeaves: LeaveItem[] = typeDList
+          .filter((r: any) => r.status === 'OFF_REGISTERED')
+          .map((r: any) => ({
+            id: r.id || `type-d-off-${r.staff_id}`,
+            employeeId: r.staff_id,
+            employeeName: r.staff_name || r.staff_id,
+            date: r.work_date,
+            status: 'OFF_REGISTERED',
+            createdAt: r.registered_at || new Date().toISOString()
+          }));
+
+        setLeaves([...regularLeaves, ...typeDOffLeaves]);
+
+        // KTV D đăng ký đi làm
+        const typeDWorkingShifts: ShiftItem[] = typeDList
+          .filter((r: any) => r.status !== 'OFF_REGISTERED' && r.status !== 'REJECTED')
+          .map((r: any) => ({
+            employeeId: r.staff_id,
+            employeeName: r.staff_name || r.staff_id,
+            shiftType: 'TYPE_D',
+            startTime: r.expected_time ? r.expected_time.slice(0, 5) : null,
+            estimatedEndTime: r.expected_end_time ? r.expected_end_time.slice(0, 5) : null,
+            checkInAt: r.check_in_at || null,
+          }));
+
+        const baseShifts: ShiftItem[] = shiftJson.data || [];
+        // Loại bỏ trùng lặp nếu KTV D đã check in và sinh ca FREE ảo trong KTVShifts
+        const typeDStaffIds = new Set(typeDWorkingShifts.map(s => s.employeeId));
+        const filteredBaseShifts = baseShifts.filter(s => !typeDStaffIds.has(s.employeeId));
+
+        setShifts([...filteredBaseShifts, ...typeDWorkingShifts]);
+
         if (configJson.data) {
           const raw = configJson.data?.show_overtime_on_dashboard;
           setShowOvertime(raw === true || raw === 'true');
@@ -251,7 +285,7 @@ const DailyStaffOverview = () => {
   });
 
   // Order shifts logically
-  const shiftOrder = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'FREE', 'REQUEST', 'VIP'];
+  const shiftOrder = ['SHIFT_1', 'SHIFT_2', 'SHIFT_3', 'TYPE_D', 'FREE', 'REQUEST', 'VIP'];
   const orderedKeys = shiftOrder.filter(k => shiftGroups[k]);
   // Add any unknown keys
   Object.keys(shiftGroups).forEach(k => {
@@ -414,13 +448,21 @@ const DailyStaffOverview = () => {
                             <p className={`text-sm font-bold ${display.color}`}>
                               {staff.employeeId}
                             </p>
+                            {/* TYPE_D: hiển thị giờ vào và giờ tan dự kiến */}
+                            {shiftKey === 'TYPE_D' && (
+                              <div className="mt-1 flex items-center justify-center">
+                                <span className="text-[9px] font-bold text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded border border-purple-200">
+                                  {staff.startTime || '--:--'} → {staff.estimatedEndTime || '--:--'}
+                                </span>
+                              </div>
+                            )}
                             {/* FREE/VIP shift: always show "Về: HH:MM" | Overtime: gated by toggle */}
                             {(shiftKey === 'FREE' || shiftKey === 'VIP') && staff.estimatedEndTime && (
                               <p className={`text-[9px] font-bold leading-tight mt-0.5 ${shiftKey === 'VIP' ? 'text-orange-500' : 'text-teal-500'}`}>
                                 Về: {staff.estimatedEndTime}
                               </p>
                             )}
-                            {(shiftKey !== 'FREE' && shiftKey !== 'VIP') && showOvertime && staff.estimatedEndTime && (
+                            {(shiftKey !== 'FREE' && shiftKey !== 'VIP' && shiftKey !== 'TYPE_D') && showOvertime && staff.estimatedEndTime && (
                               <p className="text-[9px] font-bold leading-tight mt-0.5 text-purple-500">
                                 Tăng ca: {staff.estimatedEndTime}
                               </p>

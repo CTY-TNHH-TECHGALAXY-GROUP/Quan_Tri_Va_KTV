@@ -2,7 +2,7 @@
 import { parseDbDate } from "@/lib/utils";
 
 import React from 'react';
-import { ShieldAlert, Trash2, ChevronLeft, ChevronRight, Briefcase, ArrowRightLeft, UserPlus, Users, Loader2, Check, X, CalendarDays, CheckCircle2, CalendarOff } from 'lucide-react';
+import { ShieldAlert, Trash2, ChevronLeft, ChevronRight, Briefcase, ArrowRightLeft, UserPlus, Users, Loader2, Check, X, CalendarDays, CheckCircle2, CalendarOff, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useLeaveManagement, useShiftManagement, AdminTab } from './LeaveManagement.logic';
@@ -129,6 +129,7 @@ const OffTab = ({ logic, allShifts }: { logic: ReturnType<typeof useLeaveManagem
         goToPrevMonth,
         goToNextMonth,
         goToToday,
+        typeDRegistrations = [],
     } = logic;
 
     const { year, month } = calendarMonth;
@@ -155,6 +156,9 @@ const OffTab = ({ logic, allShifts }: { logic: ReturnType<typeof useLeaveManagem
     };
 
     const selectedLeaves = selectedDate ? (leaveByDate[selectedDate] || []) : [];
+    const selectedTypeDWork = selectedDate
+        ? typeDRegistrations.filter(r => r.work_date === selectedDate && r.status !== 'OFF_REGISTERED')
+        : [];
 
     return (
         <div className="space-y-5">
@@ -335,10 +339,10 @@ const OffTab = ({ logic, allShifts }: { logic: ReturnType<typeof useLeaveManagem
                             <h4 className="text-[11px] font-black text-emerald-600 mb-2 uppercase tracking-wider flex items-center justify-between">
                                 Nhân sự làm việc
                                 <span className="bg-emerald-100 text-emerald-700 py-0.5 px-2 rounded-full text-[10px]">
-                                    {allShifts.filter(shift => !selectedLeaves.some(l => l.employeeId === shift.employeeId)).length}
+                                    {allShifts.filter(shift => !selectedLeaves.some(l => l.employeeId === shift.employeeId)).length + selectedTypeDWork.length}
                                 </span>
                             </h4>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {allShifts
                                     .filter(shift => !selectedLeaves.some(l => l.employeeId === shift.employeeId))
                                     .map(shift => (
@@ -346,6 +350,18 @@ const OffTab = ({ logic, allShifts }: { logic: ReturnType<typeof useLeaveManagem
                                             <p className="font-bold text-[12px] text-emerald-700 truncate">{shift.employeeId}</p>
                                         </div>
                                 ))}
+                                {selectedTypeDWork.map(reg => {
+                                    const startTime = reg.expected_time ? reg.expected_time.slice(0, 5) : '--:--';
+                                    const endTime = reg.expected_end_time ? reg.expected_end_time.slice(0, 5) : '--:--';
+                                    return (
+                                        <div key={reg.id || reg.staff_id} className="flex flex-col items-center justify-center py-1.5 px-2 rounded-xl border border-purple-200 bg-purple-50 text-center">
+                                            <p className="font-bold text-[12px] text-purple-700 truncate">{reg.staff_id}</p>
+                                            <span className="text-[9px] font-bold text-purple-600 flex items-center gap-0.5 mt-0.5">
+                                                <Clock size={10} /> {startTime} → {endTime}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
