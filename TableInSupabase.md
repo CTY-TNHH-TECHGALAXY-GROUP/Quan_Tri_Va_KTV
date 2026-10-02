@@ -112,6 +112,7 @@
 | `handover_images` | jsonb | Mảng URL ảnh bàn giao phòng do KTV chụp |
 | `handover_reject_images` | jsonb | Mảng URL ảnh minh chứng phòng dơ từ Lễ Tân khi từ chối |
 | `handover_status` | text | Trạng thái duyệt ảnh: `PENDING`, `APPROVED`, `REJECTED` (mặc định: `PENDING`) |
+| `commission_locked` | boolean | **[Ghi bổ sung 03/10/2026]** Default `false` (migration `20260727000000_handover_v5_internal_reviews.sql`). Hiện không code nào bật; `true` = giữ ảnh làm chứng cứ — cron `/api/cron/cleanup-photos` KHÔNG xoá ảnh của item này. |
 | `handover_comment` | text | Lý do từ chối hoặc feedback của Lễ tân khi duyệt ảnh |
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
 | `itemFeedback` | text | Phản hồi text từ khách cho item |
@@ -120,6 +121,8 @@
 
 **Triggers:**
 - `tr_notify_ktv_on_item_rating` → Gửi thông báo thưởng/cảnh báo khi `itemRating` hoặc `ktvRatings` thay đổi
+
+**Dọn ảnh (03/10/2026):** ảnh trong bucket `attendance` do Vercel Cron `/api/cron/cleanup-photos` xoá qua Storage API (`lib/services/PhotoCleanupService.ts`): ảnh chấm công 30 ngày; ảnh của item `DONE` (trừ `handover_status='REJECTED'` / `commission_locked`) 3 ngày; `office-evidence/` không xoá. Chỉ xoá file, link trong DB giữ nguyên. Hai job pg_cron xoá ảnh cũ đã gỡ (migration `20261003090000_unschedule_broken_photo_jobs.sql`).
 
 **Cron (pg_cron) — tự Hoàn tất khi khách không chấm** (migration `20260914120000_auto_complete_feedback_after_5m.sql`):
 - Job `auto_complete_feedback_job` chạy **mỗi phút** → `auto_complete_unrated_feedback()`.
