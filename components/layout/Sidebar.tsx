@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useNotifications } from '@/components/NotificationProvider';
 import { APP_VERSION, LAST_UPDATE } from '@/lib/version';
 import { MODULES } from '@/lib/constants';
 import { ModuleId } from '@/lib/types';
@@ -13,7 +14,6 @@ import {
   Users,
   PieChart,
   Banknote,
-  PiggyBank,
   Wallet,
   MenuSquare,
   ShieldAlert,
@@ -41,9 +41,12 @@ import {
   DoorOpen,
   MessageSquare,
   ToggleLeft,
+  Timer,
+  Trophy,
   RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { isServingLockedScreen } from '@/lib/ktv-screen';
 
 const ICONS: Record<string, React.ReactNode> = {
   dashboard: <Home size={20} />,
@@ -54,7 +57,6 @@ const ICONS: Record<string, React.ReactNode> = {
   payroll_commissions: <Banknote size={20} />,
   cashbook_supplies: <Wallet size={20} />,
   finance_management: <Banknote size={20} />,
-  finance_piggy_bank: <PiggyBank size={20} />,
   service_menu: <MenuSquare size={20} />,
   customer_reminders: <MessageSquare size={20} />,
   role_management: <ShieldAlert size={20} />,
@@ -64,6 +66,7 @@ const ICONS: Record<string, React.ReactNode> = {
   ktv_schedule: <CalendarDays size={20} />,
   ktv_performance: <TrendingUp size={20} />,
   ktv_history: <History size={20} />,
+  ktv_hours_ranking: <Trophy size={20} />,
   turn_tracking: <ListOrdered size={20} />,
   ktv_hub: <UserCheck size={20} />,
   ktv_wallet: <Wallet size={20} />,
@@ -78,6 +81,8 @@ const ICONS: Record<string, React.ReactNode> = {
   support_dashboard: <LayoutDashboard size={20} />,
   support_tasks_admin: <ClipboardCheck size={20} />,
   support_reviews_admin: <CheckSquare size={20} />,
+  ktv_office_scoring: <ClipboardCheck size={20} />,
+  ktv_office_hours: <Timer size={20} />,
   system_settings: <Settings size={20} />,
   settings: <Settings size={20} />,
 };
@@ -91,7 +96,6 @@ const PATHS: Record<string, string> = {
   payroll_commissions: '/finance/payroll',
   cashbook_supplies: '/finance/cashbook',
   finance_management: '/finance/ktv',
-  finance_piggy_bank: '/finance/piggy-bank',
   service_menu: '/admin/service-menu',
   customer_reminders: '/admin/customer-reminders',
   role_management: '/admin/roles',
@@ -101,6 +105,7 @@ const PATHS: Record<string, string> = {
   ktv_schedule: '/ktv/schedule',
   ktv_performance: '/ktv/performance',
   ktv_history: '/ktv/history',
+  ktv_hours_ranking: '/ktv/hours-ranking',
   turn_tracking: '/reception/turns',
   ktv_hub: '/reception/ktv-hub',
   ktv_wallet: '/ktv/wallet',
@@ -115,13 +120,29 @@ const PATHS: Record<string, string> = {
   support_dashboard: '/admin/support/dashboard',
   support_tasks_admin: '/admin/support/templates',
   support_reviews_admin: '/admin/support/reviews',
+  ktv_office_scoring: '/admin/ktv-office',
+  ktv_office_hours: '/admin/ktv-office/hours',
   employee_tasks: '/support/tasks',
   system_settings: '/admin/settings/system',
   settings: '/settings',
 };
 
+/**
+ * Mục menu có sáng hay không.
+ *
+ * Không dùng startsWith trần: '/admin/ktv-office' là tiền tố của
+ * '/admin/ktv-office/hours', nên đứng ở trang con sẽ làm sáng CẢ HAI mục.
+ * Mục cha nhường cho mục con khi trang con cũng có mặt trên menu.
+ */
+function isPathActive(pathname: string, path: string): boolean {
+  if (!path) return false;
+  const matches = (p: string) => pathname === p || pathname.startsWith(p + '/');
+  if (!matches(path)) return false;
+  return !Object.values(PATHS).some(p => p !== path && p.startsWith(path + '/') && matches(p));
+}
+
 // 🔧 UI CONFIGURATION
-const GROUP_ORDER = ['Vận Hành', 'Tài Chính & Kế Toán', 'Thiết Lập Nội Dung', 'Kỹ Thuật Viên', 'Giao Việc', 'Hệ Thống'];
+const GROUP_ORDER = ['Vận Hành', 'Tài Chính & Kế Toán', 'Thiết Lập Nội Dung', 'Kỹ Thuật Viên', 'Office', 'Hệ Thống'];
 
 interface SidebarProps {
   isOpen: boolean;
@@ -131,6 +152,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: SidebarProps) {
+  // 🔒 KTV đang trong một đơn → khoá điều hướng, không cho rời đi giữa chừng.
+  const { ktvScreen, ktvOrderLocked } = useNotifications();
+  const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
   const { hasPermission, user, role, logout } = useAuth();
   const pathname = usePathname();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
@@ -159,10 +183,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
   React.useEffect(() => {
     const newExpanded: Record<string, boolean> = {};
     Object.entries(groupedModules).forEach(([groupName, modules]) => {
-      const hasActiveLink = modules.some(m => {
-        const path = PATHS[m.id];
-        return pathname === path || pathname.startsWith(path + '/');
-      });
+      const hasActiveLink = modules.some(m => isPathActive(pathname, PATHS[m.id]));
       if (hasActiveLink) {
         newExpanded[groupName] = true;
       }
@@ -180,7 +201,23 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
 
   const renderLink = (module: typeof MODULES[0], showLabel: boolean) => {
     const path = PATHS[module.id];
-    const isActive = pathname === path || pathname.startsWith(path + '/');
+    const isActive = isPathActive(pathname, path);
+
+    // Đang phục vụ khách: khoá mọi mục trừ chính trang đang đứng.
+    if (isServingLocked && !isActive) {
+      return (
+        <div
+          key={module.id}
+          title="Đang trong đơn — bàn giao phòng xong mới chuyển mục khác được."
+          aria-disabled="true"
+          className={`flex items-center ${showLabel ? 'gap-3 px-3' : 'justify-center px-0'} py-2 rounded-xl text-gray-300 cursor-not-allowed select-none`}
+        >
+          <span className="text-gray-300">{ICONS[module.id]}</span>
+          {showLabel && <span className="text-sm truncate">{module.name}</span>}
+        </div>
+      );
+    }
+
     return (
       <Link
         key={module.id}
@@ -217,7 +254,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
 
       {/* Sidebar Content */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 flex flex-col h-screen transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 shadow-xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 flex flex-col h-[100dvh] transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${isExpanded ? 'w-64' : 'w-20'}`}
       >
         {/* Header: User Info */}
         <div className={`border-b border-gray-100 h-[69px] flex items-center ${isExpanded ? 'px-4 gap-3' : 'justify-center'}`}>
@@ -260,15 +297,17 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
 
         {/* Navigation */}
         <div className={`py-4 space-y-1 flex-1 overflow-y-auto w-full overflow-x-hidden ${isExpanded ? 'px-3' : 'px-3'}`}>
+          {isServingLocked && isExpanded && (
+            <div className="mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 text-[11px] font-semibold text-amber-700 leading-snug">
+              Đang trong đơn. Bàn giao phòng xong rồi mới chuyển mục khác được.
+            </div>
+          )}
           {isExpanded ? (
             // Expanded: Grouped dropdown navigation
             GROUP_ORDER.filter(g => groupedModules[g]?.length > 0).map(groupName => {
               const modules = groupedModules[groupName];
               const isGroupExpanded = expandedGroups[groupName];
-              const hasActiveInGroup = modules.some(m => {
-                const path = PATHS[m.id];
-                return pathname === path || pathname.startsWith(path + '/');
-              });
+              const hasActiveInGroup = modules.some(m => isPathActive(pathname, PATHS[m.id]));
 
               return (
                 <div key={groupName} className="mb-0.5">
@@ -314,7 +353,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
         </div>
 
       {/* Bottom Section for Settings */}
-      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 flex flex-col">
+      <div className="mt-auto border-t border-gray-100 bg-white z-10 w-full pl-0 pb-6 pb-safe flex flex-col">
         {/* Version & Reload Button */}
         <div className={`px-4 pt-4 pb-2 w-full flex flex-col ${isExpanded ? 'items-start' : 'items-center'} gap-2`}>
           <button

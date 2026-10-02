@@ -4,6 +4,7 @@ import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
 const getCurrentTime = () => {
@@ -83,6 +84,8 @@ const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
 export function useDispatchBoard(selectedDate: string, selectedOrderId: string | null) {
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [staffs, setStaffs] = useState<StaffData[]>([]);
+    /** Mã mà MÁY CHỦ đang nhận ra, khi nó khác người đang mở tab này. */
+    const [identityMismatch, setIdentityMismatch] = useState<string | null>(null);
     const [turns, setTurns] = useState<(TurnQueueData & { staff?: StaffData })[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [beds, setBeds] = useState<any[]>([]);
@@ -100,6 +103,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
     const selectedOrderIdRef = useRef(selectedOrderId);
     const needsRefreshRef = useRef(false);
+    // Latest turns/orders for realtime callbacks. Deciding "must we reload?" has to
+    // happen OUTSIDE a setState updater: updaters run during render, and calling a
+    // server action there makes React throw "Cannot update a component (Router)
+    // while rendering DispatchBoardPage" (15/09/2026).
+    const turnsRef = useRef(turns);
+    const ordersRef = useRef(orders);
+    useEffect(() => { turnsRef.current = turns; }, [turns]);
+    useEffect(() => { ordersRef.current = orders; }, [orders]);
 
     useEffect(() => {
         const wasEditing = !!selectedOrderIdRef.current;
@@ -111,6 +122,78 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         }
     }, [selectedOrderId]);
 
+    /**
+     * Áp danh sách nhân viên + sổ tua vào state.
+     * Tách riêng để `refreshStaffOnly` dùng lại được mà không đụng tới `orders`.
+     */
+    /**
+     * Ghép TurnQueue với Staff, rồi thêm "tua ảo" cho KTV đang BẬT NHẬN ĐƠN (on-call,
+     * chưa tới tiệm) để quầy thấy "Rảnh lúc HH:mm". Dùng chung cho cả hai chỗ set
+     * turns trong fetchData; trước đây chỗ thứ hai ghép lại từ đầu nên làm rơi on-call.
+     *
+     * 14/09/2026: bỏ tua ảo "luôn có" cho loại C (huỷ quyết định 13/09). KTV chưa
+     * điểm danh không nằm trong danh sách — quầy gõ ĐÚNG mã/tên để chọn, và
+     * `processDispatch` hỏi xác nhận. Tua ảo on-call mang `checked_in_today: false`.
+     *
+     * Mã placeholder cũ (EXT_/C_, đã ĐÃ NGHỈ) bị loại khỏi danh sách chọn:
+     * `syncTurnsForDate` vẫn có thể dựng lại dòng TurnQueue cho chúng từ
+     * TurnLedger ngày cũ, không được để lọt lên picker.
+     */
+    function mergeTurnsWithStaff(sData: StaffData[], tData: TurnQueueData[]) {
+        const merged = tData
+            .filter(t => !isPlaceholderStaffId(t.employee_id))
+            .map((t: TurnQueueData) => ({
+                ...t,
+                staff: sData.find(s => s.id === t.employee_id)
+            }));
+
+        const onCallStaffs = sData.filter(s => {
+            const flags = s.feature_flags as any;
+            return !!flags && flags.is_on_call === true;
+        });
+
+        onCallStaffs.forEach(staff => {
+            if (!merged.some(m => m.employee_id === staff.id)) {
+                merged.push({
+                    id: `fake-${staff.id}`,
+                    employee_id: staff.id,
+                    check_in_order: 999, // Đẩy xuống cuối
+                    turns_completed: 0,
+                    status: 'waiting',
+                    date: selectedDate,
+                    queue_position: 999,
+                    checked_in_today: false,
+                    staff: staff
+                } as any);
+            }
+        });
+        return merged;
+    }
+
+    function applyStaffAndTurns(sData: any, tData: any) {
+        if (sData) setStaffs(sData as unknown as StaffData[]);
+        if (!tData || !sData) return;
+        setTurns(mergeTurnsWithStaff(sData as unknown as StaffData[], tData as TurnQueueData[]));
+    }
+
+    /**
+     * Chỉ làm mới NHÂN VIÊN + SỔ TUA, không đụng tới `orders`.
+     *
+     * Khi lễ tân đang mở một đơn, mọi cập nhật realtime bị hoãn để không ghi đè
+     * form đang sửa. Nhưng danh sách KTV không phải dữ liệu của form: KTV vừa
+     * được duyệt điểm danh mà ô "+ Chọn KTV..." không thấy thì không điều phối
+     * được cho họ. Hàm này lấp đúng khoảng đó.
+     */
+    async function refreshStaffOnly() {
+        try {
+            const res = await getDispatchData(selectedDate);
+            if (!res.success || !res.data) return;
+            applyStaffAndTurns(res.data.staffs, res.data.turns);
+        } catch (err) {
+            console.error('❌ [Dispatch] refreshStaffOnly error:', err);
+        }
+    }
+
     async function fetchData() {
         setLoading(true);
         console.log("📡 [Dispatch] Fetching data for date:", selectedDate);
@@ -118,43 +201,18 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             const res = await getDispatchData(selectedDate);
             if (!res.success || !res.data) {
                 console.error("❌ [Dispatch] Server Action error:", JSON.stringify(res, null, 2));
+                // Phiên bị lẫn: máy chủ nhận ra một người khác với người đang mở
+                // tab này. Phải nói ra, không thì bảng trống trơn mà không ai
+                // hiểu vì sao — xem ghi chú ở getDispatchData.
+                setIdentityMismatch((res as any).identityMismatch || null);
                 setLoading(false);
                 return;
             }
+            setIdentityMismatch(null);
 
             const { staffs: sData, turns: tData, bookings: bData } = res.data;
 
-            if (sData) setStaffs(sData as unknown as StaffData[]);
-
-            if (tData && sData) {
-                const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
-                    ...t,
-                    staff: (sData as unknown as StaffData[]).find(s => s.id === t.employee_id)
-                }));
-                
-                // Thêm các KTV on_call vào merged nếu chưa có (Type B đang rảnh)
-                const onCallStaffs = (sData as unknown as StaffData[]).filter(s => {
-                    const flags = s.feature_flags as any;
-                    return flags && flags.is_on_call === true;
-                });
-                
-                onCallStaffs.forEach(staff => {
-                    if (!merged.some(m => m.employee_id === staff.id)) {
-                        merged.push({
-                            id: `fake-${staff.id}`,
-                            employee_id: staff.id,
-                            check_in_order: 999, // Đẩy xuống cuối
-                            turns_completed: 0,
-                            status: 'waiting',
-                            date: selectedDate,
-                            queue_position: 999,
-                            staff: staff
-                        } as any);
-                    }
-                });
-                
-                setTurns(merged);
-            }
+            applyStaffAndTurns(sData, tData);
 
             const rData = res.data.rooms || [];
             const bdData = res.data.beds || [];
@@ -166,7 +224,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             if (res.data.roomTransitionTime !== undefined) setRoomTransitionTime(res.data.roomTransitionTime);
             
             if (bData) {
-                const mappedOrders: PendingOrder[] = (bData as any[]).filter(b => b.status !== 'CANCELLED').map(b => {
+                const mappedOrders: PendingOrder[] = (bData as any[]).map(b => {
                     const assignedTurns = tData?.filter((t: any) => t.current_order_id === b.id) || [];
                     const hasAssignedKtv = assignedTurns.length > 0 || (b.BookingItems || []).some((bi: any) => {
                         const tc = bi.technicianCodes;
@@ -178,7 +236,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     else if (b.status === 'IN_PROGRESS') dStatus = 'IN_PROGRESS';
                     else if (b.status === 'CLEANING') dStatus = 'CLEANING';
                     else if (b.status === 'FEEDBACK') dStatus = 'FEEDBACK';
-                    else if (b.status === 'DONE' || b.status === 'CANCELLED') dStatus = 'DONE';
+                    else if (b.status === 'DONE') dStatus = 'DONE';
+                    else if (b.status === 'CANCELLED') dStatus = 'CANCELLED';
                     else if (hasAssignedKtv) dStatus = 'PREPARING';
 
                     let calculatedRating = b.rating || null;
@@ -215,6 +274,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         accessToken: b.accessToken || null,
                         rating: calculatedRating,
                         feedbackNote: b.feedbackNote || null,
+                        ktvReviewsOfReception: Array.isArray(b.ktvReviewsOfReception) ? b.ktvReviewsOfReception : [],
+                        ktvReports: Array.isArray(b.ktvReports) ? b.ktvReports : [],
                         vipWarnings: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.warnings : []; } catch { return []; } })() : [],
                         vipConfidence: b.notes && typeof b.notes === 'string' && b.notes.trim().startsWith('{') ? (() => { try { const p = JSON.parse(b.notes); return p.type === 'VIP_APPOINTMENT' ? p.confidence : undefined; } catch { return undefined; } })() : undefined,
                         timeStart: b.timeStart || null,
@@ -377,6 +438,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 selectedRoomId: bi.roomName || b.roomName || null,
                                 bedId: bi.bedId || b.bedId || null,
                                 staffList: staffList,
+                                // Chặng thô của cả dịch vụ. Thẻ Kanban cần nó để dựng lại
+                                // những KTV chỉ còn dấu vết trong `segments` — xem
+                                // `dsKtvHienThi` ở KanbanBoard.tsx.
+                                segments: parsedSegments,
                                 adminNote: itemCustomerNote,
                                 genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
@@ -397,7 +462,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 handover_images: bi.handover_images,
                                 itemRating: bi.itemRating || null,
                                 ktvRatings: bi.ktvRatings || {},
-                                customerGroupId: dStatus === 'pending' ? undefined : (bi.guest_id || parsedOptions?.customerGroupId),
+                                // Ô góp ý khách tích khi đánh giá — [{id, text}].
+                                // Có từ migration 20260907000000; đơn cũ thì null.
+                                violations: Array.isArray(bi.violations) ? bi.violations : null,
+                                customerGroupId: dStatus === 'pending' ? undefined : (parsedOptions?.customerGroupId || bi.guest_id),
                                 guestId: bi.guest_id
                             };
                         }),
@@ -427,7 +495,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 mappedOrders.forEach(order => {
                     order.services.forEach(svc => {
                         svc.staffList?.forEach(st => {
-                            if ((st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) && st.ktvName && st.ktvName !== st.ktvId) {
+                            if (isPlaceholderStaffId(st.ktvId) && st.ktvName && st.ktvName !== st.ktvId) {
                                 ktvDisplayNames[st.ktvId] = st.ktvName;
                             }
                         });
@@ -446,13 +514,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     });
                     setStaffs(patchedStaffs);
                     
-                    if (tData) {
-                        const merged = (tData as TurnQueueData[]).map((t: TurnQueueData) => ({
-                            ...t,
-                            staff: patchedStaffs.find(s => s.id === t.employee_id)
-                        }));
-                        setTurns(merged);
-                    }
+                    if (tData) setTurns(mergeTurnsWithStaff(patchedStaffs, tData as TurnQueueData[]));
                 }
                 
                 setOrders(mappedOrders);
@@ -483,17 +545,27 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 debouncedFetchData();
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Bookings' }, (payload: any) => {
-                setOrders(prev => prev.map(o => {
-                    if (o.id === payload.new.id) {
-                        const newStatus = payload.new.status;
-                        const isOpenStatus = ['NEW', 'WAITING', 'READY', 'PREPARING'].includes(newStatus);
-                        const mappedStatus = !o.hasAssignedKtv && isOpenStatus
-                            ? 'pending'
-                            : (isOpenStatus ? 'PREPARING' : (newStatus === 'CANCELLED' ? 'DONE' : newStatus));
-                        return { ...o, rawStatus: newStatus, dispatchStatus: mappedStatus };
-                    }
-                    return o;
-                }));
+                const newBooking = payload.new;
+                const validSources = ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'];
+                
+                const exists = ordersRef.current.some(o => o.id === newBooking.id);
+                if (!exists && validSources.includes(newBooking?.source) && newBooking.status !== 'CANCELLED') {
+                    // Bắt sự kiện đơn từ Web Booking vừa được xác nhận (đổi source thành WALK_IN).
+                    // Gọi NGOÀI setOrders — xem ghi chú ở ordersRef.
+                    debouncedFetchData();
+                } else setOrders(prev => {
+                    return prev.map(o => {
+                        if (o.id === newBooking.id) {
+                            const newStatus = newBooking.status;
+                            const isOpenStatus = ['NEW', 'WAITING', 'READY', 'PREPARING'].includes(newStatus);
+                            const mappedStatus = !o.hasAssignedKtv && isOpenStatus
+                                ? 'pending'
+                                : (isOpenStatus ? 'PREPARING' : newStatus);
+                            return { ...o, rawStatus: newStatus, dispatchStatus: mappedStatus };
+                        }
+                        return o;
+                    });
+                });
 
                 if (selectedOrderIdRef.current) {
                     needsRefreshRef.current = true;
@@ -502,16 +574,32 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, (payload: any) => {
                 if (payload.eventType === 'UPDATE') {
-                    setTurns(prev => prev.map(t => t.employee_id === payload.new.employee_id ? { ...t, ...payload.new } : t));
+                    // KTV chưa có trong state (tua tạo sau lần tải gần nhất) thì patch
+                    // không ăn vào đâu cả — phải kéo lại danh sách. Quyết định NGOÀI
+                    // setTurns: gọi server action trong updater là lỗi setState-in-render.
+                    if (!turnsRef.current.some(t => t.employee_id === payload.new.employee_id)) {
+                        refreshStaffOnly();
+                    } else {
+                        setTurns(prev => prev.map(t => t.employee_id === payload.new.employee_id ? { ...t, ...payload.new } : t));
+                    }
                 } else if (payload.eventType === 'DELETE') {
                     setTurns(prev => prev.filter(t => t.id !== payload.old.id));
                 } else {
+                    // INSERT = KTV vừa được duyệt điểm danh, có tên trong sổ tua hôm nay.
+                    // Đang mở đơn thì vẫn phải làm mới danh sách nhân viên ngay, nếu không
+                    // ô "+ Chọn KTV..." không thấy người vừa điểm danh; chỉ hoãn phần đơn hàng.
                     if (selectedOrderIdRef.current) {
                         needsRefreshRef.current = true;
+                        refreshStaffOnly();
                     } else {
                         debouncedFetchData();
                     }
                 }
+            })
+            // KTV bấm "Oria xin chào" trên dòng TurnQueue đang bận thì TurnQueue không đổi →
+            // không có event. Nghe KTVAttendance để nhãn "Chưa điểm danh" tự mất (14/09/2026).
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'KTVAttendance' }, () => {
+                refreshStaffOnly();
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'StaffNotifications' }, (payload) => {
                 if (selectedOrderIdRef.current) {
@@ -537,7 +625,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                     ...svc, 
                                     status: newItem.status,
                                     itemRating: newItem.itemRating,
-                                    ktvRatings: newItem.ktvRatings 
+                                    ktvRatings: newItem.ktvRatings,
+                                    // Phải chép cả `options`: dấu tích "KTV đã nhận đơn" đọc
+                                    // từ options.acceptedByStaff. Thiếu dòng này thì KTV bấm
+                                    // nhận xong quầy vẫn thấy "CHỜ NHẬN" cho tới khi F5.
+                                    options: newItem.options ?? svc.options,
+                                    handover_status: newItem.handover_status ?? svc.handover_status
                                 } : svc
                             );
                             return { ...o, services: updatedServices };
@@ -627,6 +720,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
     return {
         orders, setOrders,
         staffs, setStaffs,
+        identityMismatch,
         turns, setTurns,
         rooms, setRooms,
         beds, setBeds,

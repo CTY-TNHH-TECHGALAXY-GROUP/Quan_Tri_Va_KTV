@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineService';
+import { invalidateLockedStaffCache } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +87,7 @@ async function run(dry = false) {
 
     const vuaKhoa = results.filter(x => x.hanhDong === 'KHOA');
     if (vuaKhoa.length > 0 && !dry) {
+        invalidateLockedStaffCache();
         await createNotification({
             type: 'EMERGENCY',
             message: `Đã khoá ${vuaKhoa.length} KTV Loại D sau khi xong đơn: ${vuaKhoa.map(x => x.ten ? `${x.ten} (${x.staff})` : x.staff).join(', ')}`,
@@ -100,10 +103,8 @@ async function run(dry = false) {
 }
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const dry = new URL(request.url).searchParams.get('dry') === '1';
         return await run(dry);

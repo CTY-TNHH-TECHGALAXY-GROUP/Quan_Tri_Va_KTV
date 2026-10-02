@@ -34,7 +34,8 @@ import { isUtilityService } from '@/lib/booking.logic';
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getBusinessDate, ktvMatchesSeg } from '../_shared/utils';
+import { getBusinessDateFromConfig, ktvMatchesSeg } from '../_shared/utils';
+import { ktvAssignedToItem } from '@/lib/ktvUtils';
 import { HandoverService } from '@/lib/services/HandoverService';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 
@@ -47,6 +48,10 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         const API_START = Date.now();
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+
+        // Ngày làm việc: tính MỘT lần theo mốc cắt đang cấu hình.
+        // Trước đây mỗi chỗ gọi lại hàm viết cứng mốc 6h.
+        const bizToday = await getBusinessDateFromConfig(supabase);
 
         let bookingId = bookingIdParam;
 
@@ -87,7 +92,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 bookingId = validActiveItem.bookingId;
             } else {
                 // 1.b Nếu không có item IN_PROGRESS, lấy từ TurnQueue (đơn mới gán)
-                const today = getBusinessDate();
+                const today = bizToday;
                 const { data: turn, error: tError } = await supabase
                     .from('TurnQueue')
                     .select('current_order_id, booking_item_id, booking_item_ids, status')
@@ -101,7 +106,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     let nextAssign = null;
                     if (nextAssigns && nextAssigns.length > 0) {
                         const bIds = nextAssigns.map((a: any) => a.booking_id);
-                        const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED")');
+                        const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
                         const validBIds = new Set(bData?.map((b: any) => b.id) || []);
                         nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
                     }
@@ -112,17 +117,98 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
         }
 
+        // Hai truy vấn mở đầu KHÔNG phụ thuộc nhau — bắn cùng lúc thay vì nối đuôi.
+        // Mỗi vòng tới Supabase tốn ~90ms, xếp hàng hai vòng là mất gần 200ms trước
+        // khi chạm được dữ liệu thật.
+        const bookingIdAtStart = bookingId;
+        const [rawBookingRes, preAssignRes] = await Promise.all([
+            (bookingId && technicianCode)
+                ? supabase.from('Bookings').select('id, status').eq('id', bookingId).maybeSingle()
+                : Promise.resolve({ data: null }),
+            (bookingId && technicianCode)
+                ? supabase
+                    .from('KtvAssignments')
+                    .select('id, status, booking_item_id, room_id, bed_id')
+                    .eq('employee_id', technicianCode)
+                    .eq('booking_id', bookingId)
+                    .eq('business_date', bizToday)
+                    .maybeSingle()
+                : Promise.resolve({ data: null }),
+        ]);
+
+        // 🔥 LỚP 2: SPLIT GUARD - Tự động đá văng hoặc chuyển hướng đơn cha bị tách
+        if (bookingId && technicianCode) {
+            const rawBooking = rawBookingRes.data as any;
+            if (rawBooking && rawBooking.status === 'SPLIT') {
+                console.warn(`🚫 [KTV] Đơn cha SPLIT bị đá văng: KTV ${technicianCode} đang giữ mã ${bookingId}`);
+                
+                const { data: childBookings } = await supabase
+                    .from('Bookings')
+                    .select('id')
+                    .eq('parent_booking_id', bookingId);
+                
+                let foundChildId = null;
+                if (childBookings && childBookings.length > 0) {
+                    const childIds = childBookings.map(b => b.id);
+                    const { data: childItems } = await supabase
+                        .from('BookingItems')
+                        .select('bookingId, status, timeStart')
+                        .in('bookingId', childIds)
+                        .contains('technicianCodes', [technicianCode])
+                        .not('status', 'in', '("DONE","CANCELLED")')
+                        .order('timeStart', { ascending: true, nullsFirst: false });
+                    
+                    if (childItems && childItems.length > 0) {
+                        foundChildId = childItems[0].bookingId;
+                    }
+                }
+
+                if (foundChildId) {
+                    console.warn(`🔄 [KTV] Chuyển hướng KTV ${technicianCode} sang Đơn con: ${foundChildId}`);
+                    bookingId = foundChildId;
+                    await supabase.from('TurnQueue').update({ current_order_id: foundChildId }).eq('employee_id', technicianCode).eq('date', bizToday);
+                    await supabase.from('KtvAssignments')
+                        .update({ booking_id: foundChildId, updated_at: new Date().toISOString() })
+                        .eq('employee_id', technicianCode)
+                        .eq('business_date', bizToday)
+                        .eq('booking_id', rawBooking.id)
+                        .in('status', ['QUEUED', 'READY', 'ACTIVE']);
+                } else {
+                    console.warn(`🚫 [KTV] Không tìm thấy đơn con, đá văng KTV ${technicianCode} về Dashboard`);
+                    await supabase.from('TurnQueue').update({
+                        current_order_id: null,
+                        booking_item_id: null,
+                        booking_item_ids: [],
+                        status: 'waiting'
+                    }).eq('employee_id', technicianCode).eq('date', bizToday);
+                    await supabase.from('KtvAssignments')
+                        .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+                        .eq('employee_id', technicianCode)
+                        .eq('business_date', bizToday)
+                        .eq('booking_id', rawBooking.id)
+                        .in('status', ['QUEUED', 'READY', 'ACTIVE']);
+                    return NextResponse.json({ success: true, data: null });
+                }
+            }
+        }
+
         // ─── 2. AUTO-ACTIVATE ASSIGNMENT ───
         // (PHẢI tuần tự - có write operations / side effects)
         if (bookingId && technicianCode) {
-            const today = getBusinessDate();
-            const { data: assign } = await supabase
-                .from('KtvAssignments')
-                .select('id, status, booking_item_id, room_id, bed_id')
-                .eq('employee_id', technicianCode)
-                .eq('booking_id', bookingId)
-                .eq('business_date', today)
-                .maybeSingle();
+            const today = bizToday;
+            // Dùng lại kết quả đã bắn song song ở trên. Chỉ hỏi lại khi SPLIT GUARD
+            // vừa chuyển hướng sang đơn con — lúc đó bản đã lấy thuộc về đơn cha.
+            let assign = preAssignRes.data as any;
+            if (bookingId !== bookingIdAtStart) {
+                const { data: reAssign } = await supabase
+                    .from('KtvAssignments')
+                    .select('id, status, booking_item_id, room_id, bed_id')
+                    .eq('employee_id', technicianCode)
+                    .eq('booking_id', bookingId)
+                    .eq('business_date', today)
+                    .maybeSingle();
+                assign = reAssign;
+            }
             
             if (assign && (assign.status === 'QUEUED' || assign.status === 'READY')) {
                 // 2a. Tự động giải phóng các active assignment khác bị kẹt của KTV này trong ngày
@@ -188,7 +274,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         // ⚡ NHÓM 2: PARALLEL FETCH CHÍNH (5 queries cùng lúc)
         // Tất cả chỉ cần bookingId + technicianCode → chạy song song
         // ═══════════════════════════════════════════════════════════════
-        const today = getBusinessDate();
+        const today = bizToday;
         
         const [bookingRes, turnInfoRes, itemsRes, rewardConfigRes, nextAssignsRes, guestsRes] = await Promise.all([
             // Q1: Fetch booking data
@@ -213,7 +299,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             supabase
                 .from('BookingItems')
                 .select('*')
-                .eq('bookingId', bookingId!),
+                .eq('bookingId', bookingId!)
+                .order('id'),
 
             // Q4: Fetch reward config
             supabase
@@ -226,7 +313,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             technicianCode
                 ? supabase
                     .from('KtvAssignments')
-                    .select('booking_id, planned_start_time')
+                    .select('booking_id, booking_item_id, planned_start_time')
                     .eq('employee_id', technicianCode)
                     .eq('business_date', today)
                     .in('status', ['QUEUED', 'READY'])
@@ -265,7 +352,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 let nextAssign = null;
                 if (nextAssigns && nextAssigns.length > 0) {
                     const bIds = nextAssigns.map((a: any) => a.booking_id);
-                    const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED")');
+                    const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
                     const validBIds = new Set(bData?.map((b: any) => b.id) || []);
                     nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
                 }
@@ -274,7 +361,12 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             return NextResponse.json({ success: true, data: null });
         }
 
-        if (iError) console.error('Error fetching booking items:', iError);
+        if (iError) throw iError;
+
+        // Một bookingId lưu từ phiên cũ không được kéo đơn của KTV khác vào dashboard.
+        if (technicianCode && !(items || []).some((item: any) => ktvAssignedToItem(item, technicianCode))) {
+            return NextResponse.json({ success: true, data: null, reason: 'not_assigned' });
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // ⚡ NHÓM 3: PARALLEL ENRICH (Services + Rooms cùng lúc)
@@ -283,12 +375,21 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
 
         const [svcsRes, roomDataRes] = await Promise.all([
             // Q6: Fetch all services (for enrichment)
-            (items && items.length > 0)
-                ? supabase
+            // Chỉ lấy đúng những dịch vụ đơn này dùng. Trước đây kéo cả danh mục
+            // (149 dòng, kèm procedure/description dài) chỉ để tra 1-2 dòng.
+            // Tra theo cả id lẫn code vì BookingItems.serviceId đang mang giá trị
+            // kiểu 'NHS1014' — trùng cả hai cột, nhưng đừng phụ thuộc vào đó.
+            (() => {
+                const ids = Array.from(new Set(
+                    (items || []).map((i: any) => String(i.serviceId || '').trim()).filter(Boolean)
+                ));
+                if (ids.length === 0) return Promise.resolve({ data: null, error: null });
+                const list = `(${ids.map(v => `"${v}"`).join(',')})`;
+                return supabase
                     .from('Services')
                     .select('id, code, nameVN, nameEN, duration, focusConfig, description, procedure, service_description, is_utility')
-                    .limit(1000)
-                : Promise.resolve({ data: null, error: null }),
+                    .or(`id.in.${list},code.in.${list}`);
+            })(),
 
             // Q7: Fetch room procedures
             roomId
@@ -331,14 +432,38 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 } else if (booking?.notes && typeof booking.notes === 'string' && !booking.notes.trim().startsWith('{')) {
                     bCustomerNote = String(booking.notes);
                 }
-                const customerNote = [bCustomerNote, opts.note, i.customerNote].filter(Boolean).join(' | ');
+                // Clean opts.note: remove focus/strength/avoid info already shown as parsed badges
+                let cleanedOptsNote = opts.note || '';
+                if (cleanedOptsNote) {
+                    // Remove patterns like "Tập trung: ARM, BACK, ..., WHOLE_BODY" or "Lực: Vừa" anywhere in text
+                    cleanedOptsNote = cleanedOptsNote
+                        .replace(/[,\s]*Tập trung:\s*[A-Z_,\s]+/gi, '')
+                        .replace(/[,\s]*Focus:\s*[A-Z_,\s]+/gi, '')
+                        .replace(/[,\s]*Lực:\s*\S+/gi, '')
+                        .replace(/[,\s]*Strength:\s*\S+/gi, '')
+                        .replace(/[,\s]*Tránh:\s*[A-Z_,\s]+/gi, '')
+                        .replace(/[,\s]*Avoid:\s*[A-Z_,\s]+/gi, '')
+                        // Clean up leftover artifacts: lines ending with ":", empty lines, double spaces
+                        .replace(/^[\s""-]*.+:\s*$/gm, '')
+                        .replace(/^-\s*$/gm, '')
+                        .replace(/^\s*[""]?\s*-?\s*[""]?\s*$/gm, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                }
+                const customerNote = [bCustomerNote, cleanedOptsNote, i.customerNote].filter(Boolean).join(' | ');
                 const notesForKtvs = opts.notesForKtvs || {};
                 const noteForKtv = (technicianCode && notesForKtvs[technicianCode]) 
                     ? notesForKtvs[technicianCode] 
                     : (opts.noteForKtv || '');
                 const focusAreas = formatBodyAreas(opts.focus || i.focus || opts.focusArea || '');
                 const avoidAreas = formatBodyAreas(opts.avoid || i.avoid || '');
-                const strength = normalizeStrength(opts.strength || '');
+                // Fallback: parse strength from opts.note if not in dedicated field
+                let strengthRaw = opts.strength || '';
+                if (!strengthRaw && opts.note) {
+                    const strengthMatch = opts.note.match(/Lực:\s*(\S+)/i) || opts.note.match(/Strength:\s*(\S+)/i);
+                    if (strengthMatch) strengthRaw = strengthMatch[1];
+                }
+                const strength = normalizeStrength(strengthRaw);
                 const therapistGender = opts.therapist || ''; 
 
                 let finalDuration = svc?.duration || (sId.includes('nhs0000') ? 1 : 60);
@@ -445,8 +570,14 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             }
             
             if (!activeItemId && assignedItemIds.length > 0) {
-                activeItemId = assignedItemIds[0];
-                statusSource = 'turnqueue_array';
+                // Chỉ nhận item THUỘC VỀ KTV này. Hàng đợi tua có lúc ôm cả các item
+                // của KTV khác trong cùng đơn; lấy bừa phần tử đầu là trả nhầm item
+                // của đồng nghiệp, kéo theo cả trạng thái nhận đơn của họ.
+                const mine = assignedItemIds.find((id: string) => ktvItems.some((i: any) => i.id === id));
+                if (mine) {
+                    activeItemId = mine;
+                    statusSource = 'turnqueue_array';
+                }
             }
             
             if (!activeItemId) {
@@ -527,6 +658,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         // ⚡ NHÓM 4: PARALLEL EXTRAS (next booking details + prefetch checklist)
         // ═══════════════════════════════════════════════════════════════
         let nextBookingId: string | null = null;
+        let nextBookingItemId: string | null = null;   // id ĐƠN CON — dùng cho luồng từ chối tua
+        let nextBillCode: string | null = null;
         let nextServiceName: string | null = null;
         let nextStartTime: string | null = null;
         let prefetchedDynamicChecklist: any = null;
@@ -535,13 +668,21 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         let validNextAssign: any = null;
         if (nextAssignsRaw && nextAssignsRaw.length > 0) {
             const bIds = nextAssignsRaw.map((a: any) => a.booking_id);
-            const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED")');
+            const { data: bData } = await supabase.from('Bookings').select('id, status, "billCode"').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
             const validBIds = new Set(bData?.map((b: any) => b.id) || []);
             validNextAssign = nextAssignsRaw.find((a: any) => validBIds.has(a.booking_id));
+            if (validNextAssign) {
+                nextBillCode = bData?.find((b: any) => b.id === validNextAssign.booking_id)?.billCode ?? null;
+            }
         }
 
         if (validNextAssign) {
             nextBookingId = validNextAssign.booking_id;
+            // ⚠️ `nextBookingId` là id của BOOKING. Luồng từ chối tua cần id của
+            // BOOKING ITEM — trước đây gửi nhầm booking id nên API tra
+            // BookingItems không ra gì, KTV không bị gỡ khỏi đơn và thời lượng
+            // gói không xác định được (rơi về mặc định 60 phút).
+            nextBookingItemId = validNextAssign.booking_item_id ?? null;
             if (validNextAssign.planned_start_time) {
                 const pst = new Date(validNextAssign.planned_start_time);
                 const vnPst = new Date(pst.getTime() + 7 * 60 * 60 * 1000);
@@ -562,7 +703,10 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     try {
                         const { data: allNextItems } = await supabase
                             .from('BookingItems')
-                            .select('serviceId, options, duration, technicianCodes')
+                            // Bo `duration`: BookingItems khong co cot nay va doan duoi
+                            // cung khong dung toi. Chi vi no ma ca truy van loi, nen ten
+                            // don ke tiep chua bao gio hien duoc.
+                            .select('serviceId, options, technicianCodes')
                             .eq('bookingId', validNextAssign.booking_id);
 
                         let nextItems: any[] = [];
@@ -578,10 +722,15 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                         if (nextItems && nextItems.length > 0) {
                             const svcIds = nextItems.map((ni: any) => String(ni.serviceId || '').trim().toLowerCase()).filter(Boolean);
                             if (svcIds.length > 0) {
+                                // Lấy đúng vài dịch vụ cần tên, không kéo cả danh mục.
+                                const rawIds = Array.from(new Set(
+                                    nextItems.map((ni: any) => String(ni.serviceId || '').trim()).filter(Boolean)
+                                ));
+                                const nextList = `(${rawIds.map((v: string) => `"${v}"`).join(',')})`;
                                 const { data: svcs } = await supabase
                                     .from('Services')
                                     .select('id, code, nameVN')
-                                    .limit(500);
+                                    .or(`id.in.${nextList},code.in.${nextList}`);
                                 const svcMap = new Map();
                                 if (svcs) svcs.forEach((s: any) => {
                                     if (s.id) svcMap.set(String(s.id).trim().toLowerCase(), s);
@@ -604,12 +753,18 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
 
             // Extra 2: Âm thầm tải trước Checklist Bàn giao ngay từ lúc KTV đang làm dịch vụ (IN_PROGRESS)
             // Để triệt tiêu hoàn toàn thời gian load (0 giây) khi chuyển sang màn Bàn Giao
-            (computedStatus === 'IN_PROGRESS' || computedStatus === 'FEEDBACK' || computedStatus === 'CLEANING')
+            // DONE cũng phải nạp trước: đơn NỢ bàn giao luôn ở DONE, mà đó đúng là
+            // lúc KTV mở màn Bàn giao lại để trả nợ. Thiếu DONE ở đây thì lần nào
+            // vào cũng phải gọi thêm một vòng API nữa, chờ thêm ~1 giây.
+            (computedStatus === 'IN_PROGRESS' || computedStatus === 'FEEDBACK'
+                || computedStatus === 'CLEANING' || computedStatus === 'DONE')
                 ? (async () => {
                     try {
                         const sCode = activeItemForStatus?.serviceCode || activeItemForStatus?.service_code || '';
                         const sCat = activeItemForStatus?.service_category || activeItemForStatus?.category || '';
-                        const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomId || null;
+                        // `roomId` không phải cột của BookingItems — tên phòng nằm ở `roomName`,
+                        // và Rooms.id chính là tên phòng ('T', 'V2') nên dùng thẳng được.
+                        const rId = turnInfo?.room_id || booking.roomId || activeItemForStatus?.roomName || null;
                         const sId = activeItemForStatus?.serviceId || null;
                         console.log(`🔍 [Prefetch Checklist] sCode=${sCode} sCat=${sCat} rId=${rId} itemId=${activeItemId || activeItemForStatus?.id} serviceId=${sId}`);
                         const result = await HandoverService.generateDynamicChecklist(
@@ -699,6 +854,41 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 BookingItems: itemsWithService,
                 assignedItemId: activeItemId,
                 assignedItemIds: ktvItems.map((i: any) => i.id),
+                // Mốc KTV bấm "Xác nhận nhận đơn". Rỗng nghĩa là đơn vừa được điều phối,
+                // màn KTV phải hỏi nhận hay từ chối trước khi cho vào chi tiết đơn.
+                //
+                // Chỉ tính mốc CỦA CHÍNH KTV đang hỏi. Một item gán 2 người thì người
+                // kia đã nhận không có nghĩa là mình đã nhận.
+                acceptedAt: (() => {
+                    const it = itemsWithService.find((i: any) => i.id === activeItemId);
+                    if (!it || !technicianCode) return null;
+                    const o = typeof it.options === 'string' ? JSON.parse(it.options || '{}') : (it.options || {});
+                    const mine = o.acceptedByStaff?.[technicianCode.toUpperCase()];
+                    if (mine) return mine;
+
+                    // ⚠️ Người VÀO THAY thì KHÔNG được hưởng nhánh dữ liệu cũ bên dưới.
+                    // Đơn này đã được người trước nhận rồi, và đơn cũ chỉ lưu một cặp
+                    // `acceptedAt`/`acceptedBy` chung — người thay sẽ khớp nhầm vào đó
+                    // và app coi như họ đã nhận đơn, bỏ luôn màn hỏi nhận/từ chối.
+                    // Họ phải tự bấm nhận, vì đó là lúc app báo "khách đang ở sẵn
+                    // trong phòng, phòng đã mở".
+                    let segsCuaToi: any[] = [];
+                    try {
+                        const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
+                        segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
+                            String(x?.ktvId || '').toLowerCase().includes(String(technicianCode).toLowerCase()));
+                    } catch { }
+                    const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
+                    if (laNguoiVaoThay) return null;
+
+                    // Dữ liệu cũ chỉ có một cặp acceptedAt/acceptedBy — chấp nhận khi
+                    // đúng là mình đã bấm, hoặc khi không rõ ai bấm (đơn trước bản vá).
+                    if (o.acceptedAt && (!o.acceptedBy
+                        || String(o.acceptedBy).toUpperCase() === technicianCode.toUpperCase())) {
+                        return o.acceptedAt;
+                    }
+                    return null;
+                })(),
                 activeSegmentIndex: activeSegmentIndex,
                 statusSource: statusSource,
                 last_served_at: turnInfo?.last_served_at,
@@ -710,6 +900,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 handoverChecklist: roomProcedures.handover_checklist,
                 ktv_instant_reward_enabled: ktv_instant_reward_enabled,
                 nextBookingId: nextBookingId,
+                nextBookingItemId: nextBookingItemId,
+                nextBillCode: nextBillCode,
                 nextServiceName: nextServiceName,
                 nextStartTime: nextStartTime,
                 ktvWorkTypes: ktvWorkTypes
@@ -721,4 +913,3 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
-

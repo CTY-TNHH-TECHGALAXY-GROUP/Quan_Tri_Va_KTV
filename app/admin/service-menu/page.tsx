@@ -22,7 +22,7 @@ export default function ServiceMenuPage() {
   // Drawer states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  
+
   // Deep Body modal state
   const [isDeepBodyModalOpen, setIsDeepBodyModalOpen] = useState(false);
 
@@ -135,12 +135,18 @@ export default function ServiceMenuPage() {
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setIsDeepBodyModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-sm transition-colors border border-purple-200"
+              className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-sm transition-colors border border-purple-200 cursor-pointer"
             >
               <Settings2 size={16} />
               Cấu Hình Deep Body
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors">
+            <button 
+              onClick={() => {
+                setSelectedService(null);
+                setIsDrawerOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition-colors cursor-pointer"
+            >
               <Plus size={16} />
               Thêm Dịch Vụ Mới
             </button>
@@ -278,7 +284,7 @@ export default function ServiceMenuPage() {
           fetchData(); // reload on success
         }}
       />
-      
+
       <DeepBodySettingsModal 
         isOpen={isDeepBodyModalOpen}
         onClose={() => setIsDeepBodyModalOpen(false)}

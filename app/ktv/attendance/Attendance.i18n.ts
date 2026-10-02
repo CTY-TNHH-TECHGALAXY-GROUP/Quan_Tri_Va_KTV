@@ -35,6 +35,7 @@ export const t = {
     reasonPlaceholder: 'Ví dụ: Kẹt xe, do lý do cá nhân...',
     reasonOptional: 'Lý do/Ghi chú (tùy chọn)',
     reasonRequiredGeneral: 'Lý do/Ghi chú (*)',
+    offEndTimeRequired: 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.',
 
     // Photo
     addPhoto: (count: number, max: number) => `Thêm ảnh (${count}/${max})`,

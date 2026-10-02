@@ -1,19 +1,25 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { Wrench } from 'lucide-react';
 import { t } from './FeatureMaintenanceNotice.i18n';
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.25;
+// Toasts render at z-[9999]; the full-screen notice must sit above them or a
+// stale error toast floats over the only message the KTV is supposed to read.
+const FULLSCREEN_Z_CLASS = 'z-[10000]';
 
 interface FeatureMaintenanceNoticeProps {
     /**
-     * `inline`  — inside a page (History, a wallet tab).
-     * `compact` — one-row card in place of a form field (check-in withdraw box).
+     * `inline`     — inside a page (History, a wallet tab, a modal body).
+     * `compact`    — one-row card in place of a dashboard tile.
+     * `fullscreen` — replaces the whole app (manual account lock).
      */
-    variant?: 'inline' | 'compact';
+    variant?: 'inline' | 'compact' | 'fullscreen';
+    /** Shown only in the fullscreen variant: a locked KTV has nowhere else to go. */
+    onLogout?: () => void;
     className?: string;
 }
 
@@ -24,6 +30,7 @@ interface FeatureMaintenanceNoticeProps {
  */
 export const FeatureMaintenanceNotice = ({
     variant = 'inline',
+    onLogout,
     className = '',
 }: FeatureMaintenanceNoticeProps) => {
     if (variant === 'compact') {
@@ -37,19 +44,39 @@ export const FeatureMaintenanceNotice = ({
         );
     }
 
+    const body = (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: ANIMATION_DURATION }}
+            className="w-full max-w-sm px-6 py-8 text-center"
+        >
+            <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-5">
+                <Wrench size={28} />
+            </div>
+            <p className="text-lg font-bold text-gray-900">{t.title}</p>
+            {variant === 'fullscreen' && onLogout && (
+                <button
+                    onClick={onLogout}
+                    className="mt-8 w-full min-h-[44px] bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl transition-colors"
+                >
+                    {t.logout}
+                </button>
+            )}
+        </motion.div>
+    );
+
+    if (variant === 'fullscreen') {
+        return (
+            <div className={`fixed inset-0 ${FULLSCREEN_Z_CLASS} flex items-center justify-center bg-white ${className}`}>
+                {body}
+            </div>
+        );
+    }
+
     return (
         <div className={`flex items-center justify-center py-16 ${className}`}>
-            <motion.div
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: ANIMATION_DURATION }}
-                className="w-full max-w-sm px-6 py-8 text-center"
-            >
-                <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-5">
-                    <Wrench size={28} />
-                </div>
-                <p className="text-lg font-bold text-gray-900">{t.title}</p>
-            </motion.div>
+            {body}
         </div>
     );
 };

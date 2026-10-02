@@ -4,14 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Employee } from '@/lib/types';
 import { useAuth } from '@/lib/auth-context';
 import { getStaffList, deleteStaffMember } from './actions';
-
-// 🔧 CONFIGURATION
-const DEFAULT_SKILLS = {
-    hairCut: false, shampoo: true, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
-    machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: true, hotStoneBody: false, scrubBody: false, bodyMix: false,
-    foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
-};
+import { FALLBACK_SKILLS } from '@/lib/constants/staff.constants';
 
 // Legacy foot skill keys to merge into unified 'foot'
 const LEGACY_FOOT_KEYS = ['oilFoot', 'hotStoneFoot', 'acupressureFoot'];
@@ -35,8 +28,7 @@ export const useEmployeeManagement = () => {
         setIsLoading(true);
         const res = await getStaffList();
         if (res.success && res.data) {
-            const filteredData = res.data.filter((s: any) => s.work_type !== 'TYPE_C');
-            const mapped: Employee[] = filteredData.map((s: any) => ({
+            const mapped: Employee[] = res.data.map((s: any) => ({
                 id: s.id,
                 code: s.id,
                 name: s.full_name,
@@ -47,6 +39,15 @@ export const useEmployeeManagement = () => {
                 experience: s.experience || '0 năm',
                 status: s.status === 'ĐANG LÀM' ? 'active' : 'inactive',
                 photoUrl: s.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.full_name)}&background=random`,
+                galleryUrls: Array.isArray(s.gallery_urls)
+                    ? s.gallery_urls.map((item: any) => {
+                        // String thuần → giữ nguyên (tương thích ảnh cũ)
+                        if (typeof item === 'string' && item.trim()) return item.trim();
+                        // Object {url, kind, therapyId} → giữ nguyên metadata
+                        if (item && typeof item === 'object' && typeof item.url === 'string' && item.url.trim()) return item;
+                        return null;
+                      }).filter(Boolean)
+                    : [],
                 phone: s.phone || '',
                 email: s.email || '',
                 dob: s.birthday || '',
@@ -60,8 +61,9 @@ export const useEmployeeManagement = () => {
                 baseSalary: 0,
                 commissionRate: 0,
                 rating: 5.0,
-                isActiveVipMenu: s.is_active_vip_menu || false,
+                isActiveVipMenu: s.is_active_vip_menu === true,
                 isHomeSpa: s.is_home_spa || false,
+                isActiveTherapyMenu: s.is_active_therapy_menu === true,
                 work_type: s.work_type || 'TYPE_A',
                 baseSalaryPerHour: s.base_salary_per_hour || 180000,
                 targetHoursPerMonth: s.target_hours_per_month || 80,
@@ -78,10 +80,22 @@ export const useEmployeeManagement = () => {
                         : (s.feature_flags || {});
                     return (flags.kpi_target_hours || 0) > 0;
                 })(),
+                isAvatarHidden: (() => {
+                    const flags = typeof s.feature_flags === 'string'
+                        ? (function(){ try { return JSON.parse(s.feature_flags); } catch { return {}; } })()
+                        : (s.feature_flags || {});
+                    return flags.show_avatar === false || flags.hide_avatar === true || flags.is_avatar_hidden === true;
+                })(),
+                showAvatar: (() => {
+                    const flags = typeof s.feature_flags === 'string'
+                        ? (function(){ try { return JSON.parse(s.feature_flags); } catch { return {}; } })()
+                        : (s.feature_flags || {});
+                    return !(flags.show_avatar === false || flags.hide_avatar === true || flags.is_avatar_hidden === true);
+                })(),
                 skills: (() => {
-                    const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : DEFAULT_SKILLS;
+                    const dbSkills = s.skills && Object.keys(s.skills).length > 0 ? s.skills : FALLBACK_SKILLS;
                     const parsedSkills: any = {};
-                    for (const key in DEFAULT_SKILLS) {
+                    for (const key in FALLBACK_SKILLS) {
                         const val = dbSkills[key];
                         // Nếu DB cũ chứa 'basic', 'expert', 'training' hoặc `true` -> true
                         parsedSkills[key] = val === true || val === 'basic' || val === 'expert' || val === 'training';

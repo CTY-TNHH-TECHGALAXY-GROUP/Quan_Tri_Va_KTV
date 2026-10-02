@@ -1,27 +1,33 @@
 export const API = {
+  AUTH: {
+    SESSION_CHECK: (staffId: string, issuedAt: string) =>
+      `/api/auth/session-check?staffId=${encodeURIComponent(staffId)}&issuedAt=${encodeURIComponent(issuedAt)}`,
+  },
   KTV: {
     BOOKING: '/api/ktv/booking',
     SETTINGS: '/api/ktv/settings',
     ON_CALL: '/api/ktv/on-call',
+    TYPE_D_ON_CALL: '/api/ktv/type-d/on-call',
     INTERACTION: '/api/ktv/interaction',
     REVIEW: '/api/ktv/review',
     NOTIFICATIONS: (techCode: string) => `/api/ktv/notifications?techCode=${techCode}`,
     NOTIFICATION_MARK_READ: (id: string) => `/api/ktv/notifications?id=${id}`,
     WALLET: {
+      ACCESS: (techCode: string) => `/api/ktv/wallet/access?techCode=${techCode}`,
       BALANCE: (techCode: string) => `/api/ktv/wallet/balance?techCode=${techCode}`,
       TIMELINE: (techCode: string) => `/api/ktv/wallet/timeline?techCode=${techCode}`,
       WITHDRAW: '/api/ktv/wallet/withdraw',
-      PIGGY_BANK: (techCode: string) => `/api/ktv/wallet/piggy-bank?techCode=${techCode}`,
       BONUS_BALANCE: (techCode: string) => `/api/ktv/wallet/bonus/balance?techCode=${techCode}`,
       BONUS_TIMELINE: (techCode: string) => `/api/ktv/wallet/bonus/timeline?techCode=${techCode}`,
-      ACCESS: (techCode: string) => `/api/ktv/wallet/access?techCode=${techCode}`,
     },
     ATTENDANCE: '/api/ktv/attendance',
     ATTENDANCE_STATUS: (employeeId: string) => `/api/ktv/attendance/status?employeeId=${employeeId}`,
+    ATTENDANCE_ADJUSTMENT: '/api/ktv/attendance-adjustment',
     ATTENDANCE_CONFIRM: '/api/ktv/attendance/confirm',
     ATTENDANCE_PENDING: '/api/ktv/attendance/pending',
     ATTENDANCE_HISTORY: '/api/ktv/attendance/history',
     LEAVE: '/api/ktv/leave',
+    DAILY_REGISTRATION: '/api/ktv/daily-registration',
     SHIFT: '/api/ktv/shift',
     HISTORY: (techCode: string, from: string, to: string) =>
       `/api/ktv/history?techCode=${techCode}&dateFrom=${from}&dateTo=${to}`,
@@ -32,7 +38,6 @@ export const API = {
   },
   ADMIN: {
     NOTIFICATION_RULES: '/api/admin/notification-rules',
-    PIGGY_BANK: '/api/admin/piggy-bank',
     SETTINGS_SYSTEM: '/api/admin/settings/system',
     UPDATE_WIFI_IP: '/api/admin/update-wifi-ip',
   },

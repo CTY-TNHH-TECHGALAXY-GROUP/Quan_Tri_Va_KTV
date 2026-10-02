@@ -1,30 +1,41 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        // Check authentication if needed (e.g. cron secret)
-        const authHeader = request.headers.get('authorization');
-        if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-        }
-
         const now = new Date();
-        const mins15Ago = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
+
+        // Hạn duyệt lấy từ cài đặt (Cài đặt > Tính năng > Bàn giao phòng), không
+        // để số cứng ở đây — HandoverService.autoApproveExpired đã đọc khoá này,
+        // hai nơi cùng một luật thì phải cùng một nguồn.
+        const { data: apCfg } = await supabase
+            .from('SystemConfigs').select('value').eq('key', 'reception_auto_approve_minutes').maybeSingle();
+        const approveMins = Number.parseInt(String((apCfg as any)?.value ?? '15'), 10) || 15;
+
+        const mins15Ago = new Date(now.getTime() - approveMins * 60 * 1000).toISOString();
         const mins10Ago = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
         // 1. Auto Approve Handover (Reception timeout 15 mins)
         // Tìm những item có handover_status = PENDING và cập nhật đã quá 15 phút
-        const { data: pendingItems } = await supabase
+        // Đếm hạn từ MỐC NỘP. `updated_at` không tồn tại trên bảng này nên truy
+        // vấn cũ lỗi âm thầm; và lọc theo `handover_status` không thôi là sai vì
+        // cột đó mặc định 'PENDING' cho cả item chưa từng bàn giao.
+        const { data: pendingItems, error: pendingErr } = await supabase
             .from('BookingItems')
-            .select('id, updated_at')
+            .select('id')
             .eq('handover_status', 'PENDING')
-            .lte('updated_at', mins15Ago);
+            .not('handover_submitted_at', 'is', null)
+            .lte('handover_submitted_at', mins15Ago);
+
+        if (pendingErr) console.error('[Cron] Loi tim don cho duyet:', pendingErr);
 
         if (pendingItems && pendingItems.length > 0) {
             const itemIds = pendingItems.map(i => i.id);
@@ -32,6 +43,9 @@ export async function GET(request: Request) {
                 .from('BookingItems')
                 .update({ 
                     handover_status: 'APPROVED', 
+                    // Đã duyệt thì không thể còn là "bỏ qua" — DB có CHECK chặn
+                    // cặp APPROVED + skipped=true.
+                    handover_skipped: false,
                     handover_comment: 'Tự động duyệt do quá thời gian' 
                 })
                 .in('id', itemIds);
@@ -43,10 +57,14 @@ export async function GET(request: Request) {
         // Tìm những item đang FEEDBACK, đã APPROVED bàn giao, và cập nhật đã quá 10 phút
         const { data: feedbackItems } = await supabase
             .from('BookingItems')
-            .select('id, updated_at, bookingId')
+            .select('id, bookingId')
             .eq('status', 'FEEDBACK')
             .eq('handover_status', 'APPROVED')
-            .lte('updated_at', mins10Ago);
+            // "BookingItems" khong co cot `updated_at` — truy van cu loi va bi nuot,
+            // nen auto-PASS danh gia khach chua bao gio chay. Dem han tu `timeEnd`
+            // (luc ket thuc dich vu), day cung la moc khach bat dau danh gia duoc.
+            .not('timeEnd', 'is', null)
+            .lte('timeEnd', mins10Ago);
 
         if (feedbackItems && feedbackItems.length > 0) {
             const itemIds = feedbackItems.map(i => i.id);

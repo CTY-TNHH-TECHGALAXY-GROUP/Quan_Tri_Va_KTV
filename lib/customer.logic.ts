@@ -1,5 +1,3 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-
 // =============================================
 // 🔧 SHARED CONSTANTS — Single Source of Truth
 // Sửa ở đây = áp dụng toàn hệ thống
@@ -54,71 +52,3 @@ export const isNameMatch = (name1: string, name2: string): boolean => {
   const n2 = (name2 || '').toLowerCase().trim();
   return !n1 || !n2 || n1 === n2 || n1.includes(n2) || n2.includes(n1);
 };
-
-// =============================================
-// 🎯 MAIN IDENTIFY FUNCTION
-// Dùng cho: Identify API, Webhook, hoặc bất kỳ nơi nào
-// cần nhận diện nhanh 1 khách bằng phone/email
-// =============================================
-
-export interface CustomerIdentity {
-  isReturning: boolean;
-  visitCount: number;
-  guestType: 'Khách Cũ' | 'Khách Mới';
-  customerName: string;
-  notes: string;
-}
-
-/**
- * Thuật toán kiểm tra Khách Cũ / Khách Mới
- * Dùng được cho cả API, Server Actions và Webhooks.
- *
- * @param phoneOrEmail Số điện thoại hoặc email khách hàng cần kiểm tra.
- * @returns Thông tin định danh khách hàng (isReturning, visitCount, customerName, notes)
- */
-export async function identifyCustomer(phoneOrEmail: string): Promise<CustomerIdentity | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    console.error('❌ [identifyCustomer] Supabase Admin không khởi tạo được.');
-    return null;
-  }
-  
-  const normalizedInput = phoneOrEmail?.trim();
-  if (!normalizedInput || normalizedInput === '' || isDummyPhone(normalizedInput) || isDummyEmail(normalizedInput)) {
-    return null; // Bỏ qua input rỗng, chứa toàn số 0 (Dummy phone) hoặc email ảo (không có @)
-  }
-
-  try {
-    // 1. Tìm thông tin cơ bản & Ghi chú từ bảng Customers
-    const { data: customer } = await supabase
-      .from('Customers')
-      .select('id, fullName, notes')
-      .or(`phone.eq.${normalizedInput},email.eq.${normalizedInput}`)
-      .maybeSingle();
-
-    // 2. Đếm số đơn hàng ĐÃ HOÀN TẤT của khách này
-    const { count: visitCount, error } = await supabase
-      .from('Bookings')
-      .select('*', { count: 'exact', head: true })
-      .or(`customerPhone.eq.${normalizedInput},customerEmail.eq.${normalizedInput}`)
-      .in('status', COMPLETED_STATUSES);
-
-    if (error) {
-      console.error('❌ [identifyCustomer] Lỗi khi query Bookings:', error);
-    }
-
-    const visits = visitCount || 0;
-    const isReturning = isReturningCustomer(visits);
-
-    return {
-      isReturning,
-      visitCount: visits,
-      guestType: isReturning ? 'Khách Cũ' : 'Khách Mới',
-      customerName: customer?.fullName || 'Khách Vãng Lai',
-      notes: customer?.notes || ''
-    };
-  } catch (error) {
-    console.error('❌ [identifyCustomer] Lỗi nghiêm trọng:', error);
-    return null;
-  }
-}

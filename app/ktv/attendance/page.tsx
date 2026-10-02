@@ -7,13 +7,23 @@ import {
     ExternalLink, Loader2, XCircle, LogOut, LogIn, Camera, AlertCircle, SwitchCamera
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useKTVAttendance } from './Attendance.logic';
+import { daQuaGio } from '@/lib/business-date';
+import { vnNow } from '@/lib/vn-time';
+import { useKTVAttendance, usesTypeBAttendanceFlow } from './Attendance.logic';
 import { t } from './Attendance.i18n';
 import AttendanceTypeB from './_components/AttendanceTypeB';
+import AttendanceTypeD from './_components/AttendanceTypeD';
 import { OnCallWidget } from './_components/OnCallWidget';
+import { useToast } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { fmtGioBuoi } from '@/lib/hours-format';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
 const KTVAttendancePage = () => {
+    const { addToast } = useToast();
+    const [confirmDialog, setConfirmDialog] = React.useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; } | null>(null);
+    const [isExtensionModalOpen, setIsExtensionModalOpen] = React.useState(false);
     const {
         checkStatus,
         currentRecord,
@@ -22,6 +32,7 @@ const KTVAttendancePage = () => {
         initialLoading,
         canAccessPage,
         canCheckOut,
+        roomDebt,
         checkoutBlockedUntil,
         isLoadingShift,
         isLate,
@@ -41,8 +52,22 @@ const KTVAttendancePage = () => {
         availableUntil,
         refreshAttendanceStatus,
         incompleteTasksCount,
-        withdrawShowsMaintenance
+        guestArrivalLock,
+        todayRegistration,
+        dayCutoffHours,
+        canRequestWithdraw,
+        withdrawShowsMaintenance,
+        isAdjusting,
+        setIsAdjusting,
+        adjustmentType,
+        setAdjustmentType,
+        lateExpectedTime,
+        setLateExpectedTime,
+        isSubmittingAdjustment,
+        handleAdjustmentSubmit,
+        shiftExtension
     } = useKTVAttendance();
+    const isTypeBFlow = usesTypeBAttendanceFlow(workType);
 
     // 🔧 UI CONFIGURATION
     const MAX_PHOTOS = 5;
@@ -70,6 +95,7 @@ const KTVAttendancePage = () => {
     const [reason, setReason] = React.useState<string>('');
     const [isOnCall, setIsOnCall] = React.useState(false);
     const [selectedShiftType, setSelectedShiftType] = React.useState<string>('');
+    const [formError, setFormError] = React.useState<string | null>(null);
     const [estimatedEndTime, setEstimatedEndTime] = React.useState<string>('');
     const [deviceIP, setDeviceIP] = React.useState<string>('');
     const [wantsToWithdraw, setWantsToWithdraw] = React.useState(false);
@@ -103,7 +129,7 @@ const KTVAttendancePage = () => {
             setIsCameraOpen(true);
         } catch (err) {
             setUseFallbackCamera(true);
-            alert('Không thể truy cập Camera trực tiếp. Hệ thống đã tự động bật "Chụp dự phòng"!');
+            addToast('Không thể truy cập Camera trực tiếp. Hệ thống tự động bật "Chụp dự phòng"!', 'error');
         }
     };
 
@@ -167,7 +193,7 @@ const KTVAttendancePage = () => {
         const brightness = getAverageBrightness(canvas);
         console.log(`🔆 [Brightness Check] Giá trị: ${brightness.toFixed(1)} | Ngưỡng: ${minPhotoBrightness}`);
         if (brightness < minPhotoBrightness) {
-            alert('⚠️ Ảnh quá tối!\nVui lòng bật đèn hoặc di chuyển đến nơi có đủ ánh sáng rồi chụp lại.');
+            addToast('Ảnh quá tối! Vui lòng bật đèn hoặc di chuyển đến nơi sáng hơn.', 'error');
             return;
         }
 
@@ -262,7 +288,7 @@ const KTVAttendancePage = () => {
         
         if (type !== 'OVERTIME') {
             if (type === 'CHECK_IN' && availableUntil) {
-                setEstimatedEndTime(availableUntil);
+                setEstimatedEndTime(workType === 'TYPE_D' ? availableUntil.slice(0, 5) : availableUntil);
             } else {
                 setEstimatedEndTime('');
             }
@@ -271,8 +297,10 @@ const KTVAttendancePage = () => {
         if (type === 'CHECK_OUT' && isEarlyCheckout) {
             setSelectedShiftType('SUDDEN_OFF_CHECKOUT');
         } else {
-            if (workType === 'TYPE_B') {
+            if (isTypeBFlow) {
                 setSelectedShiftType('VIP');
+            } else if (workType === 'TYPE_D') {
+                setSelectedShiftType('');
             } else {
                 setSelectedShiftType(activeShiftType || 'FREE');
             }
@@ -373,7 +401,7 @@ const KTVAttendancePage = () => {
                 });
             } catch (err: any) {
                 if (err?.message === 'TOO_DARK') {
-                    alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi có đủ ánh sáng.');
+                    addToast('Ảnh quá tối! Vui lòng chụp lại ở nơi sáng hơn.', 'error');
                     continue;
                 }
                 // Fallback to raw FileReader if compression fails
@@ -398,17 +426,33 @@ const KTVAttendancePage = () => {
     };
 
     const handleSubmitForm = () => {
-        if (selectedShiftType === 'SUDDEN_OFF') {
-            if (!window.confirm("Bạn đã chắc chắn muốn xin nghỉ đột xuất hôm nay không?")) {
-                return;
-            }
-            setIsFormOpen(false);
-            handleAttendance('SUDDEN_OFF', null, null, null);
+        setFormError(null);
+        const isTypeDOffCheckIn =
+            workType === 'TYPE_D'
+            && todayRegistration?.status === 'OFF_REGISTERED'
+            && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
+
+        if (isTypeDOffCheckIn && !/^([01]\d|2[0-3]):[0-5]\d$/.test(estimatedEndTime)) {
+            setFormError(t.offEndTimeRequired);
             return;
         }
-        if (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || workType === 'TYPE_B')) {
+
+        if (selectedShiftType === 'SUDDEN_OFF') {
+            setConfirmDialog({
+                isOpen: true,
+                title: 'Xin nghỉ đột xuất',
+                message: 'Bạn đã chắc chắn muốn xin nghỉ đột xuất hôm nay không?',
+                onConfirm: () => {
+                    setConfirmDialog(null);
+                    setIsFormOpen(false);
+                    handleAttendance('SUDDEN_OFF', null, null, null);
+                }
+            });
+            return;
+        }
+        if (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'FREE' || isTypeBFlow)) {
             if (!estimatedEndTime) {
-                alert('Vui lòng chọn thời gian dự kiến kết thúc/về!');
+                setFormError('Vui lòng chọn thời gian dự kiến kết thúc/về!');
                 return;
             }
         }
@@ -419,7 +463,7 @@ const KTVAttendancePage = () => {
             photos.length > 0 ? photos : null, 
             reason, 
             (formType === 'CHECK_IN' || formType === 'CHECK_OUT') ? selectedShiftType : null,
-            (formType === 'CHECK_IN' && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || workType === 'TYPE_B')) ? estimatedEndTime : null,
+            (isTypeDOffCheckIn || (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (selectedShiftType === 'VIP' || selectedShiftType === 'FREE' || isTypeBFlow))) ? estimatedEndTime : null,
             wantsToWithdraw,
             isLiveCaptureMode
         );
@@ -427,7 +471,7 @@ const KTVAttendancePage = () => {
 
     return (
         <AppLayout title="Chấm Công">
-            <div className="max-w-sm mx-auto px-4 py-8 space-y-6 relative">
+            <div className="max-w-sm md:max-w-lg mx-auto px-4 py-8 space-y-6 relative">
                 <div>
                     <p className="text-sm text-gray-500">{t.pageSubtitle}</p>
                 </div>
@@ -445,9 +489,36 @@ const KTVAttendancePage = () => {
                     )}
 
                     {/* Nếu là KTV Loại B thì hiển thị component riêng của Loại B, nếu không thì hiển thị luồng mặc định (IDLE/PENDING/CONFIRMED...) */}
-                    {workType === 'TYPE_B' && user?.code ? (
-                        <div className="w-full">
-                            <AttendanceTypeB ktvId={user.code} checkStatus={checkStatus} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} />
+                    {/* Trong lúc gửi điểm danh (tải ảnh lên) phải thấy rõ là đang chạy.
+                        Khối báo trạng thái LOADING_GPS bên dưới chỉ nằm trong luồng mặc
+                        định, nên loại B/D bấm xong màn hình y nguyên — nhân viên tưởng
+                        hỏng rồi bấm lại. Lớp phủ này vừa báo vừa chặn bấm trùng. */}
+                    {checkStatus === 'LOADING_GPS' && (isTypeBFlow || workType === 'TYPE_D') && (
+                        <div className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 flex items-center justify-center gap-3 mb-4">
+                            <Loader2 size={20} className="animate-spin text-blue-500" />
+                            <span className="text-blue-700 font-bold text-sm">Đang gửi điểm danh & tải ảnh…</span>
+                        </div>
+                    )}
+
+                    {isTypeBFlow && user?.code ? (
+                        <div className={`w-full ${checkStatus === 'LOADING_GPS' ? 'opacity-40 pointer-events-none' : ''}`}>
+                            <AttendanceTypeB ktvId={user.code} checkStatus={checkStatus} onCheckIn={() => openForm('CHECK_IN')} onCheckOut={() => openForm('CHECK_OUT')} onRefreshStatus={refreshAttendanceStatus} incompleteTasksCount={incompleteTasksCount} roomDebt={roomDebt} />
+                        </div>
+                    ) : workType === 'TYPE_D' && user?.code ? (
+                        <div className={`w-full ${checkStatus === 'LOADING_GPS' ? 'opacity-40 pointer-events-none' : ''}`}>
+                            <AttendanceTypeD
+                                ktvId={user.code}
+                                checkStatus={checkStatus}
+                                onCheckIn={() => openForm('CHECK_IN')}
+                                onCheckOut={() => openForm('CHECK_OUT')}
+                                onRefreshStatus={refreshAttendanceStatus}
+                                incompleteTasksCount={incompleteTasksCount}
+                                roomDebt={roomDebt}
+                                guestArrivalLock={guestArrivalLock}
+                                shiftExtension={shiftExtension}
+                                onOpenShiftExtensionModal={() => setIsExtensionModalOpen(true)}
+                                showOvertimeFeature={showOvertimeFeature}
+                            />
                         </div>
                     ) : (
                         <>
@@ -567,9 +638,14 @@ const KTVAttendancePage = () => {
                                                         {t.shiftStart(format(new Date(currentRecord.checkedAt), 'HH:mm — dd/MM/yyyy'))}
                                                     </p>
                                                 )}
-                                                {currentRecord?.estimatedEndTime && (activeShiftType === 'FREE' || showOvertimeFeature) && (
-                                                    <p className="text-[13px] font-bold text-teal-600 mt-1.5">
-                                                        Giờ về dự kiến: {currentRecord.estimatedEndTime} {activeShiftType !== 'FREE' ? '(Làm thêm)' : ''}
+                                                {shiftExtension?.currentEndTime && (
+                                                    <p className="text-[13px] font-bold text-indigo-600 mt-1.5 flex items-center justify-center gap-1">
+                                                        <Clock size={14} /> Giờ về dự kiến: {shiftExtension.currentEndTime}
+                                                        {shiftExtension.used && (
+                                                            <span className="ml-1 text-[11px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">
+                                                                Đã gia hạn
+                                                            </span>
+                                                        )}
                                                     </p>
                                                 )}
                                             </div>
@@ -579,61 +655,112 @@ const KTVAttendancePage = () => {
                                                     <Loader2 size={16} className="animate-spin" />
                                                     Đang kiểm tra giờ ca...
                                                 </div>
-                                            ) : incompleteTasksCount > 0 ? (
-                                                <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center space-y-2">
-                                                    <p className="text-red-700 text-sm font-semibold">
-                                                        ⚠️ Bạn còn {incompleteTasksCount} công việc chưa được Admin nghiệm thu (Passed).
-                                                    </p>
-                                                    <p className="text-red-600 text-xs">
-                                                        Vui lòng hoàn thành công việc và chờ Admin duyệt trước khi tan ca.
-                                                    </p>
-                                                </div>
-                                            ) : !canCheckOut && checkoutBlockedUntil ? (
-                                                <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2">
-                                                    <p className="text-amber-700 text-sm font-semibold">
-                                                        {t.cannotCheckOutYet(checkoutBlockedUntil)}
-                                                    </p>
-                                                </div>
-                                            ) : null}
-                                            <button
-                                                onClick={() => {
-                                                    if (incompleteTasksCount > 0) return;
+                                            ) : (
+                                                <>
+
+                                                    {roomDebt?.total > 0 ? (
+                                                        <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center space-y-2 mb-3">
+                                                            <p className="text-red-700 text-sm font-semibold">
+                                                                ⚠️ Bạn còn nợ {roomDebt.total} phòng chưa trả xong.
+                                                            </p>
+                                                            <p className="text-red-600 text-xs">
+                                                                {[
+                                                                    roomDebt.handover > 0 ? `${roomDebt.handover} phòng chưa nộp ảnh bàn giao` : '',
+                                                                    roomDebt.cleaning > 0 ? `${roomDebt.cleaning} phòng đang dọn dở` : '',
+                                                                ].filter(Boolean).join(' · ')}
+                                                            </p>
+                                                            <p className="text-red-600 text-xs">
+                                                                Vào Dashboard trả hết nợ rồi mới tan ca được.
+                                                            </p>
+                                                        </div>
+                                                    ) : incompleteTasksCount > 0 ? (
+                                                        <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center space-y-2 mb-3">
+                                                            <p className="text-red-700 text-sm font-semibold">
+                                                                ⚠️ Bạn còn {incompleteTasksCount} công việc chưa được Admin nghiệm thu (Passed).
+                                                            </p>
+                                                            <p className="text-red-600 text-xs">
+                                                                Vui lòng hoàn thành công việc và chờ Admin duyệt trước khi tan ca.
+                                                            </p>
+                                                        </div>
+                                                    ) : !canCheckOut && checkoutBlockedUntil ? (
+                                                        <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2 mb-3">
+                                                            <p className="text-amber-700 text-sm font-semibold">
+                                                                {t.cannotCheckOutYet(checkoutBlockedUntil)}
+                                                            </p>
+                                                        </div>
+                                                    ) : null}
                                                     
-                                                    const isEarly = activeShiftType !== 'FREE' && !canCheckOut && allowEarlyCheckout;
+                                                    {showOvertimeFeature && (
+                                                        shiftExtension.used ? (
+                                                            <button
+                                                                type="button"
+                                                                disabled
+                                                                className="w-full mb-3 py-3.5 bg-slate-100 text-slate-400 font-bold text-base rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 border border-slate-200"
+                                                            >
+                                                                <Clock size={18} /> Đã dùng lượt gia hạn ({shiftExtension.currentEndTime})
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsExtensionModalOpen(true)}
+                                                                disabled={!shiftExtension.canExtend}
+                                                                className={`w-full mb-3 py-3.5 font-bold text-base rounded-2xl transition-all flex items-center justify-center gap-2 ${
+                                                                    shiftExtension.canExtend
+                                                                        ? 'bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md shadow-indigo-200'
+                                                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                                                }`}
+                                                                title={shiftExtension.deadlineReached ? 'Đã quá giờ gia hạn' : !shiftExtension.currentEndTime ? 'Chưa đăng ký giờ tan làm' : !shiftExtension.canExtend ? 'Không thể gia hạn ca này' : undefined}
+                                                            >
+                                                                <Clock size={18} /> {shiftExtension.deadlineReached ? 'Đã quá giờ gia hạn' : `Gia hạn giờ làm ${!shiftExtension.currentEndTime ? '(Chưa có giờ tan)' : ''}`}
+                                                            </button>
+                                                        )
+                                                    )}
 
-                                                    // Thông báo nhắc nhở riêng cho Ca Tự Do nếu về sớm hơn giờ dự kiến
-                                                    if (activeShiftType === 'FREE' && currentRecord?.estimatedEndTime) {
-                                                        const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-                                                        const [estH, estM] = currentRecord.estimatedEndTime.split(':').map(Number);
-                                                        
-                                                        const estDate = new Date(vnNow);
-                                                        estDate.setUTCHours(estH, estM, 0, 0); 
-                                                        
-                                                        if (vnNow.getTime() < estDate.getTime()) {
-                                                            if (!window.confirm(`⚠️ Bạn đang tan ca sớm hơn giờ dự kiến (${currentRecord.estimatedEndTime}).\n\nVui lòng thông báo cho lễ tân biết để sắp xếp khách nhé!\n\nNhấn OK để tiếp tục tan ca.`)) {
-                                                                return;
+                                                    <button
+                                                        onClick={() => {
+                                                            if (incompleteTasksCount > 0) return;
+                                                            if (roomDebt?.total > 0) return;
+                                                            if (guestArrivalLock?.active) return;
+                                                            
+                                                            const isEarly = activeShiftType !== 'FREE' && !canCheckOut && allowEarlyCheckout;
+
+                                                            // Thông báo nhắc nhở riêng cho Ca Tự Do nếu về sớm hơn giờ dự kiến
+                                                            if (activeShiftType === 'FREE' && currentRecord?.estimatedEndTime) {
+                                                                const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+                                                                const [estH, estM] = currentRecord.estimatedEndTime.split(':').map(Number);
+                                                                
+                                                                const estDate = new Date(vnNow);
+                                                                estDate.setUTCHours(estH, estM, 0, 0); 
+                                                                
+                                                                if (vnNow.getTime() < estDate.getTime()) {
+                                                                    setConfirmDialog({
+                                                                        isOpen: true,
+                                                                        title: 'Xác nhận tan ca sớm',
+                                                                        message: `Bạn đang tan ca sớm hơn giờ dự kiến (${currentRecord.estimatedEndTime}).\n\nVui lòng thông báo cho lễ tân biết để sắp xếp khách nhé!`,
+                                                                        onConfirm: () => {
+                                                                            setConfirmDialog(null);
+                                                                            openForm('CHECK_OUT', isEarly);
+                                                                        }
+                                                                    });
+                                                                    return;
+                                                                }
                                                             }
-                                                        }
-                                                    }
 
-                                                    openForm('CHECK_OUT', isEarly);
-                                                }}
-                                                disabled={incompleteTasksCount > 0 || isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
-                                                className={`w-full py-4 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 ${
-                                                    incompleteTasksCount > 0
-                                                        ? 'bg-gray-400 text-white cursor-not-allowed opacity-50'
-                                                        : 'bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-md shadow-rose-200'
-                                                }`}
-                                            >
-                                                <LogOut size={22} /> {incompleteTasksCount > 0 ? 'CHƯA THỂ TAN CA' : 'Oria Xin Cảm ơn'}
-                                            </button>
-                                            {showOvertimeFeature && ['SHIFT_1', 'SHIFT_2', 'SHIFT_3'].includes(activeShiftType || '') && (
-                                                <button
-                                                    onClick={() => openForm('OVERTIME')}
-                                                    className="w-full mt-3 py-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2"
-                                                >
-                                                    <Clock size={22} /> Đăng ký làm thêm giờ
-                                                </button>
+                                                            openForm('CHECK_OUT', isEarly);
+                                                        }}
+                                                        disabled={guestArrivalLock?.active || incompleteTasksCount > 0 || roomDebt?.total > 0 || isLoadingShift || (!allowEarlyCheckout && !canCheckOut)}
+                                                        title={guestArrivalLock?.active ? (guestArrivalLock.message || 'Quầy đang báo có khách, chưa thể tan ca.') : undefined}
+                                                        className={`w-full py-4 font-bold text-lg rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all ${
+                                                            guestArrivalLock?.active
+                                                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                                                : (incompleteTasksCount > 0 || roomDebt?.total > 0)
+                                                                ? 'bg-gray-400 text-white cursor-not-allowed opacity-50'
+                                                                : 'bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-md shadow-rose-200'
+                                                        }`}
+                                                    >
+                                                        <LogOut size={22} /> {(incompleteTasksCount > 0 || roomDebt?.total > 0) ? 'CHƯA THỂ TAN CA' : 'Oria Xin Cảm ơn'}
+                                                    </button>
+                                                </>
                                             )}
                                         </>
                                     )}
@@ -682,46 +809,15 @@ const KTVAttendancePage = () => {
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
                             <h3 className="text-lg font-black text-gray-900 text-center uppercase tracking-wide">
-                                {formType === 'CHECK_IN' ? (workType === 'TYPE_B' ? 'Báo Cáo Đến Tiệm' : 'Oria Xin Chào') :
-                                 (formType === 'CHECK_OUT' || formType === 'OVERTIME') ? (workType === 'TYPE_B' ? 'Báo Cáo Tan Ca' : 'Oria Xin Cảm ơn') :
+                                {formType === 'CHECK_IN' ? (isTypeBFlow ? 'Báo Cáo Đến Tiệm' : 'Oria Xin Chào') :
+                                 formType === 'CHECK_OUT' ? (isTypeBFlow ? 'Báo Cáo Tan Ca' : 'Oria Xin Cảm ơn') :
                                  'Điểm danh bổ sung'}
                             </h3>
 
-                            {formType === 'OVERTIME' && (
-                                <div className="space-y-4">
-                                    <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
-                                        Dự kiến kết thúc lúc mấy giờ? <span className="text-rose-500">(*)</span>
-                                    </label>
-                                    <input 
-                                        type="time" 
-                                        value={estimatedEndTime} 
-                                        onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white font-medium text-gray-700" 
-                                        required
-                                    />
-                                    <div className="flex gap-3 pt-2">
-                                        <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
-                                        <button 
-                                            onClick={() => {
-                                                if (!estimatedEndTime) {
-                                                    alert('Vui lòng chọn giờ kết thúc dự kiến!');
-                                                    return;
-                                                }
-                                                setIsFormOpen(false);
-                                                handleAttendance('OVERTIME', null, null, null, estimatedEndTime, false);
-                                            }}
-                                            className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-colors shadow-md"
-                                        >
-                                            Xác nhận
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {formType === 'CHECK_IN' && workType !== 'TYPE_B' && (
+                            {formType === 'CHECK_IN' && !isTypeBFlow && workType !== 'TYPE_D' && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-gray-700 block">Ca làm việc hôm nay</label>
-                                    {activeShiftType ? (
+                                    {activeShiftType && !isOffToday ? (
                                         <select 
                                             value={selectedShiftType}
                                             onChange={(e) => setSelectedShiftType(e.target.value)}
@@ -746,7 +842,7 @@ const KTVAttendancePage = () => {
                                                     <span>Hôm nay là ngày OFF của bạn.</span>
                                                 </div>
                                             )}
-                                            {!isOffToday && shiftFetchError ? (
+                                            {shiftFetchError ? (
                                                 <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
                                                     <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
                                                         <AlertCircle size={14} className="shrink-0" />
@@ -767,17 +863,68 @@ const KTVAttendancePage = () => {
                                                 >
                                                     <option value="FREE">Ca tự do (Linh hoạt)</option>
                                                     <option value="REQUEST">Làm khách yêu cầu</option>
-                                                    {!isOffToday && <option value="SUDDEN_OFF">Nghỉ đột xuất</option>}
+                                                    <option value="SUDDEN_OFF">Nghỉ đột xuất</option>
                                                 </select>
                                             )}
                                         </>
                                     )}
+
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && selectedShiftType !== 'SUDDEN_OFF' && selectedShiftType !== 'FREE' && user?.roleId !== 'support' && user?.roleId !== 'dev' && (
+                            {formType === 'CHECK_IN' && workType === 'TYPE_D' && (
+                                <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                    {todayRegistration ? (
+                                        (() => {
+                                            // Giờ hẹn có hiệu lực: đã báo trễ thì tính theo giờ hẹn mới,
+                                            // chưa báo thì theo giờ đăng ký ban đầu.
+                                            const gioHen = String(todayRegistration.late_expected_time || todayRegistration.expected_time || '').slice(0, 5);
+                                            const gioBayGio = format(vnNow(), 'HH:mm');
+                                            const isOff = todayRegistration.status === 'OFF_REGISTERED';
+                                            // So theo PHÚT TRONG NGÀY LÀM VIỆC: ca qua nửa đêm thì so chuỗi
+                                            // 'HH:mm' trần sẽ báo muộn oan (23:00 không muộn hơn 01:50 cùng ca).
+                                            const diMuon = !isOff && daQuaGio(gioHen, gioBayGio, dayCutoffHours) === true;
+                                            return (
+                                                <>
+                                                    <p className={`text-center font-bold ${diMuon ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {isOff
+                                                            ? 'Nghỉ làm (OFF)'
+                                                            : todayRegistration.late_expected_time
+                                                                ? `Đã báo trễ — hẹn có mặt: ${fmtGioBuoi(gioHen)}`
+                                                                : `Giờ bạn đã đăng ký: ${fmtGioBuoi(gioHen) || '--:--'}`}
+                                                    </p>
+                                                    {/* Nói thẳng lúc bấm điểm danh, đừng để cuối tháng chốt sổ
+                                                        mới biết mình bị tính đi trễ.
+
+                                                        Không nhắc lại giờ hiện tại hay giờ đã hẹn: đồng hồ nằm
+                                                        ngay trên đầu máy, còn giờ đã hẹn thì ở dòng ngay trên. */}
+                                                    {diMuon && (
+                                                        <p className="text-center text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                                                            Bạn đã ĐI MUỘN
+                                                        </p>
+                                                    )}
+                                                </>
+                                            );
+                                        })()
+                                    ) : (
+                                        <div className="text-center">
+                                            <p className="text-sm font-bold text-amber-600">
+                                                Bạn chưa đăng ký lịch hôm nay
+                                            </p>
+                                            <p className="text-xs text-rose-600 mt-1 font-semibold">
+                                                Vào Lịch Làm Việc → Đăng Ký Làm để đăng ký ngay. Hết ngày chưa đăng ký, tài khoản sẽ bị khoá.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Ô rút tiền CHỈ hiện ở lần điểm danh ĐẦU TIÊN trong ngày.
+                                Từ lần thứ hai trở đi thì ẩn hẳn — không quan tâm lần đầu
+                                có tích hay không. */}
+                            {formType === 'CHECK_IN' && selectedShiftType !== 'SUDDEN_OFF' && canRequestWithdraw && user?.roleId !== 'support' && user?.roleId !== 'dev' && (
                                 withdrawShowsMaintenance ? (
-                                    /* Ví Tua switched off → say so where the box used to be. */
+                                    /* TUA wallet switched off → say so where the box used to be. */
                                     <div className="pt-2 border-t border-gray-100">
                                         <FeatureMaintenanceNotice variant="compact" />
                                     </div>
@@ -794,13 +941,17 @@ const KTVAttendancePage = () => {
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-sm font-bold text-indigo-900">Yêu cầu rút tiền</span>
-                                            <span className="text-xs text-indigo-600 font-medium mt-0.5">Yêu cầu rút tiền của bạn sẽ được xử lý trong vòng 24h</span>
                                         </div>
                                     </label>
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && (workType === 'TYPE_B' || selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && (
+                            {(() => {
+                                const isTypeDOffCheckIn =
+                                    workType === 'TYPE_D'
+                                    && todayRegistration?.status === 'OFF_REGISTERED'
+                                    && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
+                                return (isTypeDOffCheckIn || (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (isTypeBFlow || selectedShiftType === 'FREE' || selectedShiftType === 'VIP'))) && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-sm font-semibold text-gray-700 block text-left flex gap-1 items-center">
                                         Dự kiến về lúc mấy giờ? <span className="text-rose-500">(*)</span>
@@ -809,13 +960,13 @@ const KTVAttendancePage = () => {
                                         type="time" 
                                         value={estimatedEndTime} 
                                         onChange={e => setEstimatedEndTime(e.target.value)}
-                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${workType === 'TYPE_B' && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
+                                        className={`w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700 ${!isTypeDOffCheckIn && isTypeBFlow && !!availableUntil ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'bg-white'}`} 
                                         required
-                                        disabled={workType === 'TYPE_B' && !!availableUntil}
+                                        disabled={!isTypeDOffCheckIn && isTypeBFlow && !!availableUntil}
                                     />
                                     <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>
-                            )}
+                            );})()}
                             
                             {formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT' && (
                                 <div className="bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-200 text-sm mb-2 font-medium flex flex-col gap-1">
@@ -881,9 +1032,9 @@ const KTVAttendancePage = () => {
                                         )}
                                     </div>
 
-                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
+                                    {(formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && !isTypeBFlow) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && (
                                         <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                            {formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B' && (
+                                            {formType === 'CHECK_IN' && isLate && !isTypeBFlow && (
                                                 <div className="text-xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 mb-2">
                                                     {t.lateWarning}
                                                 </div>
@@ -903,15 +1054,23 @@ const KTVAttendancePage = () => {
                             )}
 
                             {formType !== 'OVERTIME_PROMPT' && formType !== 'OVERTIME' && (
-                                <div className="flex gap-3 pt-2">
+                                <>
+                                    {formError && (
+                                        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2 mb-4 flex items-center gap-2 text-left">
+                                            <AlertCircle size={14} className="shrink-0" />
+                                            <span>{formError}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex gap-3 pt-2">
                                     <button onClick={() => setIsFormOpen(false)} className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Hủy</button>
                                     <button 
                                        onClick={handleSubmitForm}
-                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && workType !== 'TYPE_B') || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && (selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && workType !== 'TYPE_B' && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
+                                       disabled={selectedShiftType !== 'SUDDEN_OFF' && ((formType !== 'CHECK_OUT' && photos.length === 0) || ((formType === 'LATE_CHECKIN' || (formType === 'CHECK_IN' && isLate && !isTypeBFlow) || (formType === 'CHECK_OUT' && selectedShiftType === 'SUDDEN_OFF_CHECKOUT')) && !reason.trim()) || (formType === 'CHECK_IN' && !isOffToday && activeShiftType && (selectedShiftType === 'FREE' || selectedShiftType === 'VIP') && !isTypeBFlow && !estimatedEndTime) || (formType === 'CHECK_IN' && shiftFetchError && !isOffToday))}
                                        className="flex-1 py-3.5 bg-emerald-600 active:scale-95 transition-transform text-white rounded-xl font-bold disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
                                         <CheckCircle2 size={18} /> Gửi
                                     </button>
-                                </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -919,7 +1078,7 @@ const KTVAttendancePage = () => {
 
                 {/* WEBRTC CAMERA MODAL */}
                 {isCameraOpen && (
-                    <div className="fixed inset-0 bg-black z-[70] flex flex-col">
+                    <div className="fixed inset-0 bg-black z-[70] flex flex-col h-[100dvh]">
                         <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
                             <video 
                                 ref={videoRef} 
@@ -945,7 +1104,7 @@ const KTVAttendancePage = () => {
                                 Đã chụp: {photos.length}/{MAX_PHOTOS}
                             </div>
                         </div>
-                        <div className="bg-black p-4 pb-8 flex flex-col items-center justify-center gap-4">
+                        <div className="bg-black p-4 pb-safe flex flex-col items-center justify-center gap-4">
                             <div className="flex items-center justify-between w-full px-6">
                                 <div className="w-16">
                                     {photos.length > 0 && (
@@ -981,6 +1140,18 @@ const KTVAttendancePage = () => {
                     </div>
                 )}
 
+                {/* CONFIRM DIALOG */}
+                {confirmDialog && (
+                    <ConfirmDialog
+                        open={confirmDialog.isOpen}
+                        title={confirmDialog.title}
+                        message={confirmDialog.message}
+                        onConfirm={confirmDialog.onConfirm}
+                        onCancel={() => setConfirmDialog(null)}
+                        variant="danger"
+                    />
+                )}
+
                 {/* ERROR MODAL */}
                 {errorMsg && (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -999,6 +1170,14 @@ const KTVAttendancePage = () => {
                         </div>
                     </div>
                 )}
+
+                <ShiftExtensionModal
+                    isOpen={isExtensionModalOpen}
+                    onClose={() => setIsExtensionModalOpen(false)}
+                    currentEndTime={shiftExtension?.currentEndTime ?? null}
+                    onConfirm={shiftExtension?.extend ?? (async () => false)}
+                    isSubmitting={shiftExtension?.isSubmitting ?? false}
+                />
 
             </div>
         </AppLayout>

@@ -9,6 +9,7 @@ export interface WorkSegment {
   actualEndTime?: string | null;
   feedbackTime?: string | null;
   startPhotoUrl?: string | null;
+  guestSlipperPhotoUrl?: string | null;
   handoverPhotoUrl?: string | null; // For legacy compatibility
   handoverPhotoUrls?: string[]; // Multiple handover photos
 }
@@ -77,7 +78,7 @@ export interface ServiceBlock {
   guestId?: string; // ID của Guest đang sử dụng dịch vụ này
 }
 
-export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE';
+export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE' | 'CANCELLED';
 
 export interface PendingOrder {
   id: string; // Booking ID
@@ -114,6 +115,22 @@ export interface PendingOrder {
   accessToken?: string | null;
   rating?: number | null;
   feedbackNote?: string | null;
+  /** KTV chấm quầy ở màn Reward (bảng KTVReviewReception). */
+  ktvReviewsOfReception?: {
+    ktv_id: string;
+    booking_id: string;
+    rating: number;
+    note: string | null;
+    images: string[] | null;
+    created_at: string;
+  }[];
+  /** KTV bấm "Khách về sớm" / "Khẩn cấp" trên app (bảng StaffNotifications). */
+  ktvReports?: {
+    type: string;
+    employeeId: string | null;
+    createdAt: string;
+    message?: string | null;
+  }[];
   rawNotes?: any;
   guests?: GuestBlock[]; // Danh sách khách hàng trong đơn
 }
@@ -152,6 +169,11 @@ export type TurnQueueData = {
   estimated_end_time?: string | null;
   start_time?: string | null;
   last_served_at?: string | null;
+  work_type?: string;
+  net_hours?: number;
+  /** `KTVAttendance` CHECK_IN hôm nay — xem lib/attendance/checkedInToday. */
+  checked_in_today?: boolean;
+  shift_end_time?: string | null;
 };
 
 export interface StaffNotification {

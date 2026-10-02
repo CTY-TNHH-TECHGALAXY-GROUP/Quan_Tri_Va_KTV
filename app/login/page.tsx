@@ -25,7 +25,17 @@ export default function LoginPage() {
     }
     // Đang dùng dở mà quản lý khoá tài khoản → auth-context đá về đây kèm cờ này.
     if (reason === 'account_locked') {
-      setError('Tài khoản của bạn vừa bị khoá kỷ luật. Liên hệ quản lý để mở lại.');
+      setError('Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.');
+    }
+    // Quản lý vừa đổi cấu hình tính năng → phải đăng nhập lại thì mới nhận
+    // được cờ/quyền mới, chứ không phải app hỏng.
+    // Tab đang mở bằng tài khoản A nhưng cookie JWT là của tài khoản B (mở 2 tài
+    // khoản trên cùng trình duyệt). Đã đẩy ra đây để đăng nhập lại cho dứt điểm.
+    if (reason === 'identity_mismatch') {
+      setError('Trình duyệt này đã đăng nhập một tài khoản khác ở tab khác. Mỗi trình duyệt chỉ dùng được một tài khoản — vui lòng đăng nhập lại.');
+    }
+    if (reason === 'config_changed') {
+      setError('Cài đặt tính năng vừa được cập nhật. Vui lòng đăng nhập lại để áp dụng.');
     }
   }, []);
 
@@ -63,7 +73,7 @@ export default function LoginPage() {
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                 <Sparkles size={32} />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">Ngân Hà Spa</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Oria Spa</h1>
               <p className="text-indigo-100 text-sm mt-1">Hệ thống quản trị trung tâm</p>
             </div>
             {/* Decorative circles */}

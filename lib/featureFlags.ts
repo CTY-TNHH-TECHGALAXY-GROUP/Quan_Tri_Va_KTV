@@ -1,31 +1,77 @@
 /**
- * Single source of truth for the KTV wallet / screen switches.
+ * Nguồn sự thật DUY NHẤT cho cờ tính năng của KTV.
  *
- * The server gates (WalletAccessService, the History route, check-in) and the
- * admin Features table all read flags through here, so a missing flag means
- * the same thing everywhere. Before this, the KTV app read
- * `enable_bonus_wallet` while the admin table toggled `bonus_wallet` — two
- * switches for one wallet, and Ví Tua had no switch at all.
+ * Trước đây mỗi nơi tự quyết định "cờ thiếu thì tính là gì":
+ *   · bảng admin  đọc `feature_flags[key] === true`   → thiếu = TẮT
+ *   · app KTV     đọc `feature_flags.tua_wallet !== false` → thiếu = BẬT
+ * Nên tài khoản cũ chưa từng set cờ hiện OFF bên admin mà KTV vẫn xem được ví.
+ * Giờ cả hai bên gọi chung `resolveStaffFlag`, không ai tự chế mặc định nữa.
+ *
+ * Giá trị mặc định bên dưới GIỮ NGUYÊN hành vi mà code cũ đang chạy thật ở
+ * phía tiêu thụ (server/app), không phải theo DEFAULT_FEATURE_FLAGS_* — mấy
+ * hằng đó chỉ dùng lúc TẠO nhân viên mới.
  */
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
-/** What a flag means when it is absent from `Staff.feature_flags`. */
+/** Cờ thiếu trong `Staff.feature_flags` thì hiểu là gì. */
 export const FLAG_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
-    // Every KTV created before these switches existed has no key. Resolving a
-    // missing key to OFF would show "bảo trì" to the whole shop on deploy.
+    // Ví: chỉ ví tua là mặc định BẬT (app đang đọc `!== false`)
     tua_wallet: true,
-    history_page: true,
-    // Ví Bonus was always opt-in (the app used to read `enable_bonus_wallet === true`).
     bonus_wallet: false,
+    // Trừ tiền tự động: mặc định KHÔNG trừ, trừ phí bảo trì đọc `=== false`
+    laundry_deduction: false,
+    sudden_leave_penalty: false,
+    maintenance_fee: true,
+    // RETIRED flag — no longer shown on the admin Features table and read by
+    // nothing. The Type D internal fund is driven entirely by Office points
+    // behind the points wallet (`bonus_wallet`, see `canSeeOfficePoints`).
+    // Kept here ONLY so it stays in MANAGED_FLAG_KEYS: changing a KTV's work
+    // type then wipes the stale key from `Staff.feature_flags` instead of
+    // preserving it forever as an "unknown" runtime key.
+    internal_fund_enabled: false,
+    // Screen switches. MUST default to ON: every KTV created before the switch
+    // existed has no key, and a missing key resolving to OFF would show the
+    // maintenance notice to the whole shop.
+    history_page: true,
+    // Quyền thao tác
+    allow_on_call: false,
+    enable_employee_tasks: false,
+    withdraw_morning_only: false,
+    kpi_target_hours: false,
+    enable_bonus: true,
 };
 
-/** Legacy keys still in the DB, read as aliases. An explicitly set new key wins. */
+/** Cờ cũ còn sót trong DB, coi như bí danh của cờ mới. */
 const FLAG_ALIASES: Record<string, string[]> = {
-    bonus_wallet: ['enable_bonus_wallet'],
+    /**
+     * `bonus_from_office` từng là một cần gạt RIÊNG, đứng cạnh `bonus_wallet`
+     * trên bảng Tính năng: một cái bật/tắt ví, một cái chọn nguồn điểm. Hai cần
+     * gạt cho cùng một thứ là thừa, và đẻ ra hai trạng thái vô nghĩa — có ví mà
+     * không có nguồn điểm, hoặc có nguồn điểm mà không có ví để xem (đúng cảnh
+     * của T001). Nay gộp làm một: loại D bật Ví Điểm là điểm tính theo Office.
+     *
+     * Giữ tên cũ làm bí danh để tài khoản chỉ mới set `bonus_from_office` không
+     * bị mất ví sau khi gộp. Cờ đặt TƯỜNG MINH vẫn thắng bí danh.
+     */
+    bonus_wallet: ['enable_bonus_wallet', 'bonus_from_office'],
 };
 
 /**
- * Read one staff flag. `flags` may be an object, a JSON string, or null.
+ * Mọi khoá trong `Staff.feature_flags` mà bảng Tính năng của Admin quản lý —
+ * gồm cả bí danh cũ.
+ *
+ * `feature_flags` là jsonb dùng chung: ngoài cờ tính năng, các màn khác còn
+ * nhét trạng thái runtime vào đây (`is_on_call`, `travel_time_mins`,
+ * `available_until`…). Khi cần ĐẶT LẠI bộ tính năng — đổi loại KTV chẳng hạn —
+ * phải biết khoá nào là "của mình" để không quét sạch phần còn lại.
+ */
+export const MANAGED_FLAG_KEYS: string[] = [
+    ...Object.keys(FLAG_DEFAULT_WHEN_MISSING),
+    ...Object.values(FLAG_ALIASES).flat(),
+];
+
+/**
+ * Đọc một cờ của nhân viên. `flags` có thể là object, chuỗi JSON, hoặc null.
  */
 export function resolveStaffFlag(flags: any, key: string): boolean {
     const parsed = parseFlags(flags);
@@ -50,46 +96,39 @@ function parseFlags(flags: any): Record<string, any> {
 }
 
 // ---------------------------------------------------------------------------
-// Wallets: two-level switch (whole work type AND the individual KTV)
+// Ví: công tắc hai tầng
 // ---------------------------------------------------------------------------
 
 export type WalletType = 'TUA' | 'BONUS';
 
 export const WALLET_TYPES: WalletType[] = ['TUA', 'BONUS'];
 
-/** Per-staff flag for each wallet. */
+/** Cờ per-nhân-viên tương ứng mỗi loại ví. */
 export const WALLET_STAFF_FLAG: Record<WalletType, string> = {
     TUA: 'tua_wallet',
     BONUS: 'bonus_wallet',
 };
 
-export const WALLET_LABEL: Record<WalletType, string> = {
-    TUA: 'Ví Tua',
-    BONUS: 'Ví Bonus',
-};
+export const WORK_TYPES = ['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D'] as const;
+export type WorkType = typeof WORK_TYPES[number];
 
 /**
- * Ví Bonus only exists for Types A and B (owner rule, 14/09/2026). Types C/D
- * never have it — not even as a "maintenance" entry. Ví Tua exists for all.
+ * Khoá SystemConfigs của công tắc CẢ LOẠI, ví dụ
+ * `ktv_wallet_tua_enabled_TYPE_D`.
  */
-const BONUS_WALLET_WORK_TYPES = ['TYPE_A', 'TYPE_B'];
-
-export function workTypeHasWallet(wallet: WalletType, workType: string | null | undefined): boolean {
-    if (wallet === 'TUA') return true;
-    return BONUS_WALLET_WORK_TYPES.includes(workType || 'TYPE_A');
-}
-
-/** SystemConfigs key of the type-wide switch, e.g. `ktv_wallet_tua_enabled_TYPE_B`. */
 export function walletConfigKey(wallet: WalletType, workType: string): string {
     return `ktv_wallet_${wallet.toLowerCase()}_enabled_${workType}`;
 }
 
 /**
- * Read a switch stored in `SystemConfigs.value`.
+ * Đọc một cần gạt lưu trong `SystemConfigs.value`.
  *
- * That column is jsonb written from several paths, so the same switch can come
- * back as `true`, `"true"` or `'"true"'`. Comparing `=== true` would silently
- * read an ON switch as OFF. Missing key → `fallback`.
+ * Cột đó là jsonb và được ghi từ nhiều đường (trang cấu hình, tab Nâng cao,
+ * script vá tay) nên cùng một cần gạt có thể về `true`, `"true"` hoặc
+ * `'"true"'`. So thẳng `=== true` là hỏng thầm lặng: cần gạt đang BẬT bị đọc
+ * thành TẮT mà không có lỗi nào.
+ *
+ * Thiếu khoá thì trả `fallback` — nơi gọi tự quyết định mặc định của mình.
  */
 export function readConfigBool(raw: any, fallback: boolean): boolean {
     if (raw === undefined || raw === null || raw === '') return fallback;
@@ -98,23 +137,21 @@ export function readConfigBool(raw: any, fallback: boolean): boolean {
 }
 
 /**
- * Type-wide switch. Missing key = ON: before this feature there was no
- * type-level gate, so the default must keep the old behaviour.
+ * Công tắc cả loại. Thiếu khoá = BẬT — trước khi có tính năng này thì không
+ * có tầng chặn nào, mặc định phải giữ nguyên hành vi cũ.
  */
 export function isWalletEnabledForType(
     wallet: WalletType,
-    workType: string | null | undefined,
+    workType: string,
     configs: Record<string, any> | null | undefined,
 ): boolean {
-    const type = workType || 'TYPE_A';
-    if (!workTypeHasWallet(wallet, type)) return false;
-    return readConfigBool(configs?.[walletConfigKey(wallet, type)], true);
+    return readConfigBool(configs?.[walletConfigKey(wallet, workType || 'TYPE_A')], true);
 }
 
 /**
- * Final answer — can this KTV use the wallet: **type switch ON and the KTV's
- * own flag ON**. Off at the type level takes the wallet from the whole type
- * without touching anyone's flag; off per person affects only that person.
+ * Kết quả cuối cùng KTV có thấy ví hay không: **cả loại BẬT và người đó BẬT**.
+ * Tắt ở tầng loại thì cả loại mất ví, không cần đụng từng người; tắt ở tầng
+ * người thì chỉ người đó mất.
  */
 export function isWalletEnabled(
     wallet: WalletType,
@@ -123,12 +160,38 @@ export function isWalletEnabled(
 ): boolean {
     if (!staff) return false;
     return (
-        isWalletEnabledForType(wallet, staff.work_type, configs) &&
+        isWalletEnabledForType(wallet, staff.work_type || 'TYPE_A', configs) &&
         resolveStaffFlag(staff.feature_flags, WALLET_STAFF_FLAG[wallet])
     );
 }
 
-/** Text every wallet route returns when a wallet is switched off. */
-export function walletDisabledMessage(): string {
+/**
+ * Tên ví hiển thị. Loại D ăn lương khoán theo giờ chứ không theo tua, nên gọi
+ * "Ví Tua" là sai nghiệp vụ — với họ là "Ví Thu Nhập" và "Điểm Tích Lũy".
+ *
+ * Để chung một chỗ vì tên này xuất hiện ở cả app KTV lẫn hai bảng bên admin;
+ * trước đây bảng admin đã đổi tên còn app KTV thì chưa, đọc hai màn ra hai tên.
+ */
+const WALLET_LABEL: Record<WalletType, { default: string; TYPE_D?: string }> = {
+    TUA: { default: 'Ví Tua', TYPE_D: 'Ví Thu Nhập' },
+    // Loại D chỉ còn MỘT loại điểm — điểm Office. Tên nói thẳng nguồn để KTV
+    // không phải đoán điểm ở đâu ra.
+    BONUS: { default: 'Ví Bonus', TYPE_D: 'Ví Điểm theo Office' },
+};
+
+export function walletLabel(wallet: WalletType, workType: string | null | undefined): string {
+    const meta = WALLET_LABEL[wallet];
+    return (workType === 'TYPE_D' && meta.TYPE_D) ? meta.TYPE_D : meta.default;
+}
+
+/**
+ * Text returned by every wallet route when a wallet is switched off (per-staff
+ * flag or type-wide switch). Only reached by KTVs who HAVE the `ktv_wallet`
+ * permission — the wallet page checks that first — so this is exactly the
+ * "feature off while permission on" case: the shared maintenance sentence.
+ *
+ * Signature kept so the single caller (`WalletAccessService`) is unchanged.
+ */
+export function walletDisabledMessage(_wallet: WalletType, _workType?: string | null): string {
     return FEATURE_MAINTENANCE_MESSAGE;
 }

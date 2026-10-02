@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { NotificationRulesPatchSchema } from '@/lib/schemas/admin.schema';
+import { requirePermission } from '@/lib/auth-server';
+
+/** Ánh xạ lỗi phân quyền sang đúng mã HTTP thay vì trả 500 cho mọi trường hợp. */
+function errorStatus(message?: string) {
+    if (message === 'Forbidden') return 403;
+    if (message === 'Unauthorized') return 401;
+    return 500;
+}
 
 /**
  * GET /api/admin/notification-rules
@@ -35,9 +43,16 @@ export async function GET() {
  * PATCH /api/admin/notification-rules
  * Update notification rules config
  * Body: { rules: Record<string, NotifRule> }
+ *
+ * 🛡️ Bảng này quyết định thông báo nào tới tay ai. Trước đây route không kiểm
+ * tra danh tính, mà middleware đang ở "Compatibility Phase" cho mọi request qua,
+ * nên bất kỳ ai đăng nhập — kể cả KTV — đều có thể ghi đè toàn bộ định tuyến.
+ * GET vẫn để mở vì mọi client (kể cả app KTV) phải đọc rule để lọc toast.
  */
 export async function PATCH(request: Request) {
     try {
+        await requirePermission('system_settings');
+
         const body = await request.json();
         const parseResult = NotificationRulesPatchSchema.safeParse(body);
         if (!parseResult.success) {
@@ -64,6 +79,6 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true });
     } catch (err: any) {
         console.error('❌ [NotifRules PATCH] Unhandled:', err);
-        return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: err.message }, { status: errorStatus(err.message) });
     }
 }

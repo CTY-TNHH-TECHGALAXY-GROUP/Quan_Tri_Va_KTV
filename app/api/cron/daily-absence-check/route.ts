@@ -4,6 +4,7 @@ import { KtvTypeDDisciplineService } from '@/lib/services/KtvTypeDDisciplineServ
 import type { TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
 import { createNotification } from '@/lib/notification-helper';
 import { vnDate } from '@/lib/vn-time';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ export const dynamic = 'force-dynamic';
  * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md). Mỗi người tối đa một lần
  * khoá mỗi đêm — khoá rồi thì dừng, không xét tiếp.
  *
- * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff 06:00. Bảng
+ * ⚠️ Dùng NGÀY LỊCH VN, không phải ngày làm việc theo cutoff 07:00. Bảng
  * `KTVTypeDDailyRegistration.work_date` và `KTVAttendance.date` đều được ghi
  * bằng ngày lịch; tra bằng business date sẽ lệch một ngày và phạt nhầm.
  *
@@ -81,9 +82,11 @@ async function run(dry = false) {
 
     const { data: staffList, error: staffError } = await supabase
         .from('Staff')
-        .select('id, full_name, created_at')
-        .eq('work_type', 'TYPE_D')
-        .neq('status', 'KHÓA_TÀI_KHOẢN');
+        .select('id, full_name, created_at, status')
+        .eq('work_type', 'TYPE_D');
+    // ⚠️ KHÔNG lọc bỏ người đang bị khoá nữa (chốt 16/09). Trước đây họ bị bỏ qua
+    // hoàn toàn: dòng đăng ký treo mãi không ai chốt, ngày đó vẫn bị coi là "có
+    // lịch" ở màn Office. Nay vẫn chốt sổ cho họ, chỉ không phạt chồng.
     if (staffError) throw staffError;
 
     const ids = (staffList || []).map((s: any) => s.id);
@@ -108,6 +111,17 @@ async function run(dry = false) {
     const daDangKyNgayMoi = new Set((regMoi.data || []).map((r: any) => r.staff_id));
     const regCuTheoNguoi = new Map((regCu.data || []).map((r: any) => [r.staff_id, r]));
     const daDiLam = new Set((diemDanh.data || []).map((r: any) => r.employeeId));
+
+    // Ai vừa được quầy mở khoá trong ngày đang chốt: KHÔNG xét đêm nay. Họ mất
+    // phần lớn ngày hôm đó vì bị khoá, không đăng nhập được để đăng ký hay điểm
+    // danh. Từ ngày kế tiếp thì xét như mọi người (chốt 16/09).
+    const { data: moKhoa } = await supabase
+        .from('SecurityAuditLogs')
+        .select('employee_id')
+        .eq('event_type', 'MANUAL_UNLOCK')
+        .in('employee_id', ids)
+        .gte('created_at', new Date(`${ngayVuaQua}T00:00:00+07:00`).toISOString());
+    const vuaMoKhoa = new Set((moKhoa || []).map((r: any) => r.employee_id));
 
     const results: KetQuaXuLy[] = [];
 
@@ -148,6 +162,17 @@ async function run(dry = false) {
         if (dongSoNgayVuaQua && enabled) {
             await supabase.from('KTVTypeDDailyRegistration')
                 .update({ status: 'COMPLETED' }).eq('id', reg.id);
+        }
+
+        // Đang bị khoá, hoặc vừa được mở khoá hôm đó: CHỐT SỔ rồi dừng.
+        // Không trừ giờ, không khoá chồng — họ đâu có đăng nhập được mà đăng ký.
+        const dangBiKhoa = String(staff.status || '') === 'KHÓA_TÀI_KHOẢN';
+        if (dangBiKhoa || vuaMoKhoa.has(staff.id)) {
+            if (enabled && reg && !dongSoNgayVuaQua) {
+                await supabase.from('KTVTypeDDailyRegistration')
+                    .update({ status: 'COMPLETED' }).eq('id', reg.id);
+            }
+            continue;
         }
 
         for (const l of loi) {
@@ -201,10 +226,8 @@ async function run(dry = false) {
 export async function GET(request: Request) {
     // ⚠️ Vercel Cron gọi bằng GET. Trước đây file này chỉ export POST nên cron
     // luôn trả 405 và toàn bộ kỷ luật loại D chưa bao giờ được áp dụng.
-    const authHeader = request.headers.get('Authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         // Chỉ còn MỘT lượt. `?mode=lock-unregistered` giữ lại cho lịch cron cũ
         // và cho link mà quản lý đã lưu — gọi vào cùng một chỗ.

@@ -7,30 +7,40 @@ import { useAuth } from '@/lib/auth-context';
 import {
   ShieldAlert, History, Clock, Star, TrendingUp,
   Gift, CalendarDays, ChevronRight, ChevronDown,
-  Loader2, CheckCircle2, Award, AlertCircle, FileImage, X
+  Loader2, CheckCircle2, AlertCircle, FileImage, X, ListTree,
+  ArrowRight, ArrowUpRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { useKTVHistory, HistoryRecord } from './KTVHistory.logic';
-import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { useKTVHistory, useKtvHoursLedger, HistoryRecord } from './KTVHistory.logic';
 import PullToRefresh from '@/components/PullToRefresh/PullToRefresh';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
-// 🔧 UI CONFIGURATION
-const PRESET_BUTTONS = [
-  { key: 'today',     label: 'Hôm nay' },
-  { key: 'yesterday', label: 'Hôm qua' },
-  { key: '7days',     label: '7 ngày' },
-  { key: 'custom',    label: 'Tuỳ chọn' },
-] as const;
+import { HistoryCalendar } from './_components/HistoryCalendar';
+import { HoursLedgerSheet } from '@/components/shared/HoursLedgerSheet';
+import { fmtHours } from '@/lib/hours-format';
+import { ratingLabel } from '@/lib/rating-label';
+import { t } from './KTVHistory.i18n';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
 
-const RATING_CONFIG: Record<number, { label: string; color: string; bg: string }> = {
-  1: { label: 'Tệ',          color: 'text-red-600',     bg: 'bg-red-50'     },
-  2: { label: 'Bình thường',  color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
-  3: { label: 'Tốt',          color: 'text-emerald-700', bg: 'bg-emerald-50' },
-  4: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
-  5: { label: 'Xuất sắc',     color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+/** 'YYYY-MM' -> '09/2026'. */
+const fmtMonthLabel = (m: string) => {
+  const [y, mm] = m.split('-');
+  return y && mm ? `${mm}/${y}` : m;
+};
+
+// 🔧 UI CONFIGURATION
+const HINT_NUDGE_DURATION = 1.2;   // seconds per arrow nudge cycle
+const HINT_NUDGE_DISTANCE = 4;     // px the arrow travels toward the calendar button
+// Chỉ giữ MÀU ở đây; chữ lấy từ `lib/rating-label` để ví và Lịch Sử gọi tên
+// một mức sao giống hệt nhau.
+const RATING_COLOR: Record<number, { color: string; bg: string }> = {
+  1: { color: 'text-red-600',     bg: 'bg-red-50'     },
+  2: { color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
+  3: { color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  4: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+  5: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
 };
 
 // ─── Image Modal ──────────────────────────────────────────────────────────────
@@ -72,8 +82,10 @@ const DisciplineCard = ({ item }: { item: HistoryRecord }) => {
               <h4 className="text-sm font-bold text-red-900 leading-tight">{title}</h4>
               <span className="text-sm font-black text-red-600 shrink-0">-{item.points_deducted}đ</span>
             </div>
+            {/* Chỉ giờ, không ngày: nút lịch trên header đã nói rõ đang xem
+                ngày nào, in lại "09/09/2026" ở từng dòng là thừa. */}
             <p className="text-[11px] text-red-400 mt-1">
-              {format(parseDbDate(item.createdAt), 'HH:mm — dd/MM/yyyy')}
+              {format(parseDbDate(item.createdAt), 'HH:mm')}
             </p>
             {item.reason && (
               <div className="mt-2 text-xs text-red-800 bg-red-100/50 p-2 rounded-lg italic">
@@ -108,32 +120,53 @@ const DisciplineCard = ({ item }: { item: HistoryRecord }) => {
 
 // ─── Expandable Order Card ────────────────────────────────────────────────────
 
-const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
+const OrderCard = ({ order, getStatusLabel }: {
   order: HistoryRecord;
   getStatusLabel: (s: string) => { label: string; color: string };
-  techCode: string;
-  refetch: () => void;
 }) => {
   const [expanded, setExpanded] = React.useState(false);
-  const [tipValue, setTipValue] = React.useState(String(order.tip || ''));
-  const [savingTip, setSavingTip] = React.useState(false);
-  const [tipSaved, setTipSaved] = React.useState(false);
 
-  const statusInfo = getStatusLabel(order.status);
+  // Đơn bị tước quyền lợi: với KTV này đơn ĐÃ KẾT THÚC, bất kể người vào thay còn
+  // đang làm. Ghi "Đang làm" là sai — họ không còn làm gì ở đơn đó nữa.
+  const biTuoc = !!order.voidedKind;
+  const statusInfo = biTuoc
+    ? (order.voidedKind === 'CHANGED'
+        ? { label: 'Đã đổi', color: 'text-rose-600 bg-rose-50' }
+        : order.voidedKind === 'EARLY_LEAVE_NOT_STARTED'
+        ? { label: t.earlyLeaveNotStartedLabel, color: 'text-rose-600 bg-rose-50' }
+        : { label: 'Huỷ', color: 'text-rose-600 bg-rose-50' })
+    : getStatusLabel(order.status);
   const isDone = order.status === 'DONE' || order.status === 'COMPLETED';
-  const ratingCfg = order.rating ? RATING_CONFIG[order.rating] : null;
+  const ratingText = ratingLabel(order.rating);
+  const ratingCfg = order.rating ? RATING_COLOR[order.rating] : null;
 
-  const handleSaveTip = async () => {
-    const tip = parseInt(tipValue.replace(/\D/g, ''), 10) || 0;
-    setSavingTip(true);
-    try {
-      await apiClient.post<any>(API.KTV.HISTORY_UPDATE, { bookingId: order.id, techCode, tip });
-      setTipSaved(true);
-      refetch();
-      setTimeout(() => setTipSaved(false), 2000);
-    } catch { /* silent */ }
-    setSavingTip(false);
-  };
+  /**
+   * Thẻ tiền đi kèm mức đánh giá.
+   *
+   * Trước đây dòng này chỉ ghi "Xuất sắc" / "Tốt", còn tiền thì nằm rải rác:
+   * thưởng ở một dòng riêng tuốt bên dưới, khoản trừ thì lẫn trong khung tổng.
+   * KTV bị chấm Tốt thấy tiền tua hụt mà không biết hụt vì cái gì.
+   *
+   * ⚠️ KHÔNG tính lại tiền ở đây — cả hai con số đều do server trả, lấy thẳng từ
+   * sổ cái, nên khớp tuyệt đối với ví.
+   */
+  const ratingMoney = (() => {
+    // Thưởng hiện theo ĐIỂM (đơn vị của trang cài đặt: 20đ × 1.000 = 20.000 VNĐ).
+    // Tiền vẫn do sổ cái quyết định và nằm trong "tiền tua" bên dưới.
+    const bonusPts = Number(order.ratingBonusPoints) || 0;
+    if (bonusPts > 0) {
+      return { text: `+${bonusPts.toLocaleString('vi-VN')}đ`, cls: 'text-emerald-700 bg-emerald-50' };
+    }
+    const deduction = Number(order.ratingDeductionAmount) || 0;
+    if (deduction > 0) {
+      const pct = Math.round((Number(order.ratingDeductionRate) || 0) * 100);
+      return {
+        text: `−${pct}% · −${deduction.toLocaleString('vi-VN')}đ`,
+        cls: 'text-orange-700 bg-orange-50',
+      };
+    }
+    return null;
+  })();
 
   return (
     <motion.div
@@ -152,9 +185,17 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
             <Clock size={16} className="text-gray-300 shrink-0" />
           )}
           <div className="min-w-0">
-            <span className="text-sm font-black text-indigo-600">#{(order.billCode || '').split('-')[0]}</span>
+            {/* ⚠️ Trước đây cắt mã bằng split('-')[0] nên "TEST-260908-YNAY-A"
+                chỉ còn "TEST" — ba đơn khác nhau nhìn y hệt nhau, không soi lỗi
+                được. Nay để nguyên mã, kèm luôn tên khách của dòng đó. */}
+            <span className="text-sm font-black text-indigo-600 break-all">#{order.billCode || '—'}</span>
+            {order.guestLabel && (
+              <span className="ml-1.5 text-[11px] font-bold text-gray-500">· {order.guestLabel}</span>
+            )}
+            {/* Chỉ giờ, không ngày: nút lịch trên header đã nói rõ đang xem
+                ngày nào, in lại "09/09/2026" ở từng dòng là thừa. */}
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {format(parseDbDate(order.createdAt), 'HH:mm — dd/MM/yyyy')}
+              {format(parseDbDate(order.createdAt), 'HH:mm')}
             </p>
           </div>
         </div>
@@ -180,6 +221,22 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+              {/* Đơn bị tước quyền lợi: đổi KTV, hoặc huỷ không tính công.
+                  Không có dòng này thì đơn hiện y như đơn thường mà tiền bằng 0 —
+                  KTV không hiểu vì sao, quầy không giải thích được. */}
+              {biTuoc && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                  {order.voidedKind === 'EARLY_LEAVE_NOT_STARTED' ? (
+                    <p className="text-[13px] font-semibold text-rose-700 leading-snug">{t.earlyLeaveNotStartedBanner}</p>
+                  ) : (
+                  <p className="text-[13px] font-semibold text-rose-700 leading-snug">
+                    {order.voidedKind === 'CHANGED' ? 'Lý do đổi' : 'Lý do huỷ'}:{' '}
+                    {order.voidedReason ? <>&ldquo;{order.voidedReason}&rdquo;</> : <span className="italic font-medium">quầy không ghi lý do</span>}
+                  </p>
+                  )}
+                </div>
+              )}
+
               {/* Dịch vụ */}
               <div className="flex justify-between items-start">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Dịch vụ</span>
@@ -202,57 +259,121 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
                 </div>
               )}
 
-              {/* Thời lượng */}
+              {/* Thời lượng DV */}
               {order.duration > 0 && (
                 <div className="flex justify-between items-start">
-                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Thời lượng</span>
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Thời lượng DV</span>
                   <span className="text-sm text-gray-600">{order.duration} phút</span>
                 </div>
               )}
 
-              {/* Tiền tua */}
+              {/* Thời gian làm DV (thực tế) */}
+              {/* Đơn bị tước (đổi KTV / huỷ không công) thì KHÔNG in dòng này —
+                  lý do đã nằm ở dải đỏ phía trên, thay cho số phút đã làm. */}
+              {!order.voidedNote && order.actualDuration != null && order.actualDuration > 0 && (
+                <div className="flex justify-between items-start">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Thời gian làm DV</span>
+                  <span className={`text-sm font-medium ${order.actualDuration > order.duration ? 'text-amber-600' : 'text-gray-600'}`}>
+                    {order.actualDuration} phút
+                  </span>
+                </div>
+              )}
+
+              {/* Tiền tua — đơn bị tước thì ĐÃ CHỐT 0đ, không có "Chờ FB" */}
+              {biTuoc ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Tiền tua</span>
+                  <span className="text-sm font-black text-gray-500">0đ</span>
+                </div>
+              ) : (
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Tiền tua</span>
                 <div className="flex items-center gap-1.5">
-                  <TrendingUp size={13} className="text-indigo-400" />
-                  <span className="text-sm font-black text-indigo-700">
-                    {order.commission > 0 ? `${order.commission.toLocaleString('vi-VN')}đ` : '—'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Đánh giá + Bonus */}
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Đánh giá</span>
-                <div className="flex items-center gap-2">
-                  {ratingCfg ? (
-                    <div className="flex items-center gap-1.5">
-                      <Star size={12} className="text-amber-400 fill-amber-400" />
-                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${ratingCfg.color} ${ratingCfg.bg}`}>
-                        {ratingCfg.label}
+                  {order.isFeedbackDone ? (
+                    <>
+                      <TrendingUp size={13} className="text-indigo-400" />
+                      <span className="text-sm font-black text-indigo-700">
+                        {(() => {
+                          const displayComm = order.isTypeD ? (order.commissionBeforeDeduction || order.commission) : order.commission;
+                          return displayComm != null && displayComm > 0 ? `${displayComm.toLocaleString('vi-VN')}đ` : '—';
+                        })()}
                       </span>
-                    </div>
+                    </>
                   ) : (
-                    <span className="text-xs text-gray-300">—</span>
+                    <span className="text-[11px] font-bold text-amber-500 bg-amber-50 px-2.5 py-0.5 rounded-full">
+                      ⏳ Chờ FB
+                    </span>
                   )}
                 </div>
               </div>
+              )}
+
+              {/* Từ đây xuống: đánh giá của khách, bàn giao phòng, phản ánh, thưởng và
+                  bảng thu nhập — KHÔNG cái nào áp dụng cho người bị tước. Khách chấm
+                  người vào thay; người vào thay dọn phòng; tiền đã chốt 0đ ở trên. */}
+              {!biTuoc && (<>
+              {/* Đánh giá — kèm luôn tiền được thưởng / bị trừ */}
+              <div className="flex justify-between items-start gap-2">
+                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider shrink-0 pt-0.5">Đánh giá</span>
+                {ratingText && ratingCfg ? (
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${ratingCfg.color} ${ratingCfg.bg}`}>
+                      {ratingText}
+                    </span>
+                    {ratingMoney && (
+                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-full whitespace-nowrap ${ratingMoney.cls}`}>
+                        {ratingMoney.text}
+                      </span>
+                    )}
+                  </div>
+                ) : order.noCustomerRating ? (
+                  <span className="text-[11px] font-bold text-gray-500 text-right">{t.noCustomerRating}</span>
+                ) : (
+                  <span className="text-xs text-gray-300">—</span>
+                )}
+              </div>
+
+              {/* Được chấm cao mà không có thưởng thì phải nói vì sao. Không có
+                  dòng này, KTV chỉ thấy "Xuất sắc" trơ trọi cạnh đồng nghiệp có
+                  thẻ "+20đ" và sẽ đi hỏi quầy. Chỉ hiện khi thật sự KHÔNG có
+                  thưởng — có thưởng rồi mà vẫn ghi là tự mâu thuẫn. */}
+              {order.mixedTeamNote && !Number(order.ratingBonusAmount) && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 -mt-1 leading-snug">
+                  {order.mixedTeamNote}
+                </p>
+              )}
 
               {/* Bàn giao phòng */}
               <div className="flex justify-between items-center">
-                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Quầy duyệt</span>
+                <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Bàn giao phòng</span>
                 <div className="flex items-center gap-2">
-                  {order.handover_status === 'APPROVED' ? (
+                  {/* ⚠️ Trước đây chỉ tách APPROVED / REJECTED, MỌI thứ còn lại đổ
+                      vào "Chờ duyệt". Mà 'PENDING' là GIÁ TRỊ MẶC ĐỊNH của cột —
+                      đơn chưa từng bàn giao, đơn bị bỏ qua, đơn đã huỷ đều mang nó.
+                      Nên KTV thấy "Chờ duyệt" và tưởng quầy đang ngâm, trong khi
+                      thật ra chưa ai nộp gì cả. */}
+                  {order.status === 'CANCELLED' ? (
+                    <span className="text-xs text-gray-300">—</span>
+                  ) : order.handover_status === 'APPROVED' ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50">
                       Đã duyệt
                     </span>
                   ) : order.handover_status === 'REJECTED' ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-red-700 bg-red-50">
-                      Từ chối
+                      Bị trả lại
                     </span>
-                  ) : (
+                  ) : order.handover_status === 'SKIPPED' ? (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-amber-700 bg-amber-50">
+                      Nợ bàn giao
+                    </span>
+                  ) : order.handover_submitted ? (
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-blue-700 bg-blue-50">
                       Chờ duyệt
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-gray-500 bg-gray-100">
+                      Chưa bàn giao
                     </span>
                   )}
                 </div>
@@ -263,58 +384,63 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
                 </div>
               )}
 
-              {/* Bonus Points */}
-              {order.bonusPoints > 0 && (
-                <div className="flex justify-between items-center bg-amber-50 rounded-xl px-3 py-2 -mx-1">
-                  <div className="flex items-center gap-1.5">
-                    <Award size={14} className="text-amber-500" />
-                    <span className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Bonus Xuất Sắc</span>
-                  </div>
-                  <span className="text-sm font-black text-amber-600">+{order.bonusPoints}đ</span>
+              {/* Khách tích ô góp ý nào thì hiện ra đây. Tích lỗi kéo trần đánh giá
+                  xuống 3 sao, tức là trừ tiền — nên phải cho KTV biết lý do. */}
+              {Array.isArray(order.violations) && order.violations.length > 0 && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 -mt-1">
+                  <p className="text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1">
+                    Khách phản ánh
+                  </p>
+                  {order.violations.map((v: any) => (
+                    <p key={v.id} className="text-xs text-rose-600 font-medium leading-snug">
+                      • {v.text || v.id}
+                    </p>
+                  ))}
                 </div>
               )}
 
-              {/* ─── Tip Input ─── */}
-              <div className="pt-2 border-t border-gray-50">
-                <label className="text-[11px] text-gray-400 uppercase font-bold tracking-wider block mb-2">
-                  💰 Tiền Tip
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Gift size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400" />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={tipValue}
-                      onChange={e => {
-                        const raw = e.target.value.replace(/\D/g, '');
-                        setTipValue(raw);
-                        setTipSaved(false);
-                      }}
-                      className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition-all"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-bold">đ</span>
+              {/* ─── Trừ đánh giá, Thuế TNCN & thực nhận ─── */}
+              {order.isTypeD && order.type !== 'DISCIPLINE' && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 -mx-1 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Tổng thu nhập đơn</span>
+                    <span className="text-sm font-bold text-gray-700">
+                      {((order.grossIncome || 0) + (order.ratingDeductionAmount || 0)).toLocaleString('vi-VN')}đ
+                    </span>
                   </div>
-                  <button
-                    onClick={handleSaveTip}
-                    disabled={savingTip}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm min-w-[70px] flex items-center justify-center gap-1 ${
-                      tipSaved
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
-                    }`}
-                  >
-                    {savingTip ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : tipSaved ? (
-                      <><CheckCircle2 size={14} /> OK</>
-                    ) : (
-                      'Lưu'
-                    )}
-                  </button>
+                  {(order.ratingDeductionAmount || 0) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-orange-500 font-bold uppercase tracking-wider">
+                        Trừ đánh giá ({Math.round((order.ratingDeductionRate || 0) * 100)}%)
+                      </span>
+                      <span className="text-sm font-bold text-orange-600">
+                        −{(order.ratingDeductionAmount || 0).toLocaleString('vi-VN')}đ
+                      </span>
+                    </div>
+                  )}
+                  {(order.taxAmount || 0) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-rose-500 font-bold uppercase tracking-wider">
+                        Thuế TNCN ({Math.round((order.taxRate || 0) * 100)}%)
+                      </span>
+                      <span className="text-sm font-bold text-rose-600">
+                        −{(order.taxAmount || 0).toLocaleString('vi-VN')}đ
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
+                    <span className={`text-[11px] font-black uppercase tracking-wider ${order.isProvisional ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {order.isProvisional ? 'Tạm tính' : 'Thực nhận'}
+                    </span>
+                    <span className={`text-base font-black ${order.isProvisional ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {(order.netIncome || 0).toLocaleString('vi-VN')}đ
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
+              </>)}
+
+
             </div>
           </motion.div>
         )}
@@ -323,23 +449,94 @@ const OrderCard = ({ order, getStatusLabel, techCode, refetch }: {
   );
 };
 
+// ─── Nút mở lịch ──────────────────────────────────────────────────────────────
+
+/**
+ * Bản `compact` nằm trên thanh header của điện thoại — màn nhỏ thì mỗi chỗ đều
+ * quý, một ô riêng trong lưới chỉ để chọn ngày là phí. Bản thường vẫn ở trong
+ * trang cho màn lớn, nơi header mobile không tồn tại.
+ */
+/** 'YYYY-MM-DD' -> '08/09'. */
+const dm = (d: string) => {
+  const [, m, day] = String(d).split('-');
+  return day && m ? `${day}/${m}` : d;
+};
+
+/**
+ * Chữ trên nút mở lịch.
+ *
+ * "1 ngày" / "3 ngày" không nói được điều KTV cần biết: đang xem NGÀY NÀO. Phải
+ * mở lịch ra mới thấy, mà mở ra thì che mất bảng.
+ *
+ *   1 ngày            -> "08/09"
+ *   nhiều ngày LIỀN   -> "05/09 → 08/09"
+ *   nhiều ngày RỜI    -> "4 ngày"   (không có cách viết gọn nào cho tập rời rạc)
+ */
+const nhanNgay = (dates: string[]): string => {
+  if (!dates || dates.length === 0) return 'Chọn ngày';
+  const ds = [...dates].sort();
+  if (ds.length === 1) return dm(ds[0]);
+
+  const lienTuc = ds.every((d, i) => {
+    if (i === 0) return true;
+    const truoc = new Date(ds[i - 1] + 'T00:00:00Z').getTime();
+    const nay = new Date(d + 'T00:00:00Z').getTime();
+    return nay - truoc === 86400000;
+  });
+
+  return lienTuc ? `${dm(ds[0])} → ${dm(ds[ds.length - 1])}` : `${ds.length} ngày`;
+};
+
+const CalendarToggle = ({ compact = false, open, dates, onToggle, highlight = false }: {
+  compact?: boolean; open: boolean; dates: string[]; onToggle: () => void;
+  /** Pulse a ring around the button — the target the hint arrow points at. */
+  highlight?: boolean;
+}) => (
+  <button
+    onClick={onToggle}
+    aria-label="Chọn ngày"
+    className={`relative flex items-center gap-1.5 rounded-xl border active:scale-95 transition-all ${
+      compact ? 'h-8 px-2.5' : 'h-10 px-3.5 shadow-sm'
+    } ${open
+      ? 'bg-indigo-600 border-indigo-600 text-white'
+      : 'bg-white border-gray-100 text-indigo-600'}`}
+  >
+    {highlight && !open && (
+      <span className="absolute -inset-1 rounded-2xl border-2 border-indigo-400 animate-pulse pointer-events-none" />
+    )}
+    <CalendarDays size={compact ? 15 : 17} />
+    <span className={`font-bold whitespace-nowrap ${compact ? 'text-[11px]' : 'text-xs'}`}>{nhanNgay(dates)}</span>
+  </button>
+);
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function KTVHistoryPage() {
   const [mounted, setMounted] = React.useState(false);
+  const [showCalendar, setShowCalendar] = React.useState(false);
+  // Once the KTV has found the calendar, stop pulsing — a ring that never stops
+  // turns into noise they learn to ignore.
+  const [calendarFound, setCalendarFound] = React.useState(false);
+  const [showHours, setShowHours] = React.useState(false);
   const { hasPermission } = useAuth();
   const {
     user,
-    history, isLoading,
-    datePreset, setDatePreset,
-    dateFrom, setDateFrom,
-    dateTo, setDateTo,
-    applyCustomDate,
+    history, isLoading, maintenance,
+    selectedDates, setSelectedDates,
     summary,
     getStatusLabel,
     refetch,
-    maintenance,
   } = useKTVHistory();
+
+  // Sổ giờ tích luỹ — chỉ KTV Loại D mới có, và quản lý có thể tắt.
+  const hours = useKtvHoursLedger(selectedDates);
+  const showHoursTile = hours.applicable && hours.enabled;
+  const monthLabel = hours.months.map(fmtMonthLabel).join(' · ');
+
+  const toggleCalendar = () => {
+    setShowCalendar(!showCalendar);
+    setCalendarFound(true);
+  };
 
   React.useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
@@ -355,8 +552,11 @@ export default function KTVHistoryPage() {
     );
   }
 
-  // Permission on, page switched off by an admin → the shared maintenance notice.
-  if (maintenance) {
+  // Permission ON but the History switch OFF (server answered FEATURE_MAINTENANCE)
+  // → only the maintenance notice: no 0đ tiles, no calendar, no empty list.
+  // AppLayout's own pull-to-refresh reloads the page, which re-asks the server,
+  // so switching it back on shows the data again without logging out.
+  if (maintenance || hours.maintenance) {
     return (
       <AppLayout title="Lịch Sử">
         <FeatureMaintenanceNotice />
@@ -365,89 +565,81 @@ export default function KTVHistoryPage() {
   }
 
   return (
-    <AppLayout title="Lịch Sử" disablePullToRefresh>
-      <PullToRefresh onRefresh={async () => { await refetch(); }}>
+    <AppLayout title="Lịch Sử" disablePullToRefresh headerRight={<CalendarToggle compact open={showCalendar} dates={selectedDates} onToggle={toggleCalendar} highlight={!calendarFound} />}>
+      <PullToRefresh onRefresh={async () => { await Promise.all([refetch(), hours.refetch()]); }}>
         <div className="space-y-4 max-w-xl mx-auto pb-6">
 
-          {/* Header */}
-          <div>
-              <p className="text-xs text-gray-400">Bấm vào đơn để xem chi tiết & nhập tip</p>
+          {/* Header — nút lịch đã dời lên thanh header, nhưng thanh đó chỉ có ở
+              mobile nên màn lớn vẫn cần một nút ngay trong trang. */}
+          <div className="flex items-center gap-2">
+            <div 
+              onClick={toggleCalendar}
+              className="flex-1 flex items-center gap-2 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2.5 shadow-sm shadow-indigo-100/60 cursor-pointer hover:border-indigo-200 transition-colors"
+            >
+              <CalendarDays size={15} className="text-indigo-500 shrink-0" />
+              {/* Only Type D KTVs have the hours tile — don't promise it to others. */}
+              <p className="flex-1 text-xs font-semibold text-indigo-700 leading-snug">
+                {/* Nói rõ chọn được NHIỀU ngày — nhiều KTV tưởng lịch chỉ cho một ngày
+                    nên muốn xem cả tuần phải bấm từng ngày một. */}
+                {showHoursTile
+                  ? 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập và giờ tích luỹ'
+                  : 'Chọn một hoặc nhiều ngày trong lịch để xem thu nhập'}
+              </p>
+              <span className="text-[11px] font-bold text-indigo-600 bg-white/90 px-2 py-1 rounded-xl border border-indigo-100 flex items-center gap-1.5 shadow-sm shrink-0">
+                <CalendarDays size={13} />
+                <span>Chọn ngày</span>
+              </span>
+            </div>
+            <div className="hidden lg:block">
+              <CalendarToggle open={showCalendar} dates={selectedDates} onToggle={toggleCalendar} highlight={!calendarFound} />
+            </div>
           </div>
 
-          {/* Summary Cards */}
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl px-4 py-3 shadow-lg shadow-indigo-100/50 flex justify-between items-center text-white mb-2">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-100">Điểm Chuyên Cần Tháng Này</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <span className="text-2xl font-black">{summary.disciplinePoints}</span>
-                <span className="text-sm font-medium text-indigo-200">/ 100đ</span>
-              </div>
+          {/* Date Picker — mở từ nút lịch trên header */}
+          <AnimatePresence>
+              {showCalendar && (
+                  <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                  >
+                      <HistoryCalendar selectedDates={selectedDates} onSelectDates={(dates, isComplete) => {
+                          setSelectedDates(dates);
+                          if (isComplete) {
+                            setTimeout(() => setShowCalendar(false), 300);
+                          }
+                      }} />
+                  </motion.div>
+              )}
+          </AnimatePresence>
+
+          <div className={`grid gap-2 ${showHoursTile ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+            <div className="bg-indigo-600 text-white rounded-2xl px-2 py-3 shadow-lg shadow-indigo-100 flex flex-col justify-between">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Thu nhập</p>
+              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalGross || 0).toLocaleString('vi-VN')}đ</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <Award size={24} className="text-white" />
+            <div className="bg-emerald-500 text-white rounded-2xl px-2 py-3 shadow-lg shadow-emerald-100 flex flex-col justify-between">
+              <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-100">Thực nhận</p>
+              <p className="text-sm font-black tabular-nums mt-0.5 break-words">{(summary.totalNet || 0).toLocaleString('vi-VN')}đ</p>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div className="bg-indigo-600 text-white rounded-2xl px-2.5 py-3 shadow-lg shadow-indigo-100">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-indigo-200">Tiền tua</p>
-              <p className="text-base font-black tabular-nums mt-0.5">{summary.totalCommission.toLocaleString('vi-VN')}đ</p>
-            </div>
-            <div className="bg-emerald-500 text-white rounded-2xl px-2.5 py-3 shadow-lg shadow-emerald-100">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-100">Tip</p>
-              <p className="text-base font-black tabular-nums mt-0.5">{summary.totalTip.toLocaleString('vi-VN')}đ</p>
-            </div>
-            <div className="bg-amber-500 text-white rounded-2xl px-2.5 py-3 shadow-lg shadow-amber-100">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-amber-100">Bonus</p>
-              <p className="text-base font-black tabular-nums mt-0.5">{summary.totalBonus}đ</p>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-2xl px-2.5 py-3 shadow-sm">
+            <div className="bg-white border border-gray-100 rounded-2xl px-2 py-3 shadow-sm flex flex-col justify-between items-center text-center">
               <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Đơn</p>
               <p className="text-base font-black text-gray-900 tabular-nums mt-0.5">{summary.totalOrders}</p>
             </div>
-          </div>
-
-          {/* Date Picker */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-3 py-3 space-y-2.5">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <CalendarDays size={14} className="text-gray-400 shrink-0" />
-              {PRESET_BUTTONS.map(b => (
-                <button
-                  key={b.key}
-                  onClick={() => setDatePreset(b.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    datePreset === b.key
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-600 active:bg-gray-200'
-                  }`}
-                >
-                  {b.label}
-                </button>
-              ))}
-            </div>
-
-            {datePreset === 'custom' && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={e => setDateFrom(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                />
-                <ChevronRight size={14} className="text-gray-300 shrink-0" />
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={e => setDateTo(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                />
-                <button
-                  onClick={applyCustomDate}
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
-                >
-                  Xem
-                </button>
-              </div>
+            {showHoursTile && (
+              <button
+                onClick={() => setShowHours(true)}
+                className="bg-white border border-gray-100 rounded-2xl px-2 py-3 shadow-sm flex flex-col justify-between items-center text-center active:scale-95 transition-transform"
+              >
+                <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Giờ tích luỹ</p>
+                <p className="text-sm font-black text-indigo-600 tabular-nums mt-0.5">
+                  {hours.isLoading ? '…' : fmtHours(hours.totals.net)}
+                </p>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-0.5">
+                  <ListTree size={9} /> Chi tiết
+                </span>
+              </button>
             )}
           </div>
 
@@ -467,12 +659,30 @@ export default function KTVHistoryPage() {
               history.map(item => (
                 item.type === 'DISCIPLINE'
                   ? <DisciplineCard key={item.id} item={item} />
-                  : <OrderCard key={item.id} order={item} getStatusLabel={getStatusLabel} techCode={user?.id || ''} refetch={refetch} />
+                  : <OrderCard key={item.id} order={item} getStatusLabel={getStatusLabel} />
               ))
             )}
           </div>
         </div>
       </PullToRefresh>
+
+      {showHours && showHoursTile && (
+        <HoursLedgerSheet
+          subtitle={`${nhanNgay(selectedDates)} · Tháng ${monthLabel}`}
+          earned={hours.totals.earned}
+          penalty={hours.totals.penalty}
+          net={hours.totals.net}
+          rows={hours.rows}
+          note={<>
+            Cả tháng {monthLabel}: làm thực <b className="text-slate-600">{fmtHours(hours.monthTotals.earned)}</b> ·
+            bị phạt <b className="text-slate-600">{fmtHours(hours.monthTotals.penalty)}</b> ·
+            thực nhận <b className="text-slate-600">{fmtHours(hours.monthTotals.net)}</b>.
+            Cột &ldquo;Còn&rdquo; ở mỗi dòng là số dư dồn của cả tháng, không phải của riêng mấy ngày đang chọn.
+          </>}
+          emptyText="Những ngày bạn chọn chưa có tua nào được ghi sổ."
+          onClose={() => setShowHours(false)}
+        />
+      )}
     </AppLayout>
   );
 }

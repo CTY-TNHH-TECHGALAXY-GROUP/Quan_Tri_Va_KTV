@@ -14,8 +14,16 @@ export interface KTVRankingData {
   avgWorkingHours: number;
   totalWorkingHours: number;
   avgRating: number;
+  ratingCount?: number;
+  rating4Count?: number;
+  rating3Count?: number;
+  rating2Count?: number;
+  rating1Count?: number;
   excellentCount: number;
+  goodCount?: number;
+  averageCount?: number;
   badCount: number;
+  workType?: string;
 }
 
 export function useRevenueKTVRanking(dateFromProp: string, dateToProp: string, langFilter?: string) {
@@ -59,8 +67,20 @@ export function useRevenueKTVRanking(dateFromProp: string, dateToProp: string, l
       case 'leaveDays': return b.leaveDays - a.leaveDays; // Nghỉ nhiều nhất lên đầu
       case 'avgWorkingHours': return b.avgWorkingHours - a.avgWorkingHours;
       case 'totalWorkingHours': return b.totalWorkingHours - a.totalWorkingHours;
-      case 'excellentCount': return b.excellentCount - a.excellentCount;
-      case 'badCount': return b.badCount - a.badCount;
+      case 'rating4Count':
+      case 'excellentCount':
+        return (b.rating4Count ?? b.excellentCount ?? 0) - (a.rating4Count ?? a.excellentCount ?? 0);
+      case 'rating3Count':
+      case 'goodCount':
+        return (b.rating3Count ?? b.goodCount ?? 0) - (a.rating3Count ?? a.goodCount ?? 0);
+      case 'rating2Count':
+      case 'averageCount':
+        return (b.rating2Count ?? b.averageCount ?? 0) - (a.rating2Count ?? a.averageCount ?? 0);
+      case 'rating1Count':
+      case 'badCount':
+        return (b.rating1Count ?? b.badCount ?? 0) - (a.rating1Count ?? a.badCount ?? 0);
+      case 'avgRating':
+        return (b.avgRating || 0) - (a.avgRating || 0);
       case 'requestedTurns': return b.requestedTurns - a.requestedTurns;
       case 'vipTurns': return b.vipTurns - a.vipTurns;
       default: return 0;

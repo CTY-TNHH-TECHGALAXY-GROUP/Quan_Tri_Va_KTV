@@ -2,6 +2,8 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { LeaveRequestSchema, LeavePatchSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
+import { vnDate } from '@/lib/vn-time';
+import { requireBusinessUser, requireStaffOrPermission } from '@/lib/auth-server';
 
 /**
  * GET /api/ktv/leave
@@ -25,19 +27,39 @@ export async function GET(request: NextRequest) {
         const from = searchParams.get('from') || defaultFrom;
         const to = searchParams.get('to') || defaultTo;
 
-        const { data, error } = await supabase
+        // 🛡️ RIÊNG TƯ: KTV chỉ được xem lịch nghỉ CỦA CHÍNH MÌNH.
+        // Lễ tân / Admin / Quản lý vẫn xem được toàn bộ để điều phối.
+        let onlyOwnerId: string | null = null;
+        try {
+            const bUser = await requireBusinessUser();
+            const rawRole = String(bUser?.role || '').toUpperCase();
+            if (bUser && (rawRole === 'TECHNICIAN' || rawRole === 'KTV')) {
+                onlyOwnerId = bUser.techCode || bUser.businessUserId;
+            }
+        } catch {
+            // Không xác định được người gọi → giữ nguyên hành vi cũ (client vẫn lọc lần nữa).
+        }
+
+        let query = supabase
             .from('KTVLeaveRequests')
             .select('*')
             .gte('date', from)
             .lte('date', to)
             .order('date', { ascending: true });
 
+        if (onlyOwnerId) query = query.eq('employeeId', onlyOwnerId);
+
+        const { data, error } = await query;
+
         if (error) {
             console.error('❌ [Leave GET] Query error:', error);
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true, data: data || [] });
+        // `staff_id` = danh tinh server doc tu JWT (chi co khi nguoi goi la KTV).
+        // Client doi chieu voi phien cua tab minh — xem chu thich o
+        // app/api/ktv/daily-registration/route.ts.
+        return NextResponse.json({ success: true, data: data || [], staff_id: onlyOwnerId });
     } catch (error: any) {
         console.error('❌ [Leave GET] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -68,6 +90,10 @@ export async function POST(request: Request) {
                 { status: 400 }
             );
         }
+
+        // Chỉ đăng ký nghỉ cho CHÍNH MÌNH; quầy có quyền leave_management thì đăng ký giúp được.
+        const denied = await requireStaffOrPermission(employeeId, 'leave_management');
+        if (denied) return denied;
 
         // Admin đăng ký giúp không cần reason bắt buộc
         if (!registeredByAdmin && !reason) {
@@ -296,7 +322,7 @@ export async function POST(request: Request) {
         // Send notification
         let notifMessage = '';
         if (registeredByAdmin) {
-            notifMessage = `📋 [ADMIN] Đã đăng ký OFF cho ${employeeName || employeeId} ngày ${validDates.join(', ')}`;
+            notifMessage = `📋 [ADMIN] Đã đăng ký OFF cho ${employeeName || employeeId} ngày ${validDates.map(vnDate).join(', ')}`;
         } else if (isSuddenOff) {
             notifMessage = `⚠️ [KỶ LUẬT] ${employeeName || employeeId} đăng ký NGHỈ ĐỘT XUẤT ${validDates.length} ngày (${validDates.join(', ')}) do hết lượt gia hạn! (Lý do: ${reason})`;
         } else if (isExtension) {
@@ -354,6 +380,10 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: 'Leave request not found' }, { status: 404 });
         }
 
+        // Chủ đơn hoặc người có quyền leave_management mới duyệt/từ chối được.
+        const denied = await requireStaffOrPermission(String(leave.employeeId || ''), 'leave_management');
+        if (denied) return denied;
+
         const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
 
         // Update leave request status
@@ -373,7 +403,7 @@ export async function PATCH(request: Request) {
 
         // Notify KTV about the decision
         const statusText = action === 'APPROVE' ? '✅ được duyệt' : '❌ bị từ chối';
-        const ktvMessage = `📋 Yêu cầu OFF ngày ${leave.date} đã ${statusText}.`;
+        const ktvMessage = `📋 Yêu cầu OFF ngày ${vnDate(leave.date)} đã ${statusText}.`;
 
         await createNotification({
             type: 'LEAVE_RESPONSE',
@@ -408,6 +438,16 @@ export async function DELETE(request: NextRequest) {
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
+
+        // Chủ đơn hoặc người có quyền leave_management mới xoá được. Đơn không
+        // tồn tại → employeeId rỗng → chỉ người có quyền mới qua.
+        const { data: leaveRow } = await supabase
+            .from('KTVLeaveRequests')
+            .select('employeeId')
+            .eq('id', leaveId)
+            .maybeSingle();
+        const denied = await requireStaffOrPermission(String(leaveRow?.employeeId || ''), 'leave_management');
+        if (denied) return denied;
 
         const { error } = await supabase
             .from('KTVLeaveRequests')

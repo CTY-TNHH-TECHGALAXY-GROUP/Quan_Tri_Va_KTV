@@ -13,12 +13,13 @@
 */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { ktvMatchesSeg } from '../ktvUtils';
+import { isVoidedSegment } from '../segment-time';
 
 export interface CommissionConfig {
     milestones: Record<string, number>;
     ratePer60: number;
     minDeposit: number;
-    isPenaltyEnabled: boolean;
     isBonusWalletEnabled: boolean;
     fixedOrderBonus?: number;
 }
@@ -45,9 +46,6 @@ export class KtvCommissionService {
             `ktv_deposit_amount${typeSuffix}`,
             `ktv_deposit_amount`,
             `ktv_min_deposit`, // Legacy
-            `ktv_sudden_off_penalty${typeSuffix}`,
-            `ktv_sudden_off_penalty`,
-            `enable_ktv_penalty`, // Legacy
             `ktv_instant_reward_enabled${typeSuffix}`,
             `ktv_instant_reward_enabled`,
             `enable_bonus_wallet`, // Legacy
@@ -108,14 +106,17 @@ export class KtvCommissionService {
             if (rawDeposit) minDeposit = Number(rawDeposit);
         }
 
-        // Penalty
-        let penaltyAmount = 50000;
-        let penaltyKey = configMap[`ktv_sudden_off_penalty${typeSuffix}`] !== undefined ? `ktv_sudden_off_penalty${typeSuffix}` 
-                         : configMap['ktv_sudden_off_penalty'] !== undefined ? 'ktv_sudden_off_penalty' : null;
-        if (penaltyKey && configMap[penaltyKey] !== undefined) {
-             penaltyAmount = Number(configMap[penaltyKey]) || 50000;
-        }
-        const isPenaltyEnabled = penaltyAmount > 0 || configMap['enable_ktv_penalty'] === 'true'; // Nếu phạt > 0 thì bật
+        // ⚠️ Đã gỡ `isPenaltyEnabled` / `enable_ktv_penalty`.
+        //
+        // Nó là công tắc GIẢ ở hai tầng: (1) công thức cũ là
+        // `penaltyAmount > 0 || cờ === 'true'` nên hễ có mức tiền phạt là bật,
+        // gạt cờ không đổi được gì; (2) không nơi nào trong dự án đọc kết quả đó
+        // — grep cả app/ lẫn lib/ chỉ thấy chính chỗ khai báo. Giữ lại chỉ để
+        // người sau tưởng có thể tắt phạt bằng cờ này.
+        //
+        // Muốn TẮT phạt nghỉ đột xuất thì dùng hai đường đang chạy thật:
+        //   · đặt `ktv_sudden_off_penalty[_TYPE_x]` = 0  (tắt cả loại)
+        //   · gạt cờ `sudden_leave_penalty` của từng KTV  (tắt riêng một người)
 
         // Instant Reward (Bonus Wallet)
         let instantRewardKey = configMap[`ktv_instant_reward_enabled${typeSuffix}`] !== undefined ? `ktv_instant_reward_enabled${typeSuffix}` 
@@ -128,7 +129,7 @@ export class KtvCommissionService {
             fixedOrderBonus = Number(configMap['ktv_type_b_fixed_order_bonus']) || 20000;
         }
 
-        return { milestones, ratePer60, minDeposit, isPenaltyEnabled, isBonusWalletEnabled, fixedOrderBonus };
+        return { milestones, ratePer60, minDeposit, isBonusWalletEnabled, fixedOrderBonus };
     }
 
     /**
@@ -285,7 +286,14 @@ export class KtvCommissionService {
 
         if (mySegs.length > 0) {
             return mySegs.reduce((sum: number, seg: any) => {
-                if (seg.customCommissionDuration) return sum + Number(seg.customCommissionDuration);
+                // Chặng bị tước quyền lợi (KTV bị đổi ra, huỷ do lỗi KTV) → không trả tiền.
+                // Vẫn giữ trong đơn để biết ai từng làm cho khách — xem lib/segment-time.ts
+                if (seg?.voided === true) return sum;
+                // ⚠️ Phải so với null, KHÔNG dùng truthy: `0` là một con số HỢP LỆ
+                // (KTV làm dưới 30 giây, hoặc quầy chốt đúng 0 phút). Kiểm kiểu truthy
+                // thì 0 bị coi như "không có override" và rơi xuống trả nguyên GIỜ GÁN
+                // — đã bắt được thật: T016 làm 29 giây mà ra 45 phút tiền.
+                if (seg.customCommissionDuration != null) return sum + Number(seg.customCommissionDuration);
                 const baseMins = Number(seg.duration) || 0;
                 
                 let realMins = 0;
@@ -326,13 +334,47 @@ export class KtvCommissionService {
         targetGuestId?: string // <--- NEW PARAMETER
     ): number {
         if (!bonusConfig.enableBonus) return 0;
+
+        /**
+         * Item đã huỷ thì KHÔNG sinh thưởng.
+         *
+         * ⚠️ Trước đây hai vòng lặp bên dưới quét thẳng `booking.BookingItems`
+         * không lọc trạng thái, nên đơn quầy đã HUỶ vẫn được cộng "Bonus xuất
+         * sắc". Gặp thật ngày 08/09: đơn TEST-260908-YNAY-B đã huỷ mà vẫn ra
+         * +20đ → 20.000đ, trừ thuế còn 18.000đ thực nhận.
+         */
+        const daHuy = (i: any) => String(i?.status || '').toUpperCase() === 'CANCELLED';
+
+        /**
+         * KTV `code` có THẬT SỰ tham gia item này không.
+         *
+         * ⚠️ `technicianCodes` KHÔNG đủ: người BỊ ĐỔI RA vẫn nằm trong đó (cố ý, để
+         * truy vết ai từng làm cho khách), nhưng chặng của họ bị tước (`voided`).
+         * Dựa vào technicianCodes là hai lỗi tiền cùng lúc:
+         *   · khách chấm Xuất sắc cho người VÀO THAY → người bị đổi CŨNG ăn thưởng;
+         *   · người bị đổi được đếm vào số KTV để CHIA điểm → người vào thay mất
+         *     nửa suất thưởng của chính mình.
+         * Hàm này là nguồn chung của mọi nơi tính thưởng (ví, sổ cái ngày, lịch sử,
+         * báo cáo), nên sửa ở đây là đúng hết.
+         */
+        const thamGia = (item: any, code: string): boolean =>
+            Array.isArray(item?.technicianCodes)
+            && item.technicianCodes.some((tc: string) => String(tc).toLowerCase() === String(code).toLowerCase())
+            && !this.isKtvVoidedOnItem(item, code);
         // Kiểm tra cờ cấp độ cá nhân (nếu được truyền vào và set là false)
         if (staffBonusMap[techCode.toLowerCase()] === false) return 0;
+
+        // KTV Loại D ăn theo LƯỢT KHÁCH, không theo thời lượng: tua ngắn dưới 60 phút
+        // vẫn được trọn suất thưởng. Luật "dưới 60 phút mất điểm" chỉ áp cho các loại khác.
+        const isTypeD = String(staffWorkTypeMap[techCode.toLowerCase()] || '').toUpperCase() === 'TYPE_D';
         // Compute all unique technicians in this booking for dividing points
         const allKtvCodes = new Set<string>();
         for (const item of (booking.BookingItems || [])) {
             if (item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                item.technicianCodes.forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
+                // Người bị đổi ra không được tính vào số người chia thưởng.
+                item.technicianCodes
+                    .filter((tc: string) => thamGia(item, tc))
+                    .forEach((tc: string) => allKtvCodes.add(tc.toLowerCase()));
             }
         }
         if (allKtvCodes.size === 0 && booking.technicianCode) {
@@ -349,13 +391,14 @@ export class KtvCommissionService {
         for (const item of (booking.BookingItems || [])) {
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
-                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                isTechInvolved = thamGia(item, techCode);
             } else {
                 const codes = typeof booking.technicianCode === 'string' ? booking.technicianCode.split(',') : [];
                 isTechInvolved = codes.some((tc: string) => tc.trim().toLowerCase() === techCode.toLowerCase());
             }
                 
             if (!isTechInvolved) continue;
+            if (daHuy(item)) continue;
 
             let ktvRating = 0;
             // Priority 1: ktvRatings map
@@ -369,8 +412,13 @@ export class KtvCommissionService {
             }
             // Priority 2: itemRating
             if (ktvRating === 0) ktvRating = Number(item.itemRating) || 0;
-            // Priority 3: booking rating
-            if (ktvRating === 0) ktvRating = Number(booking.rating) || 0;
+            // Priority 3: sao cấp BILL — CHỈ cho đơn cũ CHƯA tách khách.
+            //
+            // ⚠️ Đơn đã tách khách (item có `guest_id`) mà khách này chưa chấm thì
+            // nghĩa là CHƯA CHẤM. Lùi về `booking.rating` là mượn sao của khách
+            // bên cạnh — một người chấm 4 sao thành cả bill được thưởng.
+            // Cùng một luật với KtvDLedgerEngine.resolveRating().
+            if (ktvRating === 0 && !item.guest_id) ktvRating = Number(booking.rating) || 0;
             
             if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
         }
@@ -386,10 +434,11 @@ export class KtvCommissionService {
             // Kiểm tra KTV có tham gia item này không
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
-                isTechInvolved = item.technicianCodes.some((tc: string) => tc.toLowerCase() === techCode.toLowerCase());
+                isTechInvolved = thamGia(item, techCode);
             }
 
             if (!isTechInvolved) continue;
+            if (daHuy(item)) continue;
             
             // Nếu có targetGuestId, BỎ QUA các item không thuộc guest này
             if (targetGuestId && item.guest_id !== targetGuestId) continue;
@@ -447,9 +496,9 @@ export class KtvCommissionService {
             // Tìm số khách mà KTV này thực tế có phục vụ
             const servedGuestCount = ktvGuestIds.size > 0 ? ktvGuestIds.size : 1;
             
-            // LUẬT MỚI: Dưới 60 phút / 1 khách thì mất trắng (0 điểm)
+            // LUẬT MỚI: Dưới 60 phút / 1 khách thì mất trắng (0 điểm) — TRỪ Loại D.
             // Tính trung bình thời gian KTV phục vụ mỗi khách (chỉ tính những khách KTV NÀY CÓ LÀM)
-            if ((totalDurationForBonus / servedGuestCount) < 60) {
+            if (!isTypeD && (totalDurationForBonus / servedGuestCount) < 60) {
                 return 0;
             }
 
@@ -466,7 +515,9 @@ export class KtvCommissionService {
                     const ktvsForThisGuest = new Set<string>();
                     for (const item of (booking.BookingItems || [])) {
                         if (item.guest_id === gId && item.technicianCodes && Array.isArray(item.technicianCodes)) {
-                            item.technicianCodes.forEach((tc: string) => ktvsForThisGuest.add(tc.toLowerCase()));
+                            item.technicianCodes
+                                .filter((tc: string) => thamGia(item, tc))
+                                .forEach((tc: string) => ktvsForThisGuest.add(tc.toLowerCase()));
                         }
                     }
                     const ktvsCount = ktvsForThisGuest.size || 1;
@@ -483,8 +534,8 @@ export class KtvCommissionService {
             // TRƯỚC NGÀY 06/08: Công thức cũ (1 đơn chỉ có BasePoints, chia cho KTV)
             calculatedPoints = adjustedBasePoints / totalUniqueKTVs;
 
-            // LUẬT CŨ: Dưới 60 phút thì bị chia đôi điểm
-            if (totalDurationForBonus < 60) {
+            // LUẬT CŨ: Dưới 60 phút thì bị chia đôi điểm — TRỪ Loại D.
+            if (!isTypeD && totalDurationForBonus < 60) {
                 calculatedPoints = calculatedPoints / 2;
             }
         }
@@ -499,6 +550,60 @@ export class KtvCommissionService {
      * @param ktvId Technician ID to check against
      * @returns { isPassed: boolean, reasons: string[] }
      */
+    /**
+     * ================================================================
+     * KTV NÀY ĐÃ BỊ TƯỚC QUYỀN LỢI TRÊN DỊCH VỤ NÀY CHƯA?
+     * ================================================================
+     * Đúng khi họ CÓ chặng trong dịch vụ và MỌI chặng của họ đều `voided`
+     * (bị đổi ra, hoặc huỷ không công).
+     *
+     * ⚠️ VÌ SAO CẦN MỘT HÀM RIÊNG, KHÔNG DỰA VÀO `itemDuration <= 0`:
+     * `calculateItemDuration` trả 0 cho chặng bị tước — đúng thiết kế. Nhưng
+     * các màn tiền đều có một dòng dự phòng `if (itemDuration <= 0) itemDuration
+     * = 60`, vốn sinh ra để cứu đơn KHÔNG có segment nào (dữ liệu thiếu). Hai
+     * trường hợp đó cùng ra số 0 nên bị gộp làm một: người bị tước sạch tiền
+     * lại được trả nguyên một giờ. Hàm này tách chúng ra —
+     *   0 vì bị tước    → trả 0
+     *   0 vì thiếu data → vẫn dự phòng 60
+     *
+     * Nhận diện chặng bằng CẢ HAI cách khớp mã: `ktvMatchesSeg` (đúng chuẩn,
+     * hiểu chặng ghép "Bao - Na") hợp với phép khớp lỏng `includes` mà
+     * `calculateItemDuration` đang dùng — để không bao giờ bỏ sót một chặng đã
+     * bị tước mà vẫn đem trả tiền.
+     */
+    static isKtvVoidedOnItem(item: any, techCode: string): boolean {
+        const code = String(techCode || '').trim().toLowerCase();
+        if (!code) return false;
+
+        let segs: any[] = [];
+        try {
+            segs = typeof item?.segments === 'string' ? JSON.parse(item.segments) : (item?.segments || []);
+        } catch { }
+        if (!Array.isArray(segs)) return false;
+
+        const mine = segs.filter((s: any) =>
+            ktvMatchesSeg(s?.ktvId, techCode)
+            || (typeof s?.ktvId === 'string' && s.ktvId.toLowerCase().includes(code))
+        );
+
+        return mine.length > 0 && mine.every((s: any) => isVoidedSegment(s));
+    }
+
+    /**
+     * Danh sách KTV CÒN QUYỀN LỢI trên item: có trong `technicianCodes` và chặng
+     * không bị tước (`isKtvVoidedOnItem`).
+     *
+     * `technicianCodes` cố ý giữ cả người bị đổi ra để truy vết (CLAUDE.md mục
+     * 13.3), nên mọi phép chia tiền / tip / phút theo "số KTV" ở các báo cáo
+     * phải chia theo danh sách này, không chia theo `technicianCodes.length`.
+     */
+    static activeTechs(item: any): string[] {
+        const techs: unknown[] = Array.isArray(item?.technicianCodes) ? item.technicianCodes : [];
+        return techs
+            .map((t) => String(t ?? '').trim())
+            .filter((code) => code && !this.isKtvVoidedOnItem(item, code));
+    }
+
     static checkIsItemPassed(item: any, booking: any, ktvId: string): { isPassed: boolean, reasons: string[] } {
         // 🔧 YÊU CẦU TỪ KHÁCH: Hủy bỏ hoàn toàn phương án giữ tiền hoặc bonus của nhân viên.
         // Mọi đơn hàng đều được trả lương và thưởng đầy đủ.

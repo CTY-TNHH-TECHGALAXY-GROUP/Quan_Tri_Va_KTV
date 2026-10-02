@@ -59,3 +59,20 @@ export const recalculateAllTimes = (order: PendingOrder, roomTransitionTime: num
   
   return cloned;
 };
+
+/**
+ * ISO/timestamp -> "HH:mm" theo giờ VN. Chuỗi vốn đã là "HH:mm" thì giữ nguyên.
+ * Dùng chung giữa page.tsx và các component con của màn điều phối.
+ */
+export const formatToHourMinute = (isoString?: string | null) => {
+    if (!isoString) return '--:--';
+    if (/^\d{1,2}:\d{2}$/.test(isoString)) return isoString;
+    let parseString = isoString;
+    if (!isoString.endsWith('Z') && !isoString.includes('+')) {
+        parseString = isoString.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(parseString);
+    if (isNaN(d.getTime())) return isoString;
+    const dVn = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+    return `${String(dVn.getUTCHours()).padStart(2, '0')}:${String(dVn.getUTCMinutes()).padStart(2, '0')}`;
+};

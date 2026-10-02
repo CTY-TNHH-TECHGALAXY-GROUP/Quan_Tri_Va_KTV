@@ -1,6 +1,6 @@
 # Wallet root-cause investigation — T007, 45 minutes, 74,439 VND
 
-Date: 2026-09-22. Scope: read-only investigation, proposed implementation and rollout. No application or financial data changes in this investigation.
+Date: 2026-09-22. Sections 1–9 record the initial read-only investigation and rollout plan. Section 10 records the applied rollout and targeted repair.
 
 ## 1. Correction to the previous conclusion
 
@@ -232,3 +232,11 @@ Completion means both arithmetic correctness AND control over every writer, foll
 ## 9. What remains unproven
 
 Exact HTTP request/deployment that made the 00:42 write; server-side credential target for every historical immutable deployment; historical intent of large-difference legacy candidates; whether a particular cash payout used the understated balance. The ledger does not currently preserve enough writer provenance to answer the first point from the row alone. These limits do not negate the reproduced old formula or the identified stale-writer paths.
+
+## 10. Rollout and T007 repair, 22 September 2026
+
+- The revision 2 writer was pushed to `feat/bit-lo-hong-phase1` (`bf675628`), `main` (`24b5dfba`), and `fix/shift-extension-phase1` (`9f31bade`). GitHub reported successful Vercel status for all three commits before enforcement.
+- The support migration was applied first. The enforcement functions and both triggers were then applied in Supabase SQL Editor. Its final query returned `trg_ktvd_require_writer_v2` and `trg_ktvd_require_queue_writer_v2`, both enabled (`O`). A direct update from the application service connection was rejected with `Outdated KTV commission writer: formula revision 2 required`.
+- Before repair, the T007 row for `11NDK-015-21092026-item1` was `FINAL`, unlocked, revision 0, 44.66315 paid minutes, 74,438.58333333334 commission, and 7,443.8583333333345 tax. The source still had one normal 45-minute completed segment. The current engine reproduced 45 paid minutes, 75,000 commission, 7,500 tax, and 67,500 take-home at the stored 100,000/hour rate. The ledger column `commission_net` is **before tax** and therefore equals 75,000 for this row.
+- A guarded local maintenance call used `recomputeTurnRows()` and the revision 2 commit RPC. It wrote exactly one row, voided none, and acknowledged the queue generation. Readback confirmed 45 paid minutes, 75,000 `commission_gross`, 75,000 `commission_net`, 7,500 `tax_amount`, revision 2, `writer_commit = manual-T007-20260922-bf675628`, and no pending queue entry. The pre-repair ledger/source/expected snapshot is at `/private/tmp/ktvd_t007_015-21092026_before_v2.json` on the operator machine.
+- Both previously repaired T027 rows still have 90 paid minutes and 150,000 commission. Their historical manual repairs have revision 0; no further changes were made to them. The other 15 screened candidates remain untouched because their historical intent is ambiguous and requires individual review.

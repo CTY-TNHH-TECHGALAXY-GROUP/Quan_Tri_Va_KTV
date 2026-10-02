@@ -1,7 +1,12 @@
+import { canRequestWithdrawIntent } from '@/lib/attendance/withdrawIntent';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
+import { resolveAttendanceStatus } from '@/lib/attendance/resolveAttendanceStatus';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
+import { requireStaffMatches } from '@/lib/auth-server';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -19,29 +24,20 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: 'Missing employeeId' }, { status: 400 });
         }
 
+        const mismatch = await requireStaffMatches(employeeId);
+        if (mismatch) return mismatch;
+
         const supabase = getSupabaseAdmin();
         if (!supabase) {
             return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
         }
 
-        // ─── Fetch Cut-off Time Config ───
-        const { data: configData } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .single();
-            
-        // Default to 6:00 AM if not set
-        const cutoffHours = (configData?.value != null) ? Number(configData.value) : 6;
-
-        // ─── Calculate Business Day date range (UTC+7) ───
+        // ─── Ngày làm việc — một nguồn duy nhất: lib/business-date ───
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
         const nowUtc = new Date();
         const vnNow = new Date(nowUtc.getTime() + VN_OFFSET_MS);
-        
-        // Subtract cutoff hours to determine the "Business Date"
-        // E.g., if cutoff is 6, 03:00 AM May 2 becomes 21:00 PM May 1 -> Business Date is May 1
-        const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessNow.toISOString().slice(0, 10);
+        const businessDateStr = toBusinessDate(nowUtc, cutoffHours);
         
         // Business Day starts at cutoff hours of the business date
         const startOfBusinessDayUtc = new Date(`${businessDateStr}T${String(cutoffHours).padStart(2, '0')}:00:00+07:00`).toISOString();
@@ -63,12 +59,21 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        // Ô "Yêu cầu rút tiền" CHỈ hiện ở lần điểm danh ĐẦU TIÊN trong ngày.
+        // Lần thứ hai trở đi thì ẩn hẳn, không quan tâm lần đầu có tích hay không.
+        const daDiemDanhHomNay = (records || []).some((r: any) =>
+            r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN');
+
         // ─── Fetch Work Type & Available Until ───
         let workType = 'TYPE_A';
         let availableUntil = null;
-        // Ví Tua switched off → the check-in form shows the maintenance notice
-        // instead of the withdraw box (the POST refuses the intent anyway).
+        let lockInfo: any = null;
+        // TUA wallet switched off → the check-in form shows the maintenance
+        // notice instead of the "Yêu cầu rút tiền" box (the POST refuses the
+        // intent anyway; this only keeps the form honest).
         let withdrawWalletOff = false;
+        // Cờ "Rút tiền buổi sáng" của KTV — xem lib/attendance/withdrawIntent.
+        let withdrawFlags: unknown = null;
         const { data: userRow } = await supabase
             .from('Users')
             .select('code')
@@ -78,19 +83,67 @@ export async function GET(request: Request) {
         if (userRow?.code) {
              const { data: staffRow } = await supabase
                  .from('Staff')
-                 .select('work_type, available_until')
+                 .select('work_type, available_until, status, lock_source, feature_flags')
                  .eq('id', userRow.code)
                  .maybeSingle();
+             
+             if (staffRow?.status === 'KHÓA_TÀI_KHOẢN' && staffRow?.lock_source === 'MANUAL') {
+                // Admin switched "Hoạt động" off → no reason, no discipline wording:
+                // the client renders the maintenance notice for kind MANUAL.
+                lockInfo = { kind: 'MANUAL' };
+             } else if (staffRow?.status === 'KHÓA_TÀI_KHOẢN') {
+                const { data: auditLog } = await supabase
+                    .from('SecurityAuditLogs')
+                    .select('created_at, details, employee_name')
+                    .eq('event_type', 'AUTO_LOCK_ABSENCE')
+                    .eq('employee_id', userRow.code)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (auditLog) {
+                    lockInfo = {
+                        kind: 'DISCIPLINE',
+                        lockedAt: auditLog.created_at,
+                        reason: auditLog.details?.reason || 'Vắng mặt không phép (Cron)',
+                        adminContact: 'Hotline/Zalo Quản lý: 0987654321', 
+                    };
+                } else {
+                    lockInfo = { kind: 'DISCIPLINE', lockedAt: new Date().toISOString(), reason: 'Bị khóa kỷ luật', adminContact: 'Quản lý' };
+                }
+             }
+
              if (staffRow?.work_type) {
                  workType = staffRow.work_type;
+             }
+             if (staffRow) {
+                 const { ok } = await WalletAccessService.isEnabled(supabase, userRow.code, 'TUA');
+                 withdrawWalletOff = !ok;
+                 withdrawFlags = staffRow.feature_flags;
              }
              if (staffRow?.available_until) {
                  availableUntil = staffRow.available_until;
              }
-             if (staffRow) {
-                 const { ok } = await WalletAccessService.isEnabled(supabase as any, userRow.code, 'TUA');
-                 withdrawWalletOff = !ok;
-             }
+        }
+
+        // ─── Fetch Today Registration (Only for TYPE_D) ───
+        let todayRegistration = null;
+        if (workType === 'TYPE_D' && userRow?.code) {
+            // Dòng đăng ký của CA hiện tại: theo ngày làm việc, không phải ngày lịch.
+            const todayStr = businessDateStr;
+
+            const { data: regData } = await supabase
+                .from('KTVTypeDDailyRegistration')
+                // late_expected_time is required: the check-in dialog shows the EFFECTIVE
+                // arrival time (late report wins). Without it the dialog fell back to the
+                // original expected_time and flagged "late" someone who reported late on time.
+                .select('status, expected_time, expected_end_time, late_expected_time, check_in_at, penalty_applied')
+                .eq('staff_id', userRow.code)
+                .eq('work_date', todayStr)
+                .maybeSingle();
+
+            if (regData) {
+                todayRegistration = regData;
+            }
         }
 
         // ─── Fetch Incomplete Tasks ───
@@ -129,68 +182,121 @@ export async function GET(request: Request) {
              }
         }
 
-        // ─── Determine status from records ───
+        // ─── Nợ phòng: chưa trả xong thì không cho tan ca ───
+        //
+        // Trong ca thì cứ nợ thoải mái — chỉ chặn ở bước TAN CA.
+        //
+        //  · Nợ bàn giao : item KTV đã bấm "Bỏ qua" hoặc bị quầy trả lại. Không
+        //                  giới hạn ngày — nợ là nợ, còn thì phải trả.
+        //  · Nợ dọn phòng: item còn ở CLEANING của CHÍNH NGÀY LÀM VIỆC này. Giới
+        //                  hạn theo ngày vì trong DB còn nhiều dòng CLEANING cũ
+        //                  hàng tháng trời, chặn theo chúng là khoá người ta vĩnh
+        //                  viễn vì rác dữ liệu chứ không phải vì lỗi hôm nay.
+        let roomDebt = { handover: 0, cleaning: 0, total: 0, items: [] as any[] };
+        if (userRow?.code) {
+            // Cùng ngày làm việc đã tính ở đầu hàm — trước đây chỗ này gọi lại
+            // hàm của điều phối, vốn viết cứng mốc 6h.
+            const bizDate = businessDateStr;
+
+            const { data: debtRows, error: debtErr } = await supabase
+                .from('BookingItems')
+                .select('id, roomName, status, handover_status, timeStart, segments')
+                .contains('technicianCodes', [userRow.code])
+                .or(`handover_status.in.(SKIPPED,REJECTED),status.eq.CLEANING`);
+
+            if (debtErr) {
+                console.error('[Attendance] Không đọc được nợ phòng:', debtErr);
+            } else {
+                for (const it of (debtRows || [])) {
+                    // ⚠️ Người BỊ ĐỔI RA vẫn nằm trong `technicianCodes` (cố ý, để truy
+                    // vết) nhưng KHÔNG nợ phòng đó: người vào thay mới là người dọn và
+                    // bàn giao. Không bỏ qua ở đây là họ bị CHẶN TAN CA vì một phòng
+                    // mình không phải dọn, ngay khi người thay làm xong và đơn sang
+                    // CLEANING — hoặc khi người thay bấm bỏ qua / bị quầy trả lại.
+                    // Same for a KTV who never started before the customer left early (14/09/2026).
+                    if (hasNoRoomDutyOnItems([it], userRow.code, ktvMatchesSeg)) continue;
+                    const owesHandover = ['SKIPPED', 'REJECTED'].includes(String(it.handover_status || '').toUpperCase());
+                    const owesCleaning = it.status === 'CLEANING'
+                        && String(it.timeStart || '').slice(0, 10) === bizDate;
+                    if (!owesHandover && !owesCleaning) continue;
+
+                    if (owesHandover) roomDebt.handover++;
+                    else roomDebt.cleaning++;
+
+                    roomDebt.items.push({
+                        id: it.id,
+                        roomName: it.roomName,
+                        kind: owesHandover ? 'HANDOVER' : 'CLEANING',
+                    });
+                }
+                roomDebt.total = roomDebt.handover + roomDebt.cleaning;
+            }
+        }
+
+        // ─── Fetch Guest Arrival Lock (Only for TYPE_D) ───
+        let guestArrivalLock = { active: false, lockedBy: '', lockedAt: '', message: '' };
+        if (workType === 'TYPE_D') {
+            const { isGuestArrivalEnabled } = await import('@/lib/guest-arrival.logic');
+            const isEnabled = await isGuestArrivalEnabled(supabase);
+
+            if (isEnabled) {
+                const { data: activeLock } = await supabase
+                    .from('GuestArrivalEvents')
+                    .select('created_by_name, created_at, note')
+                    .is('released_at', null)
+                    .maybeSingle();
+
+                if (activeLock) {
+                    guestArrivalLock = {
+                        active: true,
+                        lockedBy: activeLock.created_by_name,
+                        lockedAt: activeLock.created_at,
+                        message: activeLock.note || 'Quầy vừa thông báo có khách. Cb đón khách nhé'
+                    };
+                }
+            }
+        }
+
+        // ─── Determine status from records & shiftExtension ───
+        const overtimeRecord = (records || []).find(
+            (record: any) => record.checkType === 'OVERTIME' && record.status === 'CONFIRMED'
+        );
+
+        const shiftExtension = {
+            used: !!overtimeRecord,
+            currentEndTime: overtimeRecord?.estimatedEndTime ?? null,
+            usedAt: overtimeRecord?.checkedAt ?? null,
+        };
+
         if (!records || records.length === 0) {
             // CƠ CHẾ BẢO VỆ: Nếu KTV chưa điểm danh hôm nay nhưng bị kẹt AT_VENUE ở bảng Staff (do quên tan ca hôm trước) -> Auto reset về OFFLINE
             if (userRow?.code) {
                 const { data: staffStatus } = await supabase.from('Staff').select('online_status').eq('id', userRow.code).maybeSingle();
                 if (staffStatus?.online_status === 'AT_VENUE') {
-                    console.log(`[Auto-Protect] KTV ${userRow.code} stuck AT_VENUE from previous day. Resetting to OFFLINE.`);
-                    await KtvOnlineService.goOffline(supabase, userRow.code);
+                    // ⚠️ goOffline đặt TurnQueue hôm nay = off. KTV chưa điểm danh nhưng ĐANG ôm
+                    // đơn (quầy xác nhận phân đơn, 14/09/2026) thì tắt là mất đơn khỏi bảng điều
+                    // phối — cảnh báo "chưa điểm danh" trên dashboard gọi API này mỗi phút.
+                    const { data: busyTurn } = await supabase
+                        .from('TurnQueue')
+                        .select('id')
+                        .eq('employee_id', userRow.code)
+                        .eq('date', businessDateStr)
+                        .in('status', ['assigned', 'working'])
+                        .limit(1)
+                        .maybeSingle();
+                    if (busyTurn) {
+                        console.log(`[Auto-Protect] KTV ${userRow.code} AT_VENUE nhưng đang có đơn — không reset.`);
+                    } else {
+                        console.log(`[Auto-Protect] KTV ${userRow.code} stuck AT_VENUE from previous day. Resetting to OFFLINE.`);
+                        await KtvOnlineService.goOffline(supabase, userRow.code);
+                    }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
-        // Find the most relevant record (most recent non-rejected, or fallback)
-        
-        // 1. Kiểm tra xin nghỉ đột xuất
-        const confirmedOff = records.find(
-            (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'CONFIRMED'
-        );
-        if (confirmedOff) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedOff, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        const pendingOff = records.find(
-            (r) => r.checkType === 'SUDDEN_OFF' && r.status === 'PENDING'
-        );
-        if (pendingOff) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingOff, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        // 2. Kiểm tra Tan ca
-        const confirmedCheckOut = records.find(
-            (r) => r.checkType === 'CHECK_OUT' && r.status === 'CONFIRMED'
-        );
-        if (confirmedCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'CHECKED_OUT', record: confirmedCheckOut, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        const pendingCheckOut = records.find(
-            (r) => r.checkType === 'CHECK_OUT' && r.status === 'PENDING'
-        );
-        if (pendingCheckOut) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckOut, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        // 3. Kiểm tra Vào ca
-        const confirmedCheckIn = records.find(
-            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'CONFIRMED'
-        );
-        if (confirmedCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'CONFIRMED', record: confirmedCheckIn, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        const pendingCheckIn = records.find(
-            (r) => (r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN' || r.checkType === 'OVERTIME') && r.status === 'PENDING'
-        );
-        if (pendingCheckIn) {
-            return NextResponse.json({ success: true, checkStatus: 'PENDING', record: pendingCheckIn, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
-        }
-
-        // All records are REJECTED → allow retry
-        return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, withdrawWalletOff });
+        const { checkStatus, record } = resolveAttendanceStatus(records, workType);
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

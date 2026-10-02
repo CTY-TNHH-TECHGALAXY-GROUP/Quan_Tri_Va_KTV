@@ -1,27 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
-
-const envPath = path.resolve('.env.local');
-const envContent = fs.readFileSync(envPath, 'utf-8');
-
-let supabaseUrl = '';
-let supabaseKey = '';
-
-envContent.split('\n').forEach(line => {
-    if (line.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
-    if (line.startsWith('SUPABASE_SECRET_KEY=')) supabaseKey = line.split('=')[1].trim();
-});
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-async function checkTrans() {
-    const { data: ledger } = await supabase.from('KTVPiggyBankLedger').select('*').order('created_at', { ascending: false }).limit(20);
-    console.log('--- LEDGER ---');
-    console.log(JSON.stringify(ledger, null, 2));
-
-    const { data: bank } = await supabase.from('KTVPiggyBank').select('*').order('updated_at', { ascending: false }).limit(20);
-    console.log('--- BANK ---');
-    console.log(JSON.stringify(bank, null, 2));
-}
-checkTrans();
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+(async () => {
+    const ktv = 'NH079';
+    for (const date of ['2026-08-17', '2026-08-27']) {
+        console.log('--- DATE:', date, '---');
+        const start = date + 'T00:00:00+07:00';
+        const end = date + 'T23:59:59+07:00';
+        const res = await s.from('Bookings').select('id, rating, bookingDate, timeStart, BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, duration )').gte('bookingDate', start).lte('bookingDate', end);
+        const bks = (res.data || []).filter(b => b.BookingItems.some(i => i.technicianCodes?.includes(ktv)));
+        console.log('Bookings for', ktv, ':', bks.length);
+        for (const b of bks) {
+            console.log('Booking:', b.id, 'status:', b.status);
+            for (const i of b.BookingItems.filter(i => i.technicianCodes?.includes(ktv))) {
+                console.log('  Item:', i.id, 'svc:', i.serviceId, 'status:', i.status);
+                console.log('  segments:', JSON.stringify(i.segments));
+            }
+        }
+    }
+    process.exit(0);
+})();

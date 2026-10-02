@@ -5,23 +5,48 @@ import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
-import { workTypeHasWallet } from '@/lib/featureFlags';
+import { useToast } from '@/components/ui/Toast';
 import { isFeatureMaintenanceError } from '@/lib/featureMaintenance';
 import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
+import {
+    DEFAULT_FEATURE_FLAGS_TYPE_A,
+    DEFAULT_FEATURE_FLAGS_TYPE_B,
+    DEFAULT_FEATURE_FLAGS_TYPE_C,
+    DEFAULT_FEATURE_FLAGS_TYPE_D,
+} from '@/lib/constants/staff.constants';
+
+/**
+ * Is the BONUS wallet part of this work type's normal package?
+ *
+ * The "maintenance" rule is: feature OFF while the permission is still ON. The
+ * wallet permission (`ktv_wallet`) covers the whole page, not each wallet, so
+ * it cannot tell "admin switched Ví Bonus off" from "this type never had Ví
+ * Bonus" (Types B/C are created with bonus_wallet=false). Listing a Ví Bonus
+ * entry that says "đang bảo trì" forever to people who never had one would be
+ * misleading, so the type's default package is the proxy for "was granted".
+ * Ví Tua is in every package, so it is always listed.
+ */
+const bonusInPackage = (workType?: string | null): boolean => {
+    const defaults: Record<string, any> = {
+        TYPE_A: DEFAULT_FEATURE_FLAGS_TYPE_A,
+        TYPE_B: DEFAULT_FEATURE_FLAGS_TYPE_B,
+        TYPE_C: DEFAULT_FEATURE_FLAGS_TYPE_C,
+        TYPE_D: DEFAULT_FEATURE_FLAGS_TYPE_D,
+    };
+    return defaults[workType || 'TYPE_A']?.bonus_wallet === true;
+};
 
 export const useKTVWallet = () => {
     const { user, hasPermission } = useAuth();
+    const { addToast } = useToast();
     const canViewWallet = hasPermission('ktv_wallet');
     const ktvId = user?.id || '';
 
-    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS' | 'TICH_LUY'>('TUA');
-    // Wallet access is decided by the SERVER (type-wide switch AND per-staff flag).
-    const [workType, setWorkType] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'TUA' | 'BONUS'>('TUA');
     const [canViewTua, setCanViewTua] = useState(true);
     const [canViewBonus, setCanViewBonus] = useState(false);
-    const [canViewPiggyBank, setCanViewPiggyBank] = useState(false);
     // The access check itself failed (network/server). Must NOT be shown as
-    // "maintenance" — that would claim an admin switched the wallet off.
+    // "maintenance" — that would claim the admin switched the wallet off.
     const [accessError, setAccessError] = useState(false);
     // Land on a working wallet ONCE, on first load. Doing it on every fetch
     // would bounce the KTV off a switched-off wallet they just tapped, so they
@@ -31,15 +56,12 @@ export const useKTVWallet = () => {
     // Ví Tua
     const [walletBalance, setWalletBalance] = useState<any>(null);
     const [walletTimeline, setWalletTimeline] = useState<any[]>([]);
-
+    
     // Ví Bonus
     const [bonusBalance, setBonusBalance] = useState<any>(null);
     const [bonusTimeline, setBonusTimeline] = useState<any[]>([]);
 
     // Ví Tích Lũy
-    const [piggyBankBalance, setPiggyBankBalance] = useState<any>(null);
-    const [piggyBankTimeline, setPiggyBankTimeline] = useState<any[]>([]);
-    const [piggyBankTotalWeeks, setPiggyBankTotalWeeks] = useState<number>(50);
 
     const [isLoading, setIsLoading] = useState(true);
 
@@ -47,23 +69,21 @@ export const useKTVWallet = () => {
         if (!ktvId) return;
         setIsLoading(true);
         try {
+            // Quyền xem ví do SERVER quyết (công tắc cả loại VÀ cờ cá nhân).
+            // Trước đây chỗ này tự đọc feature_flags và tự chế mặc định, lệch
+            // hẳn với bảng admin: cờ thiếu thì admin thấy OFF mà KTV vẫn xem được.
             let accessFailed = false;
-            const [accessRes, staffRes] = await Promise.all([
-                apiClient
-                    .get<any>(API.KTV.WALLET.ACCESS(ktvId))
-                    .catch(() => { accessFailed = true; return { data: null }; }),
-                supabase.from('Staff').select('feature_flags').eq('id', ktvId).single(),
-            ]);
+            const accessRes = await apiClient
+                .get<any>(API.KTV.WALLET.ACCESS(ktvId))
+                .catch(() => { accessFailed = true; return { data: null }; });
             const access = accessRes?.data;
             setAccessError(accessFailed);
-            if (access?.work_type) setWorkType(access.work_type);
 
-            // Access unknown → keep every wallet closed; the wallet routes
-            // answer 403 anyway, opening a tab only to show an error is worse.
+            // Không hỏi được server thì đóng hết — các route ví đằng nào cũng
+            // trả 403, mở tab ra chỉ để báo lỗi thì thà đừng mở.
             const hasTuaFlag = access?.TUA === true;
             const hasBonusFlag = access?.BONUS === true;
-            const hasPiggyFlag = staffRes?.data?.feature_flags?.enable_piggy_wallet === true;
-
+            
             // First load only: TUA is off but BONUS is on → open on BONUS.
             if (!initialTabResolvedRef.current && !accessFailed) {
                 initialTabResolvedRef.current = true;
@@ -74,7 +94,6 @@ export const useKTVWallet = () => {
 
             setCanViewTua(hasTuaFlag);
             setCanViewBonus(hasBonusFlag);
-            setCanViewPiggyBank(hasPiggyFlag);
 
             if (activeTab === 'TUA' && hasTuaFlag) {
                 const [balanceRes, timelineRes] = await Promise.all([
@@ -90,13 +109,6 @@ export const useKTVWallet = () => {
                 ]);
                 if (bonusBalRes.data) setBonusBalance(bonusBalRes.data);
                 if (bonusTimeRes.data) setBonusTimeline(bonusTimeRes.data);
-            } else if (activeTab === 'TICH_LUY' && hasPiggyFlag) {
-                const piggyRes = await apiClient.get<any>(API.KTV.WALLET.PIGGY_BANK(ktvId)).catch(() => ({ data: null }));
-                if (piggyRes.data) {
-                    setPiggyBankBalance(piggyRes.data.bank);
-                    setPiggyBankTimeline(piggyRes.data.ledger);
-                    setPiggyBankTotalWeeks(piggyRes.data.totalWeeks);
-                }
             }
         } catch (err) {
             console.error('Lỗi khi tải dữ liệu ví:', err);
@@ -118,17 +130,17 @@ export const useKTVWallet = () => {
 
         try {
             await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, { techCode: ktvId, amount, walletType: 'TUA' });
-            alert('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!');
+            addToast('✅ Yêu cầu rút tiền của bạn đã được duyệt.\nHãy đến quầy Lễ tân/Thu ngân để nhận tiền mặt nhé!', 'success');
             fetchWallet();
             return true;
         } catch (e: any) {
             if (isFeatureMaintenanceError(e)) {
                 // Wallet was switched off after the page loaded: say so plainly
                 // (no "Lỗi:" prefix) and refresh so the tab shows the notice.
-                alert(FEATURE_MAINTENANCE_MESSAGE);
+                addToast(FEATURE_MAINTENANCE_MESSAGE, 'error');
                 fetchWallet();
             } else {
-                alert('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh rút tiền.'));
+                addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh rút tiền.'), 'error');
             }
             return false;
         }
@@ -138,22 +150,19 @@ export const useKTVWallet = () => {
         if (!bonusBalance || bonusBalance.points <= 0) return false;
 
         if (pointsToRedeem > bonusBalance.points) {
-            alert('Số điểm vượt quá mức khả dụng!');
+            addToast('Số điểm vượt quá mức khả dụng!', 'error');
             return false;
         }
         const vndAmount = pointsToRedeem * 1000;
-        const confirmMsg = `XÁC NHẬN QUY ĐỔI\n\nBạn đang yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()} VNĐ.\n\nĐồng ý?`;
-
-        if (!window.confirm(confirmMsg)) return false;
-
+        
         try {
-            await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, {
-                techCode: ktvId,
+            await apiClient.post<any>(API.KTV.WALLET.WITHDRAW, { 
+                techCode: ktvId, 
                 amount: vndAmount,
                 walletType: 'BONUS',
                 note: `[QUY ĐỔI BONUS] ${pointsToRedeem} điểm`
             });
-
+            
             await supabase.from('KTVBonusLedger').insert({
                 staff_id: ktvId,
                 points: -pointsToRedeem,
@@ -161,16 +170,16 @@ export const useKTVWallet = () => {
                 description: `Quy đổi ${pointsToRedeem} điểm sang ${vndAmount.toLocaleString()}đ`,
                 date: new Date().toISOString().split('T')[0]
             });
-
-            alert(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`);
+            
+            addToast(`✅ Yêu cầu quy đổi ${pointsToRedeem} điểm thành ${vndAmount.toLocaleString()}đ đã được gửi.\nHãy báo với Lễ tân/Thu ngân nhé!`, 'success');
             fetchWallet();
             return true;
         } catch (e: any) {
             if (isFeatureMaintenanceError(e)) {
-                alert(FEATURE_MAINTENANCE_MESSAGE);
+                addToast(FEATURE_MAINTENANCE_MESSAGE, 'error');
                 fetchWallet();
             } else {
-                alert('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh quy đổi.'));
+                addToast('Lỗi: ' + (e.message || 'Hệ thống lỗi khi tạo lệnh quy đổi.'), 'error');
             }
             return false;
         }
@@ -183,20 +192,15 @@ export const useKTVWallet = () => {
         setActiveTab,
         canViewTua,
         canViewBonus,
-        canViewPiggyBank,
-        // Entries stay in the selector even when switched off: tapping one
-        // shows the maintenance notice instead of the wallet silently vanishing.
-        // Ví Bonus only exists for Types A/B, so C/D never get that entry.
+        // Entries listed in the selector even when switched off (tapping one
+        // shows the maintenance notice instead of the wallet silently vanishing).
         showTuaEntry: true,
-        showBonusEntry: canViewBonus || (!!workType && workTypeHasWallet('BONUS', workType)),
+        showBonusEntry: canViewBonus || bonusInPackage(user?.work_type),
         accessError,
         walletBalance,
         walletTimeline,
         bonusBalance,
         bonusTimeline,
-        piggyBankBalance,
-        piggyBankTimeline,
-        piggyBankTotalWeeks,
         isLoading,
         submitWithdraw,
         submitRedeemBonus,

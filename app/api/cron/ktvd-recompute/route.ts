@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { drainRecomputeQueue } from '@/lib/services/KtvDLedgerWriter';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,10 +37,8 @@ async function run(batchSize: number) {
 }
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const batch = Number(new URL(request.url).searchParams.get('batch')) || 200;
         return await run(Math.min(Math.max(batch, 1), 1000));

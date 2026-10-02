@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
   try {
+    await requirePermission('revenue_reports');
     const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
       return NextResponse.json({ success: false, error: 'Không thể kết nối DB' }, { status: 500 });
@@ -16,19 +18,28 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Thiếu tham số ngày' }, { status: 400 });
     }
 
-    // 1. Fetch Staff (KTV list)
-    const { data: staffList, error: staffErr } = await supabaseAdmin
+    // 1. Fetch Staff (KTV list) - Lấy đầy đủ KTV mọi loại (A, B, C, D) đang làm việc
+    const { data: allStaff, error: staffErr } = await supabaseAdmin
       .from('Staff')
-      .select('id, full_name, position, work_type')
-      .eq('status', 'ĐANG LÀM')
-      .ilike('id', 'NH%')
+      .select('id, full_name, position, work_type, status')
+      .neq('status', 'HỆ THỐNG')
+      .neq('status', 'ĐÃ NGHỈ')
       .order('id');
       
     if (staffErr) throw staffErr;
 
+    const { isPlaceholderStaffId } = require('@/lib/constants/staff.constants');
+    // KTV ngoài không tài khoản (EXT_*) vẫn hiện trong xếp hạng (quyết định
+    // 30/09/2026) và tính theo Loại C như ledger — trước đây bị loại nên rơi về TYPE_A.
+    const staffList = (allStaff || []).filter(s =>
+      s.status === 'ĐANG LÀM' &&
+      s.id !== 'ADMIN' &&
+      s.id !== 'dev'
+    );
+
     const ktvWorkTypeMap: Record<string, string> = {};
     (staffList || []).forEach(s => {
-        ktvWorkTypeMap[s.id] = s.work_type || 'TYPE_A';
+        ktvWorkTypeMap[s.id] = isPlaceholderStaffId(s.id) ? 'TYPE_C' : (s.work_type || 'TYPE_A');
     });
 
     // 2. Fetch Configs for Commission Realtime
@@ -233,12 +244,15 @@ export async function GET(request: Request) {
       rankingMap[id] = {
         id: id,
         name: ktvInfoMap[id] ? ktvInfoMap[id].name : id,
+        workType: ktvWorkTypeMap[id] || 'TYPE_A',
         revenue: 0, 
         tuaMoney: ledgerCommMap[id] || 0,
         bonus: ledgerBonusMap[id] || 0,
         totalTip: ledgerTipMap[id] || 0,
         workingDays: 0, leaveDays: 0, freeTurns: 0, requestedTurns: 0, vipTurns: 0, totalWorkingMins: 0, totalWorkingHours: 0,
         sumRating: 0, ratingCount: 0, avgRating: 0, excellentCount: 0, badCount: 0,
+        rating4Count: 0, rating3Count: 0, rating2Count: 0, rating1Count: 0,
+        goodCount: 0, averageCount: 0,
         uniqueBookings: new Set()
       };
     });
@@ -266,7 +280,9 @@ export async function GET(request: Request) {
     const vipBookingIdsByKtv: Record<string, Set<string>> = {};
     
     bookingItems.forEach(item => {
-      let ktvs = Array.isArray(item.technicianCodes) ? item.technicianCodes : [];
+      // Chỉ KTV còn quyền lợi trên item (loại chặng voided): người bị đổi ra
+      // không được chia tip, tiền tua, lượt VIP hay rating.
+      let ktvs = KtvCommissionService.activeTechs(item);
       const rawSource = (item.bookingSource || '').toUpperCase();
       const itemCategory = svcCategoryMap[String(item.serviceId)] || '';
       const isVip = rawSource === 'VIP_MENU' || rawSource === 'VIP_WALK_IN' || rawSource === 'VIP_BOOKING' || itemCategory.includes('VIP') || itemCategory.includes('PREMIUM');
@@ -300,9 +316,17 @@ export async function GET(request: Request) {
                    if (myRating > 0) {
                        rankingMap[code].sumRating += myRating;
                        rankingMap[code].ratingCount += 1;
-                       if (myRating >= 4) { // Điểm xuất sắc (>= 4 sao)
+                       if (myRating >= 4) { // Mức 4: Xuất sắc (>= 4 sao)
+                           rankingMap[code].rating4Count += 1;
                            rankingMap[code].excellentCount += 1;
-                       } else if (myRating <= 1) { // Điểm tệ/chưa đạt (1 sao)
+                       } else if (myRating === 3) { // Mức 3: Tốt (3 sao)
+                           rankingMap[code].rating3Count += 1;
+                           rankingMap[code].goodCount += 1;
+                       } else if (myRating === 2) { // Mức 2: Bình thường / Tạm được (2 sao)
+                           rankingMap[code].rating2Count += 1;
+                           rankingMap[code].averageCount += 1;
+                       } else if (myRating <= 1) { // Mức 1: Tệ (1 sao)
+                           rankingMap[code].rating1Count += 1;
                            rankingMap[code].badCount += 1;
                        }
                    }
@@ -403,12 +427,15 @@ export async function GET(request: Request) {
       // Tổng giờ thực tế lên khách (Tổng số phút / 60)
       ktv.totalWorkingHours = parseFloat((ktv.totalWorkingMins / 60).toFixed(2));
       return ktv;
-    }).filter(ktv => ktv.revenue > 0 || ktv.tuaMoney > 0 || ktv.workingDays > 0 || ktv.leaveDays > 0); // Only show active ktvs
+    }); // Hiển thị đầy đủ tất cả KTV đang làm việc của mọi loại (A, B, C, D)
 
     return NextResponse.json({ success: true, data: finalData });
   } catch (error: any) {
     console.error('KTV Ranking API Error:', error);
-    require('fs').writeFileSync('ktv_error_log.txt', error.stack || error.message);
-    return NextResponse.json({ success: false, error: error.stack || error.message }, { status: 500 });
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
+    // Bỏ ghi file ktv_error_log.txt: filesystem trên Vercel chỉ đọc, throw
+    // trong catch làm lỗi thật bị che mất. Không trả stack ra client.
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

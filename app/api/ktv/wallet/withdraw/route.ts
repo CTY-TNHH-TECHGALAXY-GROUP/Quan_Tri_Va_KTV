@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
+import { formatVnd } from '@/lib/format.logic';
 import { createClient } from '@supabase/supabase-js';
 import { KtvWalletWithdrawSchema } from '@/lib/schemas/ktv.schema';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
+import { KtvTypeDWalletService } from '@/lib/services/KtvTypeDWalletService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { WalletType } from '@/lib/featureFlags';
+import { usesOfficeBonus } from '@/lib/services/KtvOfficeBonusService';
+import { requireStaffMatches } from '@/lib/auth-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
@@ -17,11 +22,27 @@ export async function POST(request: Request) {
         }
         const { techCode, amount, walletType } = parseResult.data;
 
-        // Withdraw (TUA) / redeem (BONUS) from a switched-off wallet → 403 maintenance.
+        // Chỉ được tạo lệnh rút cho CHÍNH MÌNH — techCode trong body không đáng tin.
+        const denied = await requireStaffMatches(techCode);
+        if (denied) return denied;
+
+        // Ví đang tắt thì không được rút — trước đây cờ chỉ ẩn tab, gọi thẳng
+        // API vẫn tạo được lệnh rút.
         const deniedWallet = await WalletAccessService.denyIfDisabled(
-            supabase, techCode, walletType === 'BONUS' ? 'BONUS' : 'TUA'
-        );
+            supabase, techCode, (walletType === 'BONUS' ? 'BONUS' : 'TUA') as WalletType);
         if (deniedWallet) return deniedWallet;
+
+        // Điểm Office là thang chất lượng, không phải số dư tích được — không có
+        // tỉ giá điểm→tiền nào trong quy chế. Hệ quả tiền duy nhất của nó là mức
+        // quỹ nội bộ còn phải đóng cuối tháng. Giao diện đã bỏ nút quy đổi, đây
+        // là lớp chặn thật: ẩn nút không phải là chặn.
+        if (walletType === 'BONUS' && await usesOfficeBonus(supabase, techCode)) {
+            return NextResponse.json({
+                success: false,
+                error: 'Điểm Office không quy đổi ra tiền được. Điểm tháng chỉ quyết định mức quỹ nội bộ bạn phải đóng.',
+                code: 'OFFICE_POINTS_NOT_REDEEMABLE',
+            }, { status: 400 });
+        }
 
         
         const requestAmount = Number(amount);
@@ -47,27 +68,37 @@ export async function POST(request: Request) {
         // KTV có thể gửi thông báo rút tiền nhiều lần dù cho lệnh cũ chưa được duyệt.
 
         if (walletType === 'TUA') {
-            let balanceData;
+            let balanceData: any;
             try {
-                balanceData = await KtvWalletService.getBalance(supabase, techCode);
+                // ⚠️ Phải dùng ĐÚNG service theo chế độ. Trước đây chỗ này luôn gọi
+                // KtvWalletService (bản A/B/C) kể cả với loại D, nên số dư và mức
+                // cọc lấy ra đều sai cho loại D.
+                balanceData = workType === 'TYPE_D'
+                    ? await KtvTypeDWalletService.getBalance(supabase, techCode)
+                    : await KtvWalletService.getBalance(supabase, techCode);
             } catch (err) {
                 console.error('Error getting balance in withdraw:', err);
                 return NextResponse.json({ success: false, error: 'Lỗi lấy thông tin số dư' }, { status: 500 });
             }
-            
-            const effectiveBalance = Number(balanceData.effective_balance || 0);
-            const minDeposit = Number(balanceData.min_deposit || 500000);
 
-            // Validation Core Logic for TUA
-            const remainingAfterWithdrawal = effectiveBalance - requestAmount;
-            
-            // USER YÊU CẦU: Không chặn lệnh rút tiền, chỉ gửi thông báo.
-            // if (remainingAfterWithdrawal < minDeposit) {
-            //     return NextResponse.json({ 
-            //         success: false, 
-            //         error: `Không thể rút. Số dư còn lại sau khi rút (${remainingAfterWithdrawal.toLocaleString()}đ) thấp hơn mức cọc tối thiểu yêu cầu (${minDeposit.toLocaleString()}đ).`
-            //     }, { status: 400 });
-            // }
+            // `available_balance` đã là max(0, số dư ròng − cọc tối thiểu), tức
+            // đúng bằng số được phép rút mà KHÔNG chạm vào tiền cọc.
+            // CẮT phần lẻ: KTV nhìn thấy "86.971đ" trên ví thì trần rút đúng
+            // bằng đó. Không cắt thì hệ thống cho rút 86.971,719đ — số mà màn
+            // hình chưa bao giờ hiện, và cũng không tiêu được.
+            const availableBalance = Math.trunc(Number(balanceData.available_balance || 0));
+            const minDeposit = Number(balanceData.min_deposit || 0);
+            const netBalance = Number(balanceData.net_balance || 0);
+
+            if (requestAmount > availableBalance) {
+                const conLai = netBalance - requestAmount;
+                return NextResponse.json({
+                    success: false,
+                    error: availableBalance <= 0
+                        ? `Chưa thể rút tiền. Số dư ${formatVnd(netBalance)} chưa vượt mức cọc tối thiểu ${formatVnd(minDeposit)}.`
+                        : `Chỉ được rút tối đa ${formatVnd(availableBalance)}. Rút ${formatVnd(requestAmount)} sẽ làm số dư còn ${formatVnd(conLai)}, thấp hơn mức cọc tối thiểu ${formatVnd(minDeposit)}.`,
+                }, { status: 400 });
+            }
         }
 
         // 4. Tạo lệnh rút tiền

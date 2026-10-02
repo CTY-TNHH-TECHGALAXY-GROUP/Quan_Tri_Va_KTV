@@ -7,8 +7,8 @@ import { motion } from 'motion/react';
 import { SystemConfigsTable } from './SystemConfigsTable';
 import { MilestonesEditor } from './MilestonesEditor';
 import { KtvFeaturesTable } from './KtvFeaturesTable';
-import { KtvTypeDSettingsBlock } from './KtvTypeDSettingsBlock';
 import { WalletSwitchesBlock } from './WalletSwitchesBlock';
+import { KtvTypeDSettingsBlock } from './KtvTypeDSettingsBlock';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
@@ -176,10 +176,11 @@ export default function SystemSettingsPage() {
                 </div>
 
                 {activeTab === 'TYPE_D' ? (
-                    <>
-                        <WalletSwitchesBlock activeTab="TYPE_D" />
+                    <div className="space-y-8">
                         <KtvTypeDSettingsBlock />
-                    </>
+                        <WalletSwitchesBlock activeTab="TYPE_D" />
+                        <KtvFeaturesTable activeTab="TYPE_D" />
+                    </div>
                 ) : (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -553,9 +554,13 @@ export default function SystemSettingsPage() {
                 {/* Milestones Editor (Tua) */}
                 <MilestonesEditor activeTab={activeTab} />
 
-                {/* Wallet switch for the whole type, then per-staff features */}
-                <div className="mt-8 space-y-6">
+                {/* Công tắc ví cả loại -> rồi mới tới cờ từng người */}
+                <div className="mt-8">
                     <WalletSwitchesBlock activeTab={activeTab} />
+                </div>
+
+                {/* Staff Features Table */}
+                <div className="mt-8">
                     <KtvFeaturesTable activeTab={activeTab} />
                 </div>
             </>

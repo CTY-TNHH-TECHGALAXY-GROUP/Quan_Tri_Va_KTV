@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f1e9" />
+  <title>Chấm điểm KTV loại D — Demo UI/UX</title>
+  <meta name="description" content="Demo giao diện chấm điểm và kỷ luật KTV loại D, tối ưu cho thao tác trên thiết bị di động." />
+  <style>
+    :root {
+      --bg: #f4f1e9;
+      --surface: #ffffff;
+      --surface-soft: #f8f7f2;
+      --ink: #1f2b23;
+      --muted: #748074;
+      --line: #e4e0d5;
+      --green: #355b43;
+      --green-2: #e7efe8;
+      --rust: #a6533d;
+      --rust-2: #f8ece7;
+      --amber: #9a6a20;
+      --amber-2: #fbf1dc;
+      --shadow: 0 14px 42px rgba(31, 43, 35, .10);
+      --radius: 22px;
+    }
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 8% 4%, rgba(53, 91, 67, .08), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 3px solid rgba(53, 91, 67, .24);
+      outline-offset: 2px;
+    }
+    .app { width: min(100%, 1080px); margin: 0 auto; min-height: 100vh; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: max(18px, env(safe-area-inset-top)) 22px 16px;
+      background: rgba(244, 241, 233, .92);
+      border-bottom: 1px solid rgba(228, 224, 213, .8);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand-mark {
+      display: grid; place-items: center; width: 38px; height: 38px;
+      border-radius: 13px; background: var(--green); color: #fff;
+      font-weight: 800; letter-spacing: -.04em;
+    }
+    .brand strong { display: block; font-size: .95rem; }
+    .brand small { color: var(--muted); font-size: .76rem; }
+    .icon-btn {
+      width: 42px; height: 42px; display: grid; place-items: center;
+      border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+    }
+    .icon-btn:hover { background: rgba(53, 91, 67, .08); }
+    main { padding: 28px 20px 72px; }
+    .page-head { display: grid; gap: 20px; margin-bottom: 24px; }
+    .title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .eyebrow { margin: 0 0 5px; color: var(--green); font-weight: 750; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(1.75rem, 5vw, 2.5rem); line-height: 1.12; letter-spacing: -.045em; }
+    .month-control {
+      display: inline-flex; align-items: center; flex-shrink: 0;
+      background: var(--surface); padding: 4px; border-radius: 14px;
+      box-shadow: 0 3px 14px rgba(31, 43, 35, .06);
+    }
+    .month-control button { width: 34px; height: 34px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
+    #monthLabel { min-width: 86px; text-align: center; font-size: .9rem; font-weight: 720; }
+    .summary {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      color: var(--muted); font-size: .92rem;
+    }
+    .summary span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    .dot.alert { background: var(--rust); }
+    .tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+    .search {
+      min-height: 50px; display: flex; align-items: center; gap: 10px;
+      padding: 0 15px; background: var(--surface); border-radius: 16px;
+      box-shadow: 0 3px 14px rgba(31, 43, 35, .05);
+    }
+    .search svg { color: var(--muted); flex: 0 0 auto; }
+    .search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); min-width: 0; }
+    .search input::placeholder { color: #9ba39b; }
+    .filter {
+      min-height: 50px; padding: 0 15px; border: 0; border-radius: 16px;
+      background: var(--surface); box-shadow: 0 3px 14px rgba(31, 43, 35, .05);
+      font-weight: 680; cursor: pointer;
+    }
+    section + section { margin-top: 30px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 12px; }
+    .section-head h2 { margin: 0; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; }
+    .count { color: var(--muted); font-size: .82rem; }
+    .people { display: grid; gap: 12px; }
+    .person-card {
+      position: relative; background: var(--surface); border-radius: var(--radius);
+      padding: 18px; box-shadow: 0 4px 18px rgba(31, 43, 35, .06);
+    }
+    .person-card.attention { border-left: 4px solid var(--rust); }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .identity { min-width: 0; }
+    .identity-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .identity h3 { margin: 0; font-size: 1.12rem; letter-spacing: -.02em; }
+    .code { color: var(--green); font-size: .82rem; font-weight: 780; }
+    .status {
+      flex-shrink: 0; padding: 5px 9px; border-radius: 999px;
+      font-size: .76rem; font-weight: 750; white-space: nowrap;
+      background: var(--green-2); color: var(--green);
+    }
+    .status.danger { background: var(--rust-2); color: var(--rust); }
+    .reason { margin: 7px 0 0; color: var(--rust); font-size: .88rem; line-height: 1.35; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 17px; }
+    .metric strong { display: block; font-size: 1.25rem; line-height: 1.1; letter-spacing: -.03em; }
+    .metric span { display: block; margin-top: 4px; color: var(--muted); font-size: .78rem; }
+    .perk { margin: 15px 0 0; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+    .perk strong { color: var(--ink); }
+    .card-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+    .btn {
+      min-height: 44px; padding: 0 16px; border: 0; border-radius: 14px;
+      background: transparent; font-weight: 730; cursor: pointer;
+    }
+    .btn.primary { background: var(--green); color: #fff; }
+    .btn.primary:hover { background: #294c37; }
+    .btn.danger { background: var(--rust-2); color: var(--rust); }
+    .btn.ghost { color: var(--green); }
+    .btn.ghost:hover { background: var(--green-2); }
+    .btn.grow { flex: 1; }
+    .empty { display: none; padding: 36px 18px; text-align: center; color: var(--muted); background: rgba(255,255,255,.5); border-radius: var(--radius); }
+    .overlay {
+      position: fixed; inset: 0; z-index: 40; display: none;
+      align-items: flex-end; justify-content: center;
+      padding: 0; background: rgba(25, 34, 28, .54); backdrop-filter: blur(4px);
+    }
+    .overlay.open { display: flex; }
+    .sheet {
+      width: min(100%, 680px); max-height: min(92vh, 880px); overflow: hidden;
+      display: flex; flex-direction: column; background: var(--surface);
+      border-radius: 26px 26px 0 0; box-shadow: var(--shadow);
+      animation: rise .22s ease-out;
+    }
+    @keyframes rise { from { transform: translateY(24px); opacity: .6; } }
+    .sheet-header { padding: 20px 20px 16px; border-bottom: 1px solid var(--line); }
+    .sheet-title-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .sheet h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.03em; }
+    .sheet-sub { margin: 4px 0 0; color: var(--muted); font-size: .88rem; }
+    .sheet-body { overflow: auto; overscroll-behavior: contain; padding: 18px 20px 26px; }
+    .sheet-footer {
+      display: flex; gap: 10px; padding: 14px 20px max(14px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line); background: rgba(255,255,255,.96);
+    }
+    .sheet-footer .btn { min-height: 50px; }
+    .date-inline {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      margin-bottom: 18px; padding: 13px 14px; border-radius: 15px; background: var(--surface-soft);
+    }
+    .date-inline span { display: block; color: var(--muted); font-size: .75rem; }
+    .date-inline strong { font-size: .92rem; }
+    .date-inline button { border: 0; background: transparent; color: var(--green); font-weight: 750; cursor: pointer; }
+    .date-picker { display: none; width: 100%; margin: -8px 0 18px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: #fff; }
+    .date-picker.show { display: block; }
+    .score-preview {
+      display: flex; justify-content: space-between; gap: 20px; align-items: center;
+      padding: 16px; border-radius: 17px; background: var(--green-2); margin-bottom: 20px;
+    }
+    .score-preview span { color: var(--muted); font-size: .78rem; }
+    .score-preview strong { display: block; font-size: 1.45rem; letter-spacing: -.04em; }
+    .score-preview .after { text-align: right; }
+    .group + .group { margin-top: 24px; }
+    .group-title { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; }
+    .group-title h3 { margin: 0; font-size: .83rem; letter-spacing: .08em; text-transform: uppercase; }
+    .group-title span { color: var(--muted); font-size: .78rem; }
+    .violation-list { border-top: 1px solid var(--line); }
+    .violation {
+      display: grid; grid-template-columns: 24px 1fr auto; gap: 12px; align-items: center;
+      min-height: 60px; padding: 10px 3px; border-bottom: 1px solid var(--line); cursor: pointer;
+    }
+    .violation input { width: 20px; height: 20px; accent-color: var(--rust); }
+    .violation strong { display: block; font-size: .94rem; font-weight: 640; }
+    .violation small { display: block; margin-top: 2px; color: var(--muted); font-size: .76rem; }
+    .minus { color: var(--rust); font-weight: 780; white-space: nowrap; }
+    .evidence {
+      display: none; margin-top: 22px; padding: 16px;
+      border: 1px solid var(--line); border-radius: 17px; background: var(--surface-soft);
+    }
+    .evidence.show { display: block; }
+    .evidence-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+    .evidence-head strong { display: block; font-size: .94rem; }
+    .evidence-head small { display: block; margin-top: 2px; color: var(--muted); font-size: .76rem; }
+    .evidence-count { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+    .upload-zone {
+      min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 5px; padding: 14px; border: 1.5px dashed #bac5ba; border-radius: 14px;
+      color: var(--green); background: #fff; text-align: center; cursor: pointer;
+    }
+    .upload-zone:hover { border-color: var(--green); background: var(--green-2); }
+    .upload-zone input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .upload-zone strong { font-size: .88rem; }
+    .upload-zone span { color: var(--muted); font-size: .74rem; }
+    .thumb-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+    .thumb { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 12px; background: var(--line); }
+    .thumb img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .thumb button {
+      position: absolute; top: 5px; right: 5px; width: 26px; height: 26px;
+      display: grid; place-items: center; border: 0; border-radius: 50%;
+      background: rgba(22, 30, 25, .76); color: #fff; cursor: pointer;
+    }
+    .thumb-name {
+      position: absolute; inset: auto 0 0; padding: 14px 6px 5px;
+      color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.62));
+      font-size: .66rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .review-images { margin: 18px 0; }
+    .review-images > strong { display: block; margin-bottom: 9px; font-size: .9rem; }
+    .detected {
+      display: flex; justify-content: space-between; gap: 16px; align-items: center;
+      padding: 13px 14px; border-radius: 15px; background: var(--amber-2); color: #60471e;
+    }
+    .detected strong { display: block; font-size: .9rem; }
+    .detected small { color: #876b3c; }
+    .review-list { display: grid; gap: 8px; margin: 18px 0; }
+    .review-item { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+    .review-total { display: flex; justify-content: space-between; padding: 17px; border-radius: 16px; background: var(--rust-2); color: var(--rust); font-weight: 800; }
+    .notice { padding: 14px; border-radius: 15px; background: var(--rust-2); color: #704131; font-size: .9rem; }
+    .field { margin-top: 18px; }
+    .field label { display: block; margin-bottom: 8px; font-weight: 720; }
+    .required { color: var(--rust); }
+    textarea {
+      display: block; width: 100%; min-height: 130px; resize: vertical;
+      padding: 14px; border: 1px solid var(--line); border-radius: 15px;
+      color: var(--ink); background: #fff;
+    }
+    textarea::placeholder { color: #9ba39b; }
+    .btn:disabled { cursor: not-allowed; background: #dce0da; color: #8f978f; }
+    .history-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+    .history-summary div { padding: 14px; border-radius: 15px; background: var(--surface-soft); }
+    .history-summary span { display: block; color: var(--muted); font-size: .76rem; }
+    .history-summary strong { display: block; margin-top: 3px; font-size: 1.2rem; }
+    .timeline { position: relative; margin-left: 8px; padding-left: 23px; border-left: 2px solid var(--line); }
+    .event { position: relative; padding: 0 0 24px; }
+    .event:last-child { padding-bottom: 4px; }
+    .event::before { content: ""; position: absolute; left: -31px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 3px solid var(--rust); }
+    .event time { display: block; color: var(--muted); font-size: .76rem; }
+    .event strong { display: block; margin: 3px 0; }
+    .event p { margin: 0; color: var(--muted); font-size: .86rem; }
+    .toast {
+      position: fixed; z-index: 80; left: 50%; bottom: max(24px, env(safe-area-inset-bottom));
+      transform: translate(-50%, 24px); opacity: 0; pointer-events: none;
+      padding: 12px 16px; border-radius: 13px; background: #17231b; color: #fff;
+      font-size: .88rem; box-shadow: var(--shadow); transition: .22s ease;
+    }
+    .toast.show { transform: translate(-50%, 0); opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @media (min-width: 740px) {
+      .topbar { padding-inline: 32px; }
+      main { padding: 38px 32px 80px; }
+      .page-head { grid-template-columns: 1fr minmax(330px, 430px); align-items: end; }
+      .title-row { grid-column: 1; }
+      .tools { grid-column: 2; grid-row: 1 / span 2; align-self: end; }
+      .summary { grid-column: 1; }
+      .people { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .attention-list { grid-template-columns: 1fr; }
+      .person-card.attention { display: grid; grid-template-columns: 1fr auto; column-gap: 24px; }
+      .person-card.attention .card-actions { grid-column: 2; grid-row: 1 / span 3; margin: 0; flex-direction: column; justify-content: center; }
+      .person-card.attention .metrics, .person-card.attention .perk { grid-column: 1; }
+      .overlay { align-items: center; padding: 24px; }
+      .sheet { border-radius: 26px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">N</div><div><strong>Ngân Hà Spa</strong><small>Quản lý nội bộ</small></div></div>
+      <button class="icon-btn" aria-label="Mở menu" title="Menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <div class="page-head">
+        <div class="title-row">
+          <div><p class="eyebrow">Kỹ thuật viên loại D</p><h1>Chấm điểm KTV</h1></div>
+          <div class="month-control" aria-label="Chọn tháng">
+            <button id="monthPrev" aria-label="Tháng trước">‹</button><span id="monthLabel">Tháng 9</span><button id="monthNext" aria-label="Tháng sau">›</button>
+          </div>
+        </div>
+        <div class="summary"><span><i class="dot"></i><b>6</b> đang hoạt động</span><span><i class="dot alert"></i><b>1</b> cần xử lý</span></div>
+        <div class="tools">
+          <label class="search">
+            <span class="sr-only">Tìm KTV</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="searchInput" type="search" placeholder="Tìm tên hoặc mã KTV" />
+          </label>
+          <button class="filter" id="filterBtn">Tất cả</button>
+        </div>
+      </div>
+
+      <section id="attentionSection">
+        <div class="section-head"><h2>Cần xử lý</h2><span class="count">1 KTV</span></div>
+        <div class="people attention-list">
+          <article class="person-card attention" data-name="võ gia kỳ t069" data-state="locked">
+            <div class="card-top">
+              <div class="identity"><div class="identity-line"><span class="code">T069</span><h3>Võ Gia Kỳ</h3></div><p class="reason">Không đăng ký lịch và không điểm danh ngày 04/09/2026</p></div>
+              <span class="status danger">Đã khóa</span>
+            </div>
+            <div class="metrics"><div class="metric"><strong>98,5 điểm</strong><span>Điểm tháng 9</span></div><div class="metric"><strong>0 giờ</strong><span>Giờ tích lũy</span></div></div>
+            <div class="card-actions">
+              <button class="btn primary" data-action="unlock" data-person="Võ Gia Kỳ" data-code="T069">Mở khóa</button>
+              <button class="btn ghost" data-action="history" data-person="Võ Gia Kỳ" data-code="T069">Lịch sử</button>
+              <button class="btn ghost" data-action="deduct" data-person="Võ Gia Kỳ" data-code="T069" data-score="98.5">Trừ điểm</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Đang hoạt động</h2><span class="count">5 KTV</span></div>
+        <div class="people" id="activePeople">
+          <article class="person-card" data-name="nguyễn thu hà t023" data-state="active">
+            <div class="card-top"><div class="identity"><div class="identity-line"><span class="code">T023</span><h3>Nguyễn Thu Hà</h3></div></div><span class="status">Hạng 1</span></div>
+            <div class="metrics"><div class="metric"><strong>99,8 điểm</strong><span>Điểm tháng 9</span></div><div class="metric"><strong>22,5 giờ</strong><span>Giờ tích lũy</span></div></div>
+            <p class="perk">Miễn quỹ nội bộ <strong>100% · 250.000 ₫</strong></p>
+            <div class="card-actions"><button class="btn danger grow" data-action="deduct" data-person="Nguyễn Thu Hà" data-code="T023" data-score="99.8">Trừ điểm</button><button class="btn ghost" data-action="history" data-person="Nguyễn Thu Hà" data-code="T023">Lịch sử</button></div>
+          </article>
+          <article class="person-card" data-name="tiêu kim nghi t016" data-state="active">
+            <div class="card-top"><div class="identity"><div class="identity-line"><span class="code">T016</span><h3>Tiêu Kim Nghi</h3></div></div><span class="status">Hạng 2</span></div>
+            <div class="metrics"><div class="metric"><strong>99 điểm</strong><span>Điểm tháng 9</span></div><div class="metric"><strong>18 giờ</strong><span>Giờ tích lũy</span></div></div>
+            <p class="perk">Miễn quỹ nội bộ <strong>100% · 250.000 ₫</strong></p>
+            <div class="card-actions"><button class="btn danger grow" data-action="deduct" data-person="Tiêu Kim Nghi" data-code="T016" data-score="99">Trừ điểm</button><button class="btn ghost" data-action="history" data-person="Tiêu Kim Nghi" data-code="T016">Lịch sử</button></div>
+          </article>
+          <article class="person-card" data-name="lê mỹ duyên t031" data-state="active">
+            <div class="card-top"><div class="identity"><div class="identity-line"><span class="code">T031</span><h3>Lê Mỹ Duyên</h3></div></div><span class="status">Hạng 3</span></div>
+            <div class="metrics"><div class="metric"><strong>98,9 điểm</strong><span>Điểm tháng 9</span></div><div class="metric"><strong>15 giờ</strong><span>Giờ tích lũy</span></div></div>
+            <p class="perk">Miễn quỹ nội bộ <strong>75% · 187.500 ₫</strong></p>
+            <div class="card-actions"><button class="btn danger grow" data-action="deduct" data-person="Lê Mỹ Duyên" data-code="T031" data-score="98.9">Trừ điểm</button><button class="btn ghost" data-action="history" data-person="Lê Mỹ Duyên" data-code="T031">Lịch sử</button></div>
+          </article>
+          <article class="person-card" data-name="trần anh thư t044" data-state="active">
+            <div class="card-top"><div class="identity"><div class="identity-line"><span class="code">T044</span><h3>Trần Anh Thư</h3></div></div><span class="status">Hoạt động</span></div>
+            <div class="metrics"><div class="metric"><strong>97,5 điểm</strong><span>Điểm tháng 9</span></div><div class="metric"><strong>12 giờ</strong><span>Giờ tích lũy</span></div></div>
+            <p class="perk">Miễn quỹ nội bộ <strong>50% · 125.000 ₫</strong></p>
+            <div class="card-actions"><button class="btn danger grow" data-action="deduct" data-person="Trần Anh Thư" data-code="T044" data-score="97.5">Trừ điểm</button><button class="btn ghost" data-action="history" data-person="Trần Anh Thư" data-code="T044">Lịch sử</button></div>
+          </article>
+        </div>
+        <div class="empty" id="emptyState">Không tìm thấy KTV phù hợp.</div>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay" id="overlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet-header"><div class="sheet-title-row"><div><h2 id="sheetTitle"></h2><p class="sheet-sub" id="sheetSub"></p></div><button class="icon-btn" id="closeSheet" aria-label="Đóng"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+      <div class="sheet-body" id="sheetBody"></div>
+      <div class="sheet-footer" id="sheetFooter"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const $ = (s, root = document) => root.querySelector(s);
+    const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+    const overlay = $('#overlay');
+    const sheetTitle = $('#sheetTitle');
+    const sheetSub = $('#sheetSub');
+    const sheetBody = $('#sheetBody');
+    const sheetFooter = $('#sheetFooter');
+    const toast = $('#toast');
+    let current = null;
+    let month = 9;
+
+    const violations = [
+      { group: 'Quy trình công việc', max: 40, items: [
+        ['Trước tua', 'Khi đã có đơn hàng', 5],
+        ['Nhận tua và đón khách', 'Tại khu vực sảnh', 5],
+        ['Trong dịch vụ', 'Không tuân thủ quy trình', 10],
+        ['Kết thúc dịch vụ', 'Bàn giao khách', 5],
+        ['Sau dịch vụ — tại sảnh', 'Thiếu bước chăm sóc sau dịch vụ', 5],
+        ['Sau dịch vụ — tại phòng', 'Phòng hoặc bàn giao chưa đạt', 10]
+      ]},
+      { group: 'Thời gian làm việc', max: 30, items: [
+        ['Bật app không đúng giờ', 'So với lịch đã đăng ký', 7.5],
+        ['Rời vị trí khi đang trong ca', 'Không có xác nhận của quản lý', 10],
+        ['Kết thúc ca sớm', 'Không có lý do được duyệt', 5]
+      ]}
+    ];
+
+    function iconCheck() { return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4L19 6"/></svg>'; }
+    function fmt(n) { return Number(n).toLocaleString('vi-VN', { maximumFractionDigits: 1 }); }
+    function esc(s) { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+    function todayText() { return 'Hôm nay · Thứ Sáu, 04/09/2026'; }
+    function openSheet(title, sub) {
+      sheetTitle.textContent = title; sheetSub.textContent = sub;
+      overlay.classList.add('open'); overlay.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeSheet() {
+      overlay.classList.remove('open'); overlay.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      if (current?.files) current.files.forEach(item => URL.revokeObjectURL(item.url));
+      current = null;
+    }
+    function showToast(message) {
+      toast.textContent = message; toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2600);
+    }
+    $('#closeSheet').addEventListener('click', closeSheet);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSheet(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.classList.contains('open')) closeSheet(); });
+
+    function renderDeduct(person, code, score, restored = null) {
+      current = restored || { person, code, score: Number(score), selected: [], date: todayText(), files: [] };
+      openSheet('Trừ điểm', `${code} · ${person}`);
+      const groups = violations.map((g, gi) => `
+        <div class="group"><div class="group-title"><h3>${g.group}</h3><span>Tối đa ${g.max} điểm</span></div>
+          <div class="violation-list">${g.items.map((item, ii) => `
+            <label class="violation"><input type="checkbox" data-gi="${gi}" data-ii="${ii}"/><span><strong>${item[0]}</strong><small>${item[1]}</small></span><span class="minus">−${fmt(item[2])}</span></label>
+          `).join('')}</div>
+        </div>`).join('');
+      sheetBody.innerHTML = `
+        <div class="date-inline"><div><span>Ngày vi phạm</span><strong id="selectedDate">${current.date}</strong></div><button id="changeDate">Thay đổi</button></div>
+        <input class="date-picker" id="datePicker" type="date" value="2026-09-04" max="2026-09-04" />
+        <div class="score-preview"><div><span>Điểm hiện tại</span><strong>${fmt(current.score)}</strong></div><div class="after"><span>Sau khi trừ</span><strong id="afterScore">${fmt(current.score)}</strong></div></div>
+        <div class="detected"><div><strong>Hệ thống phát hiện</strong><small>Điểm danh 20:07 · lịch đăng ký 19:42</small></div><span class="minus">Gợi ý −7,5</span></div>
+        ${groups}
+        <div class="evidence" id="evidenceBox">
+          <div class="evidence-head"><div><strong>Ảnh minh chứng <span class="required">*</span></strong><small>Bắt buộc khi trừ điểm thủ công</small></div><span class="evidence-count" id="evidenceCount">0/5 ảnh</span></div>
+          <label class="upload-zone" for="evidenceInput">
+            <input id="evidenceInput" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+            <strong>Chụp ảnh hoặc chọn từ thư viện</strong><span>JPG, PNG hoặc WebP · tối đa 5 ảnh</span>
+          </label>
+          <div class="thumb-grid" id="thumbGrid"></div>
+        </div>`;
+      sheetFooter.innerHTML = `<button class="btn ghost" id="cancelDeduct">Hủy</button><button class="btn primary grow" id="reviewBtn" disabled>Chọn ít nhất một vi phạm</button>`;
+      $('#cancelDeduct').addEventListener('click', closeSheet);
+      $('#changeDate').addEventListener('click', () => $('#datePicker').classList.toggle('show'));
+      $('#datePicker').addEventListener('change', e => {
+        const [y,m,d] = e.target.value.split('-'); current.date = `${d}/${m}/${y}`;
+        $('#selectedDate').textContent = current.date;
+      });
+      $$('.violation input', sheetBody).forEach(input => input.addEventListener('change', updateDeduction));
+      $('#evidenceInput').addEventListener('change', e => addEvidence([...e.target.files]));
+      $('#reviewBtn').addEventListener('click', renderReview);
+      restoreDeductState();
+    }
+    function restoreDeductState() {
+      $$('.violation input', sheetBody).forEach(input => {
+        const item = violations[+input.dataset.gi].items[+input.dataset.ii];
+        input.checked = current.selected.some(selected => selected.name === item[0]);
+      });
+      renderEvidence();
+      updateDeduction();
+    }
+    function addEvidence(files) {
+      const allowed = files.filter(file => file.type.startsWith('image/') && file.size <= 8 * 1024 * 1024);
+      const remaining = Math.max(0, 5 - current.files.length);
+      allowed.slice(0, remaining).forEach(file => current.files.push({ file, url: URL.createObjectURL(file) }));
+      if (allowed.length < files.length) showToast('Một số ảnh không hợp lệ hoặc lớn hơn 8 MB');
+      if (files.length > remaining) showToast('Chỉ có thể tải tối đa 5 ảnh');
+      renderEvidence(); updateDeduction();
+      $('#evidenceInput').value = '';
+    }
+    function renderEvidence() {
+      const box = $('#evidenceBox'); if (!box) return;
+      box.classList.toggle('show', current.selected.length > 0);
+      $('#evidenceCount').textContent = `${current.files.length}/5 ảnh`;
+      $('#thumbGrid').innerHTML = current.files.map((item, index) => `
+        <div class="thumb"><img src="${item.url}" alt="Ảnh minh chứng ${index + 1}"/><span class="thumb-name">${esc(item.file.name)}</span><button type="button" data-remove-photo="${index}" aria-label="Xóa ảnh ${index + 1}">×</button></div>
+      `).join('');
+      $$('[data-remove-photo]', box).forEach(btn => btn.addEventListener('click', () => {
+        const index = +btn.dataset.removePhoto; URL.revokeObjectURL(current.files[index].url);
+        current.files.splice(index, 1); renderEvidence(); updateDeduction();
+      }));
+    }
+    function updateDeduction() {
+      current.selected = $$('.violation input:checked', sheetBody).map(input => {
+        const item = violations[+input.dataset.gi].items[+input.dataset.ii];
+        return { name: item[0], points: item[2] };
+      });
+      const total = current.selected.reduce((s, i) => s + i.points, 0);
+      $('#afterScore').textContent = fmt(Math.max(0, current.score - total));
+      $('#evidenceBox').classList.toggle('show', current.selected.length > 0);
+      const btn = $('#reviewBtn');
+      btn.disabled = !current.selected.length || !current.files.length;
+      btn.textContent = !current.selected.length ? 'Chọn ít nhất một vi phạm' : !current.files.length ? 'Thêm ít nhất 1 ảnh minh chứng' : `Tiếp tục · Trừ ${fmt(total)} điểm`;
+    }
+    function renderReview() {
+      const total = current.selected.reduce((s, i) => s + i.points, 0);
+      sheetTitle.textContent = 'Xác nhận trừ điểm';
+      sheetBody.innerHTML = `
+        <div class="notice">Nội dung sẽ được ghi vào lịch sử và gửi thông báo cho KTV.</div>
+        <div class="review-list">${current.selected.map(i => `<div class="review-item"><span>${i.name}</span><strong class="minus">−${fmt(i.points)} điểm</strong></div>`).join('')}</div>
+        <div class="review-images"><strong>Ảnh minh chứng · ${current.files.length} ảnh</strong><div class="thumb-grid">${current.files.map((item, index) => `<div class="thumb"><img src="${item.url}" alt="Ảnh minh chứng ${index + 1}"/><span class="thumb-name">${esc(item.file.name)}</span></div>`).join('')}</div></div>
+        <div class="review-total"><span>Điểm sau cập nhật</span><span>${fmt(current.score)} → ${fmt(Math.max(0, current.score-total))}</span></div>
+        <div class="field"><label for="deductNote">Ghi chú <span style="color:var(--muted);font-weight:500">(không bắt buộc)</span></label><textarea id="deductNote" placeholder="Thêm thông tin để KTV hiểu rõ vi phạm..."></textarea></div>`;
+      sheetFooter.innerHTML = `<button class="btn ghost" id="backDeduct">Quay lại</button><button class="btn primary grow" id="confirmDeduct">Xác nhận trừ ${fmt(total)} điểm</button>`;
+      $('#backDeduct').addEventListener('click', () => { const state = current; renderDeduct(state.person, state.code, state.score, state); });
+      $('#confirmDeduct').addEventListener('click', () => { const name = current.person; const photoCount = current.files.length; closeSheet(); showToast(`Đã ghi nhận trừ điểm và gửi ${photoCount} ảnh cho ${name}`); });
+    }
+    function renderUnlock(person, code) {
+      current = { person, code };
+      openSheet('Mở khóa tài khoản', `${code} · ${person}`);
+      sheetBody.innerHTML = `
+        <div class="notice"><strong>Lý do bị khóa</strong><br/>Không đăng ký lịch và không điểm danh ngày 04/09/2026<br/><span style="opacity:.75">Hệ thống tự khóa lúc 23:59</span></div>
+        <div class="field"><label for="unlockReason">Lý do mở khóa <span class="required">*</span></label><textarea id="unlockReason" placeholder="Ví dụ: KTV đã bổ sung lịch làm việc và được quản lý xác nhận."></textarea></div>`;
+      sheetFooter.innerHTML = `<button class="btn ghost" id="cancelUnlock">Hủy</button><button class="btn primary grow" id="confirmUnlock" disabled>Xác nhận mở khóa</button>`;
+      $('#cancelUnlock').addEventListener('click', closeSheet);
+      $('#unlockReason').addEventListener('input', e => $('#confirmUnlock').disabled = e.target.value.trim().length < 8);
+      $('#confirmUnlock').addEventListener('click', () => { const name = current.person; closeSheet(); showToast(`Đã mở khóa tài khoản ${name}`); });
+    }
+    function renderHistory(person, code) {
+      current = { person, code };
+      openSheet('Lịch sử điểm', `${code} · ${person}`);
+      sheetBody.innerHTML = `
+        <div class="history-summary"><div><span>Điểm tháng 9</span><strong>98,5 điểm</strong></div><div><span>Giờ tích lũy</span><strong>0 giờ</strong></div></div>
+        <div class="timeline">
+          <div class="event"><time>02/09/2026 · Thứ Tư · 23:59</time><strong>Trừ 7,5 điểm — Chuyên cần</strong><p>Nghỉ 4 ngày không liên tục trong tháng · QL Minh ghi nhận</p></div>
+          <div class="event"><time>01/09/2026 · Thứ Ba · 08:00</time><strong>Bắt đầu kỳ điểm tháng 9</strong><p>Điểm đầu kỳ: 100 điểm</p></div>
+        </div>`;
+      sheetFooter.innerHTML = `<button class="btn primary grow" id="closeHistory">Đóng</button>`;
+      $('#closeHistory').addEventListener('click', closeSheet);
+    }
+
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]'); if (!btn) return;
+      const { action, person, code, score } = btn.dataset;
+      if (action === 'deduct') renderDeduct(person, code, score || 98.5);
+      if (action === 'unlock') renderUnlock(person, code);
+      if (action === 'history') renderHistory(person, code);
+    });
+    $('#searchInput').addEventListener('input', e => {
+      const q = e.target.value.trim().toLowerCase(); let visible = 0;
+      $$('.person-card').forEach(card => { const show = card.dataset.name.includes(q); card.style.display = show ? '' : 'none'; if (show) visible++; });
+      $('#emptyState').style.display = visible ? 'none' : 'block';
+      $('#attentionSection').style.display = $$('.attention-list .person-card').some(c => c.style.display !== 'none') ? '' : 'none';
+    });
+    const filters = ['Tất cả', 'Cần xử lý', 'Điểm thấp']; let filterIndex = 0;
+    $('#filterBtn').addEventListener('click', () => {
+      filterIndex = (filterIndex + 1) % filters.length; $('#filterBtn').textContent = filters[filterIndex];
+      const mode = filters[filterIndex]; let visible = 0;
+      $$('.person-card').forEach(card => { const show = mode === 'Tất cả' || (mode === 'Cần xử lý' && card.dataset.state === 'locked') || (mode === 'Điểm thấp' && card.textContent.includes('97,5')); card.style.display = show ? '' : 'none'; if(show) visible++; });
+      $('#attentionSection').style.display = mode === 'Điểm thấp' ? 'none' : '';
+      $('#emptyState').style.display = visible ? 'none' : 'block';
+    });
+    function setMonth(delta) { month += delta; if (month < 1) month = 12; if (month > 12) month = 1; $('#monthLabel').textContent = `Tháng ${month}`; showToast(`Đang xem dữ liệu tháng ${month}`); }
+    $('#monthPrev').addEventListener('click', () => setMonth(-1));
+    $('#monthNext').addEventListener('click', () => setMonth(1));
+  </script>
+</body>
+</html>

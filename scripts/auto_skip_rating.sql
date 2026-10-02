@@ -1,4 +1,10 @@
 -- ==============================================================================
+-- ⛔ SUPERSEDED 14/09/2026 — DO NOT RUN.
+-- Replaced by supabase/migrations/20260914120000_auto_complete_feedback_after_5m.sql
+-- (job `auto_complete_feedback_job`). Running this file re-creates the old job,
+-- which forces CLEANING items to DONE (erases room debt) and can flip CANCELLED.
+-- Kept only as history.
+-- ==============================================================================
 -- 🕒 AUTO-SKIP RATING KHI QUÁ 24H (Supabase pg_cron)
 -- ==============================================================================
 -- 1. Tạo Function dọn dẹp đơn hàng

@@ -53,6 +53,34 @@ export function canEditRegistration(workDateStr: string): boolean {
 }
 
 /**
+ * TẠO MỚI đăng ký cho ngày chưa có dòng nào.
+ *
+ * Dòng lịch ngày D (đi làm hoặc OFF) phải được tạo chậm nhất lúc 23:59 ngày D-1.
+ * Từ 00:00 ngày D chỉ được sửa dòng đã có, và từ 07:00 không được sửa nữa.
+ *
+ * @param workDateStr 'yyyy-MM-dd'
+ */
+export function canCreateRegistration(workDateStr: string): boolean {
+  return workDateStr > vnToday();
+}
+
+/**
+ * Câu giải thích khi KHÔNG được sửa lịch ngày D — app KTV và API dùng chung,
+ * để hai bên nói cùng một câu.
+ *
+ * ⚠️ Trước đây app ghi "Chỉ có thể đăng ký/sửa lịch từ ngày mai trở đi", trong
+ * khi luật thật là sửa được tới 06:59 sáng CHÍNH NGÀY D. KTV đọc xong tưởng app
+ * hỏng, không biết là mình đã trễ mốc 7 giờ.
+ *
+ * @param workDateStr 'yyyy-MM-dd'
+ */
+export function registrationLockedMessage(workDateStr: string): string {
+  if (workDateStr < vnToday()) return 'Ngày này đã qua, không sửa lịch được nữa.';
+  if (vnHour() < 7) return 'Đã qua hạn tạo lịch cho hôm nay (23:59 hôm trước). Chỉ được sửa lịch đã đăng ký đến 06:59.';
+  return 'Đã qua 07:00 ngày làm việc, không thể tạo hoặc sửa lịch cho hôm nay.';
+}
+
+/**
  * Hạn chót đổi lịch MIỄN PHẠT: **00:00 nửa đêm** của ngày làm.
  * Tức là được đổi thoải mái đến hết ngày hôm trước.
  */

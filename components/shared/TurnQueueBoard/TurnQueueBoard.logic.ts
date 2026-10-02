@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
+import { STAFF_STATUS } from '@/lib/constants/staffStatus';
+import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 
 export const useTurnQueueBoard = (staffs: StaffData[]) => {
     // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
@@ -43,21 +45,23 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     }, [selectedDate]);
 
-    // Fetch qua API (trigger sync logic đếm tua chính xác)
+    // ✅ UNIFIED DATA PATH: Fetch qua API (trigger sync + correct sorting for all types)
     const fetchTurns = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/turns?date=${selectedDate}`);
+            // `includeTypeC=1`: mặc định API loại C khỏi "Tất cả" → bảng Cộng tác viên chưa
+            // từng nhận được dòng tua của C (trạng thái, số tua, tag điểm danh). Tách C ở dưới.
+            const res = await fetch(`/api/turns?date=${selectedDate}&includeTypeC=1`);
             const json = await res.json();
             if (json.success && json.data) {
                 const merged = json.data.map((t: TurnQueueData) => ({
                     ...t,
                     staff: staffs.find(s => s.id === t.employee_id)
                 }));
-                // 🔥 Tách KTV nội bộ và KTV ngoài
-                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
-                // Include ALL external turns (even 'off') so we can map them back, or just use externalTurns for active
-                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')));
+                // Tách bằng work_type. Mã placeholder cũ (EXT_/C_, đã ĐÃ NGHỈ) bỏ hẳn —
+                // syncTurnsForDate vẫn dựng lại TurnQueue cho chúng từ TurnLedger ngày cũ.
+                const internal = merged.filter((t: TurnQueueData) => !isTypeCWorkType(t.work_type));
+                const external = merged.filter((t: TurnQueueData) => isTypeCWorkType(t.work_type) && !isPlaceholderStaffId(t.employee_id));
                 setTurns(internal);
                 setExternalTurns(external);
             }
@@ -67,39 +71,20 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         setLoading(false);
     }, [selectedDate, staffs]);
 
-    // Fetch trực tiếp từ DB (dùng khi TurnQueue thay đổi, không cần re-sync)
-    const fetchTurnsFromDB = useCallback(async () => {
-        const today = selectedDate;
-        const { data } = await supabase
-            .from('TurnQueue')
-            // 🔧 EGRESS FIX: Select only needed columns
-            .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, manual_adjustment, current_order_id, estimated_end_time')
-            .eq('date', today)
-            .order('turns_completed', { ascending: true })
-            .order('check_in_order', { ascending: true });
-
-        if (data) {
-            const merged = data.map((t: TurnQueueData) => ({
-                ...t,
-                staff: staffs.find(s => s.id === t.employee_id)
-            }));
-                // 🔥 Tách KTV nội bộ và KTV ngoài
-                const internal = merged.filter((t: TurnQueueData) => !t.employee_id.startsWith('EXT') && !t.employee_id.startsWith('C_'));
-                const external = merged.filter((t: TurnQueueData) => (t.employee_id.startsWith('EXT') || t.employee_id.startsWith('C_')));
-                setTurns(internal);
-                setExternalTurns(external);
-        }
-    }, [selectedDate, staffs]);
-
     useEffect(() => {
         if (staffs.length > 0) {
-            setAllExternalStaffs(staffs.filter(s => s.id.startsWith('EXT') || s.id.startsWith('C_')));
+            // Chỉ cộng tác viên có tài khoản thật, đang làm. Từ dispatch, `staffs` còn
+            // lẫn 138 mã nhập tay cũ (ĐÃ NGHỈ) — không được lòi ra đây.
+            setAllExternalStaffs(staffs.filter(s =>
+                isTypeCWorkType(s.work_type) && s.status === STAFF_STATUS.WORKING && !isPlaceholderStaffId(s.id)
+            ));
             fetchTurns();
             fetchExtras();
         }
     }, [staffs, selectedDate, fetchTurns, fetchExtras]);
 
-    // 🔄 REALTIME: Lắng nghe 3 bảng quan trọng liên quan đến điều phối
+    // 🔄 REALTIME: Lắng nghe các bảng quan trọng liên quan đến điều phối
+    // ✅ Bước 4: Gộp 2 đường dữ liệu — TẤT CẢ đều gọi fetchTurns() (qua API)
     useEffect(() => {
         if (staffs.length === 0) return;
 
@@ -117,17 +102,17 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             // Bảng TurnQueue: Thay đổi tua trực tiếp (swap vị trí, reset, tan ca...)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, () => {
                 console.log('🔄 [Realtime] TurnQueue changed → refreshing...');
-                if (!hasChangesRef.current) fetchTurnsFromDB();
+                if (!hasChangesRef.current) fetchTurns();
             })
             // Bảng DailyAttendance: Điểm danh, đổi trạng thái (on_duty, off_duty, absent...)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'DailyAttendance' }, () => {
                 console.log('🔄 [Realtime] DailyAttendance changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurnsFromDB();
+                if (!hasChangesRef.current) fetchTurns();
             })
             // Bảng KTVAttendance: KTV bấm điểm danh / tan ca trên app
             .on('postgres_changes', { event: '*', schema: 'public', table: 'KTVAttendance' }, () => {
                 console.log('🔄 [Realtime] KTVAttendance changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurnsFromDB();
+                if (!hasChangesRef.current) fetchTurns();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'KTVLeaveRequests' }, () => {
                 fetchExtras();
@@ -140,17 +125,18 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [staffs, selectedDate, fetchTurns, fetchTurnsFromDB, fetchExtras]);
+    }, [staffs, selectedDate, fetchTurns, fetchExtras]);
 
-    // Sắp xếp gốc: off cuối → theo tua → theo queue_position
+    // Sắp xếp: off cuối → giữ nguyên thứ tự API (API đã sort đúng cho mỗi loại)
     const buildSorted = useCallback((source: (TurnQueueData & { staff?: StaffData })[]) => {
         return [...source].sort((a, b) => {
             const isAOff = a.status === 'off' || suddenOffs.has(a.employee_id);
             const isBOff = b.status === 'off' || suddenOffs.has(b.employee_id);
             if (isAOff && !isBOff) return 1;
             if (!isAOff && isBOff) return -1;
-            if (a.turns_completed !== b.turns_completed) return a.turns_completed - b.turns_completed;
-            return a.check_in_order - b.check_in_order;
+            // Giữ nguyên thứ tự API cho non-off KTVs
+            // API đã sort: A/B → turns_completed ASC, D → net_hours DESC
+            return 0;
         });
     }, [suddenOffs]);
 
@@ -252,25 +238,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const deleteExternalStaff = async (staffId: string) => {
-        if (!confirm(`Bạn có chắc muốn xóa KTV ${staffId} khỏi danh sách?`)) return;
-        try {
-            // Xóa khỏi TurnQueue hôm nay
-            await supabase.from('TurnQueue').delete().eq('employee_id', staffId).eq('date', selectedDate);
-            // Xóa khỏi Staff
-            const { error } = await supabase.from('Staff').delete().eq('id', staffId);
-            if (error) {
-                // Nếu có liên kết khóa ngoại (BookingItems), chuyển sang ẩn
-                console.warn('Lỗi khóa ngoại, chuyển sang ẩn nhân viên', error);
-                await supabase.from('Staff').update({ status: 'NGHỈ VIỆC' }).eq('id', staffId);
-            }
-            setAllExternalStaffs(prev => prev.filter(s => s.id !== staffId));
-            setExternalTurns(prev => prev.filter(t => t.employee_id !== staffId));
-        } catch (err) {
-            console.error('Delete external staff error:', err);
-            alert('Lỗi khi xóa nhân viên!');
-        }
-    };
+    // Nút "Xóa KTV ngoài" (DELETE Staff / ép ĐÃ NGHỈ) đã bỏ 12/09/2026: loại C giờ
+    // là tài khoản thật, cho nghỉ việc phải qua Admin → Nhân viên như mọi loại khác.
 
     const sortedTurns = localOrder;
     const readyCount = turns.filter(t => t.status === 'waiting' && !suddenOffs.has(t.employee_id)).length;
@@ -400,7 +369,6 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         externalTurns,
         allExternalStaffs: sortedExternalStaffs,
         toggleExternalStaff,
-        deleteExternalStaff,
         waterRefillerId,
         assignWaterRefiller,
         updateKtvStatus,

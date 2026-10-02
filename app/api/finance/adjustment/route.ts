@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { AdjustmentRequestSchema } from '@/lib/schemas/adjustment.schema';
+import { requirePermission, requireBusinessUser, authErrorResponse } from '@/lib/auth-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
@@ -8,8 +9,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
     try {
+        // Thưởng/phạt ví KTV → cần quyền finance_management; ghi lại người tạo từ session.
+        await requirePermission('finance_management');
+        const actor = await requireBusinessUser();
+
         const body = await request.json();
-        
+
         const parseResult = AdjustmentRequestSchema.safeParse(body);
         if (!parseResult.success) {
             return NextResponse.json({ success: false, error: parseResult.error.issues[0].message }, { status: 400 });
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
                 type,
                 wallet_type,
                 reason,
-                created_by: 'Admin',
+                created_by: actor?.username || actor?.businessUserId || 'Admin',
                 work_type_snapshot: workType
             });
 
@@ -41,6 +46,8 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true });
     } catch (err: any) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error('Exception POST /api/finance/adjustment:', err);
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }

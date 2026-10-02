@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { HandoverService } from '@/lib/services/HandoverService';
+import { requireActiveStaff, requireStaffMatches } from '@/lib/auth-server';
 
 /**
  * POST /api/ktv/handover/skip
@@ -9,6 +10,11 @@ import { HandoverService } from '@/lib/services/HandoverService';
  */
 export async function POST(request: Request) {
     try {
+        // Tài khoản bị khoá thì không thao tác được nữa, kể cả khi phiên
+        // đăng nhập đã cấp từ trước lúc khoá.
+        const lockedError = await requireActiveStaff();
+        if (lockedError) return lockedError;
+
         const body = await request.json();
         const { bookingItemId, ktvCode } = body;
 
@@ -18,6 +24,12 @@ export async function POST(request: Request) {
                 { status: 400 }
             );
         }
+
+        // Hạn mức bỏ qua đếm theo TỪNG KTV. Nhận `ktvCode` thẳng từ body mà không
+        // đối chiếu thì gửi mã đồng nghiệp là tiêu vào hạn mức của họ, lượt của
+        // mình còn nguyên — hạn mức "3 lần" trở thành vô nghĩa.
+        const wrongStaff = await requireStaffMatches(ktvCode);
+        if (wrongStaff) return wrongStaff;
 
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');

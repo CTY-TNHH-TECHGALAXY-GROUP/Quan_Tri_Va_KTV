@@ -39,6 +39,7 @@
 
 import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
 import { isUtilityService } from '@/lib/booking.logic';
+import { segmentProgress } from '@/lib/dispatch-status';
 
 export async function handleFinishService(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, status, allItemIdsForThisKTV } = ctx;
@@ -193,9 +194,10 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         // 🧠 SMART STATUS: Only set CLEANING when ALL segments in item have actualEndTime
         //    Prevents sequential bug (KTV1 done but KTV2 not started yet)
         //    Bỏ qua segments chưa bắt đầu (không có actualStartTime) khi tính allSegsDone
-        const startedSegs = segs.filter((s: any) => !!s.actualStartTime);
-        const allSegsDone = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.actualEndTime);
-        const hasUnstartedSegs = segs.some((s: any) => !s.actualStartTime && s.ktvId);
+        // Voided segments (swapped out, never started before the customer left,
+        // cancelled no credit) are ignored — see segmentProgress. Before 14/09/2026 a
+        // never-started KTV left by "Kết thúc sớm" pulled the item back to IN_PROGRESS.
+        const { allSegsDone, hasUnstartedSegs, allHandovered } = segmentProgress(segs);
         const alreadyRated = 
             ((item as any).itemRating !== null && (item as any).itemRating !== undefined) ||
             ((item as any).guest_id && guestRatings[(item as any).guest_id] != null) ||
@@ -203,7 +205,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         // 🛡️ FIX: Kiểm tra KTV đã bàn giao phòng chưa (handoverTime trong segment)
         // Nếu khách rate trước nhưng KTV chưa bàn giao → giữ CLEANING để ScreenEngine
         // dẫn KTV đi đúng luồng: REVIEW → HANDOVER → REWARD → rồi mới DONE
-        const allHandovered = startedSegs.length > 0 && startedSegs.every((s: any) => !!s.handoverTime);
+        // (allHandovered: from segmentProgress above, voided segments excluded)
 
         // 🧠 DUAL-CONDITION COMPLETION (v2 — Triple-Condition):
         // Item chỉ DONE khi CẢ BA điều kiện: KTV xong + Khách đã rate + KTV đã bàn giao
@@ -222,7 +224,16 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         });
 
-        const newItemStatus = (item.status === 'DONE')
+        const newItemStatus = (item.status === 'CANCELLED')
+            ? 'CANCELLED'                     // 🛡️ ĐÃ HUỶ là trạng thái CHỐT — không đi đâu nữa.
+                                              //
+                                              // Thiếu nhánh này thì quầy huỷ đơn xong, KTV
+                                              // (vẫn phải dọn nốt phòng) bấm bàn giao là item
+                                              // bị lật ngược về FEEDBACK/CLEANING/DONE. Dấu huỷ
+                                              // trong cột status BIẾN MẤT, chỉ còn sót lại trong
+                                              // options.cancelReason — nên lịch sử KTV hiện đơn
+                                              // đã huỷ thành "Chờ đánh giá" hoặc "Hoàn tất".
+            : (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
             : hasUnstartedSegs
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
@@ -240,6 +251,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                 updatePayload.handover_status = 'PENDING';
             } else if (item.handover_status !== 'APPROVED') {
                 updatePayload.handover_status = 'PENDING';
+            }
+            // Có ảnh mới nộp thì cờ "bỏ qua" phải hạ theo. Cùng ràng buộc với
+            // handleReleaseKTV và HandoverService.submitHandover — DB có CHECK
+            // chặn cặp PENDING + skipped=true (xem migration
+            // 20260907120000_handover_skipped_invariant), thiếu dòng này là
+            // update văng lỗi chứ không phải hỏng lặng lẽ như trước.
+            if (updatePayload.handover_status === 'PENDING') {
+                updatePayload.handover_skipped = false;
+                updatePayload.handover_submitted_at = new Date().toISOString();
             }
         }
         

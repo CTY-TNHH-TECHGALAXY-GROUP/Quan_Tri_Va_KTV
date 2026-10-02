@@ -17,7 +17,7 @@ export const t = {
     placeholderReason: 'Nhập lý do chi tiết...',
     warning: 'Nếu số ngày OFF trong tháng vượt quá 4 ngày, bạn sẽ không đủ điều kiện xét duyệt Bonus tháng.',
     warningPrefix: 'Lưu ý:',
-    deadlineWarning: 'Phải đăng ký trước 19h ngày hôm trước.',
+    deadlineWarning: 'Phải đăng ký trước 00:00 của ngày làm việc (tức trong ngày hôm trước).',
     submit: 'Gửi Yêu Cầu OFF',
     submitting: 'Đang gửi...',
     submitSuccess: '✅ Đã gửi yêu cầu OFF thành công!',

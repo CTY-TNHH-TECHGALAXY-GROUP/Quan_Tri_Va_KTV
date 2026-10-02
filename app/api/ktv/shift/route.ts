@@ -2,18 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { ShiftRequestSchema, ShiftPatchSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
-
-// 🔧 SHIFT CONFIGURATION
-const SHIFT_TYPES = {
-    SHIFT_1: { label: 'Ca 1', start: '09:00', end: '17:00' },
-    SHIFT_2: { label: 'Ca 2', start: '11:00', end: '19:00' },
-    SHIFT_3: { label: 'Ca 3', start: '17:00', end: '00:00' },
-    DEV_SHIFT: { label: 'Ca Dev', start: '09:00', end: '21:00' },
-    FREE: { label: 'Ca tự do', start: '00:00', end: '23:59' },
-    REQUEST: { label: 'Làm khách yêu cầu', start: '00:00', end: '23:59' },
-    SUPPORT: { label: 'Ca Hậu cần', start: '00:00', end: '23:59' },
-    VIP: { label: 'Ca VIP', start: '00:00', end: '23:59' },
-} as const;
+import { SHIFT_TYPES } from '@/lib/shift.constants';
 
 /**
  * GET /api/ktv/shift
@@ -79,11 +68,9 @@ export async function GET(request: NextRequest) {
         }
 
         // ─── Lấy ngày Business Hôm Nay ───
-        const { data: configCutoff } = await supabase.from('SystemConfigs').select('value').eq('key', 'spa_day_cutoff_hours').maybeSingle();
-        const cutoffHours = (configCutoff?.value != null) ? Number(configCutoff.value) : 6;
-        const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-        const businessNow = new Date(vnNow.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessNow.toISOString().slice(0, 10);
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
+        const businessDateStr = toBusinessDate(new Date(), cutoffHours);
         
         const fetchDate = targetDate || businessDateStr;
 
@@ -122,8 +109,10 @@ export async function GET(request: NextRequest) {
                 const isTempShift = shift.reason === 'Tự chọn ca lúc điểm danh';
                 
                 if (shift.status === 'ACTIVE' && isTempShift && shift.effectiveFrom < businessDateStr) {
-                    await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', shift.id);
-                    await supabase.from('KTVShifts').insert({
+                    const { error: oldErr } = await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', shift.id);
+                    if (oldErr) console.error('[shift/route] Failed to close old temp shift:', oldErr.message);
+
+                    const { error: newErr } = await supabase.from('KTVShifts').insert({
                         employeeId: shift.employeeId,
                         employeeName: shift.employeeName,
                         shiftType: shift.previousShift || 'SHIFT_1',
@@ -134,6 +123,8 @@ export async function GET(request: NextRequest) {
                         reviewedBy: 'SYSTEM',
                         reviewedAt: new Date().toISOString()
                     });
+                    if (newErr) console.error('[shift/route] Failed to insert restored shift:', newErr.message);
+                    
                     console.log(`✅ [Shift] Auto-reverted expired temp shift for ${shift.employeeId}`);
                     
                     // Cập nhật virtual state để hiển thị ngay
@@ -185,8 +176,9 @@ export async function GET(request: NextRequest) {
         }
 
         if (employeeId) {
-            const tomorrow = new Date(businessNow.getTime() + 24 * 60 * 60 * 1000);
-            const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+            // Ngày làm việc kế tiếp, tính từ ngày làm việc hôm nay.
+            const { shiftBusinessDate } = await import('@/lib/business-date');
+            const tomorrowStr = shiftBusinessDate(businessDateStr, 1);
 
             // Fetch current active shift + history for a specific KTV
             let { data: allShifts, error: activeError } = await supabase
@@ -220,9 +212,10 @@ export async function GET(request: NextRequest) {
             if (activeShift && activeShift.status === 'ACTIVE') {
                 const isTempShift = activeShift.reason === 'Tự chọn ca lúc điểm danh';
                 if (isTempShift && activeShift.effectiveFrom < businessDateStr) {
-                    await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', activeShift.id);
+                    const { error: oldErr } = await supabase.from('KTVShifts').update({ status: 'REPLACED' }).eq('id', activeShift.id);
+                    if (oldErr) console.error('[shift/route POST] Failed to close old temp shift:', oldErr.message);
                     
-                    const { data: newShift } = await supabase.from('KTVShifts').insert({
+                    const { data: newShift, error: newErr } = await supabase.from('KTVShifts').insert({
                         employeeId: activeShift.employeeId,
                         employeeName: activeShift.employeeName,
                         shiftType: activeShift.previousShift || 'SHIFT_1',
@@ -233,6 +226,7 @@ export async function GET(request: NextRequest) {
                         reviewedBy: 'SYSTEM',
                         reviewedAt: new Date().toISOString()
                     }).select().single();
+                    if (newErr) console.error('[shift/route POST] Failed to insert restored shift:', newErr.message);
 
                     if (newShift) {
                         activeShift = newShift;

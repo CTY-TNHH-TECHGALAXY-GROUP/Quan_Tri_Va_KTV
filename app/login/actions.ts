@@ -1,8 +1,10 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireBusinessUser } from '@/lib/auth-server';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.i18n';
 
 const DOMAIN_SUFFIX = '@nganhaspa.internal';
 
@@ -67,6 +69,10 @@ export async function authenticateUser(username: string, password?: string) {
             return { success: false, error: 'Sai tài khoản hoặc mật khẩu' };
         }
 
+        if (user.is_active === false) {
+            return { success: false, error: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản lý.' };
+        }
+
         // 3. Auto-Heal: DB login OK but no JWT → sync Auth then retry
         if (!jwtOk && password) {
             console.log(`[Login] 🔄 Auto-heal: Syncing Auth for ${username}...`);
@@ -102,19 +108,23 @@ export async function authenticateUser(username: string, password?: string) {
         // 4. Fetch avatar and feature_flags from Staff table (for profile display and permissions)
         let staffAvatarUrl = null;
         let featureFlags = undefined;
+        let workType = undefined;
         let staffStatus: string | null = null;
+        let lockSource: string | null = null;
         let staffLookupFailed = false;
         try {
             const { data: staffData, error: staffErr } = await supabaseAdmin
                 .from('Staff')
-                .select('avatar_url, feature_flags, status')
+                .select('avatar_url, feature_flags, work_type, status, lock_source')
                 .eq('id', user.code || user.id)
                 .maybeSingle();
             if (staffErr) staffLookupFailed = true;
             if (staffData) {
                 staffAvatarUrl = staffData.avatar_url;
                 featureFlags = staffData.feature_flags;
+                workType = staffData.work_type;
                 staffStatus = staffData.status;
+                lockSource = (staffData as any).lock_source ?? null;
             }
         } catch (e) {
             staffLookupFailed = true;
@@ -128,6 +138,12 @@ export async function authenticateUser(username: string, password?: string) {
         //
         // Tra hỏng (mất mạng, DB lỗi) thì KHÔNG chặn: thà cho vào rồi lớp che phía
         // trong bắt lại, còn hơn khoá nhầm cả tiệm vì một lỗi mạng.
+        // Admin switched "Hoạt động" off → only the maintenance sentence; no
+        // disciplinary reason (the penalty ledger may hold an OLD one).
+        if (!staffLookupFailed && staffStatus === 'KHÓA_TÀI_KHOẢN' && lockSource === 'MANUAL') {
+            return { success: false, error: 'ACCOUNT_LOCKED', message: FEATURE_MAINTENANCE_MESSAGE, lockDate: null };
+        }
+
         if (!staffLookupFailed && staffStatus === 'KHÓA_TÀI_KHOẢN') {
             let lockReason: string | null = null;
             let lockDate: string | null = null;
@@ -148,13 +164,13 @@ export async function authenticateUser(username: string, password?: string) {
                 success: false,
                 error: 'ACCOUNT_LOCKED',
                 message: lockReason
-                    ? `Tài khoản của bạn đang bị khoá: ${lockReason}. Liên hệ quản lý để mở lại.`
-                    : 'Tài khoản của bạn đang bị khoá kỷ luật. Liên hệ quản lý để mở lại.',
+                    ? `Tài khoản đã bị khoá. Lý do: ${lockReason}. Liên hệ admin Oria Spa để mở lại.`
+                    : 'Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.',
                 lockDate,
             };
         }
 
-        return { success: true, user: { ...user, staffAvatarUrl, featureFlags } };
+        return { success: true, user: { ...user, staffAvatarUrl, featureFlags, work_type: workType } };
     } catch (error: any) {
         console.error('Login action error:', error);
         return { success: false, error: error.message };
@@ -201,6 +217,9 @@ export async function updateProfileInDB(userId: string, name: string, avatarUrl:
 
 export async function updatePasswordInDB(userId: string, newPassword: string) {
     try {
+        // Chỉ được đổi mật khẩu của chính mình.
+        const u = await requireBusinessUser();
+        if (!u || String(u.businessUserId) !== String(userId)) throw new Error('Forbidden');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
 

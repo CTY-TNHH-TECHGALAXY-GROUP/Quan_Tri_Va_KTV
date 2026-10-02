@@ -65,10 +65,12 @@ export async function GET(request: NextRequest) {
         // 3. Fetch Services and Staff for mapping
         const [{ data: services }, { data: staff }] = await Promise.all([
             supabase.from('Services').select('id, nameVN, duration'),
-            supabase.from('Staff').select('code, name')
+            supabase.from('Staff').select('id, full_name')
         ]);
         const svcMap = new Map((services || []).map((s: any) => [s.id, { name: s.nameVN || '?', dur: s.duration || 0 }]));
-        const stfMap = new Map((staff || []).map((s: any) => [s.code, s.name || '?']));
+        // Staff khong co cot `code`/`name` — ma nhan vien CHINH LA `id` ('T016'),
+        // ten day du nam o `full_name`. Truy van cu loi nen file xuat luon hien '?'.
+        const stfMap = new Map((staff || []).map((s: any) => [s.id, s.full_name || '?']));
 
         // 4. Group bookings by customerId
         const byCid = new Map<string, any[]>();

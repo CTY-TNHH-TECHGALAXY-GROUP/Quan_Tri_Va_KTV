@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvAttendanceConfirmSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
+import { requirePermissionAny, authErrorResponse } from '@/lib/auth-server';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -14,6 +15,10 @@ const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
  */
 export async function PATCH(request: Request) {
     try {
+        // Duyệt/từ chối điểm danh là việc của quầy (ktv_hub), KTV không tự duyệt được.
+        // Cùng bộ quyền mở màn ktv-hub của quầy (page.tsx:1512), không đòi id khác.
+        await requirePermissionAny(['ktv_attendance', 'turn_tracking', 'ktv_hub']);
+
         const body = await request.json();
         const parseResult = KtvAttendanceConfirmSchema.safeParse(body);
         if (!parseResult.success) {
@@ -64,17 +69,11 @@ export async function PATCH(request: Request) {
         }
 
         // ─── Lấy cấu hình Day Cut-off để tính ngày Business Day ────────────
-        const { data: configData } = await supabase
-            .from('SystemConfigs')
-            .select('value')
-            .eq('key', 'spa_day_cutoff_hours')
-            .maybeSingle();
-        const cutoffHours = (configData?.value != null) ? Number(configData.value) : 6;
+        const { getDayCutoffHours, toBusinessDate } = await import('@/lib/business-date');
+        const cutoffHours = await getDayCutoffHours(supabase);
 
-        // Tính ngày làm việc (Business Date) dựa trên thời điểm KTV bấm điểm danh (checkedAt)
-        const checkTimeVn = new Date(new Date(attendance.checkedAt).getTime() + VN_OFFSET_MS);
-        const businessDateObj = new Date(checkTimeVn.getTime() - cutoffHours * 60 * 60 * 1000);
-        const businessDateStr = businessDateObj.toISOString().split('T')[0];
+        // Ngày làm việc tính theo đúng lúc KTV bấm điểm danh (checkedAt).
+        const businessDateStr = toBusinessDate(new Date(attendance.checkedAt), cutoffHours);
 
         // ─── If CONFIRMED CHECK_IN: upsert TurnQueue ────────────────────
         if (action === 'CONFIRM' && (attendance.checkType === 'CHECK_IN' || attendance.checkType === 'LATE_CHECKIN') && userRole === 'TECHNICIAN') {
@@ -158,6 +157,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true, status: newStatus });
 
     } catch (error: any) {
+        const authRes = authErrorResponse(error);
+        if (authRes) return authRes;
         console.error('❌ [Attendance CONFIRM] Unhandled error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

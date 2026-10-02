@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChildBookingForFeedback, FeedbackKtvInfo } from '../FeedbackDashboard.logic';
 import { submitFeedbackAction } from './actions';
+import { MAX_RATING_WITH_VIOLATION } from './feedback.constants';
 
 export type MergedFeedbackGroup = {
     ktvId: string;
@@ -57,9 +58,19 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
 
     // Toggle chọn lỗi
     const toggleViolation = (reminderId: string) => {
-        setViolations(prev => 
-            prev.includes(reminderId) ? prev.filter(id => id !== reminderId) : [...prev, reminderId]
-        );
+        setViolations(prev => {
+            const next = prev.includes(reminderId)
+                ? prev.filter(id => id !== reminderId)
+                : [...prev, reminderId];
+
+            // Khách vừa tích lỗi trong khi đang để sẵn mức cao nhất → bỏ chọn điểm,
+            // bắt chọn lại. Không tự hạ xuống 3 sao, vì như vậy là hệ thống trả lời
+            // thay khách. Nút Gửi đã có sẵn ràng buộc phải chấm điểm mới cho qua.
+            if (next.length > 0 && globalRating > MAX_RATING_WITH_VIOLATION) {
+                setGlobalRating(0);
+            }
+            return next;
+        });
     };
 
     // Reset state khi đổi khách (chuyển tab)
@@ -100,7 +111,12 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         return Array.from(groupsMap.values());
     }, [booking.ktvList]);
 
+    /** Có lỗi bị tích thì mức cao nhất chỉ còn 3 sao — 4 sao là "không có gì để phàn nàn". */
+    const maxRating = violations.length > 0 ? MAX_RATING_WITH_VIOLATION : 4;
+
     const handleRatingChange = (rating: number) => {
+        // Chặn ngay ở đây nữa, phòng khi giao diện lỡ vẽ ra nút vượt trần.
+        if (rating > maxRating) return;
         setGlobalRating(rating);
     };
 
@@ -174,7 +190,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             rateExcellent: 'Tuyệt vời',
             violationsSectionTitle: 'Góp ý dịch vụ (nếu có)',
             experienceTitle: 'Trải nghiệm của bạn',
-            staffLbl: 'Nhân viên phục vụ'
+            staffLbl: 'Nhân viên phục vụ',
+            cappedByViolation: 'Bạn đã chọn góp ý ở trên nên mức "Tuyệt vời" tạm ẩn. Bỏ chọn góp ý nếu muốn chấm mức cao nhất.'
         },
         EN: {
             forgotTitle: 'Please check your personal belongings',
@@ -196,7 +213,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             rateExcellent: 'Excellent',
             violationsSectionTitle: 'Service feedback (if any)',
             experienceTitle: 'Your experience',
-            staffLbl: 'Served by'
+            staffLbl: 'Served by',
+            cappedByViolation: 'You selected feedback above, so "Excellent" is hidden. Uncheck it to give the highest rating.'
         },
         KR: {
             forgotTitle: '소지품을 다시 한 번 확인해 주세요',
@@ -218,7 +236,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             rateExcellent: '매우 좋음',
             violationsSectionTitle: '서비스 피드백 (선택)',
             experienceTitle: '고객님의 경험',
-            staffLbl: '담당 직원'
+            staffLbl: '담당 직원',
+            cappedByViolation: '위에서 의견을 선택하셔서 "매우 좋음"은 숨겨졌습니다. 최고 점수를 주시려면 선택을 해제해 주세요.'
         },
         JP: {
             forgotTitle: 'お忘れ物がないかご確認ください',
@@ -240,7 +259,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             rateExcellent: '素晴らしい',
             violationsSectionTitle: 'サービスのフィードバック (任意)',
             experienceTitle: 'お客様の体験',
-            staffLbl: '担当スタッフ'
+            staffLbl: '担当スタッフ',
+            cappedByViolation: '上でご意見を選択されたため「素晴らしい」は非表示です。最高評価をご希望の場合は選択を解除してください。'
         },
         ZH: {
             forgotTitle: '请再次检查您的随身物品',
@@ -262,7 +282,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             rateExcellent: '极好',
             violationsSectionTitle: '服务反馈 (选填)',
             experienceTitle: '您的体验',
-            staffLbl: '服务人员'
+            staffLbl: '服务人员',
+            cappedByViolation: '您在上方选择了反馈，因此「极好」已隐藏。若要给最高评分，请取消选择。'
         }
     };
 
@@ -274,7 +295,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation,
+        reminders, violations, getReminderText, toggleViolation, maxRating,
         isSubmitting, handleSubmit,
         isSuccess, setIsSuccess,
         t

@@ -9,7 +9,7 @@ import Markdown from 'react-markdown';
 export function AIAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
-    { role: 'model', text: 'Xin chào! Tôi là trợ lý AI của Ngân Hà Spa. Tôi có thể giúp gì cho bạn?' }
+    { role: 'model', text: 'Xin chào! Tôi là trợ lý AI của Oria Spa. Tôi có thể giúp gì cho bạn?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -44,7 +44,7 @@ export function AIAssistant() {
           parts: [{ text: m.text }]
         })),
         config: {
-          systemInstruction: "Bạn là trợ lý ảo thông minh của Ngân Hà Spa. Hãy trả lời ngắn gọn, lịch sự và chuyên nghiệp về các dịch vụ spa, quy trình làm việc hoặc hỗ trợ kỹ thuật cho nhân viên.",
+          systemInstruction: "Bạn là trợ lý ảo thông minh của Oria Spa. Hãy trả lời ngắn gọn, lịch sự và chuyên nghiệp về các dịch vụ spa, quy trình làm việc hoặc hỗ trợ kỹ thuật cho nhân viên.",
         }
       });
 
@@ -81,7 +81,7 @@ export function AIAssistant() {
                   <Sparkles size={18} />
                 </div>
                 <div>
-                  <span className="font-black text-sm uppercase tracking-wider block">Trợ Lý Ngân Hà AI</span>
+                  <span className="font-black text-sm uppercase tracking-wider block">Trợ Lý Oria AI</span>
                   <span className="text-[9px] text-white/60 font-bold uppercase tracking-widest">Sẵn sàng hỗ trợ</span>
                 </div>
               </div>

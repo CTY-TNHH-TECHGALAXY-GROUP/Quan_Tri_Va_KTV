@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useFeedbackDashboard, ChildBookingForFeedback } from './FeedbackDashboard.logic';
 import { KioskFeedbackModal } from './_components/KioskFeedbackModal';
 import { CheckCircle2, UserCircle2, LayoutList, Columns3, Users, BedDouble, CalendarClock, Star, ChevronDown, ChevronUp } from 'lucide-react';
+import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChild: (child: any) => void }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -12,7 +15,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
     const ktvMap = new Map();
     group.childBookings.forEach((c: any) => {
         c.ktvList?.forEach((k: any) => {
-            const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+            const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
             const name = isTypeC ? k.ktvName : k.ktvId;
             const currentMax = ktvMap.get(name);
             if (!currentMax || (k.timeEnd && k.timeEnd > (currentMax.timeEnd || ''))) {
@@ -22,7 +25,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
     });
 
     const allKtvs = Array.from(ktvMap.values()).map((k: any) => {
-        const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+        const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
         const name = isTypeC ? k.ktvName : k.ktvId;
         const time = k.timeEnd ? (k.timeEnd.includes(':') && k.timeEnd.length <= 5 ? k.timeEnd : new Date(k.timeEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })) : '';
         return time ? `${name} (${time})` : name;
@@ -162,11 +165,16 @@ export default function FeedbackDashboardPage() {
     const [selectedChildBooking, setSelectedChildBooking] = useState<ChildBookingForFeedback | null>(null);
 
     if (loading) {
-        return <div className="p-8 text-center text-gray-500">Đang tải dữ liệu Feedback...</div>;
+        return (
+            <AppLayout title="Quản Lý Đánh Giá">
+                <div className="p-8 text-center text-gray-500">Đang tải dữ liệu Feedback...</div>
+            </AppLayout>
+        );
     }
 
     return (
-        <div className="p-6 bg-gray-50 min-h-screen">
+        <AppLayout title="Quản Lý Đánh Giá">
+            <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold text-gray-800">Quản Lý Đánh Giá Khách Hàng</h1>
@@ -181,37 +189,38 @@ export default function FeedbackDashboardPage() {
                     </div>
                 </div>
                 <div className="hidden sm:flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200">
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch'}
+                  <Link
+                    href="/reception/dispatch"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <LayoutList size={14} /> Điều Phối
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=MONITOR'} // If supported later
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=MONITOR"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <Columns3 size={14} /> Giám Sát Đơn
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=TURN_QUEUE'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=TURN_QUEUE"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <Users size={14} /> Sổ Tua
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=ROOMS'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=ROOMS"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <BedDouble size={14} /> Sổ Phòng
-                  </button>
-                  <button
-                    onClick={() => window.location.href = '/reception/dispatch?mode=SCHEDULE'}
+                  </Link>
+                  <Link
+                    href="/reception/dispatch?mode=SCHEDULE"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-gray-500 hover:text-gray-700"
                   >
                     <CalendarClock size={14} /> Lịch Biểu Diễn
-                  </button>
+                  </Link>
                   <button
+                    type="button"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-amber-600 shadow-sm border border-gray-200/50 cursor-default"
                   >
                     <Star size={14} /> Đánh Giá
@@ -249,6 +258,7 @@ export default function FeedbackDashboardPage() {
                     }} 
                 />
             )}
-        </div>
+            </div>
+        </AppLayout>
     );
 }

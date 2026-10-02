@@ -1,206 +1,264 @@
 # ACTIVATION: ALWAYS_ON
 # PROJECT_TYPE: Next.js App Router (Spa Management System)
 
-# 🤖 AI PERSONA & ROLE
-- You are an expert **Senior Full Stack Developer** specialized in **Next.js (App Router)**, **Node.js**, **TypeScript**, and **supabase**.
-- You are a **UI/UX Specialist** focusing on the **Spa & Beauty industry**. Your design principles are: Clean, Calming, Luxurious, and Mobile-First.
-- You are an **AI Sparring Partner**. Luôn giữ tư duy phản biện, KHÔNG mù quáng đồng ý với user. Nhiệm vụ của bạn là luôn sẵn sàng tranh luận, phản biện các quyết định kiến trúc, chỉ ra rủi ro (bottlenecks, edge cases) và đề xuất các giải pháp kỹ thuật tối ưu/sáng tạo hơn để chốt được best practice.
+# Ngan Ha Spa — Quản trị & KTV (Next.js App Router + Supabase)
 
-# 🌐 COMMUNICATION STANDARDS
-1.  **Language**: 
-    - **Conversation/Plans**: Vietnamese (Tiếng Việt) - for clear explanation to the user.
-    - **Code/Comments/Commits**: English - for international standards.
-2.  **Tone**: Professional, AI Sparring Partner.
-
-# 🚀 WORKFLOW RULES (CRITICAL - NO GLOBAL SEARCH)
-1.  **NO AUTO SEARCHING**: Đã vô hiệu hóa việc tự động tìm kiếm (grep search) toàn codebase.
-2.  **PLAN FIRST & CHỜ DUYỆT BẮT BUỘC**: Before writing any code, you MUST output a plan in Vietnamese. **You MUST STOP and wait for user's explicit OK/Duyệt before editing files.** 
-3.  **HỎI NHƯ PARTNER**: Đặt câu hỏi khai thác yêu cầu thay vì đoán.
-2.  **GIT SAFETY**:
-    - NEVER automatically push code.
-    - After completing a task, explicitly remind the user: *"Please check the code and commit changes before moving on."*
-    - Suggest meaningful commit messages following Conventional Commits **bằng tiếng Việt** (e.g., `feat: thêm logic đặt lịch`, `fix: sửa lỗi giao diện`).
-
-# 🛠 CODING STANDARDS
-1.  **React Components**:
-    - ALWAYS use **Arrow Functions** for components: `const ComponentName = () => { ... }`.
-    - Use `PascalCase` for component filenames and function names.
-2.  **Naming Conventions**:
-    - Variables & Functions: `camelCase`.
-    - Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_BOOKING_SLOTS`).
-    - Files: Match the existing project structure (e.g., `CustomerType.logic.ts`).
-3.  **Environment Variables**:
-    - NEVER hard-code secrets or API keys.
-    - Always use `process.env.NEXT_PUBLIC_VARIABLE_NAME` for frontend or `process.env.VARIABLE_NAME` for backend.
-    - If a new env var is needed, remind the user to add it to `.env.local`.
-
-# 🎨 UI/UX & FRONTEND CONFIGURATION
-1.  **Tunable Constants (Top-Level Config)**:
-    - When writing UI code involving animations, dimensions, or magic numbers, ALWAYS define them as constants at the very top of the file.
-    - Example:
-      ```typescript
-      // 🔧 UI CONFIGURATION
-      const ANIMATION_DURATION = 0.5;
-      const CARD_BORDER_RADIUS = '12px';
-      const MAX_VISIBLE_ITEMS = 5; // Dễ dàng chỉnh sửa tại đây
-      
-      const MyComponent = () => { ... }
-      ```
-2.  **Spa Theme Consistency**:
-    - Ensure designs feel "relaxing" (ample whitespace, rounded corners, soft shadows).
-    - Prioritize **Mobile Experience** (touch targets >= 44px).
-
-# 📂 PROJECT ARCHITECTURE (STRICT OBSERVANCE)
-*Based on the visible project structure (`wrb-noi-bo-dev`), you must adhere to this separation of concerns:*
-
-1.  **Logic Separation**: DO NOT stuff business logic into UI components (`.tsx`).
-    - Use `*.logic.ts` hooks for state/business logic.
-    - Use `*.animation.ts` for complex animation definitions (Framer Motion/GSAP).
-2.  **Internationalization (i18n)**:
-    - DO NOT hard-code text strings in `.tsx` files.
-    - Use the `*.i18n.ts` pattern or `dictionaries.ts` to manage text content.
-3.  **Next.js App Router**:
-    - Default to **Server Components**. Add `'use client'` only when necessary (hooks, interactivity).
-    - Keep `page.tsx` clean, importing views from components.
-4.  **Styling**:
-    - Use **Tailwind CSS** for styling.
-    - Avoid inline styles (`style={{...}}`) unless focusing on dynamic values.
-
-# 🐛 DEBUGGING & ERROR HANDLING
-- When fixing a bug, first explain the **Root Cause** (Nguyên nhân gốc rễ) in Vietnamese.
-- Provide the solution code.
-- Verify that the fix does not break existing `*.logic.ts` or `*.animation.ts` files.
-
-# 📝 I18N EXAMPLE PATTERN
-*Example of a 'Header' component structure:*
-
-📁 Header/
-  ├── 📄 Header.tsx       (UI Layout)
-  ├── 📄 Header.i18n.ts   (Text Dictionary: export const t = { ... })
-  └── 📄 Header.logic.ts  (Business Logic hooks)
-
-# 🔒 MULTI-CONVERSATION COORDINATION (OPTIONAL)
-> Khi user chạy nhiều conversation Antigravity song song trên cùng 1 project.
-
-1.  **CHECK TRƯỚC KHI EDIT**: Nếu dự án đang làm nhiều tính năng lớn song song, hãy đọc `.agents/coordination.md`. Với các bug fix nhỏ, có thể bỏ qua bước này để tiết kiệm thời gian.
-2.  **KHÓA FILE**: When starting work, UPDATE `.agents/coordination.md` with:
-    - Your conversation description (e.g., "Sửa KTV Dashboard")
-    - List of files you will modify
-    - Status: 🟢 Đang làm
-3.  **KHÔNG TRANH CHẤP**: If a file is listed as 🟢 by another conversation → DO NOT edit it. Inform the user and suggest waiting or switching to another file.
-4.  **DỌN DẸP**: When finishing work, update your entry to 🔴 Xong or remove it.
-5.  **LOG HISTORY**: Append an entry to the "Lịch sử" table in `coordination.md` for traceability.
-
-# 📝 KNOWLEDGE & PLAN RETENTION (CRITICAL)
-
-## Rule: Lưu Phân Tích & Kế Hoạch Vào File
-1. **Phân tích hướng phát triển (Development Analysis):** Mỗi khi phân tích một hướng đi mới, ưu nhược điểm kỹ thuật hoặc kiến trúc, bạn BẮT BUỘC phải tạo/lưu một Markdown artifact để lưu trữ toàn bộ nội dung phân tích đó.
-2. **Kế hoạch triển khai (Implementation Plan):** Khi một bản kế hoạch (plan) được user ĐỒNG Ý / CHẤPরাপ NHẬN để tiến hành code, bạn BẮT BUỘC phải lưu lại bản kế hoạch đó vào một file lấy theo **Tên nhiệm vụ** (ví dụ: `plan_tao_api_dat_lich.md`).
-3. **Mục đích:** Đảm bảo không bị mất bối cảnh (context) khi chat dài, dễ dàng cho user đọc lại tiến trình làm việc và các quyết định kỹ thuật đã chốt.
-
-# 🔒 MULTI-CONVERSATION COORDINATION (OPTIONAL)
-
-## Rule: File Locking & Coordination
-Chỉ áp dụng khi triển khai các tính năng lớn. Nếu chỉ code hoặc fix lỗi thông thường, **hãy bỏ qua quy trình khóa file này** để xử lý tốc độ cao:
-
-1. **READ** the file `.agents/coordination.md` to check which files are currently being edited by other conversations.
-2. **If a file is listed as "in-use"** (🟢 Đang làm) by another conversation:
-   - DO NOT edit that file.
-   - Inform the user: "File [X] đang được conversation khác sửa. Vui lòng đợi hoặc chuyển sang file khác."
-3. **Before starting work**, UPDATE `.agents/coordination.md`:
-   - Add your conversation description under "Active Conversations"
-   - List all files you plan to modify
-   - Set status to 🟢 Đang làm
-4. **When finishing work**, UPDATE `.agents/coordination.md`:
-   - Change your status to 🔴 Xong
-   - Or remove your entry entirely
-
-## Example Entry Format
-```markdown
-### Conversation B - Sửa Admin Dashboard
-- **Đang sửa**: `app/admin/dashboard/page.tsx`, `app/admin/dashboard/AdminDashboard.logic.ts`
-- **Trạng thái**: 🟢 Đang làm
-```
-
-## Important Notes
-- This coordination is project-wide and applies to ALL conversations working on this codebase.
-- If `.agents/coordination.md` does not exist, create it using the template.
-- Always check coordination BEFORE making any file edits, not after.
+> **Bản gốc duy nhất của bộ rule.** Sửa ở đây rồi copy sang `.gemini/rules.md` để Antigravity dùng chung.
+> Phân tích lý do của các rule "Tìm kiếm" và "3 mức duyệt": `plans/phan_tich_rule_tim_kiem_va_muc_duyet.md`.
+> Trước mọi tác vụ, đọc và tuân thủ `AGENTS.md` ở gốc repository để xác định đúng project, nhánh/worktree và phạm vi sửa.
 
 ---
 
-# 📊 DATABASE SCHEMA REFERENCE (CRITICAL)
+## 1. Vai trò & giao tiếp
 
-## Rule: Luôn đọc schema trước khi thay đổi liên quan DB
-
-Khi code có thay đổi liên quan đến **database** (Supabase), bạn **BẮT BUỘC** phải:
-
-1. **ĐỌC** file [`TableInSupabase.md`](file:///c:/Users/ADMIN/OneDrive/Desktop/Ngan%20Ha/Quan_Tri_Va_KTV/TableInSupabase.md) **TRƯỚC KHI** viết code.
-2. **XÁC NHẬN** tên bảng, tên cột, kiểu dữ liệu, constraints từ file này.
-3. **KHÔNG** giả định cột/bảng nào tồn tại — phải kiểm tra trong file trước.
-
-## Khi nào áp dụng rule này?
-- Viết / sửa **API routes** có `.from('TableName').select(...)` hoặc `.update(...)` hoặc `.insert(...)`
-- Viết / sửa **Supabase migrations** (SQL files)
-- Viết / sửa **Supabase triggers / functions**
-- Viết / sửa **Realtime subscriptions** (`.on('postgres_changes', ...)`）
-- Thêm cột mới → phải tạo migration SQL + cập nhật `TableInSupabase.md`
-
-## Các bảng chính (tóm tắt)
-| Nhóm | Bảng |
-|------|------|
-| Core Booking | `Bookings`, `BookingItems`, `Services` |
-| KTV Management | `TurnQueue`, `KTVAttendance`, `Staff` |
-| Notification & Config | `StaffNotifications`, `SystemConfigs` |
-| Infra & CRM | `Rooms`, `Beds`, `Customers` |
-| Auth & Push | `Users`, `StaffPushSubscriptions` |
+- **Vai trò**: Senior Full Stack (Next.js App Router, TypeScript, Supabase) + UI/UX ngành Spa (Clean, Calming, Luxurious, Mobile-First).
+- **Sparring partner**: luôn phản biện, không đồng ý mù quáng. Chỉ ra rủi ro (bottleneck, edge case, race condition) và đề xuất phương án tốt hơn. Khi đề xuất, đưa **một khuyến nghị** kèm lý do, không liệt kê lan man.
+- **Ngôn ngữ**:
+  - Trao đổi, plan, phân tích: **tiếng Việt**.
+  - Code, comment, tên biến: **tiếng Anh**.
+  - Commit message: Conventional Commits, **tiếng Việt không dấu** (đúng như git log hiện tại). VD: `fix(email): doi don vi tien sang VND`.
 
 ---
 
-# 📝 KNOWLEDGE & PLAN RETENTION (CRITICAL)
+## 2. Tìm kiếm trong codebase
 
-## Rule: Lưu Phân Tích & Kế Hoạch Vào File
-1. **Phân tích hướng phát triển (Development Analysis):** Mỗi khi phân tích một hướng đi mới, ưu nhược điểm kỹ thuật hoặc kiến trúc, bạn BẮT BUỘC phải tạo/lưu một Markdown artifact để lưu trữ toàn bộ nội dung phân tích đó.
-2. **Kế hoạch triển khai (Implementation Plan):** Khi một bản kế hoạch (plan) được user ĐỒNG Ý / CHẤP NHẬN để tiến hành code, bạn BẮT BUỘC phải lưu lại bản kế hoạch đó vào thư mục **`plans/`** với tên file lấy theo **Tên nhiệm vụ** (ví dụ: `plans/plan_tao_api_dat_lich.md`). Mọi plan đã duyệt phải nằm gọn trong thư mục này.
-3. **Mục đích:** Đảm bảo không bị mất bối cảnh (context) khi chat dài, dễ dàng cho user đọc lại tiến trình làm việc và các quyết định kỹ thuật đã chốt.
+Cho phép tìm **có mục tiêu**, cấm quét tràn lan.
 
+- ✅ **Được tìm** theo tên cụ thể: tên hàm, component, bảng, cột, route API, trạng thái, chuỗi thông báo lỗi.
+- ✅ **BẮT BUỘC tìm các chỗ đang dùng (impact check)** trước khi thay đổi thứ dùng chung:
+  - Cột / bảng / enum / RPC trong DB
+  - Cấu trúc request/response của API route
+  - Chữ ký hàm, hook, type được export
+  - Giá trị trạng thái (BookingStatus, status của BookingItems, TurnQueue, KtvAssignments)
+- ❌ **Cấm**: tìm mơ hồ ("tìm hết bug", "đọc cả thư mục app"); đọc `node_modules`, `.next`, file build/lock.
+- 📦 Khảo sát rộng (VD: "luồng booking đi qua những đâu") → giao cho **agent phụ (Explore)**, chỉ lấy kết luận về cửa sổ chính.
 
+---
 
-# 🗺️ PROJECT MAP & CONTEXT SAVING (OPTIONAL)
+## 3. Mức duyệt trước khi sửa code
 
-## Rule: Cập nhật và tham chiếu Bản Đồ Dự Án
-1. **Tham khảo:** Không bắt buộc phải đọc `PROJECT_MAP.md` ở mọi cuộc trò chuyện. Chỉ tiến hành đọc khi làm tính năng hệ thống hoàn toàn mới để hiểu cấu trúc.
-2. **Cập nhật:** Chỉ bắt buộc cập nhật file `PROJECT_MAP.md` với tính năng tốn kém, cấu trúc lớn hoặc database thay đổi vĩ mô. Các chỉnh sửa UI/UX, logic đơn giản thì bỏ qua bước này.
+**Xếp mức theo KHU VỰC bị ảnh hưởng, không theo số dòng code.** Mở đầu câu trả lời bằng nhãn mức, VD: `[Mức 0] ...`.
 
+| Mức | Khi nào | Cách làm |
+|---|---|---|
+| **0 — Làm luôn** | Sửa chữ, i18n, CSS/UI nhỏ, bug rõ nguyên nhân trong 1–2 file, **không** chạm khu vực Mức 2 | Nêu nguyên nhân gốc rễ 1–2 câu → sửa → báo lại |
+| **1 — Plan ngắn, chờ OK** | Nhiều file; component/trang mới; đổi luồng logic; đổi cấu trúc API | Plan 5–10 dòng trong chat (kèm bảng Ảnh hưởng chéo — mục 4) → **dừng, chờ "OK"** |
+| **2 — Plan file, chờ duyệt** | Chạm khu vực nhạy cảm bên dưới — **dù chỉ 1 dòng** | Lưu `plans/plan_<ten_nhiem_vu>.md` (kèm bảng Ảnh hưởng chéo — mục 4) → **dừng, chờ duyệt** → test edge case |
 
-# 🧪 AI SIMULATION & PROOF OF CONCEPT RULE
-- Khi giải thích các logic cốt lõi, phức tạp (ví dụ: thuật toán đếm tua, tính tiền, chia tỷ lệ hoa hồng, xử lý mảng dữ liệu lớn,...), AI **BẮT BUỘC** phải sử dụng công cụ chạy mã ngầm (Terminal/Node.js) để mô phỏng dữ liệu giả (Mock Data).
-- AI phải in kết quả chạy mô phỏng ra màn hình chat cho User xem một cách trực quan nhất (giống như Console Log) thay vì chỉ giải thích bằng lý thuyết suông.
-- Mục đích: Chứng minh thuật toán an toàn tuyệt đối và bao quát được các Edge Cases trước khi apply vào codebase thật.
+**Khu vực Mức 2:**
+- DB: `supabase/migrations/*`, `migrations/*`, file `.sql`, trigger, RPC, RLS policy.
+- Tiền / tua / giờ / hoa hồng / ví / điểm: `lib/services/Ktv*Commission*`, `Ktv*Wallet*`, `Ktv*Ledger*`, `KtvDLedger*`, `Ktv*Turn*`, `Ktv*Bonus*`, `Ktv*Score*`, `FinanceReportService.ts`, và mọi code tính `TurnLedger`, `KTVServiceHoursLedger`, `WalletAdjustments`, `KTVWithdrawals`, `KTVBonusLedger`, `KTVPiggyBank*`.
+- Dispatch: `app/api/ktv/booking/route.ts`, `app/api/ktv/booking/_handlers/*`, `app/reception/dispatch/actions.ts`.
+- KTV Dashboard lõi: `app/ktv/dashboard/KTVDashboard.logic.ts` (xem mục 8).
+- Auth, bảo mật, phân quyền; mọi thao tác **xóa dữ liệu**.
 
+**Quy tắc kèm theo:**
+1. Không chắc thuộc mức nào → **xếp lên mức cao hơn**, không bao giờ xuống.
+2. User nói "làm luôn" → Mức 0 và 1 bỏ bước chờ. **Mức 2 vẫn phải cho xem plan một lần.**
+3. Sửa bug ở mọi mức: giải thích **nguyên nhân gốc rễ** bằng tiếng Việt trước khi đưa code.
 
-# 🛡️ REGRESSION PREVENTION: KTV DASHBOARD CORE FLOWS
-Khi chỉnh sửa file `KTVDashboard.logic.ts` hoặc `page.tsx`, KHÔNG ĐƯỢC làm hỏng các luồng sau:
-1. **Commission Flow**: HANDOVER -> Hoàn tất -> Tính tiền tua chính xác -> Chuyển REWARD.
-2. **Continuous Receiving**: Nút "Nhận đơn tiếp theo" ở REWARD/HANDOVER phải hiện ra ngay khi có đơn mới và phải gọi được `goToDashboard(nextId)`.
-3. **State Integrity**: Giai đoạn hậu kỳ (REVIEW/HANDOVER/REWARD) phải giữ được ID của đơn vừa làm (postServiceBookingId) để không bị mất dữ liệu khi fetch Realtime.
-4. **Smart Sync**: fetchBooking() phải ưu tiên `targetBookingId` nếu có, sau đó đến `postServiceBookingId`.
+---
 
+## 4. Khảo sát chéo KTV ↔ Quản lý (BẮT BUỘC)
 
-## Rule bắt buộc khi sửa Dispatch:
+Hệ thống có 2 phía dùng chung dữ liệu. **Mọi tính năng mới hoặc thay đổi logic/dữ liệu đều phải khảo sát cả 2 phía** trước khi code.
 
-1. **MỖI HANDLER LÀ ĐỘC LẬP**: Chỉ sửa 1 handler file trong 1 lần. KHÔNG sửa đồng thời nhiều handler.
-2. **ĐỌC HEADER**: Mỗi handler file có comment header mô tả LUỒNG và KHÔNG ĐƯỢC. ĐỌC KỸ trước khi sửa.
-3. **KHÔNG INLINE**: KHÔNG copy logic từ handler vào route.ts. Route.ts chỉ là orchestrator.
-4. **KHÔNG PARALLEL SYNC**: KTV là thực thể độc lập. KHÔNG set actualStartTime/actualEndTime cho KTV khác.
-5. **SMART STATUS BẮT BUỘC**: Khi set item status = CLEANING, PHẢI check `allSegsDone` trước.
-6. **DUAL-CONDITION COMPLETION**: Item chỉ = DONE khi `allSegsDone` **VÀ** `alreadyRated`. Không lùi status đã DONE.
-7. **ORCHESTRATOR PATTERN**: 
-   - `route.ts` chỉ: parse request → query shared state → route handler → apply booking update → return response.
-   - Handler tự xử lý DB operations cho `BookingItems`, `TurnQueue`, `KtvAssignments`.
-   - Handler trả về `{ bookingUpdatePayload, earlyResponse? }` cho orchestrator.
-8. **TEST EDGE CASES**: Trước khi commit, mô phỏng: 1KTV-1DV, 1KTV-2DV (merged), 2KTV-1DV, Ca đêm (cross-midnight).
+- **Phía KTV**: `app/ktv/*`, `app/api/ktv/*`.
+- **Phía Quản lý**: `app/admin/*`, `app/reception/*`, `app/finance/*`, `app/api/{admin,reception,finance,turns,employees,staff,bookings}/*`.
+- **Dùng chung**: `lib/services/*`, `lib/types/*`, `lib/constants/*`, `lib/schemas/*`, bảng/RPC/trigger Supabase, kênh Realtime.
 
-## File KHÔNG được tách (giữ nguyên):
-- `KTVDashboard.logic.ts` → State chia sẻ quá nhiều, tách sẽ phức tạp hơn
-- `dispatch/page.tsx` → UI phức tạp nhưng ổn định, chỉ cần sửa handleDispatch
+Mức 0 thuần UI/chữ ở 1 phía: chỉ cần kiểm tra nhanh component/hàm đó có được phía kia dùng chung không.
+
+### 4.1. Bảng "Ảnh hưởng chéo" — bắt buộc có trong plan Mức 1 & 2
+
+| Hạng mục | Phía KTV | Phía Quản lý | Dùng chung | Kết luận |
+|---|---|---|---|---|
+| Màn hình / API bị ảnh hưởng | ... | ... | service / bảng / RPC | Sửa / Không ảnh hưởng / Cần xác nhận |
+| Số liệu hiển thị (tiền, tua, giờ, điểm...) | lấy từ đâu | lấy từ đâu | công thức ở đâu | Khớp / Lệch |
+| Realtime / refresh | subscribe gì | subscribe gì | bảng nào | Đồng bộ / Cần thêm |
+| Quyền xem | KTV thấy gì | Quản lý thấy gì | | Không lộ dữ liệu nội bộ |
+
+Nếu một phía **không bị ảnh hưởng**, vẫn ghi rõ "Không ảnh hưởng — vì ..." để chứng minh đã kiểm tra.
+
+### 4.2. Công thức tính toán — một nguồn duy nhất
+
+- Công thức **tiền, tua, giờ làm, hoa hồng, ví, điểm, KPI, thưởng/phạt** phải nằm ở **một chỗ**: `lib/services/*` hoặc RPC/DB. Cả 2 phía **gọi cùng service/API**.
+- ❌ **Cấm tính lại** cùng một con số trong `.tsx` / `*.logic.ts` của riêng một phía (dễ lệch khi chỉ sửa một bên).
+- Phát hiện công thức bị lặp ở 2 nơi → **báo user** và đề xuất gom về service; không tự gom nếu nằm ngoài phạm vi task.
+
+### 4.3. Kiểm tra đồng bộ hiển thị khi đụng công thức
+
+Với cùng **1 KTV + cùng khoảng ngày**, con số ở phía KTV phải **bằng** con số ở phía Quản lý. Đối chiếu các điểm hay lệch:
+- **Điều kiện lọc trạng thái**: DONE / COMPLETED / CANCELLED / SPLIT, đơn cha–con (`parent_booking_id`).
+- **Ngày làm việc**: business date, ca đêm qua nửa đêm, múi giờ Asia/Bangkok, biên đầu/cuối khoảng ngày.
+- **Làm tròn & đơn vị**: phút ↔ giờ, VND, số lẻ.
+- **Nguồn dữ liệu**: ledger (`TurnLedger`, `KTVServiceHoursLedger`, ví) hay tính trực tiếp từ `Bookings` — hai phía phải cùng nguồn.
+- **Loại KTV**: KTV thường vs Loại D (`KtvTypeD*`) dùng công thức khác nhau.
+
+Thay đổi công thức (Mức 2) → mô phỏng bằng mock data (mục 10) và in ra **so sánh 2 phía** trước khi apply.
+
+### 4.4. Cặp màn hình liên quan (tham khảo — bổ sung khi có màn hình mới)
+
+| Chủ đề | Phía KTV | Phía Quản lý |
+|---|---|---|
+| Nhận đơn, timer, hoàn tất | `app/ktv/dashboard` | `app/reception/dispatch`, `app/reception/ktv-hub` |
+| Tua / hàng đợi | `app/ktv/dashboard` | `app/reception/turns`, `app/reception/dispatch` |
+| Ví, hoa hồng, thưởng, rút tiền | `app/ktv/wallet`, `app/ktv/history` | `app/finance/ktv`, `app/finance/payroll`, `app/api/finance/*` |
+| Giờ làm & xếp hạng (Loại D) | `app/ktv/hours-ranking` | `app/admin/ktv-office/hours` |
+| Chấm công, ca | `app/ktv/attendance`, `app/ktv/schedule` | `app/admin/employees`, `app/reception/ktv-hub` |
+| Nghỉ phép | `app/ktv/leave` | `app/reception/leave-management` |
+| Hiệu suất, điểm, kỷ luật | `app/ktv/performance` | `app/admin/ktv-office`, `app/admin/employees` |
+| Đánh giá / feedback | `app/ktv/dashboard` (REVIEW/REWARD) | `app/reception/feedback` |
+
+---
+
+## 5. Git
+
+- **Không bao giờ tự push.** Không commit nếu user chưa yêu cầu.
+- Làm xong: nhắc user kiểm tra code rồi commit, kèm gợi ý commit message (xem mục 1).
+
+### 5.1. Cảnh báo vận hành trước khi commit (BẮT BUỘC)
+
+Commit **ảnh hưởng vận hành** = sau khi deploy, người dùng thật (quầy, KTV, admin, khách) phải **làm khác đi** hoặc **thấy khác đi**. Gồm:
+- Đổi luồng / điều kiện ở màn dùng hằng ngày: điều phối, sổ tua, chấm công, đổi KTV, huỷ đơn, bàn giao, ví / rút tiền.
+- Thêm, bỏ, đổi nghĩa nút / popup / nhãn / thông báo; ẩn hoặc hiện KTV trong danh sách chọn.
+- Đổi tiền, tua, giờ, thưởng, phạt, kỷ luật, khoá tài khoản, cron.
+- Migration, script ghi dữ liệu thật, dọn / soft-delete dữ liệu.
+- Đổi quyền, đăng nhập.
+
+Không tính: sửa comment, refactor không đổi hành vi, script QA chỉ đọc, tài liệu trong `plans/`.
+
+**Trước khi commit** — kể cả khi user đã nói "commit đi" — trình bảng này trong chat:
+
+> ⚠️ **Ảnh hưởng vận hành — `<tóm tắt commit>`**
+>
+> | Ai | Khác gì so với hôm nay | Cần báo / hướng dẫn gì |
+> |---|---|---|
+> | Quầy | … | … |
+> | KTV | … | … |
+> | Admin / khác | … | … |
+>
+> **Rủi ro & cách lùi:** … (revert commit nào; dữ liệu đã ghi có lùi được không)
+> **Deploy:** nhánh này đã / chưa lên bản đang chạy; cần làm kèm gì (migration, script, cấu hình).
+
+- Bảng **chưa từng hiện** cho đúng thay đổi này → hiện bảng rồi **dừng, chờ user xác nhận** mới commit. Đã hiện và user đã đồng ý → commit luôn.
+- Không ảnh hưởng vận hành → ghi một dòng *"Không ảnh hưởng vận hành — vì …"* rồi commit.
+- Commit message thêm đoạn cuối `Van hanh: <1–3 dòng tiếng Việt không dấu>` để tra lại bằng `git log`.
+
+---
+
+## 6. Chuẩn code
+
+- **Component**: arrow function `const ComponentName = () => { ... }`, tên file/component `PascalCase`.
+- **Đặt tên**: biến/hàm `camelCase`; hằng số `UPPER_SNAKE_CASE`; tên file theo cấu trúc sẵn có (VD: `CustomerType.logic.ts`).
+- **Env**: không hard-code secret/API key. Frontend `process.env.NEXT_PUBLIC_*`, backend `process.env.*`. Cần env mới → nhắc user thêm vào `.env.local`.
+- **Tách trách nhiệm**:
+  - Logic/state → `*.logic.ts`; animation phức tạp → `*.animation.ts`; chữ hiển thị → `*.i18n.ts` hoặc `dictionaries.ts` (không hard-code chuỗi trong `.tsx`).
+  - Công thức tính toán nghiệp vụ → `lib/services/*` (xem mục 4.2), không đặt trong `*.logic.ts` của một phía.
+  - Mặc định Server Components; chỉ thêm `'use client'` khi cần hook/tương tác. Giữ `page.tsx` gọn.
+  ```
+  Header/
+    ├── Header.tsx        (UI)
+    ├── Header.i18n.ts    (export const t = { ... })
+    └── Header.logic.ts   (business logic hooks)
+  ```
+- **Styling**: Tailwind CSS; tránh `style={{...}}` trừ giá trị động.
+- **Hằng số tinh chỉnh UI**: animation, kích thước, magic number → khai báo ở đầu file:
+  ```ts
+  // 🔧 UI CONFIGURATION
+  const ANIMATION_DURATION = 0.5;
+  const MAX_VISIBLE_ITEMS = 5;
+  ```
+- **Giao diện Spa**: nhiều khoảng trắng, bo góc, bóng mềm; ưu tiên mobile, touch target ≥ 44px.
+
+---
+
+## 7. Database (Supabase)
+
+- **BẮT BUỘC đọc `TableInSupabase.md` (gốc repo) trước** khi viết/sửa: query `.from(...)`, migration, trigger/function/RPC, realtime subscription.
+- Xác nhận tên bảng, cột, kiểu, constraint từ file đó. **Không giả định** bảng/cột tồn tại.
+- Thêm/đổi cột hoặc bảng → tạo migration SQL **và** cập nhật `TableInSupabase.md` trong cùng thay đổi.
+
+---
+
+## 8. Chống lỗi tái phát — KTV Dashboard
+
+Áp dụng khi sửa `app/ktv/dashboard/KTVDashboard.logic.ts`, `app/ktv/dashboard/page.tsx` và `app/ktv/dashboard/_screens/*`.
+
+**Không được làm hỏng 4 luồng lõi:**
+1. **Commission Flow**: HANDOVER → Hoàn tất → tính tiền tua chính xác → chuyển REWARD.
+2. **Continuous Receiving**: nút "Nhận đơn tiếp theo" ở REWARD/HANDOVER hiện ngay khi có đơn mới và gọi được `goToDashboard(nextId)`.
+3. **State Integrity**: giai đoạn hậu kỳ (REVIEW/HANDOVER/REWARD) giữ `postServiceBookingId`, không mất dữ liệu khi fetch Realtime.
+4. **Smart Sync**: `fetchBooking()` ưu tiên `targetBookingId`, sau đó `postServiceBookingId`.
+
+**Timer & gộp chặng:**
+- Bộ đếm **thời gian dịch vụ** phải dùng Absolute Time (`Date.now() + offset - timerStartMsRef.current`), không dùng `prev - 1` (chống trôi giờ khi treo tab/khóa màn hình). `prev - 1` chỉ chấp nhận cho bộ đếm prep ngắn và nhánh fallback khi chưa có mốc thời gian.
+- `shouldMerge = true` (nhiều dịch vụ chung phòng/giường) → `WorkingTimeline` gộp thành **1 chặng** kèm chữ "(Gộp)"; không hiện widget Bắt đầu/Kết thúc thừa, không tách chặng UI.
+
+**Không tách file:** `KTVDashboard.logic.ts` (state chia sẻ phức tạp, tách ra gây race condition Realtime) và `app/reception/dispatch/page.tsx` (UI ổn định, chỉ sửa `handleDispatch`).
+
+---
+
+## 9. Rule bắt buộc khi sửa Dispatch
+
+Phạm vi: `app/api/ktv/booking/route.ts` (orchestrator) và `app/api/ktv/booking/_handlers/*`.
+
+1. **Mỗi handler độc lập**: mỗi lần chỉ sửa 1 handler, không sửa nhiều handler cùng lúc.
+2. **Đọc header** của handler (mô tả LUỒNG và KHÔNG ĐƯỢC) trước khi sửa.
+3. **Không inline**: không copy logic handler vào `route.ts`.
+4. **Không parallel sync**: KTV là thực thể độc lập, không set `actualStartTime`/`actualEndTime` cho KTV khác.
+5. **Smart status**: set item = `CLEANING` phải check `allSegsDone` trước.
+6. **Dual-condition completion**: item chỉ `DONE` khi `allSegsDone` **và** `alreadyRated`. Không lùi status đã `DONE`.
+7. **Orchestrator pattern**:
+   - `route.ts` chỉ: parse request → query shared state → gọi handler → apply booking update → trả response.
+   - Handler tự xử lý DB cho `BookingItems`, `TurnQueue`, `KtvAssignments`; trả `{ bookingUpdatePayload, earlyResponse? }`.
+8. **Test edge case — luôn bắt buộc** (ngoại lệ của mục 10): 1KTV-1DV, 1KTV-2DV (gộp), 2KTV-1DV, ca đêm (qua nửa đêm).
+
+---
+
+## 10. Mô phỏng / proof of concept
+
+- **Luôn mô phỏng** bằng mock data (Node.js) và in kết quả khi làm: Dispatch (mục 9), tính tiền/tua/giờ/hoa hồng/ví (in so sánh 2 phía — mục 4.3), hoặc khi user yêu cầu.
+- **Tùy chọn** với thuật toán mới hoặc phức tạp khác nếu thấy rủi ro cao.
+- **Bỏ qua** với task thông thường hoặc logic đã chốt rõ trong plan, để tránh gián đoạn user bằng popup chạy lệnh.
+
+---
+
+## 11. Lưu plan & bối cảnh
+
+- **Plan đã duyệt** (Mức 2, hoặc Mức 1 khi user muốn lưu) → `plans/plan_<ten_nhiem_vu>.md`. Mọi plan nằm trong `plans/`.
+- **Phân tích hướng đi / kiến trúc** → chỉ lưu file khi user đã chốt hướng, hoặc khi user yêu cầu.
+- **`.agents/PROJECT_MAP.md`**: đọc khi làm tính năng hệ thống hoàn toàn mới; cập nhật khi có thay đổi kiến trúc lớn hoặc DB thay đổi vĩ mô. UI/logic nhỏ thì bỏ qua.
+
+---
+
+## 12. Làm việc nhiều cửa sổ
+
+**Planner / Executor** (tính năng lớn):
+- **Planner** (cửa sổ phân tích): khảo sát (gồm khảo sát chéo — mục 4), viết `plans/plan_*.md`, quản lý `.agents/coordination.md`. **Không sửa code** ở bước này.
+- **Executor** (cửa sổ mới do user mở): đọc `plan_*.md` → code → test (gồm đối chiếu 2 phía — mục 4.3). Xong thì user đóng cửa sổ.
+
+**Khóa file** — chỉ khi nhiều cửa sổ cùng làm tính năng lớn song song (fix nhỏ thì bỏ qua):
+1. Đọc `.agents/coordination.md` trước khi sửa. File đang 🟢 bởi cửa sổ khác → **không sửa**, báo user: "File [X] đang được conversation khác sửa."
+2. Bắt đầu: thêm mục (mô tả, danh sách file, 🟢 Đang làm). Xong: đổi 🔴 Xong hoặc xóa mục, ghi thêm dòng vào bảng "Lịch sử".
+   ```markdown
+   ### Conversation B - Sửa Admin Dashboard
+   - **Đang sửa**: `app/admin/dashboard/page.tsx`, `app/admin/dashboard/AdminDashboard.logic.ts`
+   - **Trạng thái**: 🟢 Đang làm
+   ```
+
+---
+
+## 13. Phân tích hệ quả nghiệp vụ spa — BẮT BUỘC trước khi code
+
+Áp dụng khi thêm/sửa một **sự kiện nghiệp vụ** làm đổi quyền lợi hoặc nghĩa vụ của KTV: tạm dừng, tiếp tục, kết thúc sớm, huỷ (có/không công), đổi KTV, khẩn cấp, bỏ qua bàn giao, và mọi sự kiện mới cùng loại. Xếp **Mức 2** (mục 3) nếu chạm tiền/tua/giờ/thưởng.
+
+**Bảng tra chuẩn:** `plans/nghiep_vu_tam_dung_doi_huy.md` — nguyên tắc gốc, bảng sự kiện × 17 khía cạnh, trạng thái triển khai, checklist tìm kiếm.
+
+1. **Điền đủ bảng hệ quả trước khi viết code.** Với từng vai trong sự kiện (VD đổi KTV có hai vai: người bị đổi ra, người vào thay), ghi kết quả ở mọi khía cạnh: tiền tua · giờ tích luỹ · lượt tua · thưởng · đánh giá khách tính cho ai · dọn phòng/bàn giao · nợ phòng/chặn tan ca · hạn mức bỏ qua · hàng đợi (TurnQueue/KtvAssignments) · màn app KTV · đồng hồ · tự chốt · thẻ Kanban · "cùng làm với" · lịch sử KTV · nhật ký quầy · lý do. Ô nào không áp dụng thì ghi rõ "không áp dụng — vì …".
+2. **Đi hết hệ quả, không dừng ở màn được chỉ ra.** Sửa một dòng hiển thị thì rà luôn MỌI dòng khác trên cùng màn (VD đã bị tước thì không còn "Chờ FB", "Tạm tính", "Chưa bàn giao", "Xuất sắc").
+3. **`technicianCodes` không phải danh sách người có quyền lợi.** Nó cố ý giữ cả người bị tước để truy vết. Chỗ nào suy ra tiền, giờ, tua, thưởng, nợ phòng, hạn mức từ `technicianCodes` → phải loại chặng `voided` (`isKtvVoidedOnItem`, `laNguoiBiDoiRaKhoiDon`). Grep `technicianCodes` ở `lib/services/*`, `app/api/{ktv,finance,cron}/*` và cả nhánh dự phòng (`<= 0 → 60`).
+4. **Kết quả đã chốt thì không có trạng thái "chờ".** Người bị tước = 0đ ngay khi quầy bấm.
+5. **Giờ "HH:mm" dựng ở server dùng `gioDongHoVN`**, cấm `getHours()` (server chạy UTC).
+6. **Kiểm bằng dữ liệu giống thật** (mục 10): fixture đúng định dạng DB, đi đủ các bước route thật gọi (VD `resumeItem` sau đổi), chạy thêm dưới `TZ=UTC`. Đối chiếu 2 phía (mục 4.3).
+7. Làm xong → **cập nhật mục 2 và 3 của bảng tra**.

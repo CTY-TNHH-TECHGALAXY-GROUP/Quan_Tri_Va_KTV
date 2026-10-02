@@ -4,6 +4,8 @@ import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { usesOfficeBonus, officeBonusTimeline } from '@/lib/services/KtvOfficeBonusService';
+import { requireStaffOrPermission } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -13,13 +15,24 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
     }
 
+    // Chỉ chủ ví hoặc người có quyền tài chính mới xem được lịch sử điểm.
+    const deniedAuth = await requireStaffOrPermission(techCode, 'finance_management');
+    if (deniedAuth) return deniedAuth;
+
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'Lỗi máy chủ' }, { status: 500 });
 
-        // Ví Bonus switched off, or the work type has no Ví Bonus (C/D) → 403.
-        const denied = await WalletAccessService.denyIfDisabled(supabase as any, techCode, 'BONUS');
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'BONUS');
         if (denied) return denied;
+
+        // Nguồn điểm Office thì lịch sử là theo NGÀY CHẤM ĐIỂM, không phải các
+        // giao dịch cộng/trừ/quy đổi của ví điểm sao.
+        if (await usesOfficeBonus(supabase, techCode)) {
+            const { searchParams: sp } = new URL(request.url);
+            const data = await officeBonusTimeline(supabase, techCode, sp.get('month') || undefined);
+            return NextResponse.json({ success: true, source: 'OFFICE', data });
+        }
 
         const START_DATE = '2026-06-01';
         let workType = await KtvWalletService.getWorkTypeSnapshot(supabase as any, techCode);

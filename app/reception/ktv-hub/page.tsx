@@ -23,6 +23,7 @@ import { useLeaveManagement, useShiftManagement } from '@/app/reception/leave-ma
 import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
 import { getStaffList, updateStaffMember } from '@/app/admin/employees/actions';
 import { Employee } from '@/lib/types';
+import { FALLBACK_SKILLS, getSkillLabel } from '@/lib/constants/staff.constants';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -679,12 +680,6 @@ const KTVListTab = ({ staffs, onEdit }: { staffs: any[], onEdit: (staff: any) =>
     const skillEntries = (skills: any) =>
         Object.entries(skills || {}).filter(([, v]) => typeofSkillValue(v) === 'expert' || typeofSkillValue(v) === 'basic');
 
-    const SKILL_LABELS: Record<string, string> = {
-        shampoo: 'Gội đầu', thaiBody: 'Massage Thái', oilBody: 'Massage Dầu',
-        hotStoneBody: 'Đá Nóng', foot: 'Foot',
-        facial: 'Chăm Sóc Da', hairCut: 'Cắt Tóc', earCleaning: 'Ráy Tai',
-    };
-
     return (
         <div className="space-y-3">
             {staffs.map(emp => {
@@ -723,7 +718,7 @@ const KTVListTab = ({ staffs, onEdit }: { staffs: any[], onEdit: (staff: any) =>
                                     <div className="flex flex-wrap gap-1.5 mt-2.5">
                                         {expertSkills.slice(0, 4).map(([key]) => (
                                             <span key={key} className="text-[10px] px-2 py-1 bg-indigo-50/80 text-indigo-700 rounded-lg font-bold border border-indigo-100/50">
-                                                {SKILL_LABELS[key] || key}
+                                                {getSkillLabel(key)}
                                             </span>
                                         ))}
                                         {expertSkills.length > 4 && (
@@ -773,6 +768,7 @@ const SHIFT_LABELS_HUB: Record<string, string> = {
     FREE: 'Ca tự do',
     REQUEST: 'Làm khách yêu cầu',
     VIP: 'Ca VIP',
+    TYPE_D: 'Ca đăng ký',
 };
 const SHIFT_COLORS_HUB: Record<string, { bg: string; text: string; border: string }> = {
     SHIFT_1: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
@@ -781,6 +777,7 @@ const SHIFT_COLORS_HUB: Record<string, { bg: string; text: string; border: strin
     FREE: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
     REQUEST: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
     VIP: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+    TYPE_D: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
 };
 
 const LeaveOffTab = () => {
@@ -806,6 +803,7 @@ const LeaveOffTab = () => {
         adminStaffList,
         adminRegisterLoading,
         adminRegisterOff,
+        typeDRegistrations = [],
     } = leaveLogic;
 
     // Shift Logic
@@ -867,6 +865,9 @@ const LeaveOffTab = () => {
     };
 
     const selectedLeaves = selectedDate ? (leaveByDate[selectedDate] || []) : [];
+    const selectedTypeDWork = selectedDate
+        ? typeDRegistrations.filter(r => r.work_date === selectedDate && r.status !== 'OFF_REGISTERED')
+        : [];
 
     const formatLeaveDate = (dateStr: string) => {
         try {
@@ -1122,7 +1123,7 @@ const LeaveOffTab = () => {
                                     <h4 className="text-[11px] font-black text-emerald-600 mb-2 uppercase tracking-wider flex items-center justify-between">
                                         Nhân sự làm việc
                                         <span className="bg-emerald-100 text-emerald-700 py-0.5 px-2 rounded-full text-[10px]">
-                                            {allShifts.filter(shift => !selectedLeaves.some(l => l.employeeId === shift.employeeId)).length}
+                                            {allShifts.filter(shift => !selectedLeaves.some(l => l.employeeId === shift.employeeId)).length + selectedTypeDWork.length}
                                         </span>
                                     </h4>
                                     <div className="space-y-3">
@@ -1176,6 +1177,33 @@ const LeaveOffTab = () => {
                                                 </div>
                                             );
                                         })}
+
+                                        {/* KHỐI NHÂN SỰ CA ĐĂNG KÝ */}
+                                        {selectedTypeDWork.length > 0 && (
+                                            <div className="border border-purple-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                                                <div className="px-3 py-1.5 text-[10px] font-bold border-b flex justify-between items-center bg-purple-50 text-purple-700 border-purple-200">
+                                                    <span>Ca đăng ký</span>
+                                                    <span className="px-1.5 py-0.5 bg-white/70 text-purple-800 rounded-md font-bold">{selectedTypeDWork.length}</span>
+                                                </div>
+                                                <div className="p-2 grid grid-cols-2 sm:grid-cols-3 gap-2 bg-purple-50/20">
+                                                    {selectedTypeDWork.map(reg => {
+                                                        const startTime = reg.expected_time ? reg.expected_time.slice(0, 5) : '--:--';
+                                                        const endTime = reg.expected_end_time ? reg.expected_end_time.slice(0, 5) : '--:--';
+                                                        return (
+                                                            <div key={reg.id || reg.staff_id} className="flex flex-col items-center justify-center py-2 px-2 rounded-xl border border-purple-100 bg-white shadow-sm">
+                                                                <p className="font-bold text-[12px] text-purple-800 truncate">{reg.staff_id}</p>
+                                                                {reg.staff_name && reg.staff_name !== reg.staff_id && (
+                                                                    <p className="text-[10px] text-gray-500 truncate max-w-full">{reg.staff_name}</p>
+                                                                )}
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs w-full text-center mt-1 text-purple-700 bg-purple-50 border border-purple-100 flex items-center justify-center gap-1">
+                                                                    <Clock size={10} className="shrink-0" /> {startTime} → {endTime}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1276,6 +1304,47 @@ const LeaveOffTab = () => {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Danh sách nhân sự ca đăng ký làm việc */}
+                            {(() => {
+                                const targetDate = selectedDate || todayStr;
+                                const dateTypeD = typeDRegistrations.filter(r => r.work_date === targetDate && r.status !== 'OFF_REGISTERED');
+                                if (dateTypeD.length === 0) return null;
+                                return (
+                                    <div className="bg-white rounded-2xl border border-purple-100 shadow-sm overflow-hidden">
+                                        <div className="px-4 py-3 border-b border-purple-100 flex items-center gap-2 bg-purple-50/30">
+                                            <Clock size={16} className="text-purple-600" />
+                                            <h3 className="text-sm font-bold text-gray-900">Đăng Ký Ca Làm Việc ({targetDate.split('-').reverse().join('/')})</h3>
+                                            <span className="ml-auto bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-full">{dateTypeD.length}</span>
+                                        </div>
+                                        <div className="divide-y divide-purple-50">
+                                            {dateTypeD.map(reg => {
+                                                const startTime = reg.expected_time ? reg.expected_time.slice(0, 5) : '--:--';
+                                                const endTime = reg.expected_end_time ? reg.expected_end_time.slice(0, 5) : '--:--';
+                                                return (
+                                                    <div key={reg.id || reg.staff_id} className="px-4 py-3 flex items-center gap-3">
+                                                        <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-xs shrink-0">
+                                                            {reg.staff_name ? reg.staff_name.charAt(0) : reg.staff_id.charAt(0)}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-bold text-sm text-gray-900 truncate">{reg.staff_name || reg.staff_id}</p>
+                                                            <p className="text-[10px] text-gray-400 font-bold">{reg.staff_id}</p>
+                                                        </div>
+                                                        <div className="px-3 py-1.5 rounded-xl border bg-purple-50 text-purple-700 border-purple-200 flex flex-col items-center min-w-[90px]">
+                                                            <span className="text-[10px] font-black leading-tight">
+                                                                Ca đăng ký
+                                                            </span>
+                                                            <span className="text-[8px] font-bold opacity-80 leading-none mt-0.5 whitespace-nowrap">
+                                                                {startTime} → {endTime}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Unassigned warning */}
                             {unassignedStaff.length > 0 && (
@@ -1422,13 +1491,7 @@ export default function KTVHubPage() {
             baseSalary: 0,
             commissionRate: 0,
             rating: 5.0,
-            skills: staff.skills && Object.keys(staff.skills).length > 0 ? staff.skills : {
-                hairCut: 'none', hairExtensionShampoo: 'none', earCleaning: 'none',
-                machineShave: 'none', razorShave: 'none', facial: 'none', thaiBody: 'none',
-                shiatsuBody: 'none', oilBody: 'basic', hotStoneBody: 'none', scrubBody: 'none',
-                foot: 'none', heelScrub: 'none', maniPedi: 'none',
-                shampoo: 'basic'
-            }
+            skills: staff.skills && Object.keys(staff.skills).length > 0 ? staff.skills : FALLBACK_SKILLS
         };
         setSelectedEmployee(emp);
         setIsDetailOpen(true);

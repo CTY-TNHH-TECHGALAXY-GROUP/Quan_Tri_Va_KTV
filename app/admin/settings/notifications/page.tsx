@@ -1,15 +1,16 @@
 'use client';
 
-import { AppLayout } from '@/components/layout/AppLayout';
 import { useNotificationSettings } from './NotificationSettings.logic';
+import { useAuth } from '@/lib/auth-context';
 import { motion } from 'motion/react';
-import { Bell, Check, Loader2, RefreshCw, Save, AlertTriangle } from 'lucide-react';
+import { Bell, Check, Loader2, RefreshCw, Save, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.3;
 const CARD_BORDER_RADIUS = '16px';
 
 const NotificationSettingsPage = () => {
+    const { role, hasPermission } = useAuth();
     const {
         rules,
         loading,
@@ -26,6 +27,30 @@ const NotificationSettingsPage = () => {
     } = useNotificationSettings();
 
     const ruleEntries = Object.entries(rules);
+
+    // 🛡️ Bảng này quyết định thông báo nào tới tay ai — chỉ Admin/Dev được vào.
+    // Trước đây trang chỉ nằm trong AppLayout (chỉ kiểm tra "đã đăng nhập"), nên
+    // một KTV gõ thẳng URL là sửa được toàn bộ định tuyến thông báo.
+    // `role` được khôi phục từ sessionStorage trong một effect, nên lượt render
+    // đầu luôn có role = null. Chờ nó về rồi mới kết luận, nếu không admin thật
+    // sẽ thấy màn "không có quyền" nhấp nháy mỗi lần vào trang.
+    if (!role) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-slate-400" />
+            </div>
+        );
+    }
+
+    if (!hasPermission('system_settings')) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+                <ShieldAlert size={48} className="text-red-500 mb-4" />
+                <h2 className="text-xl font-bold text-gray-900">Không có quyền truy cập</h2>
+                <p className="text-sm text-gray-500 mt-1">Chỉ Admin / Dev mới được sửa cài đặt thông báo.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-4 sm:p-6">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
 
     try {
+        await requirePermission('revenue_reports');
         const { completedBookings } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
         
         // ─── New Customers ──────────────────────────────────────────────────
@@ -83,6 +85,8 @@ export async function GET(request: Request) {
             languageBreakdown
         });
     } catch (err) {
+        const authRes = authErrorResponse(err);
+        if (authRes) return authRes;
         console.error(err);
         return NextResponse.json({ success: false, error: 'Failed to fetch customers data' }, { status: 500 });
     }

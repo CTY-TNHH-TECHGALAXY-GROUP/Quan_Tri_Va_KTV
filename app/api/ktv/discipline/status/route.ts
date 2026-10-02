@@ -33,6 +33,14 @@ export async function GET(request: Request) {
             if (c.key === 'ktv_discipline_demotion_threshold') demotionThreshold = Number(c.value);
         });
 
+        // Hai con số của loại D — để hộp thoại từ chối nói đúng mức phạt thật
+        // thay vì câu chung "trừ 10 điểm chuyên cần" của hệ A/B/C.
+        const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
+        const [rejectMultiplier, minHoursToReject] = await Promise.all([
+            KtvTypeDDisciplineService.getRejectMultiplier(supabase),
+            KtvTypeDDisciplineService.getMinHoursToReject(supabase),
+        ]);
+
         // 3. Lấy điểm chuyên cần tháng hiện tại
         const date = new Date();
         const { data: pointsData } = await supabase.from('KTVDisciplinePoints')
@@ -50,7 +58,9 @@ export async function GET(request: Request) {
                 totalPoints,
                 demotionThreshold,
                 continuousWorkMins: totalMins,
-                exemptHours
+                exemptHours,
+                rejectMultiplier,
+                minHoursToReject
             }
         });
 

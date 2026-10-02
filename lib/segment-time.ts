@@ -233,7 +233,7 @@ export function endedByCounter(seg: any): boolean {
     if (!seg?.actualEndTime) return false;
     if (seg.voided === true) return true;
 
-    const COUNTER_NOTES = ['FINISHED_EARLY_ON_PAUSE', 'CANCELLED_NO_CREDIT', 'CHANGED'];
+    const COUNTER_NOTES = ['FINISHED_EARLY_ON_PAUSE', 'CANCELLED_NO_CREDIT', 'CHANGED', 'SEQUENTIAL_HANDOFF'];
     if (COUNTER_NOTES.includes(String(seg.note))) return true;
 
     const pauses = Array.isArray(seg.pauses) ? seg.pauses : [];
@@ -258,8 +258,56 @@ export function gioDongHoVN(at: string | number | Date): string {
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * KTV này bị ĐỔI RA khỏi đơn: mọi chặng của họ trên các dịch vụ đưa vào đều bị
+ * tước (`voided`) với ghi chú 'CHANGED'.
+ *
+ * Dùng để quyết định người đó có phải dọn phòng không. Người bị đổi ra thì
+ * KHÔNG — người vào thay vẫn đang làm trong phòng, dọn là việc của họ.
+ *
+ * ⚠️ Phải là MỌI chặng. Một người có thể bị đổi ra ở dịch vụ này nhưng đã làm
+ * trọn dịch vụ khác cùng bill (gặp thật: WB-11092026-002, T069 bị đổi ở NHS0800
+ * nhưng làm xong NHS0900) — người đó vẫn phải dọn như thường.
+ * ⚠️ Phải đúng note 'CHANGED': huỷ không công cũng `voided`, nhưng đó là "đang
+ * làm thì khách không ưng" — phòng vẫn bẩn, vẫn phải dọn.
+ *
+ * @param items    các BookingItems (có `segments`, chuỗi JSON hay mảng đều được)
+ * @param khopKtv  hàm so mã KTV với `seg.ktvId` — truyền `ktvMatchesSeg` để hiểu
+ *                 chặng ghép kiểu "Bao - Na"
+ */
+export function laNguoiBiDoiRaKhoiDon(
+    items: any[],
+    ktvId: string,
+    khopKtv: (segKtvId: any, ktvId: string) => boolean
+): boolean {
+    if (!Array.isArray(items) || !ktvId) return false;
+    const segs = items.flatMap((i: any) => {
+        let parsed: any = i?.segments;
+        if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = []; } }
+        return (Array.isArray(parsed) ? parsed : []).filter((sg: any) => khopKtv(sg?.ktvId, ktvId));
+    });
+    return segs.length > 0 && segs.every((sg: any) => sg?.voided === true && sg?.note === 'CHANGED');
+}
+
 /** Note on the segment of a KTV who had not started when the counter ended the order early. */
 export const NOTE_EARLY_LEAVE_NOT_STARTED = 'EARLY_LEAVE_NOT_STARTED';
+
+/**
+ * The customer left before this KTV's turn: the counter pressed "Kết thúc" on a
+ * paused order while the next KTV in a sequence / a parallel partner had not
+ * started. They did nothing → 0 minutes, no money, no hours (voided).
+ *
+ * `actualEndTime` is set too, so every reader of "is this segment closed" — the
+ * auto-complete job, Kanban cards, hasOpenKtvSegment — sees it closed.
+ * Owner decision 14/09/2026: plans/plan_ket_thuc_som_nguoi_chua_bat_dau.md.
+ */
+export function markNotStartedOnEarlyLeave(seg: any, endMark: string): void {
+    if (!seg) return;
+    seg.actualEndTime = endMark;
+    seg.customCommissionDuration = 0;
+    seg.voided = true;
+    seg.note = NOTE_EARLY_LEAVE_NOT_STARTED;
+}
 
 /**
  * The KTV has no room duty on these items (no cleaning, no handover, no room debt,

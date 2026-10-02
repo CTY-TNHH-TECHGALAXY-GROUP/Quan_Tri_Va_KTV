@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvReviewSchema } from '@/lib/schemas/ktv.schema';
 import { requireBusinessUser } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
+import { ktvAssignedToItem, ktvMatchesSeg } from '@/lib/ktvUtils';
 
 /**
  * POST /api/ktv/review
@@ -56,25 +57,7 @@ export async function POST(request: Request) {
         console.log(`[KTV Review API] allItems fetched:`, JSON.stringify(allItems));
 
         const normalizedTechCode = techCode.trim().toUpperCase();
-        const ktvItems = (allItems || []).filter(item => {
-            const hasTechnicianCode = Array.isArray(item.technicianCodes) &&
-                item.technicianCodes.some(c => c.trim().toUpperCase() === normalizedTechCode);
-
-            if (hasTechnicianCode) {
-                return true;
-            }
-
-            let segs: any[] = [];
-            try {
-                segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
-            } catch {
-                segs = [];
-            }
-
-            return segs.some((seg: any) =>
-                seg?.ktvId && String(seg.ktvId).trim().toUpperCase() === normalizedTechCode
-            );
-        });
+        const ktvItems = (allItems || []).filter(item => ktvAssignedToItem(item, normalizedTechCode));
 
         if (!ktvItems || ktvItems.length === 0) {
             // [Lỗ hổng P2]: KTV không có trong technicianCodes của bất kỳ item nào
@@ -140,7 +123,7 @@ export async function POST(request: Request) {
             let foundMySeg = false;
 
             segs.forEach((seg: any) => {
-                if (seg.ktvId && seg.ktvId.toLowerCase() === techCode.toLowerCase()) {
+                if (ktvMatchesSeg(seg.ktvId, techCode)) {
                     foundMySeg = true;
                     if (!seg.reviewTime) {
                         seg.reviewTime = new Date().toISOString();

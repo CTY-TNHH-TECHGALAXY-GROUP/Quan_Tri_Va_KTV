@@ -1,4 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { hasNoRoomDutyOnItems } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { createNotification } from '@/lib/notification-helper';
 import { KtvDisciplineService } from './KtvDisciplineService';
 
@@ -176,6 +178,7 @@ export class HandoverService {
                 handover_images: images,
                 handover_status: 'PENDING',
                 handover_skipped: false,
+                handover_submitted_at: new Date().toISOString(),
             })
             .eq('id', itemId);
 
@@ -184,39 +187,90 @@ export class HandoverService {
     }
 
     /**
-     * KTV skips handover (has next order to attend).
-     * Checks max_handover_skip limit (Loophole #1).
+     * Hạn mức bỏ qua bàn giao của một KTV.
+     *
+     * `used` là số đơn ĐANG NỢ, không phải tổng số lần từng bỏ qua — trả nợ xong
+     * thì lấy lại lượt. Đây là nguồn duy nhất: cả chỗ CHẶN (skipHandover) lẫn chỗ
+     * HIỂN THỊ trên màn KTV đều gọi vào đây, nên con số hai bên không thể lệch.
      */
-    static async skipHandover(
+    static async getSkipQuota(
         supabase: SupabaseClient,
-        itemId: string,
         ktvCode: string
-    ): Promise<{ success: boolean; error?: string }> {
-        // 1. Check how many pending skips this KTV already has
+    ): Promise<{ used: number; max: number; remaining: number }> {
         const { data: configRow } = await supabase
             .from('SystemConfigs')
             .select('value')
             .eq('key', 'max_handover_skip')
-            .single();
+            .maybeSingle();
 
-        const maxSkip = parseInt(configRow?.value || '2', 10);
+        const parsed = parseInt(String((configRow as any)?.value ?? '2'), 10);
+        const max = Number.isFinite(parsed) && parsed >= 0 ? parsed : 2;
 
-        const { count: currentSkips } = await supabase
+        const { count } = await supabase
             .from('BookingItems')
             .select('id', { count: 'exact', head: true })
             .eq('handover_skipped', true)
             .eq('handover_status', 'SKIPPED')
             .contains('technicianCodes', [ktvCode]);
 
-        if ((currentSkips || 0) >= maxSkip) {
-            return {
-                success: false,
-                error: `Bạn đã nợ ${currentSkips} đơn bàn giao. Vui lòng bàn giao đơn cũ trước.`
-            };
+        const used = count || 0;
+        return { used, max, remaining: Math.max(0, max - used) };
+    }
+
+    /**
+     * KTV skips handover (has next order to attend).
+     * Checks max_handover_skip limit (Loophole #1).
+     *
+     * ĐẾM và GHI phải nằm trong CÙNG một giao dịch, khoá theo mã KTV — việc đó
+     * do hàm `skip_handover_with_quota` trong DB lo (migration 20260908120000).
+     *
+     * ⚠️ Trước đây hai bước tách rời: đếm xong mới ghi. Hai lần bấm gần nhau —
+     * bấm đúp vì mạng chậm, hay mở app trên hai máy — cùng đọc ra "còn 1 lượt"
+     * rồi cùng ghi, nên hạn mức 2 mà nợ 3 phòng. Ba lần bấm thì nợ 4, và không
+     * có đường nào tự kéo về: `getSkipQuota` chỉ đếm chứ không ép ai trả lại.
+     */
+    static async skipHandover(
+        supabase: SupabaseClient,
+        itemId: string,
+        ktvCode: string
+    ): Promise<{ success: boolean; error?: string }> {
+        const { max: maxSkip } = await HandoverService.getSkipQuota(supabase, ktvCode);
+
+        const quotaError = (used: number) => ({
+            success: false,
+            // ⚠️ Đừng ghép "đang nợ N phòng" vào đây. `used` đếm số lượt BỎ QUA
+            // đã tiêu (chỉ status SKIPPED), còn ô "Nợ bàn giao" trên dashboard đếm
+            // cả phòng bị quầy TRẢ VỀ (REJECTED). Hai con số lệch nhau là đúng —
+            // nhưng lấy con số lượt rồi gọi nó là "số phòng đang nợ" thì thành sai.
+            error: `Bạn đã dùng hết ${maxSkip}/${maxSkip} lượt bỏ qua. Phải trả nợ phòng cũ xong mới bỏ qua tiếp được.`,
+        });
+
+        const { data, error } = await supabase.rpc('skip_handover_with_quota', {
+            p_item_id: itemId,
+            p_ktv_code: ktvCode,
+            p_max: maxSkip,
+        });
+
+        if (!error) {
+            const res = (data || {}) as { ok?: boolean; reason?: string; used?: number };
+            if (res.ok) return { success: true };
+            if (res.reason === 'NOT_ASSIGNED') {
+                return { success: false, error: 'Phòng này không còn gán cho bạn.' };
+            }
+            return quotaError(Number(res.used) || maxSkip);
         }
 
-        // 2. Mark as skipped
-        const { error } = await supabase
+        // 42883 = hàm chưa tồn tại (chưa chạy migration). Chạy đường cũ để không
+        // chết tính năng, nhưng phải kêu lên: đường cũ KHÔNG chống được bấm đúp.
+        if ((error as any).code !== '42883' && !/does not exist/i.test(error.message || '')) {
+            return { success: false, error: error.message };
+        }
+        console.warn('[HandoverService] Thiếu hàm skip_handover_with_quota — chạy đường cũ, hạn mức bỏ qua KHÔNG chống được bấm đúp. Hãy chạy migration 20260908120000.');
+
+        const { used: currentSkips } = await HandoverService.getSkipQuota(supabase, ktvCode);
+        if (currentSkips >= maxSkip) return quotaError(currentSkips);
+
+        const { error: upErr } = await supabase
             .from('BookingItems')
             .update({
                 handover_skipped: true,
@@ -224,12 +278,21 @@ export class HandoverService {
             })
             .eq('id', itemId);
 
-        if (error) return { success: false, error: error.message };
+        if (upErr) return { success: false, error: upErr.message };
         return { success: true };
     }
 
     /**
-     * Get list of pending handovers for a KTV (for Dashboard reminder widget).
+     * Danh sách bàn giao KTV còn nợ — ô nhắc trên Dashboard KTV.
+     *
+     * Nợ ở đây là bàn giao BỊ BỎ QUA hoặc BỊ TRẢ LẠI, không phải phòng đang dọn
+     * dở: item còn ở trạng thái CLEANING là đang làm, chưa tính là nợ.
+     *
+     * ⚠️ Câu này từng hỏng câm suốt: `roomId` và `serviceCode` không phải cột của
+     * bảng (thật ra là `roomName` và `serviceId`), còn `Bookings(billCode)` thì
+     * nhập nhằng vì có nhiều khoá ngoại trỏ sang Bookings. Lỗi bị nuốt bởi
+     * `if (error) return { items: [], count: 0 }` nên Dashboard luôn nhận 0 và
+     * KTV không bao giờ thấy ô nhắc, dù đang có nợ thật.
      */
     static async getPendingHandovers(
         supabase: SupabaseClient,
@@ -238,15 +301,24 @@ export class HandoverService {
         const { data, error } = await supabase
             .from('BookingItems')
             .select(`
-                id, bookingId, roomId, serviceCode, handover_status, handover_skipped,
-                Bookings(billCode)
+                id, bookingId, roomName, serviceId, handover_status, handover_skipped, segments,
+                Bookings!fk_bookingitems_booking(billCode)
             `)
-            .or('handover_skipped.eq.true,handover_status.eq.REJECTED')
             .in('handover_status', ['SKIPPED', 'REJECTED'])
             .contains('technicianCodes', [ktvCode]);
 
-        if (error) return { items: [], count: 0 };
-        return { items: data || [], count: data?.length || 0 };
+        if (error) {
+            // Không nuốt im nữa — hỏng câu truy vấn là ô nhắc biến mất không dấu vết.
+            console.error('[HandoverService] getPendingHandovers lỗi:', error);
+            return { items: [], count: 0 };
+        }
+        // ⚠️ Bỏ những phòng mà KTV này bị ĐỔI RA: họ vẫn nằm trong technicianCodes
+        // (cố ý, để truy vết) nhưng người vào thay mới là người bàn giao. Không bỏ
+        // là người bị đổi thấy "Nợ bàn giao" một phòng mình không hề phải bàn giao.
+        const items = (data || [])
+            .filter((it: any) => !hasNoRoomDutyOnItems([it], ktvCode, ktvMatchesSeg))
+            .map(({ segments, ...rest }: any) => rest);
+        return { items, count: items.length };
     }
 
     /**
@@ -456,19 +528,24 @@ export class HandoverService {
 
         // Find items that are PENDING and were submitted before cutoff
         // We use updated_at as the submission time proxy
+        // Đếm hạn từ MỐC NỘP, không từ `updated_at` — bảng này không có cột đó,
+        // truy vấn cũ lỗi âm thầm nên auto-duyệt chưa bao giờ chạy được.
+        // `handover_submitted_at IS NOT NULL` cũng là bộ lọc quan trọng: nó loại
+        // hết item chỉ mang 'PENDING' do giá trị mặc định mà chưa ai nộp gì.
         const { data: expired, error } = await supabase
             .from('BookingItems')
             .select('id')
             .eq('handover_status', 'PENDING')
             .eq('handover_skipped', false)
-            .lt('updated_at', cutoff);
+            .not('handover_submitted_at', 'is', null)
+            .lt('handover_submitted_at', cutoff);
 
         if (error || !expired?.length) return { approved: 0 };
 
         const ids = expired.map(e => e.id);
         const { error: updateErr } = await supabase
             .from('BookingItems')
-            .update({ handover_status: 'APPROVED' })
+            .update({ handover_status: 'APPROVED', handover_skipped: false })
             .in('id', ids);
 
         if (updateErr) return { approved: 0 };

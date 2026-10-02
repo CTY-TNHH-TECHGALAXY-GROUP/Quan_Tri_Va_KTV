@@ -29,12 +29,6 @@ export const t = {
     statusActive: 'Đang làm việc',
     statusInactive: 'Đã nghỉ',
 
-    // Skills
-    skillShampoo: 'Gội đầu',
-    skillOilBody: 'Body Dầu',
-    skillFacial: 'Facial',
-    skillBodyMix: 'Body Mix',
-
     // Loading / Empty
     loading: 'Đang tải dữ liệu nhân viên...',
     empty: 'Chưa có dữ liệu nhân viên.',

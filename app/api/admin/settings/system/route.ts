@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission } from '@/lib/auth-server';
 import { SystemSettingsSchema } from '@/lib/schemas/admin.schema';
+import { SessionEpochService, scopeForConfigKey, EpochScope } from '@/lib/services/SessionEpochService';
 
 // Các config mặc định nếu chưa có trong DB
 const DEFAULT_CONFIGS = {
@@ -35,12 +37,31 @@ const DEFAULT_CONFIGS = {
     ktv_discipline_demotion_threshold: 80,
     ktv_continuous_work_gap_mins: 30,
     ktv_continuous_work_exempt_hours: 4,
+
+    // Bàn giao phòng (áp cho mọi loại KTV)
+    // Số đơn được NỢ bàn giao — tính chung mọi lúc, không reset theo ngày:
+    // nợ đủ số này là chặn bấm "Bỏ qua" cho tới khi trả bớt.
+    max_handover_skip: 2,
+    // Quầy có ngần này phút để duyệt ảnh bàn giao, quá hạn thì cron tự duyệt.
+    reception_auto_approve_minutes: 15,
+    // Số lần quầy được trả lại (bắt dọn lại) trên cùng một đơn.
+    max_handover_reject: 2,
+    // Minutes an order waits for the customer's rating after handover; past it the
+    // DB job auto-completes the order (migration 20260914120000). 0 = right away.
+    customer_rating_timeout_minutes: 5,
     ktv_discipline_rules: [
         { code: 'ORDER_REJECT', name: 'Từ chối đơn', points: 10 },
         { code: 'LATE', name: 'Đi làm trễ', points: 5 },
         { code: 'BAD_REVIEW', name: 'Khách phàn nàn', points: 15 },
         { code: 'BAD_HANDOVER', name: 'Lỗi bàn giao phòng', points: 5 }
     ],
+
+    // KTV Loai D
+    // BAT = KTV loai D tu xem duoc bang xep hang gio cua ca nhom tren app cua ho.
+    ktv_type_d_hours_ranking_enabled: true,
+    // Cong tac TONG cua ky luat Loai D: tru gio vang/tre/bo ca/tu choi tua VA
+    // tu khoa tai khoan. TAT = khong tru, khong khoa, khong chan cua.
+    ktv_type_d_discipline_enabled: false,
 
     // Global
     enable_web_advance_booking_email: false,
@@ -84,6 +105,11 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
     try {
+        // Đây là chỗ gạt CÔNG TẮC CẢ LOẠI — tắt ví tua TYPE_D ở đây là cả nhóm
+        // mất ví. Không có lớp kiểm quyền thì bất kỳ ai gọi được API cũng đổi
+        // được cấu hình vận hành của toàn hệ thống.
+        await requirePermission('system_settings');
+
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ error: 'Supabase init failed' }, { status: 500 });
 
@@ -106,9 +132,25 @@ export async function PATCH(request: Request) {
 
         await Promise.all(promises);
 
-        return NextResponse.json({ success: true });
+        // Đổi CÔNG TẮC tính năng thì phải đá người dùng ra, không thì máy nào
+        // không đăng xuất vẫn giữ menu/quyền cũ trong storage. Khoá có đuôi
+        // `_TYPE_x` chỉ đá loại đó; khoá chung đá tất cả. Đơn giá / số tiền
+        // không nằm trong session nên bỏ qua.
+        const scopes = Object.keys(validBody)
+            .map(scopeForConfigKey)
+            .filter((s): s is EpochScope => s !== null);
+        const loggedOutScopes = await SessionEpochService.bumpScopes(supabase, scopes);
+
+        return NextResponse.json({ success: true, loggedOutScopes });
     } catch (error: any) {
+        const msg = error?.message || 'Lỗi không xác định';
+        if (msg === 'Forbidden' || msg === 'ACCOUNT_LOCKED') {
+            return NextResponse.json({ success: false, error: msg }, { status: 403 });
+        }
+        if (msg === 'Unauthorized') {
+            return NextResponse.json({ success: false, error: msg }, { status: 401 });
+        }
         console.error('Lỗi lưu SystemConfigs:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

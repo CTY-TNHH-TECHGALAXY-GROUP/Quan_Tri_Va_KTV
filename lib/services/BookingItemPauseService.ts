@@ -1,4 +1,75 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { closeOpenPause, voidSegment, parseTimeMs, gioDongHoVN } from '@/lib/segment-time';
+import { ktvMatchesSeg } from '@/lib/ktvUtils';
+import { punishTurnIfIdle, ledgerBookingIdOf } from '@/lib/turn-punish';
+import { logCounterAction, currentCounterActor, type CounterAction } from '@/lib/counter-action-log';
+import { isTypeCWorkType } from '@/lib/constants/staff.constants';
+
+/**
+ * Kéo người vào thay (Đổi KTV) lên `working` trong TurnQueue.
+ *
+ * A/B/D đã có dòng TurnQueue hôm đó (điểm danh / online) → chỉ update như trước.
+ *
+ * Loại C (cộng tác viên) không điểm danh nên thường KHÔNG có dòng — update khớp
+ * 0 dòng, không báo lỗi. Hậu quả trước 14/09/2026: quầy vẫn thấy C "Sẵn sàng"
+ * dù đang làm; huỷ đơn không công thì C giữ tua trong khi A/B bị tước; C bị đổi
+ * ra lại thì không được kéo đơn kế tiếp — mọi luồng đó tìm KTV qua TurnQueue.
+ * Nên với C: tạo đúng dòng A/B có sau lệnh update (`working`).
+ *
+ * ⚠️ KHÔNG dùng `assigned`: `cancelBooking` xoá TurnLedger của mọi dòng
+ * `assigned` kể cả khi quầy chọn "có công" → C mất tua còn A/B thì không.
+ *
+ * ⚠️ Không tạo dòng cho D / B on-call chưa có dòng: đưa họ vào Sổ tua như đã có
+ * mặt cả ngày → lệch hàng giờ tích luỹ D và luật kỷ luật D. Giữ hành vi cũ.
+ *
+ * Plan: plans/plan_swap_ktv_c_turnqueue_va_queue_position.md
+ */
+export async function pullIncomingKtvToWorking(
+    supabase: SupabaseClient,
+    opts: { employeeId: string; businessDate: string; bookingId: string; bookingItemId: string; isTypeC: boolean }
+): Promise<'updated' | 'inserted' | 'skipped'> {
+    const { employeeId, businessDate, bookingId, bookingItemId, isTypeC } = opts;
+
+    const { data: updated, error: updateError } = await supabase
+        .from('TurnQueue')
+        .update({ status: 'working', current_order_id: bookingId, booking_item_id: bookingItemId })
+        .eq('employee_id', employeeId)
+        .eq('date', businessDate)
+        .select('id');
+    if (updateError) console.error('[swapKtv] khong keo duoc KTV moi len working:', updateError.message);
+    if ((updated || []).length > 0 || !isTypeC) return (updated || []).length > 0 ? 'updated' : 'skipped';
+
+    const { data: maxRow } = await supabase
+        .from('TurnQueue')
+        .select('queue_position')
+        .eq('date', businessDate)
+        .order('queue_position', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+
+    // ignoreDuplicates: hai lệnh đổi cùng lúc cho cùng một C thì lệnh sau không
+    // ghi đè dòng lệnh trước vừa tạo (UNIQUE employee_id, date).
+    const { error: insertError } = await supabase
+        .from('TurnQueue')
+        .upsert({
+            employee_id: employeeId,
+            date: businessDate,
+            status: 'working',
+            current_order_id: bookingId,
+            booking_item_id: bookingItemId,
+            // Có mảng này thì quầy bấm Hoàn tất nhả được dòng kể cả khi KTV chưa
+            // bấm Bắt đầu (updateBookingItemStatus lọc overlaps booking_item_ids).
+            booking_item_ids: [bookingItemId],
+            queue_position: (Number((maxRow as any)?.queue_position) || 0) + 1,
+            turns_completed: 0,
+            last_served_at: new Date().toISOString(),
+        }, { onConflict: 'employee_id,date', ignoreDuplicates: true });
+    if (insertError) {
+        console.error('[swapKtv] khong tao duoc dong TurnQueue cho KTV loai C:', insertError.message);
+        return 'skipped';
+    }
+    return 'inserted';
+}
 
 export class BookingItemPauseService {
     /**
@@ -54,7 +125,7 @@ export class BookingItemPauseService {
         // Cập nhật trạng thái và lưu thời gian pause
         const { error } = await supabase
             .from('BookingItems')
-            .update({ 
+            .update({
                 status: 'PAUSED',
                 pauseStart: now
             })
@@ -65,7 +136,49 @@ export class BookingItemPauseService {
             throw new Error('Không thể tạm ngưng dịch vụ.');
         }
 
+        // Mở một khoảng dừng trên mọi chặng còn đang chạy.
+        // resumeItem sẽ đóng lại bằng `to`. Nhờ vậy giờ làm thực trừ được đúng
+        // phần ngồi chờ mà KHÔNG phải dời `actualStartTime` (xem lib/segment-time.ts).
+        await BookingItemPauseService.openPauseWindows(supabase, itemIdsToPause, now);
+
+        const actorPause = await currentCounterActor();
+        await logCounterAction(supabase, itemIdsToPause, {
+            action: 'PAUSE', by: actorPause.id, byName: actorPause.name, verified: actorPause.verified, at: now,
+        });
+
         return { success: true, pauseStart: now, pausedItemIds: itemIdsToPause };
+    }
+
+    /** Ghi `pauses[].from` vào các chặng đang chạy của những item vừa tạm dừng. */
+    private static async openPauseWindows(supabase: SupabaseClient, itemIds: string[], at: string) {
+        const { data: rows } = await supabase
+            .from('BookingItems')
+            .select('id, segments')
+            .in('id', itemIds);
+
+        for (const row of rows || []) {
+            const isString = typeof row.segments === 'string';
+            let segs: any = row.segments;
+            if (isString) { try { segs = JSON.parse(segs); } catch { segs = []; } }
+            if (!Array.isArray(segs)) continue;
+
+            let touched = false;
+            const updated = segs.map((seg: any) => {
+                if (!seg.actualStartTime || seg.actualEndTime) return seg;
+                const pauses = Array.isArray(seg.pauses) ? [...seg.pauses] : [];
+                // Đã có khoảng còn hở thì thôi, đừng mở chồng lên nhau.
+                if (pauses.some((p: any) => p && p.from && !p.to)) return seg;
+                pauses.push({ from: at });
+                touched = true;
+                return { ...seg, pauses };
+            });
+
+            if (!touched) continue;
+            await supabase
+                .from('BookingItems')
+                .update({ segments: isString ? JSON.stringify(updated) : updated })
+                .eq('id', row.id);
+        }
     }
 
     /**
@@ -73,7 +186,16 @@ export class BookingItemPauseService {
      * Hàm này tính toán khoảng thời gian đã bị Pause và cộng bù vào timeStart của Booking,
      * để timer trên màn hình KTV tiếp tục chạy mượt mà không bị hụt giờ.
      */
-    static async resumeItem(supabase: SupabaseClient, bookingItemId: string) {
+    static async resumeItem(
+        supabase: SupabaseClient,
+        bookingItemId: string,
+        /**
+         * Ghi nhật ký quầy thành việc gì. Bỏ trống là 'Tiếp tục' như thường.
+         * Luồng đổi KTV truyền 'SWAP_SEND' kèm mã người mới — xem route
+         * /api/ktv/pause-swap-resume.
+         */
+        ghiNhatKy?: { action: CounterAction; note?: string | null }
+    ) {
         // 1. Lấy thông tin BookingItem và Booking
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
@@ -93,26 +215,15 @@ export class BookingItemPauseService {
             return { success: true };
         }
 
-        const { data: booking, error: errBooking } = await supabase
-            .from('Bookings')
-            .select('id, timeStart')
-            .eq('id', item.bookingId)
-            .single();
+        // ⚠️ Trước đây chỗ này phải đọc `Bookings.timeStart` để tịnh tiến nó, và
+        // nếu thiếu thì thoát sớm — nhánh thoát đó nay CỰC nguy hiểm: nó bỏ qua
+        // việc đóng khoảng dừng, khiến khoảng hở kéo dài tới tận lúc kết thúc và
+        // ăn mất phần làm thật của KTV. Không còn dời timeStart nữa nên bỏ luôn
+        // cả truy vấn lẫn nhánh thoát; mọi đường đều phải đóng khoảng dừng.
 
-        if (errBooking || !booking || !booking.timeStart) {
-            // Fallback: Just resume
-            await supabase.from('BookingItems').update({ status: 'IN_PROGRESS', pauseStart: null }).eq('id', bookingItemId);
-            return { success: true };
-        }
-
-        // 2. Tính toán tịnh tiến thời gian
+        // 2. Mốc tiếp tục — dùng để đóng khoảng dừng trên từng chặng.
         const nowMs = Date.now();
-        const pauseStartMs = new Date(item.pauseStart).getTime();
-        const pauseDurationMs = nowMs - pauseStartMs;
-
-        const originalTimeStartMs = new Date(booking.timeStart).getTime();
-        const newTimeStartMs = originalTimeStartMs + pauseDurationMs;
-        const newTimeStartIso = new Date(newTimeStartMs).toISOString();
+        const resumeAt = new Date(nowMs).toISOString();
 
         // Tìm các KTV đang thực sự bị Pause
         let activeKtvIds: string[] = [];
@@ -162,15 +273,35 @@ export class BookingItemPauseService {
 
             if (Array.isArray(updatedSegments)) {
                 updatedSegments = updatedSegments.map((seg: any) => {
-                    if (seg.actualStartTime && !seg.actualEndTime) {
-                        const oldStartMs = new Date(seg.actualStartTime.replace(' ', 'T') + (seg.actualStartTime.includes('Z') ? '' : 'Z')).getTime();
-                        const shiftedStartMs = oldStartMs + pauseDurationMs;
-                        return {
-                            ...seg,
-                            actualStartTime: new Date(shiftedStartMs).toISOString()
-                        };
+                    if (!seg.actualStartTime || seg.actualEndTime) return seg;
+
+                    // ⚠️ TUYỆT ĐỐI KHÔNG dời `actualStartTime` nữa.
+                    // Cách cũ cộng thời gian dừng vào mốc bắt đầu → ô "Bắt đầu" trên
+                    // Kanban nhảy muộn sau mỗi lần tạm dừng và mất mốc thật vĩnh viễn.
+                    // Nay chỉ đóng khoảng dừng lại; giờ làm thực do lib/segment-time.ts trừ ra.
+                    const next = { ...seg, pauses: Array.isArray(seg.pauses) ? [...seg.pauses] : [] };
+                    if (!closeOpenPause(next, resumeAt, 'RESUME')) {
+                        // Chặng bị dừng bằng code cũ (chưa có `pauses`) — dựng lại
+                        // khoảng dừng từ `pauseStart` để không mất phần đã chờ.
+                        //
+                        // ⚠️ CHỈ dựng lại cho chặng đã chạy TRƯỚC lúc bấm dừng.
+                        // Chặng của KTV vào thay được tạo NGAY TRONG lúc đơn đang
+                        // tạm ngưng, nên nó không có khoảng dừng nào để đóng — rơi
+                        // vào nhánh này là bị gán một khoảng dừng có TRƯỚC cả lúc
+                        // nó bắt đầu. Đồng hồ KTV cộng bù khoảng đó (expectedEndMs
+                        // = bắt đầu + giờ gán + thời gian dừng) nên quầy gán 5 phút
+                        // mà máy KTV đếm 16 phút. Đúng lỗi quan sát 10/09/2026 trên
+                        // đơn WB-10092026-016: dừng 14:46:04, KTV mới vào 14:56:59.
+                        const msBatDau = parseTimeMs(seg.actualStartTime);
+                        const msBamDung = parseTimeMs(item.pauseStart);
+                        const daChayTruocKhiDung = Number.isFinite(msBatDau)
+                            && Number.isFinite(msBamDung)
+                            && msBatDau <= msBamDung;
+                        if (daChayTruocKhiDung) {
+                            next.pauses.push({ from: item.pauseStart, to: resumeAt, closedBy: 'RESUME' });
+                        }
                     }
-                    return seg;
+                    return next;
                 });
             }
             
@@ -188,13 +319,18 @@ export class BookingItemPauseService {
                 .eq('id', updateItem.id);
         }
 
-        // Cập nhật Bookings timeStart
-        await supabase
-            .from('Bookings')
-            .update({ timeStart: newTimeStartIso })
-            .eq('id', booking.id);
+        // ⚠️ KHÔNG dời `Bookings.timeStart` nữa — cùng lý do với `actualStartTime`:
+        // đó là mốc đơn bắt đầu thật, dời đi là mất. Phần bù thời gian tạm dừng
+        // nay nằm ở `seg.pauses[]` và được trừ lúc tính (lib/segment-time.ts).
 
-        return { success: true, newTimeStart: newTimeStartIso, resumedItemIds: itemsToUpdate.map(i => i.id) };
+        const actorResume = await currentCounterActor();
+        await logCounterAction(supabase, itemsToUpdate.map(i => i.id), {
+            action: ghiNhatKy?.action || 'RESUME',
+            note: ghiNhatKy?.note ?? null,
+            by: actorResume.id, byName: actorResume.name, verified: actorResume.verified, at: resumeAt,
+        });
+
+        return { success: true, resumedAt: resumeAt, resumedItemIds: itemsToUpdate.map(i => i.id) };
     }
 
     /**
@@ -207,9 +343,28 @@ export class BookingItemPauseService {
         newKtvId?: string, 
         extraTimeMins: number = 0,
         businessDate?: string,
-        keepTurnForOldKtv: boolean = false
+        keepTurnForOldKtv: boolean = false,
+        /**
+         * Số phút quầy gán tay cho KTV mới. Bỏ trống (0) thì dùng công thức cũ:
+         * phần còn lại của dịch vụ + giờ bù. Luôn bị kẹp trần bằng thời lượng
+         * dịch vụ, không cho vượt (chốt 06/09/2026).
+         */
+        assignedMins: number = 0,
+        /**
+         * Lý do quầy đổi người. Lưu vào chặng bị tước (`lyDoDoi`) để màn Lịch sử
+         * của KTV bị đổi giải thích được vì sao tua đó 0đ, và vào nhật ký quầy.
+         */
+        lyDoDoi: string = ''
     ) {
         // 1. Fetch Item & Booking & Service
+        //
+        // ⚠️ PHẢI chỉ đích danh khoá ngoại cho Services. Giữa BookingItems và
+        // Services có HAI khoá ngoại cùng trỏ serviceId sang id:
+        // BookingItems_serviceId_fkey và fk_bookingitems_service. Viết trần
+        // "Services ( duration )" thì PostgREST từ chối cả câu với PGRST201
+        // "more than one relationship was found", `item` về null, và hàm này
+        // hiểu nhầm thành "Không tìm thấy dịch vụ." — toàn bộ luồng đổi KTV
+        // chết ở dòng đầu tiên, không ai đổi được người.
         const { data: item, error: errItem } = await supabase
             .from('BookingItems')
             .select(`
@@ -221,7 +376,7 @@ export class BookingItemPauseService {
                 serviceId,
                 status,
                 Bookings!fk_bookingitems_booking ( id, timeStart ),
-                Services ( duration )
+                Services!fk_bookingitems_service ( duration )
             `)
             .eq('id', bookingItemId)
             .single();
@@ -238,68 +393,89 @@ export class BookingItemPauseService {
             throw new Error(`Thời gian bù thêm không được vượt quá thời gian của dịch vụ (${originalDuration} phút).`);
         }
 
-        // --- XỬ LÝ LƯƠNG & TUA KTV CŨ ---
-        if (businessDate) {
-            if (keepTurnForOldKtv) {
-                // Đánh dấu phạt (giữ tua) trong TurnLedger
-                await supabase
-                    .from('TurnLedger')
-                    .update({ is_punished: true })
-                    .eq('date', businessDate)
-                    .eq('booking_id', item.bookingId)
-                    .eq('employee_id', oldKtvId);
-            } else {
-                // Xóa hẳn TurnLedger -> Hủy tua
-                await supabase
-                    .from('TurnLedger')
-                    .delete()
-                    .eq('date', businessDate)
-                    .eq('booking_id', item.bookingId)
-                    .eq('employee_id', oldKtvId);
-            }
-        }
+        // Loại hình quyết định KTV "mất/được" cái gì khi đổi người:
+        //   A/B/C → chạy theo SỔ TUA        (turns_completed ASC, app/api/turns/route.ts)
+        //   D     → chạy theo GIỜ TÍCH LUỸ  (net_hours DESC, đọc KTVDTurnLedger)
+        // `TurnLedger` KHÔNG đụng tới thứ tự của D, nên cộng/tước tua cho D vừa vô
+        // nghĩa vừa đẻ ra tua ma trong báo cáo tài chính (nơi vẫn đếm TurnLedger).
+        // Với D, chặng `voided` ở dưới mới là thứ tước giờ — và nó tự động.
+        const dsLoai = [oldKtvId, newKtvId].filter(Boolean) as string[];
+        const { data: staffTypes } = await supabase
+            .from('Staff')
+            .select('id, work_type')
+            .in('id', dsLoai);
+        const theoSoTua = (id: string) =>
+            ((staffTypes || []).find((s: any) => s.id === id)?.work_type || 'TYPE_A') !== 'TYPE_D';
 
-        // Hạ KTV cũ xuống waiting (nếu đang ở working với đơn này)
+        // Hạ KTV cũ xuống waiting — CHỈ khi hàng đợi của họ đang trỏ vào ĐƠN NÀY.
+        // ⚠️ Trước 09/09/2026 lệnh này chỉ lọc theo (employee_id, date). KTV cũ vừa
+        // bị rút khỏi đơn này mà đã được gán sang đơn khác thì bị gỡ luôn khỏi đơn
+        // kia — mất phòng, mất giường, đơn kia thành đơn không người làm.
         if (businessDate) {
-            await supabase
+            const { data: hangCu } = await supabase
                 .from('TurnQueue')
-                .update({ status: 'waiting', current_order_id: null, booking_item_id: null, booking_item_ids: [] })
+                .select('id, current_order_id, booking_item_id, booking_item_ids, queue_position')
                 .eq('employee_id', oldKtvId)
-                .eq('date', businessDate);
-        }
+                .eq('date', businessDate)
+                .maybeSingle();
 
-        // --- NẾU CÓ KTV MỚI VÀO THAY ---
-        let customCommissionDuration = 0;
-        if (newKtvId) {
-            // Tính số phút KTV B làm (Trọn lương gốc + bù thêm)
-            customCommissionDuration = originalDuration + extraTimeMins;
+            const q = hangCu as any;
+            const dangOmDonNay = !!q && (
+                q.current_order_id === item.bookingId
+                || q.booking_item_id === bookingItemId
+                || (Array.isArray(q.booking_item_ids) && q.booking_item_ids.includes(bookingItemId))
+            );
 
-            if (businessDate) {
-                // Thêm tua cho KTV B
-                await supabase
-                    .from('TurnLedger')
-                    .insert({
-                        date: businessDate,
-                        employee_id: newKtvId,
-                        booking_id: item.bookingId,
-                        counted_at: new Date().toISOString()
-                    });
-                    
-                // Kéo KTV B lên working
+            if (dangOmDonNay) {
                 await supabase
                     .from('TurnQueue')
-                    .update({ status: 'working', current_order_id: item.bookingId, booking_item_id: item.id })
-                    .eq('employee_id', newKtvId)
-                    .eq('date', businessDate);
+                    .update({ status: 'waiting', current_order_id: null, booking_item_id: null, booking_item_ids: [] })
+                    .eq('id', q.id);
             }
-        }
 
-        // --- CẬP NHẬT TECHNICIAN CODES VÀ SEGMENTS ---
-        let newTechCodes = Array.isArray(item.technicianCodes) ? [...item.technicianCodes] : [];
-        newTechCodes = newTechCodes.filter(id => id !== oldKtvId);
-        
-        if (newKtvId && !newTechCodes.includes(newKtvId)) {
-            newTechCodes.push(newKtvId);
+            // Đóng phiếu phân công của KTV cũ trên chính dịch vụ này.
+            // ⚠️ Bỏ bước này là KTV cũ giữ mãi một dòng ACTIVE cho đơn họ không còn
+            // làm. `promote_next_assignment` gặp dòng đó là thoát ngay với "KTV
+            // already has an ACTIVE assignment" — họ không bao giờ được kéo đơn kế
+            // tiếp lên nữa. Đây đúng là kiểu "KTV kẹt đơn".
+            const { error: errHuyPhieu } = await supabase
+                .from('KtvAssignments')
+                .update({ status: 'CANCELLED' })
+                .eq('employee_id', oldKtvId)
+                .eq('business_date', businessDate)
+                .eq('booking_item_id', bookingItemId);
+            if (errHuyPhieu) {
+                console.error('[swapKtv] khong dong duoc phieu phan cong cu:', errHuyPhieu.message);
+            }
+
+            // Kéo đơn kế tiếp của KTV cũ lên, giống luồng huỷ điều phối
+            // (dispatch_confirm_booking cũng PERFORM promote_next_assignment cho
+            // KTV bị gỡ). Không gọi thì họ ngồi không cho tới khi có sự kiện khác
+            // đánh thức, dù trong hàng vẫn còn đơn đã xếp sẵn cho họ.
+            //
+            // ⚠️ PHẢI chạy SAU khi phiếu ở trên đã CANCELLED: RPC gặp một dòng
+            // ACTIVE là thoát ngay với "KTV already has an ACTIVE assignment".
+            //
+            // ⚠️ Khi họ KHÔNG còn đơn nào, RPC đặt lại queue_position = max + 1,
+            // tức đẩy xuống cuối bảng — phá đúng thứ tự mà quầy vừa kéo tay.
+            // Thứ tự nhận khách không đọc cột này (A/B/C theo turns_completed,
+            // D theo net_hours) nhưng bảng tua thì có, nên chụp lại rồi trả về
+            // chỗ cũ khi không kéo được đơn nào lên.
+            if (dangOmDonNay) {
+                const viTriCu = q.queue_position;
+                const { data: kqPromote, error: errPromote } = await supabase.rpc('promote_next_assignment', {
+                    p_employee_id: oldKtvId,
+                    p_business_date: businessDate,
+                });
+                if (errPromote) {
+                    console.error('[swapKtv] khong keo duoc don ke tiep cho KTV cu:', errPromote.message);
+                } else if (!(kqPromote as any)?.promoted_booking_id && viTriCu != null) {
+                    await supabase
+                        .from('TurnQueue')
+                        .update({ queue_position: viTriCu })
+                        .eq('id', q.id);
+                }
+            }
         }
 
         let parsedSegments = item.segments;
@@ -312,23 +488,145 @@ export class BookingItemPauseService {
             }
         }
         let segments = Array.isArray(parsedSegments) ? [...parsedSegments] : [];
-        // Chốt segment cũ
-        const aIndex = segments.findIndex(seg => seg.ktvId === oldKtvId && !seg.endTime);
+        
+        // --- XỬ LÝ LƯƠNG & TUA KTV CŨ ---
+        // Quy chế (chốt 06/09/2026): KTV bị đổi ra MẤT HẾT — tiền, giờ tích luỹ, tua.
+        // Nhưng vẫn GIỮ trong đơn kèm số phút đã làm, để còn biết ai từng làm cho
+        // khách và giải thích được khi đối soát. Cờ `voided` mới là thứ chặn tiền.
+        // ⚠️ PHẢI dùng ktvMatchesSeg, đừng so `===`. `seg.ktvId` có thể là chặng
+        // GHÉP nhiều người ("Bao - Na") và chữ hoa/thường không thống nhất
+        // ("Bao - Na" vs "NA - BAO") — dữ liệu thật đang có cả hai kiểu. So bằng
+        // `===` là không tìm thấy chặng cũ: nó KHÔNG bị đóng, KHÔNG bị tước, nên
+        // KTV cũ vẫn ăn đủ tiền còn KTV mới được cộng thêm một chặng nữa.
+        //
+        // ⚠️ Mốc "đã xong" là `actualEndTime`, KHÔNG phải `endTime`. `endTime` là
+        // GIỜ DỰ KIẾN dạng "21:19", được ghi cho MỌI chặng ngay từ lúc điều
+        // phối. Lọc `!seg.endTime` thì chuỗi đó luôn truthy → aIndex = -1 → chặng
+        // của KTV cũ KHÔNG bị đóng, KHÔNG bị tước: họ ăn đủ tiền, còn
+        // `oldWorkedMins` = 0 nên KTV mới được tính TRỌN thời lượng dịch vụ.
+        // Một đơn trả tiền hai lần. Phát hiện 10/09/2026 trên đơn thật
+        // WB-10092026-016-NHS0008-0 (endTime = "21:19", actualEndTime trống).
+        const aIndex = segments.findIndex(seg => ktvMatchesSeg(seg.ktvId, oldKtvId) && !seg.actualEndTime);
+        let oldWorkedMins = 0;
         const pauseTime = item.pauseStart || new Date().toISOString();
         if (aIndex !== -1) {
-            segments[aIndex].endTime = pauseTime;
-            segments[aIndex].note = newKtvId ? 'Bị đổi người (Phạt)' : 'Rút ra làm dịch vụ khác';
+            const oldSeg = segments[aIndex];
+
+            // Đóng khoảng tạm dừng còn hở tại mốc bấm dừng, rồi tính giờ làm thực
+            // (đã trừ các lần dừng trước đó) — xem lib/segment-time.ts
+            const closed = { ...oldSeg, pauses: Array.isArray(oldSeg.pauses) ? [...oldSeg.pauses] : [] };
+            closeOpenPause(closed, pauseTime, 'SWAP');
+            closed.actualEndTime = pauseTime;
+            // `endTime` là cột GIỜ ĐỒNG HỒ "HH:mm" mà thẻ Kanban, màn Đánh giá và
+            // KtvCommissionService.getMinsFromTimes cùng đọc. Nhét chuỗi ISO vào đó
+            // là ba nơi cùng hiểu sai — ghi đúng định dạng của cột.
+            // Giờ VN, KHÔNG phải giờ máy chủ — xem gioDongHoVN.
+            closed.endTime = gioDongHoVN(pauseTime);
+            if (lyDoDoi.trim()) closed.lyDoDoi = lyDoDoi.trim();
+
+            // Tước sạch quyền lợi nhưng VẪN ghi số phút đã làm để đối soát.
+            voidSegment(closed, pauseTime, 'CHANGED');
+            oldWorkedMins = Number(closed.customCommissionDuration) || 0;
+
+            segments[aIndex] = closed;
         }
 
-        // Thêm segment mới nếu có KTV mới
+        // --- NẾU CÓ KTV MỚI VÀO THAY ---
         if (newKtvId) {
+            // Số phút KTV mới được tính:
+            //   - assignedMins > 0 : quầy gán tay (đã kẹp trần bằng thời lượng dịch vụ)
+            //   - còn lại          : phần còn lại của dịch vụ + giờ bù
+            const remainingMins = assignedMins && assignedMins > 0
+                ? Math.min(assignedMins, originalDuration)
+                : Math.max(0, originalDuration - oldWorkedMins) + extraTimeMins;
+
+            if (businessDate) {
+                // Thêm tua cho KTV mới — CHỈ loại A/B/C. Loại D tính công bằng giờ
+                // của chặng TAKEOVER ở dưới, không cần dòng sổ tua nào.
+                // ⚠️ Sổ cái tua khoá theo ĐƠN CHA (RPC điều phối ghi
+                // COALESCE(parent_booking_id, id)). Ghi bằng mã đơn con sẽ đẻ ra
+                // dòng lệch khoá, không khớp với chỗ tước tua và chỗ đối soát.
+                if (theoSoTua(newKtvId)) {
+                    // upsert thay vì insert: bảng có UNIQUE (date, booking_id,
+                    // employee_id). KTV mới đã có tua trên chính bill này (đang làm
+                    // dịch vụ khác, hoặc từng bị đổi ra rồi đổi vào lại) thì insert
+                    // vỡ khoá — trước đây lỗi bị nuốt vì không ai đọc `error`.
+                    const { error: errTua } = await supabase
+                        .from('TurnLedger')
+                        .upsert({
+                            date: businessDate,
+                            employee_id: newKtvId,
+                            booking_id: await ledgerBookingIdOf(supabase, item.bookingId),
+                            counted_at: new Date().toISOString(),
+                            source: 'SWAP_KTV',
+                        }, { onConflict: 'date,booking_id,employee_id', ignoreDuplicates: true });
+                    if (errTua) console.error('[swapKtv] khong ghi duoc tua cho KTV moi:', errTua.message);
+                }
+
+                // Kéo KTV mới lên working. Loại C chưa có dòng TurnQueue thì tạo dòng —
+                // xem `pullIncomingKtvToWorking`.
+                await pullIncomingKtvToWorking(supabase, {
+                    employeeId: newKtvId,
+                    businessDate,
+                    bookingId: item.bookingId,
+                    bookingItemId: item.id,
+                    isTypeC: isTypeCWorkType((staffTypes || []).find((s: any) => s.id === newKtvId)?.work_type),
+                });
+
+                // Phiếu phân công cho KTV mới.
+                // ⚠️ Trước 09/09/2026 luồng này chỉ đẩy TurnQueue sang 'working' mà
+                // không tạo dòng nào ở KtvAssignments. Lần kế tiếp có ai gọi
+                // `promote_next_assignment` cho họ: không thấy ACTIVE, cũng không
+                // thấy QUEUED/READY → RPC dọn sạch TurnQueue về 'waiting', cướp mất
+                // đơn đang làm dở ngay trên tay.
+                const { error: errPhieu } = await supabase
+                    .from('KtvAssignments')
+                    .upsert({
+                        employee_id: newKtvId,
+                        business_date: businessDate,
+                        booking_id: item.bookingId,
+                        booking_item_id: bookingItemId,
+                        status: 'ACTIVE',
+                        dispatch_source: 'SWAP_KTV',
+                        planned_start_time: new Date().toISOString(),
+                    }, { onConflict: 'employee_id,booking_item_id' });
+                if (errPhieu) {
+                    // Không chặn luồng đổi người: đơn vẫn chạy nhờ TurnQueue.
+                    console.error('[swapKtv] khong tao duoc phieu phan cong cho KTV moi:', errPhieu.message);
+                }
+            }
+            
+            // ⚠️ CỐ Ý KHÔNG đóng dấu `actualStartTime` ở đây (chốt 10/09/2026).
+            //
+            // Trước đó quầy bấm Đổi là đồng hồ của người vào thay chạy ngay,
+            // trong khi họ còn đang đi bộ sang phòng — mất trắng mấy phút đó.
+            // Quy ước mới: KHÁCH CHỜ TỚI LÚC KTV MỚI BẤM BẮT ĐẦU, rồi mới đếm
+            // phần còn lại. `handleStartTimer` sẽ đóng dấu `actualStartTime` kèm
+            // ảnh xác nhận, y hệt đơn thường.
+            //
+            // Tiền KHÔNG phụ thuộc mốc này: `customCommissionDuration` đã chốt
+            // cứng số phút quầy quyết, nên KTV bắt đầu sớm hay muộn đều nhận
+            // đúng bằng nhau.
             segments.push({
                 ktvId: newKtvId,
-                startTime: new Date().toISOString(), // Sẽ chạy tiếp từ lúc Resume
+                // Giờ VN, KHÔNG phải giờ máy chủ — xem gioDongHoVN.
+                startTime: gioDongHoVN(Date.now()),
                 endTime: null,
-                customCommissionDuration: customCommissionDuration > 0 ? customCommissionDuration : undefined,
-                note: 'Vào cứu bộ'
+                duration: remainingMins, // để calculateItemExpectedDuration đọc
+                customCommissionDuration: remainingMins,
+                note: 'TAKEOVER'
             });
+        }
+
+        // --- CẬP NHẬT TECHNICIAN CODES ---
+        // ⚠️ KHÔNG gỡ KTV cũ ra khỏi danh sách nữa (chốt 06/09/2026).
+        // `technicianCodes` là nguồn dữ liệu DUY NHẤT mà sổ cái loại D, tiền A/B/C,
+        // lịch sử KTV và thẻ Kanban đọc. Gỡ khỏi đó là KTV cũ biến mất sạch khỏi
+        // đơn — không giải thích được cho họ, không thống kê được ai bị đổi.
+        // Việc tước tiền/giờ do cờ `voided` trên chặng lo, tước tua do `is_punished`.
+        let newTechCodes = Array.isArray(item.technicianCodes) ? [...item.technicianCodes] : [];
+        if (newKtvId && !newTechCodes.includes(newKtvId)) {
+            newTechCodes.push(newKtvId);
         }
 
         const { error: errUpdate } = await supabase
@@ -340,6 +638,29 @@ export class BookingItemPauseService {
             .eq('id', bookingItemId);
             
         if (errUpdate) throw new Error('Lỗi khi cập nhật BookingItem.');
+
+        // --- MẤT TUA CỦA KTV CŨ ---
+        // ⚠️ PHẢI chạy SAU khi segments đã ghi xuống DB. punishTurnIfIdle đọc lại
+        // BookingItems để xem KTV còn chặng nào chưa bị tước không — chạy trước
+        // lệnh update ở trên thì nó thấy chặng cũ vẫn nguyên và bỏ qua, tua không
+        // bao giờ bị tước.
+        // Chỉ A/B/C. Loại D không có gì để tước ở đây: giờ tích luỹ của họ đã tụt
+        // ngay khi chặng bị `voided` (KtvDLedgerEngine bỏ qua chặng voided), và
+        // trigger trên BookingItems đã đẩy đơn vào KTVDRecomputeQueue để tính lại.
+        if (businessDate && !keepTurnForOldKtv && theoSoTua(oldKtvId)) {
+            await punishTurnIfIdle(supabase, {
+                bookingId: item.bookingId,
+                employeeId: oldKtvId,
+                date: businessDate,
+            });
+        }
+
+        const actorSwap = await currentCounterActor();
+        await logCounterAction(supabase, [bookingItemId], {
+            action: 'SWAP_KTV', by: actorSwap.id, byName: actorSwap.name, verified: actorSwap.verified,
+            note: `${oldKtvId} → ${newKtvId || '(rút, chưa có người thay)'}`
+                + (lyDoDoi.trim() ? ` · ${lyDoDoi.trim()}` : ''),
+        });
 
         return { success: true };
     }

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { KtvTypeDCommissionService } from '@/lib/services/KtvTypeDCommissionService';
+import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +25,35 @@ async function processLedgerSync(targetDateStr: string) {
     const allConfigs = await KtvCommissionService.getAllConfigs(supabase);
     const allBonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
+    const TYPE_D_RULE_EFFECTIVE_FROM = '2026-09-01';
+
+    // Fetch System Configs for TYPE_D (since KtvTypeDCommissionService needs raw values)
+    const { data: configsData } = await supabase.from('SystemConfigs').select('key, value').ilike('key', '%type_d%');
+    const typeDConfigs: Record<string, any> = {};
+    (configsData || []).forEach((c: any) => { typeDConfigs[c.key] = c.value; });
+
+    const { data: sysConfigsData } = await supabase.from('SystemConfigs').select('key, value').in('key', ['ktv_bonus_rate_TYPE_D']);
+    const sysConfigs: Record<string, any> = {};
+    (sysConfigsData || []).forEach((c: any) => { sysConfigs[c.key] = c.value; });
+
+    const rateVIP_D = Number(typeDConfigs['ktv_type_d_vip_rate_per_60m']) || 180000;
+    const ratePT_D = Number(typeDConfigs['ktv_type_d_pt_rate_per_60m']) || 100000;
+    let ratingDeductions_D = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
+    if (typeDConfigs['ktv_type_d_rating_deduction']) {
+        try {
+            ratingDeductions_D = typeof typeDConfigs['ktv_type_d_rating_deduction'] === 'string' 
+                ? JSON.parse(typeDConfigs['ktv_type_d_rating_deduction']) 
+                : typeDConfigs['ktv_type_d_rating_deduction'];
+        } catch {}
+    }
+    const basePoints_D = Number(typeDConfigs['ktv_type_d_bonus_points']) || 20;
+    const pointRate_D = Number(sysConfigs['ktv_bonus_rate_TYPE_D']) || 1000;
+
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
         .from('Staff')
-        .select('id, full_name, work_type, feature_flags');
+        .select('id, full_name, work_type, feature_flags')
+        .neq('work_type', 'TYPE_D');
     
     if (!ktvs || ktvs.length === 0) return NextResponse.json({ success: true, message: 'No KTVs found' });
     
@@ -120,13 +148,16 @@ async function processLedgerSync(targetDateStr: string) {
 
     // 5. Calculate per KTV
     for (const ktv of ktvs) {
-        // TYPE_D uses its own formula (sync-daily-ledger-type-d). This legacy path would
-        // price them as TYPE_A and overwrite their rows in the shared DB, so skip them here.
-        // Kept in `ktvs` on purpose: staffWorkTypeMap still needs them for mixed-team bonus.
-        if (ktv.work_type === 'TYPE_D') continue;
-
         const techCode = ktv.id;
-        const workType = ktv.work_type === 'TYPE_B' ? 'TYPE_B' : ktv.work_type === 'TYPE_C' ? 'TYPE_C' : 'TYPE_A';
+        
+        if (ktv.work_type === 'TYPE_D') {
+            if (targetDateStr < TYPE_D_RULE_EFFECTIVE_FROM) {
+                console.log(`[Cron] Skip TYPE_D KTV ${techCode} for date ${targetDateStr} (before effective date ${TYPE_D_RULE_EFFECTIVE_FROM}). Keeping Option B (GIỮ NGUYÊN).`);
+                continue; // Do not calculate and do not push to upsertRows to keep existing data untouched
+            }
+        }
+
+        const workType = ktv.work_type === 'TYPE_B' ? 'TYPE_B' : ktv.work_type === 'TYPE_C' ? 'TYPE_C' : ktv.work_type === 'TYPE_D' ? 'TYPE_D' : 'TYPE_A';
         const commConfig = allConfigs[workType] || allConfigs['TYPE_A'];
         const bonusConfig = allBonusConfigs[workType] || allBonusConfigs['TYPE_A'];
 
@@ -155,34 +186,83 @@ async function processLedgerSync(targetDateStr: string) {
                 const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
                 if (isPassed) {
                     passedItemCount++;
-                    const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
-                    let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
-                    if (itemDuration <= 0) itemDuration = 60;
-                    const itemCommission = KtvCommissionService.calcCommission(itemDuration, allConfigs, workType, item.serviceId);
-                    bookingCommission += itemCommission;
                     bookingTip += (Number(item.tip) || 0);
-                    commissionBreakdown.push({
-                        bookingId: b.id,
-                        itemId: item.id,
-                        serviceId: item.serviceId || null,
-                        duration: itemDuration,
-                        workType,
-                        commission: itemCommission
-                    });
                 }
             }
 
-            if (bookingCommission === 0 && passedItemCount > 0) {
-                bookingCommission = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
-                commissionBreakdown.push({
-                    bookingId: b.id,
-                    itemId: null,
-                    serviceId: null,
-                    duration: 60,
-                    workType,
-                    commission: bookingCommission,
-                    fallback: true // ⚠️ Nhánh dự phòng: các item của booking này không tính được commission theo item, dùng mặc định 60p
-                });
+            if (passedItemCount > 0) {
+                if (workType === 'TYPE_D') {
+                    // Loại D lọc bỏ item tiện ích khi tính hoa hồng
+                    let typeDItems = relevantItems.filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                    if (typeDItems.length === 0 && relevantItems.length > 0) {
+                        typeDItems = relevantItems; // Fallback
+                    }
+
+                    const vipItems = typeDItems.filter((i: any) => {
+                        const svcId = String(i.serviceId).toUpperCase();
+                        return svcId.startsWith('NHP') || svcId.startsWith('NHT') || svcId.startsWith('VIP');
+                    });
+                    const ptItems = typeDItems.filter((i: any) => {
+                        const svcId = String(i.serviceId).toUpperCase();
+                        return !(svcId.startsWith('NHP') || svcId.startsWith('NHT') || svcId.startsWith('VIP'));
+                    });
+
+                    const vipComm = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, b.rating, rateVIP_D, ratingDeductions_D);
+                    const ptComm = KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, b.rating, ratePT_D, ratingDeductions_D);
+                    bookingCommission = vipComm + ptComm;
+
+                    commissionBreakdown.push({
+                        bookingId: b.id,
+                        itemId: null,
+                        serviceId: null,
+                        duration: 0,
+                        workType,
+                        commission: bookingCommission,
+                        note: 'TYPE_D calculated via KtvTypeDCommissionService'
+                    });
+                } else {
+                    // Dịch vụ mà KTV đã bị TƯỚC quyền lợi (đổi ra, huỷ không công).
+                    // Xem KtvCommissionService.isKtvVoidedOnItem: dòng dự phòng
+                    // `itemDuration <= 0 → 60` sinh ra để cứu đơn THIẾU SEGMENT,
+                    // nhưng chặng bị tước cũng ra 0 nên bị gộp làm một. Đây là sổ
+                    // cái ngày — số sai ở đây đóng cứng vào KTVDailyLedger rồi màn
+                    // Lịch sử và Ví đọc lại, sửa sau phải chạy lại cron.
+                    const coItemConQuyenLoi = relevantItems.some(
+                        (i: any) => !KtvCommissionService.isKtvVoidedOnItem(i, techCode)
+                    );
+
+                    for (const item of relevantItems) {
+                        const { isPassed } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
+                        if (isPassed && !KtvCommissionService.isKtvVoidedOnItem(item, techCode)) {
+                            const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
+                            let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
+                            if (itemDuration <= 0) itemDuration = 60;
+                            const itemCommission = KtvCommissionService.calcCommission(itemDuration, allConfigs, workType, item.serviceId);
+                            bookingCommission += itemCommission;
+                            commissionBreakdown.push({
+                                bookingId: b.id,
+                                itemId: item.id,
+                                serviceId: item.serviceId || null,
+                                duration: itemDuration,
+                                workType,
+                                commission: itemCommission
+                            });
+                        }
+                    }
+
+                    if (bookingCommission === 0 && coItemConQuyenLoi) {
+                        bookingCommission = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
+                        commissionBreakdown.push({
+                            bookingId: b.id,
+                            itemId: null,
+                            serviceId: null,
+                            duration: 60,
+                            workType,
+                            commission: bookingCommission,
+                            fallback: true // ⚠️ Nhánh dự phòng
+                        });
+                    }
+                }
             }
 
 
@@ -191,15 +271,18 @@ async function processLedgerSync(targetDateStr: string) {
             
             // Bonus calculation via Service
             if (passedItemCount > 0) {
-                const bDate = new Date(b.timeStart || (b as any).createdAt || targetDateStr);
-                const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
-                let bForBonus = b;
-                if (!isNewRule) {
-                    const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
-                    bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+                // TYPE_D đã được tách sang cron riêng (sync-daily-ledger-type-d)
+                if (workType !== 'TYPE_D') {
+                    const bDate = new Date(b.timeStart || (b as any).createdAt || targetDateStr);
+                    const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');
+                    let bForBonus = b;
+                    if (!isNewRule) {
+                        const filteredItemsForBonus = (b.BookingItems || []).filter((i: any) => !svcUtilityMap[String(i.serviceId)]);
+                        bForBonus = { ...b, BookingItems: filteredItemsForBonus };
+                    }
+                    const bookingBonus = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
+                    total_bonus += bookingBonus;
                 }
-                const bookingBonus = KtvCommissionService.calculateBookingBonus(bForBonus, techCode, targetDateStr, processedShiftsData, bonusConfig, staffWorkTypeMap, staffBonusMap, isNewRule);
-                total_bonus += bookingBonus;
             }
         }
 
@@ -218,6 +301,9 @@ async function processLedgerSync(targetDateStr: string) {
             total_penalty,
             total_adjustment,
             total_withdrawn,
+            total_tax: 0,
+            work_type_snapshot: workType,
+            rating_deduction: 0,
             commission_breakdown: commissionBreakdown,
             updated_at: new Date().toISOString()
         });
@@ -257,11 +343,8 @@ async function processLedgerSync(targetDateStr: string) {
 
 // API: GET /api/cron/sync-daily-ledger (Used by Vercel Cron)
 export async function GET(request: Request) {
-    // Security verification for Vercel Cron
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
-    }
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
 
     try {
         const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -279,6 +362,8 @@ export async function GET(request: Request) {
 // API: POST /api/cron/sync-daily-ledger (Used for manual triggers via Admin/Script)
 // Body: { targetDate: 'YYYY-MM-DD' } (Optional, defaults to yesterday)
 export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         let targetDateStr = '';
         try {

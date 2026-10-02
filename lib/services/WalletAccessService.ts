@@ -8,17 +8,15 @@ import {
 } from '@/lib/featureFlags';
 
 /**
- * Wallet gate at the SERVER level.
+ * Chặn ví ở TẦNG SERVER.
  *
- * The wallet used to be hidden only in the client (a tab condition), so
- * calling `/api/ktv/wallet/balance` directly still returned the balance and a
- * withdrawal still went through. Every wallet route must pass through here.
- *
- * This gates viewing / withdrawing / redeeming only. Commission and bonus keep
- * being written to the ledger; finance screens never call this.
+ * Trước đây cờ `tua_wallet` chỉ được đọc đúng một chỗ ở client
+ * (`app/ktv/wallet/KTVWallet.logic.ts`) để ẩn tab. Tắt cờ chỉ ẩn giao diện:
+ * gọi thẳng `/api/ktv/wallet/balance` vẫn ra số dư và vẫn rút được tiền.
+ * Mọi route ví giờ phải đi qua đây.
  */
 export class WalletAccessService {
-    /** Access to every wallet in one read — used by /api/ktv/wallet/access. */
+    /** Đọc quyền của cả 3 ví trong 1 lượt — dùng cho endpoint /wallet/access. */
     static async getAccess(
         supabase: SupabaseClient,
         staffId: string,
@@ -57,21 +55,21 @@ export class WalletAccessService {
     }
 
     /**
-     * `null` when allowed, otherwise a ready 403 `Response` — so a route only
-     * needs `if (denied) return denied;`.
+     * Trả về `null` nếu được phép, hoặc sẵn một `Response` 403 nếu bị chặn —
+     * để route chỉ cần `if (denied) return denied;`.
      */
     static async denyIfDisabled(
         supabase: SupabaseClient,
         staffId: string,
         wallet: WalletType,
     ): Promise<Response | null> {
-        const { ok } = await this.isEnabled(supabase, staffId, wallet);
+        const { ok, workType } = await this.isEnabled(supabase, staffId, wallet);
         if (ok) return null;
 
         return new Response(
             JSON.stringify({
                 success: false,
-                error: walletDisabledMessage(),
+                error: walletDisabledMessage(wallet, workType),
                 code: 'WALLET_DISABLED',
                 wallet,
             }),

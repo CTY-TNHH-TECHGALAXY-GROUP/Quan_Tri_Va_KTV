@@ -3,22 +3,120 @@ import { displayBookingCode } from '@/lib/booking-display-code';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
 import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
 import { KtvCommentModal } from './KtvCommentModal';
+import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
     { id: 'IN_PROGRESS' as RawStatus, dispatchModeId: ['IN_PROGRESS'], label: 'Đang Tiến Hành', shortLabel: 'Đang làm', color: 'text-indigo-600', bg: 'bg-indigo-50', activeBg: 'bg-indigo-600', border: 'border-indigo-200', dot: 'bg-indigo-500', next: 'CLEANING' as RawStatus, nextLabel: '🧹 Dọn' },
     { id: 'CLEANING' as RawStatus, dispatchModeId: ['CLEANING'], label: 'Đang Dọn Phòng', shortLabel: 'Dọn phòng', color: 'text-purple-600', bg: 'bg-purple-50', activeBg: 'bg-purple-600', border: 'border-purple-200', dot: 'bg-purple-500', next: 'FEEDBACK' as RawStatus, nextLabel: '⭐ Chờ Đánh Giá' },
     { id: 'FEEDBACK' as RawStatus, dispatchModeId: ['FEEDBACK'], label: 'Chờ Đánh Giá', shortLabel: 'Đánh giá', color: 'text-blue-600', bg: 'bg-blue-50', activeBg: 'bg-blue-600', border: 'border-blue-200', dot: 'bg-blue-500', next: 'DONE' as RawStatus, nextLabel: '✅ Hoàn tất' },
-    { id: 'DONE' as RawStatus, dispatchModeId: ['DONE', 'CANCELLED'], label: 'Hoàn Tất Dịch Vụ', shortLabel: 'Hoàn tất', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBg: 'bg-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500', next: null, nextLabel: null },
+    { id: 'DONE' as RawStatus, dispatchModeId: ['DONE'], label: 'Hoàn Tất Dịch Vụ', shortLabel: 'Hoàn tất', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBg: 'bg-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500', next: null, nextLabel: null },
+    { id: 'CANCELLED' as RawStatus, dispatchModeId: ['CANCELLED'], label: 'Đã Huỷ', shortLabel: 'Đã huỷ', color: 'text-rose-600', bg: 'bg-rose-50', activeBg: 'bg-rose-600', border: 'border-rose-200', dot: 'bg-rose-500', next: null, nextLabel: null },
 ];
 
+/**
+ * Danh sách KTV để HIỆN TRÊN THẺ.
+ *
+ * `staffList` dựng từ `technicianCodes`. Người bị đổi ra vẫn được giữ trong
+ * danh sách đó (quy chế 06/09/2026) — nhưng dữ liệu cũ, hoặc đơn bị gỡ tay,
+ * có thể đã mất tên họ khỏi `technicianCodes` mà chặng thì vẫn còn. Khi đó
+ * thẻ chỉ hiện người mới, quay không biết ai đã từng làm cho khách.
+ * Ghép thêm từ `segments` để không bỏ sót ai.
+ */
+const dsKtvHienThi = (s: any): any[] => {
+    const ds: any[] = Array.isArray(s?.staffList) ? [...s.staffList] : [];
+    const daCo = new Set(ds.map((st: any) => String(st?.ktvId || '').toLowerCase()).filter(Boolean));
+
+    let segs: any = s?.segments;
+    if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch { segs = []; } }
+    if (!Array.isArray(segs)) return ds;
+
+    for (const seg of segs) {
+        // ⚠️ CHỈ ghép thêm người BỊ TƯỚC quyền lợi.
+        // `segments` là của CẢ dịch vụ, trong khi `staffList` của thẻ có thể đã được
+        // lọc bớt có chủ đích — ca nối tiếp tách mỗi người một thẻ. Ghép bừa mọi
+        // ktvId là kéo đồng nghiệp ở thẻ kia sang, thành thẻ nào cũng hiện đủ mọi
+        // người và nhìn như đơn bị lặp.
+        if (seg?.voided !== true) continue;
+        const ma = String(seg?.ktvId || '').trim();
+        if (!ma || daCo.has(ma.toLowerCase())) continue;
+        daCo.add(ma.toLowerCase());
+        ds.push({ ktvId: ma, ktvName: ma, segments: [seg], _ghepTuChang: true });
+    }
+    return ds;
+};
+
+/** Mã mọi KTV có mặt trên một thẻ, kể cả người bị đổi ra. */
+const dsKtvHienThiCuaThe = (services: any[]): string[] =>
+    Array.from(new Set(
+        (services || []).flatMap((s: any) =>
+            dsKtvHienThi(s).map((st: any) => String(st?.ktvId || '').trim()).filter(Boolean))
+    ));
+
+/** Đơn này có ai bị tước quyền lợi không (bị đổi ra, huỷ không công)? */
+const coNguoiBiTuoc = (s: any): boolean =>
+    dsKtvHienThi(s).some((st: any) => (st?.segments || []).some((g: any) => g?.voided === true));
+
+/**
+ * Có vẽ khối "giờ theo từng KTV" không?
+ *
+ * Khối đó đã in đủ mã KTV, huỷ hiệu loại, dấu đã nhận đơn và ảnh selfie —
+ * đúng những thứ dãy chip ở trên in. Bật cả hai là thẻ lặp hai lần cùng một
+ * người, nên chỉ được chọn một. Một hàm duy nhất quyết định, hai nơi cùng đọc.
+ */
+const veTungNguoi = (s: any): boolean =>
+    !s?.isUtility && (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
+
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
+
+/**
+ * Dấu tích "KTV đã bấm nhận đơn" — RIÊNG cho từng KTV.
+ *
+ * Mốc nằm ở `options.acceptedByStaff[MÃ_KTV]`. Một dịch vụ gán 2 KTV thì mỗi
+ * người có mốc riêng: người này nhận rồi không làm người kia thành đã nhận.
+ * Đơn cũ (trước khi tách theo người) chỉ có `acceptedBy` + `acceptedAt`.
+ *
+ * Chỉ nhắc "chờ nhận" khi đơn đã gửi mà chưa bắt đầu — lúc khác là nhiễu.
+ */
+function AcceptTick({ options, ktvId, status }: { options: any; ktvId?: string; status?: string }) {
+    if (!ktvId) return null;
+    const opts = typeof options === 'string' ? (() => { try { return JSON.parse(options || '{}'); } catch { return {}; } })() : (options || {});
+    const key = String(ktvId).toUpperCase();
+    const at = opts.acceptedByStaff?.[key]
+        || (opts.acceptedAt && String(opts.acceptedBy || '').toUpperCase() === key ? opts.acceptedAt : null);
+
+    if (at) {
+        const t = new Date(at);
+        const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+        return (
+            <span
+                className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 py-0.5 rounded-md flex items-center gap-0.5 shrink-0"
+                title={`Đã bấm nhận đơn lúc ${hhmm}`}
+            >
+                <Check size={8} strokeWidth={4} />{hhmm}
+            </span>
+        );
+    }
+
+    if (['PREPARING', 'NEW', 'WAITING'].includes(String(status || '').toUpperCase())) {
+        return (
+            <span
+                className="text-[8px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded-md shrink-0"
+                title="KTV chưa bấm nhận đơn"
+            >
+                CHỜ NHẬN
+            </span>
+        );
+    }
+    return null;
+}
 
 const formatCompactPrice = (n: number) => {
     if (n >= 1000000) {
@@ -71,6 +169,7 @@ const WORK_TYPE_BADGE_KANBAN: Record<string, { label: string; className: string 
     TYPE_A: { label: 'A', className: 'bg-blue-100 text-blue-700 border-blue-200' },
     TYPE_B: { label: 'B', className: 'bg-purple-100 text-purple-700 border-purple-200' },
     TYPE_C: { label: 'C', className: 'bg-gray-100 text-gray-500 border-gray-200' },
+    TYPE_D: { label: 'D', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
 };
 
 const KtvTypeBadge = ({ workType }: { workType?: string }) => {
@@ -90,13 +189,21 @@ interface KanbanBoardProps {
     onConfirmAddonPayment?: (orderId: string) => void;
     selectedOrderId?: string | null;
     onContextMenu?: (e: React.MouseEvent, orderId: string, itemId?: string, guestId?: string) => void;
-    onPauseClick?: (orderId: string, itemIds: string[]) => void;
+    // Khai báo cũ ghi `itemIds: string[]` nhưng mọi nơi gọi đều truyền subOrder.
+    onPauseClick?: (orderId: string, subOrder: any) => void;
     roomTransitionTime?: number;
     onUpdateCustomerName?: (orderId: string, itemIds: string[], ktvIds: string[], newName: string) => Promise<void>;
     onReviewClick?: (service: ServiceBlock) => void;
     staffWorkTypeMap?: Record<string, string>;
     staffs?: any[];
     onSelectOrder?: (orderId: string) => void;
+    onFinishEarlyPaused?: (orderId: string, subOrder: any) => void;
+    /** Bấm "Tiếp" trên thẻ tạm dừng: chạy thẳng, không qua popup chọn hành động. */
+    onResumeClick?: (orderId: string, subOrder: any) => Promise<void> | void;
+    /** Bấm "Huỷ" trên thẻ tạm dừng — huỷ ĐƠN CON của KTV đó, không đụng bill. */
+    onCancelClick?: (orderId: string, subOrder: any) => void;
+    /** Bấm "Dừng" trên thẻ đang làm: tạm dừng thẳng, không qua popup chọn. */
+    onPauseNow?: (orderId: string, subOrder: any) => Promise<void> | void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
@@ -180,9 +287,32 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow }: KanbanBoardProps) {
+    // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
+    const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
+
+    // Dùng chung khoá cho cả Tiếp lẫn Dừng — cùng là "gọi API rồi khoá nút".
+    const handlePauseNow = async (orderId: string, subOrder: any) => {
+        if (!onPauseNow || resumingSubOrderId) return;
+        setResumingSubOrderId(subOrder.id);
+        try {
+            await onPauseNow(orderId, subOrder);
+        } finally {
+            setResumingSubOrderId(null);
+        }
+    };
+
+    const handleResume = async (orderId: string, subOrder: any) => {
+        if (!onResumeClick || resumingSubOrderId) return;
+        setResumingSubOrderId(subOrder.id);
+        try {
+            await onResumeClick(orderId, subOrder);
+        } finally {
+            setResumingSubOrderId(null);
+        }
+    };
     const [draggedSubOrderId, setDraggedSubOrderId] = useState<string | null>(null);
-    const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null } | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; ktvId: string; time: string | null; title?: string } | null>(null);
     const [editingNameSubOrderId, setEditingNameSubOrderId] = useState<string | null>(null);
     const [tempCustomName, setTempCustomName] = useState<string>('');
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -252,6 +382,19 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                     // 🔒 GUARD: KHÔNG auto-finish nếu có bất kỳ service nào đang tạm dừng (pauseStart != null)
                     const isPaused = subOrder.services.some(s => s.pauseStart);
                     if (isPaused) return;
+
+                    // 🔒 GUARD: Người VÀO THAY chưa bấm bắt đầu → chưa có đồng hồ nào để "hết giờ".
+                    // Đổi KTV xong item về IN_PROGRESS ngay, nhưng người thay còn đang đi
+                    // sang phòng; giờ kết thúc lúc này chỉ là giờ DỰ KIẾN tính từ lúc quầy
+                    // bấm Đổi. Để nhánh dưới chạy là tự chốt đơn trước khi họ kịp làm:
+                    // quan sát 11/09/2026 trên đơn WB-11092026-002 — giờ dự kiến bị ghi
+                    // lệch 7 tiếng, hiện ra "đã quá giờ", đơn nhảy sang Dọn phòng một phút
+                    // sau khi đổi và T007 được tính 101 phút cho 0 phút làm.
+                    const vaoThayChuaBatDau = subOrder.services.some((s: any) =>
+                        (s.staffList || []).some((st: any) =>
+                            (st.segments || []).some((g: any) =>
+                                g?.note === 'TAKEOVER' && !g?.actualStartTime && !g?.actualEndTime)));
+                    if (vaoThayChuaBatDau) return;
 
                     // Chỉ tính estimated end time từ services CỦA subOrder này (không phải toàn booking)
                     const estEndStr = getEstimatedEndTime(originalOrder, subOrder.services, subOrder);
@@ -324,7 +467,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                 if (subOrder.ktvIds && subOrder.ktvIds.length > 0) {
                     targetKtvIds = subOrder.ktvIds;
                 }
-                if (subOrder.originalOrder?.rating) {
+                // Đơn ra sớm: khách đã về, không còn ai chấm sao → hoàn tất luôn.
+                const earlyLeave = subOrder.services.some((s: any) => s.options?.earlyLeave === true);
+                if (subOrder.originalOrder?.rating || earlyLeave) {
                     onUpdateStatus(subOrder.bookingId, 'DONE', itemIds, true, targetKtvIds);
                 } else {
                     onUpdateStatus(subOrder.bookingId, 'FEEDBACK', itemIds, true, targetKtvIds);
@@ -446,6 +591,43 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     const cfg = getStatusConfig(subOrder.dispatchStatus || 'PREPARING');
                                     const currentCfg = STATUS_CONFIG.find(c => c.dispatchModeId.includes(subOrder.dispatchStatus)) || cfg;
                                     const isSelected = selectedOrderId === subOrder.bookingId || (subOrder.originalOrder?.parentBookingId && selectedOrderId === subOrder.originalOrder.parentBookingId);
+                                    // Khách xuống sớm, quầy đã chốt đơn → dọn phòng xong là hoàn tất luôn,
+                                    // không qua Chờ đánh giá vì khách đã về, không còn ai chấm sao.
+                                    const isEarlyLeave = services.some((s: any) => s.options?.earlyLeave === true);
+                                    // Thẻ tạm dừng đã có đủ 4 nút (Tiếp · Đổi · Kết thúc · Huỷ) nên bỏ nút Link cho đỡ chật.
+                                    const isPausedCard = services.some((s: any) => s.status === 'PAUSED');
+                                    const isCancelledCard = subOrder.dispatchStatus === 'CANCELLED'
+                                        || services.every((s: any) => s.status === 'CANCELLED');
+                                    const cancelReason = services.map((s: any) => s.options?.cancelReason).find(Boolean);
+                                    // 'WORKED' = quầy đã bật công tắc cộng giờ đã làm cho KTV.
+                                    const cancelCredited = services.some((s: any) => s.options?.cancelCredit === 'WORKED');
+                                    // KTV chấm quầy — chỉ lấy đánh giá của những KTV CÓ MẶT trên thẻ
+                                    // này. Một booking tách nhiều thẻ (mỗi khách/ca một thẻ) thì
+                                    // đánh giá của KTV thẻ bên kia không được lọt sang đây.
+                                    const ktvTrenThe = new Set(
+                                        dsKtvHienThiCuaThe(services).map((k: string) => k.toLowerCase())
+                                    );
+                                    const danhGiaQuay = (order.ktvReviewsOfReception || [])
+                                        .filter((r: any) => ktvTrenThe.has(String(r.ktv_id).toLowerCase()));
+                                    // Nhật ký thao tác — ai bấm gì, lúc nào. Trộn thêm các lần KTV bấm
+                                    // "Khách về sớm" / "Khẩn cấp" từ StaffNotifications (chỉ của KTV trên
+                                    // thẻ này), xem KanbanBoard.counterLog.logic.ts.
+                                    const counterLog = buildCounterLog(services, order.ktvReports, ktvTrenThe);
+                                    // Gộp lỗi khách tích của mọi dịch vụ trong thẻ, khử trùng theo id.
+                                    const subOrderViolations = Array.from(
+                                        new Map(
+                                            services
+                                                .flatMap((s: any) => Array.isArray(s.violations) ? s.violations : [])
+                                                .filter((v: any) => v && v.id)
+                                                .map((v: any) => [String(v.id), v])
+                                        ).values()
+                                    ) as any[];
+                                    const nextStatus = (isEarlyLeave && subOrder.dispatchStatus === 'CLEANING')
+                                        ? ('DONE' as RawStatus)
+                                        : currentCfg.next;
+                                    const nextLabel = (isEarlyLeave && subOrder.dispatchStatus === 'CLEANING')
+                                        ? '✅ Hoàn tất (ra sớm)'
+                                        : currentCfg.nextLabel;
 
                                     return (
                                         <motion.div
@@ -501,6 +683,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         </span>
                                                         {order.hasVat && (
                                                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100" title="Khách yêu cầu xuất hoá đơn VAT">VAT</span>
+                                                        )}
+                                                        {isCancelledCard && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-600 text-white" title={cancelReason ? `Lý do: ${cancelReason}` : 'Đơn đã bị huỷ'}>ĐÃ HUỶ</span>
+                                                        )}
+                                                        {isEarlyLeave && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-50 text-rose-600 border border-rose-100" title="Khách xuống sớm — quầy đã chốt đơn tại thời điểm tạm dừng. Dọn phòng xong là hoàn tất, không chờ đánh giá.">RA SỚM</span>
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
@@ -814,14 +1002,33 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                             
                                                             {/* Danh sách KTV */}
-                                                            {!s.isUtility && s.staffList && s.staffList.length > 0 && (
+                                                            {!s.isUtility && dsKtvHienThi(s).length > 0 && !veTungNguoi(s) && (
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    {s.staffList.map((st: any, idx: number) => {
-                                                                        const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
+                                                                    {dsKtvHienThi(s).map((st: any, idx: number) => {
+                                                                        const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                                                                         const startPhotoUrl = photoSegment?.startPhotoUrl;
+                                                                        const guestSlipperPhotoUrl = photoSegment?.guestSlipperPhotoUrl;
                                                                         return (
                                                                             <span key={idx} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' : 'bg-gray-100 text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>
-                                                                                <span className="flex items-center gap-0.5">👤 {(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : (st.ktvId || 'Chưa gán')} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                <span className="flex items-center gap-0.5">👤 {st.ktvId ? ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName) : 'Chưa gán'} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
+                                                                                {guestSlipperPhotoUrl && (
+                                                                                    <button
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setSelectedPhoto({
+                                                                                                url: guestSlipperPhotoUrl,
+                                                                                                ktvId: st.ktvId,
+                                                                                                title: 'Ảnh dép khách',
+                                                                                                time: photoSegment?.actualStartTime || photoSegment?.startTime
+                                                                                            });
+                                                                                        }}
+                                                                                        className="w-3.5 h-3.5 rounded-full overflow-hidden border border-emerald-400 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                        title="Xem ảnh dép khách"
+                                                                                    >
+                                                                                        <img src={guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                                                                    </button>
+                                                                                )}
                                                                                 {startPhotoUrl && (
                                                                                     <button
                                                                                         onClick={(e) => {
@@ -829,7 +1036,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                             setSelectedPhoto({
                                                                                                 url: startPhotoUrl,
                                                                                                 ktvId: st.ktvId,
-                                                                                                time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                title: 'Ảnh bắt đầu ca',
+                                                                                                time: photoSegment?.actualStartTime || photoSegment?.startTime
                                                                                             });
                                                                                         }}
                                                                                         className="w-3.5 h-3.5 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
@@ -846,35 +1054,61 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
 
                                                             {/* Hiển thị thời gian THEO TỪNG KTV */}
                                                             {!s.isUtility && (
-                                                                s.staffList && s.staffList.length > 1 ? (
+                                                                veTungNguoi(s) ? (
                                                                     <div className="space-y-1 mt-1">
-                                                                        {s.staffList.map((st: any, stIdx: number) => {
+                                                                        {dsKtvHienThi(s).map((st: any, stIdx: number) => {
                                                                             const seg = st?.segments?.[0];
                                                                             const ktvStart = seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart;
                                                                             // 🔥 FIX: Luôn tính dynamic end time từ ktvStart thực tế, không dùng seg.endTime cũ
                                                                             const ktvEnd = seg?.actualEndTime ? seg.actualEndTime : getDynamicEndTime(ktvStart, Number(seg?.duration) || duration);
                                                                             return (
-                                                                                <div key={stIdx} className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
+                                                                                /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
+                                                                                   hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
+                                                                                   ngoài thẻ. */
+                                                                                <div key={stIdx} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{(st.ktvId?.startsWith('EXT') || st.ktvId?.startsWith('C_')) ? (st.ktvName || st.ktvId) : st.ktvId} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                        <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
+                                                                                        <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
-                                                                                            const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl);
+                                                                                            const photoSegment = st.segments?.find((seg: any) => seg.startPhotoUrl || seg.guestSlipperPhotoUrl);
                                                                                             if (!photoSegment) return null;
                                                                                             return (
-                                                                                                <button
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        setSelectedPhoto({
-                                                                                                            url: photoSegment.startPhotoUrl,
-                                                                                                            ktvId: st.ktvId,
-                                                                                                            time: photoSegment.actualStartTime || photoSegment.startTime
-                                                                                                        });
-                                                                                                    }}
-                                                                                                    className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
-                                                                                                    title="Xem ảnh xác nhận khách"
-                                                                                                >
-                                                                                                    <img src={photoSegment.startPhotoUrl} alt="Selfie" className="w-full h-full object-cover" />
-                                                                                                </button>
+                                                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                                                    {photoSegment.guestSlipperPhotoUrl && (
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setSelectedPhoto({
+                                                                                                                    url: photoSegment.guestSlipperPhotoUrl,
+                                                                                                                    ktvId: st.ktvId,
+                                                                                                                    title: 'Ảnh dép khách',
+                                                                                                                    time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                                });
+                                                                                                            }}
+                                                                                                            className="w-4 h-4 rounded-full overflow-hidden border border-emerald-400 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                                            title="Xem ảnh dép khách"
+                                                                                                        >
+                                                                                                            <img src={photoSegment.guestSlipperPhotoUrl} alt="Dép" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                    {photoSegment.startPhotoUrl && (
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setSelectedPhoto({
+                                                                                                                    url: photoSegment.startPhotoUrl,
+                                                                                                                    ktvId: st.ktvId,
+                                                                                                                    title: 'Ảnh bắt đầu ca',
+                                                                                                                    time: photoSegment.actualStartTime || photoSegment.startTime
+                                                                                                                });
+                                                                                                            }}
+                                                                                                            className="w-4 h-4 rounded-full overflow-hidden border border-indigo-300 hover:scale-110 active:scale-95 transition-transform shrink-0"
+                                                                                                            title="Xem ảnh xác nhận khách"
+                                                                                                        >
+                                                                                                            <img src={photoSegment.startPhotoUrl} alt="Selfie" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             );
                                                                                         })()}
                                                                                         {s.options?.serviceNamesForKtvs?.[st.ktvId] && (
@@ -882,8 +1116,23 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                                 {s.options.serviceNamesForKtvs[st.ktvId]}
                                                                                             </span>
                                                                                         )}
+                                                                                        {seg?.voided && (
+                                                                                            <span className="text-[8px] font-black text-rose-500 bg-rose-50 border border-rose-100 px-1 py-0.5 rounded shrink-0" title={seg.note === 'EARLY_LEAVE_NOT_STARTED'
+                                                                                                ? 'Khách về sớm trước lượt KTV này — không tính tiền, không tính giờ tích luỹ, mất lượt tua'
+                                                                                                : 'KTV bị đổi ra — không tính tiền, không tính giờ tích luỹ, mất lượt tua'}>
+                                                                                                {seg.note === 'EARLY_LEAVE_NOT_STARTED'
+                                                                                                    ? 'CHƯA LÀM · KHÁCH VỀ SỚM'
+                                                                                                    : `ĐÃ ĐỔI${(Number(seg.customCommissionDuration) || 0) > 0 ? ` · ${Number(seg.customCommissionDuration)}p` : ''}`}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                     <div className="flex items-center gap-1.5">
+                                                                                        {/* KTV bị đổi ra: giữ tên trong đơn để biết ai từng làm cho khách,
+                                                                                            kèm số phút đã làm — dù tiền và giờ tích luỹ đều bằng 0. */}
+                                                                                        {/* Luôn in khoảng giờ, kể cả người bị đổi ra — quầy cần biết họ
+                                                                                            ở trong phòng từ lúc nào tới lúc nào. Không gạch ngang, không
+                                                                                            làm mờ: nhãn "ĐÃ ĐỔI" ở cụm bên trái đã nói rõ khoảng này
+                                                                                            không tính công. */}
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvStart)}</span>
                                                                                         <span className="text-indigo-300 text-[8px]">→</span>
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvEnd)}</span>
@@ -933,8 +1182,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             }
                                                         </div>
 
-                                                        {/* TAG 2: Đánh giá (Tính theo từng Guest) */}
-                                                        {subOrder.guests && subOrder.guests.length > 0 ? (
+                                                        {/* TAG 2: Đánh giá (Tính theo từng Guest) — đơn ra sớm thì bỏ,
+                                                            khách đã về nên không có ai chấm sao để mà chờ. */}
+                                                        {isEarlyLeave ? (
+                                                            <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border bg-rose-50 text-rose-600 border-rose-200">
+                                                                <Check size={12} /> Khách xuống sớm — không chờ đánh giá
+                                                            </div>
+                                                        ) : subOrder.guests && subOrder.guests.length > 0 ? (
                                                             <div className="flex flex-col gap-1.5">
                                                                 {subOrder.guests.map((g: any, index: number) => (
                                                                     <div key={g.id} className="flex flex-col gap-1.5 border rounded-lg px-2.5 py-1.5 bg-white shadow-sm">
@@ -993,6 +1247,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                         <><Star size={12} /> Đánh giá: Chờ khách...</>
                                                                     )}
                                                                 </div>
+
                                                                 {!subOrder.rating && (
                                                                     <div className="flex flex-col items-center justify-center gap-1 mt-3 pb-1">
                                                                         <div className="flex items-center justify-between w-full">
@@ -1061,39 +1316,148 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        subOrder.rating && (() => {
-                                                            const currentRating = Math.min(subOrder.rating, 4);
-                                                            const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
-                                                            const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
-                                                            return (
-                                                                <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${ratingColor}`}>
-                                                                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
-                                                                    <div className="flex items-center gap-1">
-                                                                        {[1, 2, 3, 4].map((s) => (
-                                                                            <Star key={s} size={16} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
-                                                                        ))}
-                                                                        <span className="ml-1.5 text-[12px] font-black">{ratingLabel}</span>
-                                                                    </div>
+                                                        subOrder.rating ? (
+                                                            <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${
+                                                                Math.min(subOrder.rating, 4) >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 
+                                                                Math.min(subOrder.rating, 4) >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : 
+                                                                Math.min(subOrder.rating, 4) >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 
+                                                                'text-red-600 bg-red-50 border-red-200'
+                                                            }`}>
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
+                                                                <div className="flex items-center gap-1">
+                                                                    {[1, 2, 3, 4].map((s) => (
+                                                                        <Star key={s} size={16} fill={Math.min(subOrder.rating, 4) >= s ? 'currentColor' : 'none'} strokeWidth={Math.min(subOrder.rating, 4) >= s ? 0 : 2} className={Math.min(subOrder.rating, 4) >= s ? '' : 'opacity-30'} />
+                                                                    ))}
+                                                                    <span className="ml-1.5 text-[12px] font-black">{
+                                                                        Math.min(subOrder.rating, 4) >= 4 ? 'Xuất sắc' : 
+                                                                        Math.min(subOrder.rating, 4) >= 3 ? 'Tốt' : 
+                                                                        Math.min(subOrder.rating, 4) >= 2 ? 'Khá' : 'Tệ'
+                                                                    }</span>
                                                                 </div>
-                                                            );
-                                                        })()
+                                                            </div>
+                                                        ) : null
                                                     )
                                                 )}
 
-                                                <div className="flex items-center gap-2">
+                                                {/* KTV chấm quầy (màn Reward bên app KTV). Đặt ngoài nhánh Dọn
+                                                    phòng/Đánh giá để thẻ Hoàn tất vẫn hiện — KTV thường chấm
+                                                    ở đúng lúc đơn sắp xong. */}
+                                                {danhGiaQuay.length > 0 && (
+                                                    <div className="mb-3 flex flex-col gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-violet-700">
+                                                            KTV đánh giá quầy
+                                                        </span>
+                                                        {danhGiaQuay.map((r: any, k: number) => (
+                                                            <div key={k} className="flex flex-col gap-0.5">
+                                                                <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800">
+                                                                    {r.ktv_id}
+                                                                    <span className="text-amber-500 tracking-tight" title={`${r.rating}/5 sao`}>
+                                                                        {'★'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}
+                                                                        <span className="text-gray-300">{'★'.repeat(5 - Math.max(0, Math.min(5, Number(r.rating) || 0)))}</span>
+                                                                    </span>
+                                                                </span>
+                                                                {r.note && (
+                                                                    <span className="text-[11px] font-medium leading-snug text-violet-700">“{r.note}”</span>
+                                                                )}
+                                                                {Array.isArray(r.images) && r.images.length > 0 && (
+                                                                    <div className="flex gap-1">
+                                                                        {r.images.map((u: string, j: number) => (
+                                                                            <button
+                                                                                key={j}
+                                                                                onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: u, ktvId: r.ktv_id, time: r.created_at }); }}
+                                                                                className="w-8 h-8 rounded-md overflow-hidden border border-violet-200"
+                                                                                title="Xem ảnh KTV gửi kèm"
+                                                                            >
+                                                                                <img src={u} alt="Ảnh đánh giá" className="w-full h-full object-cover" />
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {counterLog.length > 0 && (
+                                                    <details className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                                                        {/* Dòng tiêu đề chỉ còn đúng một chữ "Thao tác" — chi tiết
+                                                            nằm ở danh sách bên dưới theo dạng: giờ · người · việc. */}
+                                                        <summary className="cursor-pointer select-none text-[10px] font-black uppercase tracking-wider text-gray-600 leading-snug">
+                                                            Thao tác
+                                                        </summary>
+                                                        <div className="mt-1 flex flex-col gap-0.5">
+                                                            {counterLog.map((c: any, k: number) => {
+                                                                const line = counterLogLine(c);
+                                                                return (
+                                                                    <span key={k} className="text-[10px] font-medium text-gray-600 leading-snug">
+                                                                        {formatToHourMinute(c.at)}{' '}
+                                                                        {/* Dấu * = tên lấy theo tab đang mở vì request không mang
+                                                                            phiên máy chủ (lib/counter-action-log.ts). */}
+                                                                        {line.actor && (
+                                                                            <span title={line.unverified ? UNVERIFIED_ACTOR_TITLE : undefined}>
+                                                                                {line.actor}{line.unverified ? '*' : ''}{' '}
+                                                                            </span>
+                                                                        )}
+                                                                        {line.label}
+                                                                        {/* Ghi chú là chỗ DUY NHẤT nói đơn đổi từ ai sang ai
+                                                                            ("T069 → T007"). Bỏ nó đi thì nhật ký chỉ còn
+                                                                            "Đổi KTV", không truy được ai ra ai vào. */}
+                                                                        {line.note ? <span className="font-bold text-gray-700"> {line.note}</span> : ''}
+                                                                        {line.suffix ? <span className="text-gray-400"> · {line.suffix}</span> : ''}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </details>
+                                                )}
+
+                                                {/* Đặt NGOÀI nhánh Dọn phòng/Đánh giá — thẻ đã huỷ và thẻ hoàn tất
+                                                    không đi qua nhánh đó nên nhét vào trong là không bao giờ hiện. */}
+                                                {isCancelledCard && (
+                                                    <div className="flex flex-col gap-1 rounded-lg px-2.5 py-1.5 border bg-rose-50 border-rose-200 mb-3">
+                                                        <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider">
+                                                            <Trash2 size={11} /> Đã huỷ
+                                                        </span>
+                                                        <span className="text-[11px] font-medium text-rose-600 leading-snug">
+                                                            {cancelReason ? `Lý do: ${cancelReason}` : 'Không ghi lý do'}
+                                                        </span>
+                                                        <span className="text-[10px] font-bold text-rose-500">
+                                                            {cancelCredited ? 'Có cộng giờ đã làm cho KTV' : 'KTV không được tính tiền, giờ và tua'}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {/* Khách tích ô góp ý nào thì lễ tân phải thấy ngay: việc tích lỗi
+                                                    kéo trần đánh giá xuống 3 sao (trừ 25% tiền KTV), nên lý do bị
+                                                    trừ không được phép vô hình. */}
+                                                {subOrderViolations.length > 0 && (
+                                                    <div className="flex flex-col gap-1 rounded-lg px-2.5 py-1.5 border bg-rose-50 border-rose-200 mb-3">
+                                                        <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider">
+                                                            <AlertCircle size={11} /> Khách phản ánh ({subOrderViolations.length})
+                                                        </span>
+                                                        {subOrderViolations.map((v: any) => (
+                                                            <span key={v.id} className="text-[11px] font-medium text-rose-600 leading-snug">
+                                                                • {v.text || v.id}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className={`gap-2 w-full ${services.some((s: any) => s.status === 'PAUSED') ? 'grid grid-cols-2' : 'flex items-center'}`}>
                                                     {(() => {
                                                         const unpaidAmount = services.reduce((acc: number, svc: any) => acc + (svc.options?.isPaid === false ? ((svc.price || 0) * (svc.quantity || 1)) : 0), 0);
                                                         if (unpaidAmount > 0 && onConfirmAddonPayment) {
                                                             return (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); onConfirmAddonPayment(order.id); }}
-                                                                    className="flex-1 py-2.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-2 shadow-sm bg-orange-500 text-white hover:bg-orange-600 active:scale-95"
+                                                                    className={`py-2.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-2 shadow-sm bg-orange-500 text-white hover:bg-orange-600 active:scale-95 ${services.some((s: any) => s.status === 'PAUSED') ? 'col-span-2' : 'flex-1'}`}
                                                                 >
                                                                     Đã thu {formatVND(unpaidAmount)}
                                                                 </button>
                                                             );
                                                         }
-                                                        if (currentCfg.next) {
+                                                        const anyPaused = services.some((s: any) => s.status === 'PAUSED');
+                                                        if (nextStatus && !anyPaused) {
                                                             return (
                                                                 <button
                                                                     onClick={e => { 
@@ -1103,7 +1467,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             setKtvSelectorState({
                                                                                 isOpen: true,
                                                                                 orderId: order.id,
-                                                                                nextStatus: currentCfg.next!,
+                                                                                nextStatus: nextStatus!,
                                                                                 itemIds,
                                                                                 availableKtvs: subOrder.ktvIds
                                                                             });
@@ -1112,12 +1476,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             if (subOrder.ktvIds && subOrder.ktvIds.length === 1) {
                                                                                 targetKtvIds = subOrder.ktvIds;
                                                                             }
-                                                                            onUpdateStatus(order.id, currentCfg.next!, itemIds, false, targetKtvIds); 
+                                                                            onUpdateStatus(order.id, nextStatus!, itemIds, false, targetKtvIds); 
                                                                         } 
                                                                     }}
                                                                     className={`flex-1 py-2.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-2 shadow-sm ${currentCfg.activeBg || 'bg-indigo-600'} text-white hover:opacity-90 active:scale-95`}
                                                                 >
-                                                                    {currentCfg.nextLabel}
+                                                                    {nextLabel}
                                                                 </button>
                                                             );
                                                         }
@@ -1128,35 +1492,74 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                         if (isPaused) {
                                                             return (
                                                                 <>
+                                                                    {/* Thẻ tạm dừng đã có sẵn 4 nút, nên "Tiếp" chạy thẳng —
+                                                                        không mở popup bắt chọn lại Tiếp tục / Đổi KTV nữa. */}
                                                                     <button
-                                                                        onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
-                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-green-600 bg-green-50 hover:bg-green-100 transition-all border border-green-100 flex items-center gap-1"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (onResumeClick) handleResume(order.id, subOrder);
+                                                                            else onPauseClick(order.id, subOrder);
+                                                                        }}
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-green-600 bg-green-50 hover:bg-green-100 transition-all border border-green-100 flex items-center justify-center w-full gap-1 disabled:opacity-50"
+                                                                        disabled={resumingSubOrderId === subOrder.id}
                                                                         title="Tiếp tục"
                                                                     >
-                                                                        <PlayCircle size={12} /> Tiếp
+                                                                        <PlayCircle size={12} /> {resumingSubOrderId === subOrder.id ? '...' : 'Tiếp'}
                                                                     </button>
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
-                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center justify-center w-full gap-1"
                                                                         title="Rút/Đổi KTV"
                                                                     >
                                                                         <UserMinus size={12} /> Đổi
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            if (window.confirm('Xác nhận kết thúc đơn sớm? KTV sẽ được tính lương theo đúng thời gian đã làm.')) {
+                                                                                if (onFinishEarlyPaused) onFinishEarlyPaused(order.id, subOrder);
+                                                                            }
+                                                                        }}
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-rose-600 bg-rose-50 hover:bg-rose-100 transition-all border border-rose-100 flex items-center justify-center w-full gap-1"
+                                                                        title="Kết thúc đơn"
+                                                                    >
+                                                                        <Square size={12} /> Kết thúc
+                                                                    </button>
+                                                                    {/* Thay cho nút "Link" — đơn đang tạm dừng thì việc cần
+                                                                        là quyết định số phận đơn, không phải gửi link đánh giá.
+                                                                        Link vẫn còn ở thẻ thường và ở menu chuột phải. */}
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (onCancelClick) onCancelClick(order.id, subOrder);
+                                                                        }}
+                                                                        className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all border border-gray-200 flex items-center justify-center w-full gap-1"
+                                                                        title="Huỷ đơn con này"
+                                                                    >
+                                                                        <Trash2 size={12} /> Huỷ
                                                                     </button>
                                                                 </>
                                                             );
                                                         }
                                                         return (
                                                             <button
-                                                                onClick={(e) => { e.stopPropagation(); onPauseClick(order.id, subOrder); }}
-                                                                className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1"
-                                                                title="Tạm dừng / Đổi KTV"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Dừng là dừng luôn, không hỏi lại. Muốn đổi KTV thì
+                                                                    // dừng xong bấm "Đổi" trên thẻ đã chuyển sang tạm dừng.
+                                                                    if (onPauseNow) handlePauseNow(order.id, subOrder);
+                                                                    else onPauseClick(order.id, subOrder);
+                                                                }}
+                                                                disabled={resumingSubOrderId === subOrder.id}
+                                                                className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all border border-amber-100 flex items-center gap-1 disabled:opacity-50"
+                                                                title="Tạm dừng ngay"
                                                             >
-                                                                <AlertCircle size={12} /> Dừng
+                                                                <AlertCircle size={12} /> {resumingSubOrderId === subOrder.id ? '...' : 'Dừng'}
                                                             </button>
                                                         );
                                                     })()}
                                                     
-                                                    {(!subOrder.rating && !['DONE', 'CANCELLED'].includes(subOrder.dispatchStatus)) && (
+                                                    {(!subOrder.rating && !isPausedCard && !['DONE', 'CANCELLED'].includes(subOrder.dispatchStatus)) && (
                                                         <button 
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1164,7 +1567,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
                                                                 window.open(ratingUrl, '_blank');
                                                             }}
-                                                            className="px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center gap-1"
+                                                            className={`px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center justify-center gap-1 ${services.some((s: any) => s.status === 'PAUSED') ? 'w-full' : ''}`}
                                                             title="Link đánh giá"
                                                         >
                                                             <QrCode size={12} /> Link
@@ -1210,7 +1613,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                             {/* Header */}
                             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                                 <div>
-                                    <h3 className="font-black text-gray-900 text-sm">Ảnh xác nhận khách bắt đầu ca</h3>
+                                    <h3 className="font-black text-gray-900 text-sm">{selectedPhoto.title || 'Ảnh xác nhận khách bắt đầu ca'}</h3>
                                     <p className="text-xs text-gray-500 font-bold">Kỹ thuật viên: {selectedPhoto.ktvId}</p>
                                 </div>
                                 <button
@@ -1225,7 +1628,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                             <div className="relative aspect-[3/4] bg-gray-50 flex items-center justify-center">
                                 <img
                                     src={selectedPhoto.url}
-                                    alt="Ảnh xác nhận khách"
+                                    alt={selectedPhoto.title || "Ảnh xác nhận khách"}
                                     className="w-full h-full object-contain"
                                 />
                             </div>

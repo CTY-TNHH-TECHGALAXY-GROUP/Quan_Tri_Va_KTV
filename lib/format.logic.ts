@@ -26,6 +26,25 @@ export const formatCurrency = (amount: number | string | null | undefined): stri
 };
 
 /**
+ * Số tiền VNĐ cho MÀN HÌNH — CẮT phần lẻ, KHÔNG làm tròn.
+ *
+ * Tiền tua ra số lẻ là đúng nghiệp vụ (phút × đơn giá / 60, thuế 10%), nhưng
+ * KTV không tiêu được 0,719đ nên màn hình không hiện phần đó. Cắt chứ không
+ * làm tròn: làm tròn lên là hiện nhiều hơn số KTV thật sự có.
+ *
+ * ⚠️ CHỈ dùng để HIỂN THỊ. Mọi phép cộng/trừ phải giữ số thật, nếu không thì
+ * tổng của các số đã cắt lại lệch với số dư — đúng lỗi 1,28đ của T016.
+ *
+ * `|| 0` để `Math.trunc(-0.5)` (= -0) không hiện ra "-0".
+ */
+export const formatVnd = (amount: number | string | null | undefined): string => {
+  const num = Number(amount);
+  if (!Number.isFinite(num)) return '0đ';
+  return `${(Math.trunc(num) || 0).toLocaleString(LOCALE)}đ`;
+};
+
+
+/**
  * Format Date hoặc chuỗi ngày thành DD/MM/YYYY
  */
 export const formatDate = (dateInput: string | Date | null | undefined): string => {

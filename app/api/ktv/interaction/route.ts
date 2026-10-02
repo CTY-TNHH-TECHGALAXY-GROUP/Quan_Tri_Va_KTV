@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvInteractionSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
+import { logKtvReport } from '@/lib/counter-action-log';
 
 /**
  * API Gửi tương tác từ KTV
@@ -75,6 +76,17 @@ export async function POST(request: Request) {
             employeeId: techCode || null
         });
         
+        // 4. Reports that stop the order also go into the card's action log, so the
+        //    Kanban reads "T007 Khách về sớm" / "T007 Khẩn cấp" instead of a bare
+        //    "Tạm dừng". A custom message is the room-issue report (broken bed,
+        //    blocked toilet): it does not stop the order, so it is not logged.
+        const reportAction = type === 'EARLY_EXIT' ? 'KTV_EARLY_EXIT'
+            : (type === 'EMERGENCY' && !customMessage) ? 'KTV_EMERGENCY'
+            : null;
+        if (reportAction) {
+            await logKtvReport(supabase, bookingId, techCode || null, reportAction);
+        }
+
         console.log(`✅ [API KTV Interaction] Notification stored & push handled successfully.`);
         console.log(`🔔 [API KTV Interaction] Booking ${bookingId} (${roomInfo}) sent ${type}: ${finalMessage}`);
 

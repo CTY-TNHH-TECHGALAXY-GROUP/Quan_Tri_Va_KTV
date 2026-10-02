@@ -289,11 +289,12 @@ UPDATE "Staff" SET "work_type_effective_from" = '2020-01-01'
 +};
 
 +// TYPE_D Discipline: Penalty hours (cài đặt được trên Admin)
++// Phân định theo MỐC 07:00, không theo "có báo / không báo" — xem §5.3
 +export const TYPE_D_DISCIPLINE_PENALTIES = {
-+    ABSENT_NO_NOTICE: 10,
-+    ABSENT_EARLY_NOTICE: 5,
-+    LATE_NO_UPDATE: 5,
-+    ORDER_REJECT_MULTIPLIER: 3
++    ABSENT_NO_NOTICE: 10,      // Bỏ lịch / báo trễ TỪ 07:00
++    ABSENT_EARLY_NOTICE: 5,    // Báo vắng hoặc trễ TRƯỚC 06:59
++    LATE_NO_UPDATE: 5,         // ⚠️ CHƯA CHỐT còn dùng hay bỏ — xem §5.3
++    ORDER_REJECT_MULTIPLIER: 3 // Từ chối tua: hệ số × thời lượng tua
 +} as const;
 
 +// TYPE_D Commission: Rating-based deduction — THANG 4★ (cài đặt được trên Admin)
@@ -331,14 +332,37 @@ UPDATE "Staff" SET "work_type_effective_from" = '2020-01-01'
 | `ktv_deposit_amount_TYPE_D` | `1000000` | Tiền cọc ví (= bằng A/B) | ✅ |
 | `enable_ktv_bonus_TYPE_D` | `true` | Bật/tắt bonus | ✅ Toggle |
 | `ktv_type_d_bonus_points` | `20` | Điểm bonus mỗi tua rating **≥ 4★** | ✅ |
-| `ktv_type_d_rating_deduction` | `{4:0, 3:0.25, 2:0.5, 1:0.75, 0:0}` | Bảng khấu trừ (thang 4★) | ✅ |
+| `ktv_type_d_rating_deduction` | `{"4":0,"3":0.25,"2":0.5,"1":0.75,"0":0}` | Bảng khấu trừ (thang 4★). **Lưu dạng PHÂN SỐ 0–1, KHÔNG phải phần trăm** — xem cảnh báo dưới bảng | ✅ |
 | `ktv_bonus_rate_TYPE_D` | `1000` | Quy đổi 1 điểm bonus → VNĐ. Khớp convention hiện có | ✅ |
-| `ktv_type_d_discipline_rules` | `{ABSENT_NO_NOTICE:10,...}` | Mức trừ giờ kỷ luật | ✅ |
+| `ktv_type_d_discipline_rules` | `{"ABSENT_NO_NOTICE":10,"ABSENT_EARLY_NOTICE":5,"LATE_NO_UPDATE":5,"ORDER_REJECT_MULTIPLIER":3}` | Mức trừ giờ kỷ luật. **Lưu dạng đối tượng 4 khoá**, không phải mảng | ✅ |
 | `ktv_type_d_internal_fund` | `250000` | Quỹ nội bộ/tháng | ✅ |
 | `ktv_type_d_internal_fund_enabled` | `true` | Toggle quỹ nội bộ | ✅ Toggle |
 | `ktv_type_d_reactivation_fee` | `1000000` | Phí kích hoạt lại | ✅ |
 | ~~`laundry_fee_TYPE_D`~~ | — | ⚠️ **KEY NÀY KHÔNG TỒN TẠI** — xem cảnh báo bên dưới | ❌ |
 | ~~`maintenance_fee_TYPE_D`~~ | — | ⚠️ **KEY NÀY KHÔNG TỒN TẠI** — xem cảnh báo bên dưới | ❌ |
+
+> [!CAUTION]
+> **[02/09] Đơn vị bảng khấu trừ sao: PHÂN SỐ, không phải phần trăm.**
+>
+> Code tính tiền là `finalPay = basePay × (1 - d)`, nên `d` phải là **phân số 0–1**:
+>
+> | Sao | Giá trị lưu | Ý nghĩa | KTV nhận |
+> |---|---|---|---|
+> | 4★ | `0` | không khấu trừ | 100% |
+> | 3★ | `0.25` | trừ 25% | 75% |
+> | 2★ | `0.5` | trừ 50% | 50% |
+> | 1★ | `0.75` | trừ 75% | 25% |
+> | 0★ (chưa chấm) | `0` | không khấu trừ | **100%** — xem R2 |
+>
+> **Sai lầm đã xảy ra hai lần trên production:**
+> - Lưu `{"0":90,...}` → `basePay × (1-90)` = **âm 89 lần** tiền gốc
+> - Lưu `{"0":1,"1":1,"2":1,"3":1,"4":0}` → mọi tua **không phải 4★ đều trả 0đ**
+>
+> Trường hợp thứ hai nguy hiểm nhất vì nó trông có vẻ hợp lý. Khách thường chấm sao **sau** khi đơn xong, nên lúc vừa DONE thì `rating = 0` — nghĩa là **gần như mọi tua vừa hoàn thành đều trả 0đ**.
+>
+> Giao diện có thể cho admin nhập theo phần trăm cho dễ, nhưng **phải quy đổi sang phân số trước khi lưu** và nhân 100 khi hiển thị. Chỉ làm quy đổi ở **một chỗ duy nhất**.
+>
+> Bộ test bắt buộc có case: **3★ phải cho ra đúng 75% tiền gốc**, và **0★ phải cho ra 100%**.
 
 > **Quy ước key `_TYPE_D` chỉ chạy được cho MỘT NHÓM key.** `KtvCommissionService.getCommissionConfig()` sinh key theo `typeSuffix = '_TYPE_' + workType.replace('TYPE_','')` ([KtvCommissionService.ts:37](../lib/services/KtvCommissionService.ts#L37)), nên `ktv_deposit_amount_TYPE_D`, `enable_ktv_bonus_TYPE_D`, `ktv_shift_*_bonus_TYPE_D`, `ktv_bonus_rate_TYPE_D` chạy được ngay, **không cần sửa gì**.
 
@@ -468,16 +492,61 @@ Quy tắc Bonus TYPE_D:
 
 ### 5.3 [NEW] `KtvTypeDDisciplineService.ts` — Kỷ luật trừ giờ
 
+> **[CẬP NHẬT 02/09] Luật đã được chốt lại theo mốc giờ, không theo "có báo / không báo".**
+
+### Luồng lịch làm việc
+
 ```
-Bảng phạt TYPE_D (cài đặt được trên Admin):
-┌──────────────────────────────────────────────────────┐
-│ Bỏ lịch đã đăng ký (không báo / báo trễ)  → -10 giờ │
-│ Báo vắng đúng hạn (trước 7h sáng)         → -5 giờ  │
-│ Đến trễ không cập nhật nhóm                → -5 giờ  │
-│ Từ chối tua đã gán                         → -3× giờ │
-│   (VD: gói 60p → -3h, gói 90p → -4.5h)              │
-└──────────────────────────────────────────────────────┘
+Trước 00:00        →  KTV đăng ký ngày đi làm HÔM SAU
+                      (không đăng ký = không có lịch = không bị phạt bỏ lịch)
+
+Trước 06:59        →  Báo vắng hoặc báo trễ  →  phạt −5 giờ
+Từ 07:00 trở đi    →  Bỏ lịch, hoặc báo trễ  →  phạt −10 giờ
 ```
+
+Điểm mấu chốt: **mốc phân định là 07:00**, không phải chuyện có thông báo hay không. Báo lúc 07:30 vẫn là báo, nhưng vẫn chịu mức −10 giờ.
+
+### Bảng phạt
+
+| Mã | Tình huống | Mức phạt |
+|---|---|---|
+| `ABSENT_NO_NOTICE` | Bỏ lịch, hoặc báo vắng/trễ **từ 07:00 trở đi** | **−10 giờ** |
+| `ABSENT_EARLY_NOTICE` | Báo vắng hoặc báo trễ **trước 06:59** | **−5 giờ** |
+| `ORDER_REJECT_MULTIPLIER` | Từ chối tua đã gán | **−(hệ số × thời lượng tua)**<br>hệ số 3: tua 60p → −3h; tua 90p → −4,5h |
+
+Tất cả đều cài đặt được trên Admin tab D.
+
+> [!WARNING]
+> **Tên hằng số không còn khớp nghĩa.** `ABSENT_NO_NOTICE` giờ bao gồm cả trường hợp **có báo nhưng sau 07:00**. Giữ nguyên tên để khỏi phải sửa dữ liệu đang chạy, nhưng nhãn trên giao diện **phải mô tả theo mốc giờ**, không dùng chữ "không thông báo":
+>
+> | Mã | Nhãn hiển thị đúng |
+> |---|---|
+> | `ABSENT_NO_NOTICE` | Bỏ lịch / báo trễ (từ 07:00) |
+> | `ABSENT_EARLY_NOTICE` | Báo vắng hoặc trễ (trước 06:59) |
+> | `ORDER_REJECT_MULTIPLIER` | Từ chối tua đã gán (hệ số × thời lượng) |
+>
+> Tiêu đề khối là **"Kỷ luật trừ giờ tích lũy"** — không phải "kỷ luật trễ giờ". Khối này bao gồm cả nghỉ và từ chối tua, không riêng đi muộn.
+
+> [!CAUTION]
+> **`LATE_NO_UPDATE` (−5 giờ) — CẦN CHỐT: còn dùng hay bỏ?**
+>
+> Bảng cũ có mục *"Đến trễ không cập nhật nhóm → −5 giờ"*. Nhưng luật mới đã xếp toàn bộ tình huống "trễ" vào hai mốc 06:59 / 07:00 rồi, nên mục này **chồng lấn**: một KTV đến trễ lúc 07:30 sẽ rơi vào cả `ABSENT_NO_NOTICE` (−10h) lẫn `LATE_NO_UPDATE` (−5h) — phạt hai lần cho một hành vi.
+>
+> Hai hướng: **(a)** bỏ hẳn `LATE_NO_UPDATE`, gỡ khỏi giao diện và khỏi `ktv_type_d_discipline_rules`; **(b)** giữ lại nhưng định nghĩa rõ nó áp cho tình huống nào khác biệt.
+>
+> Chưa chốt thì **đừng code phần trừ giờ cho trường hợp đi trễ**.
+
+> [!IMPORTANT]
+> **Phụ thuộc chưa có: luồng ĐĂNG KÝ LỊCH.**
+>
+> Toàn bộ luật trên dựa trên khái niệm *"lịch đã đăng ký"*. Không có đăng ký thì không xác định được thế nào là "bỏ lịch", và `ABSENT_NO_NOTICE` không có căn cứ để kích hoạt.
+>
+> Plan hiện **chưa có** phần này: chưa có màn hình cho KTV đăng ký ngày làm hôm sau, chưa có bảng lưu, chưa có mốc khoá 00:00.
+>
+> Cần xác định trước khi code `KtvTypeDDisciplineService`:
+> 1. Hệ thống đã có luồng đăng ký lịch chưa (kiểm tra `app/api/ktv/shift`, `app/api/ktv/leave`), hay phải xây mới?
+> 2. Nếu xây mới thì thuộc phase nào, và cần bảng/API gì?
+> 3. KTV không đăng ký gì cả thì xử lý ra sao — coi như nghỉ có phép, hay vẫn tính bỏ lịch?
 
 **Methods:**
 - `deductHours(supabase, staffId, penaltyType, bookingDurationMins?)`: Ghi `KTVServiceHoursLedger`
@@ -879,6 +948,8 @@ Cron `reset-type-d-hours` giờ chỉ còn nhiệm vụ **chốt sổ lưu trữ
 | **13** | Tiền cọc TYPE_D? | **1.000.000đ** (= bằng A/B) | Sửa từ 500k lên 1tr |
 | **14** | Phí giặt đồ & bảo trì: chung hay riêng? | **RIÊNG** — chỗ nào liên quan tiền/bonus phải dùng riêng, không chung chạ | **Hướng (b)**: cần sửa code `.eq()` cứng → resolve theo `work_type`. Rủi ro hồi quy — test lại A/B/C |
 | ~~**15**~~ | Giờ tích lũy: lưu TurnQueue hay JOIN? | **JOIN lúc đọc** ✅ | Đã cập nhật §2.4, §3, bỏ PHASE B |
+| **17** | **`LATE_NO_UPDATE` (−5h) còn dùng hay bỏ?** | Luật mới (02/09) xếp mọi tình huống "trễ" vào hai mốc 06:59 / 07:00, nên mục này chồng lấn — đến trễ 07:30 sẽ dính cả −10h lẫn −5h. Bỏ hẳn, hay định nghĩa lại cho khác biệt? |
+| **18** | **Luồng đăng ký lịch làm việc — đã có hay phải xây?** | Luật phạt dựa trên "lịch đã đăng ký" (đăng ký trước 00:00 cho ngày hôm sau), nhưng plan chưa có phần này. Cần kiểm `app/api/ktv/shift` và `app/api/ktv/leave` xem tái dùng được không. Kèm câu hỏi: KTV không đăng ký gì thì tính nghỉ có phép hay bỏ lịch? |
 | **16** | §2.3 "phạt duy nhất" vs §5.3 "4 loại phạt"? | **CẦN LÀM RÕ khi code** — 3 tầng phạt chồng nhau cho cùng 1 lỗi | Ghi nhận, không chặn code |
 
 ---

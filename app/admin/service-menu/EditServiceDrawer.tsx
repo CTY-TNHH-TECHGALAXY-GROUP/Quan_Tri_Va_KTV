@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Save, Image as ImageIcon, Tags, Target, Settings2, FileText, Globe, CopyCheck } from 'lucide-react';
 import { Service, FocusConfig } from '@/lib/types';
-import { updateService, updateServiceBulkSync } from './actions';
+import { updateService, updateServiceBulkSync, createService } from './actions';
 
 interface EditServiceDrawerProps {
   isOpen: boolean;
@@ -41,6 +41,12 @@ const FOCUS_AREAS = [
   { id: 'FOOT', label: 'Bàn chân' },
 ];
 
+const STRENGTH_LEVELS = [
+  { id: 'light', label: 'Nhẹ' },
+  { id: 'medium', label: 'Vừa' },
+  { id: 'strong', label: 'Mạnh' },
+] as const;
+
 export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onSuccess }: EditServiceDrawerProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,15 +69,32 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         ...service,
         category: parsedCats,
         focusConfig: service.focusConfig || {},
+        strengthConfig: service.strengthConfig || { light: true, medium: true, strong: true },
         tags: service.tags || [],
         description: typeof service.description === 'string' 
           ? { vn: service.description, en: '', cn: '', jp: '', kr: '' } 
           : (service.description || { vn: '', en: '', cn: '', jp: '', kr: '' }),
       });
+    } else if (isOpen) {
+      setFormData({
+        nameVN: '',
+        nameEN: '',
+        nameCN: '',
+        nameJP: '',
+        nameKR: '',
+        priceVND: 0,
+        duration: 60,
+        category: allCategories.length > 0 ? [allCategories[0]] : ['Khác'],
+        isActive: true,
+        focusConfig: {},
+        strengthConfig: { light: true, medium: true, strong: true },
+        tags: [],
+        description: { vn: '', en: '', cn: '', jp: '', kr: '' },
+      });
     }
-  }, [service]);
+  }, [service, isOpen, allCategories]);
 
-  if (!service) return null;
+  if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -100,6 +123,18 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
       focusCfg[areaId] = !focusCfg[areaId];
       return { ...prev, focusConfig: focusCfg };
     });
+  };
+
+  const handleStrengthToggle = (level: 'light' | 'medium' | 'strong') => {
+    setFormData(prev => ({
+      ...prev,
+      strengthConfig: {
+        light: prev.strengthConfig?.light !== false,
+        medium: prev.strengthConfig?.medium !== false,
+        strong: prev.strengthConfig?.strong !== false,
+        [level]: prev.strengthConfig?.[level] === false,
+      },
+    }));
   };
 
   const handleTagToggle = (tagId: string) => {
@@ -183,6 +218,7 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         showNotes: formData.showNotes,
         showGender: formData.showGender,
         showStrength: formData.showStrength,
+        strengthConfig: formData.strengthConfig,
         showFocus: formData.showFocus,
         min_ktv_required: formData.min_ktv_required,
         service_group: formData.service_group,
@@ -202,12 +238,17 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
         }),
     };
 
-    const res = await updateService(service.id, payload);
-
-    if (res.success) {
-      if (isBulkSync && service.nameVN) {
+    let res;
+    if (service?.id) {
+      res = await updateService(service.id, payload);
+      if (res.success && isBulkSync && service.nameVN) {
         await updateServiceBulkSync(service.nameVN, payload);
       }
+    } else {
+      res = await createService(payload);
+    }
+
+    if (res.success) {
       onSuccess();
       onClose();
     } else {
@@ -223,14 +264,16 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
         {/* Centered Modal */}
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-5xl h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1rem)] sm:w-[90vw] max-w-5xl h-[calc(100%-2rem)] sm:h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
           
           <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50 shrink-0">
             <div>
               <Dialog.Title className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Settings2 className="text-indigo-600" /> Cấu Hình Dịch Vụ
+                <Settings2 className="text-indigo-600" /> {service ? 'Cấu Hình Dịch Vụ' : 'Thêm Dịch Vụ Mới'}
               </Dialog.Title>
-              <p className="text-sm font-medium text-gray-500 mt-1">{service.id} - {service.nameVN || service.name}</p>
+              <p className="text-sm font-medium text-gray-500 mt-1">
+                {service ? `${service.id} - ${service.nameVN || service.name}` : 'Nhập thông tin dịch vụ mới'}
+              </p>
             </div>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-colors bg-white/50">
               <X size={20} />
@@ -497,10 +540,22 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
                       <input type="checkbox" name="showNotes" checked={formData.showNotes !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
                     </label>
                     
-                    <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
-                      <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
-                      <input type="checkbox" name="showStrength" checked={formData.showStrength !== false} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
-                    </label>
+                    <div className="space-y-2">
+                      <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                        <span className="text-sm font-medium text-gray-700">Chọn Lực đấm</span>
+                        <input type="checkbox" name="showStrength" checked={formData.showStrength === true} onChange={handleChange} className="w-5 h-5 accent-indigo-600 rounded" />
+                      </label>
+                      {formData.showStrength === true && (
+                        <div className="flex flex-wrap gap-2 pl-4" aria-label="Các mức lực đấm được bán">
+                          {STRENGTH_LEVELS.map(level => (
+                            <label key={level.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm cursor-pointer">
+                              <input type="checkbox" checked={formData.strengthConfig?.[level.id] !== false} onChange={() => handleStrengthToggle(level.id)} className="w-4 h-4 accent-indigo-600" />
+                              {level.label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     
                     <label className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
                       <span className="text-sm font-medium text-gray-700">Chọn Giới tính KTV</span>
@@ -590,23 +645,25 @@ export function EditServiceDrawer({ isOpen, onClose, service, allCategories, onS
 
           <div className="p-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between shrink-0">
             <div className="flex-1 mr-6">
-              <label className="flex items-center gap-2.5 p-2.5 bg-white border border-indigo-100 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors group">
-                <input 
-                  type="checkbox" 
-                  checked={isBulkSync}
-                  onChange={(e) => setIsBulkSync(e.target.checked)}
-                  className="w-5 h-5 accent-indigo-600 rounded shrink-0" 
-                />
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 flex items-center gap-1.5">
-                    <CopyCheck size={16} />
-                    Đồng bộ hàng loạt
-                  </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    Áp dụng ngôn ngữ, mô tả, tag cho tất cả dịch vụ cùng tên "{service.nameVN}" (60p, 90p...)
-                  </span>
-                </div>
-              </label>
+              {service && (
+                <label className="flex items-center gap-2.5 p-2.5 bg-white border border-indigo-100 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors group">
+                  <input 
+                    type="checkbox" 
+                    checked={isBulkSync}
+                    onChange={(e) => setIsBulkSync(e.target.checked)}
+                    className="w-5 h-5 accent-indigo-600 rounded shrink-0" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 flex items-center gap-1.5">
+                      <CopyCheck size={16} />
+                      Đồng bộ hàng loạt
+                    </span>
+                    <span className="text-xs text-gray-500 font-medium">
+                      Áp dụng ngôn ngữ, mô tả, tag cho tất cả dịch vụ cùng tên "{service.nameVN}" (60p, 90p...)
+                    </span>
+                  </div>
+                </label>
+              )}
             </div>
             
             <div className="flex gap-3 shrink-0">

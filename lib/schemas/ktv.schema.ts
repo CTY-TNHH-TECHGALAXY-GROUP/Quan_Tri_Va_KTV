@@ -12,6 +12,7 @@ export const AttendanceSchema = z.object({
   reason: z.string().optional().nullable(),
   selectedShiftType: z.string().optional().nullable(),
   estimatedEndTime: z.string().optional().nullable(),
+  extensionMinutes: z.coerce.number().int().min(60).optional(),
   wantsToWithdraw: z.boolean().optional().default(false),
   isLiveCapture: z.boolean().optional().default(false)
 });
@@ -108,7 +109,9 @@ export const KtvBookingPatchSchema = z.object({
   status: z.string().min(1, "status is required"),
   action: z.string().optional(),
   techCode: z.string().optional(),
-  photoBase64: z.string().optional()
+  photoBase64: z.string().max(7_000_000).optional(),
+  startPhotoBase64: z.string().max(7_000_000).optional(),
+  guestSlipperPhotoBase64: z.string().max(7_000_000).optional()
 });
 
 // Schema cho API Interaction (POST /api/ktv/interaction)

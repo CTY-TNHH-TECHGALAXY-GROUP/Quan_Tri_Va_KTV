@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireStaffOrPermission, authErrorResponse } from '@/lib/auth-server';
+import { validateImageUpload } from '@/lib/upload-guard';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const taskId = formData.get('taskId') as string;
-    const employeeId = formData.get('employeeId') as string;
+    const file = formData.get('file');
+    const taskId = formData.get('taskId');
+    const employeeId = formData.get('employeeId');
 
-    if (!file || !taskId || !employeeId) {
+    if (!file || typeof taskId !== 'string' || !taskId || typeof employeeId !== 'string' || !employeeId) {
       return NextResponse.json({ success: false, error: 'Missing file, taskId or employeeId' }, { status: 400 });
+    }
+
+    // Chỉ chính nhân viên đó (hoặc người quản lý task) được nộp ảnh nhân danh employeeId.
+    const denied = await requireStaffOrPermission(employeeId, 'support_tasks_admin');
+    if (denied) return denied;
+
+    const checked = await validateImageUpload(file);
+    if (!checked.ok) {
+      return NextResponse.json({ success: false, error: checked.error }, { status: checked.status });
     }
 
     const supabase = getSupabaseAdmin();
@@ -19,14 +30,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
     }
 
-    // 1. Upload file to storage using service role (bypasses RLS)
-    const fileName = `tasks/${taskId}/${Date.now()}_${file.name}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    // 1. Upload file to storage using service role (bypasses RLS).
+    //    Tên file không lấy từ client — đuôi theo MIME đã kiểm magic bytes.
+    const safeTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `tasks/${safeTaskId}/${Date.now()}.${checked.ext}`;
 
     const { error: uploadErr } = await supabase.storage
       .from('task-photos')
-      .upload(fileName, buffer, {
-        contentType: file.type,
+      .upload(fileName, checked.buffer, {
+        contentType: checked.mime,
         upsert: false,
       });
 
@@ -55,6 +67,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, storagePath: fileName });
   } catch (error: any) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     console.error('API Error /api/support/tasks/upload:', error.message);
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }

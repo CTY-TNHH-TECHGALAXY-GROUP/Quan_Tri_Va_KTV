@@ -7,7 +7,6 @@ export type ModuleId =
   | 'payroll_commissions'
   | 'cashbook_supplies'
   | 'finance_management'
-  | 'finance_piggy_bank'
   | 'web_booking'
   | 'service_menu'
   | 'customer_reminders'
@@ -21,6 +20,7 @@ export type ModuleId =
   | 'ktv_schedule'
   | 'ktv_performance'
   | 'ktv_history'
+  | 'ktv_hours_ranking'
   | 'turn_tracking'
   | 'service_handbook'
   | 'ai_features'
@@ -33,6 +33,8 @@ export type ModuleId =
   | 'support_tasks_admin'
   | 'support_reviews_admin'
   | 'employee_tasks'
+  | 'ktv_office_scoring'
+  | 'ktv_office_hours'
   | 'settings'
   | 'system_settings';
 
@@ -65,6 +67,19 @@ export interface EmployeeSkills {
   nailChuyen: SkillLevel;
 }
 
+/** Một item trong gallery có thể là URL thuần hoặc URL kèm metadata phương pháp trị liệu */
+export interface GalleryItem {
+  url: string;
+  kind: 'therapy' | 'mix' | 'legacy' | 'vip' | 'privilege';
+  therapyId?: string;
+  skillId?: string;
+  privilegeId?: string;
+  hidden?: boolean;
+  order?: number;
+  orderNhp?: number;
+  orderNht?: number;
+}
+
 export interface Employee {
   id: string;
   code: string;
@@ -80,6 +95,7 @@ export interface Employee {
   bankAccount: string;
   bankName: string;
   photoUrl: string;
+  galleryUrls?: (string | GalleryItem)[];
   position: string;
   experience: string;
   joinDate: string;
@@ -93,11 +109,14 @@ export interface Employee {
   targetHoursPerMonth?: number;
   isActiveVipMenu?: boolean;
   isHomeSpa?: boolean;
+  isActiveTherapyMenu?: boolean;
   role?: string;
   work_type?: string;
   featureFlags?: any;
   enableKpiDemo?: boolean;
   enableBonus?: boolean;
+  isAvatarHidden?: boolean;
+  showAvatar?: boolean;
 }
 
 export interface Role {
@@ -114,6 +133,12 @@ export interface User {
   password?: string;
   code?: string;
   featureFlags?: Record<string, boolean>;
+  work_type?: string;
+  /**
+   * Thời điểm cấp session (ISO). Admin đổi cấu hình sau mốc này thì session
+   * hết hiệu lực — xem `lib/services/SessionEpochService.ts`.
+   */
+  sessionIssuedAt?: string;
 }
 
 export interface Customer {
@@ -210,6 +235,7 @@ export interface Service {
   showNotes?: boolean;
   showGender?: boolean;
   showStrength?: boolean;
+  strengthConfig?: { light: boolean; medium: boolean; strong: boolean } | null;
   showFocus?: boolean;
   showPreferences?: boolean; // Legacy
   
@@ -217,4 +243,3 @@ export interface Service {
   tags?: (string | Record<string, string>)[] | null;
   hint?: any;
 }
-

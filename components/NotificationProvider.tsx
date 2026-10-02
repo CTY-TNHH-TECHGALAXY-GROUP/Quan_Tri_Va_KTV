@@ -9,6 +9,7 @@ import { Bell, ShieldAlert, X, CheckCircle, Info, AlertTriangle, Check, Star, Ar
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { notificationKind, isSilentNotification, NOTIFICATION_TITLE, type NotificationKind } from '@/lib/notification-kind';
 
 // --- TYPES ---
 interface Notification {
@@ -31,6 +32,16 @@ interface NotificationContextType {
     unlockAudio: () => void;
     playSound: (type: string) => void;
     setKtvScreen: (screen: string) => void;
+    ktvScreen: string;
+    /**
+     * KTV đã bấm NHẬN ĐƠN và chưa bàn giao xong.
+     *
+     * Tách riêng khỏi `ktvScreen`: sau khi bấm nhận, màn hình còn nằm ở
+     * DASHBOARD một nhịp cho tới khi server trả về `acceptedAt` rồi mới sang
+     * đồng hồ. Khoá theo màn hình thì hở đúng nhịp đó.
+     */
+    setKtvOrderLocked: (locked: boolean) => void;
+    ktvOrderLocked: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -48,6 +59,7 @@ const SOUND_MAP: Record<string, string> = {
     'SUPPORT': '/sounds/reception-notification.wav',
     'NEW_ORDER': '/sounds/quay-don-hang-moi.wav',
     'KTV_NEW_ORDER': '/sounds/ktv-don-hang-moi.wav',
+    'GUEST_ARRIVAL': '/sounds/ktv-don-hang-moi.wav',
     'REWARD': '/sounds/ktv-nhan-thuong.wav',
     'ATTENDANCE': '/sounds/reception-notification.wav',
     'ATTENDANCE_REQUEST': '/sounds/reception-notification.wav',
@@ -78,6 +90,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
         _setSoundEnabled(enabled);
     };
     const [ktvScreen, setKtvScreen] = useState<string>('DASHBOARD');
+    const [ktvOrderLocked, setKtvOrderLocked] = useState<boolean>(false);
     const [notifRules, setNotifRules] = useState<Record<string, any>>({});
     const [isOnShift, setIsOnShift] = useState<boolean>(false);
 
@@ -395,7 +408,10 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             }
 
             // Check 1: Role in allowed_roles?
-            let roleAllowed = rule?.allowed_roles?.includes(roleId) ?? false;
+            // ⚠️ So sánh KHÔNG phân biệt hoa thường: một số rule trong SystemConfigs lưu role
+            // viết hoa ('KTV') trong khi roleId luôn là chữ thường ('ktv'). Dùng includes() trần
+            // sẽ lọc mất toàn bộ thông báo của những rule đó (đã từng xảy ra với GUEST_ARRIVAL).
+            let roleAllowed = rule?.allowed_roles?.some((r: string) => String(r).toLowerCase() === roleId) ?? false;
 
             // 🔹 PHÂN QUYỀN THEO MODULE (DYNAMIC ROLES):
             // Nếu user có module quản lý nhưng base role là ktv/support, vẫn cho phép nhận thông báo của admin/reception
@@ -467,14 +483,17 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             }
 
             // 🔊 Sound: use rule-configured sound or fallback to SOUND_MAP
+            // Tin xác nhận thì hiện im lặng — xem `SILENT_TYPES` trong notification-kind.
+            const withSound = !isSilentNotification(notifType);
+
             if (isKtv && notifType === 'NEW_ORDER') {
                 addToast({ 
                     ...newNotif, 
                     type: 'KTV_NEW_ORDER', // to use the right sound
                     message: 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.'
-                });
+                }, withSound);
             } else {
-                addToast(newNotif);
+                addToast(newNotif, withSound);
             }
         };
 
@@ -543,7 +562,10 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             setSoundEnabled,
             unlockAudio,
             playSound,
-            setKtvScreen
+            setKtvScreen,
+            ktvScreen,
+            setKtvOrderLocked,
+            ktvOrderLocked
         }}>
             {children}
             
@@ -645,67 +667,37 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     );
 };
 
+/**
+ * Giao diện toast theo NHÓM thông báo.
+ *
+ * Bảng phân loại nằm ở lib/notification-kind.ts và được chuông dùng chung, nên
+ * cùng một tin không thể hiện hai kiểu ở hai chỗ. Trước đây mỗi màn hình tự đoán
+ * bằng một chuỗi if/else riêng: toast để mọi loại lạ rơi về "Phần thưởng mới",
+ * còn chuông thì cho tất cả vào bong bóng chat xanh.
+ */
+const TOAST_STYLE: Record<NotificationKind, { icon: React.ReactNode; iconBg: string; border: string; titleColor: string }> = {
+    complaint: { icon: <ShieldAlert size={20} />, iconBg: 'bg-white/20', border: 'border-rose-500', titleColor: 'text-rose-100' },
+    lock: { icon: <ShieldAlert size={20} className="text-white" />, iconBg: 'bg-rose-500', border: 'border-rose-200', titleColor: 'text-rose-600' },
+    penalty: { icon: <AlertTriangle size={20} className="text-white" />, iconBg: 'bg-amber-500', border: 'border-amber-200', titleColor: 'text-amber-600' },
+    reward: { icon: <Star size={20} className="text-white fill-white" />, iconBg: 'bg-emerald-500', border: 'border-emerald-100', titleColor: 'text-emerald-600' },
+    success: { icon: <CheckCircle size={20} className="text-white" />, iconBg: 'bg-emerald-500', border: 'border-emerald-100', titleColor: 'text-emerald-600' },
+    order: { icon: <Bell size={20} className="text-white" />, iconBg: 'bg-amber-500', border: 'border-amber-200', titleColor: 'text-amber-600' },
+    checkin: { icon: <CheckCircle size={20} className="text-white" />, iconBg: 'bg-blue-500', border: 'border-blue-100', titleColor: 'text-blue-600' },
+    shift: { icon: <Info size={20} className="text-white" />, iconBg: 'bg-indigo-500', border: 'border-indigo-100', titleColor: 'text-indigo-600' },
+    leave: { icon: <Info size={20} className="text-white" />, iconBg: 'bg-violet-500', border: 'border-violet-100', titleColor: 'text-violet-600' },
+    wallet: { icon: <Info size={20} className="text-white" />, iconBg: 'bg-teal-500', border: 'border-teal-100', titleColor: 'text-teal-600' },
+    reception: { icon: <CheckCircle size={20} className="text-white" />, iconBg: 'bg-emerald-500', border: 'border-emerald-100', titleColor: 'text-emerald-600' },
+    info: { icon: <Bell size={20} className="text-white" />, iconBg: 'bg-slate-500', border: 'border-slate-200', titleColor: 'text-slate-600' },
+};
+
 const KtvMessageToast = ({ notification, currentScreen, onClose, onRedirect }: { notification: Notification, currentScreen: string, onClose: () => void, onRedirect: () => void }) => {
     const isLocked = currentScreen === 'REVIEW';
-    const type = notification.type?.toUpperCase();
-    const isComplaint = type === 'COMPLAINT';
-    const isCheckIn = type === 'CHECK_IN' || type === 'ATTENDANCE' || type === 'ATTENDANCE_REQUEST' || type === 'ATTENDANCE_RESPONSE';
-    const isKtvNewOrder = type === 'KTV_NEW_ORDER';
-    const isShift = type === 'SHIFT_RESPONSE';
-    const isLeave = type === 'LEAVE_RESPONSE';
-    const isWallet = type === 'WALLET';
-    const isRequestConfirmed = type === 'REQUEST_CONFIRMED';
-    
-    // Determine title and icon based on notification type
-    let title = 'Phần thưởng mới';
-    let iconElement = <Star size={20} className="text-white fill-white" />;
-    let iconBg = 'bg-emerald-500';
-    let borderClass = 'border-emerald-100';
-    let titleColor = 'text-emerald-600';
+    const kind = notificationKind(notification.type);
+    const isComplaint = kind === 'complaint';
 
-    if (isComplaint) {
-        title = 'Thông báo khẩn';
-        iconElement = <ShieldAlert size={20} />;
-        iconBg = 'bg-white/20';
-        borderClass = 'border-rose-500';
-        titleColor = 'text-rose-100';
-    } else if (isKtvNewOrder) {
-        title = 'Đơn hàng mới';
-        iconElement = <Bell size={20} className="text-white" />;
-        iconBg = 'bg-amber-500';
-        borderClass = 'border-amber-200';
-        titleColor = 'text-amber-600';
-    } else if (isCheckIn) {
-        title = 'Điểm danh';
-        iconElement = <CheckCircle size={20} className="text-white" />;
-        iconBg = 'bg-blue-500';
-        borderClass = 'border-blue-100';
-        titleColor = 'text-blue-600';
-    } else if (isShift) {
-        title = 'Thông báo ca';
-        iconElement = <Info size={20} className="text-white" />;
-        iconBg = 'bg-indigo-500';
-        borderClass = 'border-indigo-100';
-        titleColor = 'text-indigo-600';
-    } else if (isLeave) {
-        title = 'Kết quả nghỉ phép';
-        iconElement = <Info size={20} className="text-white" />;
-        iconBg = 'bg-violet-500';
-        borderClass = 'border-violet-100';
-        titleColor = 'text-violet-600';
-    } else if (isWallet) {
-        title = 'Thông báo ví';
-        iconElement = <Info size={20} className="text-white" />;
-        iconBg = 'bg-teal-500';
-        borderClass = 'border-teal-100';
-        titleColor = 'text-teal-600';
-    } else if (isRequestConfirmed) {
-        title = 'Phản hồi từ Quầy';
-        iconElement = <CheckCircle size={20} className="text-white" />;
-        iconBg = 'bg-emerald-500';
-        borderClass = 'border-emerald-100';
-        titleColor = 'text-emerald-600';
-    }
+    const title = NOTIFICATION_TITLE[kind];
+    const { icon: iconElement, iconBg, border: borderClass, titleColor } = TOAST_STYLE[kind];
+    
 
     return (
         <motion.div

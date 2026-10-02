@@ -24,7 +24,7 @@ export class RoomStatsService {
         roomName, 
         status, 
         timeEnd,
-        Services (nameVN)
+        Services!fk_bookingitems_service (nameVN)
       `)
       .in('status', ['COMPLETED', 'DONE'])
       .gte('timeEnd', today.toISOString());

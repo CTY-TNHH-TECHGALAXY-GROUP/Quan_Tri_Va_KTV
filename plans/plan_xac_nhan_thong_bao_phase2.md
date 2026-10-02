@@ -57,7 +57,7 @@ const CustomerRequestSchema = z.object({
 
 ### Lưu ý quan trọng:
 - Project `wrb-noi-bo-dev` cần kết nối **cùng Supabase instance** với `Quan_Tri_Va_KTV`.
-- Kiểm tra file `.env.local` của `wrb-noi-bo-dev` có `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY` trỏ đúng.
+- Kiểm tra file `.env.local` của `wrb-noi-bo-dev` có `SUPABASE_URL` và `SUPABASE_SECRET_KEY` trỏ đúng.
 - Nếu chưa có, cần tạo Supabase admin client tương tự pattern ở `Quan_Tri_Va_KTV/lib/supabaseAdmin.ts`.
 
 ---

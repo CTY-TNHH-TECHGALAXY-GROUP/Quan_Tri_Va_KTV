@@ -3,6 +3,7 @@ import { LogIn, LogOut, BellRing, MapPin, Loader2, AlertCircle } from 'lucide-re
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { useToast } from '@/components/ui/Toast';
 
 interface OnCallState {
   allow_on_call: boolean;
@@ -18,9 +19,13 @@ interface Props {
   onCheckOut: () => void;
   onRefreshStatus?: () => void;
   incompleteTasksCount?: number;
+  /** Nợ phòng: bàn giao chưa nộp / phòng đang dọn dở. Còn nợ là chưa cho tan ca. */
+  roomDebt?: { handover: number; cleaning: number; total: number; items: any[] };
+  guestArrivalLock?: { active: boolean; message: string };
 }
 
-export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0 }: Props) {
+export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheckOut, onRefreshStatus, incompleteTasksCount = 0, roomDebt, guestArrivalLock }: Props) {
+  const { addToast } = useToast();
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -53,6 +58,18 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
     return () => clearInterval(interval);
   }, [ktvId]);
 
+  // Điểm danh xong là nạp lại NGAY, đừng bắt chờ vòng poll 30 giây.
+  //
+  // `checkStatus` do trang cha đổi ngay khi API trả về, nhưng trạng thái hiện trên
+  // component này lại lấy từ `state.online_status` của chính nó — nên trước đây bấm
+  // xong màn hình đứng yên tới nửa phút, nhân viên tưởng hỏng và bấm lại lần nữa.
+  useEffect(() => {
+    if (!ktvId) return;
+    if (checkStatus === 'CONFIRMED' || checkStatus === 'CHECKED_OUT' || checkStatus === 'PENDING') {
+      fetchState();
+    }
+  }, [checkStatus, ktvId]);
+
   const handleToggleOnCall = async (isOnCall: boolean, mins: number, start?: string, end?: string) => {
     setActionLoading(true);
     try {
@@ -68,10 +85,10 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
         await fetchState();
         if (onRefreshStatus) onRefreshStatus();
       } else {
-        alert(res.error || 'Có lỗi xảy ra');
+        addToast(res.error || 'Có lỗi xảy ra', 'error');
       }
     } catch (e) {
-      alert('Lỗi kết nối');
+      addToast('Lỗi kết nối', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -165,13 +182,10 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
                 <div className="w-full">
                   <button
                       onClick={() => {
-                        if (incompleteTasksCount > 0) {
-                          alert(`Bạn còn ${incompleteTasksCount} công việc chưa hoàn thành. Vui lòng hoàn thành trước khi Tắt Nhận Đơn.`);
-                          return;
-                        }
+                        if (incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0) return;
                         handleToggleOnCall(false, state.travel_time_mins);
                       }}
-                      disabled={actionLoading || incompleteTasksCount > 0}
+                      disabled={actionLoading || incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0}
                       className="w-full py-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                       <LogOut size={22} className="rotate-180" /> {actionLoading ? 'Đang xử lý...' : 'Tắt Nhận Đơn'}
@@ -184,22 +198,23 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
         )}
 
         {/* Nếu đã tới tiệm (AT_VENUE) -> Tan Ca */}
-        {isAtVenue && (
+         {isAtVenue && (
              <div className="w-full">
-               <button
-                  onClick={() => {
-                    if (incompleteTasksCount > 0) {
-                      alert(`Bạn còn ${incompleteTasksCount} công việc chưa hoàn thành. Vui lòng hoàn thành trước khi tan ca.`);
-                      return;
-                    }
-                    onCheckOut();
-                  }}
-                  disabled={actionLoading || incompleteTasksCount > 0}
-                  className="w-full py-4 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                  <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin cảm ơn'}
-              </button>
-              {incompleteTasksCount > 0 && (
+                   <button
+                      onClick={() => {
+                        if (incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0 || guestArrivalLock?.active) return;
+                        onCheckOut();
+                      }}
+                      disabled={actionLoading || incompleteTasksCount > 0 || (roomDebt?.total ?? 0) > 0 || guestArrivalLock?.active}
+                      className={`w-full py-4 font-bold text-lg rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50
+                        ${guestArrivalLock?.active
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                            : 'bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-md shadow-rose-200'
+                        }`}
+                  >
+                      <LogOut size={22} /> {actionLoading ? 'Đang xử lý...' : 'Oria Xin cảm ơn'}
+                  </button>
+              {incompleteTasksCount > 0 && !guestArrivalLock?.active && (
                   <p className="text-red-500 text-xs text-center mt-2 font-medium">Bạn còn {incompleteTasksCount} công việc chưa hoàn thành. Không thể tan ca.</p>
               )}
              </div>
@@ -246,28 +261,32 @@ export default function AttendanceTypeB({ ktvId, checkStatus, onCheckIn, onCheck
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Giờ rảnh dự kiến
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedStart}
-                        onChange={(e) => setExpectedStart(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-emerald-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedStart}
+                          onChange={(e) => setExpectedStart(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Đến mấy giờ?
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedEnd}
-                        onChange={(e) => setExpectedEnd(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-emerald-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedEnd}
+                          onChange={(e) => setExpectedEnd(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

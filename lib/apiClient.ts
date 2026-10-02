@@ -22,6 +22,36 @@ const DEFAULT_TIMEOUT = 15000;
 const DEFAULT_RETRIES = 0;
 
 /**
+ * Header tự khai "tab này đang mở tài khoản nào" — CHỈ để ghi nhật ký thao tác.
+ *
+ * Cookie JWT của Supabase khoá theo TÊN MÁY CHỦ, không theo tab, và có thể hết
+ * hạn trong khi tab vẫn nhớ người dùng. Khi đó API vẫn cho làm (Compatibility
+ * Phase) nhưng máy chủ không biết ai bấm → thẻ Kanban in "không rõ người bấm".
+ * Đọc từ sessionStorage (riêng từng tab) nên tab admin và tab KTV không lẫn nhau.
+ *
+ * ⚠️ Chỉ gửi `id` và `name`. KHÔNG BAO GIỜ gửi các trường khác của
+ * `spa_auth_user`. Máy chủ chỉ dùng khi thiếu JWT và đánh dấu `verified: false`
+ * (lib/counter-action-log.ts); không được dùng để kiểm tra quyền.
+ */
+export const ACTOR_HEADER = 'x-spa-actor';
+const ACTOR_FIELD_MAX_LEN = 64;
+
+export function getActorHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem('spa_auth_user') || localStorage.getItem('spa_auth_user');
+    if (!raw) return {};
+    const u = JSON.parse(raw);
+    const id = String(u?.code || u?.id || '').slice(0, ACTOR_FIELD_MAX_LEN);
+    const name = String(u?.name || '').slice(0, ACTOR_FIELD_MAX_LEN);
+    if (!id) return {};
+    return { [ACTOR_HEADER]: encodeURIComponent(JSON.stringify({ id, name })) };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * 🚀 Centralized API Client
  * - Tự động handle JSON parsing
  * - Tự động check res.ok và throw lỗi chuẩn
@@ -34,13 +64,28 @@ class ApiClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
 
-    const response = await fetch(url, {
-      ...fetchOptions,
-      signal: controller.signal
-    });
-    
-    clearTimeout(id);
-    return response;
+    const givenHeaders = fetchOptions.headers instanceof Headers
+      ? Object.fromEntries(fetchOptions.headers.entries())
+      : (fetchOptions.headers as Record<string, string> | undefined) || {};
+
+    try {
+      const response = await fetch(url, {
+        // ⚠️ KHÔNG để trình duyệt cache. Mọi đường trong `/api` ở đây đều là dữ
+        // liệu sống — điểm, ví, tua, cờ tính năng. Trước đây không đặt gì cả, mà
+        // các route này cũng không gắn Cache-Control, nên Safari trên iOS giữ lại
+        // bản JSON cũ: admin tắt một tính năng, KTV mở app vẫn thấy y như cũ, F5
+        // cũng vậy, phải xoá dữ liệu web mới hết.
+        //
+        // Vẫn cho ghi đè qua `options` nếu chỗ nào thật sự muốn cache.
+        cache: 'no-store',
+        ...fetchOptions,
+        headers: { ...getActorHeaders(), ...givenHeaders },
+        signal: controller.signal
+      });
+      return response;
+    } finally {
+      clearTimeout(id);
+    }
   }
 
   private async request<T>(url: string, options: ApiOptions = {}): Promise<T> {
@@ -58,6 +103,18 @@ class ApiClient {
           } catch {
             errorData = { error: response.statusText };
           }
+          if (errorData.error === 'ACCOUNT_LOCKED') {
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('account_locked', { detail: { isLocked: true } }));
+            }
+          }
+
+          // 🔑 JWT Supabase hết hạn → mọi API trả 401. Báo cho auth-context ép đăng nhập lại,
+          // thay vì để từng màn hình kẹt ở trạng thái "Đang tải..." mà không ai biết vì sao.
+          if (response.status === 401 && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('session_expired'));
+          }
+
           throw new ApiError(
             errorData.error || errorData.message || 'Lỗi kết nối API',
             response.status,
@@ -81,6 +138,13 @@ class ApiClient {
         }
         if (error.name === 'AbortError') {
           throw new Error('Kết nối bị quá hạn (Timeout). Vui lòng thử lại.');
+        }
+
+        // NEW: retry network fail
+        const isNetworkFail = error instanceof TypeError && /failed to fetch|network/i.test(error.message);
+        if (isNetworkFail && i < retries) {
+            await new Promise(r => setTimeout(r, 500 * (i + 1)));
+            continue;
         }
         
         // Delay trước khi retry (exponential backoff cơ bản)

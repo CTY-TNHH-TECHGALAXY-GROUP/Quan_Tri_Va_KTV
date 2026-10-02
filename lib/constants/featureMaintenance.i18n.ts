@@ -1,6 +1,7 @@
 /**
  * The ONE sentence a KTV sees whenever a feature they are PERMITTED to use has
- * been switched off by an admin (per-staff flag or type-wide switch).
+ * been switched off by an admin — per-staff flag, type-wide switch, or the
+ * "Hoạt động" account switch (manual lock).
  *
  * Rule (agreed with the owner): feature OFF while the role permission is still
  * ON → always this sentence, at every entry point. Permission OFF too → the
@@ -8,7 +9,7 @@
  *
  * Plain `.ts` (no 'use client', no Next imports) so API routes and client
  * components import the exact same string. Never hand-type this sentence
- * anywhere else.
+ * anywhere else — QA #15 greps for stray copies.
  */
 export const FEATURE_MAINTENANCE_MESSAGE = 'Tính năng của bạn đang bảo trì';
 

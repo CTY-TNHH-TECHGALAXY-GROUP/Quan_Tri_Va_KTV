@@ -1,13 +1,21 @@
 'use server';
 import { isUtilityService } from '@/lib/booking.logic';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { requirePermission } from '@/lib/auth-server';
+import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
+import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+import { punishTurnIfIdle } from '@/lib/turn-punish';
+import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
+import { isPlaceholderStaffId, isNewExternalKtvToken, externalNameOfToken, externalKtvNameProblem, findExternalKtvByName } from '@/lib/constants/staff.constants';
+import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
+import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
+import { ensureTurnRowsAtEnd } from '@/lib/services/TurnQueueRowService';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
 import { unstable_noStore as noStore } from 'next/cache';
+import { after } from 'next/server';
 
 async function resolveGuestIdsForUpdate(
     supabase: any,
@@ -94,7 +102,8 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        // 1. Fetch Staff (Only KTVs based on Users role)
+        // 1. Fetch Staff (Only KTVs based on Users role). Mã placeholder EXT_/C_ (đã
+        //    ĐÃ NGHỈ) vẫn lấy để thẻ đơn cũ còn hiện tên; chúng không vào hàng đợi.
         const { data: techUsers, error: tuError } = await supabase.from('Users').select('code').eq('role', 'TECHNICIAN');
         if (tuError) throw tuError;
         const techCodes = new Set((techUsers || []).map(u => u.code));
@@ -102,7 +111,10 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         const { data: allStaffs, error: sError } = await supabase.from('Staff').select('id, full_name, avatar_url, gender, status, skills, phone, position, experience, work_type, feature_flags, online_status, travel_minutes, available_from, available_until');
         if (sError) throw sError;
         
-        const staffs = (allStaffs || []).filter(s => techCodes.has(s.id) || s.id.startsWith('EXT') || s.id.startsWith('C_'));
+        const staffs = (allStaffs || []).filter(s => 
+            (techCodes.has(s.id) || isPlaceholderStaffId(s.id)) && 
+            s.status !== 'KHÓA_TÀI_KHOẢN'
+        );
 
         // Fetch Discipline Points cho tháng hiện tại
         const now = new Date();
@@ -120,14 +132,86 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             (s as any).totalPoints = pointsMap[s.id] !== undefined ? pointsMap[s.id] : 100;
         });
 
-        // 🔧 EGRESS FIX: Only select needed columns for TurnQueue
-        const { data: turns, error: tError } = await supabase
+        const { data: rawTurns, error: tError } = await supabase
             .from('TurnQueue')
             .select('id, employee_id, date, check_in_order, queue_position, status, turns_completed, current_order_id, booking_item_id, booking_item_ids, room_id, bed_id, start_time, estimated_end_time')
-            .eq('date', date)
-            .order('turns_completed', { ascending: true })
-            .order('queue_position', { ascending: true });
+            .eq('date', date);
         if (tError) throw tError;
+
+        // Apply correct sorting (turns_completed ASC for A/B/C, net_hours DESC for D)
+        const turnsWithWorkType = rawTurns.map(t => {
+            const st = staffs.find(s => s.id === t.employee_id);
+            return { ...t, work_type: st?.work_type || 'TYPE_A' };
+        });
+
+        const typeA = turnsWithWorkType.filter(t => t.work_type === 'TYPE_A');
+        const typeB = turnsWithWorkType.filter(t => t.work_type === 'TYPE_B');
+        const typeC = turnsWithWorkType.filter(t => t.work_type === 'TYPE_C');
+        const typeD = turnsWithWorkType.filter(t => t.work_type === 'TYPE_D');
+
+        const sortABC = (a: any, b: any) => {
+            if ((a.turns_completed || 0) !== (b.turns_completed || 0)) return (a.turns_completed || 0) - (b.turns_completed || 0);
+            if ((a.check_in_order || 0) !== (b.check_in_order || 0)) return (a.check_in_order || 0) - (b.check_in_order || 0);
+            return (a.employee_id || '').localeCompare(b.employee_id || '');
+        };
+
+        typeA.sort(sortABC);
+        typeB.sort(sortABC);
+        typeC.sort(sortABC);
+
+        if (typeD.length > 0) {
+            const { KtvTypeDTurnService } = await import('@/lib/services/KtvTypeDTurnService');
+            const { getBusinessToday } = await import('@/lib/business-date');
+
+            // Tua vừa xong còn nằm trong hàng đợi cho tới khi có người rút ra tính.
+            // Rút ngay phần của các KTV trong bảng, giống hệt `/api/turns` đang làm.
+            //
+            // ⚠️ Trước 10/09/2026 chỗ này đọc thẳng sổ cái mà KHÔNG rút hàng đợi —
+            // bảng điều phối là màn duy nhất chỉ biết đọc, không bao giờ cập nhật.
+            // Mà `net_hours` lại là khoá xếp thứ tự nhận khách của loại D, nên quầy
+            // chia khách theo số giờ cũ: KTV vừa xong tua vẫn mang giờ của lần
+            // trước. Đo hôm đó có 8/13 KTV chụm trong vòng 5 phút giờ tích luỹ —
+            // đủ để một tua vào sổ trễ là lật thứ tự.
+            const { drainQueueForStaff } = await import('@/lib/services/KtvDLedgerWriter');
+            await drainQueueForStaff(supabase, typeD.map(t => t.employee_id));
+
+            // Tháng/năm theo NGÀY LÀM VIỆC, không theo ngày lịch — lúc 02:00 ngày 01/09
+            // ngày làm việc vẫn là 31/08, phải xếp hạng theo giờ tích lũy tháng 8.
+            const businessToday = await getBusinessToday(supabase);
+            const hoursMap = await KtvTypeDTurnService.getMonthlyNetHours(
+                supabase,
+                typeD.map(t => t.employee_id),
+                Number(businessToday.slice(5, 7)),
+                Number(businessToday.slice(0, 4))
+            );
+            
+            typeD.forEach(t => (t as any).net_hours = hoursMap[t.employee_id] || 0);
+            
+            typeD.sort((a: any, b: any) => {
+                if ((b.net_hours || 0) !== (a.net_hours || 0)) return (b.net_hours || 0) - (a.net_hours || 0);
+                if ((a.check_in_order || 0) !== (b.check_in_order || 0)) return (a.check_in_order || 0) - (b.check_in_order || 0);
+                return (a.employee_id || '').localeCompare(b.employee_id || '');
+            });
+        }
+
+        const turns = [...typeA, ...typeB, ...typeC, ...typeD];
+
+        // Cờ "đã điểm danh hôm nay" cho nhãn "Chưa điểm danh" ở ô chọn KTV (cùng nguồn với
+        // cổng processDispatch và Sổ tua — lib/attendance/checkedInToday).
+        const checkedInToday = await checkedInStaffIds(supabase, turns.map(t => t.employee_id), date);
+        turns.forEach(t => { (t as any).checked_in_today = checkedInToday.has(t.employee_id); });
+
+        const { resolveStaffShiftEndTimes } = await import('@/lib/shift.constants');
+        const shiftEndMap = await resolveStaffShiftEndTimes(supabase, turns.map(t => t.employee_id), date);
+        turns.forEach(t => { (t as any).shift_end_time = shiftEndMap[t.employee_id] || null; });
+
+        // Dọn phần hàng đợi CÒN LẠI sau khi đã trả dữ liệu — không làm chậm bảng.
+        // Bảng điều phối mở suốt ca ở quầy và tự tải lại theo realtime, nên đây là
+        // nơi dọn hàng đợi đều đặn nhất trong cả hệ thống.
+        after(async () => {
+            const { drainQueueBackground } = await import('@/lib/services/KtvDLedgerWriter');
+            await drainQueueBackground(supabase);
+        });
 
         // 3. Fetch Bookings for selected date
         // bookingDate is "timestamp without time zone"
@@ -141,7 +225,6 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
-            .neq('status', 'CANCELLED')
             .neq('status', 'SPLIT')
             .order('createdAt', { ascending: true });
 
@@ -407,6 +490,60 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             }
         });
 
+        // 5b. KTV đánh giá quầy (KTVReviewReception).
+        // ⚠️ Trước 11/09/2026 bảng này CHỈ có người ghi, không ai đọc: KTV chấm sao
+        // + góp ý cho quầy ở màn Reward xong là nằm im trong DB, không màn nào
+        // hiện. Gắn vào từng booking để thẻ Kanban hiện được ngay dưới thẻ.
+        {
+            const bookingIds = bookings.map((b: any) => b.id).filter(Boolean);
+            if (bookingIds.length > 0) {
+                const { data: rrRows, error: rrErr } = await supabase
+                    .from('KTVReviewReception')
+                    .select('ktv_id, booking_id, rating, note, images, created_at')
+                    .in('booking_id', bookingIds);
+                if (rrErr) {
+                    // Không chặn cả bảng điều phối chỉ vì phần đánh giá hỏng.
+                    console.error('[Dispatch] không đọc được đánh giá quầy:', rrErr.message);
+                } else {
+                    const theoBooking = new Map<string, any[]>();
+                    (rrRows || []).forEach((r: any) => {
+                        const k = String(r.booking_id);
+                        if (!theoBooking.has(k)) theoBooking.set(k, []);
+                        theoBooking.get(k)!.push(r);
+                    });
+                    bookings.forEach((b: any) => { b.ktvReviewsOfReception = theoBooking.get(String(b.id)) || []; });
+                }
+            }
+        }
+
+        // 5c. KTV bấm "Khách về sớm" / "Khẩn cấp" trên app (StaffNotifications).
+        // `options.counterLog` chỉ ghi hai nút này từ 14/09/2026 — đơn trước đó
+        // trên thẻ chỉ còn "Tạm dừng", mất lý do. Bảng thông báo là nơi duy nhất
+        // còn giữ KTV đã bấm gì, nên gắn vào từng booking để thẻ trộn vào nhật ký
+        // (KanbanBoard.counterLog.logic.ts). Với đơn mới đây cũng là lưới an toàn:
+        // logKtvReport cố ý không throw, lỗi là mất dòng trong im lặng.
+        {
+            const bookingIds = bookings.map((b: any) => b.id).filter(Boolean);
+            if (bookingIds.length > 0) {
+                const { data: rpRows, error: rpErr } = await supabase
+                    .from('StaffNotifications')
+                    .select('bookingId, type, employeeId, createdAt, message')
+                    .in('bookingId', bookingIds)
+                    .in('type', ['EARLY_EXIT', 'EMERGENCY']);
+                if (rpErr) {
+                    console.error('[Dispatch] không đọc được báo của KTV:', rpErr.message);
+                } else {
+                    const theoBooking = new Map<string, any[]>();
+                    (rpRows || []).forEach((r: any) => {
+                        const k = String(r.bookingId);
+                        if (!theoBooking.has(k)) theoBooking.set(k, []);
+                        theoBooking.get(k)!.push({ type: r.type, employeeId: r.employeeId, createdAt: r.createdAt, message: r.message });
+                    });
+                    bookings.forEach((b: any) => { b.ktvReports = theoBooking.get(String(b.id)) || []; });
+                }
+            }
+        }
+
         // 6. Fetch Rooms, Beds, and Reminders — 🔧 EGRESS FIX: select specific columns
         const { data: rooms } = await supabase.from('Rooms').select('id, name, capacity, type, default_reminders, has_guests');
         const { data: beds } = await supabase.from('Beds').select('id, name, roomId');
@@ -433,6 +570,25 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         };
     } catch (error: any) {
         console.error('❌ [Server] getDispatchData error:', error);
+
+        // 'Forbidden' ở màn điều phối gần như luôn là PHIÊN BỊ LẪN, không phải
+        // quầy bị gỡ quyền: cookie JWT của Supabase khoá theo TÊN MÁY CHỦ và bỏ
+        // qua cổng, nên mở app KTV ở localhost:3001 rồi bảng điều phối ở
+        // localhost:57981 là dùng chung một phiên — ai đăng nhập sau đè lên trước.
+        // Tab vẫn nhớ "tôi là dev" (sessionStorage, riêng từng tab) nhưng mọi lời
+        // gọi server lại đi dưới danh nghĩa KTV kia.
+        //
+        // Trả kèm danh tính mà máy chủ đang thấy để màn hình nói được cho quầy
+        // biết vì sao bảng trống, thay vì im lặng rồi in Forbidden ra console.
+        if (String(error?.message) === 'Forbidden') {
+            let danhTinhMayChu: string | null = null;
+            try {
+                const u = await requireBusinessUser();
+                danhTinhMayChu = u?.techCode || u?.businessUserId || null;
+            } catch { /* không tra ra thì thôi, vẫn báo được là bị lẫn */ }
+            return { success: false, error: 'Forbidden', identityMismatch: danhTinhMayChu || '(không rõ)' };
+        }
+
         return { success: false, error: error.message || 'Unknown error' };
     }
 }
@@ -463,6 +619,8 @@ export async function processDispatch(bookingId: string, dispatchData: {
         focusArea?: string | null;
     }[];
     guestCount?: number;
+    /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
+    confirmedUncheckedKtvIds?: string[];
 }) {
     try {
         await requirePermission('dispatch_board');
@@ -495,7 +653,13 @@ export async function processDispatch(bookingId: string, dispatchData: {
             });
         }
 
-        // 🔥 XỬ LÝ KTV NHẬP NGOÀI (FREELANCE)
+        // 🔥 KTV NGOÀI KHÔNG TÀI KHOẢN (mở lại 15/09/2026)
+        // Ô chọn gửi `NEW_EXT:<TÊN>` cho người ngoài chưa có dòng Staff → đổi thành mã
+        // `EXT_` (dùng lại dòng cùng tên nếu có). Sau bước này MỌI mã phải có trong
+        // Staff; mã lạ KHÔNG mang tiền tố vẫn bị trả lỗi như từ 12/09.
+        const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
+        if (extError) return { success: false, error: extError };
+
         const allKtvIds = new Set<string>();
         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
@@ -512,103 +676,44 @@ export async function processDispatch(bookingId: string, dispatchData: {
         });
         const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
 
-        console.log('🔍 [EXT-MAP] uniqueKtvIds:', uniqueKtvIds);
-
-        if (uniqueKtvIds.length > 0) {
-            const { data: existingStaff } = await supabase.from('Staff').select('id').in('id', uniqueKtvIds);
-            const existingIds = (existingStaff || []).map(s => s.id);
-            const missingIds = uniqueKtvIds.filter(id => !existingIds.includes(id));
-            
-            console.log('🔍 [EXT-MAP] existingIds:', existingIds, 'missingIds:', missingIds);
-
-            if (missingIds.length > 0) {
-                const idReplacements: Record<string, string> = {};
-                
-                for (const missingName of missingIds) {
-                    // 1. Tìm KTV TYPE_C trùng tên
-                    const { data: existingTypeC } = await supabase
-                        .from('Staff')
-                        .select('id')
-                        .eq('work_type', 'TYPE_C')
-                        .ilike('full_name', missingName)
-                        .limit(1);
-                    
-                    if (existingTypeC && existingTypeC.length > 0) {
-                        idReplacements[missingName] = existingTypeC[0].id;
-                        // Cập nhật lại status ĐANG LÀM
-                        await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existingTypeC[0].id);
-                    } else {
-                        // Insert mới TYPE_C
-                        // Tự generate 1 ID ngẫu nhiên định dạng EXT_xxxxx
-                        const newId = `EXT_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-                        const { error: insertError } = await supabase
-                            .from('Staff')
-                            .insert({
-                                id: newId,
-                                full_name: missingName,
-                                work_type: 'TYPE_C',
-                                status: 'ĐANG LÀM'
-                            });
-                            
-                        if (insertError) throw new Error(`Lỗi tạo KTV Nhập tay: ${insertError.message}`);
-                        idReplacements[missingName] = newId;
-                    }
-                }
-                
-                console.log('✅ [EXT-MAP] idReplacements:', idReplacements);
-
-                // Rewrite IDs in dispatchData
-                const replaceId = (id: string) => idReplacements[id] || id;
-                if (dispatchData.technicianCode) dispatchData.technicianCode = replaceId(dispatchData.technicianCode);
-                if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) a.ktvId = replaceId(a.ktvId) });
-                if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
-                    if (u.technicianCodes) {
-                        if (Array.isArray(u.technicianCodes)) u.technicianCodes = u.technicianCodes.map(c => replaceId(c));
-                        else if (typeof u.technicianCodes === 'string') u.technicianCodes = replaceId(u.technicianCodes as string);
-                    }
-                    if (u.segments && Array.isArray(u.segments)) {
-                        u.segments.forEach(seg => { if (seg.ktvId) seg.ktvId = replaceId(seg.ktvId) });
-                    }
-                });
-
-                console.log('✅ [EXT-MAP] Final technicianCodes:', dispatchData.itemUpdates?.map(u => u.technicianCodes));
-                console.log('✅ [EXT-MAP] Final staffAssignments ktvIds:', dispatchData.staffAssignments?.map(a => a.ktvId));
-            }
+        const { data: knownStaffs } = uniqueKtvIds.length > 0
+            ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
+            : { data: [] as { id: string; full_name: string | null; work_type: string | null }[] };
+        const knownStaffById = new Map((knownStaffs || []).map(st => [st.id, st]));
+        const unknownKtvIds = uniqueKtvIds.filter(id => !knownStaffById.has(id));
+        if (unknownKtvIds.length > 0) {
+            return {
+                success: false,
+                error: `Không thể điều phối: KTV [${unknownKtvIds.join(', ')}] chưa có tài khoản. Vào Admin → Nhân viên tạo KTV (loại C nếu là cộng tác viên) rồi chọn lại từ danh sách.`
+            };
         }
 
-        // 🔥 KIỂM TRA ĐIỂM DANH (Attendance Check)
-        // Chặn lọt KTV cơ hữu chưa chấm công thông qua chức năng nhập tay
-        const finalKtvIds = new Set<string>();
-        if (dispatchData.technicianCode) finalKtvIds.add(dispatchData.technicianCode);
-        if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) finalKtvIds.add(a.ktvId) });
-        if (dispatchData.itemUpdates) dispatchData.itemUpdates.forEach(u => {
-            if (u.technicianCodes) {
-                if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => { if (c) finalKtvIds.add(c) });
-                else if (typeof u.technicianCodes === 'string') u.technicianCodes.split(',').forEach(c => { if (c.trim()) finalKtvIds.add(c.trim()) });
-            }
+        // 🔥 KIỂM TRA ĐIỂM DANH — HỎI XÁC NHẬN thay vì chặn (chốt 14/09/2026, mọi loại KTV)
+        // KTV chưa điểm danh hôm nay (`KTVAttendance`) hoặc đang `off` trong sổ tua → trả
+        // `NEED_CHECKIN_CONFIRM`; quầy bấm OK thì gửi lại kèm `confirmedUncheckedKtvIds`.
+        // Hỏi lại ở MỖI lần gửi cho tới khi KTV bấm "Oria xin chào". Loại D không điểm
+        // danh vẫn bị cron phạt vắng như cũ — popup nhắc quầy điều đó.
+        // Trước 14/09: A/B/D không có dòng TurnQueue ≠ off là chặn cứng; loại C được miễn.
+        const { data: turnRowsToday } = uniqueKtvIds.length > 0
+            ? await supabase.from('TurnQueue').select('employee_id, status').eq('date', dispatchData.date).in('employee_id', uniqueKtvIds)
+            : { data: [] as { employee_id: string; status: string }[] };
+        const checkedInIds = await checkedInStaffIds(supabase, uniqueKtvIds, dispatchData.date);
+        const needCheckinConfirm = findKtvsNeedingCheckinConfirm({
+            ktvIds: uniqueKtvIds,
+            staffById: knownStaffById,
+            checkedInIds,
+            turnStatusById: new Map((turnRowsToday || []).map(t => [t.employee_id, t.status])),
+            confirmedIds: dispatchData.confirmedUncheckedKtvIds,
         });
-
-        // Chỉ kiểm tra các KTV cơ hữu (không bắt đầu bằng EXT hoặc C_)
-        const coreKtvIds = Array.from(finalKtvIds).filter(id => !id.startsWith('C_') && !id.startsWith('EXT'));
-        
-        if (coreKtvIds.length > 0) {
-            const { data: activeTurns } = await supabase
-                .from('TurnQueue')
-                .select('employee_id')
-                .eq('date', dispatchData.date)
-                .in('employee_id', coreKtvIds)
-                .neq('status', 'off');
-                
-            const activeKtvIds = new Set((activeTurns || []).map(t => t.employee_id));
-            const missingCheckins = coreKtvIds.filter(id => !activeKtvIds.has(id));
-            
-            if (missingCheckins.length > 0) {
-                return { 
-                    success: false, 
-                    error: `Không thể điều phối: KTV [${missingCheckins.join(', ')}] chưa chấm công hoặc đang khóa nhận đơn. Vui lòng nhắc KTV điểm danh trước khi gán!` 
-                };
-            }
+        if (needCheckinConfirm.length > 0) {
+            return {
+                success: false,
+                code: 'NEED_CHECKIN_CONFIRM' as const,
+                ktvs: needCheckinConfirm,
+                error: `KTV [${needCheckinConfirm.map(k => k.id).join(', ')}] chưa điểm danh hoặc đang tắt nhận đơn — cần quầy xác nhận.`,
+            };
         }
+        const ktvIdsWithoutTurnRow = uniqueKtvIds.filter(id => !(turnRowsToday || []).some(t => t.employee_id === id));
 
         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
@@ -712,6 +817,13 @@ export async function processDispatch(bookingId: string, dispatchData: {
             }
         }
 
+        // KTV chưa có dòng TurnQueue hôm đó (quầy vừa xác nhận): tạo trước ở CUỐI hàng.
+        // RPC không set check_in_order/queue_position → DB DEFAULT 1 → người chưa điểm
+        // danh chen lên #1 tua. RPC upsert dòng này thành 'assigned', giữ nguyên thứ tự.
+        if (ktvIdsWithoutTurnRow.length > 0) {
+            await ensureTurnRowsAtEnd(supabase, ktvIdsWithoutTurnRow, dispatchData.date);
+        }
+
         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION
         const { data, error } = await supabase.rpc('dispatch_confirm_booking', {
             p_booking_id: bookingId,
@@ -812,6 +924,96 @@ export async function processDispatch(bookingId: string, dispatchData: {
     }
 }
 
+/**
+ * Đổi mọi `NEW_EXT:<TÊN>` (KTV ngoài chưa có dòng Staff, quầy vừa thêm ở ô chọn)
+ * thành mã `EXT_xxxxxx` thật, ghi thẳng vào `data`. Trả câu lỗi, hoặc `null`.
+ *
+ * Mở lại 15/09/2026 (plans/plan_mo_lai_ktv_ngoai_khong_tai_khoan.md) sau khi
+ * 12/09 tắt vì tự sinh không kiểm soát. Nay có kiểm soát:
+ *   · kiểm lại tên ở máy chủ (không tin client) — trùng KTV nhà thì từ chối;
+ *   · cùng tên (so không dấu) → dùng lại dòng cũ và bật `ĐANG LÀM`, không sinh thêm;
+ *   · hai máy quầy cùng thêm một tên → cùng chốt về một dòng, dòng thừa vừa tạo bị xoá.
+ * Dùng chung cho `processDispatch` và `saveDraftDispatch` (lưu nháp ghi thẳng
+ * `technicianCodes`, không qua kiểm tra nào khác).
+ */
+async function resolveNewExternalKtvIds(
+    supabase: any,
+    data: {
+        technicianCode?: string | null;
+        staffAssignments?: { ktvId?: string | null; ktvName?: string | null }[];
+        itemUpdates?: { technicianCodes?: string[] | string | null; segments?: any[] }[];
+    }
+): Promise<string | null> {
+    const tokens = new Set<string>();
+    const scan = (id?: string | null) => { if (id && isNewExternalKtvToken(id)) tokens.add(String(id)); };
+    scan(data.technicianCode);
+    (data.staffAssignments || []).forEach(a => scan(a.ktvId));
+    (data.itemUpdates || []).forEach(u => {
+        if (Array.isArray(u.technicianCodes)) u.technicianCodes.forEach(c => scan(c));
+        else if (typeof u.technicianCodes === 'string') u.technicianCodes.split(',').forEach(c => scan(c.trim()));
+        (u.segments || []).forEach((s: any) => scan(s?.ktvId));
+    });
+    if (tokens.size === 0) return null;
+
+    const { data: staffRows, error: staffErr } = await supabase.from('Staff').select('id, full_name, status');
+    if (staffErr) return `Không đọc được danh sách KTV: ${staffErr.message}`;
+    type StaffRow = { id: string; full_name?: string | null; status?: string | null };
+    const rows: StaffRow[] = staffRows || [];
+
+    const idByToken: Record<string, string> = {};
+    const nameById: Record<string, string> = {};
+    for (const token of Array.from(tokens)) {
+        const name = externalNameOfToken(token);
+        const problem = externalKtvNameProblem(name, rows);
+        if (problem) return `Không thể thêm KTV ngoài "${name}": ${problem}`;
+
+        let resolved: StaffRow;
+        const existing = findExternalKtvByName(name, rows);
+        if (existing) {
+            if (existing.status !== 'ĐANG LÀM') {
+                await supabase.from('Staff').update({ status: 'ĐANG LÀM' }).eq('id', existing.id);
+                existing.status = 'ĐANG LÀM';
+            }
+            resolved = existing;
+        } else {
+            const newId = `EXT_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            const { error: insErr } = await supabase.from('Staff')
+                .insert({ id: newId, full_name: name, work_type: 'TYPE_C', status: 'ĐANG LÀM' });
+            if (insErr) return `Không thêm được KTV ngoài "${name}": ${insErr.message}`;
+
+            // Hai máy quầy cùng thêm một tên: đọc lại, cùng chốt dòng theo luật findExternalKtvByName.
+            const { data: sameType } = await supabase.from('Staff').select('id, full_name, status').eq('work_type', 'TYPE_C');
+            const winner = findExternalKtvByName(name, (sameType || []) as StaffRow[]);
+            if (winner && winner.id !== newId) {
+                await supabase.from('Staff').delete().eq('id', newId);
+                resolved = winner;
+            } else {
+                resolved = { id: newId, full_name: name, status: 'ĐANG LÀM' };
+            }
+            rows.push(resolved);
+        }
+        idByToken[token] = resolved.id;
+        nameById[resolved.id] = resolved.full_name || name;
+    }
+
+    const swap = (id: string) => idByToken[id] || id;
+    if (data.technicianCode) data.technicianCode = swap(data.technicianCode);
+    (data.staffAssignments || []).forEach(a => {
+        if (a.ktvId && idByToken[a.ktvId]) { a.ktvId = idByToken[a.ktvId]; a.ktvName = nameById[a.ktvId]; }
+    });
+    (data.itemUpdates || []).forEach(u => {
+        if (Array.isArray(u.technicianCodes)) u.technicianCodes = u.technicianCodes.map(c => swap(c));
+        else if (typeof u.technicianCodes === 'string') u.technicianCodes = u.technicianCodes.split(',').map(c => swap(c.trim())).join(',');
+        (u.segments || []).forEach((s: any) => {
+            if (s?.ktvId && idByToken[s.ktvId]) {
+                s.ktvId = idByToken[s.ktvId];
+                if (!s.ktvName || isNewExternalKtvToken(s.ktvName)) s.ktvName = nameById[s.ktvId];
+            }
+        });
+    });
+    return null;
+}
+
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
     technicianCode?: string | null;
     bedId: string | null;
@@ -852,6 +1054,10 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                 }
             });
         }
+
+        // KTV ngoài vừa thêm ở ô chọn (`NEW_EXT:<TÊN>`) → mã EXT_ thật trước khi ghi xuống đơn.
+        const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
+        if (extError) return { success: false, error: extError };
 
         let currentItems: any[] | null = null;
         let currentGuests: any[] | null = null;
@@ -944,7 +1150,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
                                     reviewTime: dbSeg.reviewTime || incomingSeg.reviewTime,
-                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl
+                                    startPhotoUrl: dbSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                    guestSlipperPhotoUrl: dbSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl
                                 };
                             }
                             return incomingSeg;
@@ -1017,6 +1224,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
                                         actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
                                         feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
                                         startPhotoUrl: existingSeg.startPhotoUrl || incomingSeg.startPhotoUrl,
+                                        guestSlipperPhotoUrl: existingSeg.guestSlipperPhotoUrl || incomingSeg.guestSlipperPhotoUrl,
                                         handoverPhotoUrl: existingSeg.handoverPhotoUrl || incomingSeg.handoverPhotoUrl,
                                         handoverPhotoUrls: existingSeg.handoverPhotoUrls || incomingSeg.handoverPhotoUrls
                                     };
@@ -1094,7 +1302,16 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
     }
 }
 
-export async function cancelBooking(bookingId: string, date: string) {
+/**
+ * Huỷ TOÀN BỘ đơn hàng.
+ *
+ * @param cancelCredit  'NONE'  = KTV mất sạch tiền, giờ tích luỹ và tua (mặc định).
+ *                      'WORKED' = vẫn cho hưởng theo số phút đã làm thật.
+ *   Giống hệt quy tắc của cancelBookingItem — lý do huỷ là chữ tự do do quầy gõ,
+ *   KHÔNG được dùng để quyết định tiền; chỉ tham số này mới điều khiển.
+ *   Xem plans/plan_tam_dung_huy_ket_thuc_som.md §5 bước 8.
+ */
+export async function cancelBooking(bookingId: string, date: string, cancelCredit: 'NONE' | 'WORKED' = 'NONE', reason: string = '') {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
@@ -1111,15 +1328,51 @@ export async function cancelBooking(bookingId: string, date: string) {
 
         if (bError) throw bError;
 
-        // Cập nhật trạng thái các BookingItems chưa hoàn thành về CANCELLED
-        const { error: itemError } = await supabase
+        // Cập nhật trạng thái các BookingItems chưa hoàn thành về CANCELLED.
+        // ⏱️ Đồng thời CHỐT mốc kết thúc cho các chặng còn hở, nếu không thì
+        // computeMinutes coi chặng là "không có mốc" và trả tiền theo giờ GÁN.
+        // Đơn đang tạm dừng lấy mốc `pauseStart` chứ không lấy giờ hiện tại.
+        const { data: itemsToCancel, error: itemsFetchError } = await supabase
             .from('BookingItems')
-            .update({ status: 'CANCELLED' })
+            .select('id, segments, status, pauseStart, options')
             .eq('bookingId', bookingId)
             .neq('status', 'DONE')
             .neq('status', 'CANCELLED');
-            
-        if (itemError) console.error('❌ [Server] BookingItems update error:', itemError);
+        if (itemsFetchError) throw itemsFetchError;
+
+        for (const item of itemsToCancel || []) {
+            let segs: any[] = [];
+            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : ((item.segments as any) || []); } catch {}
+
+            const isPausedItem = item.status === 'PAUSED' && !!(item as any).pauseStart;
+            const endMark = isPausedItem ? (item as any).pauseStart : new Date().toISOString();
+
+            let segmentsModified = false;
+            segs.forEach((s: any) => {
+                if (s.actualStartTime && !s.actualEndTime) {
+                    closeOpenPause(s, endMark, 'CANCEL');
+                    s.actualEndTime = endMark;
+                    segmentsModified = true;
+                }
+                if (cancelCredit === 'NONE' && s.actualStartTime) {
+                    voidSegment(s, endMark, 'CANCELLED_NO_CREDIT');
+                    segmentsModified = true;
+                }
+            });
+
+            let opts: any = (item as any).options;
+            if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = {}; } }
+            opts = opts || {};
+            opts.cancelCredit = cancelCredit;
+            if (reason) opts.cancelReason = reason;
+
+            const payload: any = { status: 'CANCELLED', timeEnd: endMark, options: opts };
+            if (segmentsModified) payload.segments = JSON.stringify(segs);
+            if (isPausedItem) payload.pauseStart = null;
+
+            const { error: itemError } = await supabase.from('BookingItems').update(payload).eq('id', item.id);
+            if (itemError) throw itemError; // huỷ nửa vời còn tệ hơn báo lỗi
+        }
 
         // 2. Lấy thông tin trạng thái KTV trước khi giải phóng để quyết định có xóa Ledger không
         const { data: currentTurns } = await supabase
@@ -1139,9 +1392,18 @@ export async function cancelBooking(bookingId: string, date: string) {
                         .eq('date', date)
                         .eq('booking_id', bookingId)
                         .eq('employee_id', turn.employee_id);
+                } else if (cancelCredit === 'NONE') {
+                    // Đã bắt đầu làm nhưng huỷ mà KHÔNG cộng gì → tước luôn lượt tua.
+                    // syncTurnsForDate đã lọc sẵn is_punished khỏi turns_completed.
+                    console.log(`⛔ KTV ${turn.employee_id} mất lượt tua do huỷ đơn không cộng giờ.`);
+                    await punishTurnIfIdle(supabase, {
+                        bookingId,
+                        employeeId: turn.employee_id,
+                        date,
+                    });
                 } else {
-                    // ⚠️ Nếu đã đang làm (working) mà bị hủy -> GIỮ Ledger để tính tua/tiền cho KTV
-                    console.log(`⚠️ KTV ${turn.employee_id} giữ nguyên lượt tua do hủy đơn KHI ĐANG LÀM.`);
+                    // ⚠️ Quầy chọn cộng giờ đã làm -> GIỮ Ledger để tính tua/tiền cho KTV
+                    console.log(`⚠️ KTV ${turn.employee_id} giữ nguyên lượt tua do quầy cho cộng giờ.`);
                 }
 
                 // 3. Giải phóng KTV trong TurnQueue
@@ -1163,6 +1425,22 @@ export async function cancelBooking(bookingId: string, date: string) {
                 if (tError) {
                     console.error('❌ [Server] TurnQueue cleanup error:', tError);
                 }
+
+                // 4. Đóng KtvAssignments rồi kéo đơn kế tiếp lên.
+                // Thiếu bước này thì assignment còn treo ACTIVE/QUEUED và KTV
+                // không được gán đơn mới dù TurnQueue đã về 'waiting'.
+                await supabase
+                    .from('KtvAssignments')
+                    .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+                    .eq('employee_id', turn.employee_id)
+                    .eq('business_date', date)
+                    .eq('booking_id', bookingId)
+                    .in('status', ['ACTIVE', 'QUEUED', 'READY']);
+
+                await supabase.rpc('promote_next_assignment', {
+                    p_employee_id: turn.employee_id,
+                    p_business_date: date,
+                });
             }
         }
 
@@ -1205,22 +1483,51 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
         // Cập nhật trạng thái các BookingItems nếu Booking được hoàn thành / huỷ
         // 🔧 Cập nhật trạng thái các BookingItems nếu Booking được hoàn thành / huỷ
         if (['DONE', 'CANCELLED', 'CLEANING', 'FEEDBACK'].includes(newStatus)) {
+            // ⚠️ 'PAUSED' phải nằm trong danh sách này. Thiếu nó thì đơn đang tạm dừng
+            // bị bỏ qua khi lễ tân kéo sang Dọn phòng / Huỷ → item kẹt 'PAUSED' vĩnh viễn
+            // và recomputeBookingStatus kéo cả đơn về trạng thái sai.
             const { data: itemsToUpdate } = await supabase
                 .from('BookingItems')
-                .select('id, segments, status')
+                .select('id, segments, status, pauseStart')
                 .eq('bookingId', bookingId)
-                .in('status', ['WAITING', 'PREPARING', 'IN_PROGRESS', 'CLEANING', 'FEEDBACK']);
-            
+                .in('status', ['WAITING', 'PREPARING', 'IN_PROGRESS', 'PAUSED', 'CLEANING', 'FEEDBACK']);
+
             if (itemsToUpdate && itemsToUpdate.length > 0) {
                 const { canTransition: canTransitionItem } = await import('@/lib/dispatch-status');
                 for (const item of itemsToUpdate) {
                     let segs = [];
                     try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
-                    
+
+                    // ⏱️ Đơn đang tạm dừng thì mốc kết thúc là LÚC BẤM TẠM DỪNG, không phải bây giờ.
+                    // Khoảng chờ giữa tạm dừng và lúc lễ tân chốt đơn không phải giờ làm.
+                    const isPausedItem = (item as any).status === 'PAUSED' && !!(item as any).pauseStart;
+                    const endMark = isPausedItem ? (item as any).pauseStart : new Date().toISOString();
+
                     let segmentsModified = false;
                     segs.forEach((s: any) => {
+                        // Never stamp an end on a TAKEOVER segment whose KTV has not
+                        // started yet: that KTV is an independent entity (rule 9.4)
+                        // and may still start after this status change.
+                        //
+                        // ⚠️ Case WB-11092026-002: this loop stamped T007's fresh
+                        // TAKEOVER segment at 21:08, the item became CLEANING, and the
+                        // ledger paid T007's fixed 101p = 168.333đ before T007 pressed
+                        // Start at 21:13 — leaving an end mark earlier than the start.
+                        if (s.note === 'TAKEOVER' && !s.actualStartTime) return;
                         if (!s.actualEndTime) {
-                            s.actualEndTime = new Date().toISOString();
+                            s.actualEndTime = endMark;
+                            // Chốt số phút làm thực cho chặng đã tạm dừng — thiếu con số này thì
+                            // KtvCommissionService trả về giờ GÁN và KTV được trả thừa tiền.
+                            if (isPausedItem && s.actualStartTime && s.customCommissionDuration == null) {
+                                const t1 = new Date(String(s.actualStartTime).replace(' ', 'T')).getTime();
+                                const t2 = new Date(String(endMark).replace(' ', 'T')).getTime();
+                                let worked = (Number.isFinite(t1) && Number.isFinite(t2) && t2 > t1)
+                                    ? Math.round((t2 - t1) / 60000)
+                                    : 0;
+                                const assigned = Number(s.duration) || 0;
+                                if (assigned > 0 && worked > assigned) worked = assigned;
+                                s.customCommissionDuration = worked;
+                            }
                             segmentsModified = true;
                         }
                     });
@@ -1237,8 +1544,9 @@ export async function updateBookingStatus(bookingId: string, newStatus: string, 
 
                     const payload: any = { status: newStatus };
                     if (segmentsModified) payload.segments = JSON.stringify(segs);
+                    if (isPausedItem) payload.pauseStart = null; // gỡ cờ tạm dừng, tránh UI vẫn coi là đang dừng
                     if (newStatus === 'CLEANING' || newStatus === 'DONE' || newStatus === 'CANCELLED') {
-                        payload.timeEnd = new Date().toISOString();
+                        payload.timeEnd = endMark;
                     }
 
                     await supabase.from('BookingItems').update(payload).eq('id', item.id);
@@ -1411,7 +1719,9 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
 
         // Lấy trạng thái hiện tại của items để check rule
         const { data: itemsCurrent } = await supabase.from('BookingItems').select('id, status, segments').in('id', itemIds);
-        const { canTransition } = await import('@/lib/dispatch-status');
+        const { canTransition, shouldHoldItemStatus } = await import('@/lib/dispatch-status');
+        // Items whose status really changed below — merged children follow only these.
+        const statusChangedIds: string[] = [];
         
         // Filter: chỉ update items CÓ THỂ chuyển trạng thái, skip items đã ở bước cao hơn
         const updatableIds = (itemsCurrent || [])
@@ -1486,8 +1796,15 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 });
             }
             
-            // Chỉ update status nếu được phép chuyển đổi
-            const isUpdatable = updatableIds.includes(item.id);
+            // Chỉ update status nếu được phép chuyển đổi.
+            // One KTV's card finishing must not finish a service another KTV is still
+            // on (sequence / takeover): close that KTV's segments only, keep the status.
+            const holdStatus = shouldHoldItemStatus(segs, newStatus, targetKtvIds);
+            if (holdStatus) {
+                console.log(`🛡️ [updateBookingItemStatus] ${item.id}: ${targetKtvIds?.join(',')} → ${newStatus}, but another KTV segment is still open → keep status ${item.status}`);
+            }
+            const isUpdatable = updatableIds.includes(item.id) && !holdStatus;
+            if (isUpdatable) statusChangedIds.push(item.id);
             const payload: any = {};
             
             if (isUpdatable) {
@@ -1516,7 +1833,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                 let opts: any = {};
                 try { opts = typeof bi.options === 'string' ? JSON.parse(bi.options) : (bi.options || {}); } catch {}
                 // If this item is a child merged into one of the items we just updated
-                if (opts.mergedIntoId && itemIds.includes(opts.mergedIntoId)) {
+                if (opts.mergedIntoId && statusChangedIds.includes(opts.mergedIntoId)) {
                     childIdsToSync.push(bi.id);
                 }
             }
@@ -1621,7 +1938,9 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
                     } else {
                         // KTV đã xong tất cả item của họ
                         let newTurnsCompleted = turn.turns_completed || 0;
-                        const newStatus = (turn.status === 'off' || turn.employee_id.startsWith('EXT') || turn.employee_id.startsWith('C_')) ? 'off' : 'waiting';
+                        // Loại C (tài khoản thật) về 'waiting' như mọi người — quầy bật một lần dùng cả
+                        // ngày, tắt tay ở Sổ tua khi họ về. Chỉ mã placeholder cũ mới bị đá về 'off'.
+                        const newStatus = (turn.status === 'off' || isPlaceholderStaffId(turn.employee_id)) ? 'off' : 'waiting';
                         await supabase
                             .from('TurnQueue')
                             .update({
@@ -1673,11 +1992,13 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
 }
 
 export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean; vatRequested?: boolean; }) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.createQuickBooking(data);
 }
 
 export async function updateBookingMeta(bookingId: string, data: { guestCount?: number; nationality?: string; customerGender?: string; paymentMethod?: string; }) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -1708,23 +2029,28 @@ export async function updateBookingMeta(bookingId: string, data: { guestCount?: 
 }
 
 export async function addAddonServices(bookingId: string, items: { serviceId: string; qty: number; guestId?: string }[], adminId: string = 'ADMIN') {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.addAddonServices(bookingId, items, adminId);
 }
 
 export async function confirmAddonPayment(bookingId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.confirmAddonPayment(bookingId);
 }
 
 export async function removeBookingItem(bookingId: string, itemId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.removeBookingItem(bookingId, itemId);
 }
 
 export async function editBookingService(bookingId: string, itemId: string, newServiceId: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.editBookingService(bookingId, itemId, newServiceId);
 }
 
 export async function submitCustomerRating(bookingId: string, rating: number, feedbackNote?: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -1733,6 +2059,54 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
             feedbackNote,
             updatedAt: new Date().toISOString() 
         };
+
+        // ⚠️ Chấm sao ở đây PHẢI ghi xuống tới KTV, không chỉ dừng ở cấp bill.
+        //
+        // Trước đây hàm này chỉ ghi `Bookings.rating`. KTV không nhận được gì:
+        // `itemRating` và `ktvRatings` vẫn trống. Sao đó thành mồ côi — nằm ở
+        // bill mà không thuộc về ai.
+        //
+        // Hậu quả kép, đều gặp thật ngày 08/09 trên cây đơn TEST-260908-YNAY:
+        //   · Người làm thật KHÔNG được ghi nhận (không lên sổ, không có thưởng).
+        //   · Các chỗ tính tiền lại đi "mượn" con số mồ côi đó cho khách khác
+        //     trong cùng bill — một khách chấm mà cả bill được thưởng.
+        //
+        // Nhật ký phân biệt rõ hai đường: bấm sao ở hàng CỦA TỪNG KHÁCH thì log
+        // ghi "KTV T079 nhận đánh giá…", còn bấm ở hàng CẢ ĐƠN thì chỉ ghi
+        // "Đơn hàng #… được đánh giá…" — không có tên ai.
+        //
+        // Nay hàng CẢ ĐƠN cũng gán sao cho đúng những KTV đã làm đơn đó, y như
+        // `submitGuestRating` vẫn làm cho từng khách.
+        const { data: ratingItems } = await supabase
+            .from('BookingItems')
+            .select('id, ktvRatings, technicianCodes, status')
+            .eq('bookingId', bookingId);
+
+        for (const item of ratingItems || []) {
+            // Dịch vụ đã huỷ thì không gán sao — không ai làm thì không ai nhận.
+            if (String(item.status || '').toUpperCase() === 'CANCELLED') continue;
+
+            const ktvs = (item.technicianCodes || []).filter(Boolean);
+            if (ktvs.length === 0) continue;
+
+            const currentRatings: any = item.ktvRatings || {};
+            for (const ktvId of ktvs) currentRatings[ktvId] = rating;
+
+            const { error: rErr } = await supabase
+                .from('BookingItems')
+                .update({ itemRating: rating, ktvRatings: currentRatings })
+                .eq('id', item.id);
+            if (rErr) console.error('[submitCustomerRating] không gán được sao cho item', item.id, rErr.message);
+        }
+
+        // Có bản ghi khách thì ghi luôn xuống đó, để lần sau đọc ra đúng nguồn
+        // GUEST thay vì phải lần xuống item.
+        const { error: gErr } = await supabase
+            .from('BookingGuests')
+            .update({ rating, updated_at: new Date().toISOString() })
+            .eq('booking_id', bookingId)
+            .is('rating', null);
+        if (gErr) console.warn('[submitCustomerRating] chưa ghi được sao xuống BookingGuests:', gErr.message);
 
         // 🛡️ SMART DONE: Chỉ set booking DONE nếu TẤT CẢ KTV đã bàn giao phòng xong
         // Nếu còn KTV chưa handover → giữ nguyên status, để handleReleaseKTV quyết định sau
@@ -1803,6 +2177,7 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
 
 
 export async function splitBookingItem(bookingId: string, itemId: string, dur1: number, dur2: number, date: string, name1?: string, name2?: string) {
+    await requirePermission('dispatch_board');
     return await BookingModificationService.splitBookingItem(bookingId, itemId, dur1, dur2, date, name1, name2);
 }
 
@@ -1813,6 +2188,7 @@ export async function splitBookingItem(bookingId: string, itemId: string, dur1: 
  */
 export async function syncOrderTimelineToDb(bookingId: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) return;
 
@@ -1960,6 +2336,7 @@ export async function searchCustomers(query: string) {
 
 export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: string[], newName: string) {
     try {
+        await requirePermission('dispatch_board');
         if (!itemIds || itemIds.length === 0) return { success: true };
 
         const supabase = getSupabaseAdmin();
@@ -1997,6 +2374,7 @@ export async function updateSubOrderCustomerName(itemIds: string[], ktvIds: stri
 
 export async function updateBookingCustomerName(bookingId: string, newName: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
         
@@ -2006,6 +2384,49 @@ export async function updateBookingCustomerName(bookingId: string, newName: stri
     } catch (error) {
         console.error('❌ [Server] updateBookingCustomerName error:', error);
         return { success: false, error: 'Cannot update booking name' };
+    }
+}
+
+/**
+ * Đặt tên khách cho các đơn con vừa tách.
+ *
+ * RPC split_booking_into_sub_bookings đặt cứng nhãn "Khách A/B/C…". Quầy gõ tên
+ * thật trong hộp xem trước thì ghi đè ở đây, để thẻ đơn và màn KTV gọi đúng tên
+ * chứ không phải nhớ ai là "Khách B".
+ */
+export async function renameSubBookings(
+    parentBookingId: string,
+    renames: { suffix: string; name: string }[]
+) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        for (const item of renames) {
+            const newName = (item.name || '').trim();
+            if (!newName || !item.suffix) continue;
+
+            const subBookingId = `${parentBookingId}-${item.suffix}`;
+
+            const { error: bookingErr } = await supabase
+                .from('Bookings')
+                .update({ customerName: newName })
+                .eq('id', subBookingId);
+            if (bookingErr) throw bookingErr;
+
+            // guest_label là dòng "👨 …" KTV nhìn thấy trên máy, phải đổi theo.
+            const { error: guestErr } = await supabase
+                .from('BookingGuests')
+                .update({ guest_label: newName, customer_name: newName })
+                .eq('booking_id', subBookingId);
+            if (guestErr) throw guestErr;
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('❌ [Server] renameSubBookings error:', error);
+        return { success: false, error: error.message || 'Cannot rename sub bookings' };
     }
 }
 
@@ -2064,6 +2485,7 @@ export async function unmergeServicesAction(
 
 export async function submitGuestRating(guestId: string, rating: number, feedbackNote?: string) {
     try {
+        await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -2113,5 +2535,37 @@ export async function submitGuestRating(guestId: string, rating: number, feedbac
     } catch (error) {
         console.error("❌ [Server] submitGuestRating error:", error);
         return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+
+/**
+ * Quầy sắp bấm Kết thúc sớm / Huỷ — KTV có bấm báo gì không?
+ *
+ * Hai nút cho kết quả tiền NGƯỢC NHAU, mà thứ phân biệt là KTV có báo hay
+ * không. Trả về câu cảnh báo khi thao tác đi ngược với dữ liệu, để quầy còn
+ * kịp dừng lại. Xem lib/ktv-notify-check.ts.
+ */
+export async function kiemTraTruocKhiChot(bookingId: string, thaoTac: 'FINISH_EARLY' | 'CANCEL') {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) return { success: true, canhBao: null as string | null };
+
+        // KTV có thể đã bấm trên đơn cha hoặc đơn con — soi cả nhà.
+        const { data: bk } = await supabase
+            .from('Bookings').select('parent_booking_id').eq('id', bookingId).maybeSingle();
+        const parentId = (bk as any)?.parent_booking_id || bookingId;
+        const { data: con } = await supabase
+            .from('Bookings').select('id').eq('parent_booking_id', parentId);
+
+        const ids = Array.from(new Set([parentId, bookingId, ...(con || []).map((b: any) => b.id)]));
+        const tt = await layTrangThaiBaoCuaKtv(supabase, ids);
+
+        return { success: true, canhBao: canhBaoLechKichBan(thaoTac, tt), trangThai: tt };
+    } catch (e: any) {
+        // Cảnh báo hỏng thì thôi, đừng chặn thao tác của quầy.
+        console.error('[kiemTraTruocKhiChot]', e?.message || e);
+        return { success: true, canhBao: null as string | null };
     }
 }

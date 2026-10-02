@@ -2,11 +2,15 @@
 
 import React, { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { walletLabel } from '@/lib/featureFlags';
+import { fmtWeekday, fmtFullDate, fmtClockOnDate } from '@/lib/hours-format';
+import { formatVnd } from '@/lib/format.logic';
 import { useKTVWallet } from './KTVWallet.logic';
 import { t } from './KTVWallet.i18n';
-import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, PiggyBank, XCircle, ChevronDown, Info, Wallet } from 'lucide-react';
+import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { Zap, Clock, Banknote, TrendingDown, TrendingUp, Gift, Calendar, Star, XCircle, ChevronDown, Info, AlertCircle, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useToast } from '@/components/ui/Toast';
 
 const THEME = {
   primary: 'bg-emerald-600',
@@ -21,19 +25,19 @@ const THEME = {
 };
 
 export default function KTVWalletPage() {
+    const { addToast } = useToast();
     const { 
-        user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus, canViewPiggyBank,
-        showBonusEntry, accessError,
-        walletBalance, walletTimeline, bonusBalance, bonusTimeline, 
-        piggyBankBalance, piggyBankTimeline, piggyBankTotalWeeks,
+        user, canViewWallet, activeTab, setActiveTab, canViewTua, canViewBonus,
+        showTuaEntry, showBonusEntry, accessError,
+        walletBalance, walletTimeline, bonusBalance, bonusTimeline,
         isLoading, submitWithdraw, submitRedeemBonus 
     } = useKTVWallet();
 
-    const [withdrawModal, setWithdrawModal] = useState<{ isOpen: boolean, type: 'TUA' | 'BONUS', maxAmount: number } | null>(null);
-    const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>('');
+    const [withdrawModal, setWithdrawModal] = useState<{ isOpen: boolean, type: 'TUA' | 'BONUS', maxAmount: number, step?: 'INPUT' | 'CONFIRM' } | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [withdrawAmountStr, setWithdrawAmountStr] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [ruleModalOpen, setRuleModalOpen] = useState(false);
 
     const handleOpenWithdrawModal = (type: 'TUA' | 'BONUS') => {
         if (type === 'TUA') {
@@ -44,10 +48,12 @@ export default function KTVWalletPage() {
             //     alert('Số dư khả dụng của bạn chưa đạt mức tối thiểu để rút.');
             //     return;
             // }
-            setWithdrawModal({ isOpen: true, type, maxAmount: Math.max(0, max) });
+            // Trần rút CẮT phần lẻ: KTV nhìn thấy "86.971đ" thì chỉ được rút
+            // tối đa đúng bằng đó, không phải 86.971,719đ. Server cắt lần nữa.
+            setWithdrawModal({ isOpen: true, type, maxAmount: Math.trunc(Math.max(0, max)) });
         } else {
             if (!bonusBalance || bonusBalance.points <= 0) {
-                alert('Bạn chưa có điểm thưởng nào để quy đổi.');
+                addToast('Bạn chưa có điểm thưởng nào để quy đổi.', 'error');
                 return;
             }
             setWithdrawModal({ isOpen: true, type, maxAmount: bonusBalance.points });
@@ -66,14 +72,22 @@ export default function KTVWalletPage() {
 
     const handleWithdrawAll = () => {
         if (!withdrawModal) return;
+        // Giữ định dạng en-US: chuỗi này được parse lại bằng replace(/,/g,'').
+        // Dùng dấu chấm kiểu Việt ở đây là biến 86.971đ thành 86,971đ.
         setWithdrawAmountStr(withdrawModal.maxAmount.toLocaleString('en-US'));
     };
 
     const handleSubmitWithdraw = async () => {
         if (!withdrawModal) return;
+        setFormError(null);
         const amount = Number(withdrawAmountStr.replace(/,/g, ''));
         if (!amount || amount <= 0 || isNaN(amount)) {
-            alert(withdrawModal.type === 'TUA' ? 'Vui lòng nhập số tiền hợp lệ.' : 'Vui lòng nhập số điểm hợp lệ.');
+            setFormError(withdrawModal.type === 'TUA' ? 'Vui lòng nhập số tiền hợp lệ.' : 'Vui lòng nhập số điểm hợp lệ.');
+            return;
+        }
+
+        if (withdrawModal.type === 'BONUS' && withdrawModal.step !== 'CONFIRM') {
+            setWithdrawModal({ ...withdrawModal, step: 'CONFIRM' });
             return;
         }
 
@@ -91,23 +105,40 @@ export default function KTVWalletPage() {
         }
     };
 
+    /**
+     * Ví Điểm của KTV này lấy điểm từ ĐIỂM OFFICE chứ không phải điểm sao.
+     * Server nói ra bằng `source`, client không tự đoán theo work_type — cờ bật
+     * riêng từng người nên cùng là loại D vẫn có thể khác nguồn.
+     */
+    const isOfficeBonus = bonusBalance?.source === 'OFFICE';
+
     const groupedTimeline = useMemo(() => {
-        const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : (activeTab === 'TICH_LUY' ? piggyBankTimeline : []));
+        // Lịch sử điểm Office là danh sách theo NGÀY CHẤM ĐIỂM, không phải giao
+        // dịch cộng/trừ, nên không đi qua bộ gom chung — nó có danh sách riêng.
+        if (activeTab === 'BONUS' && isOfficeBonus) return [];
+        const sourceData = activeTab === 'TUA' ? walletTimeline : (activeTab === 'BONUS' ? bonusTimeline : []);
         if (!sourceData) return [];
+        // Gom theo NGÀY LÀM VIỆC do server gắn sẵn (`business_date`), không tự
+        // dựng ngày ở đây.
+        //
+        // ⚠️ Trước đây chỗ này lấy `toLocaleDateString(created_at)` — tức ngày
+        // LỊCH. Spa chốt ngày lúc 6h sáng, nên tua sau nửa đêm bị xếp sang hôm
+        // sau: đơn làm 00:57 sáng 11/09 thuộc ngày làm việc 10/09 mà lại nằm
+        // trong nhóm 11/09, lệch với sổ giờ và màn Office của quầy.
         const groups: Record<string, any[]> = {};
         sourceData.forEach((item: any) => {
-            const itemDate = item.created_at || item.date;
-            const dateStr = new Date(itemDate).toLocaleDateString('vi-VN', {
-                weekday: 'long',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-            if (!groups[dateStr]) groups[dateStr] = [];
-            groups[dateStr].push(item);
+            const key = item.business_date || String(item.created_at || item.date || '').slice(0, 10);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
         });
-        return Object.entries(groups).map(([date, items]) => ({ date, items }));
-    }, [activeTab, walletTimeline, bonusTimeline, piggyBankTimeline]);
+        return Object.entries(groups)
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([businessDate, items]) => ({
+                businessDate,
+                date: `${fmtWeekday(businessDate)}, ${fmtFullDate(businessDate)}`,
+                items,
+            }));
+    }, [activeTab, isOfficeBonus, walletTimeline, bonusTimeline]);
 
     if (!user || !canViewWallet) {
         return (
@@ -145,38 +176,30 @@ export default function KTVWalletPage() {
                         }`}
                     >
                         <div className="flex items-center gap-3">
-                            {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">Ví Tua</span></>}
-                            {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">Ví Bonus</span></>}
-                            {activeTab === 'TICH_LUY' && <><PiggyBank size={20} /> <span className="text-lg">Heo Đất Tích Lũy</span></>}
+                            {activeTab === 'TUA' && <><Zap size={20} className="text-amber-300 fill-amber-300" /> <span className="text-lg">{walletLabel('TUA', user?.work_type)}</span></>}
+                            {activeTab === 'BONUS' && <><Star size={20} className="fill-white" /> <span className="text-lg">{walletLabel('BONUS', user?.work_type)}</span></>}
                         </div>
                         <ChevronDown size={20} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {isDropdownOpen && (
                         <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2">
-                            <button 
-                                onClick={() => { setActiveTab('TUA'); setIsDropdownOpen(false); }}
-                                className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TUA' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                                <Zap size={20} className={activeTab === 'TUA' ? 'text-emerald-500' : 'text-slate-400'} />
-                                <span className="font-bold">Ví Tua</span>
-                            </button>
+                            {showTuaEntry && (
+                                <button 
+                                    onClick={() => { setActiveTab('TUA'); setIsDropdownOpen(false); }}
+                                    className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TUA' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <Zap size={20} className={activeTab === 'TUA' ? 'text-emerald-500' : 'text-slate-400'} />
+                                    <span className="font-bold">{walletLabel('TUA', user?.work_type)}</span>
+                                </button>
+                            )}
                             {showBonusEntry && (
                                 <button 
                                     onClick={() => { setActiveTab('BONUS'); setIsDropdownOpen(false); }}
                                     className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'BONUS' ? 'bg-amber-50 text-amber-600' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     <Star size={20} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
-                                    <span className="font-bold">Ví Bonus</span>
-                                </button>
-                            )}
-                            {canViewPiggyBank && (
-                                <button 
-                                    onClick={() => { setActiveTab('TICH_LUY'); setIsDropdownOpen(false); }}
-                                    className={`flex items-center gap-3 px-5 py-4 transition-all ${activeTab === 'TICH_LUY' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    <PiggyBank size={20} className={activeTab === 'TICH_LUY' ? 'text-indigo-500' : 'text-slate-400'} />
-                                    <span className="font-bold">Heo Đất Tích Lũy</span>
+                                    <span className="font-bold">{walletLabel('BONUS', user?.work_type)}</span>
                                 </button>
                             )}
                         </div>
@@ -201,7 +224,7 @@ export default function KTVWalletPage() {
                     /* The selected wallet is switched off (per-staff flag or the
                        type-wide switch) while the wallet permission is on → the one
                        shared maintenance notice. Never a blank screen or 0đ — the
-                       KTV would think the money is gone. */
+                       KTV would think money is gone, not that it is switched off. */
                     <FeatureMaintenanceNotice />
                 ) : (
                     <>
@@ -218,17 +241,17 @@ export default function KTVWalletPage() {
                                 <div className="mb-5">
                                     <p className="text-[10px] text-emerald-200 uppercase tracking-widest mb-1">Số dư khả dụng</p>
                                     <p className="text-4xl font-black tracking-tight drop-shadow-sm">
-                                        {Number(walletBalance.available_balance || 0).toLocaleString()}đ
+                                        {formatVnd(walletBalance.available_balance)}
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
                                     <div>
                                         <p className="text-emerald-200/70 text-[10px] uppercase mb-0.5">Số dư hiện tại</p>
-                                        <p className="font-bold">{Number(walletBalance.net_balance || 0).toLocaleString()}đ</p>
+                                        <p className="font-bold">{formatVnd(walletBalance.net_balance)}</p>
                                     </div>
                                     <div>
                                         <p className="text-emerald-200/70 text-[10px] uppercase mb-0.5">Đang chờ duyệt</p>
-                                        <p className="font-bold text-amber-300">{Number(walletBalance.total_pending || 0).toLocaleString()}đ</p>
+                                        <p className="font-bold text-amber-300">{formatVnd(walletBalance.total_pending)}</p>
                                     </div>
                                 </div>
                                 <button 
@@ -240,8 +263,135 @@ export default function KTVWalletPage() {
                             </div>
                         )}
 
-                        {/* Ví Bonus */}
-                        {activeTab === 'BONUS' && bonusBalance && (
+                        {/* Ví Điểm — nguồn ĐIỂM OFFICE.
+                            Không có nút quy đổi: điểm Office là thang chất lượng,
+                            hệ quả tiền duy nhất là mức quỹ nội bộ phải đóng. */}
+                        {activeTab === 'BONUS' && bonusBalance && isOfficeBonus && (
+                            <div className="p-6 rounded-[32px] shadow-lg shadow-amber-900/10 bg-gradient-to-br from-amber-500 to-orange-600 text-white">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-bold text-amber-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
+                                        <Star size={16} className="fill-amber-100" />
+                                        Điểm Office tháng {String(bonusBalance.month || '').slice(5)}
+                                    </h3>
+                                    <span className="text-[10px] bg-white/20 px-2 py-1 rounded-lg font-bold">ĐIỂM</span>
+                                </div>
+
+                                {/* Chưa có ngày công nào thì KHÔNG vẽ điểm và KHÔNG vẽ mức quỹ.
+                                    Điểm tháng là trung bình cộng — không có mẫu số thì con số
+                                    100 chỉ là giá trị kỹ thuật, hiện ra là nói KTV làm việc
+                                    hoàn hảo và được miễn sạch quỹ, cả hai đều sai. */}
+                                {bonusBalance.hasData === false ? (
+                                    <div className="p-4 rounded-2xl bg-black/15 text-center">
+                                        <p className="text-lg font-black">Chưa có dữ liệu</p>
+                                        <p className="text-[12px] font-medium text-amber-100/90 mt-1">
+                                            Tháng này bạn chưa có ngày công nào. Điểm Office và mức quỹ
+                                            sẽ hiện sau buổi đi làm đầu tiên.
+                                        </p>
+                                    </div>
+                                ) : (
+                                  <>
+                                    <div className="mb-5">
+                                        <p className="text-4xl font-black tracking-tight drop-shadow-sm flex items-baseline gap-1">
+                                            {Number(bonusBalance.points ?? 0).toLocaleString('vi-VN')}
+                                            <span className="text-xl font-bold">/ 100</span>
+                                        </p>
+                                        <p className="text-xs text-amber-100/90 font-medium mt-1">
+                                            Trung bình {formatVnd(bonusBalance.avg)}/ngày
+                                            {Number(bonusBalance.repeatPenalty) > 0
+                                                && ` · trừ thêm ${formatVnd(bonusBalance.repeatPenalty)} do lỗi lặp`}
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl mb-4">
+                                        <div>
+                                            <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày đi làm</p>
+                                            <p className="font-bold">{bonusBalance.workDays ?? 0} ngày</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-amber-100/70 text-[10px] uppercase mb-0.5">Ngày không lỗi</p>
+                                            <p className="font-bold">{bonusBalance.cleanDays ?? 0} ngày</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Hệ quả tiền DUY NHẤT của điểm Office. Hiện số CÒN PHẢI ĐÓNG,
+                                        không hiện số được miễn — KTV cần biết mình nợ bao nhiêu. */}
+                                    <div className={`p-4 rounded-2xl ${Number(bonusBalance.fundDue) > 0 ? 'bg-black/20' : 'bg-white/20'}`}>
+                                        <p className="text-[10px] uppercase tracking-widest text-amber-100/80 mb-1">
+                                            Quỹ nội bộ tháng này còn phải đóng
+                                        </p>
+                                        <p className="text-2xl font-black">
+                                            {formatVnd(bonusBalance.fundDue)}
+                                            <span className="text-xs font-bold text-amber-100/70">
+                                                {' '}/ {formatVnd(bonusBalance.fundBase ?? 250000)}
+                                            </span>
+                                        </p>
+                                        <p className="text-[11px] font-medium text-amber-100/90 mt-1">
+                                            {Number(bonusBalance.exemptPct) > 0
+                                                ? `Đang được miễn ${bonusBalance.exemptPct}% nhờ điểm tháng.`
+                                                : 'Chưa đạt bậc miễn nào — giữ điểm trên 85 để bắt đầu được miễn.'}
+                                        </p>
+                                    </div>
+
+                                    <p className="text-[11px] text-amber-100/80 font-medium mt-3 text-center">
+                                        Điểm Office không quy đổi ra tiền. Điểm chỉ quyết định mức quỹ phải đóng.
+                                    </p>
+                                  </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Lịch sử điểm Office theo từng ngày */}
+                        {activeTab === 'BONUS' && isOfficeBonus && bonusTimeline.length > 0 && (
+                            <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-3">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    Chi tiết từng ngày
+                                </h4>
+                                {bonusTimeline.map((d: any) => (
+                                    <div key={d.date} className="border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-bold text-slate-700">
+                                                {new Date(d.date + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                                            </p>
+                                            <p className={`text-sm font-black ${d.deducted > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                {d.dayScore}đ
+                                            </p>
+                                        </div>
+                                        {d.hits?.length > 0 && (
+                                            <ul className="mt-1.5 space-y-1">
+                                                {d.hits.map((h: any, i: number) => (
+                                                    <li key={i} className="text-xs text-slate-500 flex justify-between gap-3">
+                                                        <span>
+                                                            {h.label}
+                                                            {/* Mỗi ảnh một link riêng — trang Ví không có khung xem ảnh,
+                                                                mở thẳng ảnh trong tab mới là đủ để KTV đối chiếu. */}
+                                                            {(h.photoUrls || []).length > 0
+                                                                ? h.photoUrls.map((u: string, k: number) => (
+                                                                    <a
+                                                                        key={k}
+                                                                        href={u}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="text-rose-600 font-bold underline underline-offset-2"
+                                                                    > · 📷 Ảnh {k + 1}</a>
+                                                                  ))
+                                                                : h.photoCount > 0 && <span className="text-slate-400"> · {h.photoCount} ảnh</span>}
+                                                            {h.sharedPhotos && (
+                                                                <span className="text-slate-400"> · ảnh dùng chung phiếu cũ</span>
+                                                            )}
+                                                            {h.note && <span className="text-slate-400"> · {h.note}</span>}
+                                                        </span>
+                                                        <span className="font-bold text-rose-500 shrink-0">−{h.points}đ</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Ví Bonus — nguồn điểm sao khách chấm */}
+                        {activeTab === 'BONUS' && bonusBalance && !isOfficeBonus && (
                             <div className={`p-6 rounded-[32px] shadow-lg shadow-amber-900/10 bg-gradient-to-br from-amber-500 to-orange-600 text-white`}>
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="font-bold text-amber-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
@@ -257,7 +407,7 @@ export default function KTVWalletPage() {
                                         </p>
                                     </div>
                                     <p className="text-xs text-amber-100/90 font-medium">
-                                        (Tương đương <span className="font-bold text-white">{Number(bonusBalance.vnd_value || 0).toLocaleString()}đ</span>)
+                                        (Tương đương <span className="font-bold text-white">{formatVnd(bonusBalance.vnd_value)}</span>)
                                     </p>
                                 </div>
                                 
@@ -267,57 +417,6 @@ export default function KTVWalletPage() {
                                 >
                                     <Banknote size={16} /> Yêu Cầu Quy Đổi Tiền
                                 </button>
-                            </div>
-                        )}
-
-                        {/* Heo Đất Tích Lũy */}
-                        {activeTab === 'TICH_LUY' && piggyBankBalance && (
-                            <div className={`p-6 rounded-[32px] shadow-lg shadow-indigo-900/10 bg-gradient-to-br from-indigo-500 to-purple-700 text-white`}>
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="font-bold text-indigo-100 flex items-center gap-2 uppercase tracking-widest text-[11px]">
-                                        <PiggyBank size={16} className="text-white" />
-                                        Heo Đất Tích Lũy
-                                    </h3>
-                                    <button 
-                                        onClick={() => setRuleModalOpen(true)}
-                                        className="text-[10px] bg-white/20 hover:bg-white/30 transition-colors px-2 py-1.5 rounded-lg font-bold flex items-center gap-1 text-white"
-                                    >
-                                        <Info size={12} /> Quy Định
-                                    </button>
-                                </div>
-                                <div className="mb-5">
-                                    <p className="text-[10px] text-indigo-200 uppercase tracking-widest mb-1">Tổng Số Dư Tiết Kiệm</p>
-                                    <p className="text-4xl font-black tracking-tight drop-shadow-sm">
-                                        {(Number(piggyBankBalance.weekly_amount || 0) * Number(piggyBankBalance.contributed_weeks || 0)).toLocaleString()}đ
-                                    </p>
-                                </div>
-
-                                {/* Progress Bar */}
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className="text-xs font-bold text-indigo-100 uppercase tracking-widest">Tiến độ tuần (18 tháng)</span>
-                                        <span className="text-sm font-black bg-white/20 px-2 py-0.5 rounded-lg">
-                                            {piggyBankBalance.contributed_weeks} / {piggyBankTotalWeeks}
-                                        </span>
-                                    </div>
-                                    <div className="w-full bg-indigo-900/40 rounded-full h-2.5 overflow-hidden">
-                                        <div 
-                                            className="bg-white h-2.5 rounded-full transition-all duration-1000" 
-                                            style={{ width: `${Math.min(100, (piggyBankBalance.contributed_weeks / piggyBankTotalWeeks) * 100)}%` }}
-                                        ></div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 text-xs p-3 bg-black/10 rounded-2xl">
-                                    <div>
-                                        <p className="text-indigo-200/70 text-[10px] uppercase mb-0.5">Tiền nạp hàng tuần</p>
-                                        <p className="font-bold">{Number(piggyBankBalance.weekly_amount || 0).toLocaleString()}đ/tuần</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-indigo-200/70 text-[10px] uppercase mb-0.5">Thời gian còn lại</p>
-                                        <p className="font-bold text-amber-300">{Math.max(0, piggyBankTotalWeeks - piggyBankBalance.contributed_weeks)} tuần</p>
-                                    </div>
-                                </div>
                             </div>
                         )}
 
@@ -340,61 +439,74 @@ export default function KTVWalletPage() {
                                                 <h4 className="text-xs font-bold text-slate-600 capitalize">{group.date}</h4>
                                             </div>
 
-                                            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
+                                            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-100 before:to-transparent">
                                                 {group.items.map((item: any, idx: number) => {
-                                                    const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : (activeTab === 'TICH_LUY' ? item.type === 'DEPOSIT' : Number(item.amount) >= 0);
-                                                    const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : (activeTab === 'TICH_LUY' ? item.type === 'WITHDRAW' : item.type === 'WITHDRAWAL');
+                                                    const isPositive = activeTab === 'BONUS' ? (item.type === 'EARN' || item.type === 'GIFT') : Number(item.amount) >= 0;
+                                                    const isWithdrawal = activeTab === 'BONUS' ? item.type === 'REDEEM' : item.type === 'WITHDRAWAL';
                                                     const isPending = item.status === 'PENDING';
                                                     const isRejected = item.status === 'REJECTED';
+                                                    // Tua CHƯA CHỐT không có trong số dư (server bỏ qua khi
+                                                    // cộng), nên cũng không hiện chip "Số dư" — hiện thì hai dòng
+                                                    // liền nhau ra cùng một con số, đọc như lỗi.
+                                                    const daChot = item.type !== 'TIP' && !isRejected
+                                                        && !item.is_provisional && item.status !== 'HELD';
                                                     
                                                     let Icon = Zap;
                                                     let iconColor = 'text-slate-500';
                                                     if (activeTab === 'BONUS') {
                                                         Icon = item.type === 'EARN' ? Star : (item.type === 'REDEEM' ? TrendingDown : TrendingDown);
                                                         iconColor = item.type === 'EARN' ? 'text-amber-500 fill-amber-500' : 'text-rose-500';
-                                                    } else if (activeTab === 'TICH_LUY') {
-                                                        Icon = item.type === 'DEPOSIT' ? PiggyBank : TrendingDown;
-                                                        iconColor = item.type === 'DEPOSIT' ? 'text-indigo-500 fill-indigo-100' : 'text-rose-500';
                                                     } else {
                                                         Icon = item.type === 'TIP' ? Gift : (item.type === 'COMMISSION' ? Banknote : (item.type === 'WITHDRAWAL' ? TrendingDown : (item.type === 'GIFT' ? TrendingUp : Zap)));
                                                         iconColor = item.type === 'TIP' ? 'text-emerald-500' : (item.type === 'COMMISSION' ? 'text-indigo-500' : (item.type === 'WITHDRAWAL' ? 'text-rose-500' : (item.type === 'GIFT' ? 'text-amber-500' : 'text-slate-500')));
                                                     }
 
-                                                    const titleText = activeTab === 'BONUS' ? (item.desc || item.type) : (activeTab === 'TICH_LUY' ? item.note || item.type : item.title);
-                                                    const noteText = activeTab === 'BONUS' || activeTab === 'TICH_LUY' ? null : item.note;
+                                                    const titleText = activeTab === 'BONUS' ? (item.desc || item.type) : item.title;
+                                                    const noteText = activeTab === 'BONUS' ? null : item.note;
                                                     const displayAmount = activeTab === 'BONUS' ? Math.abs(Number(item.points)) : Math.abs(Number(item.amount));
 
+                                                    // Một cột thẳng, KHÔNG so le.
+                                                    //
+                                                    // ⚠️ Trước đây bố cục zigzag (`md:odd:flex-row-reverse`
+                                                    // + thẻ rộng 50%) ném hai dòng của CÙNG một đơn —
+                                                    // tiền tua và thuế — ra hai bên đối diện. Nhìn không
+                                                    // ra chúng đi cặp, KTV tưởng thứ tự bị lộn.
                                                     return (
-                                                        <div key={item.id || idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-100 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 ${isRejected ? 'opacity-50' : ''} ${iconColor}`}>
+                                                        <div key={item.id || idx} className="relative flex items-center justify-between md:justify-normal group is-active">
+                                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-100 shadow shrink-0 z-10 ${isRejected ? 'opacity-50' : ''} ${iconColor}`}>
                                                                 <Icon size={16} />
                                                             </div>
-                                                            <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-2xl border ${isRejected ? 'border-dashed border-slate-200 opacity-60' : 'border-slate-100'} shadow-sm transition-all hover:shadow-md`}>
+                                                            <div className={`w-[calc(100%-4rem)] bg-white p-4 rounded-2xl border ${isRejected ? 'border-dashed border-slate-200 opacity-60' : 'border-slate-100'} shadow-sm transition-all hover:shadow-md`}>
                                                                 <div className="flex items-center justify-between mb-1">
                                                                     <span className={`font-bold text-xs line-clamp-2 pr-2 ${isRejected ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{titleText}</span>
                                                                     <span className={`font-black text-sm whitespace-nowrap ${isRejected ? 'text-slate-400 line-through' : isWithdrawal ? 'text-rose-600' : isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                        {isPositive ? '+' : '-'}{displayAmount.toLocaleString()}{activeTab === 'BONUS' ? ' điểm' : 'đ'}
+                                                                        {isPositive ? '+' : '-'}{activeTab === 'BONUS' ? `${displayAmount.toLocaleString('vi-VN')} điểm` : formatVnd(displayAmount)}
                                                                     </span>
                                                                 </div>
                                                                 {noteText && <div className={`mt-1.5 text-[10px] p-2 rounded-lg ${isRejected ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>{noteText}</div>}
                                                                 <div className="flex items-center justify-between mt-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-[10px] text-slate-400 font-medium">
-                                                                            {new Date(item.created_at || item.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                                                            {fmtClockOnDate(item.created_at || item.date, group.businessDate)}
                                                                         </span>
-                                                                        {activeTab === 'TUA' && item.type !== 'TIP' && !isRejected && (
+                                                                        {activeTab === 'TUA' && daChot && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
-                                                                                Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()}đ</span>
+                                                                                Số dư: <span className="font-bold text-slate-600">{formatVnd(item.running_balance)}</span>
                                                                             </span>
                                                                         )}
-                                                                        {activeTab === 'BONUS' && !isRejected && (
+                                                                        {activeTab === 'BONUS' && daChot && (
                                                                             <span className="text-[10px] text-slate-400 font-medium border-l border-slate-200 pl-2">
                                                                                 Số dư: <span className="font-bold text-slate-600">{Number(item.running_balance || 0).toLocaleString()} điểm</span>
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                     <div className="flex gap-1">
-                                                                        {isPending && (
+                                                                        {/* ⚠️ Chỉ dòng RÚT TIỀN mới có gì đó để duyệt.
+                                                                            Dòng tiền tua PENDING chỉ là tạm tính — khách
+                                                                            chưa đánh giá xong nên số còn có thể đổi, và
+                                                                            ghi chú ngay trên dòng đã nói "· tạm tính"
+                                                                            rồi. Gắn thêm nhãn ở đây là nói hai lần. */}
+                                                                        {isPending && isWithdrawal && (
                                                                             <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Chờ duyệt</span>
                                                                         )}
                                                                         {item.type === 'WITHDRAWAL' && item.status === 'APPROVED' && (
@@ -447,52 +559,70 @@ export default function KTVWalletPage() {
                         </div>
                         
                         <div className="space-y-4">
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                                        {withdrawModal.type === 'TUA' ? 'Số tiền rút' : 'Số điểm quy đổi'}
-                                    </label>
-                                    <span className="text-xs font-medium text-slate-500">
-                                        Tối đa: <span className={`font-bold ${withdrawModal.type === 'TUA' ? 'text-emerald-600' : 'text-amber-500'}`}>{withdrawModal.maxAmount.toLocaleString('en-US')}</span>
-                                    </span>
+                            {withdrawModal.step === 'CONFIRM' ? (
+                                <div className="py-4 text-center space-y-4">
+                                    <div className="w-16 h-16 mx-auto bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
+                                        <AlertCircle size={32} />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-800">Xác Nhận Quy Đổi</h3>
+                                    <p className="text-slate-600">Bạn đang yêu cầu quy đổi <span className="font-bold text-amber-600">{withdrawAmountStr} điểm</span> thành <span className="font-bold text-amber-600">{(Number(withdrawAmountStr.replace(/,/g, '')) * 1000).toLocaleString('vi-VN')} VNĐ</span>.</p>
+                                    <p className="text-sm font-semibold text-slate-500">Đồng ý thực hiện?</p>
                                 </div>
-                                {withdrawModal.type === 'TUA' ? (
-                                    <div className="relative">
-                                        <input 
-                                            type="text" 
-                                            inputMode="numeric"
-                                            value={withdrawAmountStr}
-                                            onChange={handleAmountChange}
-                                            placeholder="0"
-                                            className="w-full text-2xl font-black text-slate-800 border-2 rounded-2xl p-4 pr-16 outline-none transition-colors focus:border-emerald-500 border-slate-200"
-                                        />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
-                                            VNĐ
+                            ) : (
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+                                            {withdrawModal.type === 'TUA' ? 'Số tiền rút' : 'Số điểm quy đổi'}
+                                        </label>
+                                        <span className="text-xs font-medium text-slate-500">
+                                            Tối đa: <span className={`font-bold ${withdrawModal.type === 'TUA' ? 'text-emerald-600' : 'text-amber-500'}`}>{withdrawModal.maxAmount.toLocaleString('en-US')}</span>
+                                        </span>
+                                    </div>
+                                    {withdrawModal.type === 'TUA' ? (
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                inputMode="numeric"
+                                                value={withdrawAmountStr}
+                                                onChange={handleAmountChange}
+                                                placeholder="0"
+                                                className="w-full text-2xl font-black text-slate-800 border-2 rounded-2xl p-4 pr-16 outline-none transition-colors focus:border-emerald-500 border-slate-200"
+                                            />
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
+                                                VNĐ
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {[50, 100, 200, 500].map(amount => (
-                                            <button
-                                                key={amount}
-                                                onClick={() => setWithdrawAmountStr(amount.toString())}
-                                                className={`py-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                                                    withdrawAmountStr === amount.toString()
-                                                        ? 'border-amber-500 bg-amber-50 text-amber-600'
-                                                        : 'border-slate-200 text-slate-500 hover:border-amber-200 hover:bg-amber-50/50'
-                                                }`}
-                                            >
-                                                <span className="text-xl font-black">{amount} Điểm</span>
-                                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
-                                                    = {(amount * 1000).toLocaleString('en-US')} VNĐ
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {[50, 100, 200, 500].map(amount => (
+                                                <button
+                                                    key={amount}
+                                                    onClick={() => setWithdrawAmountStr(amount.toString())}
+                                                    className={`py-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                                                        withdrawAmountStr === amount.toString()
+                                                            ? 'border-amber-500 bg-amber-50 text-amber-600'
+                                                            : 'border-slate-200 text-slate-500 hover:border-amber-200 hover:bg-amber-50/50'
+                                                    }`}
+                                                >
+                                                    <span className="text-xl font-black">{amount} Điểm</span>
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                                        = {(amount * 1000).toLocaleString('en-US')} VNĐ
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
-                            {withdrawModal.type === 'TUA' && (
+                            {formError && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2 flex items-center gap-2 text-left">
+                                    <AlertCircle size={14} className="shrink-0" />
+                                    <span>{formError}</span>
+                                </div>
+                            )}
+
+                            {withdrawModal.type === 'TUA' && withdrawModal.step !== 'CONFIRM' && (
                                 <button 
                                     onClick={handleWithdrawAll}
                                     className="w-full py-2.5 rounded-xl text-sm font-bold border-2 transition-colors border-emerald-100 text-emerald-600 hover:bg-emerald-50"
@@ -501,72 +631,35 @@ export default function KTVWalletPage() {
                                 </button>
                             )}
 
-                            <button 
-                                onClick={handleSubmitWithdraw}
-                                disabled={!withdrawAmountStr || isSubmitting}
-                                className={`w-full py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${withdrawModal.type === 'TUA' ? 'bg-emerald-600 shadow-lg shadow-emerald-600/20' : 'bg-amber-500 shadow-lg shadow-amber-500/20'}`}
-                            >
-                                {isSubmitting ? 'Đang xử lý...' : 'Xác Nhận'}
-                            </button>
+                            {withdrawModal.step === 'CONFIRM' ? (
+                                <div className="flex gap-3">
+                                    <button 
+                                        onClick={() => setWithdrawModal({ ...withdrawModal, step: 'INPUT' })}
+                                        className="flex-1 py-4 bg-slate-100 text-slate-700 font-bold rounded-2xl text-sm uppercase tracking-widest hover:bg-slate-200"
+                                    >
+                                        Quay lại
+                                    </button>
+                                    <button 
+                                        onClick={handleSubmitWithdraw}
+                                        disabled={isSubmitting}
+                                        className={`flex-1 py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-50 bg-amber-500 shadow-lg shadow-amber-500/20`}
+                                    >
+                                        {isSubmitting ? 'Đang xử lý...' : 'Xác Nhận'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <button 
+                                    onClick={handleSubmitWithdraw}
+                                    disabled={!withdrawAmountStr || isSubmitting}
+                                    className={`w-full py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${withdrawModal.type === 'TUA' ? 'bg-emerald-600 shadow-lg shadow-emerald-600/20' : 'bg-amber-500 shadow-lg shadow-amber-500/20'}`}
+                                >
+                                    {isSubmitting ? 'Đang xử lý...' : 'Xác Nhận'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
-            <AnimatePresence>
-                {ruleModalOpen && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative"
-                        >
-                            <button 
-                                onClick={() => setRuleModalOpen(false)}
-                                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-50 p-1.5 rounded-full transition-colors"
-                            >
-                                <XCircle size={24} />
-                            </button>
-                            <div className="text-center mb-6 mt-2">
-                                <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 bg-indigo-100 text-indigo-600">
-                                    <PiggyBank size={32} />
-                                </div>
-                                <h3 className="text-xl font-black text-slate-800">
-                                    Quy Định Rút Tiền
-                                </h3>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    Chính sách Heo Đất Tích Lũy
-                                </p>
-                            </div>
-                            
-                            <div className="space-y-4 text-sm text-slate-600">
-                                <div className="p-3 bg-indigo-50 rounded-xl text-indigo-800">
-                                    <p>• Bạn cần đóng đủ số tuần mục tiêu (Ví dụ: <strong>72 tuần / 18 tháng</strong>) mới được phép rút toàn bộ số tiền tiết kiệm.</p>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-xl">
-                                    <p>• Số tiền sẽ được trích tự động từ Ví Tua hàng tuần.</p>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-xl">
-                                    <p>• Nếu nghỉ việc giữa chừng hoặc chưa đủ số tuần, vui lòng liên hệ quản lý để được hỗ trợ theo quy định của cơ sở.</p>
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={() => setRuleModalOpen(false)}
-                                className="w-full mt-6 py-4 text-white font-black rounded-2xl text-sm uppercase tracking-widest active:scale-[0.98] transition-all bg-indigo-600 shadow-lg shadow-indigo-600/20"
-                            >
-                                Đã Hiểu
-                            </button>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </AppLayout>
     );
 }

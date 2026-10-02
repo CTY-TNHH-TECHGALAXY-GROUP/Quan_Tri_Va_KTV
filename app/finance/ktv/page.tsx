@@ -1,11 +1,16 @@
 'use client';
 
 import React from 'react';
+import { formatVnd } from '@/lib/format.logic';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceKTV } from './FinanceKTV.logic';
-import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, PiggyBank, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { t, workTypeLabel } from './FinanceKTV.i18n';
+import { KTV_WORK_TYPES } from '@/lib/services/KtvRosterService';
+import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, Zap, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { StaffLedgerBoard } from './StaffLedgerBoard';
+import { StaffWalletAuditModal } from './StaffWalletAuditModal';
 
 export default function FinanceKTVPage() {
     const { 
@@ -14,10 +19,18 @@ export default function FinanceKTVPage() {
         filterType, setFilterType, fromDate, setFromDate, toDate, setToDate,
         handleApprove, handleReject, refresh,
         isAdjustmentModalOpen, selectedKtv, adjAmount, setAdjAmount, adjType, setAdjType, adjWalletType, setAdjWalletType, adjReason, setAdjReason, setIsAdjustmentModalOpen, handleOpenAdjustment, handleSubmitAdjustment,
-        handleAcknowledgeIntent, filterStaffId, setFilterStaffId, staffList, filteredSummaries, filteredBonusSummaries
+        handleAcknowledgeIntent, filterStaffId, setFilterStaffId, staffList, filteredSummaries, filteredBonusSummaries,
+        filterWorkType, setFilterWorkType, countsByType, isBonusWalletExcluded
     } = useFinanceKTV();
     
     const [isWalletDropdownOpen, setIsWalletDropdownOpen] = React.useState(false);
+    const [financeView, setFinanceView] = React.useState<'SUMMARY' | 'LEDGER'>('SUMMARY');
+    const [auditModalState, setAuditModalState] = React.useState<{
+        isOpen: boolean;
+        staffId: string | null;
+        staffName: string;
+        workType?: string;
+    }>({ isOpen: false, staffId: null, staffName: '' });
 
     if (!user || !canAccessPage) {
         return (
@@ -133,7 +146,7 @@ export default function FinanceKTVPage() {
 
                                     <div className={`rounded-2xl p-4 mb-6 flex items-center justify-between ${isBonus ? 'bg-amber-50' : 'bg-rose-50'}`}>
                                         <span className={`text-xs font-black uppercase tracking-widest ${isBonus ? 'text-amber-800' : 'text-rose-800'}`}>Số tiền cần đưa</span>
-                                        <span className={`text-2xl font-black tracking-tight ${isBonus ? 'text-amber-600' : 'text-rose-600'}`}>{req.amount.toLocaleString()}đ</span>
+                                        <span className={`text-2xl font-black tracking-tight ${isBonus ? 'text-amber-600' : 'text-rose-600'}`}>{formatVnd(req.amount)}</span>
                                     </div>
                                     
                                     {req.note && !isBonus && (
@@ -214,7 +227,7 @@ export default function FinanceKTVPage() {
                                                         <span className="font-bold text-slate-400 uppercase text-[10px] tracking-widest bg-slate-100 px-2 py-1 rounded">Báo trước</span>
                                                     ) : (
                                                         <>
-                                                            <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{req.amount.toLocaleString()}đ</span>
+                                                            <span className={`font-black ${isBonus ? 'text-amber-600' : 'text-slate-700'}`}>{formatVnd(req.amount)}</span>
                                                             {isBonus && <span className="ml-2 text-[9px] font-bold text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded uppercase">Bonus</span>}
                                                         </>
                                                     )}
@@ -256,8 +269,45 @@ export default function FinanceKTVPage() {
                     </div>
                 </div>
 
-                {/* 🔵 TỔNG HỢP TÀI CHÍNH KTV (PHA 3) */}
+                {/* 🔵 NAVIGATION TABS: TỔNG HỢP SỐ DƯ vs SỔ ĐỐI SOÁT LỊCH SỬ TIỀN */}
                 <div className="pt-8">
+                    <div className="flex items-center gap-3 border-b border-slate-200 pb-3 mb-6 flex-wrap">
+                        <button
+                            onClick={() => setFinanceView('SUMMARY')}
+                            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 transition-all cursor-pointer ${
+                                financeView === 'SUMMARY'
+                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                        >
+                            <Banknote size={17} />
+                            Bảng Tổng Hợp Số Dư
+                        </button>
+                        <button
+                            onClick={() => setFinanceView('LEDGER')}
+                            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 transition-all cursor-pointer ${
+                                financeView === 'LEDGER'
+                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                        >
+                            <BookOpen size={17} />
+                            Sổ Đối Soát Lịch Sử Tiền
+                            <span className="px-1.5 py-0.5 text-[10px] font-black rounded-md bg-emerald-500 text-white">
+                                Mới
+                            </span>
+                        </button>
+                    </div>
+
+                    {financeView === 'LEDGER' ? (
+                        <StaffLedgerBoard
+                            staffList={staffList}
+                            onOpenStaffAudit={(staffId, staffName, workType) =>
+                                setAuditModalState({ isOpen: true, staffId, staffName, workType })
+                            }
+                        />
+                    ) : (
+                        <>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-indigo-600 flex items-center gap-2 uppercase tracking-widest text-sm">
                             <Banknote size={18} /> Bảng thống kê Ví điện tử KTV
@@ -278,7 +328,6 @@ export default function FinanceKTVPage() {
                                 <div className="flex items-center gap-2">
                                     {activeTab === 'TUA' && <><Zap size={16} className="text-amber-300 fill-amber-300" /> <span>Ví Tua (VNĐ)</span></>}
                                     {activeTab === 'BONUS' && <><Star size={16} className="fill-white" /> <span>Ví Bonus (Points)</span></>}
-                                    {activeTab === 'TICH_LUY' && <><PiggyBank size={16} /> <span>Ví Tích Luỹ</span></>}
                                 </div>
                                 <ChevronDown size={16} className={`transition-transform duration-200 ${isWalletDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
@@ -299,20 +348,27 @@ export default function FinanceKTVPage() {
                                         <Star size={16} className={activeTab === 'BONUS' ? 'text-amber-500' : 'text-slate-400'} />
                                         <span className="font-bold text-sm">Ví Bonus (Points)</span>
                                     </button>
-                                    <button 
-                                        onClick={() => { setActiveTab('TICH_LUY'); setIsWalletDropdownOpen(false); }}
-                                        className={`flex items-center gap-2 px-4 py-3 transition-all border-t border-slate-50 ${activeTab === 'TICH_LUY' ? 'bg-purple-50 text-purple-600' : 'text-slate-600 hover:bg-slate-50'}`}
-                                    >
-                                        <PiggyBank size={16} className={activeTab === 'TICH_LUY' ? 'text-purple-500' : 'text-slate-400'} />
-                                        <span className="font-bold text-sm">Ví Tích Luỹ</span>
-                                    </button>
                                 </div>
                             )}
                         </div>
 
-                        {/* BỘ LỌC NGÀY VÀ NHÂN VIÊN */}
-                        <div className="flex items-center gap-2">
-                            <select 
+                        {/* BỘ LỌC LOẠI KTV, NGÀY VÀ NHÂN VIÊN */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                                value={filterWorkType}
+                                onChange={(e) => setFilterWorkType(e.target.value as any)}
+                                title={t.workTypeFilter.label}
+                                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="ALL">{t.workTypeFilter.all} ({countsByType.ALL || 0})</option>
+                                {KTV_WORK_TYPES.map(type => (
+                                    <option key={type} value={type}>
+                                        {t.workTypeName[type]} ({countsByType[type] || 0})
+                                    </option>
+                                ))}
+                            </select>
+
+                            <select
                                 value={filterStaffId}
                                 onChange={(e) => setFilterStaffId(e.target.value)}
                                 className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 max-w-[150px] truncate"
@@ -354,7 +410,8 @@ export default function FinanceKTVPage() {
                     </div>
 
                     <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
+                        {/* Desktop View: Giữ 100% Table 9 cột */}
+                        <div className="hidden md:block overflow-x-auto">
                             {activeTab === 'TUA' && (
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-indigo-50 text-indigo-800 text-xs uppercase font-black whitespace-nowrap">
@@ -373,56 +430,72 @@ export default function FinanceKTVPage() {
                                 <tbody className="divide-y divide-slate-50 font-medium">
                                     {filteredSummaries.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="px-6 py-8 text-center text-slate-400">Chưa có dữ liệu thống kê KTV</td>
+                                            <td colSpan={9} className="px-6 py-8 text-center text-slate-400">
+                                                {filterWorkType === 'ALL' ? 'Chưa có dữ liệu thống kê KTV' : t.emptyByFilter}
+                                            </td>
                                         </tr>
                                     ) : (
                                         filteredSummaries.map((ktv) => (
                                             <tr key={ktv.id} className="hover:bg-indigo-50/30 whitespace-nowrap">
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-slate-800 block">{ktv.name}</span>
-                                                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md inline-block mt-1">{ktv.id}</span>
+                                                    <span className="inline-flex items-center gap-1.5 mt-1">
+                                                        <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">{ktv.id}</span>
+                                                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${ktv.work_type === 'TYPE_D' ? 'text-purple-600 bg-purple-50' : 'text-slate-500 bg-slate-100'}`}>
+                                                             {workTypeLabel(ktv.work_type)}
+                                                        </span>
+                                                    </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-slate-500 font-bold">{Number(ktv.previous_balance || 0).toLocaleString()}đ</td>
-                                                <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_commission || 0).toLocaleString()}đ</td>
-                                                <td className="px-6 py-4 text-right text-slate-600">{Number(ktv.total_tip || 0).toLocaleString()}đ</td>
+                                                <td className="px-6 py-4 text-right text-slate-500 font-bold">{formatVnd(ktv.previous_balance)}</td>
+                                                <td className="px-6 py-4 text-right text-slate-600">{formatVnd(ktv.total_commission)}</td>
+                                                <td className="px-6 py-4 text-right text-slate-600">{formatVnd(ktv.total_tip)}</td>
                                                 <td className="px-6 py-4 text-right text-slate-600">
-                                                    {(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0)).toLocaleString()}đ
+                                                    {formatVnd(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0))}
                                                     {Number(ktv.total_bonus || 0) > 0 && (
                                                         <span className="block text-[9px] text-indigo-400 font-bold mt-0.5">
-                                                            ★ {Number(ktv.total_bonus).toLocaleString()}đ
+                                                            ★ {formatVnd(ktv.total_bonus)}
                                                         </span>
                                                     )}
                                                     {Number(ktv.total_adjustment || 0) !== 0 && (
                                                         <span className={`block text-[9px] font-bold mt-0.5 ${Number(ktv.total_adjustment) > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                            {Number(ktv.total_adjustment) > 0 ? '+' : ''}{Number(ktv.total_adjustment).toLocaleString()}đ
+                                                            {Number(ktv.total_adjustment) > 0 ? '+' : ''}{formatVnd(ktv.total_adjustment)}
                                                         </span>
                                                     )}
                                                     {Number(ktv.total_penalty || 0) > 0 && (
                                                         <span className="block text-[9px] font-bold mt-0.5 text-rose-600">
-                                                            - Phạt {Number(ktv.total_penalty).toLocaleString()}đ
+                                                            - Phạt {formatVnd(ktv.total_penalty)}
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-black text-slate-800">{Number(ktv.gross_income || 0).toLocaleString()}đ</td>
+                                                <td className="px-6 py-4 text-right font-black text-slate-800">{formatVnd(ktv.gross_income)}</td>
                                                 <td className="px-6 py-4 text-right text-rose-600">
-                                                    <span className="font-bold">{Number(ktv.total_withdrawn || 0).toLocaleString()}đ</span>
+                                                    <span className="font-bold">{formatVnd(ktv.total_withdrawn)}</span>
                                                     {Number(ktv.total_pending || 0) > 0 && (
-                                                        <span className="block text-[10px] text-amber-500 mt-0.5">(+{Number(ktv.total_pending).toLocaleString()}đ)</span>
+                                                        <span className="block text-[10px] text-amber-500 mt-0.5">(+{formatVnd(ktv.total_pending)})</span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-black text-emerald-600">
-                                                    {Number(ktv.available_balance || 0).toLocaleString()}đ
+                                                    {formatVnd(ktv.available_balance)}
                                                     <span className="block text-[9px] text-slate-400 font-bold mt-0.5" title="Bao gồm cọc">
                                                         - Cọc {(Number(ktv.min_deposit || 500000) / 1000)}k
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <button 
-                                                        onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors"
-                                                    >
-                                                        <Edit3 size={14} /> Thưởng / Phạt
-                                                    </button>
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <button 
+                                                            onClick={() => setAuditModalState({ isOpen: true, staffId: ktv.id, staffName: ktv.name, workType: ktv.work_type })}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                            title="Xem chi tiết sổ ví & đối soát dòng tiền"
+                                                        >
+                                                            <Clock size={13} /> Sổ ví
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                        >
+                                                            <Edit3 size={13} /> Thưởng / Phạt
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -431,7 +504,15 @@ export default function FinanceKTVPage() {
                             </table>
                             )}
 
-                            {activeTab === 'BONUS' && (
+                            {activeTab === 'BONUS' && isBonusWalletExcluded && (
+                                <div className="px-6 py-10 text-center">
+                                    <Star size={40} className="text-purple-200 mx-auto mb-3" />
+                                    <p className="font-black text-slate-700">{t.bonusTab.excludedTitle}</p>
+                                    <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">{t.bonusTab.excludedNote}</p>
+                                </div>
+                            )}
+
+                            {activeTab === 'BONUS' && !isBonusWalletExcluded && (
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-amber-50 text-amber-800 text-xs uppercase font-black whitespace-nowrap">
                                     <tr>
@@ -465,15 +546,96 @@ export default function FinanceKTVPage() {
                             </table>
                             )}
 
-                            {activeTab === 'TICH_LUY' && (
-                                <div className="p-12 text-center text-slate-400">
-                                    <PiggyBank size={48} className="mx-auto mb-4 opacity-50" />
-                                    <h3 className="font-bold text-lg mb-1 text-slate-600">Ví Tích Luỹ KTV</h3>
-                                    <p className="text-sm">Bảng thống kê này đang được phát triển.</p>
+                        </div>
+
+                        {/* Mobile View: Dạng thẻ rút gọn cho Thu ngân/Admin */}
+                        <div className="block md:hidden divide-y divide-slate-100 p-3 space-y-3">
+                            {activeTab === 'TUA' && (
+                                filteredSummaries.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 text-sm">
+                                        {filterWorkType === 'ALL' ? 'Chưa có dữ liệu thống kê KTV' : t.emptyByFilter}
+                                    </div>
+                                ) : (
+                                    filteredSummaries.map((ktv) => (
+                                        <div key={ktv.id} className="p-4 bg-slate-50/60 rounded-2xl border border-slate-100 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className="font-bold text-slate-800 text-sm">{ktv.name}</div>
+                                                    <div className="inline-flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[10px] font-bold text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded">{ktv.id}</span>
+                                                        <span className="text-[10px] text-slate-500 font-semibold">{workTypeLabel(ktv.work_type)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[10px] text-slate-400 font-medium">Khả dụng</div>
+                                                    <div className="text-base font-black text-emerald-600">{formatVnd(ktv.available_balance)}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2 text-xs bg-white p-2.5 rounded-xl border border-slate-100">
+                                                <div>
+                                                    <span className="text-slate-400">Tiền tua:</span> <b className="text-slate-700">{formatVnd(ktv.total_commission)}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Tiền tip:</span> <b className="text-slate-700">{formatVnd(ktv.total_tip)}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Thưởng/Phạt:</span> <b className="text-slate-700">{formatVnd(Number(ktv.total_bonus || 0) + Number(ktv.total_adjustment || 0) - Number(ktv.total_penalty || 0))}</b>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">Đã rút:</span> <b className="text-rose-600">{formatVnd(ktv.total_withdrawn)}</b>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end items-center gap-2 pt-1">
+                                                <button
+                                                    onClick={() => setAuditModalState({ isOpen: true, staffId: ktv.id, staffName: ktv.name, workType: ktv.work_type })}
+                                                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                >
+                                                    <Clock size={13} /> Sổ ví
+                                                </button>
+                                                <button
+                                                    onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                >
+                                                    <Edit3 size={13} /> Thưởng / Phạt
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )
+                            )}
+
+                            {activeTab === 'BONUS' && isBonusWalletExcluded && (
+                                <div className="px-4 py-8 text-center">
+                                    <Star size={36} className="text-purple-200 mx-auto mb-2" />
+                                    <p className="font-bold text-slate-700 text-sm">{t.bonusTab.excludedTitle}</p>
+                                    <p className="text-xs text-slate-500 mt-1">{t.bonusTab.excludedNote}</p>
                                 </div>
+                            )}
+
+                            {activeTab === 'BONUS' && !isBonusWalletExcluded && (
+                                filteredBonusSummaries.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 text-sm">Chưa có dữ liệu ví bonus</div>
+                                ) : (
+                                    filteredBonusSummaries.map((ktv) => (
+                                        <div key={ktv.id} className="p-4 bg-amber-50/40 rounded-2xl border border-amber-100 flex items-center justify-between">
+                                            <div>
+                                                <div className="font-bold text-slate-800 text-sm">{ktv.name}</div>
+                                                <span className="text-[10px] font-bold text-amber-500 uppercase bg-amber-100/50 px-1.5 py-0.5 rounded">{ktv.id}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-black text-amber-600">{Number(ktv.vndEquivalent || 0).toLocaleString()}đ</div>
+                                                <div className="text-xs text-slate-500 font-bold">{Number(ktv.currentBalance || 0).toLocaleString()} pts</div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )
                             )}
                         </div>
                     </div>
+                    </>
+                    )}
                 </div>
 
                 {/* MODAL THƯỞNG PHẠT */}
@@ -569,6 +731,17 @@ export default function FinanceKTVPage() {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* MODAL ĐỐI SOÁT VÍ CHI TIẾT TỪNG KTV */}
+                {auditModalState.isOpen && (
+                    <StaffWalletAuditModal
+                        isOpen={auditModalState.isOpen}
+                        onClose={() => setAuditModalState(prev => ({ ...prev, isOpen: false }))}
+                        staffId={auditModalState.staffId}
+                        staffName={auditModalState.staffName}
+                        workType={auditModalState.workType}
+                    />
                 )}
 
             </div>

@@ -151,13 +151,27 @@ export class FinanceReportService {
         }
 
         // 4. Fetch Employees
-        const { data: employees } = await supabase.from('Staff').select('id, code, full_name, role, work_type');
-        const allKTV = (employees || []).filter((e: any) => e.role === 'TECHNICIAN' || String(e.code).startsWith('NH'));
+        //
+        // ⚠️ `Staff` KHÔNG có cột `code` và `role` — mã nhân viên chính là `id`
+        // (`technicianCodes` lưu đúng `Staff.id`). Câu select cũ đọc 2 cột không
+        // tồn tại nên lỗi → bản đồ rỗng → hourly-details / raw-data tính MỌI KTV
+        // theo TYPE_A. Cùng lỗi đã ghi nhận ở app/api/finance/reports/route.ts.
+        const { isPlaceholderStaffId } = await import('@/lib/constants/staff.constants');
+        const { data: employees } = await supabase
+            .from('Staff')
+            .select('id, full_name, work_type, status')
+            .neq('status', 'HỆ THỐNG');
+        const allKTV = (employees || []).filter((e: any) => {
+            const sid = e.id ? String(e.id).trim() : '';
+            return sid && sid !== 'ADMIN' && sid !== 'dev';
+        });
         const employeeMap: Record<string, string> = {};
         const ktvWorkTypeMap: Record<string, string> = {};
         allKTV.forEach((e: any) => {
-            employeeMap[e.code] = e.full_name || e.code;
-            ktvWorkTypeMap[e.code] = e.work_type || 'TYPE_A';
+            const sid = String(e.id).trim();
+            employeeMap[sid] = e.full_name || sid;
+            // KTV ngoài không tài khoản (EXT_*) trả theo Loại C như ledger.
+            ktvWorkTypeMap[sid] = isPlaceholderStaffId(sid) ? 'TYPE_C' : (e.work_type || 'TYPE_A');
         });
 
         return {

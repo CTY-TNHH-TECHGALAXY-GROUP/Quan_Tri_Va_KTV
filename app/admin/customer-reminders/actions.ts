@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole } from '@/lib/auth-server';
 
 export interface ReminderInput {
     contentVN: string;
@@ -14,6 +15,7 @@ export interface ReminderInput {
 
 export async function getReminders() {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -34,6 +36,7 @@ export async function getReminders() {
 
 export async function createReminder(payload: ReminderInput) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -54,6 +57,7 @@ export async function createReminder(payload: ReminderInput) {
 
 export async function updateReminder(id: string, payload: Partial<ReminderInput>) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -75,6 +79,7 @@ export async function updateReminder(id: string, payload: Partial<ReminderInput>
 
 export async function deleteReminder(id: string) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 

@@ -5,22 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X, Save, User, UserPlus, Award } from 'lucide-react';
 import { createStaffMember } from '@/app/admin/employees/actions';
 import { SkillLevel } from '@/lib/types';
-
-const DEFAULT_SKILLS = {
-    hairCut: false, shampoo: false, hairExtensionShampoo: false, earCombo: false, earChuyen: false,
-    machineShave: false, razorShave: false, facial: false, thaiBody: false,
-    shiatsuBody: false, oilBody: false, hotStoneBody: false, scrubBody: false,
-    foot: false, heelScrub: false, nailCombo: false, nailChuyen: false
-};
-
-const skillLabels: Record<string, string> = {
-    hairCut: 'Cắt Tóc', shampoo: 'Gội đầu', hairExtensionShampoo: 'Gội Tóc Nối',
-    earCombo: 'Ráy Combo', earChuyen: 'Ráy Chuyên', machineShave: 'Cạo Máy', razorShave: 'Cạo Dao',
-    facial: 'Facial', thaiBody: 'Body Thái', shiatsuBody: 'Shiatsu',
-    oilBody: 'Body Dầu', hotStoneBody: 'Body Đá Nóng', scrubBody: 'Scrub Body',
-    foot: 'Foot',
-    heelScrub: 'Bào Gót', nailCombo: 'Nail Combo', nailChuyen: 'Nail Chuyên',
-};
+import { DEFAULT_SKILLS, SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
 
 const levelInfo: Record<string, { label: string, color: string }> = {
     'false': { label: 'Chưa có', color: 'text-gray-400 bg-gray-50 border-gray-100 opacity-50' },
@@ -56,6 +41,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        isActiveTherapyMenu: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
         baseSalaryPerHour: 180000,
@@ -106,6 +92,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                 join_date: new Date().toISOString().split('T')[0], height: '', weight: '',
         isActiveVipMenu: false,
         isHomeSpa: false,
+        isActiveTherapyMenu: false,
         role: 'TECHNICIAN',
         work_type: 'TYPE_A',
         baseSalaryPerHour: 180000,
@@ -122,7 +109,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
         <Dialog.Root open={isOpen} onOpenChange={onClose}>
             <Dialog.Portal>
                 <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] animate-in fade-in duration-200" />
-                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-1.5rem)] sm:w-full max-w-2xl max-h-[90dvh] bg-white rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
                     <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
                         <Dialog.Title className="text-xl font-bold text-gray-900 flex items-center gap-2">
                             <UserPlus size={20} className="text-indigo-600" /> Thêm Nhân Viên Mới
@@ -169,6 +156,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                                 <option value="TYPE_A">Loại A (Tính theo Ca/Điểm)</option>
                                                 <option value="TYPE_B">Loại B (Hưởng tua 180k/h)</option>
                                                 <option value="TYPE_C">Loại C (Cộng tác viên/Freelance)</option>
+                                                <option value="TYPE_D">Loại D (Khoán)</option>
                                             </select>
                                         </div>
                                     )}
@@ -255,7 +243,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                             {/* Skills Info - Only show for TECHNICIAN */}
                             {formData.role === 'TECHNICIAN' && (
                                 <div className="space-y-6">
-                                    <div className="flex items-center gap-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isActiveVipMenu" checked={formData.isActiveVipMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveVipMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
                                             <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên VIP Menu</span>
@@ -263,6 +251,10 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input type="checkbox" name="isHomeSpa" checked={formData.isHomeSpa} onChange={(e) => setFormData(prev => ({ ...prev, isHomeSpa: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
                                             <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Home Spa</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="isActiveTherapyMenu" checked={formData.isActiveTherapyMenu} onChange={(e) => setFormData(prev => ({ ...prev, isActiveTherapyMenu: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+                                            <span className="text-sm font-bold text-gray-700 uppercase">Nhân viên Menu Điều trị</span>
                                         </label>
                                     </div>
                                     <div className="space-y-4">
@@ -275,7 +267,8 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.entries(formData.skills).map(([key, level]) => {
+                                    {SKILL_KEYS.map((key) => {
+                                        const level = formData.skills[key] ?? false;
                                         const info = levelInfo[String(level)];
                                         return (
                                             <button
@@ -284,7 +277,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                                 onClick={() => toggleSkill(key)}
                                                 className={`flex items-center justify-center p-2.5 rounded-lg border text-center transition-all hover:border-indigo-400 hover:shadow-sm cursor-pointer ${info.color}`}
                                             >
-                                                <span className="text-xs font-bold truncate w-full">{skillLabels[key]}</span>
+                                                <span className="text-xs font-bold truncate w-full">{SKILL_LABELS[key]}</span>
                                             </button>
                                         );
                                     })}

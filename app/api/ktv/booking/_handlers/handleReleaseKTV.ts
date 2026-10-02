@@ -97,6 +97,16 @@ export async function handleReleaseKTV(ctx: HandlerContext): Promise<void> {
                     }, {} as Record<string, string>);
                     updatePayload.handover_images = handoverObj;
                     updatePayload.handover_status = 'PENDING';
+                    // Phải hạ cờ này cùng lúc. Đây là đường nộp bàn giao mà màn KTV
+                    // thực sự dùng, còn HandoverService.submitHandover (đường /handover/submit)
+                    // đã hạ sẵn. Để sót thì item nộp qua đây mang PENDING + skipped=true,
+                    // trong khi cron autoApproveExpired lọc .eq(handover_skipped, false)
+                    // → không bao giờ được duyệt, treo PENDING vĩnh viễn dù KTV đã nộp đủ ảnh.
+                    updatePayload.handover_skipped = false;
+                    // Mốc để cron tính hạn auto-duyệt. KHÔNG dùng handover_status
+                    // làm căn cứ vì cột đó mặc định là 'PENDING' cho cả item chưa
+                    // từng bàn giao — lấy nhầm là duyệt sạch mấy nghìn đơn.
+                    updatePayload.handover_submitted_at = new Date().toISOString();
                 }
                 
                 await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);

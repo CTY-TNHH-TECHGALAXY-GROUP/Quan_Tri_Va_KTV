@@ -25,7 +25,7 @@ export function canTransition(from: RawStatus | string | null | undefined, to: R
     else if (from === 'cancelled') normalizedFrom = 'CANCELLED';
     else if (from === 'waiting_rating' || from === 'feedback') normalizedFrom = 'FEEDBACK';
     else if (from === 'cleaning' || from === 'COMPLETED') normalizedFrom = 'CLEANING';
-    else if (from === 'in_progress') normalizedFrom = 'IN_PROGRESS';
+    else if (from === 'in_progress' || from === 'PAUSED' || from === 'paused') normalizedFrom = 'IN_PROGRESS';
     else if (from === 'pending' || from === 'dispatched' || from === 'NEW' || from === 'WAITING' || from === 'READY') normalizedFrom = 'PREPARING';
 
     if (normalizedFrom === to) return true; // Giữ nguyên hoặc normalize về cùng bước thì hợp lệ
@@ -84,13 +84,67 @@ export function mapDispatchToRawStatus(dispatchStatus: string): RawStatus {
 /**
  * Tính toán trạng thái tổng của Booking dựa trên trạng thái của các Items.
  */
+/**
+ * True when a segment that has a KTV, is not voided (swapped out / cancelled no
+ * credit), still has no real end time — i.e. someone in the service has not
+ * finished (still working, or the next KTV in a sequence has not started).
+ *
+ * Same definition as SQL `booking_item_has_open_segment`
+ * (migration 20260914180000). Keep both in sync.
+ */
+export function hasOpenKtvSegment(segments: any[]): boolean {
+    return (Array.isArray(segments) ? segments : []).some((s: any) =>
+        !!s && typeof s === 'object'
+        && !!s.ktvId
+        && s.voided !== true && s.voided !== 'true'
+        && !s.actualEndTime);
+}
+
+/**
+ * Progress of a service's KTV segments, used by handleFinishService to pick the
+ * item status. Voided segments (swapped out, never started before the customer
+ * left, cancelled no credit) are nobody's work any more and are ignored —
+ * otherwise a never-started KTV keeps the item IN_PROGRESS forever (14/09/2026),
+ * and a swapped-out KTV (who never hands over) blocks "all handed over".
+ */
+export function segmentProgress(segments: any[]): { allSegsDone: boolean; hasUnstartedSegs: boolean; allHandovered: boolean } {
+    const live = (Array.isArray(segments) ? segments : [])
+        .filter((s: any) => !!s && s.voided !== true && s.voided !== 'true');
+    const started = live.filter((s: any) => !!s.actualStartTime);
+    return {
+        allSegsDone: started.length > 0 && started.every((s: any) => !!s.actualEndTime),
+        hasUnstartedSegs: live.some((s: any) => !s.actualStartTime && !!s.ktvId),
+        allHandovered: started.length > 0 && started.every((s: any) => !!s.handoverTime),
+    };
+}
+
+const FINISHING_ITEM_STATUSES = ['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED'];
+
+/**
+ * The counter / Kanban finishes ONE KTV's card (`targetKtvIds`) of a service
+ * that other KTVs still work on → keep the service's own status; only that
+ * KTV's segments are closed. Call it with the segments AFTER closing them.
+ *
+ * Incident 14/09/2026 (order 11NDK-005-14092026-B): the first KTV's card moved
+ * the whole service to FEEDBACK while NH021 was mid-service. Moving the whole
+ * card (no `targetKtvIds`) is a deliberate counter override and is not held.
+ */
+export function shouldHoldItemStatus(segments: any[], newStatus: string, targetKtvIds?: string[]): boolean {
+    if (!targetKtvIds || targetKtvIds.length === 0) return false;
+    if (!FINISHING_ITEM_STATUSES.includes(newStatus)) return false;
+    return hasOpenKtvSegment(segments);
+}
+
 export function recomputeBookingStatus(itemStatuses: string[]): string {
     if (!itemStatuses || itemStatuses.length === 0) return 'NEW';
     
     const hasWaitingItems = itemStatuses.some(s => ['PREPARING', 'WAITING', 'NEW'].includes(s));
-    const hasProgressedItems = itemStatuses.some(s => ['IN_PROGRESS', 'COMPLETED', 'DONE', 'CANCELLED', 'FEEDBACK', 'CLEANING'].includes(s));
+    const hasProgressedItems = itemStatuses.some(s => ['IN_PROGRESS', 'PAUSED', 'COMPLETED', 'DONE', 'CANCELLED', 'FEEDBACK', 'CLEANING'].includes(s));
 
-    if (itemStatuses.includes('IN_PROGRESS')) return 'IN_PROGRESS';
+    // PAUSED là đơn ĐANG chạy nhưng bấm tạm dừng — vẫn giữ phòng, vẫn giữ KTV.
+    // Thiếu nhánh này thì ['PAUSED','CANCELLED'] rơi xuống cuối và trả 'NEW',
+    // kéo đơn đã huỷ/đã xử lý ngược về cột chờ.
+    if (itemStatuses.includes('IN_PROGRESS') || itemStatuses.includes('PAUSED')) return 'IN_PROGRESS';
     if (hasWaitingItems && hasProgressedItems) return 'IN_PROGRESS';
     
     // Nếu có item đang Dọn phòng (hoặc vừa Xong và chờ dọn), cả Booking là đang Dọn phòng (Giữ phòng Bận)

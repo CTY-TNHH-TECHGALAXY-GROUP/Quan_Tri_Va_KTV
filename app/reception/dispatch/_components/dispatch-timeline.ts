@@ -157,7 +157,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 });
             }
 
-            let targetGroup = guestGroups.get(svc.guestId || svc.customerGroupId || '');
+            let targetGroup = guestGroups.get(svc.customerGroupId || svc.guestId || '');
             
             // 🔧 Tách các dịch vụ chưa có KTV và đang ở trạng thái pending thành các SubOrder riêng biệt
             // Điều này giúp Lễ Tân dễ dàng thấy và điều phối từng dịch vụ một trong cột "Chờ xếp ca"
@@ -175,7 +175,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // Nếu dịch vụ CÓ customerGroupId hoặc guestId rõ ràng nhưng không nằm trong order.guests
                 // (ví dụ: khi user bấm "Tách Khách"), ta tạo một group mới để tách nó thành SubOrder riêng biệt.
                 if (svc.guestId || svc.customerGroupId) {
-                    const newGroupId = svc.guestId || svc.customerGroupId || `split-${svc.id}`;
+                    const newGroupId = svc.customerGroupId || svc.guestId || `split-${svc.id}`;
                     guestGroups.set(newGroupId, { guest: null, services: [] });
                     targetGroup = guestGroups.get(newGroupId);
                 } else {
@@ -264,8 +264,23 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             const splitGroupServices: ServiceBlock[] = [];
             group.services.forEach(svc => {
                 if (svc.staffList && svc.staffList.length > 1) {
+                    // ⚠️ Người BỊ ĐỔI RA không phải một ca nối tiếp.
+                    //
+                    // Đổi KTV xong item có 2 người: người cũ (chặng `voided`) và người
+                    // thay, với giờ bắt đầu khác nhau. Đoạn tách dưới đây thấy "nhiều
+                    // KTV, giờ khác nhau" nên đẻ ra HAI thẻ Kanban cho cùng một dịch
+                    // vụ — thẻ thứ hai ghi "Đã tính ở thẻ trước". Nhìn ra như đơn bị
+                    // lặp. Ca nối tiếp thật là hai người CÙNG được tính công; người bị
+                    // đổi ra thì 0đ, 0 giờ, nên họ đi kèm thẻ của người thay chứ không
+                    // đứng riêng một thẻ.
+                    const conQuyenLoi = (st: any) =>
+                        !Array.isArray(st?.segments)
+                        || st.segments.length === 0
+                        || st.segments.some((g: any) => g?.voided !== true);
+                    const nguoiBiTuoc = svc.staffList.filter(st => !conQuyenLoi(st));
+
                     const staffByTime = new Map<string, any[]>();
-                    svc.staffList.forEach(st => {
+                    svc.staffList.filter(conQuyenLoi).forEach(st => {
                         const t = st._calculatedStartTime || 'unknown';
                         if (!staffByTime.has(t)) staffByTime.set(t, []);
                         staffByTime.get(t)!.push(st);
@@ -282,7 +297,9 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                             const isFirst = time === firstValidTime;
                             splitGroupServices.push({ 
                                 ...svc, 
-                                staffList: staffs, 
+                                // Người bị tước đi kèm thẻ ĐẦU TIÊN — họ là người làm
+                                // trước, và thẻ đó phải giải thích được vì sao đơn đổi tay.
+                                staffList: isFirst ? [...staffs, ...nguoiBiTuoc] : staffs,
                                 _splitTime: time,
                                 _isSequentialFollowUp: !isFirst
                             });
@@ -364,7 +381,12 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             const getServicePhase = (st: string) => {
                 if (['IN_PROGRESS', 'PAUSED'].includes(st)) return 'IN_PROGRESS';
                 if (['CLEANING', 'COMPLETED'].includes(st)) return 'CLEANING';
-                if (['FEEDBACK', 'DONE', 'CANCELLED'].includes(st)) return 'FEEDBACK';
+                if (st === 'FEEDBACK') return 'FEEDBACK';
+                // Huỷ KHÁC hoàn tất. Trước đây gộp chung vào 'DONE' nên cột "Đã Huỷ"
+                // trên Kanban vĩnh viễn rỗng, còn đơn bị huỷ thì nằm lẫn trong cột
+                // Hoàn Tất — lễ tân không phân biệt được.
+                if (st === 'CANCELLED') return 'CANCELLED';
+                if (st === 'DONE') return 'DONE';
                 return 'PREPARING';
             };
 
@@ -482,6 +504,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 if (statuses.includes('IN_PROGRESS') || statuses.includes('PAUSED')) dStatus = 'IN_PROGRESS';
                 else if (statuses.includes('CLEANING')) dStatus = 'CLEANING';
                 else if (statuses.includes('FEEDBACK')) dStatus = 'FEEDBACK';
+                else if (statuses.includes('CANCELLED') && statuses.every(x => x === 'CANCELLED')) dStatus = 'CANCELLED';
                 else if (statuses.includes('DONE') || statuses.includes('CANCELLED')) dStatus = 'DONE';
                 else if (statuses.includes('PREPARING')) dStatus = 'PREPARING';
 

@@ -1,3 +1,6 @@
+import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+import { punishTurnIfIdle } from '@/lib/turn-punish';
+import { logCounterAction, currentCounterActor } from '@/lib/counter-action-log';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
@@ -483,7 +486,13 @@ export class BookingModificationService {
         }
     }
 
-    static async cancelBookingItem(bookingId: string, itemId: string, reason: string = '') {
+    /**
+     * @param cancelCredit  'NONE'  = KTV mất sạch tiền, giờ tích luỹ và tua (mặc định).
+     *                      'WORKED' = vẫn cho hưởng theo số phút đã làm thật.
+     *   Lý do huỷ là chữ tự do do quầy gõ, **không** được dùng để quyết định tiền —
+     *   chỉ tham số này mới điều khiển. Xem plans/plan_tam_dung_huy_ket_thuc_som.md.
+     */
+    static async cancelBookingItem(bookingId: string, itemId: string, reason: string = '', cancelCredit: 'NONE' | 'WORKED' = 'NONE') {
         try {
             await requirePermission('dispatch_board');
             const supabase = getSupabaseAdmin();
@@ -495,7 +504,8 @@ export class BookingModificationService {
             const { data: booking, error: bError } = await supabase.from('Bookings').select('*').eq('id', bookingId).single();
             if (bError) throw bError;
             
-            const vnTimeStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+            const now = new Date();
+            const vnTimeStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
             
             let opts = item.options;
             if (typeof opts === 'string') {
@@ -504,10 +514,40 @@ export class BookingModificationService {
             opts = opts || {};
             opts.cancelReason = reason;
 
-            const { error: updateItemErr } = await supabase.from('BookingItems').update({ 
+            // ⏱️ Chốt mốc kết thúc cho các chặng còn hở. Dịch vụ đang tạm dừng thì
+            // mốc là `pauseStart` (lúc bấm tạm dừng), không phải giờ hiện tại —
+            // thời gian chờ giữa hai mốc đó KTV không làm nên không được tính tiền.
+            const isPausedItem = item.status === 'PAUSED' && !!item.pauseStart;
+            // Segment timestamps are absolute instants. A bare Vietnam wall clock
+            // is parsed as UTC by parseTimeMs and adds seven false work hours.
+            const endMark = isPausedItem ? item.pauseStart : now.toISOString();
+
+            let segs: any[] = [];
+            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+            let segmentsModified = false;
+            segs.forEach((s: any) => {
+                if (s.actualStartTime && !s.actualEndTime) {
+                    closeOpenPause(s, endMark, 'CANCEL');
+                    s.actualEndTime = endMark;
+                    segmentsModified = true;
+                }
+                if (cancelCredit === 'NONE' && s.actualStartTime) {
+                    voidSegment(s, endMark, 'CANCELLED_NO_CREDIT');
+                    segmentsModified = true;
+                }
+            });
+
+            opts.cancelCredit = cancelCredit;
+
+            const cancelPayload: any = {
                 status: 'CANCELLED',
-                options: opts
-            }).eq('id', itemId);
+                options: opts,
+                timeEnd: endMark,
+            };
+            if (segmentsModified) cancelPayload.segments = JSON.stringify(segs);
+            if (isPausedItem) cancelPayload.pauseStart = null;
+
+            const { error: updateItemErr } = await supabase.from('BookingItems').update(cancelPayload).eq('id', itemId);
             if (updateItemErr) throw updateItemErr;
 
             const itemTotal = (item.price || 0) * (item.quantity || 1);
@@ -531,9 +571,13 @@ export class BookingModificationService {
                 updatedAt: vnTimeStr 
             }).eq('id', bookingId);
 
+            // KTV đã thực sự bắt đầu chặng nào chưa? Quyết định có giữ đơn lại để
+            // dọn phòng hay nhả tua luôn.
+            const daBatDauLam = segs.some((x: any) => x.actualStartTime);
+
             const { data: turnsAffected } = await supabase
                 .from('TurnQueue')
-                .select('id, status, booking_item_ids')
+                .select('id, status, booking_item_ids, employee_id, date')
                 .eq('current_order_id', bookingId)
                 .contains('booking_item_ids', [itemId]);
 
@@ -543,6 +587,12 @@ export class BookingModificationService {
                     const remainingItemIds = currentItemIds.filter((id: string) => id !== itemId);
                     if (remainingItemIds.length > 0) {
                         await supabase.from('TurnQueue').update({ booking_item_id: remainingItemIds.join(','), booking_item_ids: remainingItemIds }).eq('id', turn.id);
+                    } else if (daBatDauLam) {
+                        // ⚠️ ĐANG LÀM RỒI mới huỷ → phòng vẫn bẩn, vẫn phải dọn và bàn giao.
+                        // Nhả tua ngay ở đây là KTV mất đơn trước khi kịp bàn giao và bị đá
+                        // về Dashboard — đúng lỗi đã gặp với "Kết thúc sớm".
+                        // handleReleaseKTV sẽ nhả tua sau khi bàn giao xong.
+                        console.log(`🧹 [Cancel] KTV ${turn.employee_id} đã bắt đầu — giữ đơn để dọn phòng, chưa nhả tua.`);
                     } else {
                         const newStatus = turn.status === 'off' ? 'off' : 'waiting';
                         await supabase.from('TurnQueue').update({
@@ -550,8 +600,48 @@ export class BookingModificationService {
                             room_id: null, bed_id: null, start_time: null, estimated_end_time: null
                         }).eq('id', turn.id);
                     }
+
+                    {
+                        // Mất tua vẫn áp dụng cho cả hai nhánh trên — có dọn phòng hay không
+                        // thì tiền và tua vẫn mất, đó là hai chuyện khác nhau.
+                        // punishTurnIfIdle tự quy về mã ĐƠN CHA (sổ cái lưu theo đơn cha)
+                        // và tự bỏ qua nếu KTV còn dịch vụ khác chưa huỷ trong bill.
+                        if (cancelCredit === 'NONE' && turn.employee_id && turn.date) {
+                            await punishTurnIfIdle(supabase, {
+                                bookingId,
+                                employeeId: turn.employee_id,
+                                date: turn.date,
+                            });
+                        }
+                    }
+
+                    // Đóng assignment của đúng dịch vụ vừa huỷ rồi kéo đơn kế tiếp lên,
+                    // nếu không KTV vẫn bị coi là đang bận với dịch vụ đã huỷ.
+                    if (turn.employee_id && turn.date) {
+                        await supabase
+                            .from('KtvAssignments')
+                            .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+                            .eq('employee_id', turn.employee_id)
+                            .eq('business_date', turn.date)
+                            .eq('booking_item_id', itemId)
+                            .in('status', ['ACTIVE', 'QUEUED', 'READY']);
+
+                        await supabase.rpc('promote_next_assignment', {
+                            p_employee_id: turn.employee_id,
+                            p_business_date: turn.date,
+                        });
+                    }
                 }
             }
+
+            const actor = await currentCounterActor();
+            await logCounterAction(supabase, [itemId], {
+                action: 'CANCEL',
+                by: actor.id,
+                byName: actor.name,
+                verified: actor.verified,
+                note: `${cancelCredit === 'WORKED' ? 'có cộng giờ' : 'không cộng giờ'}${reason ? ' — ' + reason : ''}`,
+            });
 
             await createNotification({ bookingId: bookingId, type: 'SYSTEM_LOG', message: `Đã hủy dịch vụ ${item.serviceId} trong đơn ${booking.billCode || bookingId}. Lý do: ${reason}` });
 

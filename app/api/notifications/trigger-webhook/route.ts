@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendPushNotification } from '@/lib/push-helper';
 import { WebhookRecordSchema } from '@/lib/schemas/notification.schema';
+import { isSilentNotification } from '@/lib/notification-kind';
 
 interface NotifRule {
     allowed_roles: string[];
@@ -23,9 +25,8 @@ export async function POST(request: Request) {
     try {
         // 1. Verify webhook secret
         const authHeader = request.headers.get('x-webhook-secret');
-        const secret = process.env.WEBHOOK_SECRET || 'nganha-webhook-secret-2026';
-        if (authHeader !== secret) {
-            console.warn('⚠️ [Webhook] Unauthorized webhook call. Header:', authHeader);
+        const secret = process.env.WEBHOOK_SECRET;
+        if (!secret || !authHeader || Buffer.byteLength(authHeader) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(authHeader), Buffer.from(secret))) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -69,64 +70,74 @@ export async function POST(request: Request) {
         const shouldFilterOnShift = rule.require_on_shift === true;
 
         // 5. Dispatch Push Notifications based on rule targets
+        //
+        // 🛡️ LUẬT BẤT DI BẤT DỊCH: thông báo CÓ `employeeId` là thông báo CÁ NHÂN.
+        // Nó chỉ được đẩy cho chính chủ, cộng Admin/Quầy/Dev để theo dõi. TUYỆT ĐỐI
+        // không phát theo vai trò KTV — kể cả khi rule tắt cờ `include_target_employee`.
+        // Tắt cờ đó chỉ có nghĩa "chính chủ không cần push", KHÔNG BAO GIỜ có nghĩa
+        // "bắn cho tất cả KTV". Trước đây nhánh `else` không biết `employeeId` tồn tại
+        // nên rule COMPLAINT (allowed_roles có 'ktv', cờ target tắt) đã đẩy câu
+        // "Bạn nhận được đánh giá TỆ" của MỘT người tới máy của MỌI KTV.
+        // Tin xác nhận thì đẩy im lặng — hiện trên máy nhưng không kêu, không rung.
+        const silent = isSilentNotification(record.type);
+        const isTargeted = Boolean(record.employeeId);
+        const targetRoles: string[] = (rule.allowed_roles || []).map((r: string) => r.toUpperCase());
+        const isKtvRole = (r: string) => r === 'KTV' || r === 'TECHNICIAN';
+
+        const nonKtvRoles = targetRoles.filter(r => !isKtvRole(r));
+        // Tin cá nhân thì danh sách vai trò KTV luôn rỗng — chốt chặn ở code, không
+        // phụ thuộc vào việc admin cấu hình đúng hay sai trong bảng Cài Đặt Thông Báo.
+        const ktvRoles = isTargeted ? [] : targetRoles.filter(isKtvRole);
+
         let pushSent = false;
-        
-        if (record.employeeId && rule.include_target_employee) {
-            // Push to target employee (always send regardless of on-shift for explicit targets)
+
+        if (isTargeted && rule.include_target_employee) {
+            // Push cho đúng người được nhắm tới (không lọc theo ca)
             await sendPushNotification({
                 title: `${record.type === 'REWARD' ? '🎁' : '🔔'} Thông báo`,
                 message: cleanMessage,
-                targetStaffIds: [record.employeeId],
+                targetStaffIds: [record.employeeId as string],
                 url: '/',
                 requireOnShift: false, // Explicit target: always deliver
+                silent,
             });
             pushSent = true;
+        }
 
-            // Also push to allowed roles (e.g. admins when a KTV gets rewarded)
-            if (rule.allowed_roles && rule.allowed_roles.length > 0) {
-                const targetRoles = rule.allowed_roles.map((r: string) => r.toUpperCase());
-                await sendPushNotification({
-                    title: '🔔 Thông báo',
-                    message: cleanMessage,
-                    targetRoles,
-                    url: '/',
-                    requireOnShift: shouldFilterOnShift,
-                });
-            }
-        } else if (rule.allowed_roles && rule.allowed_roles.length > 0) {
-            // Push only to allowed roles
-            const targetRoles = rule.allowed_roles.map((r: string) => r.toUpperCase());
-            
-            // 🛡️ TÁCH PUSH ĐỂ ẨN THÔNG TIN NHẠY CẢM VỚI KTV
-            const nonKtvRoles = targetRoles.filter(r => r !== 'KTV');
-            const ktvRoles = targetRoles.filter(r => r === 'KTV');
-
-            if (nonKtvRoles.length > 0) {
-                await sendPushNotification({
-                    title: '🔔 Thông báo',
-                    message: cleanMessage,
-                    targetRoles: nonKtvRoles,
-                    url: '/',
-                    requireOnShift: false, // Admin/Reception luôn nhận — không có trong TurnQueue
-                });
-            }
-
-            if (ktvRoles.length > 0) {
-                let ktvMessage = cleanMessage;
-                // KTV không được xem chi tiết giá tiền/sđt của khách khi có đơn mới chung
-                if (record.type === 'NEW_ORDER') {
-                    ktvMessage = 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.';
-                }
-                await sendPushNotification({
-                    title: '🔔 Khách Mới',
-                    message: ktvMessage,
-                    targetRoles: ktvRoles,
-                    url: '/',
-                    requireOnShift: shouldFilterOnShift,
-                });
-            }
-            
+        if (nonKtvRoles.length > 0) {
+            await sendPushNotification({
+                title: '🔔 Thông báo',
+                message: cleanMessage,
+                targetRoles: nonKtvRoles,
+                url: '/',
+                requireOnShift: false, // Admin/Reception luôn nhận — không có trong TurnQueue
+                silent,
+            });
             pushSent = true;
+        }
+
+        if (ktvRoles.length > 0) {
+            let ktvTitle = '🔔 Khách Mới';
+            let ktvMessage = cleanMessage;
+            // KTV không được xem chi tiết giá tiền/sđt của khách khi có đơn mới chung
+            if (record.type === 'NEW_ORDER') {
+                ktvMessage = 'Có khách mới vừa đặt lịch! Vui lòng chuẩn bị.';
+            } else if (record.type === 'GUEST_ARRIVAL') {
+                ktvTitle = '🔔 CÓ KHÁCH';
+            }
+            await sendPushNotification({
+                title: ktvTitle,
+                message: ktvMessage,
+                targetRoles: ktvRoles,
+                url: '/',
+                requireOnShift: shouldFilterOnShift,
+                silent,
+            });
+            pushSent = true;
+        }
+
+        if (isTargeted && !rule.include_target_employee) {
+            console.log(`📡 [Webhook] "${record.type}" là tin cá nhân nhưng rule tắt include_target_employee — chính chủ ${record.employeeId} KHÔNG nhận push. Kiểm tra lại /admin/settings/notifications.`);
         }
 
         console.log(`📡 [Webhook] Push dispatch completed. Push sent:`, pushSent, `| On-shift filter:`, shouldFilterOnShift);

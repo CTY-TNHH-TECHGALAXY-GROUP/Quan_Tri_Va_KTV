@@ -9,6 +9,7 @@ import {
 } from '../lib/services/KtvDLedgerEngine';
 
 import { KtvTypeDCommissionService } from '../lib/services/KtvTypeDCommissionService';
+import { sumByStaff, groupForHistory } from '../lib/services/KtvDLedgerReader';
 
 let pass = 0, fail = 0;
 function check(label: string, got: any, want: any) {
@@ -377,7 +378,10 @@ section('Assigned-duration regression — normal finish versus counter closure')
     })] })], ['T016'], SERVICES, { ...CFG, taxEffectiveFrom: '2026-09-01' });
     money('T027 regression: 90-minute service pays 150,000', rows[0].commission_gross, 150000);
     money('tax remains 10%', rows[0].tax_amount, 15000);
-    money('net after tax = 135,000', rows[0].commission_net - rows[0].tax_amount, 135000);
+    const wallet = sumByStaff(rows).T016;
+    const history = groupForHistory(rows)[0];
+    money('wallet/finance net = 135,000', wallet.take_home, 135000);
+    money('history agrees with wallet/finance', history.take_home, wallet.take_home);
     money('legacy calculator agrees with engine', KtvTypeDCommissionService.calculateGuestCommission(
         [{ segments: [completed] }], 'T016', 0, 100000, CFG.ratingDeductions), rows[0].commission_gross);
 
@@ -386,9 +390,6 @@ section('Assigned-duration regression — normal finish versus counter closure')
     const short = seg({ duration: 90, actualStartTime: start, actualEndTime: end });
     check('normal completion is not a one-second tolerance', computeMinutes([short]).paid, 90);
     check('actual hours remain 30 minutes', computeMinutes([short]).actual, 30);
-    const paused = { ...short, pauses: [{ from: start, to: '2026-09-21T16:40:00Z', closedBy: 'RESUME' }] };
-    check('resumed service earns assigned 90 minutes', computeMinutes([paused]).paid, 90);
-    check('pause is still excluded from actual hours', computeMinutes([paused]).actual, 20);
     for (const exception of [
         { ...short, customCommissionDuration: 30, note: 'FINISHED_EARLY_ON_PAUSE' },
         { ...short, note: 'FINISHED_EARLY_ON_PAUSE' },

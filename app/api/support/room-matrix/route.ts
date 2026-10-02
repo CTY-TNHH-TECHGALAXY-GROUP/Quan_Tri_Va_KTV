@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    // Ghi đè toàn bộ ma trận (xoá hết rồi chèn lại) — chỉ admin support.
+    await requirePermission('support_tasks_admin');
     const body = await request.json();
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase not initialized');
@@ -144,6 +147,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     console.error('API Error /api/support/room-matrix POST:', error.message);
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }

@@ -104,7 +104,7 @@
 | `options` | jsonb | Tùy chọn thêm (VD: áp lực mạnh/nhẹ) |
 | `roomName` | text | Phòng phục vụ riêng item (multi-room support) |
 | `technicianCodes` | text[] | **Mảng mã KTV** phục vụ item này (hỗ trợ 2+ KTV cùng 1 DV) |
-| `status` | text | Trạng thái item: WAITING → IN_PROGRESS → COMPLETED → DONE |
+| `status` | text | Trạng thái item: WAITING/PREPARING → IN_PROGRESS (⇄ PAUSED) → CLEANING (dọn phòng) → FEEDBACK (đã bàn giao, chờ khách chấm) → DONE; hoặc CANCELLED. Dữ liệu cũ còn COMPLETED |
 | `timeStart` | timestamptz | Thời điểm KTV bắt đầu làm item này — dùng cho timer per-service |
 | `timeEnd` | timestamptz | Thời điểm hoàn thành item |
 | `bedId` | text | Giường phục vụ riêng item |
@@ -112,6 +112,7 @@
 | `handover_images` | jsonb | Mảng URL ảnh bàn giao phòng do KTV chụp |
 | `handover_reject_images` | jsonb | Mảng URL ảnh minh chứng phòng dơ từ Lễ Tân khi từ chối |
 | `handover_status` | text | Trạng thái duyệt ảnh: `PENDING`, `APPROVED`, `REJECTED` (mặc định: `PENDING`) |
+| `commission_locked` | boolean | **[Ghi bổ sung 03/10/2026]** Default `false` (migration `20260727000000_handover_v5_internal_reviews.sql`). Hiện không code nào bật; `true` = giữ ảnh làm chứng cứ — cron `/api/cron/cleanup-photos` KHÔNG xoá ảnh của item này. |
 | `handover_comment` | text | Lý do từ chối hoặc feedback của Lễ tân khi duyệt ảnh |
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
 | `itemFeedback` | text | Phản hồi text từ khách cho item |
@@ -120,6 +121,20 @@
 
 **Triggers:**
 - `tr_notify_ktv_on_item_rating` → Gửi thông báo thưởng/cảnh báo khi `itemRating` hoặc `ktvRatings` thay đổi
+
+**Dọn ảnh (03/10/2026):** ảnh trong bucket `attendance` do Vercel Cron `/api/cron/cleanup-photos` xoá qua Storage API (`lib/services/PhotoCleanupService.ts`): ảnh chấm công 30 ngày; ảnh của item `DONE` (trừ `handover_status='REJECTED'` / `commission_locked`) 3 ngày; `office-evidence/` không xoá. Chỉ xoá file, link trong DB giữ nguyên. Hai job pg_cron xoá ảnh cũ đã gỡ (migration `20261003090000_unschedule_broken_photo_jobs.sql`).
+
+**Cron (pg_cron) — tự Hoàn tất khi khách không chấm** (migration `20260914120000_auto_complete_feedback_after_5m.sql`):
+- Job `auto_complete_feedback_job` chạy **mỗi phút** → `auto_complete_unrated_feedback()`.
+- Chỉ xét item vào `FEEDBACK` **từ 01/09/2026 (giờ VN)** — item kẹt trước mốc này để quản lý xử lý tay.
+- Số phút chờ = `SystemConfigs.customer_rating_timeout_minutes` (mặc định **5**; sửa ở admin **Cài đặt tính năng → Bàn giao phòng**; thiếu/hỏng/âm → 5; `0` = hoàn tất ngay khi bàn giao).
+- Item `FEEDBACK` quá **số phút chờ** (mốc: `feedbackTime` muộn nhất trong `segments` → `handover_submitted_at` → `timeEnd` → `Bookings.updatedAt`) → `DONE`. Item đã có sao mà vẫn `FEEDBACK` → `DONE` ngay lượt kế.
+- Không chấm: `itemRating` **giữ NULL** (không ghi 0), `options.autoCompletedNoRating = true`, `options.autoCompletedAt` (ISO). Khách vẫn chấm muộn được.
+- Không đụng `CLEANING` / `IN_PROGRESS` / `PAUSED` / `CANCELLED` / `DONE`. Booking tính lại theo `lib/dispatch-status.ts → recomputeBookingStatus` (bỏ dịch vụ tiện ích), không lùi booking đã `DONE`.
+- **Chờ cả đơn con xong** (migration `20260914180000`, sau sự cố 14/09): chỉ chốt khi MỌI dịch vụ của booking (bỏ `CANCELLED` và dịch vụ tiện ích) đã `FEEDBACK`/`DONE` **và** không còn chặng mở. Giờ chờ tính từ dịch vụ xong **muộn nhất**; chốt các dịch vụ `FEEDBACK` của đơn cùng lúc → khách chấm 1 lần cho mọi người. Mốc 01/09 áp trên giờ xong của đơn.
+- Chặng mở = có `ktvId`, không `voided`, chưa có `actualEndTime` (đang làm, hoặc người sau trong chuỗi chưa bắt đầu). `segments` đọc không được → coi là mở (để yên cho quầy).
+- Hàm phụ: `jsonb_unwrap_string(jsonb)` (bóc jsonb dạng chuỗi, lỗi → NULL), `booking_item_last_feedback_time(jsonb)`, `booking_item_has_open_segment(jsonb)` (cùng định nghĩa với `hasOpenKtvSegment` ở `lib/dispatch-status.ts`), `auto_complete_feedback_candidates(p_wait_minutes numeric)` → bảng `(item_id, booking_id, no_rating, order_finished_at)` — nguồn duy nhất "dịch vụ nào được chốt", job và test cùng gọi.
+- Thay job cũ `auto_skip_rating_job` / `auto_skip_rating_after_24h()` (đã gỡ).
 
 **Quan hệ `itemRating` vs `ktvRatings`:**
 - 1 KTV: `itemRating = 4`, `ktvRatings = {"NH016": 4}` → cả 2 giống nhau
@@ -152,6 +167,7 @@
 | `is_utility` | boolean | ✅ **Cờ dịch vụ tiện ích** — Không gán KTV, không tính hoa hồng, không hiện timer KTV. Default: `false`. Set `true` cho Phòng riêng (`NHS0900`) và các DV phụ trợ khác. |
 | `min_ktv_required` | integer | Số lượng nhân viên làm tối thiểu cho dịch vụ (Default: 1) |
 | `service_group` | text | Nhóm dịch vụ: `MAIN` (Chính), `ADDON` (Lẻ/Phụ), `COMBO`. Dùng để nội suy số khách. Default: `MAIN` |
+| `strengthConfig` | jsonb NOT NULL | Lực tay cho phép chọn khi đặt: `{"light":true,"medium":true,"strong":true}` (migration `20260924180000_services_strength_config`). Admin bật/tắt ở Menu dịch vụ. |
 
 ---
 
@@ -182,6 +198,10 @@
 | `created_at` | timestamptz | Thời điểm tạo |
 
 **Constraint**: `UNIQUE(employee_id, date)` — mỗi KTV chỉ 1 record/ngày
+
+> ⚠️ **DEFAULT (đọc `information_schema` 14/09/2026):** `check_in_order DEFAULT 1`, `queue_position DEFAULT 1`, `status DEFAULT 'waiting'`. RPC `dispatch_confirm_booking` KHÔNG set `check_in_order`/`queue_position` → dòng do RPC tự tạo nhận **#1** (chen đầu tua). Từ 14/09/2026 `processDispatch` tạo sẵn dòng ở cuối hàng trước khi gọi RPC (`lib/services/TurnQueueRowService.ts` `ensureTurnRowsAtEnd`).
+>
+> ⚠️ **"Đã điểm danh hôm nay" KHÔNG đọc từ bảng này** (`check_in_order` bị quầy bật tay / "Lưu thứ tự" / RPC ghi). Nguồn chuẩn: `KTVAttendance` CHECK_IN/LATE_CHECKIN CONFIRMED trong khoảng ngày làm việc — `lib/attendance/checkedInToday.ts`.
 
 ---
 
@@ -380,7 +400,9 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 |-----|------|-----------------|
 | `id` | text PK | Mã nhân viên (VD: "NH016") |
 | `full_name` | text | Họ tên đầy đủ |
-| `status` | text | Trạng thái làm việc (ĐANG LÀM / NGHỈ VIỆC) |
+| `status` | text | Trạng thái: `ĐANG LÀM` / `ĐÃ NGHỈ` / `KHÓA_TÀI_KHOẢN` / `HỆ THỐNG`. CHECK constraint (`check_staff_status`). |
+| `lock_source` | text | **[NEW 11/09/2026]** Ai khoá tài khoản — ghi cùng câu UPDATE với `status`. `MANUAL` = admin tắt công tắc "Hoạt động" (KTV thấy "Tính năng của bạn đang bảo trì"); `NULL` / `DISCIPLINE` = khoá kỷ luật hoặc dữ liệu cũ (KTV thấy lý do). CHECK `IN ('MANUAL','DISCIPLINE')`. Trigger `staff_clear_lock_source_trigger` tự xoá về NULL khi `status` rời `KHÓA_TÀI_KHOẢN`. Migration `20260911100000_add_staff_lock_source.sql`. |
+| `pending_lock` | jsonb | **[NEW 14/09/2026]** Khoá kỷ luật ĐÃ QUYẾT nhưng ĐANG HOÃN vì KTV còn đơn chưa xong (đang làm / dọn phòng / chờ quầy duyệt bàn giao). `{caseKey, workDate, reason, source, decidedAt, billCodes}`; `NULL` = không có gì chờ. Cron `daily-absence-check` ghi; cron `/api/cron/type-d-pending-lock` (5 phút) áp khoá khi hết đơn rồi xoá; tắt kỷ luật hoặc mở khoá cũng xoá. Index một phần `idx_staff_pending_lock`. Migration `20260914200000_add_staff_pending_lock.sql`. |
 | `birthday` | date | Ngày sinh |
 | `gender` | text | Giới tính |
 | `id_card` | text | Số CCCD/CMND |
@@ -396,11 +418,11 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `weight` | integer | Cân nặng (kg) |
 | `is_active_vip_menu` | boolean | Hiển thị lên VIP Menu (true/false) |
 | `is_home_spa` | boolean | Đi được Home Spa (true/false) |
-| `is_active_therapy_menu` | boolean | Hiển thị lên Therapy Menu (true/false) |
+| `is_active_therapy_menu` | boolean | Hiển thị lên Therapy Menu (true/false). Default `false`. **Cột chỉ thật sự có trong DB từ migration `20260912150000_add_staff_is_active_therapy_menu.sql` (12/09/2026)** — trước đó doc ghi nhưng DB không có. Admin → Nhân viên bật/tắt cùng VIP / Home Spa. |
 | `certificate_url` | text | Link ảnh bằng cấp của nhân viên |
 | `feature_flags` | jsonb | Cờ bật/tắt tính năng per-staff (VD: `{"laundry_deduction": true, "is_on_call": true, "travel_time_mins": 30}`). Default: `{}` |
-| `skills` | jsonb | Kỹ năng chuyên môn |
-| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Freelance/Nhập tay). Default: `TYPE_A`. CHECK constraint. |
+| `skills` | jsonb | Kỹ năng chuyên môn — object `{ key: boolean }`. 18 key chuẩn (nguồn duy nhất: `SKILL_LABELS` / `DEFAULT_SKILLS` ở `lib/constants/staff.constants.ts`): hairCut, shampoo, hairExtensionShampoo, earCombo, earChuyen, machineShave, razorShave, facial, thaiBody, shiatsuBody (nhãn "Body Shiatsu"), oilBody, hotStoneBody, scrubBody, bodyMix, foot, heelScrub, nailCombo, nailChuyen. Dữ liệu cũ có thể còn giá trị chuỗi none/basic/expert/training và key cũ (oilFoot, hotStoneFoot, acupressureFoot, maniPedi, earCleaning) — `Employees.logic.ts` quy đổi khi đọc. |
+| `work_type` | text | Loại nhân viên: `TYPE_A` (Cố định), `TYPE_B` (Hợp tác/Bán thời gian), `TYPE_C` (Cộng tác viên — **tài khoản thật từ 12/09/2026**, tạo ở Admin → Nhân viên, không bắt buộc điểm danh; 138 mã placeholder cũ `EXT_…`/`C_…` do dispatch tự sinh đã chuyển `ĐÃ NGHỈ`, xem `scripts/cleanup_type_c_placeholders.ts`), `TYPE_D` (ăn theo giờ tích luỹ — mã `T001`, `T016`…, tiền tính ở `KTVDTurnLedger`). Default: `TYPE_A`. CHECK constraint. |
 | `online_status` | text | Trạng thái online của KTV Type B: `OFFLINE`, `ONLINE`, `AT_VENUE`. Default: `OFFLINE`. CHECK constraint. |
 | `travel_minutes` | integer | Thời gian di chuyển đến Spa (phút). Default: `0`. Chỉ dùng cho Type B khi online. |
 | `available_from` | time | Giờ bắt đầu sẵn sàng nhận đơn (HH:mm). Null khi offline. |
@@ -491,6 +513,29 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `type` | text | `DEPOSIT` (nạp từ ví tua), `WITHDRAW` (rút tiền khi hoàn thành) |
 | `note` | text | Ghi chú (VD: "Đóng tích lũy tuần 1") |
 | `created_at` | timestamptz | Thời điểm giao dịch |
+
+---
+
+### 6.6. KTVTypeDDailyRegistration ✅ CHỦ LỰC (TYPE D LỊCH & BÁO VẮNG/TRỄ)
+**Nhiệm vụ**: Đăng ký lịch làm việc hằng ngày của KTV TYPE_D và ghi nhận trạng thái báo vắng, báo trễ, điểm danh.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | ID tự sinh |
+| `staff_id` | text | Mã KTV |
+| `work_date` | date | Ngày đăng ký (YYYY-MM-DD) |
+| `expected_time` | time | Giờ dự kiến đến làm |
+| `expected_end_time` | time | Giờ tan làm đăng ký; nguồn giờ gốc gia hạn TYPE_D. |
+| `registered_at` | timestamptz | Thời điểm đăng ký |
+| `status` | text | `REGISTERED`, `OFF_REGISTERED`, `ABSENT_REPORTED`, `LATE_REPORTED`, `COMPLETED` |
+| `absent_reported_at` | timestamptz | Thời gian bấm nút Báo Vắng |
+| `late_reported_at` | timestamptz | Thời gian bấm nút Báo Trễ |
+| `late_expected_time` | time | Giờ dự kiến đến mới sau khi báo trễ |
+| `late_report_count` | int | Số lần báo trễ (chặn spam) |
+| `check_in_at` | timestamptz | Thời gian check-in thực tế |
+| `penalty_applied` | text | Đánh dấu loại phạt đã áp dụng (tránh phạt double) |
+
+**Constraint**: `UNIQUE(staff_id, work_date)` — mỗi nhân viên 1 bản ghi mỗi ngày.
 
 ---
 
@@ -640,7 +685,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 |-----|------|-----------------|
 | `id` | text PK | ID người dùng |
 | `username` | text UNIQUE | Tên đăng nhập |
-| `password` | text | Mật khẩu (hashed) |
+| `password` | text | Mật khẩu — **đang lưu plaintext** (login so sánh `eq('password', ...)`, admin đọc trực tiếp ở trang Phân quyền). Hash là việc của đợt sau. |
 | `code` | text UNIQUE | Mã nhân viên liên kết với Staff |
 | `fullName` | text | Họ tên hiển thị |
 | `gender` | text | Giới tính |
@@ -677,7 +722,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `id` | uuid PK | ID tự sinh |
 | `employee_id` | text | Mã nhân viên (nếu có) |
 | `employee_name` | text | Tên nhân viên hoặc username |
-| `event_type` | text | Loại sự kiện (VD: `INVALID_WIFI_IP`, `INVALID_LOGIN`) |
+| `event_type` | text | Loại sự kiện (VD: `INVALID_WIFI_IP`, `INVALID_LOGIN`). **Khoá / mở khoá tài khoản** (đọc lại ở `StaffLockHistoryService`, màn Chấm điểm KTV → Lịch sử khoá): `AUTO_LOCK_ABSENCE` (cron kỷ luật, cả khoá hoãn), `AUTO_LOCK_REJECT_NO_HOURS` (từ chối tua khi không đủ giờ — ⚠️ `details.reason` là câu KTV gõ, KHÔNG phải lý do khoá), `PENDING_LOCK` (chờ khoá vì còn đơn), `MANUAL_LOCK` (công tắc Hoạt động, `details.locked_by`), `MANUAL_UNLOCK` (`details.unlocked_by`, `reason`, `reactivation_fee`) |
 | `ip_address` | text | Địa chỉ IP của thiết bị vi phạm |
 | `user_agent` | text | Trình duyệt / Thiết bị |
 | `details` | jsonb | Thông tin chi tiết thêm |
@@ -824,3 +869,55 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `notes` | text | Ghi ch� th�m |
 | `status` | text | Tr?ng th�i ('PENDING', 'CONVERTED', 'CANCELLED') |
 | `created_at` | timestamp | Th?i di?m t?o |
+
+### GuestArrivalEvents
+| C?t | Ki?u | M� t? |
+|---|---|---|
+| id | uuid PK | ID b?n ghi |
+| created_by | text | Ngu?i b?t kh�a |
+| created_by_name | text | T�n ngu?i b?t kh�a |
+| created_at | timestamptz | Th?i di?m b?t |
+| released_at | timestamptz | Th?i di?m t?t |
+| released_by | text | Ngu?i t?t |
+| note | text | Ghi ch� |
+
+### KTVOfficeCriteria
+**Nhiệm vụ**: Bộ tiêu chí chấm điểm Office cho KTV Loại D. Quản lý sửa được ngay trên trang `/admin/ktv-office` (tab Cài đặt), không cần deploy.
+
+| Cột | Kiểu | Mô tả |
+|---|---|---|
+| id | text PK | Mã tiêu chí ('P1', 'T1', 'A1'...) |
+| grp | text | Nhóm ('I' \| 'II' \| 'III') |
+| grp_label | text | Tên nhóm hiển thị |
+| label | text | Tên lỗi |
+| points | numeric | Số điểm bị trừ khi dính lỗi |
+| requires_photo | boolean | Bắt buộc có ảnh minh chứng mới chấm được |
+| sort_order | int | Thứ tự hiển thị |
+| is_active | boolean | Còn áp dụng hay đã ngừng |
+
+### KTVOfficeScoreLog
+**Nhiệm vụ**: Từng phiếu trừ điểm Office. Mỗi ngày đi làm bắt đầu từ 100 điểm, trừ dần theo phiếu trong ngày đó.
+
+⚠️ **Thu hồi là XOÁ MỀM** — không xoá dòng. Mọi phép tính điểm phải lọc `revoked_at IS NULL`; lịch sử thì đọc cả dòng đã thu hồi để giữ dấu vết "trừ rồi hoàn".
+
+| Cột | Kiểu | Mô tả |
+|---|---|---|
+| id | uuid PK | Mã phiếu |
+| staff_id | text FK → Staff(id) | KTV bị trừ |
+| work_date | date | NGÀY VI PHẠM (không phải ngày chấm) |
+| criteria_id | text FK → KTVOfficeCriteria(id) | Lỗi bị chấm |
+| criteria_label | text | Snapshot tên lỗi lúc chấm — quy chế đổi tên không làm sai lịch sử |
+| points_deducted | numeric | Snapshot số điểm trừ |
+| note | text | Ghi chú của người chấm |
+| photo_urls | jsonb | Mảng link ảnh minh chứng (bucket `attendance`) |
+| created_by | text FK → Staff(id) | Người chấm |
+| created_by_name | text | Snapshot tên người chấm |
+| created_at | timestamptz | Lúc chấm |
+| revoked_at | timestamptz | Lúc thu hồi. NULL = phiếu còn hiệu lực |
+| revoked_by | text | Mã người thu hồi (chỉ ADMIN/DEV thu hồi được) |
+| revoked_by_name | text | Snapshot tên người thu hồi |
+| revoke_reason | text | Lý do thu hồi (bắt buộc, ≥ 5 ký tự) |
+
+**Index**:
+- `ux_office_once_per_day` — unique `(staff_id, work_date, criteria_id)` **WHERE `revoked_at IS NULL`**: mỗi lỗi chỉ trừ 1 lần/ngày, nhưng thu hồi xong thì chấm lại được.
+- `ix_office_staff_month` — `(staff_id, work_date)`.

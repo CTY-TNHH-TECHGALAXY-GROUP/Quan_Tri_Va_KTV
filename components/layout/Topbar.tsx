@@ -38,7 +38,7 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         >
           <Menu size={20} />
         </button>
-        <div className="font-bold text-xl text-indigo-600 tracking-tight">Ngân Hà Spa</div>
+        <div className="font-bold text-xl text-indigo-600 tracking-tight">Oria Spa</div>
       </div>
 
       <div className="flex items-center gap-4">

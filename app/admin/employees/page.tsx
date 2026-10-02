@@ -9,13 +9,13 @@ import {
   Star,
   CheckCircle2,
   XCircle,
-  Filter,
   Trash2
 } from 'lucide-react';
 import { EmployeeDetailModal } from '@/components/EmployeeDetailModal';
 import { AddEmployeeModal } from '@/components/AddEmployeeModal';
 import { useEmployeeManagement } from './Employees.logic';
 import { t } from './Employees.i18n';
+import { SKILL_LABELS } from '@/lib/constants/staff.constants';
 
 // 🔧 UI CONFIGURATION
 const SKILL_LEVEL_STYLES = {
@@ -58,7 +58,7 @@ export default function EmployeeManagementPage() {
     }
 
     return (
-        <AppLayout title={t.pageTitle}>
+        <AppLayout title={t.pageTitle} headerRight={<button onClick={handleOpenAddModal} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold lg:hidden"><Plus size={14} />{t.addNew}</button>}>
             <div className="space-y-2 lg:space-y-6">
                 <div className="hidden lg:flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -74,6 +74,28 @@ export default function EmployeeManagementPage() {
                     </button>
                 </div>
 
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsTotal}</div>
+                        <div className="text-2xl font-black text-gray-900">{stats.total}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsActive}</div>
+                        <div className="text-2xl font-black text-emerald-600">{stats.active}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsSenior}</div>
+                        <div className="text-2xl font-black text-indigo-600">{stats.senior}</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">{t.statsAvgRating}</div>
+                        <div className="text-2xl font-black text-amber-500 flex items-center gap-1">
+                            <Star size={18} fill="currentColor" /> {stats.avgRating}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50/50">
                         <div className="relative w-full sm:w-96">
@@ -86,14 +108,10 @@ export default function EmployeeManagementPage() {
                                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                             />
                         </div>
-                        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors w-full sm:w-auto justify-center">
-                            <Filter size={16} />
-                            {t.advancedFilter}
-                        </button>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    <div className="hidden lg:block overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[680px]">
                             <thead>
                                 <tr>
                                     <th className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 text-sm">{t.thEmployee}</th>
@@ -141,6 +159,7 @@ export default function EmployeeManagementPage() {
                                                 {emp.position}
                                                 {emp.isActiveVipMenu && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full border border-amber-200">VIP</span>}
                                                 {emp.isHomeSpa && <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full border border-sky-200">Home Spa</span>}
+                                                {emp.isActiveTherapyMenu && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full border border-emerald-200">Điều trị</span>}
                                             </div>
                                             <div className="text-xs text-gray-500">{emp.experience} {t.experienceSuffix}</div>
                                         </td>
@@ -154,22 +173,22 @@ export default function EmployeeManagementPage() {
                                             <div className="flex flex-wrap gap-1">
                                                 {emp.skills.shampoo && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillShampoo}
+                                                        {SKILL_LABELS.shampoo}
                                                     </span>
                                                 )}
                                                 {emp.skills.oilBody && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillOilBody}
+                                                        {SKILL_LABELS.oilBody}
                                                     </span>
                                                 )}
                                                 {emp.skills.facial && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillFacial}
+                                                        {SKILL_LABELS.facial}
                                                     </span>
                                                 )}
                                                 {emp.skills.bodyMix && (
                                                     <span className={`px-2 py-0.5 text-[10px] rounded border ${SKILL_LEVEL_STYLES.active}`}>
-                                                        {t.skillBodyMix}
+                                                        {SKILL_LABELS.bodyMix}
                                                     </span>
                                                 )}
                                                 <span className="px-2 py-0.5 bg-gray-50 text-gray-500 text-[10px] rounded border border-gray-100">...</span>
@@ -198,25 +217,59 @@ export default function EmployeeManagementPage() {
                             </tbody>
                         </table>
                     </div>
-                </div>
 
-                {/* Quick Stats */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsTotal}</div>
-                        <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsActive}</div>
-                        <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsSenior}</div>
-                        <div className="text-2xl font-bold text-indigo-600">{stats.senior}</div>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500 mb-1">{t.statsAvgRating}</div>
-                        <div className="text-2xl font-bold text-amber-500">{stats.avgRating}</div>
+                    {/* Mobile View: Dạng Card List tinh tế */}
+                    <div className="block lg:hidden divide-y divide-gray-100">
+                        {isLoading ? (
+                            <div className="text-center py-8 text-gray-500">{t.loading}</div>
+                        ) : filteredEmployees.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">{t.empty}</div>
+                        ) : filteredEmployees.map(emp => (
+                            <div 
+                                key={emp.id}
+                                onClick={() => handleOpenDetail(emp)}
+                                className="p-4 flex items-center justify-between gap-3 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200 shrink-0">
+                                        <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-gray-900 truncate">{emp.name}</div>
+                                        <div className="text-xs text-indigo-600 font-bold flex items-center gap-1.5 mt-0.5">
+                                            <span>{emp.code}</span>
+                                            <span className="text-gray-300">•</span>
+                                            <span className="text-gray-500 font-medium">{emp.position}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                                                {emp.status === 'active' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                                                {emp.status === 'active' ? t.statusActive : t.statusInactive}
+                                            </span>
+                                            {emp.isActiveVipMenu && <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded border border-amber-200">VIP</span>}
+                                            {emp.isHomeSpa && <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 text-[10px] font-bold rounded border border-sky-200">Home</span>}
+                                            {emp.isActiveTherapyMenu && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200">NHT</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-1 text-amber-500 font-bold text-xs">
+                                        <Star size={12} fill="currentColor" />
+                                        <span>{emp.rating}</span>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteEmployee(emp);
+                                        }}
+                                        className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors"
+                                        title={t.deleteEmployee}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

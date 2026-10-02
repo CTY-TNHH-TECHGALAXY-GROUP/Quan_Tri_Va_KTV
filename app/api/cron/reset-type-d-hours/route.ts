@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { KtvTypeDTurnService } from '@/lib/services/KtvTypeDTurnService';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,12 +10,9 @@ const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
-        const authHeader = request.headers.get('authorization');
-        if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-        }
-
         const now = new Date();
         const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const year = prevMonthDate.getFullYear();
@@ -21,26 +20,27 @@ export async function POST(request: Request) {
         
         const monthStr = `${year}-${String(month).padStart(2, '0')}`;
 
-        const url = new URL(request.url);
-        const baseUrl = `${url.protocol}//${url.host}`;
-        
-        const res = await fetch(`${baseUrl}/api/ktv/type-d/service-hours?month=${monthStr}`);
-        if (!res.ok) {
-            throw new Error('Failed to fetch service hours');
-        }
-        const result = await res.json();
-        
-        if (!result.success || !result.data) {
-            throw new Error('Service hours API returned false or no data');
-        }
+        // Gọi THẲNG service, không tự fetch API của chính mình.
+        //
+        // ⚠️ Đường cũ dựng baseUrl từ `request.url` rồi HTTP về `/service-hours`.
+        // Hỏng ở hai chỗ: mạng/host sai là cả tháng không chốt được, và route đó
+        // trả 0 giờ cho tất cả khi tham số tháng sai định dạng — cron nuốt số 0
+        // rồi GHI ĐÈ sổ tháng bằng số rỗng.
+        const { data: staff } = await supabase
+            .from('Staff').select('id').eq('work_type', 'TYPE_D');
+        const staffIds = (staff || []).map((s: any) => s.id);
 
-        const upsertData = result.data.map((d: any) => ({
-            staff_id: d.staff_id,
+        const breakdown = await KtvTypeDTurnService.getMonthlyHoursBreakdown(
+            supabase as any, staffIds, month, year
+        );
+
+        const upsertData = staffIds.map((id: string) => ({
+            staff_id: id,
             month,
             year,
-            total_hours_earned: d.total_hours_earned,
-            total_hours_penalty: d.total_hours_penalty,
-            net_hours: d.net_hours,
+            total_hours_earned: breakdown[id]?.hours_earned ?? 0,
+            total_hours_penalty: breakdown[id]?.hours_penalty ?? 0,
+            net_hours: breakdown[id]?.net_hours ?? 0,
             synced_at: new Date().toISOString()
         }));
 
@@ -60,4 +60,10 @@ export async function POST(request: Request) {
         console.error('Exception POST /api/cron/reset-type-d-hours:', err);
         return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
     }
+}
+
+// Vercel Cron gọi bằng GET (vercel.json: "0 17 1 * *"). Route trước đây chỉ có
+// POST nên mỗi tháng nhận 405 và sổ giờ Loại D không được chốt.
+export async function GET(request: Request) {
+    return POST(request);
 }

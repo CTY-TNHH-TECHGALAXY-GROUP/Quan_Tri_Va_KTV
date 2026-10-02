@@ -6,9 +6,10 @@
 // ═══════════════════════════════════════════════════════
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
-import { buildServiceSection, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
+import { buildServiceSection, emailBookingCode, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
 
 const WEB_BOOKING_SOURCES = ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
@@ -64,6 +65,7 @@ export interface WebBooking {
  */
 export async function getWebBookings(startDate: string, endDate: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -240,6 +242,7 @@ export async function getWebBookings(startDate: string, endDate: string) {
  */
 export async function confirmWebBooking(bookingId: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -422,6 +425,13 @@ export async function confirmWebBooking(bookingId: string) {
     // Email ảo của khách vãng lai bị bỏ qua: gửi tới đó chắc chắn thất bại,
     // chỉ tốn một lượt gọi SMTP và rác log.
     let emailSent: boolean | null = null;
+    // Lý do KHÔNG gửi — trả về cho quầy để toast nói rõ, thay vì "Đã xác nhận" im lặng
+    // khiến người dùng tưởng đơn BK (web nội bộ) không được gửi mail.
+    let emailSkippedReason: 'NO_EMAIL' | 'INVALID_EMAIL' | 'DISABLED' | null = null;
+    if (!bData?.customerEmail) emailSkippedReason = 'NO_EMAIL';
+    else if (isEmailDummy) emailSkippedReason = 'INVALID_EMAIL';
+    else if (!isEmailEnabled) emailSkippedReason = 'DISABLED';
+
     if (bData?.customerEmail && !isEmailDummy && isEmailEnabled) {
         // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
         let isNewCustomer = true;
@@ -488,7 +498,7 @@ export async function confirmWebBooking(bookingId: string) {
         const lang = bData.customerLang || 'vi';
         const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
         const bookingDetails = {
-            bookingId: bData.billCode || bData.id || bookingId,
+            bookingId: emailBookingCode(bData) || bookingId,
             customerName: bData.customerName || '',
             customerPhone: bData.customerPhone || '',
             date: bData.bookingDate || '',
@@ -517,7 +527,7 @@ export async function confirmWebBooking(bookingId: string) {
         }
     }
 
-    return { success: true, emailSent };
+    return { success: true, emailSent, emailSkippedReason };
   } catch (error: any) {
     console.error('❌ [WebBooking] confirmWebBooking error:', error);
     return { success: false, error: error.message };
@@ -529,6 +539,7 @@ export async function confirmWebBooking(bookingId: string) {
  */
 export async function rejectWebBooking(bookingId: string, reason?: string) {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase admin not initialized');
 
@@ -556,6 +567,7 @@ export async function rejectWebBooking(bookingId: string, reason?: string) {
  */
 export async function getNewWebBookingCount(): Promise<number> {
   try {
+      await requirePermission('dispatch_board');
     const supabase = getSupabaseAdmin();
     if (!supabase) return 0;
 

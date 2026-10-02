@@ -157,9 +157,10 @@ export async function GET(request: Request) {
 
         // Lấy tên thật của KTV
         if (topKtv) {
-            const { data: ktvData } = await supabase.from('Staff').select('name').eq('code', topKtv).single();
-            if (ktvData && ktvData.name) {
-                topKtv = ktvData.name;
+            // Ma nhan vien la `id`, ten day du la `full_name` — khong phai code/name.
+            const { data: ktvData } = await supabase.from('Staff').select('full_name').eq('id', topKtv).maybeSingle();
+            if (ktvData && ktvData.full_name) {
+                topKtv = ktvData.full_name;
             }
         }
 
@@ -192,7 +193,7 @@ export async function GET(request: Request) {
             greetingSuggestion += ` đúng không ạ?`;
         } else {
             wowMessage = "Ting! Có đơn mới từ Khách Mới. Hãy tư vấn nhiệt tình nhé!";
-            greetingSuggestion = `Dạ Ngan Ha Spa xin chào! Đây là lần đầu tiên ${cName} đến spa, mời ${cName} tham khảo menu dịch vụ ạ.`;
+            greetingSuggestion = `Dạ Oria Spa xin chào! Đây là lần đầu tiên ${cName} đến spa, mời ${cName} tham khảo menu dịch vụ ạ.`;
         }
 
         return NextResponse.json({

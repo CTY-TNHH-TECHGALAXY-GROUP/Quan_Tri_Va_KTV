@@ -46,13 +46,17 @@ export const useSupportReviews = () => {
     if (taskIds.length > 0) {
       const { data: photos } = await supabase
         .from('TaskPhotos')
-        .select('task_id, photo_url, taken_at')
+        // Bang khong co `photo_url`/`taken_at` — anh luu duong dan o `storage_path`,
+        // link cong phai dung getPublicUrl (giong EmployeeDetail.logic.ts). Truy van
+        // cu loi nen o "Anh Minh Chung" luon trong.
+        .select('id, task_id, storage_path, created_at')
         .in('task_id', taskIds)
         .eq('is_submitted', true);
       (photos || []).forEach(p => {
         photoCounts[p.task_id] = (photoCounts[p.task_id] || 0) + 1;
         if (!taskPhotosMap[p.task_id]) taskPhotosMap[p.task_id] = [];
-        taskPhotosMap[p.task_id].push(p);
+        const { data: pub } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
+        taskPhotosMap[p.task_id].push({ id: p.id, url: pub.publicUrl, created_at: p.created_at });
       });
     }
 

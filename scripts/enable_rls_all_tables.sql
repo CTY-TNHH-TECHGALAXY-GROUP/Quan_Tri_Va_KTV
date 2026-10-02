@@ -5,7 +5,7 @@
 -- Reason: Supabase security alert — tables publicly accessible
 --
 -- ⚠️ STRATEGY:
--- Vì app dùng SUPABASE_SERVICE_ROLE_KEY ở server-side (Next.js API routes),
+-- Vì app dùng SUPABASE_SECRET_KEY ở server-side (Next.js API routes),
 -- service_role KEY sẽ BYPASS RLS hoàn toàn → server code hoạt động bình thường.
 -- Chỉ cần block anon key truy cập trực tiếp từ browser.
 --

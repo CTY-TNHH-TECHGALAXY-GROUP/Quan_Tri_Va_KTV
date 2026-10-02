@@ -4,6 +4,8 @@ import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { KtvWalletService } from '@/lib/services/KtvWalletService';
 import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { usesOfficeBonus, officeBonusBalance } from '@/lib/services/KtvOfficeBonusService';
+import { requireStaffOrPermission } from '@/lib/auth-server';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -13,13 +15,26 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
     }
 
+    // Chỉ chủ ví hoặc người có quyền tài chính mới xem được điểm thưởng.
+    const deniedAuth = await requireStaffOrPermission(techCode, 'finance_management');
+    if (deniedAuth) return deniedAuth;
+
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) return NextResponse.json({ success: false, error: 'Lỗi máy chủ' }, { status: 500 });
 
-        // Ví Bonus switched off, or the work type has no Ví Bonus (C/D) → 403.
-        const denied = await WalletAccessService.denyIfDisabled(supabase as any, techCode, 'BONUS');
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'BONUS');
         if (denied) return denied;
+
+        // Loại D bật Ví Điểm: điểm lấy từ Office, không phải
+        // điểm sao. Rẽ nhánh NGAY ở đây — cả khối tính điểm sao bên dưới (đọc
+        // KTVDailyLedger, tính bonus realtime theo ca) không còn nghĩa gì với
+        // nguồn này, chạy tiếp chỉ tốn truy vấn rồi vứt đi.
+        if (await usesOfficeBonus(supabase, techCode)) {
+            const { searchParams: sp } = new URL(request.url);
+            const data = await officeBonusBalance(supabase, techCode, sp.get('month') || undefined);
+            return NextResponse.json({ success: true, data });
+        }
 
         const START_DATE = '2026-06-01';
 
@@ -146,24 +161,11 @@ export async function GET(request: Request) {
         let rt_bonus = 0;
         (bookings || []).forEach(b => {
             if (workType === 'TYPE_D') {
-                if (enableBonusTypeD) {
-                    const ktvWorkTypesForGuest: string[] = [];
-                    (b.BookingItems || []).forEach((i: any) => {
-                        if (i.technicianCodes && Array.isArray(i.technicianCodes)) {
-                            i.technicianCodes.forEach((tc: string) => {
-                                const wt = staffWorkTypeMap[tc.toLowerCase()] || 'TYPE_A';
-                                ktvWorkTypesForGuest.push(wt);
-                            });
-                        }
-                    });
-                    const bonusPts = KtvTypeDBonusService.calculateBonusForTypeD(
-                        ktvWorkTypesForGuest,
-                        b.rating,
-                        basePointsTypeD,
-                        pointRateTypeD
-                    );
-                    rt_bonus += bonusPts;
-                }
+                // Loại D KHÔNG còn điểm thưởng ở ví này.
+                //
+                // ⚠️ Thưởng 4★ nay nằm THẲNG trong tiền tua — cột `bonus_amount`
+                // của KTVDTurnLedger, xem KtvDLedgerEngine.applyBonusAndTax.
+                // Tính lại ở đây là KTV được trả HAI LẦN cho cùng một suất.
             } else {
                 const bDate = new Date(b.timeStart || (b as any).createdAt || todayStr);
                 const isNewRule = bDate >= new Date('2026-08-05T00:00:00+07:00');

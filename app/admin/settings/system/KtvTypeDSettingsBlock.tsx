@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, ShieldCheck, Trophy } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
@@ -15,17 +15,6 @@ const CHE_TAI = [
     { value: 'DEDUCT_OR_LOCK', label: 'Trừ giờ, không đủ thì khoá' },
 ] as const;
 
-/**
- * `SystemConfigs.value` là jsonb — cùng một công tắc có thể về `true`, `"true"`
- * hoặc `'"true"'` tuỳ nó được ghi từ đâu. So `=== true` là hỏng thầm lặng.
- * Giống hệt hàm `toBool` mà cron đang dùng, để hai bên đọc ra cùng một kết quả.
- */
-const doiSangBool = (raw: any, macDinh = false): boolean => {
-    if (raw === undefined || raw === null || raw === '') return macDinh;
-    if (typeof raw === 'boolean') return raw;
-    return String(raw).replace(/"/g, '').trim().toLowerCase() === 'true';
-};
-
 /** Thứ tự hiện trên bảng — theo dòng thời gian một ngày làm việc. */
 const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
     'UNREGISTERED_NEXT_DAY',
@@ -34,6 +23,7 @@ const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
     'LATE_REPORTED_NO_SHOW',
     'ABSENT_REPORTED_NO_SHOW',
 ];
+
 
 export function KtvTypeDSettingsBlock() {
     const [configs, setConfigs] = useState<any>({});
@@ -62,7 +52,7 @@ export function KtvTypeDSettingsBlock() {
                 if (!parsed.ktv_type_d_rating_deduction) {
                     parsed.ktv_type_d_rating_deduction = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
                 }
-                if (!parsed.ktv_type_d_discipline_rules) { parsed.ktv_type_d_discipline_rules = { "ABSENT_NO_NOTICE":10, "ABSENT_EARLY_NOTICE":5, "LATE_NO_UPDATE":5, "ORDER_REJECT_MULTIPLIER":3 }; }
+                if (!parsed.ktv_type_d_discipline_rules) { parsed.ktv_type_d_discipline_rules = { "ABSENT_NO_NOTICE":10, "ABSENT_EARLY_NOTICE":5, "LATE_NO_UPDATE":5, "ORDER_REJECT_MULTIPLIER":3, "MIN_HOURS_TO_REJECT":3 }; }
                 // Cấu hình cũ chưa có khối CASES → điền mặc định quy chế, để bảng
                 // bên dưới hiện đúng thứ hệ thống đang áp chứ không hiện ô trống.
                 if (!parsed.ktv_type_d_discipline_rules.CASES) {
@@ -170,19 +160,34 @@ export function KtvTypeDSettingsBlock() {
                             </div>
                             <h2 className="text-lg font-black text-gray-900">Phụ phí & Quỹ</h2>
                         </div>
-                        <SaveButton group="funds" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_internal_fund', 'ktv_type_d_internal_fund_enabled', 'ktv_type_d_reactivation_fee', 'ktv_deposit_amount_TYPE_D'], 'funds')} />
+                        <SaveButton group="funds" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_internal_fund', 'ktv_type_d_internal_fund_enabled', 'ktv_type_d_reactivation_fee', 'ktv_type_d_reactivation_fee_enabled', 'ktv_deposit_amount_TYPE_D', 'ktv_deposit_enabled_TYPE_D'], 'funds')} />
                     </div>
+                    {/* Mỗi khoản một cần gạt riêng: tắt khoản này không ảnh hưởng khoản kia. */}
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                            <div>
-                                <p className="font-bold text-gray-900">Thu quỹ nội bộ</p>
-                                <p className="text-xs text-gray-500">Thu tự động mỗi tháng</p>
-                            </div>
-                            <Toggle value={configs.ktv_type_d_internal_fund_enabled ?? false} onChange={(v: any) => handleChange('ktv_type_d_internal_fund_enabled', v)} />
-                        </div>
-                        <NumberInput label="Mức thu quỹ nội bộ" value={configs.ktv_type_d_internal_fund ?? 250000} onChange={(v: any) => handleChange('ktv_type_d_internal_fund', v)} />
-                        <NumberInput label="Phí kích hoạt lại" value={configs.ktv_type_d_reactivation_fee ?? 1000000} onChange={(v: any) => handleChange('ktv_type_d_reactivation_fee', v)} />
-                        <NumberInput label="Tiền cọc ví" value={configs.ktv_deposit_amount_TYPE_D ?? 1000000} onChange={(v: any) => handleChange('ktv_deposit_amount_TYPE_D', v)} />
+                        <FeeRow
+                            title="Thu quỹ nội bộ"
+                            hint="Thu tự động mỗi tháng"
+                            enabled={configs.ktv_type_d_internal_fund_enabled ?? false}
+                            onToggle={(v: any) => handleChange('ktv_type_d_internal_fund_enabled', v)}
+                            amount={configs.ktv_type_d_internal_fund ?? 250000}
+                            onAmount={(v: any) => handleChange('ktv_type_d_internal_fund', v)}
+                        />
+                        <FeeRow
+                            title="Phí kích hoạt lại"
+                            hint="Thu khi mở lại tài khoản đã khoá"
+                            enabled={configs.ktv_type_d_reactivation_fee_enabled ?? false}
+                            onToggle={(v: any) => handleChange('ktv_type_d_reactivation_fee_enabled', v)}
+                            amount={configs.ktv_type_d_reactivation_fee ?? 1000000}
+                            onAmount={(v: any) => handleChange('ktv_type_d_reactivation_fee', v)}
+                        />
+                        <FeeRow
+                            title="Tiền cọc ví"
+                            hint="Giữ trong ví khi bắt đầu làm"
+                            enabled={configs.ktv_deposit_enabled_TYPE_D ?? false}
+                            onToggle={(v: any) => handleChange('ktv_deposit_enabled_TYPE_D', v)}
+                            amount={configs.ktv_deposit_amount_TYPE_D ?? 1000000}
+                            onAmount={(v: any) => handleChange('ktv_deposit_amount_TYPE_D', v)}
+                        />
                         <p className="text-xs text-gray-400 italic mt-2">* Phí bảo trì và Giặt đồ dùng chung mức global.</p>
                     </div>
                 </div>
@@ -216,44 +221,36 @@ export function KtvTypeDSettingsBlock() {
                 </div>
             </div>
 
-            {/* 5. Kỷ luật trễ giờ */}
+            {/* 5. Kỷ luật trừ giờ */}
             <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
                             <AlertTriangle size={20} className="text-red-500" />
                         </div>
-                        <h2 className="text-lg font-black text-gray-900">Kỷ luật trễ giờ tích lũy</h2>
+                        <h2 className="text-lg font-black text-gray-900">Kỷ luật trừ giờ tích lũy</h2>
                     </div>
                     <SaveButton group="discipline" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_discipline_enabled', 'ktv_type_d_discipline_rules'], 'discipline')} />
                 </div>
                 
-                <div className="space-y-5 max-w-3xl">
-                    {/* ─── CÔNG TẮC TỔNG ─────────────────────────────────────────
-                        Tắt là tắt SẠCH: không khoá ai, không trừ giờ ai, không
-                        chặn từ chối tua. Cron vẫn chạy và vẫn ghi log "sẽ đụng
-                        vào ai" để quản lý soi trước — chỉ không ghi vào sổ.
-
-                        Mặc định TẮT: mất cấu hình thì không phạt ai còn hơn phạt
-                        nhầm cả nhóm. */}
-                    {(() => {
-                        const dangBat = doiSangBool(configs.ktv_type_d_discipline_enabled, false);
-                        return (
-                            <div className={`flex items-center justify-between gap-4 p-4 rounded-2xl border ${dangBat ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
-                                <div className="min-w-0">
-                                    <p className={`font-black ${dangBat ? 'text-red-700' : 'text-gray-500'}`}>
-                                        {dangBat ? '⚠️ Kỷ luật đang BẬT — phạt và khoá thật' : 'Kỷ luật đang TẮT'}
-                                    </p>
-                                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                                        {dangBat
-                                            ? 'Cron nửa đêm sẽ trừ giờ và khoá tài khoản theo bảng bên dưới.'
-                                            : 'Cron vẫn chạy và vẫn ghi log sẽ đụng vào ai, nhưng không trừ giờ, không khoá ai, và không chặn từ chối tua.'}
-                                    </p>
-                                </div>
-                                <Toggle value={dangBat} onChange={(v: any) => handleChange('ktv_type_d_discipline_enabled', v)} />
-                            </div>
-                        );
-                    })()}
+                <div className="space-y-4 max-w-2xl">
+                    {/* Công tắc tổng — phải đặt ngay đầu thẻ, vì mấy ô số bên dưới
+                        chỉ có nghĩa khi nó đang BẬT. */}
+                    <div className="flex items-center justify-between p-4 bg-red-50/60 rounded-xl border border-red-100">
+                        <div className="pr-4">
+                            <p className="font-bold text-gray-900">Áp dụng kỷ luật Loại D</p>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                BẬT = trừ giờ tích luỹ khi vắng, trễ, bỏ ca đã đăng ký, từ chối tua;
+                                và tự khoá tài khoản theo quy chế.<br />
+                                TẮT = <b>không trừ giờ, không khoá, không chặn từ chối tua</b> —
+                                hệ thống chỉ ghi log để bạn xem trước sẽ đụng vào ai.
+                            </p>
+                        </div>
+                        <Toggle
+                            value={boolConfig(configs.ktv_type_d_discipline_enabled, false)}
+                            onChange={(v: any) => handleChange('ktv_type_d_discipline_enabled', v)}
+                        />
+                    </div>
 
                     {/* ─── Bảng chế tài: mỗi tình huống một dòng ─────────────────
                         Trước đây chỉ chỉnh được SỐ GIỜ, còn "khoá hay trừ" thì
@@ -271,8 +268,9 @@ export function KtvTypeDSettingsBlock() {
 
                         <div className="rounded-2xl border border-gray-100 overflow-hidden">
                             <div className="grid grid-cols-12 gap-2 bg-gray-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-gray-400">
-                                <div className="col-span-6">Trường hợp</div>
-                                <div className="col-span-4">Chế tài</div>
+                                <div className="col-span-5">Trường hợp</div>
+                                <div className="col-span-2">Xét lúc nào</div>
+                                <div className="col-span-3">Chế tài</div>
                                 <div className="col-span-2 text-right">Số giờ</div>
                             </div>
 
@@ -285,7 +283,7 @@ export function KtvTypeDSettingsBlock() {
                                 });
                                 return (
                                     <div key={key} className="grid grid-cols-12 gap-2 items-start px-4 py-3 border-t border-gray-50">
-                                        <div className="col-span-6">
+                                        <div className="col-span-5">
                                             <p className="text-sm font-bold text-gray-700 leading-snug">
                                                 {TYPE_D_DISCIPLINE_CASES[key].label}
                                             </p>
@@ -293,7 +291,15 @@ export function KtvTypeDSettingsBlock() {
                                                 {TYPE_D_DISCIPLINE_CASES[key].moTa}
                                             </p>
                                         </div>
-                                        <div className="col-span-4">
+                                        <div className="col-span-2">
+                                            <p className="text-[11px] font-black text-indigo-600 leading-tight">
+                                                {TYPE_D_DISCIPLINE_CASES[key].quetLuc}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+                                                {TYPE_D_DISCIPLINE_CASES[key].quetBoi}
+                                            </p>
+                                        </div>
+                                        <div className="col-span-3">
                                             <select
                                                 value={cai.action}
                                                 onChange={(e) => doiCase({ action: e.target.value })}
@@ -329,11 +335,11 @@ export function KtvTypeDSettingsBlock() {
                             một ngày chỉ trừ một lần (riêng từ chối tua tính từng tua).
                         </p>
                         <div className="space-y-4">
-                            <NumberInput hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc KTV đổi lịch từ Đi làm sang OFF. Đổi khi ngày làm còn ở tương lai thì miễn phí; từ 07:00 sáng ngày làm trở đi thì không cho đổi nữa." label="Bỏ ca đã đăng ký sau 00:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
-                            <NumberInput hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
-                            <NumberInput hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc điểm danh" hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc đổi lịch" hint="Trừ NGAY lúc KTV bấm đổi. Ba mốc: ngày làm còn ở TƯƠNG LAI → đổi thoải mái, không phạt; từ 00:00 đến trước 07:00 của CHÍNH NGÀY LÀM → vẫn đổi được nhưng trừ số giờ này; từ 07:00 trở đi → không cho đổi nữa, chỉ còn đường báo trễ." label="Bỏ ca đã đăng ký — đổi sang OFF từ 00:00 đến trước 07:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc bấm Nghỉ đột xuất" hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
+                            <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
                         </div>
                     </div>
 
@@ -343,11 +349,48 @@ export function KtvTypeDSettingsBlock() {
                     </p>
                 </div>
             </div>
+
+            {/* 6. Hien thi cho KTV */}
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center">
+                            <Trophy size={20} className="text-violet-500" />
+                        </div>
+                        <h2 className="text-lg font-black text-gray-900">Hiển thị cho KTV</h2>
+                    </div>
+                    <SaveButton group="ktvVisibility" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_hours_ranking_enabled'], 'ktvVisibility')} />
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl max-w-2xl">
+                    <div className="pr-4">
+                        <p className="font-bold text-gray-900">Bảng xếp hạng giờ tích lũy</p>
+                        <p className="text-xs text-gray-500 leading-relaxed">
+                            BẬT = KTV Loại D tự xem được thứ hạng giờ của cả nhóm ngay trên app của họ.
+                            TẮT = chỉ quầy và quản lý xem được.
+                        </p>
+                    </div>
+                    <Toggle
+                        value={boolConfig(configs.ktv_type_d_hours_ranking_enabled, true)}
+                        onChange={(v: any) => handleChange('ktv_type_d_hours_ranking_enabled', v)}
+                    />
+                </div>
+            </div>
         </div>
     );
 }
 
 // ----- UI Helpers -----
+
+/**
+ * SystemConfigs.value là jsonb — cùng một cần gạt có thể về `true`, `"true"` hoặc
+ * `'\"true\"'` tuỳ nó được ghi từ đâu. So `=== true` là hỏng thầm lặng.
+ */
+function boolConfig(raw: any, fallback: boolean): boolean {
+    if (raw === undefined || raw === null || raw === '') return fallback;
+    if (typeof raw === 'boolean') return raw;
+    return String(raw).replace(/"/g, '').toLowerCase() === 'true';
+}
 
 function SaveButton({ group, savingGroup, saveStatus, onClick }: any) {
     return (
@@ -367,7 +410,7 @@ function SaveButton({ group, savingGroup, saveStatus, onClick }: any) {
     );
 }
 
-function NumberInput({ label, value, onChange, suffix = 'VNĐ', hint }: any) {
+function NumberInput({ label, value, onChange, suffix = 'VNĐ', hint, khiNao }: any) {
     const [displayValue, setDisplayValue] = useState('');
 
     useEffect(() => {
@@ -386,7 +429,17 @@ function NumberInput({ label, value, onChange, suffix = 'VNĐ', hint }: any) {
 
     return (
         <div>
-            {label && <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">{label}</label>}
+            {label && (
+                <div className="flex items-baseline flex-wrap gap-x-2 gap-y-1 mb-1">
+                    <label className="text-xs font-black uppercase tracking-wider text-gray-500">{label}</label>
+                    {/* Cùng vai trò với cột "Xét lúc nào" của bảng bên trên. */}
+                    {khiNao && (
+                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                            {khiNao}
+                        </span>
+                    )}
+                </div>
+            )}
             {hint && <p className="text-[11px] text-gray-400 leading-relaxed mb-2">{hint}</p>}
             <div className="relative">
                 <input
@@ -397,6 +450,30 @@ function NumberInput({ label, value, onChange, suffix = 'VNĐ', hint }: any) {
                     className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 focus:border-indigo-400 focus:ring-0 transition-colors"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">{suffix}</span>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Một khoản phụ phí: cần gạt riêng + ô số tiền của chính nó.
+ *
+ * Tắt cần gạt thì làm mờ ô tiền và khoá nhập — nhìn là biết khoản này đang
+ * không thu, khỏi phải đoán qua con số. Số tiền vẫn giữ nguyên để bật lại là
+ * dùng tiếp, không phải gõ lại.
+ */
+function FeeRow({ title, hint, enabled, onToggle, amount, onAmount }: any) {
+    return (
+        <div className={`rounded-xl border-2 transition-colors ${enabled ? 'border-emerald-100 bg-emerald-50/30' : 'border-gray-100 bg-gray-50/60'}`}>
+            <div className="flex items-center justify-between p-4">
+                <div>
+                    <p className={`font-bold ${enabled ? 'text-gray-900' : 'text-gray-400'}`}>{title}</p>
+                    <p className="text-xs text-gray-500">{enabled ? hint : 'Đang tắt — không thu khoản này'}</p>
+                </div>
+                <Toggle value={enabled} onChange={onToggle} />
+            </div>
+            <div className={enabled ? 'px-4 pb-4' : 'px-4 pb-4 opacity-40 pointer-events-none'}>
+                <NumberInput value={amount} onChange={onAmount} />
             </div>
         </div>
     );

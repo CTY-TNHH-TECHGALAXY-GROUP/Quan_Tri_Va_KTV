@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { GoogleGenAI } from '@google/genai';
+// import { GoogleGenAI } from '@google/genai';
 
 /**
  * Custom hook for AI Features page logic.
@@ -45,24 +45,20 @@ export const useAIFeatures = () => {
                 alert('Chưa cấu hình Gemini API Key. Vui lòng thiết lập biến môi trường NEXT_PUBLIC_GEMINI_API_KEY.');
                 return;
             }
-            const ai = new GoogleGenAI({ apiKey });
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: [{ parts: [{ text: prompt }] }],
-                config: {
-                    imageConfig: {
-                        aspectRatio: aspectRatio as any,
-                    },
-                },
-            });
+            // const ai = new GoogleGenAI({ apiKey });
+            // const response = await ai.models.generateContent({
+            //     model: 'gemini-2.5-flash-image',
+            //     contents: [{ parts: [{ text: prompt }] }],
+            //     config: {
+            //         imageConfig: {
+            //             numberOfImages: 1,
+            //             aspectRatio: aspectRatio as any,
+            //         }
+            //     }
+            // });
 
-            for (const part of response.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    const base64Data = part.inlineData.data;
-                    setResultUrl(`data:image/png;base64,${base64Data}`);
-                    break;
-                }
-            }
+            // const base64Image = response.generatedImages[0].image.imageBytes;
+            // setResultUrl(`data:image/jpeg;base64,${base64Image}`);
         } catch (error) {
             console.error('Error generating image:', error);
             alert('Đã xảy ra lỗi khi gọi Gemini API. Vui lòng kiểm tra lại cấu hình.');

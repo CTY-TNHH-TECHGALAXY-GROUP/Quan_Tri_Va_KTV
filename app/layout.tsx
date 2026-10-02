@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type {Metadata, Viewport} from 'next';
 import './globals.css'; // Global styles
 import { AuthProvider } from '@/lib/auth-context';
 import { Inter, JetBrains_Mono } from 'next/font/google';
@@ -14,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Ngân Hà Spa Management',
-  description: 'Hệ thống quản lý Ngân Hà Spa chuyên nghiệp',
+  title: 'Oria Spa Management',
+  description: 'Hệ thống quản lý Oria Spa chuyên nghiệp',
   icons: {
     icon: '/icon.png',
     shortcut: '/favicon.ico',
@@ -24,27 +24,31 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Ngân Hà Spa',
+    title: 'Oria Spa',
   },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   themeColor: '#D4AF37',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 };
 
 import { NotificationProvider } from '@/components/NotificationProvider';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body suppressHydrationWarning className="font-sans antialiased">
+      <body suppressHydrationWarning className="font-sans antialiased w-full overflow-x-hidden">
         <AuthProvider>
           <NotificationProvider>
-            {children}
+            <ToastProvider>
+              {children}
+            </ToastProvider>
           </NotificationProvider>
         </AuthProvider>
       </body>

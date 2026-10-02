@@ -3,6 +3,7 @@ import { BellRing, LogOut, LogIn, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { useToast } from '@/components/ui/Toast';
 
 interface OnCallState {
   allow_on_call: boolean;
@@ -17,9 +18,12 @@ interface Props {
   onCheckIn: () => void;
   onStateChange?: (isOnCall: boolean) => void;
   onRefreshStatus?: () => void;
+  className?: string;
+  incompleteTasksCount?: number;
 }
 
-export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, onStateChange, onRefreshStatus }) => {
+export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, onStateChange, onRefreshStatus, className = '', incompleteTasksCount = 0 }) => {
+  const { addToast } = useToast();
   const [state, setState] = useState<OnCallState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -70,11 +74,10 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, on
         await fetchState();
         if (onRefreshStatus) onRefreshStatus();
       } else {
-        alert(res.error || 'Có lỗi xảy ra, vui lòng thử lại!');
+        addToast(res.error || 'Có lỗi xảy ra, vui lòng thử lại!', 'error');
       }
-    } catch (e: any) {
-      console.error(e);
-      alert('Lỗi kết nối máy chủ, vui lòng thử lại!');
+    } catch (e) {
+      addToast('Lỗi kết nối máy chủ, vui lòng thử lại!', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -197,28 +200,32 @@ export const OnCallWidget: React.FC<Props> = ({ ktvId, isOffToday, onCheckIn, on
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Giờ rảnh dự kiến
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedStart}
-                        onChange={(e) => setExpectedStart(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-blue-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-blue-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedStart}
+                          onChange={(e) => setExpectedStart(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
                         Đến mấy giờ?
                       </label>
-                      <input 
-                        type="time" 
-                        value={expectedEnd}
-                        onChange={(e) => setExpectedEnd(e.target.value)}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 px-3 font-bold text-slate-700 focus:border-blue-500 focus:outline-none"
-                      />
+                      <div className="w-full min-w-0 h-12 flex items-center px-3 border-2 border-slate-100 rounded-2xl bg-white focus-within:border-blue-500 transition-all">
+                        <input 
+                          type="time" 
+                          value={expectedEnd}
+                          onChange={(e) => setExpectedEnd(e.target.value)}
+                          className="w-full min-w-0 border-0 p-0 font-bold text-slate-700 outline-none bg-transparent"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

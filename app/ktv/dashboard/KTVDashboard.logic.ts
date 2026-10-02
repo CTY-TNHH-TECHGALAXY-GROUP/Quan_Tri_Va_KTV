@@ -1,5 +1,6 @@
+import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment-time';
 import { isUtilityService } from '@/lib/booking.logic';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ktvMatchesSeg } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -7,6 +8,8 @@ import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { useToast } from '@/components/ui/Toast';
+import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
 export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVER';
 
@@ -55,15 +58,22 @@ export interface DashboardConfig {
 export function useKTVDashboard(config?: DashboardConfig) {
     const { user, hasPermission } = useAuth();
     const { setKtvScreen } = useNotifications();
+    const { addToast } = useToast();
     const ktvIdRaw = config?.testTechCode || user?.code || user?.id;
     const ktvId = ktvIdRaw ? ktvIdRaw.toUpperCase() : undefined;
+    const shiftExtension = useShiftExtension(ktvId);
     const canViewWallet = hasPermission('ktv_wallet');
     const [screen, setScreenState] = useState<ScreenState>('DASHBOARD');
     const setScreen = useCallback((val: ScreenState) => {
         setScreenState(val);
         setKtvScreen(val);
-        try { localStorage.setItem('ktv_active_screen', val); } catch(e) {}
-    }, [setKtvScreen]);
+        try {
+            localStorage.setItem('ktv_active_screen', val);
+            if (ktvId && ['REVIEW', 'HANDOVER', 'REWARD'].includes(val)) {
+                localStorage.setItem('ktv_active_ktv_id', ktvId);
+            }
+        } catch(e) {}
+    }, [setKtvScreen, ktvId]);
 
     const [booking, setBooking] = useState<any>(null);
     const [showProcedure, setShowProcedure] = useState(false);
@@ -83,10 +93,37 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // === HANDOVER V5: Dynamic checklist + Skip + Pending debt ===
     const [dynamicChecklist, setDynamicChecklist] = useState<{label: string; source: string}[]>([]);
+    /** Lý do KTV không được bỏ qua bàn giao nữa (đã nợ quá số cho phép). */
+    const [skipBlockedMsg, setSkipBlockedMsg] = useState<string | null>(null);
+
+    /**
+     * Đơn đang mở là đơn TRẢ NỢ bàn giao (đã bấm Bỏ qua hoặc bị quầy trả lại).
+     *
+     * Màn Bàn giao dùng cờ này để KHÔNG cho bỏ qua lần nữa — nợ sinh ra chính vì
+     * bỏ qua, cho bỏ qua tiếp thì món nợ không bao giờ trả được.
+     */
+    const isRepayingDebt = useMemo(() => {
+        const ids: string[] = booking?.assignedItemIds?.length
+            ? booking.assignedItemIds
+            : (booking?.assignedItemId ? [booking.assignedItemId] : []);
+        return (booking?.BookingItems || []).some((i: any) =>
+            (ids.length === 0 || ids.includes(i.id))
+            && ['SKIPPED', 'REJECTED'].includes(String(i.handover_status || '').toUpperCase()));
+    }, [booking]);
     const [isFetchingChecklist, setIsFetchingChecklist] = useState(false);
     const fetchedChecklistBookingIdRef = useRef<string | null>(null);
     const [pendingHandovers, setPendingHandovers] = useState<any[]>([]);
+    /** Hạn mức bỏ qua bàn giao — server tính, client chỉ hiển thị. */
+    const [skipQuota, setSkipQuota] = useState<{ used: number; max: number; remaining: number } | null>(null);
     const [isSkippingHandover, setIsSkippingHandover] = useState(false);
+    /**
+     * Màn Thưởng lần này mở ra sau khi TRẢ NỢ dọn phòng, nên chỉ để đánh giá
+     * quầy — phải ẨN phần tiền tua đi.
+     *
+     * Tiền của tua đó đã trả từ lần làm xong trước rồi. Hiện lại con số đó lần
+     * hai thì KTV tưởng được trả thêm, tới lúc xem ví không thấy đâu lại đi hỏi.
+     */
+    const [rewardHideMoney, setRewardHideMoney] = useState(false);
 
     useEffect(() => {
         // Kiểm tra xem đã chụp đủ ảnh theo checklist chưa
@@ -103,6 +140,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const requiredCount = requiredChecklist.length;
         setIsHandoverComplete(totalUploadedPhotos >= requiredCount);
     }, [handoverPhotosBase64, booking?.handoverChecklist, dynamicChecklist]);
+
+    /**
+     * Đổi đơn thì XOÁ SẠCH ảnh bàn giao của đơn trước.
+     *
+     * ⚠️ `handoverPhotosBase64` trước đây không được xoá ở đâu cả — nó sống suốt
+     * phiên. Hai hậu quả, cái sau nặng hơn nhiều:
+     *
+     *  · Vào màn Bàn giao của đơn mới đã thấy sẵn ảnh phòng cũ, và
+     *    `isHandoverComplete` bật lên luôn nên nút "Xong" mở sẵn dù chưa chụp gì.
+     *  · Bấm nộp thì `Object.values(handoverPhotosBase64)` gửi đúng ẢNH PHÒNG CŨ
+     *    lên làm bằng chứng bàn giao cho PHÒNG MỚI. Quầy duyệt ảnh của một phòng
+     *    khác mà không ai biết.
+     */
+    useEffect(() => {
+        setHandoverPhotosBase64({});
+    }, [booking?.id]);
 
     // Initialize checklist arrays when booking/procedures change
     useEffect(() => {
@@ -142,6 +195,33 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    const [turnData, setTurnData] = useState<{ myRank: number; myTime: number; allTypeD: any[] } | null>(null);
+
+    // Điểm Office của chính KTV (chỉ Loại D) — để họ tự xem thay vì cuối tháng mới biết.
+    const [officeScore, setOfficeScore] = useState<any>(null);
+    // Type D whose points wallet is switched off: the tile shows the maintenance
+    // notice instead of disappearing (server answers applicable + disabled).
+    const [officeScoreDisabled, setOfficeScoreDisabled] = useState(false);
+    const [officeScoreLoading, setOfficeScoreLoading] = useState(false);
+    const [officeScoreError, setOfficeScoreError] = useState<string | null>(null);
+    const [officeScoreReloadKey, setOfficeScoreReloadKey] = useState(0);
+    /**
+     * Có ví nào đang mở không. `null` = chưa biết (đang nạp hoặc nạp hỏng).
+     *
+     * Quyền `ktv_wallet` chỉ nói NGƯỜI NÀY được có ví; còn ví có đang chạy hay
+     * bảo trì là do công tắc. Chỉ dựa vào quyền thì nút Ví trên đầu trang vẫn
+     * hiện dù mọi ví đã tắt — bấm vào chỉ thấy "Ví đang bảo trì".
+     */
+    const [walletAnyOn, setWalletAnyOn] = useState<boolean | null>(null);
+
+    const [workType, setWorkType] = useState('TYPE_A');
+    useEffect(() => {
+        if (!ktvId) return;
+        supabase.from('Staff').select('work_type').eq('id', ktvId).single().then(({data}) => {
+            if (data?.work_type) setWorkType(data.work_type);
+        });
+    }, [ktvId]);
+
     const lastAcknowledgedIdRef = useRef<string | null>(null);
     const prevBookingIdRef = useRef<string | null>(null);
     const postServiceBookingIdRef = useRef<string | null>(null);
@@ -162,6 +242,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // 📸 Selfie photo before starting service
     const [startPhotoBase64, setStartPhotoBase64State] = useState<string | null>(null);
+    const [guestSlipperPhotoBase64, setGuestSlipperPhotoBase64State] = useState<string | null>(null);
 
     const setStartPhotoBase64 = useCallback((val: string | null) => {
         setStartPhotoBase64State(val);
@@ -176,22 +257,36 @@ export function useKTVDashboard(config?: DashboardConfig) {
         } catch(e) {}
     }, [ktvId]);
 
+    const setGuestSlipperPhotoBase64 = useCallback((val: string | null) => {
+        setGuestSlipperPhotoBase64State(val);
+        if (!bookingRef.current?.id || !ktvId) return;
+        try {
+            const key = `ktv_slipper_photo_${ktvId}_${bookingRef.current.id}_${activeSegmentIndexRef.current}`;
+            if (val) {
+                localStorage.setItem(key, val);
+            } else {
+                localStorage.removeItem(key);
+            }
+        } catch(e) {}
+    }, [ktvId]);
+
     // Restore temporary selfie photo from localStorage on load / booking / segment change
     useEffect(() => {
         if (!booking?.id || !ktvId) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
             return;
         }
         try {
             const key = `ktv_start_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
+            const slipperKey = `ktv_slipper_photo_${ktvId}_${booking.id}_${activeSegmentIndex}`;
             const saved = localStorage.getItem(key);
-            if (saved) {
-                setStartPhotoBase64State(saved);
-            } else {
-                setStartPhotoBase64State(null);
-            }
+            const savedSlipper = localStorage.getItem(slipperKey);
+            setStartPhotoBase64State(saved || null);
+            setGuestSlipperPhotoBase64State(savedSlipper || null);
         } catch(e) {
             setStartPhotoBase64State(null);
+            setGuestSlipperPhotoBase64State(null);
         }
     }, [booking?.id, ktvId, activeSegmentIndex]);
 
@@ -238,7 +333,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [screen, booking?.id, ktvId]);
 
-    // 🔄 Fetch KPI Data & Discipline Status
+    // 🔄 Fetch KPI Data, Discipline Status, and Turn Data
     useEffect(() => {
         if (!ktvId) return;
         const fetchData = async () => {
@@ -252,12 +347,81 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (discJson.success && discJson.data) {
                     setDisciplineStatus(discJson.data);
                 }
+
+                const turnsJson = await apiClient.get<any>(`/api/turns`);
+                if (turnsJson.success && turnsJson.data) {
+                    const allTypeD = turnsJson.data.filter((t: any) => t.work_type === 'TYPE_D');
+                    // Tính rank cho current KTV trong list allTypeD (dựa vào net_hours DESC)
+                    const sortedTypeD = [...allTypeD].sort((a, b) => (b.net_hours || 0) - (a.net_hours || 0));
+                    const myIndex = sortedTypeD.findIndex(t => t.employee_id === ktvId);
+                    
+                    setTurnData({
+                        myRank: myIndex !== -1 ? myIndex + 1 : 0,
+                        myTime: myIndex !== -1 ? (sortedTypeD[myIndex].net_hours || 0) : 0,
+                        allTypeD: sortedTypeD
+                    });
+                }
+
+                // Cùng một nguồn với trang Ví (WalletAccessService) để hai màn không
+                // nói hai chuyện. Trang Ví coi là "bảo trì" khi cả ví Tua lẫn ví
+                // Bonus đều tắt — ở đây dùng đúng điều kiện đó.
+                try {
+                    const acc = await apiClient.get<any>(API.KTV.WALLET.ACCESS(ktvId));
+                    if (acc?.success && acc.data) setWalletAnyOn(!!(acc.data.TUA || acc.data.BONUS));
+                } catch {
+                    setWalletAnyOn(null); // nạp hỏng thì giữ nút như cũ, đừng giấu nhầm
+                }
             } catch (e) {
                 console.error('Error fetching KPI/Discipline state:', e);
             }
         };
         fetchData();
     }, [ktvId]);
+
+    // 🔄 Tách riêng effect fetch Office score độc lập
+    useEffect(() => {
+        let alive = true;
+        if (!ktvId) {
+            setOfficeScore(null);
+            setOfficeScoreDisabled(false);
+            setOfficeScoreLoading(false);
+            setOfficeScoreError(null);
+            return;
+        }
+
+        const fetchOffice = async () => {
+            setOfficeScoreLoading(true);
+            setOfficeScoreError(null);
+            try {
+                const officeJson = await apiClient.get<any>('/api/ktv/office-score');
+                if (!alive) return;
+                if (officeJson?.applicable) {
+                    if (officeJson.disabled) {
+                        setOfficeScore(null);
+                        setOfficeScoreDisabled(true);
+                    } else {
+                        setOfficeScore(officeJson.data);
+                        setOfficeScoreDisabled(false);
+                    }
+                } else {
+                    setOfficeScore(null);
+                    setOfficeScoreDisabled(false);
+                }
+            } catch (err: any) {
+                if (!alive) return;
+                setOfficeScore(null);
+                setOfficeScoreDisabled(false);
+                setOfficeScoreError(err?.message || 'Chưa tải được điểm Office');
+            } finally {
+                if (alive) {
+                    setOfficeScoreLoading(false);
+                }
+            }
+        };
+
+        fetchOffice();
+        return () => { alive = false; };
+    }, [ktvId, officeScoreReloadKey]);
 
 
 
@@ -281,17 +445,32 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
 
     useEffect(() => {
+        if (!ktvId) return;
         try {
             const savedScreen = localStorage.getItem('ktv_active_screen') as ScreenState;
             const savedBookingId = localStorage.getItem(POST_SERVICE_BOOKING_KEY) || localStorage.getItem('ktv_active_booking_id');
             const savedKtvId = localStorage.getItem('ktv_active_ktv_id');
             // 🔒 Chỉ restore nếu đúng ktvId đang đăng nhập — tránh KTV2 kế thừa state của KTV1
-            const ktvIdMatches = !savedKtvId || !ktvId || savedKtvId === ktvId;
+            const ktvIdMatches = !savedKtvId || savedKtvId === ktvId;
             if (savedScreen && ['REVIEW', 'HANDOVER', 'REWARD'].includes(savedScreen) && savedBookingId && ktvIdMatches) {
                 setScreenState(savedScreen);
+                // Phải gán tay screenRef: setScreenState là setter THÔ, không đi qua
+                // setScreen nên ref không được cập nhật, mà ref chỉ theo kịp ở vòng
+                // render sau. Trong khi đó fetchBooking đọc screenRef ngay lượt đầu
+                // để quyết định có kèm bookingId hay không — ref còn là DASHBOARD thì
+                // nó gọi trần `?techCode=...`, server trả về rỗng vì KTV không còn
+                // đơn đang chạy, và màn Bàn giao rơi về checklist mặc định
+                // "Ảnh tổng quan phòng" thay vì danh sách thật của phòng.
+                screenRef.current = savedScreen;
                 prevBookingIdRef.current = savedBookingId;
                 postServiceBookingIdRef.current = savedBookingId;
             } else {
+                setScreenState('DASHBOARD');
+                screenRef.current = 'DASHBOARD';
+                postServiceBookingIdRef.current = null;
+                prevBookingIdRef.current = null;
+                setHasSubmittedReview(false);
+                setBooking(null);
                 localStorage.removeItem('ktv_active_screen');
                 localStorage.removeItem('ktv_active_booking_id');
                 localStorage.removeItem(POST_SERVICE_BOOKING_KEY);
@@ -576,7 +755,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             // 🔒 ABSOLUTE GUARD: Nếu timer đang chạy (isTimerRunning = true) → KHÔNG được chuyển sang CLEANING/FEEDBACK/DONE
             // Ngăn chặn ghost completion do race condition (allDone = true khi actualEndTime từ session cũ còn trong DB)
-            if (isTimerRunningRef.current && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
+            //
+            // NGOẠI LỆ: quầy chốt hộ (Kết thúc sớm / Huỷ / Đổi KTV). Lúc đó KTV chưa hề
+            // bấm xong nên isTimerRunning vẫn bật, guard ép ngược về IN_PROGRESS và đồng
+            // hồ chạy mãi tới khi F5, luồng không đi tiếp được.
+            // Nhận diện qua endedByCounter() — KHÔNG kiểm bằng một chuỗi note, vì bản
+            // trước chỉ nhận 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ vẫn bị chặn.
+            const endedByReception = allMySegsForStatus.some(endedByCounter);
+            if (isTimerRunningRef.current && !endedByReception && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
                 console.warn(`🛡️ [ScreenEngine] Timer đang chạy nhưng status=${currentStatus} → ép giữ IN_PROGRESS`);
                 currentStatus = 'IN_PROGRESS';
             }
@@ -606,22 +792,52 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
         }
 
-        // 🚫 CANCELLED: luôn xử lý (booking-level)
-        if (booking.status === 'CANCELLED') {
+        // 🚫 CANCELLED (booking-level)
+        //
+        // ⚠️ Huỷ đơn KHÔNG đồng nghĩa với "chưa làm gì". Nút Huỷ ở thẻ tạm dừng
+        // dành cho tình huống ĐANG LÀM RỒI mà khách không ưng — phòng vẫn bẩn,
+        // vẫn phải dọn và bàn giao. Đá thẳng KTV về Dashboard là mất luôn hai
+        // bước đó, y hệt lỗi đã gặp với "Kết thúc sớm".
+        //
+        // Chỉ văng ra khi KTV thật sự CHƯA bắt đầu chặng nào.
+        // ⚠️ Huỷ hết dịch vụ của một ĐƠN CON thì recomputeBookingStatus trả về 'DONE'
+        // chứ KHÔNG phải 'CANCELLED' — nên chỉ soi booking.status là hụt. Phải xét cả
+        // trạng thái ITEM của chính KTV này.
+        const itemBiHuy = assignedItem?.status === 'CANCELLED'
+            || allAssignedItems.every((i: any) => i?.status === 'CANCELLED');
+
+        if (booking.status === 'CANCELLED' || itemBiHuy) {
             if (['REVIEW', 'HANDOVER', 'REWARD'].includes(currentScreen)) {
                 console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (ScreenEngine CANCELLED).");
                 return;
             }
-            setBooking(null);
-            setScreen('DASHBOARD');
-            return;
+            const daBatDau = allMySegsForStatus.some((seg: any) => seg.actualStartTime);
+            if (daBatDau) {
+                console.log("🧹 [KTV] Đơn bị huỷ SAU khi đã bắt đầu → vẫn phải đi Đánh giá → Bàn giao.");
+                currentStatus = 'CLEANING';
+            } else {
+                setBooking(null);
+                setScreen('DASHBOARD');
+                return;
+            }
         }
 
         if (currentStatus === 'READY' && currentScreen === 'DASHBOARD') {
+            // Đơn VÀO THAY thì BỎ HẲN thời gian chuẩn bị (chốt 10/09/2026).
+            // Khoảng đó dành cho việc set up phòng — vệ sinh máy lạnh, chuẩn bị
+            // tinh dầu, setup giường, khăn nóng. Người vào thay không phải làm gì
+            // trong số đó: phòng đã mở, khách đang nằm sẵn chờ.
+            const laDonVaoThay = allMySegsForStatus.some(
+                (seg: any) => seg?.note === 'TAKEOVER' && !seg?.actualEndTime
+            );
+
             const parsed = Number(settings.ktv_setup_duration_minutes);
-            const setupMs = (!isNaN(parsed) ? parsed : 0) * 60;
+            const setupMs = laDonVaoThay ? 0 : (!isNaN(parsed) ? parsed : 0) * 60;
             setPrepTimeRemaining(setupMs);
-            setIsPrepping(true);
+            // ⚠️ Chỉ bật cờ khi THẬT SỰ có giây để đếm. Bật với 0 giây thì vòng
+            // đếm ngược không chạy (điều kiện là `> 0`) nên không ai tắt nó, màn
+            // đồng hồ kẹt ở chữ "THỜI GIAN CHUẨN BỊ" với 00:00.
+            setIsPrepping(setupMs > 0);
             setScreen('TIMER');
         } 
         else if (currentStatus === 'IN_PROGRESS' || currentStatus === 'PAUSED') {
@@ -653,6 +869,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     setScreen('REVIEW');
                     setIsTimerRunning(false);
                 }
+            } else if (laNguoiBiDoiRa(booking)) {
+                // Người BỊ ĐỔI RA đánh giá khách xong là xong việc — KHÔNG dọn phòng,
+                // không màn Thưởng. Người vào thay vẫn đang làm trong phòng đó; dọn là
+                // việc của họ sau khi xong. Server đã nhả người bị đổi khỏi đơn ngay lúc
+                // đổi (TurnQueue về waiting, phiếu phân công CANCELLED, kéo đơn kế tiếp),
+                // nên không cần đi qua bước bàn giao để giải phóng.
+                if (currentScreen !== 'DASHBOARD') goToDashboard();
             } else {
                 // Kiểm tra xem KTV này đã bàn giao phòng chưa (dựa vào handoverTime trong segments)
                 let allHandover = false;
@@ -665,6 +888,26 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     if (mySegs.length > 0) {
                         allHandover = mySegs.every((s: any) => !!s.handoverTime);
                     }
+
+                    // `handoverTime` KHÔNG đủ để kết luận đã bàn giao: luồng "bỏ qua bàn
+                    // giao" vẫn đi qua release-KTV, mà chỗ đó luôn đóng dấu handoverTime
+                    // kể cả khi không có ảnh. Nên đơn đang NỢ bàn giao vẫn có dấu thời
+                    // gian, và KTV bấm vào ô nợ thì bị đẩy thẳng sang màn Thưởng / Đánh
+                    // giá quầy — không còn đường nào để nộp ảnh.
+                    //
+                    // Trạng thái của item mới là căn cứ đúng, cũng chính là nguồn mà ô
+                    // "Nợ bàn giao" đang đếm.
+                    const myItemIds: string[] = booking.assignedItemIds?.length
+                        ? booking.assignedItemIds
+                        : (booking.assignedItemId ? [booking.assignedItemId] : []);
+                    const owesHandover = booking.BookingItems.some((i: any) => {
+                        const mine = myItemIds.length
+                            ? myItemIds.includes(i.id)
+                            : (i.technicianCodes || []).some((c: string) =>
+                                String(c).toUpperCase() === String(ktvId).toUpperCase());
+                        return mine && ['SKIPPED', 'REJECTED'].includes(String(i.handover_status || '').toUpperCase());
+                    });
+                    if (owesHandover) allHandover = false;
                 }
 
                 // Nếu đã Review xong, chuyển sang HANDOVER (nếu chưa ở đó hoặc chưa tới REWARD)
@@ -713,7 +956,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     const unreadRewards = res.data.filter((n: any) => !n.isRead && n.type === 'REWARD');
                     if (unreadRewards.length > 0) {
                         const notify = unreadRewards[0];
-                        setBonusMessage(notify.message);
+                        let popupMsg = notify.message;
+                        if (workType === 'TYPE_D') {
+                            popupMsg = 'Tua đã hoàn thành. Xem ví để biết chi tiết.';
+                        }
+                        setBonusMessage(popupMsg);
                         
                         await apiClient.post('/api/ktv/notifications', { notificationIds: [notify.id] });
                         
@@ -748,7 +995,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             supabase.removeChannel(channel);
             clearInterval(interval);
         };
-    }, [ktvId, screen]);
+    }, [ktvId, screen, workType]);
 
     // ⚙️ Fetch Settings
     useEffect(() => {
@@ -761,11 +1008,44 @@ export function useKTVDashboard(config?: DashboardConfig) {
         fetchSettings();
     }, []);
 
+    const isFetchingRef = useRef(false);
+    // Có lệnh nạp lại tới trong lúc đang nạp dở → xếp hàng chờ, đừng vứt đi.
+    const pendingRefetchRef = useRef(false);
+    // Lời hứa của lượt nạp ĐANG chạy, để chỗ khác `await` được nó.
+    const inFlightRef = useRef<Promise<void> | null>(null);
+    const realtimeFetchTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const lastVisibilityFetchMsRef = useRef(0);
+    const isCheckingNextRef = useRef(false);
+
     // 📡 Realtime & Polling Fetch
     useEffect(() => {
         if (!ktvId) return;
 
+        // Debounce cho realtime callbacks — nhiều event DB đến gần nhau → gộp thành 1 fetch
+        const scheduleRealtimeFetch = () => {
+            if (realtimeFetchTimerRef.current) clearTimeout(realtimeFetchTimerRef.current);
+            realtimeFetchTimerRef.current = setTimeout(() => {
+                fetchBooking();
+                realtimeFetchTimerRef.current = null;
+            }, 300);
+        };
+
         const fetchBooking = async () => {
+            // Đang có một lượt nạp chạy dở thì GHI NHẬN rồi nạp lại ngay sau đó,
+            // thay vì bỏ luôn lệnh này.
+            //
+            // Vì sao cần: KTV bấm "Nhận đơn" → ghi DB → realtime bắn về và kích một
+            // lượt nạp; ngay sau đó handleAcceptOrder gọi forceRefresh(). Lượt của
+            // forceRefresh đâm vào cờ này và bị vứt, trong khi lượt của realtime lại
+            // xuất phát TRƯỚC lúc DB ghi xong nên trả về acceptedAt cũ (rỗng). Kết
+            // quả: màn hình đứng ở thẻ "Nhận đơn" cho tới khi KTV tự F5.
+            if (isFetchingRef.current) {
+                pendingRefetchRef.current = true;
+                return;
+            }
+            isFetchingRef.current = true;
+            let settleInFlight: () => void = () => {};
+            inFlightRef.current = new Promise<void>(resolve => { settleInFlight = resolve; });
             try {
                 if (!ktvId) return;
 
@@ -796,6 +1076,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const fetchStart = Date.now();
                 const res = await apiClient.get<any>(url);
                 const fetchMs = Date.now() - fetchStart;
+
+                if (res.success && res.reason === 'not_assigned') {
+                    prevBookingIdRef.current = null;
+                    setHasSubmittedReview(false);
+                    goToDashboard();
+                    return;
+                }
                 
                 if (res.success && res.data && res.data.id) {
                     if (isTransitioningRef.current) {
@@ -977,8 +1264,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         
                         const isStatusChanged = prev?.currentStatus !== currentStatus;
                         const isRatingChanged = oldRating !== newRating;
-                        
-                        if (isNew || isStatusChanged || isRatingChanged || JSON.stringify(prev?.BookingItems) !== JSON.stringify(res.data.BookingItems)) {
+                        // Mốc "đã nhận đơn" là cờ CẤP BOOKING, không nằm trong bốn thứ
+                        // được so ở dưới. Thiếu nó thì KTV bấm Nhận đơn xong dữ liệu mới
+                        // về tới nơi rồi vẫn bị vứt, màn hình đứng ở thẻ Nhận đơn.
+                        const isAcceptChanged = (prev?.acceptedAt || null) !== (res.data.acceptedAt || null);
+
+                        if (isNew || isStatusChanged || isRatingChanged || isAcceptChanged || JSON.stringify(prev?.BookingItems) !== JSON.stringify(res.data.BookingItems)) {
                             if (res.serverTime) {
                                 const clientNow = new Date().getTime();
                                 const serverNow = new Date(res.serverTime).getTime();
@@ -1023,8 +1314,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                                                 now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
                                             }
                                         }
-                                        const elapsed = Math.floor((now - start) / 1000);
-                                        
+                                        // Trừ các khoảng đã tạm dừng. Trước đây resumeItem dời
+                                        // `actualStartTime` tới trước nên đồng hồ tự khớp, nhưng cách đó
+                                        // xoá mất mốc bắt đầu thật. Nay mốc giữ nguyên, phần bù nằm ở
+                                        // `seg.pauses[]` và trừ tại đây (lib/segment-time.ts).
+                                        const pausedMs = pausedMsOf(currentSeg, now);
+                                        const elapsed = Math.floor((now - start - pausedMs) / 1000);
+
                                         // Đếm lùi cho chặng hiện tại
                                         setTimeRemaining(Math.max(0, currentSecs - elapsed));
                                     }
@@ -1059,6 +1355,27 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ.");
                             return;
                         }
+
+                        // ⚠️ Đang hỏi theo MỘT mã đơn cụ thể mà server trả về rỗng →
+                        // con trỏ đó đã chết (đơn bị huỷ, bị gỡ khỏi KTV, hoặc trả nợ
+                        // xong rồi). Phải bỏ nó đi.
+                        //
+                        // Không bỏ thì mọi lần nạp sau vẫn kèm đúng `?bookingId=` chết
+                        // đó, nên đường nạp TỰ DO — đường duy nhất tìm ra đơn mới trong
+                        // hàng tua — không bao giờ được chạy. KTV ngồi nhìn "Đang chờ
+                        // điều phối" trong khi quầy đã gửi đơn, và KHÔNG có một dòng
+                        // báo lỗi nào vì server vẫn trả 200.
+                        //
+                        // Con trỏ này được đặt khi bấm vào ô "Nợ bàn giao", hoặc từ
+                        // `?bookingId=` trên URL — nên xoá luôn query để F5 không dính lại.
+                        if (targetBookingIdRef.current) {
+                            console.warn('⚠️ [KTV] Đơn đang theo dõi không còn — bỏ con trỏ, nạp lại tự do:', targetBookingIdRef.current);
+                            targetBookingIdRef.current = null;
+                            try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+                            // Nạp lại đúng MỘT lần ở khối finally. Lần đó không còn
+                            // bookingId nên không quay lại nhánh này được nữa.
+                            pendingRefetchRef.current = true;
+                        }
                         setBooking(res.data?.nextBookingId ? res.data : null);
                         setScreen('DASHBOARD');
                         setIsTimerRunning(false);
@@ -1081,6 +1398,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 console.error('Error fetching booking:', err);
             } finally {
                 setIsLoading(false);
+                isFetchingRef.current = false;
+                inFlightRef.current = null;
+                settleInFlight();
+                // Có lệnh bị dồn lại lúc nãy → chạy nốt, lần này dữ liệu đã mới.
+                if (pendingRefetchRef.current) {
+                    pendingRefetchRef.current = false;
+                    setTimeout(() => { fetchBooking(); }, 0);
+                }
             }
         };
 
@@ -1089,19 +1414,33 @@ export function useKTVDashboard(config?: DashboardConfig) {
         // Subscribe to real-time changes
         const channel = supabase
             .channel(`ktv_realtime_${ktvId}`)
-            .on('postgres_changes', { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'Bookings',
-                filter: booking?.id ? `id=eq.${booking.id}` : undefined
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'Bookings'
+                // KHÔNG filter theo booking.id → nhận tất cả, filter trong callback bằng bookingRef
+                // để không phải re-subscribe channel mỗi lần booking đổi.
             }, (payload: any) => {
+                const currentBookingId = bookingRef.current?.id;
+                if (!currentBookingId || payload.new?.id !== currentBookingId) return;
                 console.log("🔄 [KTV] Realtime Booking Update:", payload.new.status);
                 
-                // Nếu đơn hàng bị hủy → set ngay
-                if (payload.new.status === 'CANCELLED') {
+                // Nếu đơn hàng bị hủy hoặc bị tách → set ngay
+                if (payload.new.status === 'CANCELLED' || payload.new.status === 'SPLIT') {
                     if (['REVIEW', 'HANDOVER', 'REWARD'].includes(screenRef.current)) {
-                        console.log("🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (Realtime CANCELLED).");
+                        console.log(`🔒 [KTV] Chặn thoát ra Dashboard vì đang trong màn hình Hậu kỳ (Realtime ${payload.new.status}).`);
                         return;
+                    }
+                    // Đơn huỷ mà KTV đã bắt đầu làm thì vẫn còn phòng phải dọn —
+                    // để ScreenEngine đưa họ sang Đánh giá → Bàn giao, đừng đá ra.
+                    if (payload.new.status === 'CANCELLED') {
+                        const items = bookingRef.current?.BookingItems || [];
+                        const daBatDau = items.some((i: any) => {
+                            let segs: any[] = [];
+                            try { segs = typeof i.segments === 'string' ? JSON.parse(i.segments) : (Array.isArray(i.segments) ? i.segments : []); } catch {}
+                            return segs.some((s: any) => ktvMatchesSeg(s.ktvId, ktvId) && s.actualStartTime);
+                        });
+                        if (daBatDau) { scheduleRealtimeFetch(); return; }
                     }
                     setBooking(null);
                     setScreen('DASHBOARD');
@@ -1115,11 +1454,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 // 🚀 KHÔNG set partial data cho bất kỳ status nào có liên quan đến BookingItems
                 // Partial spread gây ra booking.status mới + BookingItems.status cũ → Screen Engine sai
                 // Chỉ fetchBooking() để lấy data hoàn chỉnh, nhất quán
-                fetchBooking();
+                scheduleRealtimeFetch();
             })
-            .on('postgres_changes', { 
-                event: '*', 
-                schema: 'public', 
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
                 table: 'BookingItems'
             }, (payload: any) => {
                 const currentBooking = bookingRef.current;
@@ -1162,11 +1501,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 }
                 
                 // Luôn fetchBooking để lấy danh sách items hoàn chỉnh (xử lý case INSERT Add-on)
-                fetchBooking();
+                scheduleRealtimeFetch();
             })
-            .on('postgres_changes', { 
-                event: '*', 
-                schema: 'public', 
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
                 table: 'TurnQueue',
                 filter: `employee_id=eq.${ktvId}`
             }, (payload: any) => {
@@ -1176,7 +1515,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                     console.log("🚫 [KTV] TurnQueue realtime blocked — in post-service flow:", screenRef.current);
                     return;
                 }
-                fetchBooking();
+                scheduleRealtimeFetch();
             })
             .subscribe();
 
@@ -1194,10 +1533,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
         return () => {
             supabase.removeChannel(channel);
             clearInterval(intervalId);
+            if (realtimeFetchTimerRef.current) clearTimeout(realtimeFetchTimerRef.current);
         };
-    // ⚡ PERF: Removed isTimerRunning & isPrepping from deps to prevent channel re-subscription
-    // on every timer state change. These values are accessed via refs inside fetchBooking.
-    }, [ktvId, booking?.id, booking?.assignedItemId]);
+    // ⚡ PERF: Chỉ deps ktvId — mọi state khác đọc qua ref (bookingRef, screenRef, ...)
+    // Trước đây deps chứa booking?.id + assignedItemId → mỗi lần setBooking sẽ teardown
+    // + re-subscribe channel + gọi fetchBooking() → vòng lặp vô hạn.
+    }, [ktvId]);
 
     // 🕵️ Next Order Watcher — Polls for new assignments while KTV is finishing the current one
     // This ensures the "Next Order" button appears even if the dispatch happens late.
@@ -1205,6 +1546,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
         if (!ktvId || !['DASHBOARD', 'HANDOVER', 'REWARD'].includes(screen)) return;
 
         const checkNextOrder = async () => {
+            // 🛡️ Guard riêng — tránh concurrent Next Order fetches
+            if (isCheckingNextRef.current) return;
+            isCheckingNextRef.current = true;
             try {
                 // Fetch using techCode + current bookingId to exclude it from "next order" search
                 const currentId = bookingRef.current?.id || '';
@@ -1221,7 +1565,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         return { ...prev, nextBookingId: res.data.nextBookingId };
                     });
                 }
-            } catch (e) {}
+            } catch (e) {} finally {
+                isCheckingNextRef.current = false;
+            }
         };
 
         const tid = setInterval(checkNextOrder, 30000); // Tăng từ 5s lên 30s để tiết kiệm CPU
@@ -1413,12 +1759,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             if (activeSegStartTime) {
-                const start = new Date(activeSegStartTime).getTime();
                 let now = new Date().getTime() + timeOffsetRef.current;
                 if (assignedItem?.status === 'PAUSED' && assignedItem?.pauseStart) {
                     const pStart = assignedItem.pauseStart;
                     now = new Date(pStart.includes('Z') || pStart.includes('+') ? pStart : pStart.replace(' ', 'T') + 'Z').getTime();
                 }
+
+                // Mốc bắt đầu THẬT không còn bị dời khi tạm dừng, nên đồng hồ phải tự
+                // cộng bù phần đã dừng vào mốc gốc. Chỉ dịch trong bộ nhớ, không ghi DB.
+                const pauseRefSeg = allMySegs[calculatedSegIdx] || allMySegs[0] || {};
+                const start = new Date(activeSegStartTime).getTime() + pausedMsOf(pauseRefSeg, now);
                 const elapsed = Math.floor((now - start) / 1000);
 
                 // 🔥 Lưu vào ref để countdown interval dùng absolute time
@@ -1453,19 +1803,32 @@ export function useKTVDashboard(config?: DashboardConfig) {
         recalcTimerRef.current = recalcTimerFromServer;
         recalcTimerFromServer();
 
+        // 🛡️ Cooldown 5s cho visibility/focus — tránh browser bounce visible↔hidden
+        // hoặc user Alt-Tab liên tục gây spam fetch. Dùng useRef để state survive
+        // giữa các lần effect re-mount (booking đổi).
+        const VISIBILITY_FETCH_COOLDOWN_MS = 5000;
+
         const handleVisibilityChange = async () => {
-            if (document.visibilityState === 'visible') {
-                // 🔥 Fetch dữ liệu MỚI từ server trước khi recalc
-                // Nếu dùng bookingRef cũ (stale), actualStartTime có thể = undefined
-                // → guard return sớm → timer không được sync → hiện sai
-                if (fetchBookingRef.current) {
-                    await fetchBookingRef.current();
-                }
+            if (document.visibilityState !== 'visible') return;
+            const now = Date.now();
+            if (now - lastVisibilityFetchMsRef.current < VISIBILITY_FETCH_COOLDOWN_MS) {
                 recalcTimerFromServer();
+                return;
             }
+            lastVisibilityFetchMsRef.current = now;
+            if (fetchBookingRef.current) {
+                await fetchBookingRef.current();
+            }
+            recalcTimerFromServer();
         };
 
         const handleFocus = async () => {
+            const now = Date.now();
+            if (now - lastVisibilityFetchMsRef.current < VISIBILITY_FETCH_COOLDOWN_MS) {
+                recalcTimerFromServer();
+                return;
+            }
+            lastVisibilityFetchMsRef.current = now;
             if (fetchBookingRef.current) {
                 await fetchBookingRef.current();
             }
@@ -1565,10 +1928,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 message: fullMessage
             });
             setShowRoomIssueModal(false);
-            alert('Đã gửi báo cáo sự cố về Lễ tân!');
+            addToast('Đã gửi báo cáo sự cố về Lễ tân!', 'success');
         } catch (err) {
             console.error('Error reporting room issue:', err);
-            alert('Lỗi gửi báo cáo!');
+            addToast('Lỗi gửi báo cáo!', 'error');
         } finally {
             setIsLoading(false);
         }
@@ -1634,7 +1997,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsPrepping(true);
             setScreen('TIMER');
         } else {
-            alert('Lỗi xác nhận chuẩn bị: ' + (res.error || 'Unknown error'));
+            addToast('Lỗi xác nhận chuẩn bị: ' + (res.error || 'Unknown error'), 'error');
         }
         setIsLoading(false);
     };
@@ -1683,11 +2046,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 techCode: ktvId,
                 action: 'START_TIMER',
                 shouldMerge: shouldMerge,
-                photoBase64: startPhotoBase64
+                activeSegmentIndex,
+                startPhotoBase64,
+                guestSlipperPhotoBase64
             });
             if (res.success) {
-                // 📸 Clean up check-in photo from preview and localStorage
+                // 📸 Clean up check-in photos from preview and localStorage
                 setStartPhotoBase64(null);
+                setGuestSlipperPhotoBase64(null);
 
                 // 🚀 Gửi tín hiệu Broadcast sang Lễ tân để UI cập nhật tức thời
                 supabase.channel('dispatch_board_realtime').send({
@@ -1715,11 +2081,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 setScreen('TIMER');
             } else {
                 console.error('❌ [KTV Logic] Start error:', res.error);
-                alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
+                addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
             }
         } catch (error: any) {
             console.error('❌ [KTV Logic] Exception during Start:', error);
-            alert('Lỗi hệ thống khi bắt đầu tính giờ: ' + (error.message || 'Unknown error'));
+            addToast('Lỗi hệ thống khi bắt đầu tính giờ: ' + (error.message || 'Unknown error'), 'error');
         } finally {
             setIsLoading(false);
         }
@@ -1788,7 +2154,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 if (fetchBookingRef.current) fetchBookingRef.current();
             } else {
                 console.error('❌ [AutoAdvance] Error:', res.error);
-                alert('Lỗi chuyển chặng: ' + (res.error || 'Unknown error'));
+                addToast('Lỗi chuyển chặng: ' + (res.error || 'Unknown error'), 'error');
             }
             setIsLoading(false);
         } else {
@@ -1828,7 +2194,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 isTransitioningRef.current = false;
                 postServiceBookingIdRef.current = null;
                 try { localStorage.removeItem(POST_SERVICE_BOOKING_KEY); } catch (e) {}
-                alert('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'));
+                addToast('Lỗi cập nhật trạng thái: ' + (res.error || 'Unknown error'), 'error');
             }
             setIsLoading(false);
         }
@@ -1836,6 +2202,19 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     // Keep ref up-to-date so timer callback always calls latest version
     handleFinishTimerRef.current = handleFinishTimer;
+
+    /**
+     * KTV này bị ĐỔI RA khỏi đơn: mọi chặng của họ trong đơn đều bị tước
+     * (`voided`) với ghi chú 'CHANGED'.
+     *
+     * ⚠️ Phải là MỌI chặng. Một người có thể bị đổi ra ở dịch vụ này nhưng vẫn
+     * đang làm dịch vụ khác cùng bill — người đó vẫn phải dọn phòng như thường.
+     * Và phải đúng note 'CHANGED': huỷ không công cũng `voided` nhưng đó là
+     * "đang làm thì khách không ưng" — phòng vẫn bẩn, vẫn phải dọn.
+     */
+    function laNguoiBiDoiRa(bk: any): boolean {
+        return laNguoiBiDoiRaKhoiDon(bk?.BookingItems || [], ktvId || '', ktvMatchesSeg);
+    }
 
     const handleSubmitReview = async (customerProfile: any) => {
         if (!booking || !ktvId) {
@@ -1867,7 +2246,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             if (!res.success) {
                 console.error('❌ [KTV Logic] Lỗi khi gửi đánh giá:', res.error);
-                alert('Không thể lưu đánh giá: ' + (res.error || 'Vui lòng thử lại'));
+                addToast('Không thể lưu đánh giá: ' + (res.error || 'Vui lòng thử lại'), 'error');
                 return; // 🚫 Chặn không cho đi tiếp
             }
             
@@ -1878,20 +2257,28 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 localStorage.setItem(reviewKey, 'true');
             } catch(e) {}
             
+            // Người bị đổi ra: đánh giá khách là việc cuối cùng — về thẳng trang chủ.
+            // Xem nhánh cùng tên trong ScreenEngine.
+            if (laNguoiBiDoiRa(booking)) {
+                addToast('Đã lưu đánh giá. Bạn đã được đổi ra nên không cần dọn phòng.', 'success');
+                goToDashboard();
+                return;
+            }
+
             // Always go to HANDOVER — commission is calculated in handleFinishHandover()
             isTransitioningRef.current = true;
             setScreen('HANDOVER');
             setTimeout(() => isTransitioningRef.current = false, 1000);
         } catch (err) {
             console.error('❌ [KTV Logic] Network error submitting review:', err);
-            alert('Lỗi kết nối. Vui lòng kiểm tra mạng và thử lại!');
+            addToast('Lỗi kết nối. Vui lòng kiểm tra mạng và thử lại!', 'error');
         } finally {
             setIsLoading(false);
         }
     };
 
 
-    const handleFinishHandover = async () => {
+    const handleFinishHandover = async (opts?: { skipped?: boolean }) => {
         if (!booking || !ktvId) {
             console.log("🚨 [KTV Logic] Mất dữ liệu phiên làm việc ở bước Dọn phòng, ép thoát về DASHBOARD");
             setScreen('DASHBOARD');
@@ -1914,6 +2301,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const assignedItems = itemIds.length > 0
                 ? booking.BookingItems?.filter((i: any) => itemIds.includes(i.id)) || []
                 : [booking.BookingItems?.[0]].filter(Boolean);
+
+            // Đây là lần TRẢ NỢ hay lần bàn giao bình thường?
+            // Phải chốt TRƯỚC khi gọi PATCH, vì RELEASE_KTV sẽ lật handover_status
+            // từ SKIPPED sang PENDING — hỏi sau thì không còn dấu vết nợ nữa.
+            const isDebtRepay = assignedItems.some((i: any) =>
+                ['SKIPPED', 'REJECTED'].includes(String(i.handover_status || '').toUpperCase()));
             
             // Filter bỏ dịch vụ tiện ích (is_utility) — không tính vào tiền tua
             const serviceItems = assignedItems.filter((item: any) => {
@@ -1987,19 +2380,38 @@ export function useKTVDashboard(config?: DashboardConfig) {
             console.log("💰 [Commission] Items:", itemIds.length, "Total Duration:", totalMins, "Total Commission:", totalCommission);
 
             // 1. Giải phóng KTV khỏi TurnQueue
+            const photosToSubmit = Object.values(handoverPhotosBase64);
+            // ⏱️ Hạn chờ RIÊNG cho lượt này. Mặc định của apiClient là 15 giây —
+            // đủ cho một lời gọi thường, nhưng đây là lượt NẶNG nhất trong app:
+            // gửi kèm toàn bộ ảnh bàn giao dưới dạng base64, rồi máy chủ còn phải
+            // đẩy từng tấm lên kho ảnh. Chụp 8-12 tấm trên mạng 4G là quá 15 giây
+            // như chơi — KTV thấy "Kết nối bị quá hạn" dù ảnh vẫn đang bay lên.
             const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
                 bookingId: postServiceBookingIdRef.current || booking.id, 
                 status: 'FEEDBACK', // Dọn xong → chờ khách đánh giá. Nếu đã có rating → API sẽ set DONE
                 action: 'RELEASE_KTV', // BÂY GIỜ mới giải phóng KTV
                 techCode: ktvId,
-                photosBase64: Object.values(handoverPhotosBase64)
-            });
+                photosBase64: photosToSubmit
+            }, { timeout: 120000 });
             
+            // Lưu hỏng thì DỪNG LẠI, đừng đi tiếp như không có chuyện gì.
+            //
+            // Trước đây chỗ này chỉ console.error rồi chạy thẳng xuống: báo "Đã nộp
+            // ảnh bàn giao, bạn hết nợ rồi" và đẩy sang màn Thưởng, trong khi server
+            // chưa ghi được gì. KTV tin là xong, đi tan ca, tới nơi mới bị chặn vì
+            // vẫn còn nợ — mà ảnh thì đã mất.
             if (!res.success) {
                 console.error('Lỗi khi giải phóng KTV:', res.error);
+                addToast(res.error || 'Không lưu được bàn giao. Vui lòng thử lại.', 'error');
+                return;   // ở lại màn Bàn giao để nộp lại
             }
 
             setCommission(totalCommission);
+
+            // Ảnh đã gửi đi rồi thì bỏ khỏi máy. Quan trọng với đường TRẢ NỢ: quay
+            // lại đúng đơn cũ nên `booking.id` không đổi, effect xoá-theo-đơn ở trên
+            // không chạy — không xoá ở đây thì lần sau vào vẫn thấy ảnh lần trước.
+            setHandoverPhotosBase64({});
 
             // KHÔNG xoá booking ở đây để Reward còn lấy được rating/points
             setPrepChecklist(prev => prev.map(() => false));
@@ -2007,6 +2419,44 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setIsPrepping(false);
             setPrepTimeRemaining(0);
             
+            // BỎ QUA dọn phòng thì cũng KHÔNG qua màn Thưởng / Đánh giá quầy.
+            // Phòng còn đang nợ, việc chưa xong, mà lý do bỏ qua luôn là "có đơn
+            // khác đang chờ" — bắt ngồi chấm sao quầy đúng lúc đó là giữ chân KTV
+            // vô lý. Lúc quay lại dọn nốt mới là lúc xong việc thật.
+            if (opts?.skipped) {
+                isTransitioningRef.current = true;
+                goToDashboard(booking?.nextBookingId);
+                fetchPendingHandovers();
+                return;
+            }
+
+            // Trả nợ dọn phòng thì KHÔNG qua màn Thưởng / Đánh giá quầy: tiền tua đã
+            // trả từ lần làm xong trước đó, quầy cũng đã đánh giá rồi. Bắt đi lại một
+            // vòng nữa chỉ tổ rối, mà còn dễ tưởng được trả tiền thêm lần hai.
+            if (isDebtRepay) {
+                // Không có ảnh thì RELEASE_KTV không đụng tới handover_status, nợ vẫn
+                // nguyên đó. Báo "đã nộp xong" lúc này là nói sai — KTV tưởng hết nợ
+                // rồi đi tan ca, tới nơi mới thấy vẫn bị chặn.
+                if (photosToSubmit.length > 0) {
+                    addToast('✅ Đã nộp ảnh bàn giao. Bạn hết nợ phòng này rồi!', 'success');
+                    // Dọn xong nợ MỚI là lúc việc thật sự kết thúc, nên giờ mới cho
+                    // đánh giá quầy — phần đã bị bỏ qua lúc bấm "Bỏ qua".
+                    setRewardHideMoney(true);
+                    isTransitioningRef.current = true;
+                    setScreen('REWARD');
+                    setTimeout(() => isTransitioningRef.current = false, 1000);
+                    fetchPendingHandovers();
+                    return;
+                }
+                // Không có ảnh thì nợ vẫn nguyên, chưa xong việc → không có gì để
+                // đánh giá, trả về trang chờ.
+                addToast('⚠️ Bạn chưa chụp ảnh nên phòng này VẪN CÒN NỢ. Chụp đủ ảnh rồi nộp lại nhé.', 'warning');
+                isTransitioningRef.current = true;
+                goToDashboard();
+                fetchPendingHandovers();
+                return;
+            }
+
             if (booking?.ktv_instant_reward_enabled === false) {
                 // Tính năng hiện tiền tua tắt -> quay về trang chờ
                 isTransitioningRef.current = true;
@@ -2015,14 +2465,22 @@ export function useKTVDashboard(config?: DashboardConfig) {
             }
 
             // Luôn chuyển sang REWARD để KTV thấy thành quả công việc
+            setRewardHideMoney(false);
             isTransitioningRef.current = true;
             setScreen('REWARD');
             setTimeout(() => isTransitioningRef.current = false, 1000);
-        } catch (err) {
+        } catch (err: any) {
+            // apiClient NÉM LỖI với mọi mã khác 2xx nên nhánh `!res.success` ở trên
+            // hiếm khi chạy — chỗ bắt lỗi thật sự là đây.
+            //
+            // Trước đây catch này đẩy thẳng sang màn Thưởng: hỏng mà vẫn coi như
+            // xong. Nay ở lại màn Bàn giao và nói rõ, để KTV nộp lại — hoặc bấm
+            // "Bỏ qua" để ghi nợ đàng hoàng thay vì mất trắng.
             console.error('Error in finish handover:', err);
-            isTransitioningRef.current = true;
-            setScreen('REWARD');
-            setTimeout(() => isTransitioningRef.current = false, 1000);
+            addToast(
+                `Không lưu được bàn giao: ${err?.message || 'lỗi kết nối'}. Thử lại, hoặc bấm "Bỏ qua" để ghi nợ.`,
+                'error'
+            );
         } finally {
             setIsLoading(false);
         }
@@ -2047,10 +2505,15 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 booking.assignedItemIds?.includes(i.id) || booking.assignedItemId === i.id
             );
             if (!item) return;
+            // Item KHÔNG có `roomId` lẫn `serviceCode` — cột thật là `roomName` và
+            // `serviceId`. Trước đây gửi lên toàn chuỗi rỗng nên API không biết
+            // phòng nào, dịch vụ nào, trả về danh sách rỗng và màn Bàn giao chỉ
+            // hiện mục mặc định "Ảnh tổng quan phòng".
             const params = new URLSearchParams({
-                roomId: booking.assignedRoomId || item.roomId || '',
+                roomId: booking.assignedRoomId || item.roomName || '',
                 serviceCode: item.serviceCode || item.service_code || '',
                 serviceCategory: item.service_category || item.category || '',
+                serviceId: item.serviceId || '',
                 bookingId: booking.id,
                 bookingItemId: item.id,
             });
@@ -2081,15 +2544,17 @@ export function useKTVDashboard(config?: DashboardConfig) {
             const res = await apiClient.get<any>(`/api/ktv/handover/pending?ktvCode=${ktvId}`);
             if (res.success) {
                 setPendingHandovers(res.items || []);
+                if (res.quota) setSkipQuota(res.quota);
             }
         } catch (e) {
             console.error('[Handover V5] Error fetching pending:', e);
         }
     }, [ktvId]);
 
-    // Fetch pending on DASHBOARD screen
+    // Nạp cả ở màn BÀN GIAO, không chỉ DASHBOARD: đúng lúc KTV sắp bấm "Bỏ qua"
+    // thì mới cần biết còn mấy lượt.
     useEffect(() => {
-        if (screen === 'DASHBOARD' && ktvId) {
+        if ((screen === 'DASHBOARD' || screen === 'HANDOVER') && ktvId) {
             fetchPendingHandovers();
         }
     }, [screen, ktvId]);
@@ -2100,36 +2565,65 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setIsSkippingHandover(true);
         try {
             const itemId = booking.assignedItemId || booking.assignedItemIds?.[0];
-            if (!itemId) return;
+            if (!itemId) {
+                addToast('Không tìm thấy mã item để bỏ qua.', 'error');
+                setIsSkippingHandover(false);
+                return;
+            }
             const res = await apiClient.post<any>('/api/ktv/handover/skip', {
                 bookingItemId: itemId,
                 ktvCode: ktvId,
             });
             if (res.success) {
-                // Skip successful → go to REWARD or next order
-                handleFinishHandover();
+                // Ghi nợ xong → về Dashboard / đơn kế tiếp, KHÔNG qua Đánh giá quầy.
+                handleFinishHandover({ skipped: true });
             } else {
-                alert(res.error || 'Không thể bỏ qua. Bạn đã nợ quá nhiều đơn.');
+                setSkipBlockedMsg(res.error || 'Bạn đã nợ quá số đơn bàn giao cho phép.');
             }
-        } catch (e) {
+        } catch (e: any) {
+            // Quá giới hạn nợ thì API trả HTTP 400, mà apiClient NÉM LỖI với mọi mã
+            // khác 2xx — nên nhánh `else` ở trên là code chết và trước đây chỗ này
+            // chỉ console.error. KTV bấm "Bỏ qua" xong không thấy gì, tưởng app đơ
+            // rồi bấm tiếp.
             console.error('[Handover V5] Skip error:', e);
+            setSkipBlockedMsg(e?.message || 'Không bỏ qua được. Vui lòng thử lại.');
         } finally {
             setIsSkippingHandover(false);
         }
     }, [booking, ktvId, handleFinishHandover]);
+
+    /** Chữ báo lại cho KTV sau khi gửi — mỗi loại một câu, đừng để chung chung. */
+    const INTERACTION_SENT: Record<string, string> = {
+        WATER: '✅ Đã gọi nước. Quầy sẽ mang lên phòng.',
+        SUPPORT: '✅ Đã gọi hỗ trợ. Quầy đang tới.',
+        EMERGENCY: '🚨 ĐÃ BÁO ĐỘNG. Quầy nhận được rồi, giữ bình tĩnh.',
+        BUY_MORE: '✅ Đã báo quầy khách muốn mua thêm dịch vụ.',
+        EARLY_EXIT: '✅ Đã báo quầy khách về sớm. Đợi quầy xác nhận để hoàn tất đơn.',
+    };
 
     const handleInteraction = async (type: 'WATER' | 'SUPPORT' | 'EMERGENCY' | 'BUY_MORE' | 'EARLY_EXIT') => {
         if (!booking) return;
         setIsLoading(true);
         try {
             const res = await apiClient.post<any>(API.KTV.INTERACTION, { bookingId: booking.id, type, techCode: ktvId });
+            // Gửi xong PHẢI báo lại. Trước đây thành công chỉ console.log, hỏng thì
+            // console.error — cả hai đường đều im, KTV bấm "Báo động khẩn cấp" xong
+            // không biết quầy có nhận được không, đứng đó bấm lại.
             if (res.success) {
-                console.log(`Sent interaction: ${type}`);
+                addToast(INTERACTION_SENT[type] || '✅ Đã gửi yêu cầu tới quầy.', type === 'EMERGENCY' ? 'warning' : 'success');
             } else {
-                alert('Lỗi gửi yêu cầu');
+                addToast(res.error || 'Không gửi được yêu cầu. Vui lòng gọi quầy trực tiếp.', 'error');
             }
-        } catch (err) {
+        } catch (err: any) {
+            // apiClient NÉM LỖI với mọi mã khác 2xx nên nhánh `else` ở trên gần như
+            // không bao giờ chạy — chỗ báo lỗi thật sự là đây.
             console.error('Error sending interaction:', err);
+            addToast(
+                type === 'EMERGENCY'
+                    ? '🚨 KHÔNG GỬI ĐƯỢC BÁO ĐỘNG — hãy gọi quầy trực tiếp NGAY.'
+                    : `Không gửi được yêu cầu: ${err?.message || 'lỗi kết nối'}. Vui lòng báo quầy trực tiếp.`,
+                'error'
+            );
         } finally {
             setIsLoading(false);
         }
@@ -2138,15 +2632,27 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const handleEarlyExit = async () => {
         if (!booking || !ktvId) return;
         if (!confirm('Thông báo cho quầy khách muốn kết thúc sớm?')) return;
-        
-        // 🚀 THAY ĐỔI: Không tự ý PATCH status
-        // Thay vào đó gửi Interaction 'EARLY_EXIT' để Lễ tân xử lý
-        // Khi lễ tân xử lý xong (Hoàn tất trên Dispatch Board), Realtime sẽ tự đưa KTV qua trang REVIEW/REWARD
+
+        // Dừng đơn TRƯỚC rồi mới báo, TUẦN TỰ — giống nút Khẩn cấp (ScreenTimer).
+        // Trước 14/09/2026 màn đồng hồ gọi `handlePause()` và hàm này SONG SONG:
+        // hai request cùng đọc–sửa–ghi `options.counterLog`, request về sau đè mất
+        // dòng của request trước → thẻ Kanban chỉ còn "Tạm dừng", mất lý do.
+        // Đã dừng sẵn thì bỏ qua im lặng, chỉ gửi báo.
+        //
+        // Không tự ý PATCH status: gửi 'EARLY_EXIT' để lễ tân xử lý; khi họ bấm
+        // Hoàn tất trên bảng điều phối, Realtime tự đưa KTV qua REVIEW/REWARD.
+        await handlePause({ skipConfirm: true, silentIfPaused: true });
         await handleInteraction('EARLY_EXIT');
-        alert('Đã gửi yêu cầu về sớm. Hãy đợi Lễ tân xác nhận để hoàn tất đơn hàng.');
     };
 
-    const handlePause = async () => {
+    /**
+     * @param opts.skipConfirm  Bỏ hộp xác nhận. Dùng cho nút BÁO ĐỘNG KHẨN CẤP:
+     *   đang có sự cố mà còn bắt bấm "OK" thì KTV bỏ qua, kết quả là báo động
+     *   gửi đi nhưng ĐƠN KHÔNG HỀ DỪNG và đồng hồ vẫn chạy tính tiền.
+     * @param opts.silentIfPaused  Đơn đã dừng sẵn thì im lặng bỏ qua, đừng hiện
+     *   lỗi "Chỉ Lễ tân mới có quyền mở lại" — bấm khẩn cấp lần hai là hợp lý.
+     */
+    const handlePause = async (opts?: { skipConfirm?: boolean; silentIfPaused?: boolean }) => {
         if (!booking || !ktvId) return;
         
         const itemId = booking.assignedItemId || booking.assignedItemIds?.[0];
@@ -2156,11 +2662,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
         try {
             const action = isPaused ? 'RESUME' : 'PAUSE';
             if (action === 'RESUME') {
-                alert('Chỉ Lễ tân mới có quyền mở lại ca làm bị tạm dừng!');
+                if (!opts?.silentIfPaused) {
+                    addToast('Chỉ Lễ tân mới có quyền mở lại ca làm bị tạm dừng!', 'error');
+                }
                 setIsLoading(false);
                 return;
             }
-            if (action === 'PAUSE' && !confirm('Xác nhận tạm dừng ca làm? Thời gian sẽ được dừng lại.')) {
+            if (action === 'PAUSE' && !opts?.skipConfirm && !confirm('Xác nhận tạm dừng ca làm? Thời gian sẽ được dừng lại.')) {
                 setIsLoading(false);
                 return;
             }
@@ -2173,11 +2681,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
             if (res.success) {
                 if (fetchBookingRef.current) await fetchBookingRef.current();
             } else {
-                alert(res.error || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`);
+                addToast(res.error || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`, 'error');
             }
         } catch (e: any) {
             console.error('[KTV] Pause/Resume error:', e);
-            alert(e.message || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`);
+            addToast(e.message || `Lỗi ${isPaused ? 'tiếp tục' : 'tạm dừng'} đơn`, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -2185,6 +2693,21 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
     const handleSelectDebt = (bookingId: string) => {
         console.log("🔄 [KTV Logic] Chuyển qua đơn nợ bàn giao:", bookingId);
+
+        // ⚠️ Gỡ hai cái chốt đang chặn chính đơn này, nếu không bấm vào ô nợ sẽ
+        // KHÔNG có gì xảy ra:
+        //
+        // · `lastAcknowledgedIdRef` = "đơn KTV đã xong và đã rời đi, đừng kéo họ
+        //   lại". goToDashboard() đóng dấu nó mỗi lần về Dashboard — kể cả lần
+        //   trả nợ mà KTV nộp thiếu ảnh nên phòng VẪN CÒN NỢ. Sau đó bấm vào
+        //   đúng ô nợ đó thì lần nạp bị vứt ở `res.data.id === lastAcknowledged`.
+        // · `isTransitioningRef` = chốt "đang chuyển màn".
+        //
+        // KTV tự tay bấm vào đơn nào thì đó là ý muốn rõ ràng, mọi chốt suy đoán
+        // phải nhường.
+        lastAcknowledgedIdRef.current = null;
+        isTransitioningRef.current = false;
+
         targetBookingIdRef.current = bookingId;
         postServiceBookingIdRef.current = bookingId;
         try {
@@ -2198,6 +2721,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         lastAcknowledgedIdRef.current = prevBookingIdRef.current;
         setBooking(null);
         setScreen('DASHBOARD');
+        screenRef.current = 'DASHBOARD';
         postServiceBookingIdRef.current = null;
         
         // Nếu có đơn tiếp theo, cưỡng bức fetch đơn đó bằng cách set targetBookingId
@@ -2220,6 +2744,23 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
         // 🚀 Trigger fetch immediately instead of waiting for 5s interval
         setTimeout(() => {
+            // ⚠️ MỞ CỬA CHẶN "đang chuyển màn" TẠI ĐÂY.
+            //
+            // `isTransitioningRef` là chốt tạm để một lần nạp đang bay dở không
+            // ghi đè lên lúc đang đổi màn hình. Mọi nhánh khác đều nhả nó ra sau
+            // ~1 giây, riêng hai nhánh kết thúc bằng goToDashboard() thì quên:
+            // trả nợ bàn giao xong, và trường hợp tắt hiện tiền tua tức thì.
+            //
+            // Quên nhả là hỏng nặng chứ không nhẹ: mọi lần nạp sau đó đều bị vứt
+            // ở `if (isTransitioningRef.current) return`, nên KTV dọn phòng nợ
+            // xong thì màn hình đứng im mãi — đơn mới điều phối gửi tới không
+            // hiện, bấm vào ô "Nợ bàn giao" cũng không vào được. Phải F5 mới
+            // sống lại, vì tải lại trang đặt ref về false.
+            //
+            // Về tới Dashboard là việc chuyển màn đã xong, nên nhả ngay trước
+            // lần nạp có chủ đích này — nhả sau thì chính nó cũng bị vứt.
+            isTransitioningRef.current = false;
+            setRewardHideMoney(false);
             fetchBookingRef.current?.();
         }, 100);
     };
@@ -2271,8 +2812,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
         setHandoverPhotosBase64,
         isHandoverComplete,
         handleFinishHandover,
+        rewardHideMoney,
         // Handover V5
         dynamicChecklist,
+        isRepayingDebt,
+        skipBlockedMsg, setSkipBlockedMsg,
+        skipQuota,
         isFetchingChecklist,
         pendingHandovers,
         isSkippingHandover,
@@ -2291,8 +2836,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
         canStart,
         allowedStartTime,
         activeSegmentIndex,
+        workType,
         startPhotoBase64,
         setStartPhotoBase64,
+        guestSlipperPhotoBase64,
+        setGuestSlipperPhotoBase64,
         // Room procedures & issue reporting
         prepProcedure,
         cleanProcedure,
@@ -2304,11 +2852,33 @@ export function useKTVDashboard(config?: DashboardConfig) {
         walletTimeline,
         notifications,
         unreadCount,
-
+        markNotificationAsRead,
+        turnData,
+        officeScore,
+        officeScoreDisabled,
+        officeScoreLoading,
+        officeScoreError,
+        reloadOfficeScore: () => setOfficeScoreReloadKey(k => k + 1),
+        walletAnyOn,
         kpiData,
         disciplineStatus,
         canViewWallet,
+        /**
+         * Nạp lại và ĐỢI dữ liệu mới thật sự về.
+         *
+         * Nếu đang có một lượt nạp chạy dở thì phải đợi nó xong đã rồi mới nạp
+         * tiếp — vì lượt đang chạy nhiều khả năng xuất phát TRƯỚC lúc ghi DB nên
+         * mang về dữ liệu cũ.
+         *
+         * Không đợi thì `await forceRefresh()` trả về ngay lập tức (lượt của mình
+         * chỉ được xếp hàng, chưa chạy), nơi gọi tưởng xong rồi trong khi màn hình
+         * còn nguyên trạng thái cũ — đúng kiểu KTV bấm "Nhận đơn" mà lúc qua được
+         * lúc không.
+         */
         forceRefresh: async () => {
+            if (inFlightRef.current) {
+                try { await inFlightRef.current; } catch { /* lượt kia hỏng thì kệ, mình nạp lại */ }
+            }
             if (fetchBookingRef.current) await fetchBookingRef.current();
             if (recalcTimerRef.current) recalcTimerRef.current();
         },
@@ -2332,7 +2902,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
             } catch (e) {
                 console.error('Error fetching wallet timeline:', e);
             }
-        }
+        },
+        shiftExtension,
     };
 }
 

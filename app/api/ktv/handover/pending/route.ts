@@ -22,9 +22,14 @@ export async function GET(request: Request) {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
-        const result = await HandoverService.getPendingHandovers(supabase, ktvCode);
+        // Trả kèm hạn mức để màn Bàn giao biết còn mấy lượt mà báo TRƯỚC, thay vì
+        // để KTV bấm rồi mới bị từ chối.
+        const [result, quota] = await Promise.all([
+            HandoverService.getPendingHandovers(supabase, ktvCode),
+            HandoverService.getSkipQuota(supabase, ktvCode),
+        ]);
 
-        return NextResponse.json({ success: true, ...result });
+        return NextResponse.json({ success: true, ...result, quota });
     } catch (error: any) {
         console.error('API Error (GET /api/ktv/handover/pending):', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });

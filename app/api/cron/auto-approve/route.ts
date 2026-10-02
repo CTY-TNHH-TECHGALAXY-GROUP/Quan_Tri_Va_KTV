@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { HandoverService } from '@/lib/services/HandoverService';
+import { requireCronAuth } from '@/lib/cron-auth';
 
 /**
  * POST /api/cron/auto-approve
  * Cron job: Auto-approve handovers that have been PENDING for more than X minutes.
  * Should be called by a scheduled task (pg_cron, Edge Function, or Vercel Cron).
  */
-export async function POST() {
+export async function POST(request: Request) {
+    const unauthorized = requireCronAuth(request);
+    if (unauthorized) return unauthorized;
     try {
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');

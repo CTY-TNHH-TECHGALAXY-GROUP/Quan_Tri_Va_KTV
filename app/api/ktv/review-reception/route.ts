@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { z } from 'zod';
 
 const ReviewReceptionSchema = z.object({
-  bookingId: z.string().uuid(),
+  bookingId: z.string().min(1),
   techCode: z.string().min(1),
   rating: z.number().min(1).max(5),
   note: z.string().optional(),

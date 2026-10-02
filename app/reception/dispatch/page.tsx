@@ -2,15 +2,32 @@
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import { parseDbDate } from "@/lib/utils";
+import { toBusinessDate, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 
 // 🔧 UI CONFIGURATION
 const DEFAULT_DURATION = 60; // Phút mặc định cho mỗi KTV
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { ConfirmActionModal } from './_components/ConfirmActionModal';
+import { buildCheckinConfirmMessage } from './CheckinConfirm.i18n';
+import type { CheckinGateKtv } from '@/lib/attendance/dispatchCheckinGate';
+import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
+import { PhotoViewerModal } from './_components/PhotoViewerModal';
+import { QrJourneyModal } from './_components/QrJourneyModal';
+import { StartServiceModal } from './_components/StartServiceModal';
+import { InvoiceLanguageModal } from './_components/InvoiceLanguageModal';
+import { AddServiceModal } from './_components/AddServiceModal';
+import { DispatchConfirmModal } from './_components/DispatchConfirmModal';
+import { SplitDurationModal } from './_components/SplitDurationModal';
+import { OrderContextMenu } from './_components/OrderContextMenu';
+import { getDisplayCustomerName } from './dispatch-display';
+import { formatToHourMinute } from './dispatch-time.logic';
 import { useAuth } from '@/lib/auth-context';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getActorHeaders } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
+import { phoneIdentity } from '@/lib/customer-search';
+import { isDummyEmail } from '@/lib/customer.logic';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone, Globe,
@@ -32,12 +49,14 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AddOrderModal } from './_components/AddOrderModal';
 import { ReviewHandoverModal } from './_components/ReviewHandoverModal';
 import PauseSwapKtvModal from './_components/PauseSwapKtvModal';
+import CancelItemModal from './_components/CancelItemModal';
+import { workedMsOf } from '@/lib/segment-time';
 import { useDispatchBoard } from './useDispatchBoard.logic';
 import { MergePromptModal } from '@/app/reception/dispatch/_components/MergePromptModal';
 import { useNotifications } from '@/components/NotificationProvider';
 import { CustomerDetailModal } from '../crm/_components/CustomerDetailModal';
 import { Customer } from '@/lib/types';
-import { SplitPreviewModal } from './_components/SplitPreviewModal';
+import { SplitPreviewModal, defaultGuestName } from './_components/SplitPreviewModal';
 import { WebBookingBoard } from '../web-booking/WebBookingBoard';
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 import { 
@@ -94,19 +113,6 @@ const formatCompactPrice = (n: number) => {
     return `${n}đ`;
 };
 
-const formatToHourMinute = (isoString?: string | null) => {
-    if (!isoString) return '--:--';
-    if (/^\d{1,2}:\d{2}$/.test(isoString)) return isoString;
-    let parseString = isoString;
-    if (!isoString.endsWith('Z') && !isoString.includes('+')) {
-        parseString = isoString.replace(' ', 'T') + 'Z';
-    }
-    const d = new Date(parseString);
-    if (isNaN(d.getTime())) return isoString;
-    const dVn = new Date(d.getTime() + 7 * 60 * 60 * 1000);
-    return `${String(dVn.getUTCHours()).padStart(2, '0')}:${String(dVn.getUTCMinutes()).padStart(2, '0')}`;
-};
-
 const getDynamicEndTime = (startStr?: string | null, durationMins: number = 60) => {
     if (!startStr) return '--:--';
     const formatted = formatToHourMinute(startStr);
@@ -136,18 +142,6 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 
 // QUICK_SERVICES_LIST removed — now using allServices from Supabase
 
-const getDisplayCustomerName = (subOrder: any) => {
-    const order = subOrder.originalOrder;
-    let name = order.customerName || order.customerEmail || 'Khách Vãng Lai';
-    if (subOrder.services.length < order.services.length) {
-        if (name.match(/Khách [A-Z]$/i)) {
-            name = name.replace(/Khách ([A-Z])$/i, '[Khách $1]'); // Đưa thành [Khách A] Tên...
-        } else {
-            name = `[Khách ${subOrder.subSuffix || 'A'}] ${name}`;
-        }
-    }
-    return name.toUpperCase();
-};
 
 export default function DispatchBoardPage() {
     
@@ -174,13 +168,10 @@ export default function DispatchBoardPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const vnTime = new Date(new Date().getTime() + 7 * 60 * 60 * 1000);
-    if (vnTime.getUTCHours() < 6) {
-        vnTime.setUTCDate(vnTime.getUTCDate() - 1);
-    }
-    return vnTime.toISOString().split('T')[0];
-  });
+  const [selectedDate, setSelectedDate] = useState(
+    // Ngày làm việc — dùng chung công thức với server, không tự viết mốc 6h nữa.
+    () => toBusinessDate(new Date(), DEFAULT_DAY_CUTOFF_HOURS)
+  );
 
   const {
     orders, setOrders,
@@ -194,11 +185,69 @@ export default function DispatchBoardPage() {
     loading, setLoading,
     fetchData,
     now,
+    identityMismatch,
   } = useDispatchBoard(selectedDate, selectedOrderId);
 
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const [reviewModalService, setReviewModalService] = useState<ServiceBlock | null>(null);
   const { notifications, soundEnabled, setSoundEnabled, unlockAudio, playSound } = useNotifications();
+
+  // ─── Guest Arrival Lock ───
+  const [guestArrivalLock, setGuestArrivalLock] = useState<{ active: boolean; lockedBy: string; lockedAt: string; message: string; enabled: boolean }>({ active: false, lockedBy: '', lockedAt: '', message: '', enabled: true });
+
+  const fetchGuestArrivalLock = async () => {
+    try {
+        const res = await apiClient.get<any>('/api/reception/guest-arrival');
+        const isEnabled = res.enabled !== false;
+        if (res.success && res.active && res.data) {
+            setGuestArrivalLock({
+                active: true,
+                lockedBy: res.data.created_by_name,
+                lockedAt: res.data.created_at,
+                message: res.data.note || '',
+                enabled: isEnabled
+            });
+        } else {
+            setGuestArrivalLock({ active: false, lockedBy: '', lockedAt: '', message: '', enabled: isEnabled });
+        }
+    } catch(err) {}
+  };
+
+  // Auto-OFF đã được chuyển về xử lý ở server (API /cron/guest-arrival-sweep và GET /api/reception/guest-arrival)
+  // Xóa effect tắt khóa ở client để tránh lỗi khóa bị treo vĩnh viễn (B1, B3)
+
+  useEffect(() => {
+    fetchGuestArrivalLock();
+    const lockChannel = supabase
+        .channel('dispatch_guest_arrival_events')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'GuestArrivalEvents',
+        }, () => {
+            fetchGuestArrivalLock();
+        })
+        .subscribe();
+    return () => { supabase.removeChannel(lockChannel); };
+  }, []);
+
+  const toggleGuestArrivalLock = async () => {
+    try {
+        if (guestArrivalLock.active) {
+            const hasPending = orders.some(o => o.dispatchStatus === 'pending');
+            if (hasPending) {
+                if (!window.confirm('Vẫn còn đơn chưa điều phối (Khách đang đợi). Bạn có chắc chắn muốn tắt Báo Khách?')) return;
+            }
+            await apiClient.delete<any>('/api/reception/guest-arrival');
+        } else {
+            if (!window.confirm('Khóa nút "Tan ca" của tất cả KTV (TYPE_D)?\nHãy bật khi khách đang xếp hàng nhưng KTV chưa kịp vào ca.')) return;
+            await apiClient.post<any>('/api/reception/guest-arrival', { note: 'Bật thủ công từ Dispatch Board' });
+        }
+        await fetchGuestArrivalLock();
+    } catch(err) {
+        alert('Có lỗi xảy ra khi cập nhật khóa.');
+    }
+  };
   const [leftPanelTab, setLeftPanelTab] = useState<DispatchStatus>('pending');
   const [activeMode, setActiveMode] = useState<'DISPATCH' | 'MONITOR' | 'TURN_QUEUE' | 'ROOMS' | 'SCHEDULE' | 'WEB_BOOKING'>('DISPATCH');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -207,7 +256,6 @@ export default function DispatchBoardPage() {
   const [commentModalData, setCommentModalData] = useState<{subOrder: SubOrder, order: any} | null>(null);
   const [editingSvc, setEditingSvc] = useState<{ orderId: string, svcId: string, oldSvcName: string } | null>(null);
   const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
-  const [svcSearchQuery, setSvcSearchQuery] = useState('');
   const [editingGuestInfo, setEditingGuestInfo] = useState<{ nationality: string, guestCount: number, customerGender: string, paymentMethod: string } | null>(null);
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   const [fullCustomerData, setFullCustomerData] = useState<Customer | null>(null);
@@ -216,6 +264,8 @@ export default function DispatchBoardPage() {
     isOpen: boolean;
     message: string;
     onConfirm: () => void;
+    /** Gọi khi bấm Hủy bỏ (vd popup chưa điểm danh cần biết quầy đã từ chối). */
+    onCancel?: () => void;
   }>({ isOpen: false, message: '', onConfirm: () => {} });
 
   const [webBookingCount, setWebBookingCount] = useState(0);
@@ -261,7 +311,6 @@ export default function DispatchBoardPage() {
     onConfirm?: (time: string) => void;
   }>({ isOpen: false, orderId: '', itemIds: undefined, targetKtvIds: undefined, plannedStartTime: null });
 
-  const [customStartInputValue, setCustomStartInputValue] = useState<string>('');
 
   useEffect(() => {
     setEditingGuestInfo(null);
@@ -300,23 +349,23 @@ export default function DispatchBoardPage() {
     onCancel?: () => void;
   } | null>(null);
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const lastSoundTimeRef = useRef<number>(0);
   const push = usePushNotifications(user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, orderId: string, itemId?: string, guestId?: string } | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [pauseModalOrder, setPauseModalOrder] = useState<PendingOrder | null>(null);
   const [pauseModalSubOrder, setPauseModalSubOrder] = useState<any>(null);
+  const [pauseModalLockAction, setPauseModalLockAction] = useState<'SWAP' | undefined>(undefined);
+  const [cancelItemModal, setCancelItemModal] = useState<{ orderId: string; itemIds: string[]; wholeBooking?: boolean; ktvLabel?: string; customerName?: string; workedMinutes: number | null; canhBao?: string | null } | null>(null);
   const [qrModal, setQrModal] = useState<{ orderId: string; billCode: string; accessToken?: string | null; customerLang?: string, guestId?: string } | null>(null);
-  const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string; showQrForLang?: string } | null>(null);
+  const [invoiceLangModal, setInvoiceLangModal] = useState<{ invoiceId: string } | null>(null);
   const [expandedSvcIds, setExpandedSvcIds] = useState<string[]>([]);
   const [dispatchMode, setDispatchMode] = useState<'quick' | 'detail'>('quick');
   const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; urls?: string[]; ktvId: string; time: string | null; type?: 'START' | 'HANDOVER' } | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [timeEditorModal, setTimeEditorModal] = useState<{ isOpen: boolean, orderId: string, itemId: string } | null>(null);
   // 🔧 QR CONFIGURATION
-  const JOURNEY_BASE_URL = 'https://nganha.vercel.app';
-  const QR_SIZE = 250;
 
   const soundEnabledRef = useRef(soundEnabled);
   useEffect(() => {
@@ -907,7 +956,6 @@ if (!hasPermission('dispatch_board')) {
             
             setEditingSvc(null);
             setShowAddSvcModal(false);
-            setSvcSearchQuery('');
             // fetchData(); // Không bắt buộc vì đã patch state
         } else {
             alert('Lỗi đổi dịch vụ: ' + (res.error || 'Unknown error'));
@@ -947,8 +995,7 @@ if (!hasPermission('dispatch_board')) {
           if (res.success) {
               alert(`✅ Thêm "${svcName}" thành công! Tổng tiền mới: ${(res.newTotalAmount || 0).toLocaleString()}đ`);
               setShowAddSvcModal(false);
-              setSvcSearchQuery('');
-              fetchData();
+                fetchData();
           } else {
               alert('Lỗi: ' + res.error);
           }
@@ -1032,7 +1079,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }) => {
+  const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }, customGuestNames?: Record<string, string>) => {
     if (typeof skipPreview !== 'boolean') skipPreview = false;
     
     // When dispatching a specific sub-order, use that order instead of selectedOrder
@@ -1173,9 +1220,27 @@ if (!hasPermission('dispatch_board')) {
                 p_split_plan: splitPlan
             });
             
-            if (splitErr || (splitRes && !splitRes.success)) {
+            if (splitErr || splitRes?.success !== true) {
                 console.error('Lỗi khi tách đơn lúc lưu:', splitErr || splitRes?.error);
-                alert('Lưu nháp thành công nhưng có lỗi khi chia đơn: ' + (splitErr?.message || splitRes?.error));
+                alert(
+                    'Lưu nháp thành công nhưng chưa tách được đơn: ' +
+                    (splitErr?.message || splitRes?.error || 'Máy chủ chưa xác nhận tách thành công')
+                );
+                await fetchData();
+                return;
+            } else if (customGuestNames) {
+                // Quầy gõ tên khách trong hộp xem trước thì ghi đè nhãn "Khách A/B/C" của RPC.
+                const renames = splitPlan
+                    .map((plan: any) => ({ suffix: plan.suffix, name: (customGuestNames[plan.suffix] || '').trim() }))
+                    .filter(r => r.name && r.name !== defaultGuestName(r.suffix));
+
+                if (renames.length > 0) {
+                    const { renameSubBookings } = await import('./actions');
+                    const renameRes = await renameSubBookings(clonedOrder.parentBookingId || clonedOrder.id, renames);
+                    if (!renameRes.success) {
+                        alert('Đã tách đơn nhưng chưa đổi được tên khách: ' + renameRes.error);
+                    }
+                }
             }
         }
 
@@ -1385,7 +1450,12 @@ if (!hasPermission('dispatch_board')) {
                   let queuePos = currentTurn?.queue_position || 0;
                   
                   if (!currentTurn || currentTurn.current_order_id !== group.bookingId) {
-                      const currentMax = Math.max(...turns.map(t => t.queue_position), 0);
+                      // Bỏ tua ảo (`fake-…`, queue_position 999 — on-call B, loại C chưa có dòng)
+                      // khỏi mốc max: tính cả nó là KTV phân mới nhận 1000+ và phình dây chuyền.
+                      // `Number(...) || 0` chặn NaN khi cột null.
+                      const currentMax = Math.max(0, ...turns
+                          .filter(t => !String(t.id).startsWith('fake-'))
+                          .map(t => Number(t.queue_position) || 0));
                       const existingAssignment = allStaffAssignments.find(a => a.ktvId === row.ktvId);
                       if (existingAssignment) {
                           queuePos = existingAssignment.queuePos;
@@ -1488,16 +1558,41 @@ if (!hasPermission('dispatch_board')) {
       }
 
       // 🚀 BƯỚC 3: GỌI API CHO TỪNG PAYLOAD
+      // KTV chưa điểm danh / đang tắt nhận đơn: server trả NEED_CHECKIN_CONFIRM → hỏi quầy
+      // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
+      // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
+      const confirmedUncheckedKtvIds: string[] = [];
+      const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
+          setConfirmModal({
+              isOpen: true,
+              message: buildCheckinConfirmMessage(ktvs),
+              onConfirm: () => {
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  resolve(true);
+              },
+              onCancel: () => resolve(false),
+          });
+      });
       for (const payload of dispatchPayloads) {
-          const res = await processDispatch(payload.dbBookingId, {
+          const sendPayload = () => processDispatch(payload.dbBookingId, {
               status: bookingStatus as any,
               bedId: payload.bedId,
               roomName: payload.roomName,
               staffAssignments: payload.mergedAssignments,
               date: selectedDate,
               notes: isPartial ? undefined : finalNotesToSave,
-              itemUpdates: payload.itemUpdates
+              itemUpdates: payload.itemUpdates,
+              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds],
           });
+          let res: any = await sendPayload();
+          if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
+              const confirmed = await askCheckinConfirm(res.ktvs);
+              if (!confirmed) return;
+              res.ktvs.forEach((k: CheckinGateKtv) => {
+                  if (!confirmedUncheckedKtvIds.includes(k.id)) confirmedUncheckedKtvIds.push(k.id);
+              });
+              res = await sendPayload();
+          }
           if (!res.success) {
               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
               return; 
@@ -1537,43 +1632,95 @@ if (!hasPermission('dispatch_board')) {
 
 
 
-  const handleCancelBooking = async (orderId: string) => {
-    if (!confirm('Bạn có chắc chắn muốn HỦY đơn hàng này không?')) return;
-    try {
-      const res = await cancelBooking(orderId, selectedDate);
-      if (res.success) {
-        setOrders(prev => prev.filter(o => o.id !== orderId));
-        if (selectedOrderId === orderId) setSelectedOrderId(null);
-        setContextMenu(null);
-      } else {
-        alert('Lỗi khi hủy đơn: ' + res.error);
+  /**
+   * Huỷ TOÀN BỘ đơn. Dùng chung hộp thoại với huỷ đơn con, vì cũng phải hỏi
+   * lý do và quyết định có cộng giờ đã làm cho KTV hay không.
+   */
+  const handleCancelBooking = (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+
+    let workedMinutes: number | null = null;
+    const ktvSet = new Set<string>();
+    for (const s of (order?.services || [])) {
+      for (const st of ((s as any).staffList || [])) {
+        if (st.ktvId) ktvSet.add(st.ktvId);
+        for (const seg of (st.segments || [])) {
+          const ms = workedMsOf(seg, seg.actualEndTime || Date.now());
+          if (ms !== null) workedMinutes = (workedMinutes || 0) + Math.round(ms / 60000);
+        }
       }
-    } catch (err) {
-      alert('Lỗi hệ thống khi hủy đơn.');
     }
+
+    import('./actions').then(m => m.kiemTraTruocKhiChot(orderId, 'CANCEL'))
+      .then(chk => { if (chk?.canhBao) setCancelItemModal(prev => prev ? { ...prev, canhBao: chk.canhBao } : prev); })
+      .catch(() => {});
+
+    setCancelItemModal({
+      orderId,
+      itemIds: [],            // rỗng = huỷ cả đơn, không phải từng dịch vụ
+      wholeBooking: true,
+      ktvLabel: Array.from(ktvSet).join(', ') || undefined,
+      customerName: order?.customerName,
+      workedMinutes,
+    });
+    setContextMenu(null);
   };
-  const handleCancelBookingItem = async (orderId: string, itemId: string) => {
-    const reason = prompt('Nhập lý do hủy dịch vụ này (không bắt buộc):');
-    if (reason === null) return; // user clicked Cancel on prompt
-    try {
+  /** Mở hộp thoại huỷ — thay cho prompt() cũ, vì còn phải hỏi có cộng giờ hay không. */
+  const handleCancelBookingItem = (orderId: string, itemId: string, subOrder?: any) => {
+    const svcs = subOrder?.services || [];
+    const itemIds: string[] = svcs.length > 0 ? svcs.map((s: any) => s.id) : [itemId];
+
+    // Số phút đã làm, để quầy biết đang tước của KTV bao nhiêu.
+    let workedMinutes: number | null = null;
+    for (const s of svcs) {
+      for (const st of (s.staffList || [])) {
+        for (const seg of (st.segments || [])) {
+          const ms = workedMsOf(seg, seg.actualEndTime || Date.now());
+          if (ms !== null) workedMinutes = (workedMinutes || 0) + Math.round(ms / 60000);
+        }
+      }
+    }
+
+    setCancelItemModal({
+      orderId,
+      itemIds,
+      ktvLabel: (subOrder?.ktvIds || []).join(', ') || undefined,
+      customerName: orders.find(o => o.id === orderId)?.customerName,
+      workedMinutes,
+    });
+    setContextMenu(null);
+
+    // Hỏi nền: KTV đã bấm báo gì chưa? Nếu rồi thì huỷ là mất trắng oan.
+    import('./actions').then(m => m.kiemTraTruocKhiChot(orderId, 'CANCEL'))
+      .then(chk => { if (chk?.canhBao) setCancelItemModal(prev => prev ? { ...prev, canhBao: chk.canhBao } : prev); })
+      .catch(() => {});
+  };
+
+  const submitCancelItems = async (reason: string, cancelCredit: 'NONE' | 'WORKED') => {
+    if (!cancelItemModal) return;
+
+    if (cancelItemModal.wholeBooking) {
+      const res = await cancelBooking(cancelItemModal.orderId, selectedDate, cancelCredit, reason);
+      if (!res.success) throw new Error(res.error || 'Không huỷ được đơn');
+      if (selectedOrderId === cancelItemModal.orderId) setSelectedOrderId(null);
+      await fetchData();
+      return;
+    }
+
+    for (const itemId of cancelItemModal.itemIds) {
       const res = await apiClient.post<any>('/api/bookings/cancel-item', {
-        bookingId: orderId,
-        itemId: itemId,
-        reason: reason
+        bookingId: cancelItemModal.orderId,
+        itemId,
+        reason,
+        cancelCredit,
       });
-      if (res.success) {
-        fetchData(); // reload data
-        setContextMenu(null);
-      } else {
-        alert('Lỗi khi hủy dịch vụ: ' + res.error);
-      }
-    } catch (err) {
-      alert('Lỗi hệ thống khi hủy dịch vụ.');
+      if (!res.success) throw new Error(res.error || 'Không huỷ được dịch vụ');
     }
+    await fetchData();
   };
 
 
-  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean) {
+  async function handleConfirmPauseSwap(bookingItemId: string, action: 'PAUSE' | 'RESUME' | 'SWAP', oldKtvId?: string, newKtvId?: string, extraTimeMins?: number, keepTurnForOldKtv?: boolean, assignedMins?: number, swapReason?: string) {
     try {
       const data = await apiClient.post<any>(API.KTV.PAUSE_SWAP, {
           action,
@@ -1582,6 +1729,8 @@ if (!hasPermission('dispatch_board')) {
           newKtvId,
           extraTimeMins,
           keepTurnForOldKtv,
+          assignedMins,
+          swapReason,
           businessDate: selectedDate
       });
       if (!data.success) throw new Error(data.error || 'Có lỗi xảy ra');
@@ -1684,9 +1833,6 @@ if (!hasPermission('dispatch_board')) {
             }
         } catch(e) {}
         
-        const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        setCustomStartInputValue(nowTime);
-
         setStartServiceModal({
            isOpen: true,
            orderId,
@@ -1816,6 +1962,23 @@ if (!hasPermission('dispatch_board')) {
     return (
       <div className="flex items-center gap-2">
         <button
+          onClick={toggleGuestArrivalLock}
+          disabled={!guestArrivalLock.enabled}
+          aria-label="Báo Khách"
+          aria-pressed={guestArrivalLock.active}
+          className={`relative h-11 px-3.5 rounded-2xl transition-all shadow-sm border flex items-center gap-2 font-bold text-xs cursor-pointer ${
+              !guestArrivalLock.enabled
+                  ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                  : guestArrivalLock.active
+                      ? 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-md shadow-amber-500/30 animate-pulse'
+                      : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+          }`}
+          title={!guestArrivalLock.enabled ? 'Tính năng Báo Khách đang bị tắt trong cài đặt hệ thống.' : guestArrivalLock.active ? `Đang báo có khách — bởi ${guestArrivalLock.lockedBy} lúc ${new Date(guestArrivalLock.lockedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Bấm để tắt.` : 'Báo có khách'}
+        >
+          <Users size={16} />
+          <span className="whitespace-nowrap">{guestArrivalLock.active ? 'Đang Có Khách' : 'Có Khách'}</span>
+        </button>
+        <button
           onClick={async () => {
             if (soundEnabled) {
               setSoundEnabled(false);
@@ -1865,6 +2028,48 @@ if (!hasPermission('dispatch_board')) {
       </div>
     );
   };
+  /**
+   * Phiên bị lẫn: máy chủ nhận ra một người khác với người đang mở tab này.
+   *
+   * Cookie JWT của Supabase khoá theo TÊN MÁY CHỦ và bỏ qua cổng, nên mở app KTV
+   * ở localhost:3001 rồi bảng điều phối ở localhost:57981 là dùng chung một
+   * phiên — ai đăng nhập sau đè lên trước. Tab vẫn nhớ "tôi là dev"
+   * (sessionStorage, riêng từng tab) nhưng mọi lời gọi server đi dưới danh nghĩa
+   * người kia và bị trả Forbidden.
+   *
+   * Trước đây chỗ này im lặng: bảng trống trơn, lỗi chỉ nằm trong console. Quầy
+   * nhìn vào tưởng mất dữ liệu. Chặn hẳn và nói rõ vẫn hơn.
+   */
+  if (identityMismatch) {
+    return (
+      <AppLayout title="Điều Phối">
+        <div className="max-w-md mx-auto px-4 py-16 flex flex-col items-center text-center">
+          <ShieldAlert size={48} className="text-amber-500 mb-4" />
+          <h2 className="text-xl font-bold text-gray-900">Phiên đăng nhập bị lẫn</h2>
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            Màn hình đang mở bằng tài khoản <b>{user?.code || user?.id || '—'}</b>, nhưng máy chủ đang
+            nhận bạn là <b>{String(identityMismatch).toUpperCase()}</b> — do trình duyệt này đã đăng
+            nhập tài khoản khác ở tab khác. Bảng điều phối không tải được là vì vậy.
+          </p>
+          <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+            Cookie đăng nhập tính theo tên máy chủ, KHÔNG kể cổng — mở hai cổng khác nhau trên cùng
+            <b> localhost</b> vẫn dùng chung một phiên. Muốn mở hai tài khoản cùng lúc thì một bên
+            dùng <b>127.0.0.1</b>, bên kia dùng <b>localhost</b>.
+          </p>
+          <button
+            onClick={async () => {
+              await logout();
+              window.location.href = '/login?error=identity_mismatch';
+            }}
+            className="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200"
+          >
+            Đăng nhập lại
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout title="Điều Phối">
       <div className="h-[calc(100dvh-3.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden" style={{ overscrollBehaviorY: 'contain' }}>
@@ -2186,10 +2391,11 @@ if (!hasPermission('dispatch_board')) {
                                 value={order.paymentMethod || 'Unpaid'}
                                 onClick={e => e.stopPropagation()}
                                 onChange={async (e) => {
-                                    if (!selectedSubOrder) return;
+                                    const targetBookingId = subOrder.bookingId || order.id;
+                                    if (!targetBookingId) return;
                                     const newPm = e.target.value;
-                                    updateOrder(selectedSubOrder.bookingId, o => ({ ...o, paymentMethod: newPm }));
-                                    await updateBookingMeta(selectedSubOrder.bookingId, { paymentMethod: newPm });
+                                    updateOrder(targetBookingId, o => ({ ...o, paymentMethod: newPm }));
+                                    await updateBookingMeta(targetBookingId, { paymentMethod: newPm });
                                 }}
                                 className="absolute inset-0 opacity-0 cursor-pointer"
                             >
@@ -2357,7 +2563,19 @@ if (!hasPermission('dispatch_board')) {
                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính</span>
                                     <select
                                       value={currentGender}
-                                      onChange={(e) => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: e.target.value, paymentMethod: currentPaymentMethod })}
+                                      onChange={(e) => {
+                                        const newGender = e.target.value;
+                                        setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: newGender, paymentMethod: currentPaymentMethod });
+                                        if (selectedSubOrder) {
+                                          updateBookingMeta(selectedSubOrder.bookingId, {
+                                            nationality: currentNationality,
+                                            guestCount: currentGuestCount,
+                                            customerGender: newGender,
+                                            paymentMethod: currentPaymentMethod
+                                          }).catch(console.error);
+                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, customerGender: newGender }));
+                                        }
+                                      }}
                                       className="w-20 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
                                       <option value="male">Nam</option>
@@ -2367,7 +2585,19 @@ if (!hasPermission('dispatch_board')) {
                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch</span>
                                     <select
                                       value={currentNationality}
-                                      onChange={(e) => setEditingGuestInfo({ nationality: e.target.value, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod })}
+                                      onChange={(e) => {
+                                        const newNationality = e.target.value;
+                                        setEditingGuestInfo({ nationality: newNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod });
+                                        if (selectedSubOrder) {
+                                          updateBookingMeta(selectedSubOrder.bookingId, {
+                                            nationality: newNationality,
+                                            guestCount: currentGuestCount,
+                                            customerGender: currentGender,
+                                            paymentMethod: currentPaymentMethod
+                                          }).catch(console.error);
+                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: newNationality }));
+                                        }
+                                      }}
                                       className="w-32 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
                                       <option value="">Chọn...</option>
@@ -2384,31 +2614,6 @@ if (!hasPermission('dispatch_board')) {
                                     <div className="px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
                                         {currentGuestCount} KHÁCH
                                     </div>
-                                    <button
-                                      onClick={async () => {
-                                          if (!selectedSubOrder) return;
-                                          try {
-                                              const res = await updateBookingMeta(selectedSubOrder.bookingId, {
-                                                  nationality: currentNationality,
-                                                  guestCount: currentGuestCount,
-                                                  customerGender: currentGender,
-                                                  paymentMethod: currentPaymentMethod
-                                              });
-                                              if (!res.success) throw new Error(res.error || 'Lỗi không xác định');
-                                              
-                                              updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod }));
-                                              setEditingGuestInfo(null);
-                                              
-                                              alert('Đã lưu thông tin khách hàng thành công!');
-                                          } catch(e) {
-                                              alert('Lỗi khi lưu!');
-                                              console.error(e);
-                                          }
-                                      }}
-                                      className="ml-2 px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1"
-                                    >
-                                      <Save size={12} /> Lưu
-                                    </button>
                                   </>
                                 ) : (
                                   <>
@@ -2435,26 +2640,43 @@ if (!hasPermission('dispatch_board')) {
                                   onClick={async () => {
                                     setIsFetchingCustomer(true);
                                     try {
-                                      const data = (await apiClient.get(API.CUSTOMERS)) as any;
                                       const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
-                                      
-                                      let found = null;
+                                      const phone = phoneIdentity(orderToUse?.phone || '');
+                                      const email = (orderToUse?.email || '').trim().toLowerCase();
+                                      const contact = phone || (!isDummyEmail(email) ? email : '');
+                                      if (!orderToUse?.customerId && !contact) {
+                                        throw new Error('Đơn chưa có mã khách hoặc thông tin liên hệ hợp lệ để tìm hồ sơ.');
+                                      }
+                                      const params = new URLSearchParams(orderToUse?.customerId
+                                        ? { id: orderToUse.customerId }
+                                        : { q: contact });
+                                      const data = (await apiClient.get(`${API.CUSTOMERS}?${params}`)) as any;
+                                      if (!data.success) throw new Error(data.error || 'Không tải được hồ sơ khách hàng');
+
+                                      let matches = data.data || [];
                                       if (orderToUse?.customerId) {
-                                          found = data.data?.find((c: any) => c.id === orderToUse.customerId);
+                                        matches = matches.filter((c: any) => c.id === orderToUse.customerId);
+                                      } else if (phone) {
+                                        matches = matches.filter((c: any) => phoneIdentity(c.phone || '') === phone);
+                                        if (matches.length > 1 && !isDummyEmail(email)) {
+                                          matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
+                                        }
+                                      } else {
+                                        matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
                                       }
-                                      if (!found && orderToUse?.phone) {
-                                          found = data.data?.find((c: any) => c.phone === orderToUse.phone);
+                                      if (matches.length > 1) {
+                                        throw new Error('Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.');
                                       }
-                                      
+                                      const found = matches[0];
                                       if (found) {
                                         setFullCustomerData(found);
                                         setShowCustomerInfo(true);
                                       } else {
-                                        alert('Khách vãng lai chưa cung cấp thông tin liên lạc thật (SĐT/Email) nên không có hồ sơ chi tiết.');
+                                        alert('Không tìm thấy hồ sơ tương ứng với đơn. Vui lòng kiểm tra liên kết khách hàng hoặc tìm trong trang Khách Hàng.');
                                       }
                                     } catch (e) {
                                       console.error('Lỗi tải dữ liệu khách:', e);
-                                      alert('Lỗi tải dữ liệu khách hàng');
+                                      alert(e instanceof Error ? e.message : 'Lỗi tải dữ liệu khách hàng');
                                     } finally {
                                       setIsFetchingCustomer(false);
                                     }
@@ -2511,6 +2733,7 @@ if (!hasPermission('dispatch_board')) {
                     rooms={rooms}
                     beds={beds}
                     availableTurns={turns}
+                    staffs={staffs}
                     busyBedIds={orders
                       .filter(o => o.id !== selectedSubOrder.bookingId && (o.dispatchStatus === 'IN_PROGRESS' || o.dispatchStatus === 'PREPARING'))
                       .flatMap(o => o.services.flatMap(s => s.staffList.flatMap(r => r.segments.map(seg => seg.bedId))))
@@ -2729,6 +2952,7 @@ if (!hasPermission('dispatch_board')) {
               orders={orders} 
               staffs={staffs}
               staffWorkTypeMap={Object.fromEntries(turns.filter(t => t.staff?.work_type).map(t => [t.employee_id, t.staff!.work_type!]))}
+
               onUpdateCustomerName={async (orderId, itemIds, ktvIds, newName) => {
                 try {
                   const { updateSubOrderCustomerName } = await import('./actions');
@@ -2775,8 +2999,68 @@ if (!hasPermission('dispatch_board')) {
                 if (o) {
                   setPauseModalOrder(o);
                   if (subOrder) setPauseModalSubOrder(subOrder);
+                  // Đơn đang tạm dừng thì chỉ nút "Đổi" mới mở modal này
+                  // (nút "Tiếp" đã chạy thẳng) → vào luôn phần đổi KTV.
+                  const paused = (subOrder?.services || []).some((s: any) => s.status === 'PAUSED');
+                  setPauseModalLockAction(paused ? 'SWAP' : undefined);
                   setPauseModalOpen(true);
                   setContextMenu(null);
+                }
+              }}
+              onCancelClick={(orderId, subOrder) => handleCancelBookingItem(orderId, subOrder?.services?.[0]?.id, subOrder)}
+              onPauseNow={async (orderId, subOrder) => {
+                const svc = (subOrder?.services || []).find((s: any) => s.status === 'IN_PROGRESS');
+                if (!svc) {
+                  alert('Không tìm thấy dịch vụ đang làm để tạm dừng.');
+                  return;
+                }
+                try {
+                  // pauseItem tự dừng luôn các dịch vụ gộp chung KTV, chỉ cần 1 item.
+                  await handleConfirmPauseSwap(svc.id, 'PAUSE');
+                } catch (err: any) {
+                  alert('Lỗi tạm dừng: ' + (err?.message || 'Không rõ nguyên nhân'));
+                }
+              }}
+              onResumeClick={async (orderId, subOrder) => {
+                const pausedSvc = (subOrder?.services || []).find((s: any) => s.status === 'PAUSED');
+                if (!pausedSvc) {
+                  alert('Không tìm thấy dịch vụ đang tạm dừng để tiếp tục.');
+                  return;
+                }
+                try {
+                  // resumeItem tự xử lý các dịch vụ gộp chung KTV, chỉ cần truyền 1 item.
+                  await handleConfirmPauseSwap(pausedSvc.id, 'RESUME');
+                } catch (err: any) {
+                  alert('Lỗi tiếp tục đơn: ' + (err?.message || 'Không rõ nguyên nhân'));
+                }
+              }}
+              onFinishEarlyPaused={async (orderId, subOrder) => {
+                try {
+                  // Chốt chặn bấm nhầm: Kết thúc thì KTV CÓ tiền có giờ, mà nếu họ
+                  // chưa hề bấm báo thì nhiều khả năng đây là ca bỏ khách → phải Huỷ.
+                  const { kiemTraTruocKhiChot } = await import('./actions');
+                  const chk = await kiemTraTruocKhiChot(orderId, 'FINISH_EARLY');
+                  if (chk.canhBao && !window.confirm(`⚠️ ${chk.canhBao}
+
+Vẫn kết thúc sớm?`)) return;
+                  const res = await fetch('/api/ktv/finish-early-paused', {
+                    method: 'POST',
+                    // fetch thô, không qua apiClient → phải tự gắn danh tính tab để
+                    // nhật ký không in "không ghi được người bấm" khi mất JWT.
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({
+                      bookingId: orderId,
+                      itemIds: subOrder.services.map((s: any) => s.id)
+                    })
+                  });
+                  if (res.ok) {
+                    fetchData();
+                  } else {
+                    const err = await res.json();
+                    alert('Lỗi kết thúc đơn: ' + (err.error || 'Unknown error'));
+                  }
+                } catch (err: any) {
+                  alert('Lỗi kết thúc đơn: ' + err.message);
                 }
               }}
               onReviewClick={(service) => setReviewModalService(service)}
@@ -2870,446 +3154,48 @@ if (!hasPermission('dispatch_board')) {
       </div>
 
       {/* Add Svc Modal */}
-      <AnimatePresence>
-        {(showAddSvcModal || editingSvc) && (
-          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md" 
-              onClick={() => { setShowAddSvcModal(false); setEditingSvc(null); }} 
-            />
-            <motion.div 
-              initial={{ y: '100%', opacity: 0 }} 
-              animate={{ y: 0, opacity: 1 }} 
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="relative bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
-            >
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <div>
-                  <h3 className="font-black text-gray-900 text-lg uppercase tracking-tight">{editingSvc ? 'Đổi Dịch Vụ' : 'Thêm Dịch Vụ'}</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{editingSvc ? `Đang đổi cho: ${editingSvc.oldSvcName}` : 'Chọn từ danh mục phổ biến'}</p>
-                </div>
-                <button 
-                  onClick={() => { setShowAddSvcModal(false); setEditingSvc(null); setSelectedGuestForAddon(''); }} 
-                  className="p-3 hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors"
-                >
-                  <Plus className="rotate-45" size={24} />
-                </button>
-              </div>
-              {/* Guest Selector */}
-                {!editingSvc && selectedOrder && (
-                  <div className="px-6 pt-4 pb-0">
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Thêm cho khách:</label>
-                    <select
-                      value={selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || ''}
-                      onChange={(e) => setSelectedGuestForAddon(e.target.value)}
-                      className="w-full bg-indigo-50/50 px-3 py-2.5 rounded-xl border-2 border-indigo-100 text-sm font-bold text-indigo-900 outline-none focus:border-indigo-300"
-                    >
-                      {selectedOrder.guests?.map((g: any, idx: number) => (
-                         <option key={g.id} value={g.id}>
-                           {g.guestLabel || `Khách ${idx + 1}`} {(selectedSubOrder as any)?.guest?.id === g.id ? '(Khách hiện tại)' : ''}
-                         </option>
-                      ))}
-                      {(!selectedOrder.guests || selectedOrder.guests.length === 0) && (
-                         <option value={(selectedSubOrder as any)?.guest?.id || 'default'}>Khách hiện tại</option>
-                      )}
-                      <option value="NEW">+ Thêm khách mới</option>
-                    </select>
-                  </div>
-                )}
-                {/* Search bar */}
-              <div className="px-6 pt-4 pb-2">
-                <input
-                  type="text"
-                  placeholder="Tìm dịch vụ..."
-                  value={svcSearchQuery}
-                  onChange={(e) => setSvcSearchQuery(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-100 rounded-2xl text-sm font-medium focus:outline-none focus:border-indigo-400 transition-colors placeholder:text-gray-300"
-                />
-              </div>
-              <div className="p-6 pt-2 grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto no-scrollbar pb-10 sm:pb-6">
-                {allServices
-                  .filter((svc: any) => {
-                    if (!svcSearchQuery.trim()) return true;
-                    const name = (typeof svc.nameVN === 'object' && svc.nameVN !== null) ? (svc.nameVN.vn || svc.nameVN.en || '') : (svc.nameVN || svc.nameEN || '');
-                    return name.toLowerCase().includes(svcSearchQuery.toLowerCase());
-                  })
-                  .map((svc: any) => {
-                    const name = (typeof svc.nameVN === 'object' && svc.nameVN !== null) ? (svc.nameVN.vn || svc.nameVN.en || svc.nameVN) : (svc.nameVN || svc.nameEN || `Dịch vụ ${svc.code || svc.id}`);
-                    const dur = svc.duration ?? 60;
-                    const price = svc.priceVND || 0;
-                    const isUtilitySvc = isUtilityService(svc); // Legacy fallback
-                    return (
-                      <button 
-                        key={svc.id} 
-                        onClick={() => editingSvc ? handleEditService(svc.id, name, dur) : addServiceBlock(svc.id, name, dur)} 
-                        className={`group p-5 text-left border-2 rounded-2xl transition-all flex items-center justify-between active:scale-[0.98] ${isUtilitySvc ? 'border-amber-200 hover:border-amber-400 hover:bg-amber-50/30' : 'border-gray-100 hover:border-indigo-500 hover:bg-indigo-50/30'}`}
-                      >
-                        <div>
-                          <p className={`font-black transition-colors ${isUtilitySvc ? 'text-amber-700 group-hover:text-amber-800' : 'text-gray-900 group-hover:text-indigo-600'}`}>{name}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            {isUtilitySvc 
-                              ? <span className="text-[10px] text-amber-600 font-black bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200 uppercase tracking-wider">Tiện ích</span>
-                              : <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">{dur} PHÚT</span>
-                            }
-                            {price > 0 && <span className="text-xs text-emerald-600 font-black">{price.toLocaleString()}đ</span>}
-                          </div>
-                        </div>
-                        <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                          <Plus size={20} strokeWidth={3} />
-                        </div>
-                      </button>
-                    );
-                  })}
-                {allServices.length === 0 && (
-                  <p className="text-center text-gray-400 text-sm py-8 font-medium">Đang tải danh sách dịch vụ...</p>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <AddServiceModal
+        open={showAddSvcModal || !!editingSvc}
+        editing={editingSvc}
+        services={allServices}
+        order={selectedOrder}
+        currentGuestId={(selectedSubOrder as any)?.guest?.id}
+        selectedGuestId={selectedGuestForAddon}
+        onSelectGuest={setSelectedGuestForAddon}
+        onPick={(svcId, name, dur) => editingSvc ? handleEditService(svcId, name, dur) : addServiceBlock(svcId, name, dur)}
+        onClose={() => { setShowAddSvcModal(false); setEditingSvc(null); setSelectedGuestForAddon(''); }}
+      />
 
       {/* Dispatch Confirmation Modal */}
-      <AnimatePresence>
-        {showDispatchConfirmModal && (selectedOrder || selectedSubOrder?.originalOrder) && selectedSubOrder && (() => {
-          const orderForModal = selectedOrder || selectedSubOrder.originalOrder;
-          const isMissingKTVs = selectedSubOrder.services.some((svc: any) => {
-            const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
-            const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
-              const nameStr = String(svc.serviceName || '').toLowerCase();
-              const isUtility = isUtilityService(svc);
-              return assignedKTVs < minKtv && !isUtility;
-          });
-
-          return (
-          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md" 
-              onClick={() => setShowDispatchConfirmModal(false)} 
-            />
-            <motion.div 
-              initial={{ y: '100%', opacity: 0 }} 
-              animate={{ y: 0, opacity: 1 }} 
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="relative bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
-                <div>
-                  <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
-                  <p className="text-sm text-indigo-600 font-bold mt-1">
-                      Đơn #{selectedSubOrder?.services.length < orderForModal.services.length ? `${displayBookingCode(orderForModal.billCode)}-${(selectedSubOrder as any).subSuffix || 'A'}` : displayBookingCode(orderForModal.billCode)} - {getDisplayCustomerName(selectedSubOrder || { originalOrder: orderForModal, services: orderForModal.services, subSuffix: 'A' })}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => setShowDispatchConfirmModal(false)}
-                  className="p-3 bg-white hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors shadow-sm"
-                >
-                  <Plus className="rotate-45" size={24} />
-                </button>
-              </div>
-              
-              <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-4">
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
-                  <span className="text-gray-500 font-bold">Tổng tiền thu:</span>
-                  <span className="text-xl font-black text-emerald-600">
-                    {((selectedSubOrder?.services.reduce((acc: number, svc: any) => acc + ((svc.price || 0) * (svc.quantity || 1)), 0)) || orderForModal.totalAmount || 0).toLocaleString()}đ
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {(() => {
-                    const groupedServices = selectedSubOrder.services.filter((svc: any) => !svc.options?.mergedIntoId && !svc.mergedIntoId).map((svc: any) => {
-                      const childIds = svc.options?.mergedServiceIds || svc.mergedServiceIds || [];
-                      const children = selectedSubOrder.services.filter((child: any) => childIds.includes(child.id));
-                      const childNames = children.map((c: any) => c.serviceName).join(' + ');
-                      const displayName = childNames ? `${svc.serviceName} + ${childNames}` : svc.serviceName;
-                      return { ...svc, displayName };
-                    });
-                    
-                    return (
-                      <>
-                        <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs">Chi tiết dịch vụ ({groupedServices.length})</h4>
-                        {groupedServices.map((svc: any, sIdx: number) => (
-                          <div key={svc.id || sIdx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                            <div className="mb-3 pb-2 border-b border-gray-100">
-                              <p className="font-bold text-gray-900 text-sm">{sIdx + 1}. {svc.displayName}</p>
-                              {(() => {
-                            const assignedKTVs = svc.staffList.filter((st: any) => st.ktvId).length;
-                            const minKtv = typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
-                              const nameStr = String(svc.serviceName || '').toLowerCase();
-                              const isUtility = isUtilityService(svc);
-                              if (assignedKTVs < minKtv && !isUtility) {
-                                return (
-                                    <p className="text-xs text-rose-500 font-bold mt-1">
-                                        ⚠️ Dịch vụ yêu cầu tối thiểu {minKtv} KTV (Đang thiếu {minKtv - assignedKTVs})
-                                    </p>
-                                );
-                            }
-                            return null;
-                        })()}
-                      </div>
-                      <div className="space-y-3">
-                        {svc.staffList.map((st: any, stIdx: number) => (
-                          <div key={st.ktvId ? `${svc.id}-${st.ktvId}` : `${svc.id}-st-${stIdx}`} className="pl-2 border-l-2 border-indigo-200 flex flex-col gap-1.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold">KTV</span>
-                              <span className="text-sm font-black text-gray-800">{st.ktvName || 'Chưa gán'} {st.ktvId ? `[${st.ktvId}]` : ''}</span>
-                            </div>
-                            <div className="text-xs text-gray-600 flex flex-col gap-1">
-                              {st.segments.map((seg: any, segIdx: number) => {
-                                const roomName = rooms.find(r => r.id === seg.roomId)?.name || seg.roomId || 'Chưa xếp phòng';
-                                const bedName = beds.find(b => b.id === seg.bedId)?.name || seg.bedId || 'Chưa xếp giường';
-                                return (
-                                  <div key={`${svc.id}-${stIdx}-seg-${segIdx}`} className="flex items-center gap-2 bg-gray-50 rounded-lg p-1.5">
-                                    <span className="font-semibold text-gray-500">{seg.startTime} - {seg.endTime}</span>
-                                    <span className="text-gray-300">|</span>
-                                    <span className="font-semibold text-indigo-600">{roomName}</span>
-                                    <span className="text-gray-300">|</span>
-                                    <span className="font-semibold text-amber-600">{bedName}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  </>
-                );
-              })()}
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-100 bg-white grid grid-cols-2 gap-3 shrink-0">
-                <button
-                  onClick={() => setShowDispatchConfirmModal(false)}
-                  className="w-full py-4 rounded-2xl font-black text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors uppercase text-sm"
-                >
-                  Quay lại sửa
-                </button>
-                <button
-                  disabled={isMissingKTVs}
-                  onClick={() => {
-                    setShowDispatchConfirmModal(false);
-                    handleDispatch(false, selectedSubOrder?.services.map((s:any) => s.id), selectedSubOrder?.originalOrder.id);
-                  }}
-                  className={`w-full py-4 rounded-2xl font-black text-white transition-colors uppercase text-sm flex items-center justify-center gap-2 shadow-lg ${
-                    isMissingKTVs 
-                      ? 'bg-gray-400 cursor-not-allowed shadow-none'
-                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                  }`}
-                >
-                  <Send size={18} strokeWidth={3} /> XÁC NHẬN GỬI KTV
-                </button>
-              </div>
-            </motion.div>
-          </div>
-          );
-        })()}
-      </AnimatePresence>
+      <DispatchConfirmModal
+        open={showDispatchConfirmModal}
+        order={selectedOrder}
+        subOrder={selectedSubOrder}
+        rooms={rooms}
+        beds={beds}
+        onConfirm={(svcIds, orderId) => handleDispatch(false, svcIds, orderId)}
+        onClose={() => setShowDispatchConfirmModal(false)}
+      />
       {/* Context Menu for Cancellation */}
-      <AnimatePresence>
-        {contextMenu && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-            className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-100 p-1.5 min-w-[180px] overflow-hidden"
-          >
-            {/* Các nút chức năng dựa trên trạng thái */}
-            {(() => {
-              const order = orders.find(o => o.id === contextMenu.orderId);
-              if (!order) return null;
-
-              if (order.dispatchStatus === 'PREPARING') {
-                return (
-                  <button
-                    onClick={() => handleUpdateStatus(contextMenu.orderId, 'IN_PROGRESS')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
-                  >
-                    <CheckCircle2 size={18} className="shrink-0" />
-                    Bắt đầu làm (Thay KTV)
-                  </button>
-                );
-              }
-              if (order.dispatchStatus === 'IN_PROGRESS') {
-                return (
-                  <>
-                  <button
-                    onClick={() => handleUpdateStatus(contextMenu.orderId, 'CLEANING')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-purple-600 hover:bg-purple-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
-                  >
-                    <CheckCircle2 size={18} className="shrink-0" />
-                    Hết giờ ➔ Bắt đầu dọn phòng
-                  </button>
-                  <button
-                    onClick={() => { setPauseModalOrder(order); setPauseModalOpen(true); setContextMenu(null); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
-                  >
-                    <AlertTriangle size={18} className="shrink-0" />
-                    Tạm dừng / Đổi KTV
-                  </button>
-                  </>
-                );
-              }
-              if (order.dispatchStatus === 'CLEANING') {
-                return (
-                  <button
-                    onClick={() => handleUpdateStatus(contextMenu.orderId, 'FEEDBACK')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
-                  >
-                    <CheckCircle2 size={18} className="shrink-0" />
-                    Dọn xong → Khách đánh giá
-                  </button>
-                );
-              }
-              if (order.dispatchStatus === 'FEEDBACK') {
-                return (
-                  <button
-                    onClick={() => handleUpdateStatus(contextMenu.orderId, 'DONE')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1 text-left"
-                  >
-                    <CheckCircle2 size={18} className="shrink-0" />
-                    Đã đánh giá → Đóng bill
-                  </button>
-                );
-              }
-              return null;
-            })()}
-
-            {/* QR Journey button */}
-            <button
-              onClick={() => {
-                const order = orders.find(o => o.id === contextMenu.orderId);
-                const invoiceId = order?.parentBookingId || contextMenu.orderId;
-                setInvoiceLangModal({ invoiceId });
-                setContextMenu(null);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sky-600 hover:bg-sky-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              Hiện Hoá Đơn
-            </button>
-
-            <button
-              onClick={() => {
-                const order = orders.find(o => o.id === contextMenu.orderId);
-                if (order) {
-                  let finalBillCode = order.billCode;
-                  if (contextMenu.guestId) {
-                     const so = subOrders.find(s => s.id === contextMenu.guestId || (s.services && s.services.some((x: any) => x.guestId === contextMenu.guestId || x.customerGroupId === contextMenu.guestId)));
-                     if (so) finalBillCode = (so as any).billCode || so.originalOrder?.billCode || order.billCode;
-                  }
-                  const invoiceId = order.parentBookingId || contextMenu.orderId;
-                  setQrModal({ orderId: invoiceId, billCode: finalBillCode, accessToken: order.accessToken, customerLang: order.customerLang, guestId: contextMenu.guestId });
-                }
-                setContextMenu(null);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-            >
-              <QrCode size={18} />
-              Hiện QR Journey
-            </button>
-
-            {/* Force Dispatch - Skip validation */}
-            <button
-              onClick={() => {
-                if (!confirm('⚡ Xác nhận GỬI ĐƠN ngay? (Bỏ qua kiểm tra thiếu thông tin)')) return;
-                handleDispatch(true, undefined, contextMenu.orderId);
-                setContextMenu(null);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-            >
-              <Send size={18} />
-              Gửi đơn ngay (bỏ qua kiểm tra)
-            </button>
-
-            {contextMenu.itemId && (
-              <>
-                <button
-                  onClick={() => {
-                    setTimeEditorModal({ isOpen: true, orderId: contextMenu.orderId, itemId: contextMenu.itemId! });
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-                >
-                  <Clock size={18} />
-                  Sửa thời gian dịch vụ
-                </button>
-                <button
-                  onClick={() => handleCancelBookingItem(contextMenu.orderId, contextMenu.itemId!)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-orange-600 hover:bg-orange-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider border-b border-gray-50 mb-1"
-                >
-                  <Trash2 size={18} />
-                  Hủy dịch vụ này
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => handleCancelBooking(contextMenu.orderId)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors font-black text-xs uppercase tracking-wider"
-            >
-              <Trash2 size={18} />
-              Hủy toàn bộ đơn hàng
-            </button>
-            <button
-              onClick={() => setContextMenu(null)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-gray-50 rounded-xl transition-colors font-bold text-xs uppercase tracking-wider"
-            >
-              Đóng menu
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <OrderContextMenu
+        menu={contextMenu}
+        orders={orders}
+        subOrders={subOrders}
+        onClose={() => setContextMenu(null)}
+        actions={{
+          updateStatus: handleUpdateStatus,
+          cancelBooking: handleCancelBooking,
+          cancelBookingItem: handleCancelBookingItem,
+          dispatch: handleDispatch,
+          showInvoice: setInvoiceLangModal,
+          showQr: setQrModal,
+          openTimeEditor: setTimeEditorModal,
+          openPauseSwap: (order) => { setPauseModalOrder(order); setPauseModalOpen(true); },
+        }}
+      />
 
       {/* QR Journey Modal */}
-      <AnimatePresence>
-        {qrModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setQrModal(null)}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-8 shadow-2xl max-w-sm w-full mx-4 text-center"
-            >
-              <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <QrCode size={28} className="text-indigo-600" />
-              </div>
-              <h3 className="text-lg font-black text-gray-900 mb-1">QR Journey</h3>
-              <p className="text-xs text-gray-500 font-medium mb-6">Đơn #{displayBookingCode(qrModal.billCode)} — Khách quét để xem lộ trình</p>
-              
-              <div className="bg-gray-50 rounded-2xl p-6 mb-6 inline-block border border-gray-100">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(`${JOURNEY_BASE_URL}/${qrModal.customerLang || 'vi'}/journey/${qrModal.accessToken || qrModal.orderId}${qrModal.guestId ? '?guestId=' + qrModal.guestId : ''}`)}`}
-                  alt="QR Journey"
-                  width={QR_SIZE}
-                  height={QR_SIZE}
-                  className="mx-auto"
-                />
-              </div>
-
-              <button
-                onClick={() => setQrModal(null)}
-                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black rounded-2xl transition-colors text-sm uppercase tracking-wider"
-              >
-                Đóng
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <QrJourneyModal data={qrModal} onClose={() => setQrModal(null)} />
 
       <AnimatePresence>
         {showCustomerInfo && fullCustomerData && (
@@ -3332,287 +3218,53 @@ if (!hasPermission('dispatch_board')) {
         selectedDate={selectedDate}
       />
 
-      {/* Split Service Modal */}
-      <AnimatePresence>
-        {mergePromptConfig && (
-          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6"
-            >
-              <div className="flex justify-center mb-4 text-amber-500">
-                <AlertTriangle size={48} strokeWidth={1.5} />
-              </div>
-              <h3 className="text-xl font-black text-gray-900 text-center mb-2">Gộp Dịch Vụ?</h3>
-              <p className="text-sm text-gray-500 text-center mb-6">
-                Bạn đang gán KTV <span className="font-bold text-gray-900">{mergePromptConfig.ktvId}</span> cho nhiều dịch vụ. Bạn có muốn gộp chúng lại để KTV làm liên tục và chỉ cần chọn Phòng/Giường 1 lần không?
-              </p>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={cancelMergeServices}
-                  className="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
-                >
-                  Không, tách riêng
-                </button>
-                <button
-                  onClick={confirmMergeServices}
-                  className="flex-1 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-                >
-                  Gộp dịch vụ
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {splitConfig && (
-          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6"
-            >
-              <h3 className="text-xl font-black text-gray-900 mb-2">Phân bổ thời gian KTV</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Thời lượng gốc: <span className="font-bold text-gray-900">{splitConfig.duration} phút</span>
-              </p>
-
-              <div className="space-y-4 mb-6">
-                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                    KTV Hiện Tại (Phút)
-                  </label>
-                  <input
-                    type="number"
-                    value={splitConfig.ktv1Dur}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (val >= 0 && val <= splitConfig.duration) {
-                        setSplitConfig(prev => prev ? {
-                          ...prev,
-                          ktv1Dur: val,
-                          ktv2Dur: prev.duration - val
-                        } : null);
-                      }
-                    }}
-                    className="w-full text-center font-black text-2xl text-indigo-600 bg-white border border-gray-200 rounded-xl py-2 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none"
-                  />
-                  {splitConfig.ktv1Dur !== splitConfig.duration && (
-                    <div className="mt-3">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                        Tên Dịch Vụ
-                      </label>
-                      <input
-                        type="text"
-                        value={splitConfig.name1 || ''}
-                        onChange={(e) => setSplitConfig(prev => prev ? { ...prev, name1: e.target.value } : null)}
-                        className="w-full text-center font-bold text-sm text-gray-700 bg-white border border-gray-200 rounded-xl py-1.5 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none"
-                        placeholder={splitConfig.defaultName}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-center text-gray-300">
-                  <Plus size={24} />
-                </div>
-
-                <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-                  <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-2">
-                    KTV Thêm Vào (Phút)
-                  </label>
-                  <input
-                    type="number"
-                    value={splitConfig.ktv2Dur}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (val >= 0 && val <= splitConfig.duration) {
-                        setSplitConfig(prev => prev ? {
-                          ...prev,
-                          ktv2Dur: val,
-                          ktv1Dur: prev.duration - val
-                        } : null);
-                      }
-                    }}
-                    className="w-full text-center font-black text-2xl text-indigo-700 bg-white border border-indigo-200 rounded-xl py-2 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none"
-                  />
-                  {splitConfig.ktv1Dur !== splitConfig.duration && (
-                    <div className="mt-3">
-                      <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-1">
-                        Tên Dịch Vụ
-                      </label>
-                      <input
-                        type="text"
-                        value={splitConfig.name2 || ''}
-                        onChange={(e) => setSplitConfig(prev => prev ? { ...prev, name2: e.target.value } : null)}
-                        className="w-full text-center font-bold text-sm text-indigo-700 bg-white border border-indigo-200 rounded-xl py-1.5 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none"
-                        placeholder={splitConfig.defaultName}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              {splitConfig.ktv1Dur !== splitConfig.duration && (
-                <div className="mb-6 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
-                  <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 font-medium">
-                    <span className="font-bold block mb-1">Làm Nối Tiếp</span>
-                    Hệ thống sẽ <strong className="font-black">tách dịch vụ thành 2 dòng riêng biệt</strong> trên màn hình Lễ tân & KTV để tính giờ độc lập.
-                  </p>
-                </div>
-              )}
-              
-              {splitConfig.ktv1Dur === splitConfig.duration && splitConfig.ktv2Dur === splitConfig.duration && (
-                <div className="mb-6 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-2">
-                  <Sparkles size={16} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-emerald-700 font-medium">
-                    <span className="font-bold block mb-1">Làm Chung (Song song)</span>
-                    Hai KTV sẽ cùng dùng chung 1 khung giờ. 1 người bấm sẽ cập nhật cho người kia.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setSplitConfig(null)}
-                  disabled={splitConfig.isSaving}
-                  className="px-4 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
-                >
-                  Hủy
-                </button>
-                <button
-                  onClick={confirmSplitService}
-                  disabled={splitConfig.isSaving || (splitConfig.ktv1Dur + splitConfig.ktv2Dur !== splitConfig.duration && splitConfig.ktv1Dur !== splitConfig.duration)}
-                  className="px-6 py-3 rounded-xl font-black text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-50"
-                >
-                  {splitConfig.isSaving ? 'ĐANG LƯU...' : 'LƯU & TIẾP TỤC'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <SplitDurationModal
+        config={splitConfig}
+        onChange={(patch) => setSplitConfig(prev => prev ? { ...prev, ...patch } : null)}
+        onConfirm={confirmSplitService}
+        onCancel={() => setSplitConfig(null)}
+      />
 
       {/* Modal Xem Ảnh Xác Nhận / Ảnh Bàn Giao */}
-      <AnimatePresence>
-        {selectedPhoto && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => { setSelectedPhoto(null); setPhotoIndex(0); }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="relative bg-white rounded-3xl overflow-hidden max-w-md w-full shadow-2xl border border-gray-100 flex flex-col"
-            >
-              {/* Header */}
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <h3 className={`font-black text-sm ${selectedPhoto.type === 'HANDOVER' ? 'text-emerald-600' : 'text-gray-900'}`}>
-                      {selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao phòng' : 'Ảnh xác nhận khách bắt đầu ca'}
-                  </h3>
-                  <p className="text-xs text-gray-500 font-bold">Kỹ thuật viên: {selectedPhoto.ktvId}</p>
-                </div>
-                <button
-                  onClick={() => { setSelectedPhoto(null); setPhotoIndex(0); }}
-                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+      <PhotoViewerModal
+        selectedPhoto={selectedPhoto}
+        setSelectedPhoto={setSelectedPhoto}
+        photoIndex={photoIndex}
+        setPhotoIndex={setPhotoIndex}
+      />
 
-              {/* Image Body */}
-              <div className="relative aspect-[3/4] bg-gray-50 flex items-center justify-center">
-                {selectedPhoto.urls && selectedPhoto.urls.length > 1 ? (
-                  <>
-                    <img
-                      src={selectedPhoto.urls[photoIndex]}
-                      alt={`${selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao' : 'Ảnh xác nhận khách'} - ${photoIndex + 1}`}
-                      className="w-full h-full object-contain"
-                    />
-                    
-                    {/* Navigation Buttons */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPhotoIndex((prev) => (prev > 0 ? prev - 1 : selectedPhoto.urls!.length - 1));
-                      }}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-                    
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPhotoIndex((prev) => (prev < selectedPhoto.urls!.length - 1 ? prev + 1 : 0));
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                    
-                    {/* Pagination Indicators */}
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 bg-black/40 rounded-full backdrop-blur-md">
-                      {selectedPhoto.urls.map((_, idx) => (
-                        <div
-                          key={idx}
-                          className={`w-2 h-2 rounded-full transition-all ${
-                            idx === photoIndex ? 'bg-white scale-110' : 'bg-white/50'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <img
-                    src={selectedPhoto.urls ? selectedPhoto.urls[0] : selectedPhoto.url}
-                    alt={selectedPhoto.type === 'HANDOVER' ? 'Ảnh bàn giao' : 'Ảnh xác nhận khách'}
-                    className="w-full h-full object-contain"
-                  />
-                )}
-              </div>
-
-              {/* Footer */}
-              {selectedPhoto.time && (
-                <div className="p-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                  <span className="text-xs text-gray-500 font-bold">
-                    {selectedPhoto.type === 'HANDOVER' ? 'Thời gian kết thúc:' : 'Thời gian bắt đầu:'}
-                  </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${
-                      selectedPhoto.type === 'HANDOVER' 
-                      ? 'text-emerald-600 bg-emerald-50 border-emerald-100' 
-                      : 'text-indigo-600 bg-indigo-50 border-indigo-100'
-                  }`}>
-                    {formatToHourMinute(selectedPhoto.time)}
-                  </span>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal Tạm Dừng / Đổi KTV */}
+      {/* Modal Tạm Dừng / Đổi KTV
+          ⚠️ `availableKtvs` trước 10/09/2026 lọc `staffs.filter(s => s.status === 'ready')`.
+          `staffs` là bảng Staff thô, `status` của nó là 'ĐANG LÀM' — chuỗi 'ready'
+          chỉ tồn tại ở màn reception/turns (nơi map waiting → ready). Không khớp
+          dòng nào nên ô "KTV vào thay" luôn rỗng, quầy không đổi được ai.
+          Nguồn đúng là sổ tua trong ngày: ai không 'off' thì còn ở ca. */}
       <PauseSwapKtvModal
         isOpen={pauseModalOpen}
-        onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); setPauseModalSubOrder(null); }}
+        onClose={() => { setPauseModalOpen(false); setPauseModalOrder(null); setPauseModalSubOrder(null); setPauseModalLockAction(undefined); }}
         order={pauseModalOrder}
         subOrder={pauseModalSubOrder}
-        availableKtvs={staffs.filter(s => s.status === 'ready')}
+        availableKtvs={turns
+          // Cùng bộ lọc với ô chọn KTV: chưa điểm danh mà chưa làm đơn nào hôm nay thì ẩn (14/09/2026).
+          .filter(t => isVisibleInKtvPicker(t) && t.staff)
+          .map(t => ({ ...(t.staff as any), turnStatus: t.status }))
+          .sort((a: any, b: any) =>
+            (a.turnStatus === 'waiting' ? 0 : 1) - (b.turnStatus === 'waiting' ? 0 : 1)
+            || String(a.id).localeCompare(String(b.id))
+          )}
         onConfirm={handleConfirmPauseSwap}
+        lockAction={pauseModalLockAction}
+      />
+
+      <CancelItemModal
+        isOpen={cancelItemModal !== null}
+        onClose={() => setCancelItemModal(null)}
+        onConfirm={submitCancelItems}
+        ktvLabel={cancelItemModal?.ktvLabel}
+        customerName={cancelItemModal?.customerName}
+        workedMinutes={cancelItemModal?.workedMinutes ?? null}
+        wholeBooking={cancelItemModal?.wholeBooking}
+        canhBao={cancelItemModal?.canhBao}
       />
 
       <MergePromptModal
@@ -3632,209 +3284,25 @@ if (!hasPermission('dispatch_board')) {
       />
 
       {/* Custom Confirm Modal (Fix INP Issue) */}
-      <AnimatePresence>
-        {confirmModal.isOpen && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100"
-            >
-              <div className="p-5 pb-6">
-                <div className="flex items-center gap-3 text-orange-600 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center border border-orange-100">
-                    <AlertTriangle size={24} />
-                  </div>
-                  <h3 className="text-[17px] font-black">Xác nhận</h3>
-                </div>
-                <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1">
-                  {confirmModal.message}
-                </p>
-              </div>
-              <div className="p-4 bg-gray-50/80 border-t border-gray-100 flex gap-3">
-                <button
-                  onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  onClick={confirmModal.onConfirm}
-                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
-                >
-                  Đồng ý
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ConfirmActionModal
+        open={confirmModal.isOpen}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => { confirmModal.onCancel?.(); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
+      />
       {/* Custom Start Service Modal */}
-      <AnimatePresence>
-        {startServiceModal.isOpen && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100"
-            >
-              <div className="p-5 pb-6">
-                <div className="flex items-center gap-3 text-orange-600 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center border border-orange-100">
-                    <Clock size={24} />
-                  </div>
-                  <h3 className="text-[17px] font-black">Bắt đầu dịch vụ</h3>
-                </div>
-                <p className="text-[14px] font-medium text-gray-600 leading-relaxed px-1">
-                  Hệ thống sẽ bắt đầu tính giờ làm. Vui lòng chọn mốc thời gian:
-                </p>
-                <div className="mt-5 flex flex-col gap-3 px-1">
-                  <button
-                    onClick={() => {
-                        setStartServiceModal(prev => ({ ...prev, isOpen: false }));
-                        if (startServiceModal.onConfirm) startServiceModal.onConfirm(new Date().toISOString());
-                    }}
-                    className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm"
-                  >
-                    Lấy giờ hiện tại ({new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
-                  </button>
-                  <div className="mt-2 pt-4 border-t border-gray-100">
-                    <p className="text-[13px] font-medium text-gray-500 mb-2">Hoặc nhập giờ tùy chỉnh:</p>
-                    <div className="flex gap-2">
-                      <input 
-                        type="time" 
-                        value={customStartInputValue}
-                        onChange={(e) => setCustomStartInputValue(e.target.value)}
-                        className="flex-1 px-4 py-3 rounded-2xl border border-gray-200 text-[15px] font-semibold text-gray-700 outline-none focus:border-orange-500 transition-all bg-gray-50"
-                      />
-                      <button
-                        onClick={() => {
-                            if (!customStartInputValue) return;
-                            setStartServiceModal(prev => ({ ...prev, isOpen: false }));
-                            
-                            const [h, m] = customStartInputValue.split(':');
-                            const d = new Date(selectedDate);
-                            d.setHours(Number(h), Number(m), 0, 0);
-                            
-                            if (startServiceModal.onConfirm) startServiceModal.onConfirm(d.toISOString());
-                        }}
-                        className="px-6 py-3 rounded-2xl text-[14px] font-bold text-white bg-orange-600 hover:bg-orange-700 active:scale-95 transition-all shadow-sm whitespace-nowrap"
-                      >
-                        Áp dụng
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50/80 border-t border-gray-100 flex gap-3">
-                <button
-                  onClick={() => setStartServiceModal(prev => ({ ...prev, isOpen: false }))}
-                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all"
-                >
-                  Hủy bỏ
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <StartServiceModal
+        open={startServiceModal.isOpen}
+        selectedDate={selectedDate}
+        onConfirm={startServiceModal.onConfirm}
+        onClose={() => setStartServiceModal(prev => ({ ...prev, isOpen: false }))}
+      />
 
       {/* Invoice Language Modal */}
-      {invoiceLangModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-6 text-center border-b border-gray-100 relative">
-              <div className="w-16 h-16 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                {invoiceLangModal.showQrForLang ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                )}
-              </div>
-              <h3 className="text-xl font-black text-gray-900 tracking-tight">
-                {invoiceLangModal.showQrForLang ? 'Quét mã để xem hóa đơn' : 'Chọn ngôn ngữ hóa đơn'}
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                {invoiceLangModal.showQrForLang ? 'Khách hàng có thể quét mã này' : 'Chọn in hoặc hiển thị mã QR'}
-              </p>
-              
-              <button
-                onClick={() => setInvoiceLangModal(null)}
-                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            {invoiceLangModal.showQrForLang ? (
-              <div className="p-6 flex flex-col items-center">
-                <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${window.location.origin}/invoice/${invoiceLangModal.invoiceId}?lang=${invoiceLangModal.showQrForLang}`)}`}
-                    alt="Invoice QR Code"
-                    className="w-[200px] h-[200px] object-contain"
-                  />
-                </div>
-                <div className="flex w-full gap-3">
-                  <button
-                    onClick={() => setInvoiceLangModal({ invoiceId: invoiceLangModal.invoiceId })}
-                    className="flex-1 py-3 text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
-                  >
-                    Quay lại
-                  </button>
-                  <button
-                    onClick={() => {
-                      window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${invoiceLangModal.showQrForLang}`, '_blank');
-                      setInvoiceLangModal(null);
-                    }}
-                    className="flex-1 py-3 text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-colors"
-                  >
-                    Mở tab In
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 flex flex-col gap-2">
-                {[
-                  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
-                  { code: 'en', label: 'English', flag: '🇬🇧' },
-                  { code: 'cn', label: '中文 (Chinese)', flag: '🇨🇳' },
-                  { code: 'jp', label: '日本語 (Japanese)', flag: '🇯🇵' },
-                  { code: 'kr', label: '한국어 (Korean)', flag: '🇰🇷' },
-                ].map(lang => (
-                  <div key={lang.code} className="flex items-center gap-2 w-full p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
-                    <div className="flex items-center gap-3 flex-1 pl-2">
-                      <span className="text-2xl">{lang.flag}</span>
-                      <span className="font-bold text-gray-700">{lang.label}</span>
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setInvoiceLangModal({ invoiceId: invoiceLangModal.invoiceId, showQrForLang: lang.code })}
-                        className="px-3 py-2 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
-                        Mã QR
-                      </button>
-                      <button
-                        onClick={() => {
-                          window.open(`/invoice/${invoiceLangModal.invoiceId}?lang=${lang.code}`, '_blank');
-                          setInvoiceLangModal(null);
-                        }}
-                        className="px-3 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors flex items-center gap-1"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                        In
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <InvoiceLanguageModal
+        invoiceId={invoiceLangModal?.invoiceId ?? null}
+        onClose={() => setInvoiceLangModal(null)}
+      />
 
       {commentModalData && (
         <KtvCommentModal 
@@ -3855,16 +3323,16 @@ if (!hasPermission('dispatch_board')) {
           allServices={allServices}
           splitPlan={splitPreviewState.splitPlan}
           onClose={() => setSplitPreviewState(null)}
-          onSaveDraftOnly={() => {
+          onSaveDraftOnly={(guestNames) => {
             const intent = splitPreviewState.intent;
             const dispatchArgs = splitPreviewState.dispatchArgs;
             setSplitPreviewState(null);
-            handleSaveDraft(true, intent, dispatchArgs);
+            handleSaveDraft(true, intent, dispatchArgs, guestNames);
           }}
-          onSaveAndDispatch={() => {
+          onSaveAndDispatch={(guestNames) => {
             const dispatchArgs = splitPreviewState.dispatchArgs;
             setSplitPreviewState(null);
-            handleSaveDraft(true, 'DISPATCH', dispatchArgs);
+            handleSaveDraft(true, 'DISPATCH', dispatchArgs, guestNames);
           }}
         />
       )}

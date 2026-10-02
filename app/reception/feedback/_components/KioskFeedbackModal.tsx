@@ -5,6 +5,7 @@ import { ChildBookingForFeedback } from '../FeedbackDashboard.logic';
 import { useKioskFeedback } from './KioskFeedback.logic';
 import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
     const [currentBooking, setCurrentBooking] = useState(initialBooking);
@@ -15,7 +16,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation,
+        reminders, violations, getReminderText, toggleViolation, maxRating,
         isSubmitting, handleSubmit,
         t, isSuccess
     } = useKioskFeedback(currentBooking, onClose);
@@ -23,7 +24,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
     const getKtvDisplay = (child: any) => {
         if (!child.ktvList || child.ktvList.length === 0) return 'Chưa có KTV';
         const parts = child.ktvList.map((k: any) => {
-            const isTypeC = k.workType === 'C' || k.workType === 'c' || (k.ktvId && (k.ktvId.toUpperCase().startsWith('C_') || k.ktvId.toUpperCase().startsWith('EXT_')));
+            const isTypeC = isTypeCWorkType(k.workType) || isPlaceholderStaffId(k.ktvId);
             const displayName = isTypeC ? k.ktvName : k.ktvId;
             const svcs = k.serviceNames && k.serviceNames.length > 0 ? ` (${k.serviceNames.join(', ')})` : '';
             return `${displayName}${svcs}`;
@@ -261,20 +262,21 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                             <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-2">{t.experienceTitle || 'Trải nghiệm của bạn'}</h3>
                                             <p className="text-sm text-[#7C3AED] bg-[#F3E8FF] inline-block px-3 py-1 rounded-md font-medium">
                                                 {t.staffLbl || 'Nhân viên phục vụ'}: {mergedKtvGroups.map(g => {
-                                                    const isTypeC = (g as any).workType === 'C' || (g as any).workType === 'c' || (g.ktvId && (g.ktvId.toUpperCase().startsWith('C_') || g.ktvId.toUpperCase().startsWith('EXT_')));
+                                                    const isTypeC = isTypeCWorkType((g as any).workType) || isPlaceholderStaffId(g.ktvId);
                                                     return isTypeC ? g.ktvName : g.ktvId;
                                                 }).join(', ')}
                                             </p>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-4 gap-2 sm:gap-4 mb-8">
+                                    <div className={`grid gap-2 sm:gap-4 mb-8 ${maxRating >= 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
                                         {[
                                             { score: 1, emoji: '😡', label: t.rateBad || 'Tệ' },
                                             { score: 2, emoji: '😐', label: t.rateOk || 'Bình thường' },
                                             { score: 3, emoji: '🙂', label: t.rateGood || 'Tốt' },
                                             { score: 4, emoji: '🤩', label: t.rateExcellent || 'Tuyệt vời' }
-                                        ].map((r) => {
+                                        // Đã tích lỗi thì bỏ hẳn mức cao nhất — không thể vừa phàn nàn vừa "tuyệt vời".
+                                        ].filter((r) => r.score <= maxRating).map((r) => {
                                             const isSelected = globalRating === r.score;
                                             return (
                                                 <button
@@ -294,6 +296,14 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                             );
                                         })}
                                     </div>
+
+                                    {maxRating < 4 && (
+                                        <div className="-mt-6 mb-6 text-center">
+                                            <span className="inline-block text-xs sm:text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+                                                {t.cappedByViolation || 'Bạn đã chọn góp ý ở trên nên mức "Tuyệt vời" tạm ẩn. Bỏ chọn góp ý nếu muốn chấm mức cao nhất.'}
+                                            </span>
+                                        </div>
+                                    )}
 
                                     <textarea 
                                         placeholder={t.notePlaceholder}

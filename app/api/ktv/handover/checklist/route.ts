@@ -14,6 +14,8 @@ export async function GET(request: Request) {
         const serviceCategory = searchParams.get('serviceCategory') || '';
         const bookingId = searchParams.get('bookingId');
         const bookingItemId = searchParams.get('bookingItemId');
+        // Thiếu code/category thì service vẫn tra bù được từ serviceId.
+        const serviceId = searchParams.get('serviceId') || undefined;
 
         if (!bookingId || !bookingItemId) {
             return NextResponse.json(
@@ -31,7 +33,8 @@ export async function GET(request: Request) {
             serviceCode,
             serviceCategory,
             bookingId,
-            bookingItemId
+            bookingItemId,
+            serviceId
         );
 
         return NextResponse.json({ success: true, checklist });

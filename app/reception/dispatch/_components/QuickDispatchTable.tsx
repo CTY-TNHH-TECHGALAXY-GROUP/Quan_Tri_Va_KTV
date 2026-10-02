@@ -2,12 +2,17 @@
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Printer, X, ChevronDown, ChevronUp, Plus, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
+import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { fmtHours } from '@/lib/hours-format';
+import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalKtvNameProblem, externalKtvNameKey, newExternalKtvToken, normalizeExternalKtvName } from '@/lib/constants/staff.constants';
+import { t as tCheckin } from '../CheckinConfirm.i18n';
+import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
 
 // 🛠 UI CONFIGURATION
+const MAX_EXTERNAL_SUGGESTIONS = 8;
 const TAG_COLORS = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700'];
 
 const FOURHAND_SERVICES = ['NHS0034', 'NHS0035', 'NHS0036', 'NHS0037', 'NHS0038', 'NHS0039'];
@@ -36,6 +41,8 @@ interface QuickDispatchTableProps {
   rooms: Room[];
   beds: Bed[];
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
+  /** Mọi KTV (kể cả chưa điểm danh) — để gõ ĐÚNG mã/tên chọn người không có trong sổ tua. */
+  staffs?: StaffData[];
   busyBedIds: string[];
   onUpdateServices: (updatedServices: ServiceBlock[]) => void;
   onPrintGroup: (group: ServiceGroup) => void;
@@ -50,12 +57,6 @@ interface QuickDispatchTableProps {
   subOrderCodeProp?: string;
 }
 
-const SERVICE_TO_SKILL: Record<string, string> = {
-  'Gội đầu': 'shampoo', 'Massage Thái': 'thaiBody', 'Massage Dầu': 'oilBody',
-  'Đá Nóng': 'hotStoneBody', 'Massage Body': 'thaiBody', 'Foot Dầu': 'foot',
-  'Ráy Combo': 'earCombo', 'Ráy Chuyên': 'earChuyen', 'Chăm sóc da': 'facial',
-  'Tinh dầu': 'oilBody', 'Chăm sóc': 'thaiBody', 'Massage Chân': 'foot', 'Foot': 'foot',
-};
 
 const calcEndTime = (start: string, duration: number): string => {
   if (!start || !duration) return '';
@@ -74,8 +75,29 @@ const getCurrentTime = () => {
 
 const genId = () => Math.random().toString(36).substring(2, 9);
 
+/**
+ * Gõ ĐÚNG mã hoặc ĐÚNG tên rồi Enter (chốt 14/09/2026): ưu tiên người đang có trong
+ * sổ tua; không có (hoặc đang tắt) thì tra toàn bộ KTV đang làm — kể cả CHƯA điểm
+ * danh. Gõ một phần thì dropdown vẫn chỉ hiện người đã có trong sổ tua.
+ * `processDispatch` sẽ hỏi xác nhận "chưa điểm danh" khi gửi đơn.
+ */
+const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: StaffData })[], staffs: StaffData[]): string | null => {
+  const same = (v?: string | null) => (v || '').toLowerCase().trim() === term;
+  const hit = turns.find(t => t.status !== 'off' && (same(t.employee_id) || same(t.staff?.full_name)));
+  if (hit) return hit.employee_id;
+  const staff = staffs.find(st => st.status === 'ĐANG LÀM' && !isPlaceholderStaffId(st.id) && (same(st.id) || same(st.full_name)));
+  if (staff) return staff.id;
+  // KTV ngoài không tài khoản đã có (15/09/2026), so không dấu — kể cả ĐÃ NGHỈ:
+  // gửi đơn sẽ bật lại, không sinh thêm dòng trùng tên.
+  return findExternalKtvByName(term, staffs)?.id ?? null;
+};
+
+/** Loại KTV để hiện nhãn: sổ tua → danh sách KTV → mã placeholder cũ coi như loại C. */
+const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffData }) | undefined, staffs: StaffData[]) =>
+  turn?.staff?.work_type ?? staffs.find(st => st.id === ktvId)?.work_type ?? (isPlaceholderStaffId(ktvId) ? 'TYPE_C' : null);
+
 export const QuickDispatchTable = ({
-  services, orderId, rooms, beds, availableTurns, busyBedIds, isVipSource = false,
+  services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
   onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc, billCode, subOrderCodeProp
 }: QuickDispatchTableProps) => {
 
@@ -384,15 +406,6 @@ export const QuickDispatchTable = ({
           }
         });
 
-        console.log('--- [BƯỚC 0 VÒNG 3] Thu thập KTV ---');
-        console.log('groupKey:', groupKey);
-        console.log('items (detailed):', JSON.stringify(items.map(i => ({ 
-            id: i.id, 
-            staffCount: i.staffList?.length, 
-            ktvs: i.staffList?.map(s => s.ktvId) 
-        })), null, 2));
-        console.log('ktvIds thu duoc:', ktvIds);
-
         if (ktvIds.length === 0) {
           startTimes.push(defaultTime);
           endTimes.push(calcEndTime(defaultTime, duration));
@@ -469,7 +482,7 @@ export const QuickDispatchTable = ({
           if (svcIdx === -1) return;
           const ktvId = state.selectedKtvIds[idx] || '';
           const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
+          const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
           const roomId = state.selectedRoomIds?.[idx] || null;
           let bedId: string | null = state.ktvBedIds?.[idx] || null;
           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
@@ -517,7 +530,7 @@ export const QuickDispatchTable = ({
             
             const ktvId = state.selectedKtvIds[ki] || '';
             const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || ktvId;
+            const ktvName = state.ktvDisplayNames?.[ktvId] || ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
             const roomId = state.selectedRoomIds?.[ki] || null;
             let bedId: string | null = state.ktvBedIds?.[ki] || null;
             
@@ -793,11 +806,6 @@ export const QuickDispatchTable = ({
                       const count = items.length;
                       const duration = items[0]?.duration || 0;
                       
-                      // Find matching skill for this service
-                      const targetSkill = Object.keys(SERVICE_TO_SKILL).find(k => displayServiceName.toLowerCase().includes(k.toLowerCase()))
-                        ? SERVICE_TO_SKILL[Object.keys(SERVICE_TO_SKILL).find(k => displayServiceName.toLowerCase().includes(k.toLowerCase()))!]
-                        : null;
-
                       return (
                         <ServiceGroupCard
                           key={groupKey}
@@ -806,8 +814,8 @@ export const QuickDispatchTable = ({
                           count={count}
                           duration={duration}
                           state={state}
-                          targetSkill={targetSkill}
                           availableTurns={availableTurns}
+                          staffs={staffs}
                           allSelectedKtvIds={allSelectedKtvIds}
                           rooms={rooms}
                           beds={beds}
@@ -883,8 +891,8 @@ interface ServiceGroupCardProps {
     isMergedGroup?: boolean; 
     workMode?: 'parallel' | 'sequential'; 
   };
-  targetSkill: string | null;
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
+  staffs: StaffData[];
   allSelectedKtvIds: string[];
   rooms: Room[];
   beds: Bed[];
@@ -916,8 +924,8 @@ interface ServiceGroupCardProps {
 const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
-  serviceName, serviceDescription, count, duration, state, targetSkill,
-  availableTurns, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
+  serviceName, serviceDescription, count, duration, state,
+  availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
   allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc,
   orderId,
   subOrderCode,
@@ -1194,21 +1202,29 @@ const ServiceGroupCard = ({
   };
 
   const filteredTurns = useMemo(() => {
-    const filtered = availableTurns.filter(t => t.status !== 'off').filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
+    // Chưa điểm danh mà chưa làm đơn nào hôm nay → ẩn (gõ đúng mã/tên vẫn chọn được).
+    const filtered = availableTurns.filter(isVisibleInKtvPicker).filter(t => !state.selectedKtvIds.includes(t.employee_id)).filter(t => {
       if (!ktvSearch) return true; const term = ktvSearch.toLowerCase();
       return t.employee_id.toLowerCase().includes(term) || (t.staff?.full_name || '').toLowerCase().includes(term);
     });
 
-    return filtered.sort((a, b) => {
-        const isAExt = a.employee_id.startsWith('EXT') || a.employee_id.startsWith('C_');
-        const isBExt = b.employee_id.startsWith('EXT') || b.employee_id.startsWith('C_');
-        if (isAExt && !isBExt) return 1;
-        if (!isAExt && isBExt) return -1;
-        
-        if (a.turns_completed !== b.turns_completed) return (a.turns_completed || 0) - (b.turns_completed || 0);
-        return (a.check_in_order || 0) - (b.check_in_order || 0);
-    });
+    return filtered;
   }, [availableTurns, state.selectedKtvIds, ktvSearch]);
+
+  // KTV ngoài không tài khoản đang dùng (ĐANG LÀM): nhóm gợi ý cuối danh sách, so không dấu.
+  const externalSuggestions = useMemo(() => {
+    const key = externalKtvNameKey(ktvSearch);
+    return staffs
+      .filter(st => isPlaceholderStaffId(st.id) && st.status === 'ĐANG LÀM' && !state.selectedKtvIds.includes(st.id))
+      .filter(st => !key || externalKtvNameKey(st.full_name).includes(key))
+      .slice(0, MAX_EXTERNAL_SUGGESTIONS);
+  }, [staffs, ktvSearch, state.selectedKtvIds]);
+
+  // Gõ một tên chưa khớp ai → được thêm KTV ngoài mới không (problem = lý do không).
+  const typedName = ktvSearch.trim();
+  const typedMatchesSomeone = typedName ? !!pickKtvByExactInput(typedName.toLowerCase(), availableTurns, staffs) : false;
+  const newExternalProblem = typedName && !typedMatchesSomeone ? externalKtvNameProblem(typedName, staffs) : null;
+  const canAddNewExternal = !!typedName && !typedMatchesSomeone && !newExternalProblem;
 
   const dateFormatted = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const getBadgeBg = (i: number) => ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500'][i % 5];
@@ -1392,14 +1408,14 @@ const ServiceGroupCard = ({
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
             <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t; const n = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId; return (
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
                   {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">Ca {idx + 1}</span>}
                   <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
                 </span>); })}
               <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const m = availableTurns.find(t => t.employee_id.toLowerCase() === term || t.staff?.full_name?.toLowerCase() === term); if (m) addKtv(m.employee_id); else addKtv(ktvSearch.trim()); setKtvSearch(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) { addKtv(picked); setKtvSearch(''); } else if (!externalKtvNameProblem(ktvSearch, staffs)) { addKtv(newExternalKtvToken(ktvSearch)); setKtvSearch(''); } } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
@@ -1410,17 +1426,77 @@ const ServiceGroupCard = ({
             {isKtvDropdownOpen && (
               <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden">
                 <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
-                  {filteredTurns.map(turn => { const hasSkill = targetSkill ? turn.staff?.skills?.[targetSkill] === true : true; const isUsed = allSelectedKtvIds.includes(turn.employee_id) && !state.selectedKtvIds.includes(turn.employee_id); const isTypeAOrB = turn.staff?.work_type === 'TYPE_A' || turn.staff?.work_type === 'TYPE_B'; const displayName = isTypeAOrB ? turn.employee_id : (turn.staff?.full_name || turn.employee_id); return (
+                  {filteredTurns.map(turn => { 
+                    const isUsed = allSelectedKtvIds.includes(turn.employee_id) && !state.selectedKtvIds.includes(turn.employee_id); 
+                    const workType = turn.work_type || turn.staff?.work_type || 'TYPE_A';
+                    const isTypeAOrB = workType === 'TYPE_A' || workType === 'TYPE_B'; 
+                    const isTypeD = workType === 'TYPE_D';
+                    const displayName = (isTypeAOrB || isTypeD) ? turn.employee_id : (turn.staff?.full_name || turn.employee_id); 
+                    return (
                     <div key={turn.employee_id} onClick={() => { addKtv(turn.employee_id); }}
-                      className={`px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] ${!hasSkill ? 'text-gray-400' : 'text-gray-700'}`}>
-                      <div className="flex items-center gap-2"><span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span><span>{displayName}</span>{turn.staff?.work_type && turn.staff.work_type !== 'TYPE_A' && <span className={`px-1 py-0.5 text-[8px] font-black rounded border leading-none ${turn.staff.work_type === 'TYPE_B' ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{turn.staff.work_type === 'TYPE_B' ? 'B' : 'C'}</span>}</div>
+                      className="px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] text-gray-700">
+                      <div className="flex items-center gap-2">
+                        {/* Thứ tự đọc: MÃ trước, rồi mới tới giờ tích luỹ.
+                            Loại A/B/C giữ #thứ-tự-điểm-danh làm tiền tố vì đó là
+                            thứ hạng trong hàng, không phải thuộc tính của người. */}
+                        {!isTypeD && (
+                          <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md font-black text-slate-500">#{turn.check_in_order}</span>
+                        )}
+                        <span>{displayName}</span>
+                        {turn.checked_in_today === false && (
+                          <span className="px-1 py-0.5 text-[8px] font-black rounded border leading-none bg-amber-50 text-amber-700 border-amber-200">{tCheckin.notCheckedInTag}</span>
+                        )}
+                        {workType !== 'TYPE_A' && (
+                          <span className={`px-1 py-0.5 text-[8px] font-black rounded border leading-none ${workType === 'TYPE_B' ? 'bg-purple-100 text-purple-700 border-purple-200' : workType === 'TYPE_D' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                            {workType === 'TYPE_B' ? 'B' : workType === 'TYPE_D' ? 'D' : 'C'}
+                          </span>
+                        )}
+                        {/* ⚠️ PHẢI có ngoặc nhọn. Thiếu thì JSX in ra nguyên chuỗi
+                            "fmtHours(turn.net_hours || 0)" — lỗi này đã lọt vào
+                            commit d2357e7 và sống cho tới 09/09/2026. */}
+                        {isTypeD && (
+                          <span className="text-[10px] bg-purple-100 px-1.5 py-0.5 rounded-md font-black text-purple-700 border border-purple-200" title="Giờ làm trong tháng">
+                            {fmtHours(turn.net_hours || 0)}
+                          </span>
+                        )}
+                        {turn.shift_end_time && (
+                          <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold border border-slate-200" title="Giờ tan làm của KTV">
+                            Tan: {turn.shift_end_time}
+                          </span>
+                        )}
+                      </div>
                       <span className={`text-[10px] font-semibold ${isUsed ? 'text-indigo-500' : turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>{isUsed ? '🔄 Đã gán ở DV khác' : turn.status === 'working' ? `⌛ Đến ${fmtTime(turn.estimated_end_time)}` : turn.status === 'assigned' ? `🔒 Đã xếp lịch${turn.estimated_end_time ? ` • Rảnh ${fmtTime(turn.estimated_end_time)}` : ''}` : '✅ Sẵn sàng'}</span>
-                    </div>); })}
-                  {ktvSearch.trim() && !availableTurns.some(t => t.employee_id.toLowerCase() === ktvSearch.trim().toLowerCase() || t.staff?.full_name?.toLowerCase() === ktvSearch.trim().toLowerCase()) && (
-                    <div onClick={() => { addKtv(ktvSearch.trim()); setKtvSearch(''); }} className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-emerald-50 text-emerald-700 active:scale-[0.98] border border-dashed border-emerald-200 mt-2">
-                      <Plus size={16} className="text-emerald-500" /><span>Nhập tên ngoài: <strong className="text-emerald-800">{ktvSearch.trim()}</strong></span>
-                    </div>)}
-                  {filteredTurns.length === 0 && !ktvSearch.trim() && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
+                    </div>); 
+                  })}
+                  {/* KTV ngoài không tài khoản (mở lại 15/09/2026) — luôn nằm dưới KTV nhà */}
+                  {externalSuggestions.length > 0 && (
+                    <>
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">{tCheckin.externalGroup}</p>
+                      {externalSuggestions.map(st => (
+                        <div key={st.id} onClick={() => { addKtv(st.id); setKtvSearch(''); }}
+                          className="px-3 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-between hover:bg-indigo-50 active:scale-[0.98] text-gray-700">
+                          <div className="flex items-center gap-2">
+                            <span>{st.full_name || st.id}</span>
+                            <span className="px-1 py-0.5 text-[8px] font-black rounded border leading-none bg-gray-100 text-gray-500 border-gray-200">C</span>
+                          </div>
+                          <span className="text-[10px] font-semibold text-gray-400">{tCheckin.externalNoAccount}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {canAddNewExternal && (
+                    <div onClick={() => { addKtv(newExternalKtvToken(typedName)); setKtvSearch(''); }}
+                      className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-emerald-50 text-emerald-700 active:scale-[0.98] border border-dashed border-emerald-200 mt-2">
+                      <span aria-hidden="true">➕</span><span>{tCheckin.addExternal} <strong className="text-emerald-800">{normalizeExternalKtvName(typedName)}</strong></span>
+                    </div>
+                  )}
+                  {newExternalProblem && filteredTurns.length === 0 && (
+                    <p className="px-3 py-3 text-xs font-bold text-amber-600 leading-relaxed">{newExternalProblem}</p>
+                  )}
+                  {typedName && filteredTurns.length === 0 && externalSuggestions.length === 0 && !canAddNewExternal && !newExternalProblem && (
+                    <p className="px-3 py-3 text-xs font-bold text-gray-400 leading-relaxed">{tCheckin.pickerMissHint}</p>
+                  )}
+                  {filteredTurns.length === 0 && externalSuggestions.length === 0 && !typedName && <p className="text-center text-xs text-gray-400 py-4 font-bold">Không tìm thấy KTV phù hợp</p>}
                 </div>
               </div>)}
           </div>
@@ -1432,8 +1508,7 @@ const ServiceGroupCard = ({
             <div className="space-y-2">
               {state.selectedKtvIds.map((ktvId, idx) => {
                 const t = availableTurns.find(t => t.employee_id === ktvId);
-                const isExternal = ktvId.startsWith('EXT') || ktvId.startsWith('C_') || !t;
-                const name = isExternal ? (state.ktvDisplayNames?.[ktvId] || ktvId) : ktvId;
+                const name = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]);
                 const selRoom = (state.selectedRoomIds || [])[idx] || '';
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';
@@ -1633,7 +1708,8 @@ const ServiceGroupCard = ({
       const ticketDur = (state.ktvDurations || [])[idx] || duration;
       const ticketNote = (state.ktvNotes || [])[idx] || '';
       const ktvTurn = availableTurns.find(t => t.employee_id === ktvId);
-      const ktvNameDisplay = ktvTurn?.staff?.full_name || ktvId;
+      // KTV ngoài vừa thêm (NEW_EXT:<TÊN>) chưa có trong sổ tua lẫn danh sách → ktvDisplayLabel trả tên đã gõ.
+      const ktvNameDisplay = ktvTurn?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || ktvDisplayLabel(null, ktvId);
       return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setShowTicketForIdx(null)}>
           <motion.div
@@ -1747,7 +1823,7 @@ const ServiceGroupCard = ({
             
             {/* Footer */}
             <div className="text-center py-4 border-t border-gray-200 mt-2">
-                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Spa Ngân Hà</p>
+                <p className="text-xs text-gray-400 font-semibold italic">Hệ thống Oria Spa</p>
             </div>
           </motion.div>
         </div>

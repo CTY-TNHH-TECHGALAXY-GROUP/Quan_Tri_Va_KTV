@@ -27,3 +27,15 @@ export function ktvMatchesSeg(
         .map(s => s.trim())
         .some(s => s.toLowerCase() === ktvCode.trim().toLowerCase());
 }
+
+export function ktvAssignedToItem(
+    item: { technicianCodes?: unknown; segments?: unknown },
+    ktvCode: string
+): boolean {
+    if (Array.isArray(item.technicianCodes) &&
+        item.technicianCodes.some(code => typeof code === 'string' && ktvMatchesSeg(code, ktvCode))) return true;
+    let segments = item.segments;
+    try { if (typeof segments === 'string') segments = JSON.parse(segments); } catch { return false; }
+    return Array.isArray(segments) && segments.some(seg =>
+        typeof seg?.ktvId === 'string' && ktvMatchesSeg(seg.ktvId, ktvCode));
+}

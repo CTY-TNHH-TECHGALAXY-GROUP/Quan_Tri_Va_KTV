@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
+import { notifyOnCallChange } from '@/lib/ktv-on-call-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,7 +101,8 @@ export async function POST(req: NextRequest) {
       const { data: config } = await supabase
           .from('SystemConfigs')
           .select('value')
-          .eq('key', 'block_checkout_incomplete_tasks_TYPE_B')
+          // Loại C đọc cấu hình chặn của chính nó; loại khác giữ key TYPE_B như trước.
+          .eq('key', data?.work_type === 'TYPE_C' ? 'block_checkout_incomplete_tasks_TYPE_C' : 'block_checkout_incomplete_tasks_TYPE_B')
           .maybeSingle();
 
       if (config?.value) {
@@ -134,7 +136,9 @@ export async function POST(req: NextRequest) {
       const updatePayload: any = { feature_flags: newFlags };
 
       await supabase.from('Staff').update(updatePayload).eq('id', techCode);
-      
+
+      await notifyOnCallChange(supabase, { staffId: techCode, isOnCall: false });
+
       return NextResponse.json({ success: true, data: newFlags });
     }
 
@@ -170,6 +174,14 @@ export async function POST(req: NextRequest) {
     const updatePayload: any = { feature_flags: newFlags };
     
     await supabase.from('Staff').update(updatePayload).eq('id', techCode);
+
+    await notifyOnCallChange(supabase, {
+      staffId: techCode,
+      isOnCall: true,
+      travelMinutes: travel_time_mins || 30,
+      availableFrom: availableFromStr,
+      availableUntil: availableUntilStr,
+    });
 
     return NextResponse.json({ success: true, data: newFlags });
 

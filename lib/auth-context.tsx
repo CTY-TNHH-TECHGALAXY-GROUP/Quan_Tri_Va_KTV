@@ -11,6 +11,7 @@ import { API } from '@/lib/api-endpoints';
 interface AuthContextType {
   user: User | null;
   role: Role | null;
+  lockedInfo: any;
   /** Lý do lần đăng nhập gần nhất thất bại — để trang login nói đúng chuyện. */
   getLoginError: () => string | null;
   login: (userId: string, password?: string) => Promise<boolean>;
@@ -22,13 +23,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Bao lâu hỏi lại server một lần xem session còn hiệu lực. */
+const SESSION_CHECK_INTERVAL_MS = 60_000;
+
+/** Dọn sạch session ở CẢ HAI kho — sót một chỗ là lần load sau tự khôi phục lại. */
+function clearAuthStorage() {
+  sessionStorage.removeItem('spa_auth_user');
+  sessionStorage.removeItem('spa_auth_role');
+  localStorage.removeItem('spa_auth_user');
+  localStorage.removeItem('spa_auth_role');
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  /**
+   * GLOBAL lock state, fed by the session-check poll below.
+   *   undefined         → not checked yet (AppLayout keeps whatever it has)
+   *   null              → server says NOT locked (AppLayout clears the screen)
+   *   { kind: 'MANUAL' | 'DISCIPLINE' } → locked
+   * Before this, lock state lived per page in AppLayout and was lost on every
+   * navigation / app reopen.
+   */
+  const [lockedInfo, setLockedInfo] = useState<any>(undefined);
   // Dùng ref chứ không dùng state: trang login đọc ngay sau `await login()`,
   // mà state lúc đó chưa kịp về tới closure của hàm xử lý submit.
   const loginErrorRef = useRef<string | null>(null);
   const getLoginError = useCallback(() => loginErrorRef.current, []);
+  /** Mốc cấp session hiện tại — mọi đường ép đăng xuất đều so với mốc này. */
+  const sessionIssuedAt = user?.sessionIssuedAt;
 
   useEffect(() => {
     // 🔄 Restore session: sessionStorage (per-tab, ưu tiên) → localStorage (backup khi app bị kill)
@@ -49,10 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!tabRole) sessionStorage.setItem('spa_auth_role', savedRole);
       } catch (e) {
         console.error('Failed to parse saved auth session', e);
-        sessionStorage.removeItem('spa_auth_user');
-        sessionStorage.removeItem('spa_auth_role');
-        localStorage.removeItem('spa_auth_user');
-        localStorage.removeItem('spa_auth_role');
+        clearAuthStorage();
       }
     }
   }, []);
@@ -75,9 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn('⚠️ Tài khoản bị vô hiệu hóa bởi Admin. Đang ép đăng xuất...');
             isLoggedOut = true;
             // Dọn dẹp storage ngay lập tức để tránh reload loop
-            sessionStorage.removeItem('spa_auth_user');
-            localStorage.removeItem('spa_auth_user');
-            window.location.href = '/login';
+            clearAuthStorage();
+            window.location.href = '/login?error=account_locked';
+          }
+          // Admin vừa đổi cờ tính năng của đúng người này -> ra ngay, không
+          // phải đợi tới lượt hỏi định kỳ.
+          const issuedAt = sessionIssuedAt;
+          if (issuedAt && payload.new.session_epoch && !isLoggedOut) {
+            const epochMs = Date.parse(String(payload.new.session_epoch));
+            if (!Number.isNaN(epochMs) && epochMs > Date.parse(issuedAt)) {
+              isLoggedOut = true;
+              clearAuthStorage();
+              window.location.href = '/login?error=config_changed';
+              return;
+            }
+          }
+          if (payload.new.status === 'KHÓA_TÀI_KHOẢN') {
+            // Sẽ handle bằng cách trigger reload hoặc context state, hiện tại chỉ trigger event
+            window.dispatchEvent(new CustomEvent('account_locked', { detail: { isLocked: true } }));
+          } else if (payload.old.status === 'KHÓA_TÀI_KHOẢN' && payload.new.status !== 'KHÓA_TÀI_KHOẢN') {
+            window.dispatchEvent(new CustomEvent('account_locked', { detail: { isLocked: false } }));
           }
         }
       )
@@ -93,9 +130,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (payload.new.password && payload.new.password !== user.password && !isLoggedOut) {
             console.warn('⚠️ Mật khẩu đã bị thay đổi ở nơi khác. Đang ép đăng xuất...');
             isLoggedOut = true;
-            sessionStorage.removeItem('spa_auth_user');
-            localStorage.removeItem('spa_auth_user');
+            clearAuthStorage();
             window.location.href = '/login';
+          }
+        }
+      )
+      .subscribe();
+
+    // 3. Mốc theo LOẠI KTV / TOÀN HỆ THỐNG (admin đổi công tắc chung)
+    const configSub = supabase
+      .channel('public:SystemConfigs:auth_session_epoch')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'SystemConfigs', filter: 'key=eq.auth_session_epoch' },
+        (payload: any) => {
+          const issuedAt = sessionIssuedAt;
+          if (!issuedAt || isLoggedOut) return;
+
+          let epochs = payload.new?.value;
+          if (typeof epochs === 'string') {
+            try { epochs = JSON.parse(epochs); } catch { return; }
+          }
+          if (!epochs) return;
+
+          const issuedMs = Date.parse(issuedAt);
+          const mine = [epochs['ALL'], epochs[user.work_type || 'TYPE_A']];
+          const hit = mine.some(at => at && Date.parse(String(at)) > issuedMs);
+          if (hit) {
+            isLoggedOut = true;
+            clearAuthStorage();
+            window.location.href = '/login?error=config_changed';
           }
         }
       )
@@ -104,8 +168,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(staffSub);
       supabase.removeChannel(usersSub);
+      supabase.removeChannel(configSub);
     };
-  }, [user?.id, user?.password]);
+  }, [user?.id, user?.password, user?.work_type, sessionIssuedAt]);
+
+  // 🔄 Cấu hình đổi → ép đăng nhập lại.
+  //
+  // Máy nào không bao giờ đăng xuất (app chạy nền cả tuần) vẫn giữ role và cờ
+  // tính năng cũ trong storage, nên admin tắt tính năng xong họ vẫn thấy menu
+  // cũ. Hỏi server định kỳ + mỗi lần quay lại tab để bắt được thay đổi.
+  useEffect(() => {
+    if (!user?.id) return;
+    // Sessions issued before the epoch feature have no issuedAt. They still
+    // get polled — for the LOCK state — but the server never tells them to
+    // log out (SessionEpochService.check returns mustLogout:false without a
+    // timestamp), so nobody is kicked out unfairly right after a deploy.
+    const issuedAt = sessionIssuedAt || '';
+
+    let stopped = false;
+
+    const check = async () => {
+      if (stopped || document.visibilityState === 'hidden') return;
+      try {
+        const res = await fetch(API.AUTH.SESSION_CHECK(user.id, issuedAt), { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!stopped && typeof json?.locked === 'boolean') {
+          const nextKind: string | null = json.locked ? (json.lockKind || 'DISCIPLINE') : null;
+          // Only swap the object when the kind actually changes, so a 60s poll
+          // does not re-render every page for nothing.
+          setLockedInfo((prev: any) => {
+            const prevKind = prev === undefined ? undefined : (prev?.kind ?? null);
+            if (prevKind === nextKind) return prev;
+            return nextKind ? { kind: nextKind } : null;
+          });
+        }
+        if (json?.mustLogout && !stopped) {
+          stopped = true;
+          console.warn('⚠️ Cấu hình tài khoản đã thay đổi. Đang ép đăng nhập lại...');
+          clearAuthStorage();
+          window.location.href = '/login?error=config_changed';
+        }
+      } catch {
+        // Mất mạng thì thôi, lần sau hỏi lại — không tự ý đá người dùng ra.
+      }
+    };
+
+    check();
+    const timer = setInterval(check, SESSION_CHECK_INTERVAL_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    // An API just answered ACCOUNT_LOCKED (or Realtime saw the status flip):
+    // re-ask right away so the global state gets the lock KIND, not a guess.
+    window.addEventListener('account_locked', check);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+      window.removeEventListener('account_locked', check);
+      setLockedInfo(undefined);
+    };
+  }, [user?.id, sessionIssuedAt]);
+
+  // 🔑 JWT hết hạn (API trả 401) → dọn session và ép đăng nhập lại.
+  // Không có bước này thì user đã login trên UI nhưng mọi API đều 401, màn hình trắng im lặng.
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearAuthStorage();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login?error=session_expired';
+      }
+    };
+
+    window.addEventListener('session_expired', handleSessionExpired);
+    return () => window.removeEventListener('session_expired', handleSessionExpired);
+  }, []);
 
   const login = async (userId: string, password?: string) => {
     try {
@@ -115,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Bị khoá thì báo đúng lý do, đừng để trang login đổ tại sai mật khẩu.
       loginErrorRef.current = (
         !response.success && (response as any).error === 'ACCOUNT_LOCKED'
-          ? ((response as any).message || 'Tài khoản của bạn đang bị khoá kỷ luật.')
+          ? ((response as any).message || 'Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.')
           : null
       );
 
@@ -141,7 +281,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: dbUser.fullName || dbUser.username,
           roleId: roleId,
           avatarUrl: dbUser.staffAvatarUrl || fallbackAvatar,
-          featureFlags: dbUser.featureFlags || {}
+          featureFlags: dbUser.featureFlags || {},
+          work_type: dbUser.work_type,
+          // Mốc cấp session. Admin đổi cấu hình sau mốc này thì session hết
+          // hiệu lực -> ép đăng nhập lại để nhận cờ/quyền mới.
+          sessionIssuedAt: new Date().toISOString()
         };
 
         setUser(finalUser);
@@ -160,9 +304,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (roleId === 'admin' || roleId === 'dev') {
             permissions = MODULES.map(m => m.id);
           } else if (roleId === 'reception') {
-            permissions = ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings'];
+            permissions = ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings', 'ktv_office_scoring', 'ktv_office_hours'];
           } else if (roleId === 'ktv') {
-            permissions = ['ktv_dashboard', 'ktv_attendance', 'ktv_schedule', 'ktv_performance', 'ktv_history', 'service_handbook', 'settings'];
+            // Phải khớp mẫu vai trò 'ktv' trong app/admin/roles/Roles.logic.ts.
+            // ⚠️ Trước đây danh sách này THIẾU `ktv_wallet`, lệch với mẫu đó —
+            // tài khoản rơi vào nhánh mặc định sẽ không có mục Ví nào.
+            permissions = ['ktv_dashboard', 'ktv_wallet', 'ktv_attendance', 'ktv_schedule', 'ktv_performance', 'ktv_history', 'ktv_hours_ranking', 'service_handbook', 'settings'];
           }
         }
 
@@ -212,10 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser(null);
     setRole(null);
-    sessionStorage.removeItem('spa_auth_user');
-    sessionStorage.removeItem('spa_auth_role');
-    localStorage.removeItem('spa_auth_user');
-    localStorage.removeItem('spa_auth_role');
+    clearAuthStorage();
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
@@ -244,6 +388,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((moduleId: ModuleId) => {
     if (!role) return false;
+    
+    // Auto-grant quyền mới cho admin, dev, và lễ tân (tránh lỗi cache session cũ)
+    if (moduleId === 'ktv_office_scoring' || moduleId === 'ktv_office_hours') {
+      if (role.id === 'admin' || role.id === 'dev' || role.id === 'reception') return true;
+    }
+
+    // Bảng xếp hạng giờ chỉ có nghĩa với KTV Loại D — sổ giờ chỉ ghi cho nhóm này,
+    // nhóm khác chia tua theo SỐ TUA nên mở ra sẽ toàn 0h. Quyết theo work_type ở
+    // đây để KTV Loại D thấy ngay, admin không phải vào Phân quyền cấp lại từng vai trò.
+    if (moduleId === 'ktv_hours_ranking') {
+      return user?.work_type === 'TYPE_D';
+    }
+
     // HIỂN THỊ "BÀN GIAO CÔNG VIỆC" NẾU ĐƯỢC BẬT TRONG TÍNH NĂNG NHÂN VIÊN
     if (moduleId === 'employee_tasks') {
       if (role.id === 'admin' || role.id === 'dev') return true;
@@ -253,7 +410,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [role, user?.featureFlags]);
 
   return (
-    <AuthContext.Provider value={{ user, role, getLoginError, login, logout, changePassword, updateProfile, hasPermission }}>
+    <AuthContext.Provider value={{ user, role, lockedInfo, getLoginError, login, logout, changePassword, updateProfile, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { matchesCustomerSearch } from '@/lib/customer-search';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
 import { ShieldAlert, Search, Filter, Plus, User, Phone, Calendar, Star, MoreHorizontal, Edit2, Check, X, Tag, Building2, MapPin, Mail, FileText, Receipt, Download } from 'lucide-react';
@@ -44,6 +45,10 @@ export default function CRMPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const detailRequest = React.useRef(0);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
 
@@ -159,18 +164,49 @@ export default function CRMPage() {
 
   React.useEffect(() => {
     setMounted(true);
-    const fetchCustomers = async () => {
-      try {
-        const data = await apiClient.get<any>(API.CUSTOMERS);
-        setCustomers(data.data || []);
-      } catch (err: any) {
-        console.error('Failed to fetch customers:', err.message || err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchCustomers();
+    const refresh = () => setReloadKey(key => key + 1);
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   }, []);
+
+  React.useEffect(() => {
+    let active = true;
+    setIsLoading(true);
+    setLoadError('');
+    setCurrentPage(1);
+    const timer = setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({ q: searchTerm.trim() });
+        // ponytail: full CRM scan needs 60s; replace with DB pagination/aggregation when this grows.
+        const data = await apiClient.get<any>(`${API.CUSTOMERS}?${query}`, { timeout: 60000 });
+        if (!data.success) throw new Error(data.error || 'Không tải được khách hàng');
+        if (active) setCustomers(data.data || []);
+      } catch (err: any) {
+        if (active) setLoadError(err.message || 'Không tải được khách hàng');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }, searchTerm.trim() ? 300 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [searchTerm, reloadKey]);
+
+  const viewCustomer = async (customer: Customer) => {
+    const requestId = ++detailRequest.current;
+    setDetailLoading(true);
+    setLoadError('');
+    try {
+      const params = new URLSearchParams({ id: customer.id });
+      const result = await apiClient.get<any>(`${API.CUSTOMERS}?${params}`);
+      if (!result.success || !result.data?.[0]) throw new Error(result.error || 'Không tìm thấy hồ sơ khách');
+      if (requestId !== detailRequest.current) return;
+      setCustomers(prev => prev.map(c => c.id === customer.id ? result.data[0] : c));
+      setSelectedCustomer(result.data[0]);
+    } catch (err: any) {
+      if (requestId === detailRequest.current) setLoadError(err.message || 'Không tải được lịch sử');
+    } finally {
+      if (requestId === detailRequest.current) setDetailLoading(false);
+    }
+  };
 
   if (!mounted) return null;
 
@@ -187,12 +223,7 @@ export default function CRMPage() {
 
   const filteredCustomers = customers.filter(c => {
     // 1. Search filter
-    const matchesSearch = 
-      (c.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (c.phone || '').includes(searchTerm) ||
-      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.taxCode || '').includes(searchTerm) ||
-      (c.companyName || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = matchesCustomerSearch(c, searchTerm);
     
     if (!matchesSearch) return false;
 
@@ -243,6 +274,12 @@ export default function CRMPage() {
     return true;
   });
 
+  const clearFilters = () => {
+    setFilterVip('all'); setFilterVipMenu('all'); setFilterVisit('all');
+    setFilterGuestType('all'); setFilterNationality('all'); setFilterDate('all');
+    setCurrentPage(1);
+  };
+
   const sortedCustomers = [...filteredCustomers].sort((a, b) => {
     if (sortByDate === 'newest') {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
@@ -276,6 +313,9 @@ export default function CRMPage() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-sm text-gray-500">Lưu trữ thông tin, lịch sử dịch vụ và phân hạng thành viên.</p>
+          <button type="button" onClick={() => setReloadKey(key => key + 1)} className="text-sm text-indigo-600 underline">Tải lại khách hàng</button>
+          {detailLoading && <p role="status" className="text-sm text-gray-500">Đang tải lịch sử mới nhất...</p>}
+          {loadError && <p role="alert" className="text-sm text-red-600">Không tải được dữ liệu: {loadError}. Vui lòng tải lại.</p>}
           <div className="flex items-center gap-2">
             {/* Tách Khách Ảo Button */}
             <button
@@ -477,17 +517,20 @@ export default function CRMPage() {
                     key={customer.id} 
                     customer={customer} 
                     formatVND={formatVND} 
-                    onViewDetail={setSelectedCustomer} 
+                    onViewDetail={viewCustomer}
                     onUpdate={(updated) => {
                       setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
                     }}
                     onPreviewAvatar={setPreviewAvatar}
                   />
                 ))}
-                {!isLoading && filteredCustomers.length === 0 && (
+                {!isLoading && !loadError && filteredCustomers.length === 0 && (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-gray-500">
-                      Không tìm thấy khách hàng nào phù hợp.
+                      {customers.length > 0 ? <>
+                        Có khách khớp từ khóa nhưng bị bộ lọc ẩn.{' '}
+                        <button type="button" className="text-indigo-600 underline" onClick={clearFilters}>Bỏ bộ lọc</button>
+                      </> : 'Không tìm thấy khách hàng nào phù hợp.'}
                     </td>
                   </tr>
                 )}

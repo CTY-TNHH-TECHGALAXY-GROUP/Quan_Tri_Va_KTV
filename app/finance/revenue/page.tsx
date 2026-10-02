@@ -5,9 +5,9 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
 import {
     ShieldAlert, TrendingUp, TrendingDown, DollarSign, Users, Calendar,
-    Star, Activity, ChevronRight, Loader2, BarChart3, Award, Coins, Globe, X, Phone, Mail,
+    Star, Activity, ChevronRight, ChevronLeft, Loader2, BarChart3, Award, Coins, Globe, X, Phone, Mail,
     Package, Receipt, Calculator, PieChart as PieChartIcon, Clock, Crown, Download, BedDouble, Gauge, HelpCircle,
-    XCircle, Ban, UserCheck, FileSpreadsheet, Check, Table2, DoorOpen, Target
+    XCircle, Ban, UserCheck, FileSpreadsheet, Check, Table2, DoorOpen, Target, ArrowUpDown, Info
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,15 +28,99 @@ const DATE_PRESETS = [
     { key: 'yesterday', label: 'Hôm qua' },
     { key: 'week', label: 'Tuần này' },
     { key: 'month', label: 'Tháng này' },
+    { key: 'quarter', label: 'Quý này' },
     { key: 'year', label: 'Năm này' },
-    { key: 'custom', label: 'Tuỳ chọn' },
+    { key: 'custom', label: 'Tùy chọn' },
 ] as const;
+
+// 24 tháng gần nhất cho dropdown chọn nhanh
+const RECENT_MONTH_OPTIONS = (() => {
+    const options: { value: string; label: string; month: number; year: number }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const m = d.getMonth() + 1;
+        const y = d.getFullYear();
+        const value = `${y}-${String(m).padStart(2, '0')}`;
+        const label = `Tháng ${String(m).padStart(2, '0')}/${y}`;
+        options.push({ value, label, month: m, year: y });
+    }
+    return options;
+})();
+
+const formatPeriodDisplay = (fromStr: string, toStr: string, preset: string) => {
+    if (!fromStr || !toStr) return { title: 'Đang tải...', subtitle: '' };
+
+    const formatDateVn = (s: string) => {
+        const parts = s.split('-');
+        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : s;
+    };
+
+    if (fromStr === toStr) {
+        const d = new Date(fromStr + 'T00:00:00');
+        const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+        const dayName = isNaN(d.getTime()) ? '' : days[d.getDay()];
+        const formatted = formatDateVn(fromStr);
+        return {
+            title: `${dayName}, ${formatted}`,
+            subtitle: preset === 'today' ? 'Hôm nay' : preset === 'yesterday' ? 'Hôm qua' : '1 ngày',
+        };
+    }
+
+    const fromDate = new Date(fromStr + 'T00:00:00');
+    const toDate = new Date(toStr + 'T00:00:00');
+    const diffDays = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    // Kiểm tra trọn tháng
+    const isStartOfMonth = fromDate.getDate() === 1;
+    const isEndOfMonth = toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate();
+    if (isStartOfMonth && isEndOfMonth && fromDate.getMonth() === toDate.getMonth() && fromDate.getFullYear() === toDate.getFullYear()) {
+        const m = fromDate.getMonth() + 1;
+        const y = fromDate.getFullYear();
+        return {
+            title: `Tháng ${String(m).padStart(2, '0')}/${y}`,
+            subtitle: `${formatDateVn(fromStr)} – ${formatDateVn(toStr)} · ${diffDays} ngày`,
+        };
+    }
+
+    // Kiểm tra trọn năm
+    if (fromStr.endsWith('-01-01') && toStr.endsWith('-12-31') && fromStr.slice(0, 4) === toStr.slice(0, 4)) {
+        return {
+            title: `Năm ${fromStr.slice(0, 4)}`,
+            subtitle: `${formatDateVn(fromStr)} – ${formatDateVn(toStr)} · ${diffDays} ngày`,
+        };
+    }
+
+    // Kiểm tra quý
+    const qMonths = Math.round(diffDays / 30);
+    if (isStartOfMonth && isEndOfMonth && qMonths === 3) {
+        const q = Math.floor(fromDate.getMonth() / 3) + 1;
+        return {
+            title: `Quý ${q}/${fromDate.getFullYear()}`,
+            subtitle: `${formatDateVn(fromStr)} – ${formatDateVn(toStr)} · ${diffDays} ngày`,
+        };
+    }
+
+    return {
+        title: `${formatDateVn(fromStr)} – ${formatDateVn(toStr)}`,
+        subtitle: `${diffDays} ngày`,
+    };
+};
 
 const GROUP_BY_OPTIONS: { key: GroupBy; label: string }[] = [
     { key: 'hour', label: 'Giờ' },
     { key: 'day', label: 'Ngày' },
     { key: 'week', label: 'Tuần' },
     { key: 'month', label: 'Tháng' },
+];
+
+type ChartSortOrder = 'time_asc' | 'time_desc' | 'revenue_desc' | 'revenue_asc';
+
+const CHART_SORT_OPTIONS: { key: ChartSortOrder; label: string }[] = [
+    { key: 'time_asc', label: 'Thời gian: Cũ → Mới' },
+    { key: 'time_desc', label: 'Thời gian: Mới → Cũ' },
+    { key: 'revenue_desc', label: 'Doanh thu: Cao → Thấp' },
+    { key: 'revenue_asc', label: 'Doanh thu: Thấp → Cao' },
 ];
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i}:00` }));
@@ -160,15 +244,41 @@ const KPICard = ({ title, value, subtitle, change, icon, color, href, onClick, h
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
+    const data = payload[0]?.payload;
+    const isDrilldown = Boolean(data?.rawDate);
+    const avgPerOrder = data?.orders && data?.revenue ? Math.round(data.revenue / data.orders) : 0;
+
     return (
-        <div className="bg-white shadow-xl rounded-xl border border-gray-100 px-4 py-3 text-sm">
-            <p className="font-bold text-gray-700 mb-1">{label}</p>
-            {payload.map((p: any, i: number) => (
-                <p key={i} className="text-gray-500">
-                    <span className="font-bold" style={{ color: p.color }}>{p.name}: </span>
-                    {typeof p.value === 'number' ? p.value.toLocaleString('vi-VN') : p.value}
+        <div className="bg-white shadow-2xl rounded-2xl border border-gray-100 p-3.5 text-xs min-w-[210px] z-50">
+            <div className="border-b border-gray-100 pb-2 mb-2">
+                <p className="font-black text-gray-900 text-sm">
+                    {data?.dayOfWeek ? `${data.dayOfWeek}, ` : ''}{data?.fullDate || label}
                 </p>
-            ))}
+                {data?.orders !== undefined && (
+                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">
+                        {data.orders} đơn hàng hoàn thành
+                    </p>
+                )}
+            </div>
+            <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-gray-500 font-medium">Doanh thu:</span>
+                    <span className="font-black text-indigo-600 text-sm">
+                        {data?.revenue !== undefined ? `${data.revenue.toLocaleString('vi-VN')} đ` : `${payload[0]?.value}K`}
+                    </span>
+                </div>
+                {avgPerOrder > 0 && (
+                    <div className="flex items-center justify-between text-gray-500">
+                        <span>TB / đơn:</span>
+                        <span className="font-bold text-gray-700">{avgPerOrder.toLocaleString('vi-VN')} đ</span>
+                    </div>
+                )}
+            </div>
+            {isDrilldown && (
+                <div className="mt-2.5 pt-2 border-t border-dashed border-gray-100 flex items-center gap-1 text-[10px] text-indigo-600 font-bold bg-indigo-50/60 px-2 py-1 rounded-md">
+                    <span>💡 Bấm cột để xem chi tiết ngày này</span>
+                </div>
+            )}
         </div>
     );
 };
@@ -180,6 +290,7 @@ export default function RevenueReportsPage() {
     const report = useRevenueReport();
     const [activeTab, setActiveTab] = React.useState<'overview' | 'services' | 'customers' | 'time' | 'raw_data' | 'rooms' | 'ktv_ranking'>('overview');
     
+    const [chartSortOrder, setChartSortOrder] = React.useState<ChartSortOrder>('time_asc');
     const [showNewCustomers, setShowNewCustomers] = React.useState(false);
     const [showAllKTV, setShowAllKTV] = React.useState(false);
     const [showAllServices, setShowAllServices] = React.useState(false);
@@ -211,39 +322,80 @@ export default function RevenueReportsPage() {
         return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d;
     };
 
-    // Get chart data based on groupBy
+    const formatDayOfWeek = (dateStr: string) => {
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '';
+            const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+            return days[d.getDay()];
+        } catch {
+            return '';
+        }
+    };
+
+    // Get chart data based on groupBy and sort order
     const getRevenueChartData = () => {
+        let items: any[] = [];
         switch (report.groupBy) {
             case 'hour':
-                return report.data.hourlyRevenue.map(h => ({
+                items = report.data.hourlyRevenue.map((h, i) => ({
                     label: h.label,
+                    fullDate: h.label,
                     revenue: h.revenue,
                     revenueK: Math.round(h.revenue / 1000),
                     orders: h.orders,
+                    sortKey: i,
                 }));
+                break;
             case 'week':
-                return report.data.weeklyRevenue.map(w => ({
+                items = report.data.weeklyRevenue.map(w => ({
                     label: formatDate(w.week),
+                    fullDate: `Tuần từ ${w.week}`,
                     revenue: w.revenue,
                     revenueK: Math.round(w.revenue / 1000),
                     orders: w.orders,
+                    sortKey: w.week,
                 }));
+                break;
             case 'month':
-                return report.data.monthlyRevenue.map(m => ({
-                    label: m.month.substring(5), // MM from YYYY-MM
+                items = report.data.monthlyRevenue.map(m => ({
+                    label: `T${m.month.substring(5)}`,
+                    fullDate: `Tháng ${m.month}`,
                     revenue: m.revenue,
                     revenueK: Math.round(m.revenue / 1000),
                     orders: m.orders,
+                    sortKey: m.month,
                 }));
+                break;
             default: // day
-                return report.data.dailyRevenue.map(d => ({
+                items = report.data.dailyRevenue.map(d => ({
                     label: formatDate(d.date),
+                    fullDate: d.date,
+                    dayOfWeek: formatDayOfWeek(d.date),
                     revenue: d.revenue,
                     revenueK: Math.round(d.revenue / 1000),
                     orders: d.orders,
                     rawDate: d.date,
+                    sortKey: d.date,
                 }));
+                break;
         }
+
+        return [...items].sort((a, b) => {
+            if (chartSortOrder === 'time_asc') {
+                return a.sortKey > b.sortKey ? 1 : a.sortKey < b.sortKey ? -1 : 0;
+            }
+            if (chartSortOrder === 'time_desc') {
+                return a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0;
+            }
+            if (chartSortOrder === 'revenue_desc') {
+                return (b.revenue || 0) - (a.revenue || 0);
+            }
+            if (chartSortOrder === 'revenue_asc') {
+                return (a.revenue || 0) - (b.revenue || 0);
+            }
+            return 0;
+        });
     };
 
     const revenueChartData = getRevenueChartData();
@@ -256,53 +408,42 @@ export default function RevenueReportsPage() {
 
     const displayedKTV = showAllKTV ? report.data.topKTV : report.data.topKTV.slice(0, KTV_DISPLAY_LIMIT);
 
-    // Helpers cho Dropdown Tháng / Năm
-    const handleMonthSelect = (val: string) => {
-        if (val === 'month') report.setDatePreset('month');
-        else if (val) {
-            const year = new Date().getFullYear();
-            const month = parseInt(val) - 1;
-            const end = new Date(year, month + 1, 0);
-            const fromStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-            const toStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
-            report.applyCustomDate(fromStr, toStr);
+    const handlePresetSelect = (presetKey: any) => {
+        report.setDatePreset(presetKey);
+        if (presetKey === 'today' || presetKey === 'yesterday') {
+            report.applyGroupBy('hour');
+        } else if (presetKey === 'week' || presetKey === 'month') {
+            report.applyGroupBy('day');
+        } else if (presetKey === 'quarter' || presetKey === 'year') {
+            report.applyGroupBy('month');
         }
     };
 
-    const handleYearSelect = (val: string) => {
-        if (val === 'year') report.setDatePreset('year');
-        else if (val) {
-            const year = parseInt(val);
-            report.applyCustomDate(`${year}-01-01`, `${year}-12-31`);
-        }
+    const handleMonthYearSelect = (val: string) => {
+        if (!val) return;
+        const [yStr, mStr] = val.split('-');
+        const year = parseInt(yStr, 10);
+        const month = parseInt(mStr, 10);
+        report.applyMonthYear(month, year);
     };
 
-    const getSelectedMonth = () => {
-        if (report.datePreset === 'month') return 'month';
-        if (report.datePreset === 'custom' && report.dateFrom && report.dateTo) {
-            const from = new Date(report.dateFrom);
-            const to = new Date(report.dateTo);
-            const isFullMonth = from.getDate() === 1 && 
-                                to.getDate() === new Date(to.getFullYear(), to.getMonth() + 1, 0).getDate() &&
-                                from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
-            if (isFullMonth) return (from.getMonth() + 1).toString();
-        }
-        return '';
-    };
-
-    const getSelectedYear = () => {
-        if (report.datePreset === 'year') return 'year';
-        if (report.datePreset === 'custom' && report.dateFrom && report.dateTo) {
-            if (report.dateFrom.endsWith('-01-01') && report.dateTo.endsWith('-12-31')) {
-                const yearFrom = report.dateFrom.substring(0, 4);
-                if (yearFrom === report.dateTo.substring(0, 4)) return yearFrom;
-            }
+    const getActiveMonthYear = () => {
+        if (!report.dateFrom || !report.dateTo) return '';
+        const from = new Date(report.dateFrom + 'T00:00:00');
+        const to = new Date(report.dateTo + 'T00:00:00');
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) return '';
+        const isStart = from.getDate() === 1;
+        const isEnd = to.getDate() === new Date(to.getFullYear(), to.getMonth() + 1, 0).getDate();
+        if (isStart && isEnd && from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear()) {
+            const m = from.getMonth() + 1;
+            const y = from.getFullYear();
+            return `${y}-${String(m).padStart(2, '0')}`;
         }
         return '';
     };
 
-    const activeMonth = getSelectedMonth();
-    const activeYear = getSelectedYear();
+    const activeMonthYear = getActiveMonthYear();
+    const periodInfo = formatPeriodDisplay(report.dateFrom, report.dateTo, report.datePreset);
 
     return (
         <AppLayout title="Báo Cáo">
@@ -315,104 +456,146 @@ export default function RevenueReportsPage() {
                     </div>
                 </div>
 
-                {/* ─── Date Picker ────────────────────────────────────── */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 space-y-2.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                        <Calendar size={14} className="text-gray-400 shrink-0" />
-                        {[
-                            { key: 'today', label: 'Hôm nay' },
-                            { key: 'yesterday', label: 'Hôm qua' },
-                            { key: 'week', label: 'Tuần này' },
-                            { key: 'custom', label: 'Tùy chọn' },
-                        ].map(b => (
-                            <button
-                                key={b.key}
-                                onClick={() => report.setDatePreset(b.key as any)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                                    report.datePreset === b.key
-                                        ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
-                                }`}
-                            >
-                                {b.label}
-                            </button>
-                        ))}
-                        
-                        <select
-                            value={activeMonth}
-                            onChange={(e) => handleMonthSelect(e.target.value)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
-                                activeMonth
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                        >
-                            <option value="" disabled hidden>Chọn tháng...</option>
-                            <option value="month">Tháng này</option>
-                            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                                <option key={m} value={m}>Tháng {m}</option>
-                            ))}
-                        </select>
+                {/* ─── 2-Tier Revenue Filter Bar (Executive Time Controller) ─── */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 space-y-3">
+                    {/* TẦNG 1: Quick Preset Chips + Actions */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                        {/* Preset Chips (Scrollable on mobile) */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide flex-1">
+                            <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100 shrink-0">
+                                {DATE_PRESETS.map(b => (
+                                    <button
+                                        key={b.key}
+                                        onClick={() => handlePresetSelect(b.key)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                                            report.datePreset === b.key
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 active:bg-gray-200'
+                                        }`}
+                                    >
+                                        {b.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
-                        <select
-                            value={activeYear}
-                            onChange={(e) => handleYearSelect(e.target.value)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer focus:outline-none ${
-                                activeYear
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                            style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                        >
-                            <option value="" disabled hidden>Chọn năm...</option>
-                            <option value="year">Năm nay</option>
-                            {[2024, 2025, 2026, 2027].map(y => (
-                                <option key={y} value={y}>Năm {y}</option>
-                            ))}
-                        </select>
-                        {/* Excel + ? buttons */}
-                        {!report.isLoading && report.data.summary.orders > 0 && (
-                            <>
-                                <div className="w-px h-5 bg-gray-200 mx-0.5" />
+                        {/* Actions: Excel & Help */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            {!report.isLoading && report.data.summary.orders > 0 && (
                                 <button
                                     onClick={() => { setExportFrom(report.dateFrom); setExportTo(report.dateTo); setShowExportModal(true); }}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-1.5"
+                                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
                                 >
-                                    <FileSpreadsheet size={12} />
-                                    Excel
+                                    <FileSpreadsheet size={13} />
+                                    <span>Xuất Excel</span>
                                 </button>
-                                <button
-                                    onClick={() => setShowMetricsHelp(true)}
-                                    className="w-7 h-7 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-400 transition-all active:scale-95"
-                                    title="Giải thích thông số"
-                                >
-                                    <HelpCircle size={14} />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                    {report.datePreset === 'custom' && (
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <input
-                                type="date" value={report.dateFrom}
-                                onChange={e => report.setDateFrom(e.target.value)}
-                                className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                            />
-                            <ChevronRight size={14} className="text-gray-300 shrink-0" />
-                            <input
-                                type="date" value={report.dateTo}
-                                onChange={e => report.setDateTo(e.target.value)}
-                                className="border border-gray-200 rounded-xl px-2.5 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 flex-1 min-w-[120px]"
-                            />
+                            )}
                             <button
-                                onClick={() => report.applyCustomDate()}
-                                className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
+                                onClick={() => setShowMetricsHelp(true)}
+                                className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 border border-gray-200 transition-all active:scale-95 shrink-0"
+                                title="Giải thích thông số"
                             >
-                                Xem
+                                <HelpCircle size={15} />
                             </button>
                         </div>
-                    )}
+                    </div>
+
+                    {/* TẦNG 2: Stepper Điều Hướng Kỳ & Bộ Lọc Nghiệp Vụ */}
+                    <div className="pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        {/* Trái: Nhãn kỳ trực quan */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200/80 p-1.5 rounded-xl shadow-xs">
+                                {/* Nội dung kỳ hiển thị */}
+                                {report.datePreset === 'custom' ? (
+                                    <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                                        <input
+                                            type="date"
+                                            value={report.dateFrom}
+                                            onChange={e => report.setDateFrom(e.target.value)}
+                                            className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                        />
+                                        <span className="text-gray-400 font-bold px-0.5">-</span>
+                                        <input
+                                            type="date"
+                                            value={report.dateTo}
+                                            onChange={e => report.setDateTo(e.target.value)}
+                                            className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => report.applyCustomDate()}
+                                            className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                                        >
+                                            Xem
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 px-2.5 py-1">
+                                        <Calendar size={14} className="text-indigo-600 shrink-0" />
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="font-bold text-gray-900 text-xs sm:text-sm tracking-tight">{periodInfo.title}</span>
+                                            {periodInfo.subtitle && (
+                                                <span className="text-[11px] font-medium text-gray-500 hidden sm:inline">({periodInfo.subtitle})</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Subtitle hiển thị riêng trên mobile nếu cần */}
+                            {report.datePreset !== 'custom' && periodInfo.subtitle && (
+                                <span className="text-[11px] font-medium text-gray-500 sm:hidden">
+                                    {periodInfo.subtitle}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Phải: Bộ chọn Tháng cụ thể + Bộ lọc Kênh + Chi nhánh */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Dropdown Tháng Cụ Thể (Hợp nhất Tháng & Năm) */}
+                            <div className="relative">
+                                <select
+                                    value={activeMonthYear}
+                                    onChange={(e) => handleMonthYearSelect(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer"
+                                >
+                                    <option value="" disabled hidden>Chọn tháng khác...</option>
+                                    {RECENT_MONTH_OPTIONS.map(opt => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Dropdown Kênh / Ngôn ngữ */}
+                            <div className="relative">
+                                <select
+                                    value={report.filterLang}
+                                    onChange={(e) => report.applyLangFilter(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer"
+                                >
+                                    <option value="all">Tất cả kênh / ngôn ngữ</option>
+                                    {report.data.languageBreakdown?.map(lb => (
+                                        <option key={lb.key || lb.lang} value={lb.key || lb.lang}>
+                                            Kênh: {lb.lang}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Dropdown Chi nhánh */}
+                            <div className="relative">
+                                <select
+                                    defaultValue="all"
+                                    className="bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer"
+                                >
+                                    <option value="all">Tất cả chi nhánh</option>
+                                    <option value="main">Trụ sở chính</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* ─── Tabs Navigation ────────────────────────────────────────── */}
@@ -508,30 +691,203 @@ export default function RevenueReportsPage() {
 
                         {!report.isLoading && (
                             <>
-                                {/* ─── Filter Chips ───────────────────────── */}
-                                {report.data.languageBreakdown.length > 0 && (
-                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 space-y-2">
-                                        <FilterChipBar
-                                            label="Ngôn ngữ"
-                                            icon={<Globe size={12} />}
-                                            options={[
-                                                { key: 'all', label: 'Tất cả' },
-                                                ...report.data.languageBreakdown.map(lb => ({
-                                                    key: lb.key || lb.lang,
-                                                    label: lb.lang,
-                                                }))
-                                            ]}
-                                            selected={report.filterLang}
-                                            onSelect={report.applyLangFilter}
-                                        />
+                                {/* ─── 4 TRỤ CỘT KPI CHIẾN LƯỢC (EXECUTIVE HERO CARDS) ─── */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                                    {/* TRỤ CỘT 1: TÀI CHÍNH & LÃI GỘP */}
+                                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tài Chính & Lợi Nhuận</span>
+                                                    <HelpTooltip text="Tổng doanh thu thực thu, tiền lãi gộp ước tính sau khi trừ tiền tua KTV, và tỷ lệ chi phí." />
+                                                </div>
+                                                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl shrink-0">
+                                                    <DollarSign size={18} />
+                                                </div>
+                                            </div>
+                                            <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+                                                {report.formatVND(summary.revenue)}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-1">
+                                                <span className="text-xs text-gray-400">Doanh thu thuần</span>
+                                                {summary.revenueChange !== 0 && (
+                                                    <span className={`text-xs font-bold flex items-center ${summary.revenueChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                        {summary.revenueChange >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                                        {summary.revenueChange >= 0 ? '+' : ''}{summary.revenueChange}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Lãi gộp ước tính:</span>
+                                                <span className="font-bold text-emerald-700">{report.formatVND(summary.grossProfit)} ({summary.grossProfitMargin}%)</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Chi phí tua KTV:</span>
+                                                <span className={`font-bold ${summary.costRatio > 45 ? 'text-rose-600' : summary.costRatio > 38 ? 'text-amber-600' : 'text-gray-800'}`}>
+                                                    {report.formatVND(summary.totalCommission)} ({summary.costRatio}%)
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                )}
+
+                                    {/* TRỤ CỘT 2: KHÁCH HÀNG & ĐỘ TRUNG THÀNH */}
+                                    <div 
+                                        onClick={() => setShowNewCustomers(true)}
+                                        className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+                                    >
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Khách Hàng & Giữ Chân</span>
+                                                    <HelpTooltip text="Số lượng khách hàng hoàn thành dịch vụ, tỷ lệ khách quay lại và giá trị chi tiêu trung bình." />
+                                                </div>
+                                                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl shrink-0">
+                                                    <Users size={18} />
+                                                </div>
+                                            </div>
+                                            <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+                                                {summary.uniqueCustomers} <span className="text-sm font-bold text-gray-500">khách</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-1">
+                                                <span className="text-xs text-gray-400">{summary.newCustomers} khách mới</span>
+                                                {summary.customersChange !== 0 && (
+                                                    <span className={`text-xs font-bold flex items-center ${summary.customersChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                        {summary.customersChange >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                                        {summary.customersChange >= 0 ? '+' : ''}{summary.customersChange}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Tỷ lệ khách quay lại:</span>
+                                                <span className="font-bold text-purple-700">{summary.retentionRate}% ({summary.returningCustomers} khách)</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Chi tiêu TB / khách:</span>
+                                                <span className="font-bold text-gray-800">{report.formatVND(summary.avgBillPerCustomer)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* TRỤ CỘT 3: CÔNG SUẤT PHÒNG & GIƯỜNG */}
+                                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Hiệu Suất Giường & Phòng</span>
+                                                    <HelpTooltip text="Tỷ lệ lấp đầy giường (dựa trên giờ hoạt động), doanh thu trên mỗi giường và tổng số lượt dịch vụ." />
+                                                </div>
+                                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl shrink-0">
+                                                    <BedDouble size={18} />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">{summary.bedOccupancy}%</span>
+                                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${summary.bedOccupancy >= 80 ? 'bg-rose-50 text-rose-600' : summary.bedOccupancy >= 50 ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'}`}>
+                                                    {summary.bedOccupancy >= 80 ? 'Cao tải' : summary.bedOccupancy >= 50 ? 'Ổn định' : 'Trống nhiều'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-1">
+                                                Tổng {summary.totalBeds} giường hoạt động
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Doanh thu / Giường:</span>
+                                                <span className="font-bold text-indigo-700">{report.formatVND(summary.revenuePerBed)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Lượt dịch vụ:</span>
+                                                <span className="font-bold text-gray-800">{summary.totalServiceCount} lượt ({summary.orders} đơn)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* TRỤ CỘT 4: CHẤT LƯỢNG & RỦI RO */}
+                                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Chất Lượng & Rủi Ro</span>
+                                                    <HelpTooltip text="Điểm đánh giá sao từ khách, tỷ lệ hủy đơn hàng và tổng tiền tip KTV nhận được." />
+                                                </div>
+                                                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl shrink-0">
+                                                    <Star size={18} />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+                                                    {summary.avgRating > 0 ? `${summary.avgRating} ★` : '—'}
+                                                </span>
+                                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                                    {summary.avgRating >= 4 ? 'Xuất sắc' : summary.avgRating >= 3 ? 'Khá' : 'Cần cải thiện'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-1">
+                                                Độ hài lòng từ phản hồi khách
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Tỷ lệ hủy đơn:</span>
+                                                <span className={`font-bold ${summary.cancellationRate >= 15 ? 'text-rose-600' : summary.cancellationRate >= 8 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                    {summary.cancellationRate}% ({summary.cancelledOrders} đơn)
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 font-medium">Tổng tiền tip KTV:</span>
+                                                <span className="font-bold text-pink-600">{report.formatVND(summary.totalTip)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ─── THANH ĐÈN BÁO SỨC KHỎE KINH DOANH (HEALTH STRIP) ─── */}
+                                <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-sm">
+                                    <div className="flex items-center gap-2 text-indigo-950 font-medium">
+                                        <Activity size={16} className="text-indigo-600 shrink-0" />
+                                        <span>
+                                            Sức khỏe kinh doanh: Lãi gộp ước tính <strong className="text-indigo-900">{summary.grossProfitMargin}%</strong> | 
+                                            Lấp đầy giường <strong className="text-indigo-900">{summary.bedOccupancy}%</strong> | 
+                                            Giữ chân khách <strong className="text-indigo-900">{summary.retentionRate}%</strong>
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-gray-500">Chi phí tua / DT:</span>
+                                        <span className={`font-bold px-2 py-0.5 rounded-lg ${summary.costRatio <= 38 ? 'bg-emerald-100 text-emerald-800' : summary.costRatio <= 45 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                            {summary.costRatio}% ({summary.costRatio <= 38 ? 'Tối ưu' : summary.costRatio <= 45 ? 'Chấp nhận' : 'Cần kiểm soát'})
+                                        </span>
+                                    </div>
+                                </div>
 
                                 {/* ─── Revenue Chart + Group By ─────────────────── */}
                                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-                                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                                        <h3 className="text-base font-bold text-gray-900">{chartTitle}</h3>
-                                        <div className="flex items-center gap-3">
+                                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-base font-bold text-gray-900">{chartTitle}</h3>
+                                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                                {revenueChartData.length} {report.groupBy === 'hour' ? 'giờ' : report.groupBy === 'day' ? 'ngày' : report.groupBy === 'week' ? 'tuần' : 'tháng'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {/* Bộ chọn sắp xếp thời gian / doanh thu */}
+                                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200/80 px-2 py-1 rounded-lg">
+                                                <ArrowUpDown size={13} className="text-gray-500 shrink-0" />
+                                                <select
+                                                    value={chartSortOrder}
+                                                    onChange={e => setChartSortOrder(e.target.value as ChartSortOrder)}
+                                                    className="bg-transparent text-xs font-bold text-gray-700 focus:outline-none cursor-pointer"
+                                                    title="Sắp xếp thời gian hoặc doanh thu"
+                                                >
+                                                    {CHART_SORT_OPTIONS.map(opt => (
+                                                        <option key={opt.key} value={opt.key}>{opt.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
                                             <div className="flex items-center gap-2 bg-pink-50 border border-pink-100 px-2 py-1 rounded-lg">
                                                 <Target size={14} className="text-pink-500" />
                                                 <select
@@ -559,6 +915,31 @@ export default function RevenueReportsPage() {
                                                     </button>
                                                 ))}
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 💡 Thanh Hướng Dẫn Tương Tác Trực Quan */}
+                                    <div className="mb-4 bg-indigo-50/60 border border-indigo-100/80 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-indigo-900 flex-wrap">
+                                        <div className="flex items-center gap-2 font-medium">
+                                            <Info size={15} className="text-indigo-600 shrink-0" />
+                                            <span>
+                                                {report.groupBy === 'day' ? (
+                                                    <>
+                                                        <strong>Mẹo phân tích:</strong> Click vào bất kỳ <strong>cột ngày</strong> nào trên biểu đồ để xem chi tiết doanh thu & đơn hàng của riêng ngày đó.
+                                                    </>
+                                                ) : report.groupBy === 'hour' ? (
+                                                    <>
+                                                        <strong>Biểu đồ theo giờ:</strong> Thể hiện khung giờ cao điểm trong ngày. Dùng bộ lọc giờ bên dưới để thu hẹp khung xem.
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <strong>Biểu đồ tổng hợp:</strong> Đang xem toàn cảnh theo {report.groupBy === 'week' ? 'tuần' : 'tháng'}. Dùng bộ sắp xếp ở góc trên để tìm đỉnh doanh thu.
+                                                    </>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="text-[11px] text-indigo-600 font-medium">
+                                            Đang xếp: <strong className="text-indigo-800">{CHART_SORT_OPTIONS.find(o => o.key === chartSortOrder)?.label}</strong>
                                         </div>
                                     </div>
                                     
@@ -663,16 +1044,18 @@ export default function RevenueReportsPage() {
                                                     <div className="space-y-2.5">
                                                         {displayedServices.map((svc, idx) => {
                                                             const pct = Math.round((svc.count / maxCount) * 100);
-                                                            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
                                                             return (
                                                                 <div key={`svc-${idx}`} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                                                                     <div className="flex items-center justify-between mb-1.5">
                                                                         <div className="flex items-center gap-2 min-w-0">
-                                                                            {medal ? (
-                                                                                <span className="text-base shrink-0">{medal}</span>
-                                                                            ) : (
-                                                                                <span className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-black text-gray-500 shrink-0">{idx + 1}</span>
-                                                                            )}
+                                                                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                                                                                idx === 0 ? 'bg-amber-100 text-amber-700' :
+                                                                                idx === 1 ? 'bg-slate-200 text-slate-700' :
+                                                                                idx === 2 ? 'bg-orange-100 text-orange-700' :
+                                                                                'bg-gray-100 text-gray-500'
+                                                                            }`}>
+                                                                                {idx + 1}
+                                                                            </span>
                                                                             <span className="text-sm font-bold text-gray-800 truncate">{svc.name}</span>
                                                                         </div>
                                                                         <span className="text-xs font-bold text-indigo-600 whitespace-nowrap ml-2">{svc.count} lượt</span>
@@ -770,18 +1153,20 @@ export default function RevenueReportsPage() {
                                                     {displayedKTV.map((ktv, idx) => {
                                                         const maxRevenue = report.data.topKTV[0]?.revenue || 1;
                                                         const pct = Math.round((ktv.revenue / maxRevenue) * 100);
-                                                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
                                                         const isTopTip = topTipKTV && ktv.code === topTipKTV.code && ktv.totalTip > 0;
                                                         return (
                                                             <div key={ktv.code} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
                                                                 {/* Row 1: Name + Orders + Rating */}
                                                                 <div className="flex items-center justify-between mb-2">
                                                                     <div className="flex items-center gap-2">
-                                                                        {medal ? (
-                                                                            <span className="text-base">{medal}</span>
-                                                                        ) : (
-                                                                            <span className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-black text-gray-500">{idx + 1}</span>
-                                                                        )}
+                                                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                                                                            idx === 0 ? 'bg-amber-100 text-amber-700' :
+                                                                            idx === 1 ? 'bg-slate-200 text-slate-700' :
+                                                                            idx === 2 ? 'bg-orange-100 text-orange-700' :
+                                                                            'bg-gray-100 text-gray-500'
+                                                                        }`}>
+                                                                            {idx + 1}
+                                                                        </span>
                                                                         <span className="text-sm font-bold text-gray-800">{ktv.name}</span>
                                                                         {isTopTip && (
                                                                             <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[9px] font-black flex items-center gap-0.5">
@@ -882,133 +1267,6 @@ export default function RevenueReportsPage() {
                                     </div>
                                 </div>
 
-                                {/* ─── KPI Cards (10 chỉ số) ──────────────────── */}
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {/* Tổng Doanh Thu (gộp DV + Đơn) */}
-                                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <div className="flex items-center gap-1.5">
-                                                <h3 className="text-sm font-medium text-gray-500">Tổng Doanh Thu</h3>
-                                                <HelpTooltip text="Σ totalAmount (đơn hoàn thành). Tổng tiền thu từ khách hàng trong kỳ." />
-                                            </div>
-                                            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                                                <DollarSign size={18} />
-                                            </div>
-                                        </div>
-                                        <div className="text-3xl font-black text-gray-900 tracking-tight">{report.formatVND(summary.revenue)}</div>
-                                        <p className="text-xs text-gray-400 mt-1">{report.formatFullVND(summary.revenue)}</p>
-                                        {summary.revenueChange !== 0 && (
-                                            <p className={`text-xs font-bold mt-1.5 flex items-center gap-1 ${summary.revenueChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {summary.revenueChange >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                                {summary.revenueChange >= 0 ? '+' : ''}{summary.revenueChange}%
-                                            </p>
-                                        )}
-                                        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                                            <div className="flex items-center gap-1">
-                                                <Package size={12} className="text-blue-500" />
-                                                <span className="text-xs font-bold text-gray-700">{summary.totalServiceCount}</span>
-                                                <span className="text-[10px] text-gray-400">DV</span>
-                                            </div>
-                                            <div className="w-px h-3 bg-gray-200" />
-                                            <div className="flex items-center gap-1">
-                                                <Receipt size={12} className="text-indigo-500" />
-                                                <span className="text-xs font-bold text-gray-700">{summary.orders}</span>
-                                                <span className="text-[10px] text-gray-400">đơn</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* #4 CP TB / DV */}
-                                    <KPICard
-                                        title="Chi Phí TB / Dịch Vụ"
-                                        value={report.formatVND(summary.costPerService)}
-                                        subtitle="Tiền tua trung bình / dịch vụ"
-                                        icon={<Calculator size={18} />}
-                                        color="bg-orange-50 text-orange-600"
-                                        helpText="Tổng tiền tua ÷ Số dịch vụ. Trung bình tiền tua trả cho KTV mỗi dịch vụ."
-                                    />
-                                    {/* #5 Tỷ Lệ Chi Phí */}
-                                    <KPICard
-                                        title="Tỷ Lệ Chi Phí"
-                                        value={`${summary.costRatio}%`}
-                                        subtitle="Tua / Doanh thu"
-                                        icon={<PieChartIcon size={18} />}
-                                        color="bg-rose-50 text-rose-600"
-                                        helpText="Tổng tiền tua ÷ Doanh thu × 100%. % doanh thu dành trả cho KTV (càng thấp càng tốt)."
-                                    />
-                                    {/* #6 Số Khách */}
-                                    <KPICard
-                                        title="Số Khách"
-                                        value={String(summary.uniqueCustomers)}
-                                        subtitle={`${summary.newCustomers} đăng ký mới`}
-                                        change={summary.customersChange}
-                                        icon={<Users size={18} />}
-                                        color="bg-purple-50 text-purple-600"
-                                        onClick={() => setShowNewCustomers(true)}
-                                        helpText="Count distinct (customerId). Số khách hàng duy nhất có đơn hoàn thành."
-                                    />
-                                    {/* #7 Chi Tiêu TB / Khách */}
-                                    <KPICard
-                                        title="Chi Tiêu TB / Khách"
-                                        value={report.formatVND(summary.avgBillPerCustomer)}
-                                        subtitle={`Trung bình/đơn: ${report.formatVND(summary.avgPerOrder)}`}
-                                        icon={<Activity size={18} />}
-                                        color="bg-amber-50 text-amber-600"
-                                        helpText="Doanh thu ÷ Số khách duy nhất. Trung bình mỗi khách chi tiêu bao nhiêu trong kỳ."
-                                    />
-                                    {/* Đánh Giá TB */}
-                                    <KPICard
-                                        title="Đánh Giá Trung Bình"
-                                        value={summary.avgRating > 0 ? `${summary.avgRating} ★` : '—'}
-                                        subtitle={summary.avgRating >= 4 ? 'Xuất sắc' : summary.avgRating >= 3 ? 'Tốt' : ''}
-                                        icon={<Star size={18} />}
-                                        color="bg-yellow-50 text-yellow-600"
-                                        helpText="Σ itemRating ÷ Số lượt đánh giá. Điểm hài lòng trung bình từ khách (thang 5 sao)."
-                                    />
-                                    {/* Tổng Tip */}
-                                    <KPICard
-                                        title="Tổng Tip"
-                                        value={summary.totalTip > 0 ? report.formatVND(summary.totalTip) : '0đ'}
-                                        icon={<Award size={18} />}
-                                        color="bg-pink-50 text-pink-600"
-                                        helpText="Σ tip (BookingItems). Tổng tiền tip khách thưởng cho KTV."
-                                    />
-                                    {/* DT / Giường */}
-                                    <KPICard
-                                        title="Doanh Thu / Giường"
-                                        value={report.formatVND(summary.revenuePerBed)}
-                                        subtitle={`${summary.totalBeds} giường`}
-                                        icon={<BedDouble size={18} />}
-                                        color="bg-indigo-50 text-indigo-600"
-                                        helpText="Doanh thu ÷ Tổng số giường. Hiệu quả kinh doanh trên mỗi giường."
-                                    />
-                                    {/* Lấp đầy Giường */}
-                                    <KPICard
-                                        title="Lấp đầy Giường"
-                                        value={`${summary.bedOccupancy}%`}
-                                        subtitle={summary.bedOccupancy >= 80 ? 'Cao tải' : summary.bedOccupancy >= 50 ? 'Ổn định' : 'Còn trống nhiều'}
-                                        icon={<Gauge size={18} />}
-                                        color={summary.bedOccupancy >= 80 ? 'bg-red-50 text-red-600' : summary.bedOccupancy >= 50 ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}
-                                        helpText="Tổng phút DV ÷ (Giường × Giờ mở cửa × Ngày) × 100%. ≥80% là cao tải."
-                                    />
-                                    {/* Tỷ lệ hủy đơn */}
-                                    <KPICard
-                                        title="Tỷ Lệ Hủy Đơn"
-                                        value={`${summary.cancellationRate}%`}
-                                        subtitle={`${summary.cancelledOrders} đơn hủy`}
-                                        icon={<Ban size={18} />}
-                                        color={summary.cancellationRate >= 20 ? 'bg-red-50 text-red-600' : summary.cancellationRate >= 10 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}
-                                        helpText="Đơn hủy ÷ Tổng đơn (hoàn thành + hủy) × 100%. Giúp phát hiện vấn đề vận hành."
-                                    />
-                                    {/* Khách quay lại */}
-                                    <KPICard
-                                        title="Khách Quay Lại"
-                                        value={`${summary.retentionRate}%`}
-                                        subtitle={`${summary.returningCustomers}/${summary.uniqueCustomers} khách`}
-                                        icon={<UserCheck size={18} />}
-                                        color={summary.retentionRate >= 50 ? 'bg-emerald-50 text-emerald-600' : summary.retentionRate >= 30 ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'}
-                                        helpText="Khách có ≥ 2 đơn ÷ Tổng khách × 100%. Đánh giá mức giữ chân khách."
-                                    />
-                                </div>
 
                                 {/* ─── Metrics Help Modal ─────────────────────── */}
                                 {showMetricsHelp && (
