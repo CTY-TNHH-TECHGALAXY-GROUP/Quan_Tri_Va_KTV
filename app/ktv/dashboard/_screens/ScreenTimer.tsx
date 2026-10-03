@@ -369,9 +369,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
             : null;
           const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
           return timerCoWorkers.length > 0 ? (
-            <div className="mt-3 px-3.5 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700 flex items-center gap-2">
+            <div className="mt-2.5 text-xs font-medium text-slate-600 flex items-center justify-center gap-2">
               <Users size={14} className="text-indigo-600 shrink-0" />
-              <span>👥 Cùng làm với: <span className="font-black">{timerCoWorkers.join(', ')}</span></span>
+              <span>Cùng làm với: <strong className="font-black text-indigo-700">{timerCoWorkers.join(', ')}</strong></span>
             </div>
           ) : null;
         })()}
@@ -503,25 +503,96 @@ export function ScreenTimer({ logic }: { logic: any }) {
       {((!isTimerRunning && !isPaused) || isPrepping) ? (
         <div className="px-4 sm:px-6 mb-10">
           {activeSegmentIndex > 0 ? (
-            /* Chặng tiếp theo (Chặng 2+): Khách đã ở trong phòng, không cần chụp lại ảnh dép */
+            /* Chặng tiếp theo (Chặng 2+): Miễn chụp dép, nhưng VẪN BẮT BUỘC chụp ảnh bắt đầu dịch vụ */
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl text-center">
-                <p className="text-xs font-bold text-emerald-800">
-                  🔔 Chặng {activeSegmentIndex} đã xong. Khách đang ở trong phòng.
-                </p>
-                <p className="text-[11px] text-emerald-600 mt-1">
-                  Bấm nút bên dưới khi sẵn sàng để bắt đầu đếm ngược Chặng {activeSegmentIndex + 1} ({displayDuration} phút).
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                  Chụp ảnh bắt đầu phục vụ Chặng {activeSegmentIndex + 1}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Khách đang trong phòng: <b>Miễn chụp lại dép</b>, nhưng KTV <b>vẫn phải chụp ảnh bắt đầu</b> chặng mới.
                 </p>
               </div>
 
-              <button
-                onClick={handleStartTimer}
-                disabled={logic.isLoading}
-                className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all cursor-pointer"
-              >
-                <Play fill="white" size={24} />
-                {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : `BẮT ĐẦU PHỤC VỤ CHẶNG ${activeSegmentIndex + 1}`}
-              </button>
+              {/* Dép khách đã lưu từ chặng 1 - Hiển thị badge xác nhận */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-emerald-300 bg-white shrink-0">
+                    <img 
+                      src={logic.resolvedGuestSlipperPhoto || logic.guestSlipperPhotoBase64 || ''} 
+                      alt="Dép khách" 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      ✓ Đã có ảnh dép từ Chặng 1
+                    </span>
+                    <p className="text-xs font-black text-slate-800 mt-1">Dép khách chụp lúc bắt đầu đơn</p>
+                    <p className="text-[11px] text-emerald-600 font-medium">Được miễn chụp lại dép ở Chặng {activeSegmentIndex + 1}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ô: Ảnh bắt đầu dịch vụ chặng mới (BẮT BUỘC) */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    Ảnh bắt đầu DV Chặng {activeSegmentIndex + 1} (Bắt buộc)
+                    {logic.startPhotoBase64 && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
+                  </span>
+                  {logic.startPhotoBase64 && (
+                    <button
+                      type="button"
+                      onClick={() => logic.setStartPhotoBase64(null)}
+                      className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw size={12} />
+                      Chụp lại
+                    </button>
+                  )}
+                </div>
+
+                {logic.startPhotoBase64 ? (
+                  <img
+                    src={logic.startPhotoBase64}
+                    alt="Ảnh bắt đầu dịch vụ"
+                    className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
+                  />
+                ) : (
+                  <label className={`w-full py-3.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
+                    logic.canStart
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
+                      : 'bg-slate-200 text-slate-400'
+                  }`}>
+                    <Camera size={16} />
+                    <span>Chụp / Tải ảnh bắt đầu Chặng {activeSegmentIndex + 1}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={logic.isLoading || !logic.canStart}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Nút Bắt đầu phục vụ Chặng 2 (Chỉ mở khoá khi đã có ảnh bắt đầu) */}
+              {logic.startPhotoBase64 ? (
+                <button
+                  onClick={handleStartTimer}
+                  disabled={logic.isLoading || !logic.canStart}
+                  className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <Play fill="white" size={24} />
+                  {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : `BẮT ĐẦU PHỤC VỤ CHẶNG ${activeSegmentIndex + 1}`}
+                </button>
+              ) : (
+                <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                  <Camera size={18} /> Chụp ảnh bắt đầu để tiếp tục Chặng {activeSegmentIndex + 1}
+                </button>
+              )}
             </div>
           ) : (
             /* Chặng 1: Bắt buộc chụp ảnh dép khách và ảnh bắt đầu */
@@ -566,44 +637,21 @@ export function ScreenTimer({ logic }: { logic: any }) {
                       className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
                     />
                   ) : (
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {/* Nút 1: Chụp ảnh -> Bật Cam liền */}
-                      <label className={`relative py-3 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
-                        logic.canStart
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
-                          : 'bg-slate-200 text-slate-400'
-                      }`}>
-                        <div className="flex items-center gap-1.5">
-                          <Camera size={16} />
-                          <span>Chụp ảnh</span>
-                        </div>
-                        <span className="text-[9px] opacity-80 font-normal">(Bật Camera)</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={photo.onChange}
-                          disabled={logic.isLoading || !logic.canStart}
-                        />
-                      </label>
-
-                      {/* Nút 2: Tải ảnh -> Mở Gallery */}
-                      <label className="relative py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold text-xs flex flex-col items-center justify-center gap-1 cursor-pointer transition-all active:scale-95 shadow-xs text-center">
-                        <div className="flex items-center gap-1.5">
-                          <ImageIcon size={16} className="text-slate-500" />
-                          <span>Tải ảnh</span>
-                        </div>
-                        <span className="text-[9px] text-slate-400 font-normal">(Mở Gallery)</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={photo.onChange}
-                          disabled={logic.isLoading || !logic.canStart}
-                        />
-                      </label>
-                    </div>
+                    <label className={`w-full py-3.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
+                      logic.canStart
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
+                        : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <Camera size={16} />
+                      <span>Chụp / Tải ảnh</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={photo.onChange}
+                        disabled={logic.isLoading || !logic.canStart}
+                      />
+                    </label>
                   )}
                 </div>
               ))}

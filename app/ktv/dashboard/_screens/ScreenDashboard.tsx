@@ -545,7 +545,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                     {orderStartTime !== '—' && (
                       <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-100/80 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
                         <Clock size={12} className="text-emerald-600" />
-                        <span>Bắt đầu {orderStartTime}</span>
+                        <span>Dự kiến {orderStartTime}</span>
                       </span>
                     )}
                   </div>
@@ -561,29 +561,34 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   </div>
                 )}
 
-                {/* Khối 2 cột Phòng - Giường rõ ràng, thanh thoát */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
-                    <p className="font-black text-emerald-950 text-lg mt-0.5 truncate">
-                      {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}
+                {/* Khối Thông Số Cốt Lõi: Thanh Phòng & Giường chìm xuống khối xám nhẹ, có chữ như version cũ */}
+                <div className="bg-slate-100/90 border border-slate-200/60 rounded-2xl p-3.5 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Phòng</p>
+                    <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                      {(() => {
+                        const val = roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—';
+                        return val.startsWith('Phòng') || val === '—' ? val : `Phòng ${val}`;
+                      })()}
                     </p>
                   </div>
-                  <div className="p-3.5 bg-teal-50/70 border border-teal-100 rounded-2xl">
-                    <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
-                    <p className="font-black text-teal-950 text-lg mt-0.5 truncate">
-                      {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
-                        ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
-                        : '—'}
+                  <div className="border-l border-slate-200 pl-4">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Giường</p>
+                    <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                      {(() => {
+                        const raw = (currentSeg?.bedId || booking.assignedBedId || booking.bedId);
+                        const val = raw ? String(raw).split('-').pop() : '—';
+                        return !val || val === '—' || val.startsWith('Giường') ? (val || '—') : `Giường ${val}`;
+                      })()}
                     </p>
                   </div>
                 </div>
 
-                {/* Đồng đội cùng làm nếu có */}
+                {/* Đồng đội cùng làm nếu có (Bỏ khung bao quanh) */}
                 {coWorkers.length > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700">
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600 py-0.5">
                     <Users size={14} className="text-indigo-600 shrink-0" />
-                    <span className="truncate">Cùng làm với: <span className="font-black">{coWorkers.join(', ')}</span></span>
+                    <span className="truncate">Cùng làm với: <strong className="font-black text-indigo-700">{coWorkers.join(', ')}</strong></span>
                   </div>
                 )}
 
@@ -934,29 +939,34 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                    </div>
               </div>
 
-              {/* Khối Phòng - Giường 2 cột thanh thoát */}
-              <div className="grid grid-cols-2 gap-3 my-4">
-                <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
-                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
-                  <p className="text-xl font-black text-emerald-950 mt-0.5 truncate">
-                    {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}
+              {/* Khối Thông Số Cốt Lõi: Thanh Phòng & Giường chìm xuống khối xám nhẹ, có chữ như version cũ */}
+              <div className="bg-slate-100/90 border border-slate-200/60 rounded-2xl p-3.5 grid grid-cols-2 gap-3 text-sm my-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Phòng</p>
+                  <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                    {(() => {
+                      const val = roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—';
+                      return val.startsWith('Phòng') || val === '—' ? val : `Phòng ${val}`;
+                    })()}
                   </p>
                 </div>
-                <div className="p-3.5 bg-teal-50/70 border border-teal-100 rounded-2xl">
-                  <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
-                  <p className="text-xl font-black text-teal-950 mt-0.5 truncate">
-                    {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
-                      ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
-                      : '—'}
+                <div className="border-l border-slate-200 pl-4">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Giường</p>
+                  <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                    {(() => {
+                      const raw = (currentSeg?.bedId || booking.assignedBedId || booking.bedId);
+                      const val = raw ? String(raw).split('-').pop() : '—';
+                      return !val || val === '—' || val.startsWith('Giường') ? (val || '—') : `Giường ${val}`;
+                    })()}
                   </p>
                 </div>
               </div>
 
-              {/* KTV làm cùng nếu có */}
+              {/* KTV làm cùng nếu có (Bỏ khung bao quanh) */}
               {coWorkers.length > 0 && (
-                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700 mb-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-3 px-1">
                   <Users size={15} className="text-indigo-600 shrink-0" />
-                  <span className="truncate">👥 Cùng làm với: <span className="font-black">{coWorkers.join(', ')}</span></span>
+                  <span className="truncate">Cùng làm với: <strong className="font-black text-indigo-700">{coWorkers.join(', ')}</strong></span>
                 </div>
               )}
 

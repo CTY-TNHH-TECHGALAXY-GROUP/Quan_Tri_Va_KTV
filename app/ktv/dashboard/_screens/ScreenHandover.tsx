@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
-import { AlertTriangle, Camera, Loader2, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Camera, Loader2, Sparkles, X, Eye } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
 import { useToast } from '@/components/ui/Toast';
@@ -10,7 +10,9 @@ import { useToast } from '@/components/ui/Toast';
 export function ScreenHandover({ logic }: { logic: any }) {
   const { addToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<any>(null);
+  const [showSlipperModal, setShowSlipperModal] = useState(false);
   const { handoverPhotosBase64, setHandoverPhotosBase64, isHandoverComplete, handleFinishHandover, booking, minBrightness = 40 } = logic;
+  const slipperPhoto = logic.resolvedGuestSlipperPhoto || logic.guestSlipperPhotoBase64;
   const { dynamicChecklist = [], isFetchingChecklist, handleSkipHandover, isSkippingHandover, isRepayingDebt, skipBlockedMsg, setSkipBlockedMsg, skipQuota } = logic;
 
   // Bỏ qua chỉ để CHẠY KỊP đơn kế tiếp. Không có đơn nào đang chờ thì không có
@@ -115,6 +117,33 @@ export function ScreenHandover({ logic }: { logic: any }) {
       </div>
 
       <div className="space-y-4">
+          {slipperPhoto && (
+            <div className="flex items-center justify-between gap-3 px-1 py-0.5">
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSlipperModal(true)}
+                  className="relative w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-slate-100 cursor-pointer border border-slate-200"
+                  title="Phóng to ảnh dép"
+                >
+                  <img src={slipperPhoto} alt="Ảnh dép khách" className="w-full h-full object-cover" />
+                </button>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-slate-800">Ảnh dép khách đã chụp</p>
+                  <p className="text-[10px] text-slate-400">Xem để đối chiếu khi dọn phòng</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSlipperModal(true)}
+                className="px-2.5 py-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+              >
+                <Eye size={13} />
+                <span>Xem dép</span>
+              </button>
+            </div>
+          )}
+
           <div className="space-y-3">
              <div className="flex items-center justify-between px-1">
                  <span className="text-sm font-bold text-slate-700">Yêu cầu bàn giao</span>
@@ -303,6 +332,30 @@ export function ScreenHandover({ logic }: { logic: any }) {
         }
       </button>
 
+      {/* Modal Phóng To Ảnh Dép */}
+      {showSlipperModal && slipperPhoto && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowSlipperModal(false)}
+        >
+          <div className="relative max-w-sm w-full bg-slate-900 rounded-3xl p-4 flex flex-col items-center gap-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="w-full flex items-center justify-between text-white border-b border-slate-800 pb-2">
+              <span className="font-black text-xs uppercase tracking-wider text-indigo-300">👟 Ảnh dép khách đã chụp</span>
+              <button
+                type="button"
+                onClick={() => setShowSlipperModal(false)}
+                className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="w-full h-80 rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800">
+              <img src={slipperPhoto} alt="Phóng to ảnh dép" className="w-full h-full object-contain" />
+            </div>
+            <p className="text-[11px] text-slate-400">Bấm bên ngoài hoặc nút X để đóng</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

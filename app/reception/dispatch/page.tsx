@@ -1956,17 +1956,17 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const renderSoundToggle = () => {
+  const renderSoundToggle = (isCompact = false) => {
     const hasUnread = notifications.some(n => !n.isRead);
 
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <button
           onClick={toggleGuestArrivalLock}
           disabled={!guestArrivalLock.enabled}
           aria-label="Báo Khách"
           aria-pressed={guestArrivalLock.active}
-          className={`relative h-11 px-3.5 rounded-2xl transition-all shadow-sm border flex items-center gap-2 font-bold text-xs cursor-pointer ${
+          className={`relative ${isCompact ? 'h-9 px-2.5 text-[11px]' : 'h-11 px-3.5 text-xs'} rounded-xl sm:rounded-2xl transition-all shadow-sm border flex items-center gap-1.5 font-bold cursor-pointer shrink-0 ${
               !guestArrivalLock.enabled
                   ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                   : guestArrivalLock.active
@@ -1975,8 +1975,8 @@ if (!hasPermission('dispatch_board')) {
           }`}
           title={!guestArrivalLock.enabled ? 'Tính năng Báo Khách đang bị tắt trong cài đặt hệ thống.' : guestArrivalLock.active ? `Đang báo có khách — bởi ${guestArrivalLock.lockedBy} lúc ${new Date(guestArrivalLock.lockedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Bấm để tắt.` : 'Báo có khách'}
         >
-          <Users size={16} />
-          <span className="whitespace-nowrap">{guestArrivalLock.active ? 'Đang Có Khách' : 'Có Khách'}</span>
+          <Users size={isCompact ? 14 : 16} className="shrink-0" />
+          <span className="whitespace-nowrap">{guestArrivalLock.active ? (isCompact ? 'Có Khách' : 'Đang Có Khách') : 'Có Khách'}</span>
         </button>
         <button
           onClick={async () => {
@@ -2001,7 +2001,7 @@ if (!hasPermission('dispatch_board')) {
             setSoundEnabled(true);
           }}
           disabled={push.isRegistering}
-          className={`w-11 h-11 rounded-full transition-all shadow-sm border flex items-center justify-center
+          className={`${isCompact ? 'w-9 h-9' : 'w-11 h-11'} rounded-full transition-all shadow-sm border flex items-center justify-center shrink-0
             ${soundEnabled
               ? 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'
               : (push.permission === 'denied' ? 'bg-rose-50 text-rose-500 border-rose-100' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100')}`}
@@ -2017,11 +2017,11 @@ if (!hasPermission('dispatch_board')) {
               <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : soundEnabled ? (
               <div className="relative">
-                <Bell size={20} />
+                <Bell size={isCompact ? 16 : 20} />
                 {hasUnread && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 border-2 border-emerald-50 rounded-full" />}
               </div>
             ) : (
-              <BellOff size={20} />
+              <BellOff size={isCompact ? 16 : 20} />
             )}
           </motion.div>
         </button>
@@ -2071,7 +2071,7 @@ if (!hasPermission('dispatch_board')) {
   }
 
   return (
-    <AppLayout title="Điều Phối">
+    <AppLayout title="Điều Phối" headerRight={renderSoundToggle(true)}>
       <div className="h-[calc(100dvh-3.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden" style={{ overscrollBehaviorY: 'contain' }}>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 mb-2 lg:mb-4 px-1 lg:px-0 mt-1 sm:mt-0">
@@ -2153,79 +2153,81 @@ if (!hasPermission('dispatch_board')) {
                 </div>
               </h1>
               
-              {/* Mobile Mode Switcher */}
-              <div className="flex sm:hidden items-center gap-1 bg-gray-100/80 p-1 rounded-xl shadow-inner border border-gray-200 w-full mb-1">
+              {/* Mobile Mode Switcher - 6 tabs co giãn vừa khít 100%, không tràn viền */}
+              <div className="flex sm:hidden items-center gap-0.5 bg-gray-100/90 p-1 rounded-xl shadow-inner border border-gray-200 w-full shrink-0 mb-1">
                 <button
                   onClick={() => setActiveMode('DISPATCH')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
                     activeMode === 'DISPATCH'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <LayoutList size={12} /> <span className="hidden xs:inline">Điều Phối</span>
+                  <LayoutList size={11} /> <span>Phối</span>
                 </button>
                 <button
                   onClick={() => setActiveMode('MONITOR')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
                     activeMode === 'MONITOR'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <Columns3 size={12} /> <span className="hidden xs:inline">Giám Sát</span>
+                  <Columns3 size={11} /> <span>Giám Sát</span>
                 </button>
                 <button
                   onClick={() => setActiveMode('TURN_QUEUE')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
                     activeMode === 'TURN_QUEUE'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <Users size={12} /> <span className="hidden xs:inline">Sổ Tua</span>
+                  <Users size={11} /> <span>Tua</span>
                 </button>
                 <button
                   onClick={() => setActiveMode('ROOMS')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
                     activeMode === 'ROOMS'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <BedDouble size={12} /> <span className="hidden xs:inline">Phòng</span>
+                  <BedDouble size={11} /> <span>Phòng</span>
                 </button>
                 <button
                   onClick={() => setActiveMode('WEB_BOOKING')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all relative ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all relative ${
                     activeMode === 'WEB_BOOKING'
                       ? 'bg-white text-emerald-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-emerald-600'
                   }`}
                 >
-                  <Globe size={12} /> <span className="hidden xs:inline">Web</span>
+                  <Globe size={11} /> <span>Web</span>
                   {webBookingCount > 0 && (
-                    <span className="absolute top-1 right-2 min-w-[14px] h-[14px] bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center shadow-sm">
+                    <span className="min-w-[12px] h-[12px] bg-red-500 text-white text-[7px] font-black rounded-full flex items-center justify-center px-0.5 shadow-sm">
                       {webBookingCount}
                     </span>
                   )}
                 </button>
                 <button
                   onClick={() => setActiveMode('SCHEDULE')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-bold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
                     activeMode === 'SCHEDULE'
                       ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <CalendarClock size={12} /> <span className="hidden xs:inline">Lịch</span>
+                  <CalendarClock size={11} /> <span>Lịch</span>
                 </button>
               </div>
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar w-full sm:w-auto">
-            {renderSoundToggle()}
+            <div className="hidden lg:flex items-center gap-2">
+              {renderSoundToggle()}
+            </div>
 
             <div className="relative flex-shrink-0 group">
               <CalendarIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500 z-10" />

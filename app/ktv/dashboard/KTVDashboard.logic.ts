@@ -290,6 +290,32 @@ export function useKTVDashboard(config?: DashboardConfig) {
         }
     }, [booking?.id, ktvId, activeSegmentIndex]);
 
+    // 👟 Truy xuất ảnh dép khách bền vững (cho màn hình Hoàn tất đơn / Dọn phòng)
+    const resolvedGuestSlipperPhoto = useMemo(() => {
+        if (guestSlipperPhotoBase64) return guestSlipperPhotoBase64;
+        if (typeof window !== 'undefined' && booking?.id && ktvId) {
+            for (let i = 0; i < 5; i++) {
+                const saved = localStorage.getItem(`ktv_slipper_photo_${ktvId}_${booking.id}_${i}`);
+                if (saved) return saved;
+            }
+        }
+        if (booking?.BookingItems) {
+            for (const item of booking.BookingItems) {
+                let segs = item.segments;
+                if (typeof segs === 'string') {
+                    try { segs = JSON.parse(segs); } catch { segs = []; }
+                }
+                if (Array.isArray(segs)) {
+                    const mySeg = segs.find((s: any) => ktvMatchesSeg(s.ktvId, ktvId) && s.guestSlipperPhotoUrl);
+                    if (mySeg?.guestSlipperPhotoUrl) return mySeg.guestSlipperPhotoUrl;
+                    const anySeg = segs.find((s: any) => s.guestSlipperPhotoUrl);
+                    if (anySeg?.guestSlipperPhotoUrl) return anySeg.guestSlipperPhotoUrl;
+                }
+            }
+        }
+        return null;
+    }, [guestSlipperPhotoBase64, booking, ktvId]);
+
     // ⚠️ DO NOT REMOVE — Fix timer drift 16/05/2026
     // Refs cho absolute timer: mỗi tick tính từ Date.now() thay vì prev-1
     // Chống lệch thời gian khi KTV tắt/mở màn hình
@@ -2043,6 +2069,18 @@ export function useKTVDashboard(config?: DashboardConfig) {
         if (activeSegmentIndex > 0) {
             const nextSeg = allMySegs[activeSegmentIndex];
             const segDuration = (nextSeg?.duration != null && nextSeg?.duration !== '' ? Number(nextSeg.duration) : 60);
+            if (startPhotoBase64) {
+                apiClient.patch<any>(API.KTV.BOOKING, {
+                    bookingId: booking.id,
+                    status: 'IN_PROGRESS',
+                    techCode: ktvId,
+                    action: 'START_TIMER',
+                    activeSegmentIndex,
+                    startPhotoBase64,
+                    guestSlipperPhotoBase64: resolvedGuestSlipperPhoto
+                }).catch(e => console.error("Error saving segment start photo:", e));
+            }
+            setStartPhotoBase64(null);
             timerStartMsRef.current = Date.now() + timeOffsetRef.current;
             timerTotalSecsRef.current = segDuration * 60;
             setTimeRemaining(segDuration * 60);
@@ -2857,6 +2895,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         startPhotoBase64,
         setStartPhotoBase64,
         guestSlipperPhotoBase64,
+        resolvedGuestSlipperPhoto,
         setGuestSlipperPhotoBase64,
         // Room procedures & issue reporting
         prepProcedure,
