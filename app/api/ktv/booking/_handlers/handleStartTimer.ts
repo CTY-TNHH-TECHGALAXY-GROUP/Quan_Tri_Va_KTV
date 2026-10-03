@@ -1,3 +1,25 @@
+/**
+ * ============================================================
+ * ⏱️ HANDLER: START_TIMER / NEXT_SEGMENT
+ * ============================================================
+ *
+ * 📋 LUỒNG:
+ *   START_TIMER — KTV bấm "Bắt đầu" một chặng (chặng 1, chặng 2 cùng đơn, lượt B, người vào thay):
+ *     1. Không bấm sớm hơn giờ admin gán (trừ lượt B đã được gán, vẫn phải chờ A bắt đầu).
+ *     2. Chặng trước của CHÍNH KTV này trong đơn đang chạy dở → từ chối (không làm 2 chặng một lúc).
+ *     3. Ảnh bắt đầu: bắt buộc. Ảnh dép: ảnh mới nếu có, không thì dùng lại ảnh dép đã có
+ *        trong cùng đơn của cùng khách (chặng trước / A / người bị thay); chưa có thì bắt buộc chụp.
+ *     4. actualStartTime = giờ máy chủ lúc nhận lệnh (giờ thực tế), commit qua ktv_start_service_atomic.
+ *   NEXT_SEGMENT — đồng hồ chặng trước hết:
+ *     Chỉ đóng chặng trước (actualEndTime). KHÔNG bắt đầu chặng sau — KTV phải bấm START_TIMER
+ *     (quyết định 04/10/2026, plans/plan_chang2_phai_bam_bat_dau_20261004.md).
+ *
+ * 🚫 KHÔNG ĐƯỢC:
+ *   - Set actualStartTime cho segment của KTV KHÁC (Parallel Sync đã bị xóa).
+ *   - Tự bắt đầu chặng sau khi đóng chặng trước.
+ *   - Hạ status item đã đi xa hơn (CLAUDE.md 9.6).
+ *   - Sửa dữ liệu đơn quá khứ.
+ */
 import { NextResponse } from 'next/server';
 import { HandlerContext, HandlerResult } from '../_shared/utils';
 import { isLiveKtvSegment, parseKtvSegments, parseKtvOptions } from '@/lib/ktvUtils';
@@ -70,10 +92,50 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
         || new Set(run.map(s => s.seg.roomId)).size !== 1 || !target.seg.roomId)) {
         return fail('Các chặng không còn đủ điều kiện gộp; tải lại.');
     }
-    const previous = action === 'NEXT_SEGMENT' ? work[work.indexOf(target) - 1] : null;
+    const prior = work[work.indexOf(target) - 1];
+    if (action === 'START_TIMER' && !merge && prior?.seg.actualStartTime && !prior.seg.actualEndTime
+        && !['DONE', 'CANCELLED'].includes(prior.item.status)) {
+        return fail('Chặng trước chưa kết thúc; hết giờ chặng trước mới bắt đầu chặng này.');
+    }
+    const previous = action === 'NEXT_SEGMENT' ? prior : null;
     if (action === 'NEXT_SEGMENT' && (!previous?.seg.actualStartTime || previous.item.status === 'CANCELLED')) {
         return fail('Chặng trước chưa bắt đầu; không thể chuyển chặng.');
     }
+    if (action === 'NEXT_SEGMENT') {
+        // Only close the previous segment; the next one starts when the KTV presses Start.
+        if (previous!.seg.actualEndTime) return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: booking };
+        previous!.seg.actualEndTime = new Date().toISOString();
+        const entry = previous!;
+        const done = entry.segments.filter((s: any) => s.ktvId && s.voided !== true && s.voided !== 'true').every((s: any) => s.actualStartTime && s.actualEndTime);
+        const computed = done && !isTwoSlotSequential(entry.item.options) ? 'CLEANING' : 'IN_PROGRESS';
+        const current = String(entry.item.status || '');
+        const status = (POST_SERVICE_RANK[current] ?? 0) > POST_SERVICE_RANK[computed] ? current : computed;
+        const { data, error } = await supabase.rpc('ktv_finish_service_atomic', {
+            p_booking_id: bookingId, p_booking_snapshot: { id: booking.id, status: booking.status, rating: booking.rating },
+            p_item_snapshots: snapshots, p_guest_ratings: booking.BookingGuests || [],
+            p_updates: [{ id: entry.item.id, status, segments: JSON.stringify(entry.segments) }], p_booking_status: 'IN_PROGRESS',
+        });
+        if (error || !data?.success) {
+            console.error('[KTV NEXT_SEGMENT] close previous failed', { bookingId, technicianCode, segmentId: entry.seg.id, error });
+            return fail('Chưa lưu được kết thúc chặng; tải lại trước khi thử lại.');
+        }
+        return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: data.booking || booking };
+    }
+    // Slipper photo already in this order for the same guest (previous segment, KTV A, replaced KTV).
+    const inheritedSlipper = (): string | null => {
+        let best: { url: string; at: string } | null = null;
+        for (const item of items) {
+            if ((item.guest_id || null) !== (target.item.guest_id || null)) continue;
+            for (const seg of parseKtvSegments(item.segments)) {
+                const url = typeof seg.guestSlipperPhotoUrl === 'string' ? seg.guestSlipperPhotoUrl : '';
+                if (!/^https?:\/\//.test(url)) continue;
+                const at = String(seg.actualStartTime || '');
+                if (!best || at > best.at) best = { url, at };
+            }
+        }
+        return best?.url || null;
+    };
+    const isPhotoData = (raw: unknown) => typeof raw === 'string' && raw.startsWith('data:image/');
     const paths: string[] = [];
     const upload = async (raw: unknown, prefix: string) => {
         const match = typeof raw === 'string' ? /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(raw) : null;
@@ -94,8 +156,10 @@ export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResu
     };
     let attemptedCommit = false;
     try {
-        const slipper = action === 'START_TIMER' ? await upload(body.guestSlipperPhotoBase64, 'slipper') : null;
-        const start = action === 'START_TIMER' ? await upload(body.startPhotoBase64 || body.photoBase64, 'start') : null;
+        const slipper = isPhotoData(body.guestSlipperPhotoBase64)
+            ? await upload(body.guestSlipperPhotoBase64, 'slipper') : inheritedSlipper();
+        if (!slipper) throw new Error('Cần chụp ảnh dép khách trước khi bắt đầu.');
+        const start = await upload(body.startPhotoBase64 || body.photoBase64, 'start');
         const now = new Date().toISOString();
         for (const entry of run) {
             entry.seg.actualStartTime = now;

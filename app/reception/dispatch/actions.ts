@@ -2751,7 +2751,8 @@ export async function searchCustomers(query: string) {
         const { data, error } = await supabase
             .from('Customers')
             .select('id, fullName, phone, email')
-            .or(`fullName.ilike.%${safeQuery}%,phone.ilike.%${safeQuery}%`)
+            // Thêm email (03/10/2026) — Lịch hẹn gợi ý theo email; Tạo đơn nhanh cũng được lợi.
+            .or(`fullName.ilike.%${safeQuery}%,phone.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`)
             .limit(10);
 
         if (error) throw error;

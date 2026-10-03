@@ -90,6 +90,8 @@ export async function sendPushNotification(payload: PushPayload) {
                 'DEV': 'DEV'
             };
             const mappedRoles = targetRoles.map((r: string) => roleMapping[r.toUpperCase()] || r.toUpperCase());
+            // Tài khoản lễ tân còn mang enum cũ 'RECEPTION' vẫn phải nhận push của quầy.
+            if (mappedRoles.includes('RECEPTIONIST')) mappedRoles.push('RECEPTION', 'LEAD_RECEPTIONIST');
             
             // Lấy danh sách nhân viên có role tương ứng
             const { data: usersData, error: usersErr } = await supabase
@@ -117,7 +119,7 @@ export async function sendPushNotification(payload: PushPayload) {
             const { data: defaultUsers } = await supabase
                 .from('Users')
                 .select('id, code')
-                .in('role', ['ADMIN', 'RECEPTIONIST']);
+                .in('role', ['ADMIN', 'RECEPTIONIST', 'LEAD_RECEPTIONIST', 'RECEPTION']);
             if (defaultUsers) {
                 defaultUsers.forEach(u => {
                     if (u.id) finalStaffIds.add(u.id);

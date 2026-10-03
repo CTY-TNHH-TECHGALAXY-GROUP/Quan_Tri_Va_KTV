@@ -19,6 +19,7 @@ import {
   getWebBookings,
   confirmWebBooking,
   rejectWebBooking,
+  resendBookingEmail,
   type WebBooking,
 } from './actions';
 import WebBookingCard from './WebBookingCard';
@@ -76,6 +77,9 @@ export function WebBookingBoard() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   // Track IDs confirmed this session to prevent realtime refetch from re-showing them
   const confirmedIdsRef = useRef<Set<string>>(new Set());
+  // Đơn mà email xác nhận lỗi/không gửi được khi bấm Xác nhận — chỉ nhớ trong phiên,
+  // DB không lưu kết quả gửi mail. Dùng để nhắc quầy mở đơn và bấm "Gửi lại email".
+  const [emailFailedIds, setEmailFailedIds] = useState<Set<string>>(new Set());
 
   // Detail panel
   const [selectedBooking, setSelectedBooking] = useState<WebBooking | null>(null);
@@ -199,6 +203,9 @@ export function WebBookingBoard() {
 
   const handleConfirm = async (id: string) => {
     setProcessingId(id);
+    // Giữ lại bản ghi trước khi nó rời danh sách: nếu mail lỗi, mở ngay panel
+    // của đơn này ở trạng thái đã xác nhận để quầy bấm "Gửi lại email" tại chỗ.
+    const confirmedBooking = bookings.find((b) => b.id === id) || selectedBooking;
     try {
       const res = await confirmWebBooking(id);
       if (res.success) {
@@ -207,19 +214,26 @@ export function WebBookingBoard() {
         let msg = '✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.';
         let kind: 'success' | 'error' = 'success';
         if (res.emailSent === false) {
-          msg = 'Đơn đã vào Điều phối nhưng email chưa gửi được. Kiểm tra SMTP và gửi lại email.';
+          msg = 'Đơn đã vào Điều phối nhưng email chưa gửi được. Bấm "Gửi lại email xác nhận" ở cuối đơn.';
           kind = 'error';
+          setEmailFailedIds((prev) => new Set(prev).add(id));
         } else if (res.emailSent === true) {
           msg = '✅ Đã xác nhận và gửi email xác nhận cho khách.';
         } else if (skipped === 'NO_EMAIL') {
           msg = '✅ Đã xác nhận. Không gửi email vì đơn không có email khách.';
         } else if (skipped === 'INVALID_EMAIL') {
-          msg = '✅ Đã xác nhận. Không gửi email vì email khách không hợp lệ — sửa email rồi bấm "Gửi lại email".';
+          msg = '✅ Đã xác nhận. Không gửi email vì email khách không hợp lệ — sửa email thật rồi mở đơn → "Gửi lại email xác nhận".';
+          setEmailFailedIds((prev) => new Set(prev).add(id));
         } else if (skipped === 'DISABLED') {
           msg = '✅ Đã xác nhận. Không gửi email vì công tắc gửi email đang TẮT (Cài đặt › Cấu hình Email).';
         }
         showToast(msg, kind);
-        setSelectedBooking(null);
+        if (res.emailSent === false && confirmedBooking) {
+          // Đơn đã rời trạng thái NEW phía server; phản chiếu để panel hiện nút gửi lại.
+          setSelectedBooking({ ...confirmedBooking, status: 'PREPARING' });
+        } else {
+          setSelectedBooking(null);
+        }
         // Mark as confirmed locally so it won't reappear after realtime refetch
         confirmedIdsRef.current.add(id);
         // Remove from local list immediately
@@ -242,6 +256,21 @@ export function WebBookingBoard() {
         setBookings((prev) => prev.filter((b) => b.id !== id));
       } else {
         showToast('❌ Lỗi: ' + res.error, 'error');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleResendEmail = async (id: string) => {
+    setProcessingId(id);
+    try {
+      const res = await resendBookingEmail(id);
+      if (res.success) {
+        showToast(`✅ Đã gửi lại email xác nhận tới ${res.email}.`, 'success');
+        setEmailFailedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+      } else {
+        showToast('❌ Chưa gửi được: ' + res.error, 'error');
       }
     } finally {
       setProcessingId(null);
@@ -443,6 +472,8 @@ export function WebBookingBoard() {
           onClose={() => setSelectedBooking(null)}
           onConfirm={handleConfirm}
           onReject={handleReject}
+          onResendEmail={handleResendEmail}
+          emailFailed={!!selectedBooking && emailFailedIds.has(selectedBooking.id)}
           isLoading={processingId === selectedBooking?.id}
         />
 

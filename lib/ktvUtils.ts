@@ -54,6 +54,17 @@ export function unstartedSequentialSeconds(item: any, segment: any, durationMinu
         ? durationMinutes * 60 : null;
 }
 
+/**
+ * Same KTV, later segment of the same order waiting for a real Start press
+ * (plans/plan_chang2_phai_bam_bat_dau_20261004.md): an earlier segment ended, none is running,
+ * one is not started. The clock must stay stopped — never re-timed from item/booking timeStart.
+ */
+export function isWaitingForNextSegment(mySegs: any[]): boolean {
+    const live = (mySegs || []).filter(s => s && s.voided !== true && s.voided !== 'true');
+    return live.some(s => s.actualEndTime) && !live.some(s => s.actualStartTime && !s.actualEndTime)
+        && live.some(s => !s.actualStartTime);
+}
+
 /** Normalize legacy JSON options without leaking malformed data into UI. */
 export function parseKtvOptions(raw: any): Record<string, any> {
     try {

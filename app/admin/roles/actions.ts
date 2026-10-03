@@ -41,6 +41,7 @@ export async function getRolePermissions() {
             'ADMIN': 'admin',
             'RECEPTIONIST': 'reception',
             'LEAD_RECEPTIONIST': 'reception',
+            'RECEPTION': 'reception', // enum cũ còn trong DB
             'TECHNICIAN': 'ktv',
             'KTV': 'ktv',
             'SUPPORT': 'support',
@@ -96,7 +97,9 @@ export async function verifyAdminPassword(inputPassword: string) {
 // Map local role IDs to DB role enum values
 const ROLE_ID_TO_DB: Record<string, string[]> = {
     'admin': ['ADMIN'],
-    'reception': ['RECEPTIONIST', 'LEAD_RECEPTIONIST'],
+    // Gồm cả 'RECEPTION' (enum cũ): trước đây lưu quyền Lễ tân không chạm tới tài khoản
+    // mang giá trị này → phân quyền xong vẫn không có hiệu lực (ca ORIA000).
+    'reception': ['RECEPTIONIST', 'LEAD_RECEPTIONIST', 'RECEPTION'],
     'ktv': ['TECHNICIAN', 'KTV'],
     'support': ['SUPPORT'],
 };

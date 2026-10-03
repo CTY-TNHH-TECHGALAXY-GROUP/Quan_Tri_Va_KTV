@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Clock, User, Phone, DollarSign, MessageSquare, CheckCircle2, XCircle, ChevronRight, CalendarDays, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 import { WebBooking } from './actions';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 
 // ─── STATUS CONFIG ────────────────────────────────────────────────────────────
 
@@ -91,8 +91,8 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
               }
           } else if (parsedNotes.type === 'CHECKOUT_CART') {
               finalNote = 'Checkout Giỏ Hàng';
-              if (parsedNotes.vipCustomerNotes) {
-                  finalNote += ` | Ghi chú VIP: ${parsedNotes.vipCustomerNotes}`;
+              if (stripBodyAreaTags(parsedNotes.vipCustomerNotes)) {
+                  finalNote += ` | Ghi chú VIP: ${stripBodyAreaTags(parsedNotes.vipCustomerNotes)}`;
               }
               const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
               if (cNote) {
@@ -207,7 +207,7 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
                            item.options.focus && formatBodyAreas(item.options.focus) && `Tập trung: ${formatBodyAreas(item.options.focus)}`,
                            item.options.avoid && formatBodyAreas(item.options.avoid) && `Né: ${formatBodyAreas(item.options.avoid)}`,
                            (item.options.therapist && item.options.therapist !== 'Ngẫu nhiên') && `KTV: ${item.options.therapist}`,
-                           (item.options.note || item.options.customerNotes) && `Ghi chú: ${item.options.note || item.options.customerNotes}`
+                           stripBodyAreaTags(item.options.note || item.options.customerNotes) && `Ghi chú: ${stripBodyAreaTags(item.options.note || item.options.customerNotes)}`
                          ].filter(Boolean).join(' | ')}
                       </div>
                   )}

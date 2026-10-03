@@ -2,7 +2,7 @@ import { pausedMsOf, endedByCounter, laNguoiBiDoiRaKhoiDon } from '@/lib/segment
 import { employeeIsPaused } from '@/lib/sequential-lifecycle';
 import { isUtilityService } from '@/lib/booking.logic';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ktvMatchesSeg, isLiveKtvSegment, isKtvDisplaySegment, ktvServiceName, parseKtvOptions, parseKtvSegments, sameRoomSequentialB, unstartedSequentialSeconds } from '@/lib/ktvUtils';
+import { ktvMatchesSeg, isLiveKtvSegment, isKtvDisplaySegment, ktvServiceName, parseKtvOptions, parseKtvSegments, sameRoomSequentialB, unstartedSequentialSeconds, isWaitingForNextSegment } from '@/lib/ktvUtils';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { useAuth } from '@/lib/auth-context';
@@ -19,6 +19,8 @@ export type ScreenState = 'DASHBOARD' | 'TIMER' | 'REVIEW' | 'REWARD' | 'HANDOVE
 // After a local START, a fetch that left before the commit still shows this segment unstarted.
 // Within this window such a stale copy must not stop the running clock (feedback 02/10/2026).
 const LOCAL_START_GRACE_MS = 10000;
+// Segment 2+ not started this many minutes after it unlocked → remind the KTV (repeats each interval).
+const REMIND_KTV_AFTER_MIN = 5;
 
 const getMinsFromTimes = (start: string, end: string) => {
     if (!start || !end) return 0;
@@ -193,6 +195,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
     const [bonusMessage, setBonusMessage] = useState<string | null>(null);
     const [hasSubmittedReview, setHasSubmittedReview] = useState(false);
     const [canStart, setCanStart] = useState(true);
+    const segmentRemindRef = useRef<string>('');
     const [allowedStartTime, setAllowedStartTime] = useState<Date | null>(null);
     const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
     const [walletBalance, setWalletBalance] = useState<any>(null);
@@ -298,6 +301,49 @@ export function useKTVDashboard(config?: DashboardConfig) {
             setGuestSlipperPhotoBase64State(null);
         }
     }, [booking?.id, ktvId, activeSegmentIndex]);
+
+    // 👟 Truy xuất ảnh dép khách bền vững (cho màn hình Hoàn tất đơn / Dọn phòng)
+    const resolvedGuestSlipperPhoto = useMemo(() => {
+        if (guestSlipperPhotoBase64) return guestSlipperPhotoBase64;
+        if (typeof window !== 'undefined' && booking?.id && ktvId) {
+            for (let i = 0; i < 5; i++) {
+                const saved = localStorage.getItem(`ktv_slipper_photo_${ktvId}_${booking.id}_${i}`);
+                if (saved) return saved;
+            }
+        }
+        if (booking?.BookingItems) {
+            for (const item of booking.BookingItems) {
+                let segs = item.segments;
+                if (typeof segs === 'string') {
+                    try { segs = JSON.parse(segs); } catch { segs = []; }
+                }
+                if (Array.isArray(segs)) {
+                    const mySeg = segs.find((s: any) => ktvMatchesSeg(s.ktvId, ktvId) && s.guestSlipperPhotoUrl);
+                    if (mySeg?.guestSlipperPhotoUrl) return mySeg.guestSlipperPhotoUrl;
+                    const anySeg = segs.find((s: any) => s.guestSlipperPhotoUrl);
+                    if (anySeg?.guestSlipperPhotoUrl) return anySeg.guestSlipperPhotoUrl;
+                }
+            }
+        }
+        return null;
+    }, [guestSlipperPhotoBase64, booking, ktvId]);
+
+    // Slipper photo already saved on the server for this order (one order = one guest): taken at
+    // segment 1, by KTV A of a sequential order, or by the KTV who was replaced. When present,
+    // the start screen only asks for the start photo and the server reuses this one.
+    const inheritedSlipperUrl = useMemo(() => {
+        // Same guest only — mirrors handleStartTimer.inheritedSlipper (old multi-guest orders: new photo).
+        const ids: string[] = booking?.assignedItemIds?.length ? booking.assignedItemIds
+            : (booking?.assignedItemId ? [booking.assignedItemId] : []);
+        const guestIds = new Set((booking?.BookingItems || []).filter((i: any) => ids.includes(i.id)).map((i: any) => i.guest_id || null));
+        for (const item of booking?.BookingItems || []) {
+            if (!guestIds.has(item?.guest_id || null)) continue;
+            for (const seg of parseKtvSegments(item?.segments)) {
+                if (typeof seg.guestSlipperPhotoUrl === 'string' && /^https?:\/\//.test(seg.guestSlipperPhotoUrl)) return seg.guestSlipperPhotoUrl as string;
+            }
+        }
+        return null;
+    }, [booking]);
 
     // ⚠️ DO NOT REMOVE — Fix timer drift 16/05/2026
     // Refs cho absolute timer: mỗi tick tính từ Date.now() thay vì prev-1
@@ -516,6 +562,36 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 setAllowedStartTime(null);
                 setCanStart(true);
                 return;
+            }
+            // Segment 2+ of the same order: unlocks at the later of the admin-assigned start and the
+            // previous segment's end; the actual start is stamped by the server when the KTV presses.
+            if (activeSegmentIndexRef.current > 0) {
+                const ids: string[] = booking.assignedItemIds?.length > 0 ? booking.assignedItemIds
+                    : (booking.assignedItemId ? [booking.assignedItemId] : []);
+                const segs = (booking.BookingItems || []).filter((i: any) => ids.includes(i.id))
+                    .flatMap((i: any) => parseKtvSegments(i?.segments).filter((seg: any) => isLiveKtvSegment(seg, ktvId)))
+                    .sort((a: any, b: any) => String(a.startTime || '23:59').localeCompare(String(b.startTime || '23:59')));
+                const seg = segs[activeSegmentIndexRef.current];
+                const prev = segs[activeSegmentIndexRef.current - 1];
+                if (seg && !seg.actualStartTime) {
+                    let planned = seg.plannedStartAt ? new Date(seg.plannedStartAt)
+                        : (booking.bookingDate && seg.startTime ? new Date(`${String(booking.bookingDate).slice(0, 10)}T${seg.startTime}:00+07:00`) : null);
+                    if (planned && planned.getTime() - Date.now() > 12 * 60 * 60 * 1000) planned = new Date(planned.getTime() - 24 * 60 * 60 * 1000);
+                    const prevEnd = prev?.actualEndTime ? new Date(prev.actualEndTime) : null;
+                    const marks = [planned, prevEnd].filter((d): d is Date => !!d && !isNaN(d.getTime()));
+                    const unlockAt = marks.length ? new Date(Math.max(...marks.map(d => d.getTime()))) : null;
+                    setAllowedStartTime(unlockAt);
+                    const ready = !unlockAt || Date.now() >= unlockAt.getTime() - 5000;
+                    setCanStart(ready && !!prevEnd);
+                    // Remind the KTV every REMIND_KTV_AFTER_MIN while the segment waits past its unlock time.
+                    const lateMs = unlockAt && prevEnd ? Date.now() - unlockAt.getTime() : 0;
+                    const remindKey = `${seg.id}:${Math.floor(lateMs / (REMIND_KTV_AFTER_MIN * 60000))}`;
+                    if (!isTimerRunningRef.current && lateMs >= REMIND_KTV_AFTER_MIN * 60000 && segmentRemindRef.current !== remindKey) {
+                        segmentRemindRef.current = remindKey;
+                        addToast(`⏰ Bạn chưa bắt đầu Chặng ${activeSegmentIndexRef.current + 1} (trễ ${Math.floor(lateMs / 60000)} phút so với giờ gán). Chụp ảnh và bấm Bắt đầu.`, 'info');
+                    }
+                    return;
+                }
             }
             let allowed: Date | null = null;
 
@@ -900,6 +976,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 setScreen('TIMER');
                 setIsPrepping(false);
             }
+            // Previous segment closed, next not pressed yet: stay on TIMER with the Start button
+            // (clock stopped). A stale copy right after a local Start keeps the running clock.
+            if (isWaitingForNextSegment(allMySegsForStatus) && !justStartedLocally()) {
+                timerStartMsRef.current = 0;
+                setIsTimerRunning(false);
+                return;
+            }
             setIsTimerRunning(true);
         }
         else if (['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE'].includes(currentStatus)) {
@@ -1225,7 +1308,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                         // Kiểm tra Rule Merge Timer: CÙNG PHÒNG → merge 1 timer tổng
                         // (khác phòng → chia chặng riêng)
-                        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
+                        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || `no-room:${s.id}`));
                         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
                         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
                         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
@@ -1282,15 +1365,11 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         let calculatedSegIdx = manualSegmentOverrideRef.current ? activeSegmentIndex : 0;
                         if (!manualSegmentOverrideRef.current) {
                             if (allMySegs.length > 0 && allMySegs.some(s => s.actualStartTime)) {
-                                // Tìm chặng đang active dựa trên actualStartTime
-                                let foundIdx = -1;
-                                for (let i = allMySegs.length - 1; i >= 0; i--) {
-                                    if (allMySegs[i].actualStartTime) {
-                                        foundIdx = i;
-                                        break;
-                                    }
-                                }
-                                if (foundIdx >= 0) { calculatedSegIdx = foundIdx; } else { const nextIdx = allMySegs.findIndex(s => !s.actualStartTime); if (nextIdx !== -1) calculatedSegIdx = nextIdx; }
+                                // Running segment first; then the first not started (previous closed, waiting for
+                                // the KTV to press Start); else the last one. Same rule as the active-segment effect.
+                                const runningIdx = allMySegs.findIndex(s => s.actualStartTime && !s.actualEndTime);
+                                const waitingIdx = allMySegs.findIndex(s => !s.actualStartTime);
+                                calculatedSegIdx = runningIdx >= 0 ? runningIdx : waitingIdx >= 0 ? waitingIdx : allMySegs.length - 1;
                             } else if (currentStatus === 'IN_PROGRESS' && res.data.timeStart) {
                                 // Fallback đếm ngược ảo nếu chưa có segments time tracking
                                 let tStart = res.data.timeStart;
@@ -1350,7 +1429,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
                             let tStart = assignedItem?.timeStart || res.data.timeStart;
 
                             // A/B share item.timeStart, but an unstarted replacement has its own full slot.
-                            if (unstartedSequentialSeconds(assignedItem, currentSeg, currentSegDuration) !== null) {
+                            if (unstartedSequentialSeconds(assignedItem, currentSeg, currentSegDuration) !== null
+                                // Segment 2+ waiting for the KTV's Start press: full minutes, clock stopped.
+                                || (isWaitingForNextSegment(allMySegs) && !currentSeg?.actualStartTime)) {
                                 // Stale copy right after this KTV pressed Start: keep the running clock as is
                                 // (falling through would re-time it from A's item.timeStart).
                                 if (justStartedLocally()) return res.data;
@@ -1794,7 +1875,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             const currentSecs = currentSegDuration * 60;
 
-            if (unstartedSequentialSeconds(assignedItem, allMySegs[calculatedSegIdx], currentSegDuration) !== null) {
+            if (unstartedSequentialSeconds(assignedItem, allMySegs[calculatedSegIdx], currentSegDuration) !== null
+                || (isWaitingForNextSegment(allMySegs) && !allMySegs[calculatedSegIdx]?.actualStartTime)) {
+                if (justStartedLocally()) return;
                 timerStartMsRef.current = 0;
                 timerTotalSecsRef.current = currentSecs;
                 setTimeRemaining(currentSecs);
@@ -1935,17 +2018,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
                         const codes: string[] = bi.technicianCodes || [];
                         return codes.map((c: string) => c.toLowerCase()).includes(ktvId.toLowerCase());
                     });
+                    const allMine: any[] = [];
                     for (const ai of allAssignedItems) {
                         let segs: any[] = [];
                         try {
                             segs = parseKtvSegments(ai?.segments);
                         } catch { segs = []; }
-                        const mySegs = segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId));
-                        if (mySegs.some((s: any) => s.actualStartTime)) {
-                            hasStarted = true;
-                            break;
-                        }
+                        allMine.push(...segs.filter((seg: any) => isLiveKtvSegment(seg, ktvId)));
                     }
+                    // Waiting for the Start press of segment 2+: nothing is running, so nothing to finish.
+                    hasStarted = allMine.some((s: any) => s.actualStartTime) && !isWaitingForNextSegment(allMine);
                 } catch(e) {
                     // Nếu lỗi parse → vẫn cho phép AutoFinish chạy để KTV không bị kẹt
                     hasStarted = true;
@@ -2052,7 +2134,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             // Tính shouldMerge để set timer đúng tổng nếu cần
             const segItemIds = new Set(allMySegs.map((s: any) => s._itemId).filter(Boolean));
-            const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
+            const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || `no-room:${s.id}`));
             const uniqueItemIdsForPrep = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
             const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
             const isMerge = allMySegs.length > 1 && uniqueItemIdsForPrep.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
@@ -2105,12 +2187,57 @@ export function useKTVDashboard(config?: DashboardConfig) {
         });
         
         // Merge: gộp tất cả các dịch vụ riêng biệt (cùng phòng) thành 1 chặng liên tục
-        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || `no-room:${s.id}`));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
         const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
         const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
+
+        // ⭐ Cách B: chặng tiếp theo cùng đơn (activeSegmentIndex > 0) — KTV phải bấm Bắt đầu thật.
+        // Server ghi giờ thực tế lúc bấm + ảnh bắt đầu (ảnh dép dùng lại của chặng trước nếu không chụp mới).
+        // Chỉ chạy đồng hồ SAU khi server xác nhận (plans/plan_chang2_phai_bam_bat_dau_20261004.md).
+        if (activeSegmentIndex > 0) {
+            const nextSeg = allMySegs[activeSegmentIndex];
+            if (!startPhotoBase64) {
+                addToast(`Chụp ảnh bắt đầu Chặng ${activeSegmentIndex + 1} trước khi bắt đầu.`, 'error');
+                return;
+            }
+            setIsLoading(true);
+            try {
+                const res = await apiClient.patch<any>(API.KTV.BOOKING, {
+                    bookingId: booking.id,
+                    status: 'IN_PROGRESS',
+                    techCode: ktvId,
+                    action: 'START_TIMER',
+                    activeSegmentIndex,
+                    targetSegmentId: nextSeg?.id,
+                    startPhotoBase64,
+                    // Only a freshly captured photo; otherwise the server reuses the order's slipper photo.
+                    guestSlipperPhotoBase64: guestSlipperPhotoBase64 || undefined,
+                });
+                if (!res.success) {
+                    addToast('Chưa bắt đầu được: ' + (res.error || 'Unknown error'), 'error');
+                    if (fetchBookingRef.current) fetchBookingRef.current();
+                    return;
+                }
+                setStartPhotoBase64(null);
+                // Assigned minutes of this segment; recalcTimerFromServer re-syncs from the server stamp.
+                const segDuration = Math.max(0, Number(nextSeg?.duration) || 0);
+                timerStartMsRef.current = Date.now() + timeOffsetRef.current;
+                timerTotalSecsRef.current = segDuration * 60;
+                setTimeRemaining(segDuration * 60);
+                setIsTimerRunning(true);
+                setScreen('TIMER');
+                addToast(`🚀 Đã bắt đầu phục vụ Chặng ${activeSegmentIndex + 1}!`, 'success');
+                if (fetchBookingRef.current) fetchBookingRef.current();
+            } catch (error: any) {
+                addToast('Lỗi hệ thống khi bắt đầu chặng: ' + (error?.message || 'Unknown error'), 'error');
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -2122,7 +2249,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 shouldMerge: shouldMerge,
                 activeSegmentIndex,
                 startPhotoBase64,
-                guestSlipperPhotoBase64
+                // Omit when not captured (reused slipper photo); null fails the PATCH schema.
+                guestSlipperPhotoBase64: guestSlipperPhotoBase64 || undefined
             });
             if (res.success) {
                 // 📸 Clean up check-in photos from preview and localStorage
@@ -2191,7 +2319,7 @@ export function useKTVDashboard(config?: DashboardConfig) {
         allMySegs.sort((a, b) => (a.startTime || '23:59').localeCompare(b.startTime || '23:59'));
 
         // Merge: cùng phòng → 1 timer tổng, khác phòng → chặng riêng
-        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s._guestId || s.roomId || 'unknown'));
+        const uniqueRoomIds = new Set(allMySegs.map((s: any) => s.roomId || `no-room:${s.id}`));
         const uniqueItemIds = new Set(allMySegs.map((s: any) => s._itemId || s.itemId));
         const hasFinishedSegment = allMySegs.some((s: any) => s.actualEndTime);
         const allFinished = allMySegs.length > 0 && allMySegs.every((s: any) => s.actualEndTime);
@@ -2213,7 +2341,9 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 status: 'IN_PROGRESS',
                 techCode: ktvId,
                 action: 'NEXT_SEGMENT',
-                activeSegmentIndex: nextIdx
+                activeSegmentIndex: nextIdx,
+                // Explicit id: client sorts by "HH:mm", server by plannedStartAt — they differ across midnight.
+                targetSegmentId: allMySegs[nextIdx]?.id,
             });
             if (res.success) {
                 setActiveSegmentIndex(nextIdx);
@@ -2222,9 +2352,14 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
                 // Reset timer cho chặng mới
                 const nextSeg = allMySegs[nextIdx];
-                const nextDuration = (nextSeg?.duration != null && nextSeg?.duration !== '' ? Number(nextSeg.duration) : 60);
+                const nextDuration = Math.max(0, Number(nextSeg?.duration) || 0);
                 setTimeRemaining(nextDuration * 60);
-                console.log(`⏱️ [AutoAdvance] Timer reset to ${nextDuration} minutes for segment ${nextIdx}`);
+                // ⭐ Cách B: Dừng timer ở chặng mới, đợi KTV bấm Bắt đầu
+                timerStartMsRef.current = 0;
+                timerTotalSecsRef.current = nextDuration * 60;
+                setIsTimerRunning(false);
+                addToast(`🔔 Đã xong chặng ${currentIdx + 1}. Vui lòng bấm Bắt đầu khi sẵn sàng làm chặng ${nextIdx + 1}!`, 'info');
+                console.log(`⏱️ [AutoAdvance] Timer reset to ${nextDuration} minutes for segment ${nextIdx} (paused waiting for KTV start)`);
 
                 // Fetch lại booking để cập nhật segments mới (actualStartTime/EndTime)
                 if (fetchBookingRef.current) fetchBookingRef.current();
@@ -2929,6 +3064,8 @@ export function useKTVDashboard(config?: DashboardConfig) {
         startPhotoBase64,
         setStartPhotoBase64,
         guestSlipperPhotoBase64,
+        resolvedGuestSlipperPhoto,
+        inheritedSlipperUrl,
         setGuestSlipperPhotoBase64,
         // Room procedures & issue reporting
         prepProcedure,

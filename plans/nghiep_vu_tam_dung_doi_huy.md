@@ -42,6 +42,18 @@ Luồng đổi KTV bị sửa đi sửa lại **hơn 15 lần** trong một phi�
 
 Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc sớm (khách xuống sớm) · **HK** Huỷ không công · **HC** Huỷ có công · **ĐR** Đổi KTV — người bị đổi ra · **VT** Đổi KTV — người vào thay.
 
+**Sự kiện ngoài đơn (03/10/2026) — CG: Admin/DEV cộng giờ tích luỹ thủ công** (`plans/plan_cong_gio_tich_luy_thu_cong.md`). Không gắn BookingItem nên các khía cạnh 3–14 **không áp dụng**; bảng riêng:
+
+| Khía cạnh | CG |
+|---|---|
+| Tiền tua / thưởng / ví | **không đổi** (`money_penalty = 0`) |
+| Giờ tích luỹ (D) | +X vào tháng của `work_date` admin chọn (lùi ≤ 60 ngày); `KTVDPenaltyLedger.HOURS_GRANT`, `hours_penalty` âm |
+| Thứ tự nhận tua / quỹ giờ xét khoá | tự đổi theo giờ ròng mới (cùng `netHoursByStaff`) |
+| Màn app KTV | sổ giờ hiện dòng "Cộng giờ (admin)" + lý do; ô "Cộng thêm" |
+| Lịch sử / nhật ký | sổ giờ admin hiện "Bù giờ"; `SecurityAuditLogs.HOURS_GRANT`; thông báo KTV loại `HOURS_GRANT` |
+| Lý do | **bắt buộc** (≥ 5 ký tự) |
+| Quyền | chỉ ADMIN / DEV (`requireRole`), UI ẩn nút với vai khác |
+
 | # | Khía cạnh | TD | KS | HK | HC | ĐR | VT |
 |---|---|---|---|---|---|---|---|
 | 1 | **Tiền tua** | theo giờ gán | theo giờ làm thực | 0đ | theo giờ làm thực | **0đ** | số phút quầy chốt (`customCommissionDuration`) |
@@ -82,6 +94,7 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | ĐR dòng 15 | route lịch sử trên đơn thật `WB-11092026-003` |
 | VT dòng 14 | `coWorkersOf` trên đơn thật trả `[]` |
 | VT dòng 3, 9 — người vào thay **loại C không có dòng TurnQueue** (14/09) | `scripts/qa/qa_swap_ktv_e2e.ts` — 121/121, cả dưới `TZ=UTC`: tạo dòng `working` (không `assigned`), 2KTV-1DV không bị đụng, 3 bộ lọc huỷ đơn / huỷ dịch vụ / Hoàn tất đều tìm thấy C, huỷ không công → C mất tua như A/B, C bị đổi ra lại → về `waiting` + phiếu CANCELLED, D on-call không bị tạo dòng, race 2 lệnh → 1 dòng |
+| CG (03/10) — cộng giờ âm vào sổ phạt | `scripts/qa/qa_hours_grant.ts`: netHoursByStaff với giờ âm; đối chiếu 13 KTV D: xếp hạng == thứ tự tua == earned−penalty+granted, cả `TZ=UTC` |
 | Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 73/73 trên DB thật trong transaction ROLLBACK (biên 31/08 23:30 ↔ 01/09 00:10 VN, số phút chờ 20 / 8 / 0 / hỏng / âm, và **chờ cả đơn con xong** sau sự cố 14/09: người sau trong chuỗi đang làm / chưa bắt đầu / bị tước, 2 KTV **song song** (một người còn làm / vừa xong / cả hai xong), dịch vụ khác còn CLEANING / IN_PROGRESS / PAUSED; **đổi KTV / kết thúc sớm / huỷ có công – không công** × nối tiếp / song song). Kanban giữ dịch vụ "Đang làm" khi một người xong: `scripts/qa/qa_kanban_sequential_hold.ts` 36/36 (nối tiếp, song song, đổi KTV, kết thúc sớm, huỷ — dựng chặng bằng `voidSegment` / `closeOpenPause` thật) + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). Migration `20260914120000` đã áp 14/09 16:24, lần chạy đầu chốt 13 dịch vụ |
 
 ### ⚠️ Còn lỗ — chưa sửa

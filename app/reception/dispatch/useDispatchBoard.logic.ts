@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
@@ -285,12 +285,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
                             const parsedOptions = parseKtvOptions(bi.options);
 
+                            // Chỉ lấy phần khách gõ tay — vùng tập trung/tránh đã có cột riêng (focus/avoid),
+                            // không để WRB ghép sẵn vào ghi chú rồi hiện trùng hai lần.
                             const freeCustomerNote = [
-                                parsedOptions.note,
-                                parsedOptions.customerNotes,
-                            ].find((value) =>
-                                typeof value === 'string' && value.trim()
-                            )?.trim() || '';
+                                stripBodyAreaTags(parsedOptions.note),
+                                stripBodyAreaTags(parsedOptions.customerNotes),
+                            ].find((value) => value)?.trim() || '';
 
                             const specialTags = Array.isArray(parsedOptions.tags)
                                 ? parsedOptions.tags
@@ -432,7 +432,15 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // `dsKtvHienThi` ở KanbanBoard.tsx.
                                 segments: parsedSegments,
                                 adminNote: itemCustomerNote,
-                                genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
+                                // Đơn NHP/NHT (menu VIP / trị liệu): khách đã chọn ĐÍCH DANH KTV trên WRB, nên
+                                // không có khái niệm "yêu cầu therapist" nữa — không hiện tag nào, kể cả Nam/Nữ
+                                // hay "Ngẫu nhiên" (chốt 03/10/2026). Dịch vụ thường (NHS) giữ như cũ.
+                                genderReq: (() => {
+                                    const sidUp = String(bi.serviceId || '').toUpperCase();
+                                    const isVipOrTherapy = sidUp.startsWith('NHP') || sidUp.startsWith('NHT') || sidUp.startsWith('VIP_');
+                                    if (isVipOrTherapy) return '';
+                                    return String(parsedOptions?.therapist || '').trim() || 'Ngẫu nhiên';
+                                })(),
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
                                 focus: formatBodyAreas(parsedOptions?.focus || ''),
                                 avoid: formatBodyAreas(parsedOptions?.avoid || ''),

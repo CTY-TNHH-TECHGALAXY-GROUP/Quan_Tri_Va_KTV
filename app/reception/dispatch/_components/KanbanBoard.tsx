@@ -16,6 +16,8 @@ import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { expectedEndMs, gioDongHoVN } from '@/lib/segment-time';
 import { useRatingConfig } from '@/lib/useRatingConfig';
 import { normalizeScale, ratingLabelFor, ratingTone } from '@/lib/services/RatingScaleService';
+import { waitingSegmentInfo, SEGMENT_START_ALERT_MIN } from '../dispatch-display';
+import { useToast } from '@/components/ui/Toast';
 
 // 🔧 UI CONFIGURATION
 const RATING_TONE_CLASS = { top: 'text-emerald-600 bg-emerald-50 border-emerald-200', good: 'text-blue-600 bg-blue-50 border-blue-200', mid: 'text-amber-600 bg-amber-50 border-amber-200', low: 'text-red-600 bg-red-50 border-red-200' } as const;
@@ -301,6 +303,20 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
 };
 
 export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
+    // Minute clock for "waiting to start segment N" labels; one toast per late segment.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 30000); return () => clearInterval(id); }, []);
+    const { addToast } = useToast();
+    const alertedSegmentsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        for (const order of orders) for (const svc of order.services) for (const row of svc.staffList || []) for (const seg of row.segments || []) {
+            if (isTwoSlotSequential(svc.options) || ['DONE', 'CANCELLED'].includes(String(svc.status)) || alertedSegmentsRef.current.has(seg.id)) continue;
+            const info = waitingSegmentInfo(order.services, row.ktvId, seg, nowMs);
+            if (!info || info.lateMin < SEGMENT_START_ALERT_MIN) continue;
+            alertedSegmentsRef.current.add(seg.id);
+            addToast(`⏰ KTV ${row.ktvId} chưa bắt đầu chặng ${info.index + 1} đơn ${displayBookingCode(order.billCode)} (trễ ${info.lateMin} phút so với giờ gán).`, 'info');
+        }
+    }, [orders, nowMs]);
     // Rating scale for NEW ratings (star buttons) + admin labels; saved ratings use their own scale.
     const ratingConfig = useRatingConfig();
     const newRatingStars = Array.from({ length: ratingConfig.scale }, (_, i) => i + 1);
@@ -1116,6 +1132,16 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                 <div key={stIdx} onClick={e => { if (sequential) { e.stopPropagation(); onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         {sequential && <span className="text-[9px] font-black text-indigo-600">{Number(seg?.sequenceSlot) === 2 ? 'Lượt 2' : 'Lượt 1'}</span>}
+                                                                                        {(() => {
+                                                                                            // Any of this KTV's segments in the service (both segments may sit in one item).
+                                                                                            const waiting = !sequential && !voided && !['DONE', 'CANCELLED'].includes(String(s.status))
+                                                                                                ? (st?.segments || []).filter((g: any) => g.voided !== true && g.voided !== 'true')
+                                                                                                    .map((g: any) => waitingSegmentInfo(subOrder.services, st.ktvId, g, nowMs)).find(Boolean) || null
+                                                                                                : null;
+                                                                                            if (!waiting) return null;
+                                                                                            const late = waiting.lateMin >= SEGMENT_START_ALERT_MIN;
+                                                                                            return <span className={`text-[8px] font-black ${late ? 'text-red-600 animate-pulse' : 'text-amber-700'}`}>Chờ bắt đầu chặng {waiting.index + 1}{late ? ` · trễ ${waiting.lateMin}p` : ''}</span>;
+                                                                                        })()}
                                                                                         {sequential && !voided && <span className={`text-[8px] font-bold ${seg?.actualEndTime ? 'text-emerald-700' : seg?.actualStartTime ? 'text-sky-700' : 'text-amber-700'}`}>{seg?.actualEndTime ? 'Đã xong' : seg?.actualStartTime ? s.status === 'PAUSED' ? 'Tạm dừng' : 'Đang làm' : 'Chờ bắt đầu'}</span>}
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />

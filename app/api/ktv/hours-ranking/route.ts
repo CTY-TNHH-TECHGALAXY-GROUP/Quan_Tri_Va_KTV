@@ -107,6 +107,7 @@ export async function GET(request: Request) {
                 // Chi tiết chỉ mở cho chính chủ.
                 earned: isMe ? h.earned : null,
                 penalty: isMe ? h.penalty : null,
+                granted: isMe ? h.granted : null,
                 days: isMe ? h.days : null,
                 lastDate: isMe ? h.lastDate : null,
             };
@@ -139,6 +140,7 @@ export async function GET(request: Request) {
             note: r.note,
             at: r.at,
             tuChotSo: (r as any).tuChotSo === true,
+            isGrant: (r as any).isGrant === true,
             penaltyLabel: r.penaltyType ? (HOURS_PENALTY_VI[r.penaltyType] || r.penaltyType) : null,
             orderCode: r.bookingId
                 ? (isUuid(r.bookingId) ? `#${r.bookingId.slice(0, 8)}` : r.bookingId)

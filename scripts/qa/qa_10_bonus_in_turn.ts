@@ -18,7 +18,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import { applyBonusAndTax, TurnRow, TypeDConfigs } from '@/lib/services/KtvDLedgerEngine';
+import { applyBonusAndTax, computeRows, TurnRow, TypeDConfigs } from '@/lib/services/KtvDLedgerEngine';
 import { finish, fatal } from './_exit';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
@@ -43,10 +43,11 @@ const CFG: TypeDConfigs = {
 };
 
 /** Dòng sổ cái tối giản — chỉ những trường mà `applyBonusAndTax` đọc tới. */
-function row(staff: string, group: string, rating: number, net: number): TurnRow {
+function row(staff: string, group: string, rating: number, net: number, guest: string | null = null): TurnRow {
     return {
         staff_id: staff,
         group_id: group,
+        guest_id: guest,
         rating_used: rating,
         commission_net: net,
         bonus_amount: 0,
@@ -96,6 +97,72 @@ function b1_luatTinhThuong(): void {
     applyBonusAndTax(rows, false, '2026-08-31', CFG);
     check('truoc moc thue -> thue 0', rows[0].tax_amount, 0);
     check('truoc moc thue -> van co thuong', rows[0].bonus_amount, 20000);
+}
+
+/**
+ * "Khách" là `guest_id`, không phải `group_id`.
+ * Dịch vụ thêm (addon) không gộp có `group_id` riêng nhưng vẫn là cùng khách.
+ */
+function b1b_theoKhachThat(): void {
+    console.log('\nB1b. Thuong theo khach that (guest_id)');
+
+    // Dịch vụ chính + dịch vụ thêm của cùng khách, cùng 1 KTV → 1 suất.
+    let rows = [row('T1', 'item1', 4, 100000, 'gA'), row('T1', 'addon1', 4, 50000, 'gA')];
+    applyBonusAndTax(rows, false, '2026-10-02', CFG);
+    check('1 khach / 1 KTV / dich vu them -> 1 suat', tongThuong(rows), 20000);
+
+    // Ca 005-02102026: 2 khách, mỗi khách 1 KTV + 1 dịch vụ thêm.
+    rows = [
+        row('T027', 'item1', 4, 100000, 'gA'), row('T027', 'addonA', 4, 50000, 'gA'),
+        row('T021', 'item2', 4, 100000, 'gB'), row('T021', 'addonB', 4, 50000, 'gB'),
+    ];
+    applyBonusAndTax(rows, false, '2026-10-02', CFG);
+    check('005: T027 = 1 suat', rows.filter(r => r.staff_id === 'T027').reduce((s, r) => s + r.bonus_amount, 0), 20000);
+    check('005: T021 = 1 suat', rows.filter(r => r.staff_id === 'T021').reduce((s, r) => s + r.bonus_amount, 0), 20000);
+    check('005: tong 2 suat', tongThuong(rows), 40000);
+
+    // 1 khách, 2 KTV loại D ở 2 item riêng → tối đa 1 suất, chia đều.
+    rows = [row('T1', 'item1', 4, 100000, 'gA'), row('T2', 'addon1', 4, 50000, 'gA')];
+    applyBonusAndTax(rows, false, '2026-10-02', CFG);
+    check('1 khach / 2 KTV / 2 item -> moi nguoi 10k', rows[1].bonus_amount, 10000);
+    check('1 khach / 2 KTV / 2 item -> tong 1 suat', tongThuong(rows), 20000);
+
+    // Đơn cũ không có guest_id → vẫn theo group_id như trước.
+    rows = [row('T1', 'gA', 4, 100000, null), row('T1', 'gB', 4, 100000, null)];
+    applyBonusAndTax(rows, false, '2026-10-02', CFG);
+    check('khong co guest_id -> theo group_id (2 suat)', tongThuong(rows), 40000);
+
+    // Thuế vẫn trên (tua + thưởng), dòng không mang thưởng thì chỉ thuế trên tua.
+    rows = [row('T1', 'item1', 4, 100000, 'gA'), row('T1', 'addon1', 4, 50000, 'gA')];
+    applyBonusAndTax(rows, false, '2026-10-02', CFG);
+    check('thue tong = (150k + 20k) x 10%', rows.reduce((s, r) => s + r.tax_amount, 0), 17000);
+}
+
+/** Đi trọn `computeRows` với fixture đúng định dạng đơn thật 005-02102026-A. */
+function b1c_computeRowsDonThat(): void {
+    console.log('\nB1c. computeRows - fixture don 005-02102026-A (dich vu chinh + dich vu them)');
+
+    const seg = (ktv: string, dur: number, start: string, end: string) =>
+        ({ ktvId: ktv, duration: dur, actualStartTime: start, actualEndTime: end });
+    const guestId = '11NDK-005-02102026-A_guest_1';
+    const rows = computeRows([{
+        id: '11NDK-005-02102026-A',
+        billCode: '005-02102026-A',
+        timeStart: '2026-10-02T08:00:00',
+        BookingGuests: [{ id: guestId, rating: null, ktv_ratings: null }],
+        BookingItems: [
+            { id: '11NDK-005-02102026-item1', serviceId: 'NHS0100', guest_id: guestId, technicianCodes: ['T027'],
+              status: 'DONE', itemRating: 4, options: {},
+              segments: [seg('T027', 60, '2026-10-02T08:00:00Z', '2026-10-02T09:00:00Z')] },
+            { id: '11NDK-005-02102026-A-addon-1790933858362-0', serviceId: 'NHS0022', guest_id: guestId, technicianCodes: ['T027'],
+              status: 'DONE', itemRating: 4, options: {},
+              segments: [seg('T027', 30, '2026-10-02T09:00:00Z', '2026-10-02T09:30:00Z')] },
+        ],
+    }], ['T027'], {}, CFG);
+
+    check('so dong sinh ra', rows.length, 2);
+    check('T027 tong thuong = 1 suat', tongThuong(rows), 20000);
+    check('chi 1 dong mang thuong', rows.filter(r => r.bonus_amount > 0).length, 1);
 }
 
 async function b2_khongTraHaiLan(): Promise<void> {
@@ -155,6 +222,8 @@ async function b2_khongTraHaiLan(): Promise<void> {
 async function main(): Promise<void> {
     console.log('QA #10 — Thuong 4 sao nam trong tien tua');
     b1_luatTinhThuong();
+    b1b_theoKhachThat();
+    b1c_computeRowsDonThat();
     await b2_khongTraHaiLan();
     console.log(`\n=== ${failures === 0 ? 'DAT' : 'HONG (' + failures + ')'} ===`);
     finish(failures);
