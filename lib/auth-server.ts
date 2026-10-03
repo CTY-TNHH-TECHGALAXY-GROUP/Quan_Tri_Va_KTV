@@ -43,7 +43,8 @@ function resolveRoleId(role?: string | null) {
     if (rawRole === 'ADMIN') return 'admin';
     if (rawRole === 'DEV') return 'dev';
     if (rawRole === 'MANAGER') return 'branch_manager';
-    if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST') return 'reception';
+    // 'RECEPTION' là giá trị enum cũ còn trong DB (ORIA000 tạo 03/10) — vẫn là lễ tân.
+    if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST' || rawRole === 'RECEPTION') return 'reception';
     if (rawRole === 'TECHNICIAN' || rawRole === 'KTV') return 'ktv';
 
     return 'ktv';

@@ -36,7 +36,7 @@ import { STAFF_STATUS } from '@/lib/constants/staffStatus';
  * lễ tân nào trùng mã `Staff`, nhưng chặn sẵn để mai này thêm người thì bảng
  * tiền không tự mọc thêm dòng.
  */
-const NON_KTV_ROLES = new Set(['DEV', 'ADMIN', 'RECEPTIONIST']);
+const NON_KTV_ROLES = new Set(['DEV', 'ADMIN', 'RECEPTIONIST', 'LEAD_RECEPTIONIST', 'RECEPTION']);
 
 /** Mã KHÔNG phải người thật — chỗ giữ tên trên bảng điều phối. */
 const PLACEHOLDER_ID = /^(EXT|C_)/i;
