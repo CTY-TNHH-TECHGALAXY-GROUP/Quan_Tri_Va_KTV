@@ -290,30 +290,21 @@ export async function POST(request: Request) {
                     const expectedMinutes = phutTrongNgayLamViec(String(deadline).slice(0, 5), cutoffHoursD) ?? 0;
                     const phutThucTe = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
 
-                    // Miễn xét trễ CHỈ KHI ca đăng ký đã làm xong: đã có CHECK_OUT từ giờ tan ca đăng ký
-                    // trở đi, và giờ quay lại (VD 21:00 làm khách yêu cầu) cũng đã qua giờ tan ca.
-                    // Vào ca đúng giờ → "xin cảm ơn" sớm → "xin chào" lại trong ca thì KHÔNG được miễn:
-                    // lần vào lại đó vẫn so với giờ đăng ký đầu ca như hôm nay (chốt 03/10/2026).
-                    const { gioDongHoVN } = await import('@/lib/segment-time');
-                    const phutTanCa = registration.expected_end_time
-                        ? phutTrongNgayLamViec(String(registration.expected_end_time).slice(0, 5), cutoffHoursD)
-                        : null;
-                    let daLamXongCa = false;
-                    if (phutTanCa != null && phutThucTe > phutTanCa) {
-                        const { data: todayOuts } = await supabase
-                            .from('KTVAttendance')
-                            .select('checkType, checkedAt')
-                            .eq('employeeId', staffCode)
-                            .in('date', Array.from(new Set([todayStr, vnToday()])))
-                            .eq('checkType', 'CHECK_OUT');
-                        daLamXongCa = (todayOuts || []).some(r => {
-                            const phutRa = phutTrongNgayLamViec(gioDongHoVN(r.checkedAt), cutoffHoursD);
-                            return phutRa != null && phutRa >= phutTanCa;
-                        });
-                    }
+                    // Miễn xét trễ khi hôm nay ĐÃ CÓ check-in và check-out (ca đã khép), KTV quay lại
+                    // sau giờ check-out để làm thêm (VD khách yêu cầu 21:00). Chốt 03/10/2026 — không
+                    // đòi check-out phải sau giờ tan ca đăng ký; về sớm có luật riêng xử lý.
+                    const { data: todayAtt } = await supabase
+                        .from('KTVAttendance')
+                        .select('checkType')
+                        .eq('employeeId', staffCode)
+                        .in('date', Array.from(new Set([todayStr, vnToday()])))
+                        .in('checkType', ['CHECK_IN', 'LATE_CHECKIN', 'CHECK_OUT']);
+                    const daVaoCa = (todayAtt || []).some(r => r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN');
+                    const daRaCa = (todayAtt || []).some(r => r.checkType === 'CHECK_OUT');
+                    const quayLaiSauCa = daVaoCa && daRaCa;
 
-                    if (daLamXongCa) {
-                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: đã làm xong ca đăng ký, quay lại sau giờ tan ca`);
+                    if (quayLaiSauCa) {
+                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: hôm nay đã check-in/check-out, quay lại làm thêm`);
                     } else if (phutThucTe > expectedMinutes) {
                         await KtvTypeDDisciplineService.deductDailyViolation(
                           supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
