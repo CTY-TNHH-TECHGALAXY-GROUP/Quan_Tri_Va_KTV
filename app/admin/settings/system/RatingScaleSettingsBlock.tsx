@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Star, Save, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Star, Save, Loader2, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react';
 import { RATING_LANGS, RATING_SCALES, type RatingScale } from '@/lib/services/RatingScaleService';
 import { useRatingScaleSettings } from './RatingScaleSettings.logic';
 import { t } from './RatingScaleSettings.i18n';
@@ -11,10 +11,17 @@ const LABEL_MAX_LENGTH = 40;
 
 const levelsOf = (scale: RatingScale) => Array.from({ length: scale }, (_, i) => scale - i); // high → low
 
-export const RatingScaleSettingsBlock = () => {
+/**
+ * Rendered inside each KTV-type tab: `kind` picks which deduction table the tab shows
+ * (Loại D vs A/B/C). Scale and labels are shared settings, editable from any tab.
+ * Collapsed by default; the header row toggles it.
+ */
+export const RatingScaleSettingsBlock = ({ kind }: { kind: 'typeD' | 'abc' }) => {
     const { config, saveState, error, setScale, setDeduction, setSwitch, setLabel, save } = useRatingScaleSettings();
+    const [open, setOpen] = useState(false);
     if (!config) return null;
     const scale = config.scale;
+    const on = kind === 'typeD' ? config.typeDOn : config.abcOn;
 
     const deductionColumn = (kind: 'typeD' | 'abc', title: string, hint?: string) => {
         const on = kind === 'typeD' ? config.typeDOn : config.abcOn;
@@ -58,17 +65,19 @@ export const RatingScaleSettingsBlock = () => {
 
     return (
         <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
+            <div className={`flex flex-wrap items-start justify-between gap-3 ${open ? 'mb-4' : ''}`}>
+                <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
+                    className="flex min-h-[44px] flex-1 items-center gap-3 text-left">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50">
                         <Star size={20} className="text-amber-500" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h2 className="text-lg font-black text-gray-900">{t.title}</h2>
-                        <p className="text-xs text-gray-500">{t.subtitle}</p>
+                        <p className="text-xs text-gray-500">{open ? t.subtitle : t.summary(scale, on)}</p>
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
+                    <ChevronDown size={20} className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                </button>
+                {open && <div className="flex items-center gap-3">
                     {saveState === 'saved' && <span className="flex items-center gap-1 text-xs font-bold text-emerald-500"><CheckCircle2 size={14} /> {t.saved}</span>}
                     {saveState === 'error' && <span className="text-xs font-bold text-rose-500">{t.saveFailed}{error ? `: ${error}` : ''}</span>}
                     <button type="button" onClick={save} disabled={saveState === 'saving'}
@@ -76,8 +85,10 @@ export const RatingScaleSettingsBlock = () => {
                         {saveState === 'saving' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                         {saveState === 'saving' ? t.saving : t.save}
                     </button>
-                </div>
+                </div>}
             </div>
+
+            {open && <>
 
             <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm font-bold text-gray-700">{t.scaleLabel}</span>
@@ -98,8 +109,7 @@ export const RatingScaleSettingsBlock = () => {
 
             <h3 className="mt-6 text-sm font-black text-gray-900">{t.deductionTitle(scale)}</h3>
             <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {deductionColumn('typeD', t.typeD)}
-                {deductionColumn('abc', t.abc, t.abcHint)}
+                {kind === 'typeD' ? deductionColumn('typeD', t.typeD) : deductionColumn('abc', t.abc, t.abcHint)}
             </div>
 
             <h3 className="mt-6 text-sm font-black text-gray-900">{t.labelsTitle(scale)}</h3>
@@ -130,6 +140,7 @@ export const RatingScaleSettingsBlock = () => {
                     </tbody>
                 </table>
             </div>
+            </>}
         </div>
     );
 };

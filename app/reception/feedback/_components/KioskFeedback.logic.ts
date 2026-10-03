@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChildBookingForFeedback, FeedbackKtvInfo } from '../FeedbackDashboard.logic';
 import { submitFeedbackAction } from './actions';
-import { useRatingConfig } from '@/lib/useRatingConfig';
+import { useRatingConfigStatus } from '@/lib/useRatingConfig';
 import { maxRatingWithViolation, ratingLabelFor } from '@/lib/services/RatingScaleService';
 
 export type MergedFeedbackGroup = {
@@ -18,7 +18,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const initialLang = (['VN', 'EN', 'KR', 'JP', 'ZH'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP' | 'ZH') : 'VN';
     const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP' | 'ZH'>(initialLang);
     // Thang + nhãn do admin cấu hình (Cài đặt hệ thống → Thang đánh giá).
-    const ratingConfig = useRatingConfig();
+    // Customers must not rate on the default scale while the saved one is still loading.
+    const { config: ratingConfig, loaded: ratingConfigLoaded } = useRatingConfigStatus();
     const ratingScale = ratingConfig.scale;
     const capWithViolation = maxRatingWithViolation(ratingScale);
     
@@ -304,7 +305,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels,
+        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels, ratingConfigLoaded,
         isSubmitting, handleSubmit,
         isSuccess, setIsSuccess,
         t

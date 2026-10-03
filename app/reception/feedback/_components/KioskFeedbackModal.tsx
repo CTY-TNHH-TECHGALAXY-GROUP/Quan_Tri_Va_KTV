@@ -11,6 +11,9 @@ import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.con
 // Star icon size per scale (static classes so Tailwind emits them): 5 stars must fit the narrower tile.
 const RATING_STAR_CLASS: Record<number, string> = { 4: 'h-3.5 w-3.5 sm:h-5 sm:w-5', 5: 'h-3 w-3 sm:h-4 sm:w-4' };
 const GRID_COLS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5' };
+// Narrower padding for 5 tiles so short CJK labels fit on one line.
+const RATING_TILE_PAD: Record<number, string> = { 4: 'p-3 sm:p-5', 5: 'p-2 sm:p-3' };
+const LOADING_TILE_COUNT = 5;
 
 export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
     const [currentBooking, setCurrentBooking] = useState(initialBooking);
@@ -21,7 +24,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels,
+        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels, ratingConfigLoaded,
         isSubmitting, handleSubmit,
         t, isSuccess
     } = useKioskFeedback(currentBooking, onClose);
@@ -274,6 +277,13 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                         </div>
                                     </div>
 
+                                    {!ratingConfigLoaded ? (
+                                        <div className={`grid gap-2 sm:gap-4 mb-8 ${GRID_COLS[LOADING_TILE_COUNT]}`} aria-busy="true">
+                                            {Array.from({ length: LOADING_TILE_COUNT }, (_, i) => (
+                                                <div key={i} className="h-20 sm:h-24 rounded-2xl bg-gray-100 animate-pulse" />
+                                            ))}
+                                        </div>
+                                    ) : (
                                     <div className={`grid gap-2 sm:gap-4 mb-8 ${GRID_COLS[maxRating] || 'grid-cols-4'}`}>
                                         {ratingLevels
                                         // Đã tích lỗi thì bỏ hẳn mức cao nhất — không thể vừa phàn nàn vừa "tuyệt vời".
@@ -283,7 +293,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                                 <button
                                                     key={r.score}
                                                     onClick={() => handleRatingChange(r.score)}
-                                                    className={`p-3 sm:p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${
+                                                    className={`${RATING_TILE_PAD[ratingScale] || RATING_TILE_PAD[4]} rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${
                                                         isSelected 
                                                             ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
                                                             : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
@@ -295,7 +305,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                                             <Star key={i} className={`${RATING_STAR_CLASS[ratingScale] || RATING_STAR_CLASS[4]} ${i < r.score ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-200'}`} />
                                                         ))}
                                                     </span>
-                                                    <span className={`text-xs sm:text-sm font-bold text-center mt-1 ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
+                                                    <span className={`text-xs sm:text-sm font-bold text-center mt-1 break-keep leading-tight ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
                                                         {r.label}
                                                     </span>
                                                 </button>
@@ -303,7 +313,9 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                         })}
                                     </div>
 
-                                    {maxRating < ratingScale && (
+                                    )}
+
+                                    {ratingConfigLoaded && maxRating < ratingScale && (
                                         <div className="-mt-6 mb-6 text-center">
                                             <span className="inline-block text-xs sm:text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
                                                 {t.cappedByViolation || 'Bạn đã chọn góp ý ở trên nên mức "Tuyệt vời" tạm ẩn. Bỏ chọn góp ý nếu muốn chấm mức cao nhất.'}
@@ -334,7 +346,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 </button>
                                 <button 
                                     onClick={handleSubmit}
-                                    disabled={isSubmitting || mergedKtvGroups.length === 0}
+                                    disabled={isSubmitting || !ratingConfigLoaded || mergedKtvGroups.length === 0}
                                     className="bg-[#5A00FF] hover:bg-[#4A00E0] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xl font-bold py-4 px-12 rounded-full shadow-lg hover:shadow-xl transition-all"
                                 >
                                     {isSubmitting ? '...' : t.btnSubmit}

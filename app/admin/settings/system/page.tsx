@@ -159,9 +159,6 @@ export default function SystemSettingsPage() {
     return (
         <div className="space-y-6">
 
-                {/* Thang đánh giá: chung mọi loại KTV */}
-                <RatingScaleSettingsBlock />
-
                 {/* Tabs KTV Types */}
                 <div className="flex gap-2 p-1.5 bg-gray-100/80 backdrop-blur rounded-2xl w-fit">
                     {(['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D'] as const).map(type => (
@@ -181,12 +178,14 @@ export default function SystemSettingsPage() {
 
                 {activeTab === 'TYPE_D' ? (
                     <div className="space-y-8">
+                        <RatingScaleSettingsBlock kind="typeD" />
                         <KtvTypeDSettingsBlock />
                         <WalletSwitchesBlock activeTab="TYPE_D" />
                         <KtvFeaturesTable activeTab="TYPE_D" />
                     </div>
                 ) : (
                     <>
+                    <RatingScaleSettingsBlock kind="abc" />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Card: Điểm Thưởng */}
                     <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">

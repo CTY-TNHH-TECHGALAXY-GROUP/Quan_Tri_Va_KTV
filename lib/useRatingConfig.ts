@@ -11,9 +11,12 @@ const fetchRatingConfig = () => cached ??= apiClient.get<any>(API.ADMIN.SETTINGS
     .then(res => buildRatingConfig(res?.data || {}))
     .catch(() => { cached = null; return buildRatingConfig({}); });
 
-/** Rating scale + labels for client screens. Starts on the defaults (scale 4) until loaded. */
-export const useRatingConfig = (): RatingConfig => {
-    const [config, setConfig] = useState<RatingConfig>(() => buildRatingConfig({}));
-    useEffect(() => { let alive = true; fetchRatingConfig().then(c => { if (alive) setConfig(c); }); return () => { alive = false; }; }, []);
-    return config;
+/** Rating config plus whether the saved settings have arrived (until then it is the scale-4 defaults). */
+export const useRatingConfigStatus = (): { config: RatingConfig; loaded: boolean } => {
+    const [state, setState] = useState(() => ({ config: buildRatingConfig({}), loaded: false }));
+    useEffect(() => { let alive = true; fetchRatingConfig().then(c => { if (alive) setState({ config: c, loaded: true }); }); return () => { alive = false; }; }, []);
+    return state;
 };
+
+/** Rating scale + labels for client screens. Starts on the defaults (scale 4) until loaded. */
+export const useRatingConfig = (): RatingConfig => useRatingConfigStatus().config;

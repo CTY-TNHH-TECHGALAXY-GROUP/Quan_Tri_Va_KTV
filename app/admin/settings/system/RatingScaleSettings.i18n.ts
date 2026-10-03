@@ -1,7 +1,8 @@
 // Chữ hiển thị của khung "Thang đánh giá" (Cài đặt hệ thống).
 export const t = {
     title: 'Thang đánh giá & khấu trừ theo sao',
-    subtitle: 'Áp dụng cho mọi loại KTV. Đổi thang chỉ áp dụng cho đánh giá MỚI — đánh giá cũ giữ nguyên thang lúc chấm.',
+    subtitle: 'Thang sao và nhãn chữ dùng chung cho mọi loại KTV (đổi ở tab nào cũng áp cho tất cả). Đổi thang chỉ áp dụng cho đánh giá MỚI.',
+    summary: (scale: number, on: boolean) => `Thang ${scale} sao · Khấu trừ: ${on ? 'Đang bật' : 'Đang tắt'} — bấm để mở`,
     scaleLabel: 'Thang đánh giá',
     scaleOption: (n: number) => `${n} sao`,
     qrWarning: 'Trang đánh giá qua QR của khách (app khác) hiện vẫn chấm 4 sao. Chỉ nên bật 5 sao khi trang đó đã cập nhật.',
