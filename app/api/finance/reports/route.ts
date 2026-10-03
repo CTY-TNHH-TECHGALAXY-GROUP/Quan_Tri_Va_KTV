@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
+import { normalizeScale } from '@/lib/services/RatingScaleService';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -109,6 +110,8 @@ export async function GET(request: Request) {
         const commConfigB = await KtvCommissionService.getCommissionConfig(supabase as any, 'TYPE_B');
         const commConfigC = await KtvCommissionService.getCommissionConfig(supabase as any, 'TYPE_C');
         const commConfigs: Record<string, any> = { TYPE_A: commConfigA, TYPE_B: commConfigB, TYPE_C: commConfigC };
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase as any);
 
         // `code` khong phai cot cua Staff — ma nhan vien chinh la `id`. Truy van cu
         // loi nen ban do nay rong, va dong duoi rot het ve 'TYPE_A': MOI KTV bi tinh
@@ -199,7 +202,7 @@ export async function GET(request: Request) {
                 const batch = uniqueIdsToFetch.slice(i, i + batchSize);
                 const { data: batchItems } = await supabase
                     .from('BookingItems')
-                    .select('id, bookingId, serviceId, price, tip, itemRating, technicianCodes, roomName, quantity, segments')
+                    .select('id, bookingId, serviceId, price, tip, itemRating, ktvRatings, rating_scale, technicianCodes, roomName, quantity, segments')
                     .in('bookingId', batch);
                 if (batchItems) allItems.push(...batchItems);
             }
@@ -331,8 +334,9 @@ export async function GET(request: Request) {
 
         // Average rating
         const ratedItems = items.filter(i => i.itemRating && Number(i.itemRating) > 0);
+        // On the 4-point basis the screen shows: a 5-star-scale rating counts as rating × 4 / 5.
         const avgRating = ratedItems.length > 0
-            ? Math.round((ratedItems.reduce((sum, i) => sum + Number(i.itemRating), 0) / ratedItems.length) * 10) / 10
+            ? Math.round((ratedItems.reduce((sum, i) => sum + Number(i.itemRating) * 4 / normalizeScale(i.rating_scale), 0) / ratedItems.length) * 10) / 10
             : 0;
 
         // Bed Occupancy: total service minutes (from real durations) / (beds × operating hours × days)
@@ -557,7 +561,8 @@ export async function GET(request: Request) {
 
                 const workType = staffWorkTypeMap[code] || 'TYPE_A';
                 const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
-                const perKtvCommission = KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * qty;
+                const perKtvCommission = KtvCommissionService.applyAbcRatingDeduction(
+                    KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId), i, null, code, abcTables, workType) * qty;
                 const perKtvTip = (Number(i.tip) || 0) / techs.length;
                 const hasRating = i.itemRating && Number(i.itemRating) > 0;
                 
@@ -566,7 +571,7 @@ export async function GET(request: Request) {
                 ktvMap[code].totalTip += perKtvTip;
                 ktvMap[code].workingMinutes += actualMins;
                 if (hasRating) {
-                    ktvMap[code].ratingSum += Number(i.itemRating);
+                    ktvMap[code].ratingSum += Number(i.itemRating) * 4 / normalizeScale(i.rating_scale);
                     ktvMap[code].ratingCount += 1;
                 }
             });
@@ -776,7 +781,8 @@ export async function GET(request: Request) {
                     activeTechs.forEach((code: string) => {
                         const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / activeTechs.length);
                         const workType = staffWorkTypeMap[code] || 'TYPE_A';
-                        commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
+                        commission += KtvCommissionService.applyAbcRatingDeduction(
+                            KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId), i, null, code, abcTables, workType) * (Number(i.quantity) || 1);
                     });
 
                     rawDataSheet.push({

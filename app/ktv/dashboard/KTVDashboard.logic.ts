@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useNotifications } from '@/components/NotificationProvider';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
+import { buildRatingConfig } from '@/lib/services/RatingScaleService';
 import { useToast } from '@/components/ui/Toast';
 import { useShiftExtension } from '@/app/ktv/_hooks/useShiftExtension';
 
@@ -2442,13 +2443,16 @@ export function useKTVDashboard(config?: DashboardConfig) {
             
             let totalCommission = 0;
             let totalMins = 0; // Vẫn tính totalMins để log
+            // Same per-star A/B/C deduction as wallet/history/reports (0% by default → unchanged).
+            const abcTables = buildRatingConfig(settings || {}).abc;
             
             for (const item of serviceItems) {
                 const itemMins = KtvCommissionService.calculateItemDuration(item, ktvId, 60);
                 totalMins += itemMins;
                 
                 const sId = String(item.serviceId || item.service_id || '');
-                const comm = KtvCommissionService.calcCommission(itemMins, commConfigs, workType, sId);
+                const comm = KtvCommissionService.applyAbcRatingDeduction(
+                    KtvCommissionService.calcCommission(itemMins, commConfigs, workType, sId), item, null, ktvId, abcTables, workType);
                 totalCommission += (isNaN(comm) ? 0 : comm);
             }
             

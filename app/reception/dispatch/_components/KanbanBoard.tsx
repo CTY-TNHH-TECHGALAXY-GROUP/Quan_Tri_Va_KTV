@@ -14,6 +14,11 @@ import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './Kanba
 import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
 import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { expectedEndMs, gioDongHoVN } from '@/lib/segment-time';
+import { useRatingConfig } from '@/lib/useRatingConfig';
+import { normalizeScale, ratingLabelFor, ratingTone } from '@/lib/services/RatingScaleService';
+
+// 🔧 UI CONFIGURATION
+const RATING_TONE_CLASS = { top: 'text-emerald-600 bg-emerald-50 border-emerald-200', good: 'text-blue-600 bg-blue-50 border-blue-200', mid: 'text-amber-600 bg-amber-50 border-amber-200', low: 'text-red-600 bg-red-50 border-red-200' } as const;
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -296,6 +301,10 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
 };
 
 export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
+    // Rating scale for NEW ratings (star buttons) + admin labels; saved ratings use their own scale.
+    const ratingConfig = useRatingConfig();
+    const newRatingStars = Array.from({ length: ratingConfig.scale }, (_, i) => i + 1);
+    const ratingText = (rating: number, scale: unknown) => ratingLabelFor(rating, normalizeScale(scale), ratingConfig.labels) || `${rating}`;
     // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
     const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
 
@@ -1264,7 +1273,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                         <div className={`flex items-center gap-2 text-[11px] font-bold ${g.rating ? 'text-emerald-700' : 'text-blue-600'}`}>
                                                                             {g.rating ? (
                                                                                 <>
-                                                                                    <Check size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: {g.rating >= 4 ? 'Xuất sắc' : g.rating >= 3 ? 'Tốt' : g.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(g.rating, 4)}/4)
+                                                                                    <Check size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: {ratingText(g.rating, g.ratingScale)} ({g.rating}/{normalizeScale(g.ratingScale)})
                                                                                 </>
                                                                             ) : (
                                                                                 <><Star size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: Chờ đánh giá...</>
@@ -1274,18 +1283,18 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             <div className="flex items-center gap-1 w-full justify-between mt-1 pt-1 border-t border-dashed border-gray-200">
                                                                                 <span className="text-[9px] text-gray-500 font-medium">Chấm điểm hộ khách:</span>
                                                                                 <div className="flex items-center gap-1">
-                                                                                    {[1, 2, 3, 4].map((star) => (
+                                                                                    {newRatingStars.map((star) => (
                                                                                         <button
                                                                                             key={star}
                                                                                             onClick={(e) => {
                                                                                                 e.stopPropagation();
-                                                                                                if (confirm(`Xác nhận đánh giá ${star} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
+                                                                                                if (confirm(`Xác nhận đánh giá ${star}/${ratingConfig.scale} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
                                                                                                     if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star, g.id); return; }
                                                                                                     import('../actions').then(m => {
                                                                                                         if (m.submitGuestRating) {
-                                                                                                            m.submitGuestRating(g.id, star);
+                                                                                                            m.submitGuestRating(g.id, star, undefined, ratingConfig.scale);
                                                                                                         } else {
-                                                                                                            m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                                            m.submitCustomerRating(subOrder.bookingId, star, undefined, ratingConfig.scale);
                                                                                                         }
                                                                                                     });
                                                                                                 }
@@ -1311,7 +1320,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 }`}>
                                                                     {subOrder.rating ? (
                                                                         <>
-                                                                            <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
+                                                                            <Check size={12} /> Đánh giá: {ratingText(subOrder.rating, subOrder.ratingScale)} ({subOrder.rating}/{normalizeScale(subOrder.ratingScale)})
                                                                         </>
                                                                     ) : (
                                                                         <><Star size={12} /> Đánh giá: Chờ khách...</>
@@ -1335,15 +1344,15 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             </button>
                                                                         </div>
                                                                         <div className="flex items-center gap-1 w-full justify-center">
-                                                                            {[1, 2, 3, 4].map((star) => (
+                                                                            {newRatingStars.map((star) => (
                                                                                 <button
                                                                                     key={star}
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
+                                                                                        if (confirm(`Xác nhận đánh giá ${star}/${ratingConfig.scale} sao hộ khách?`)) {
                                                                                             if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star); return; }
                                                                                             import('../actions').then(m => {
-                                                                                                m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                                m.submitCustomerRating(subOrder.bookingId, star, undefined, ratingConfig.scale);
                                                                                             });
                                                                                         }
                                                                                     }}
@@ -1367,16 +1376,17 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex justify-center text-center">Đánh giá chất lượng phục vụ</span>
                                                             <div className="flex flex-col gap-1.5">
                                                                 {subOrder.guests.map((g: any, index: number) => {
-                                                                    const currentRating = Math.min(g.rating || 0, 4);
+                                                                    const guestScale = normalizeScale(g.ratingScale);
+                                                                    const currentRating = Math.min(g.rating || 0, guestScale);
                                                                     if (!currentRating) return null;
-                                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
-                                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                                    const ratingLabel = ratingText(currentRating, guestScale);
+                                                                    const ratingColor = RATING_TONE_CLASS[ratingTone(currentRating, guestScale)];
                                                                     
                                                                     return (
                                                                         <div key={g.id} className={`rounded-lg px-2 py-1.5 border flex items-center justify-between ${ratingColor}`}>
                                                                             <span className="text-[11px] font-bold opacity-80">{g.customerName || g.guestLabel || `Khách ${index + 1}`}</span>
                                                                             <div className="flex items-center gap-1">
-                                                                                {[1, 2, 3, 4].map((s) => (
+                                                                                {Array.from({ length: guestScale }, (_, i) => i + 1).map((s) => (
                                                                                     <Star key={s} size={12} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
                                                                                 ))}
                                                                                 <span className="ml-1 text-[11px] font-black">{ratingLabel}</span>
@@ -1387,26 +1397,21 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        subOrder.rating ? (
-                                                            <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${
-                                                                Math.min(subOrder.rating, 4) >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 
-                                                                Math.min(subOrder.rating, 4) >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : 
-                                                                Math.min(subOrder.rating, 4) >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 
-                                                                'text-red-600 bg-red-50 border-red-200'
-                                                            }`}>
+                                                        subOrder.rating ? (() => {
+                                                            const subScale = normalizeScale(subOrder.ratingScale);
+                                                            const shown = Math.min(subOrder.rating, subScale);
+                                                            return (
+                                                            <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${RATING_TONE_CLASS[ratingTone(shown, subScale)]}`}>
                                                                 <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
                                                                 <div className="flex items-center gap-1">
-                                                                    {[1, 2, 3, 4].map((s) => (
-                                                                        <Star key={s} size={16} fill={Math.min(subOrder.rating, 4) >= s ? 'currentColor' : 'none'} strokeWidth={Math.min(subOrder.rating, 4) >= s ? 0 : 2} className={Math.min(subOrder.rating, 4) >= s ? '' : 'opacity-30'} />
+                                                                    {Array.from({ length: subScale }, (_, i) => i + 1).map((s) => (
+                                                                        <Star key={s} size={16} fill={shown >= s ? 'currentColor' : 'none'} strokeWidth={shown >= s ? 0 : 2} className={shown >= s ? '' : 'opacity-30'} />
                                                                     ))}
-                                                                    <span className="ml-1.5 text-[12px] font-black">{
-                                                                        Math.min(subOrder.rating, 4) >= 4 ? 'Xuất sắc' : 
-                                                                        Math.min(subOrder.rating, 4) >= 3 ? 'Tốt' : 
-                                                                        Math.min(subOrder.rating, 4) >= 2 ? 'Khá' : 'Tệ'
-                                                                    }</span>
+                                                                    <span className="ml-1.5 text-[12px] font-black">{ratingText(shown, subScale)}</span>
                                                                 </div>
                                                             </div>
-                                                        ) : null
+                                                            );
+                                                        })() : null
                                                     )
                                                 )}
 

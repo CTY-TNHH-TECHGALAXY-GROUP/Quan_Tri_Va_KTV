@@ -116,6 +116,8 @@ export interface PendingOrder {
   customerLang?: string;
   accessToken?: string | null;
   rating?: number | null;
+  /** Scale the rating was given on (4|5, column rating_scale). */
+  ratingScale?: number;
   feedbackNote?: string | null;
   /** KTV chấm quầy ở màn Reward (bảng KTVReviewReception). */
   ktvReviewsOfReception?: {

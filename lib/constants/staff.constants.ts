@@ -1,5 +1,6 @@
 import type { EmployeeSkills } from '@/lib/types';
 import { FeatureFlagsTypeA, FeatureFlagsTypeB, FeatureFlagsTypeD } from '../types/staff.types';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
 
 export const DEFAULT_KPI_TARGET_HOURS = 80;
 export const DEFAULT_TRAVEL_MINUTES = 15;
@@ -226,13 +227,8 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
     },
 };
 
-export const TYPE_D_RATING_DEDUCTION = {
-    4: 0,
-    3: 0.25,
-    2: 0.50,
-    1: 0.75,
-    0: 0
-} as const;
+/** @deprecated Dùng `DEFAULT_TYPE_D_DEDUCTION` / `loadRatingConfig` trong RatingScaleService (theo thang 4/5). */
+export const TYPE_D_RATING_DEDUCTION = DEFAULT_TYPE_D_DEDUCTION[4];
 
 export const TYPE_D_BONUS = {
     BASE_POINTS: 20

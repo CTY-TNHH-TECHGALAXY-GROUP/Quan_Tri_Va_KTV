@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
+import { normalizeScale, ratingTone } from '@/lib/services/RatingScaleService';
 
 export async function GET(request: Request) {
   try {
@@ -45,6 +46,8 @@ export async function GET(request: Request) {
     // 2. Fetch Configs for Commission Realtime
     const { KtvCommissionService } = require('@/lib/services/KtvCommissionService');
     const commConfigs = await KtvCommissionService.getAllConfigs(supabaseAdmin);
+    // A/B/C per-star deduction tables (0% by default → commission unchanged).
+    const abcTables = await KtvCommissionService.getAbcRatingTables(supabaseAdmin);
 
     // 3. Fetch Bookings (for Revenue and Orders) - Giống hệt báo cáo Tổng Quan
     const KTV_RANKING_STATUSES = ['PREPARING', 'IN_PROGRESS', 'CLEANING', 'DONE', 'COMPLETED', 'FEEDBACK'];
@@ -92,7 +95,7 @@ export async function GET(request: Request) {
         const chunk = uniqueIdsToFetch.slice(i, i + CHUNK_SIZE);
         const { data: bItems, error: itemErr } = await supabaseAdmin
           .from('BookingItems')
-          .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, itemRating, ktvRatings, Bookings!fk_bookingitems_booking(source)')
+          .select('id, bookingId, serviceId, technicianCodes, price, quantity, status, timeStart, segments, tip, itemRating, ktvRatings, rating_scale, Bookings!fk_bookingitems_booking(source)')
           .in('bookingId', chunk);
         if (itemErr) throw itemErr;
         if (bItems) bookingItems.push(...bItems);
@@ -314,18 +317,22 @@ export async function GET(request: Request) {
                        myRating = Number(item.ktvRatings[code]);
                    }
                    if (myRating > 0) {
-                       rankingMap[code].sumRating += myRating;
+                       // Read on the rating's own scale (4|5). Average is kept on the 4-point basis the
+                       // screen shows (rating × 4 / scale) so 4/4 and 4/5 are not mixed.
+                       const myScale = normalizeScale(item.rating_scale);
+                       rankingMap[code].sumRating += myRating * 4 / myScale;
                        rankingMap[code].ratingCount += 1;
-                       if (myRating >= 4) { // Mức 4: Xuất sắc (>= 4 sao)
+                       const tone = ratingTone(myRating, myScale);
+                       if (tone === 'top') { // Mức 4: Xuất sắc (mức cao nhất của thang)
                            rankingMap[code].rating4Count += 1;
                            rankingMap[code].excellentCount += 1;
-                       } else if (myRating === 3) { // Mức 3: Tốt (3 sao)
+                       } else if (tone === 'good') { // Mức 3: Tốt (ngay dưới mức cao nhất)
                            rankingMap[code].rating3Count += 1;
                            rankingMap[code].goodCount += 1;
-                       } else if (myRating === 2) { // Mức 2: Bình thường / Tạm được (2 sao)
+                       } else if (tone === 'mid') { // Mức 2: Bình thường
                            rankingMap[code].rating2Count += 1;
                            rankingMap[code].averageCount += 1;
-                       } else if (myRating <= 1) { // Mức 1: Tệ (1 sao)
+                       } else { // Mức 1: Tệ (1 sao)
                            rankingMap[code].rating1Count += 1;
                            rankingMap[code].badCount += 1;
                        }
@@ -358,7 +365,8 @@ export async function GET(request: Request) {
                        rankingMap[code].totalTip += tipPerKtv;
                        const workType = ktvWorkTypeMap[code] || 'TYPE_A';
                        const config = commConfigs[workType] || commConfigs['TYPE_A'];
-                       const perKtvCommission = KtvCommissionService.calcCommission(commissionMins, commConfigs, workType, item.serviceId) * qty;
+                       const perKtvCommission = KtvCommissionService.applyAbcRatingDeduction(
+                           KtvCommissionService.calcCommission(commissionMins, commConfigs, workType, item.serviceId), item, null, code, abcTables, workType) * qty;
                        rankingMap[code].tuaMoney += perKtvCommission;
                    }
                }

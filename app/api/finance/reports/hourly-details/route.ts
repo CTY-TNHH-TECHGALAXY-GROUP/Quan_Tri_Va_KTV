@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
     try {
         await requirePermission('revenue_reports');
-        const { completedBookings, items, svcMap, commConfigs, ktvWorkTypeMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
+        const { completedBookings, items, svcMap, commConfigs, abcTables, ktvWorkTypeMap } = await FinanceReportService.getBaseData(supabase, dateFrom, dateTo, lang);
 
         const rawDataSheet: any[] = [];
 
@@ -76,7 +76,8 @@ export async function GET(request: Request) {
                     for (const code of activeTechs) {
                         const workType = ktvWorkTypeMap[code] || 'TYPE_A';
                         const myTotalMins = KtvCommissionService.calculateItemDuration(i, code, dur) || (dur / activeTechs.length);
-                        commission += KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId) * (Number(i.quantity) || 1);
+                        commission += KtvCommissionService.applyAbcRatingDeduction(
+                            KtvCommissionService.calcCommission(myTotalMins, commConfigs, workType, i.serviceId), i, b, code, abcTables, workType) * (Number(i.quantity) || 1);
                     }
 
                     rawDataSheet.push({

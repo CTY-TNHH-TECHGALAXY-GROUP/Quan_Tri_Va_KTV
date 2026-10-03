@@ -7,6 +7,7 @@ import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMainte
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 import { getDayCutoffHours, businessDayRange, toBusinessDate, previousBusinessDate } from '@/lib/business-date';
 import { requireCronAuth } from '@/lib/cron-auth';
+import { buildRatingConfig, normalizeScale, deductionRate, type RatingScale } from '@/lib/services/RatingScaleService';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,10 +59,8 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
     const rateVIP = Number(sysConfigs['ktv_type_d_vip_rate_per_60m']) || 180000;
     const ratePT = Number(sysConfigs['ktv_type_d_pt_rate_per_60m']) || 100000;
 
-    let ratingDeductions: Record<string, number> = { '0': 0, '1': 0.75, '2': 0.5, '3': 0.25, '4': 0 };
-    if (sysConfigs['ktv_type_d_rating_deduction']) {
-        ratingDeductions = sysConfigs['ktv_type_d_rating_deduction'];
-    }
+    // Per-scale tables: a rating is read on the scale it was given on (rating_scale).
+    const ratingTables = buildRatingConfig(sysConfigs).typeD;
 
     // 2. Fetch KTVs
     const { data: ktvs } = await supabase
@@ -81,7 +80,7 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
     // 3. Fetch all Bookings for the day
     const { data: bookings } = await supabase
         .from('Bookings')
-        .select('id, timeStart, status, customerId, rating, BookingItems!fk_bookingitems_booking(*), BookingGuests(id, rating, ktv_ratings)')
+        .select('id, timeStart, status, customerId, rating, rating_scale, BookingItems!fk_bookingitems_booking(*), BookingGuests(id, rating, ktv_ratings, rating_scale)')
         .gte('timeStart', startTimeStr)
         .lt('timeStart', endTimeStr)
         .neq('status', 'CANCELLED');
@@ -131,7 +130,9 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
         let total_bonus = 0;
         let total_tip = 0;
         let commissionBreakdown: any[] = [];
-        let lowestRating = 5;
+        // null = chưa có đánh giá nào. Trước 02/10/2026 dùng 5 làm dấu "chưa có" — sai khi thang 5 sao có 5★ thật.
+        let lowestRating: number | null = null;
+        let lowestRatingScale: RatingScale = 4;
         const serviceHoursRows: any[] = []; // Accumulate hours_earned per booking for KTVServiceHoursLedger
 
         for (const b of (bookings || [])) {
@@ -152,7 +153,8 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
             // Phần THƯỞNG ngay bên dưới đã sửa sang lấy theo khách từ trước; phần
             // TRỪ này bị bỏ sót. Nay dùng đúng một cách với nhau.
             const guestIdsOfMine = [...new Set(items.map((i: any) => i.guest_id ?? null))];
-            let safeRating = 5;
+            let safeRating: number | null = null;
+            let safeRatingScale: RatingScale = 4;
             for (const gid of guestIdsOfMine) {
                 const guest = (b as any).BookingGuests?.find((g: any) => String(g.id) === String(gid));
                 const mineOfGuest = items.filter((i: any) =>
@@ -160,9 +162,12 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
                 // Thứ tự dự phòng khớp với phần thưởng: sao của khách → sao trên
                 // item → sao cấp bill → 0 (chưa chấm; bảng mức trừ để 0 là không trừ).
                 const r = Number(guest?.rating ?? mineOfGuest[0]?.itemRating ?? b.rating ?? 0);
-                if (r < safeRating) safeRating = r;
+                // Thang đi cùng đúng nguồn đã cho ra số sao.
+                const rScale = normalizeScale(guest?.rating != null ? guest.rating_scale
+                    : mineOfGuest[0]?.itemRating != null ? mineOfGuest[0].rating_scale : b.rating_scale);
+                if (safeRating === null || r < safeRating) { safeRating = r; safeRatingScale = rScale; }
             }
-            if (safeRating < lowestRating) lowestRating = safeRating;
+            if (safeRating !== null && (lowestRating === null || safeRating < lowestRating)) { lowestRating = safeRating; lowestRatingScale = safeRatingScale; }
 
             // Separate items by category — VIP (NHP/NHT/VIP) vs Phổ thông (còn lại).
             // Không có nhóm COMBO: không mã dịch vụ nào bắt đầu bằng 'COMBO'
@@ -171,8 +176,8 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
             const vipItems = items.filter((i: any) => String(i.serviceId).toUpperCase().startsWith('NHP') || String(i.serviceId).toUpperCase().startsWith('NHT') || String(i.serviceId).toUpperCase().startsWith('VIP'));
             const ptItems = items.filter((i: any) => !vipItems.includes(i));
 
-            const vipComm = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, safeRating, rateVIP, ratingDeductions);
-            const ptComm = KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, safeRating, ratePT, ratingDeductions);
+            const vipComm = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, safeRating, rateVIP, ratingTables[safeRatingScale]);
+            const ptComm = KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, safeRating, ratePT, ratingTables[safeRatingScale]);
 
             const bookingComm = vipComm + ptComm;
             total_commission += bookingComm;
@@ -252,8 +257,7 @@ async function processLedgerSyncTypeD(targetDateStr: string) {
             }
         }
 
-        const deductionStr = lowestRating.toString();
-        const appliedDeduction = lowestRating === 5 ? 0 : (ratingDeductions[deductionStr] ?? 0);
+        const appliedDeduction = lowestRating === null ? 0 : deductionRate(ratingTables[lowestRatingScale], lowestRating);
 
         const techAdjustments = (adjustments || []).filter((a: any) => a.staff_id.toLowerCase() === techCode);
         const techWithdrawals = (withdrawals || []).filter((w: any) => w.staff_id.toLowerCase() === techCode);

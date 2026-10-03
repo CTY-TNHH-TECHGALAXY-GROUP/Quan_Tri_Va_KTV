@@ -46,6 +46,7 @@ export interface SubOrder {
     ktvIds: string[]; // Explicit array of KTV IDs for this suborder
     calculatedStart: string; // The dynamically calculated start time
     rating?: number | null;
+    ratingScale?: number;
     subSuffix?: string | null;
 }
 
@@ -500,6 +501,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvIds: Array.from(phaseSubKtvIds),
                     calculatedStart: phaseCalculatedStart,
                     rating: subOrderRating,
+                    ratingScale: order.ratingScale,
                     subSuffix: calculatedSuffix
                 });
             });
@@ -549,7 +551,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvSignature: 'utility',
                     ktvIds: [],
                     calculatedStart: order.timeBooking || order.time || '',
-                    rating: utilityRating
+                    rating: utilityRating,
+                    ratingScale: order.ratingScale
                 });
             }
         }

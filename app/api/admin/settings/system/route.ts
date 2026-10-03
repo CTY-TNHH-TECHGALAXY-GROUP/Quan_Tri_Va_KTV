@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { SystemSettingsSchema } from '@/lib/schemas/admin.schema';
 import { SessionEpochService, scopeForConfigKey, EpochScope } from '@/lib/services/SessionEpochService';
+import { ratingConfigPatchError } from '@/lib/services/RatingScaleService';
 
 // Các config mặc định nếu chưa có trong DB
 const DEFAULT_CONFIGS = {
@@ -120,6 +121,9 @@ export async function PATCH(request: Request) {
         }
         
         const validBody = parseResult.data;
+        // Rating keys feed money (deductions): reject bad shapes instead of storing them.
+        const ratingError = ratingConfigPatchError(validBody);
+        if (ratingError) return NextResponse.json({ success: false, error: ratingError }, { status: 400 });
         
         // Upsert từng key
         const promises = Object.keys(validBody).map(key => {

@@ -9,6 +9,7 @@ import { MilestonesEditor } from './MilestonesEditor';
 import { KtvFeaturesTable } from './KtvFeaturesTable';
 import { WalletSwitchesBlock } from './WalletSwitchesBlock';
 import { KtvTypeDSettingsBlock } from './KtvTypeDSettingsBlock';
+import { RatingScaleSettingsBlock } from './RatingScaleSettingsBlock';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
@@ -157,6 +158,9 @@ export default function SystemSettingsPage() {
 
     return (
         <div className="space-y-6">
+
+                {/* Thang đánh giá: chung mọi loại KTV */}
+                <RatingScaleSettingsBlock />
 
                 {/* Tabs KTV Types */}
                 <div className="flex gap-2 p-1.5 bg-gray-100/80 backdrop-blur rounded-2xl w-fit">

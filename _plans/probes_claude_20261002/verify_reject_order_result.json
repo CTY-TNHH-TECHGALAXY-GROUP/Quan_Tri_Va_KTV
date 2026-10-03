@@ -1,6 +1,6 @@
 {
-  "day": "2026-10-02",
-  "prefix": "QARJ-QXHLOJ",
+  "day": "2026-10-03",
+  "prefix": "QARJ-RWYH6V",
   "evidence": [
     {
       "label": "C1 reject 200",
@@ -22,16 +22,16 @@
       "label": "C1 chặng void UNASSIGNED",
       "pass": true,
       "detail": {
-        "id": "QARJ-QXHLOJ-B1-S1",
+        "id": "QARJ-RWYH6V-B1-S1",
         "note": "UNASSIGNED",
-        "bedId": "QARJ-QXHLOJ-D",
-        "ktvId": "QRJQXHLOJ1",
-        "roomId": "QARJ-QXHLOJ-R",
+        "bedId": "QARJ-RWYH6V-D",
+        "ktvId": "QRJRWYH6V1",
+        "roomId": "QARJ-RWYH6V-R",
         "voided": true,
-        "endTime": "20:22",
+        "endTime": "12:55",
         "duration": 60,
-        "voidedAt": "2026-10-02T12:17:33.86757+00:00",
-        "startTime": "19:22",
+        "voidedAt": "2026-10-03T04:50:27.955361+00:00",
+        "startTime": "11:55",
         "customCommissionDuration": 0
       }
     },
@@ -110,7 +110,7 @@
       "detail": [
         "PREPARING",
         [
-          "QRJQXHLOJ3"
+          "QRJRWYH6V3"
         ]
       ]
     },
@@ -170,9 +170,9 @@
         },
         {
           "status": "working",
-          "current_order_id": "QARJ-QXHLOJ-B3",
+          "current_order_id": "QARJ-RWYH6V-B3",
           "booking_item_ids": [
-            "QARJ-QXHLOJ-B3-I1"
+            "QARJ-RWYH6V-B3-I1"
           ]
         }
       ]
@@ -233,9 +233,9 @@
       "pass": true,
       "detail": {
         "status": "assigned",
-        "current_order_id": "QARJ-QXHLOJ-B7",
+        "current_order_id": "QARJ-RWYH6V-B7",
         "booking_item_ids": [
-          "QARJ-QXHLOJ-B7-I1"
+          "QARJ-RWYH6V-B7-I1"
         ]
       }
     },

@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChildBookingForFeedback, FeedbackKtvInfo } from '../FeedbackDashboard.logic';
 import { submitFeedbackAction } from './actions';
-import { MAX_RATING_WITH_VIOLATION } from './feedback.constants';
+import { useRatingConfig } from '@/lib/useRatingConfig';
+import { maxRatingWithViolation, ratingLabelFor } from '@/lib/services/RatingScaleService';
 
 export type MergedFeedbackGroup = {
     ktvId: string;
@@ -16,6 +17,10 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
     const langCode = booking.customerLang?.toUpperCase() || 'VN';
     const initialLang = (['VN', 'EN', 'KR', 'JP', 'ZH'].includes(langCode)) ? (langCode as 'VN' | 'EN' | 'KR' | 'JP' | 'ZH') : 'VN';
     const [language, setLanguage] = useState<'VN' | 'EN' | 'KR' | 'JP' | 'ZH'>(initialLang);
+    // Thang + nhãn do admin cấu hình (Cài đặt hệ thống → Thang đánh giá).
+    const ratingConfig = useRatingConfig();
+    const ratingScale = ratingConfig.scale;
+    const capWithViolation = maxRatingWithViolation(ratingScale);
     
     // State lưu điểm (từ 1 đến 4) dùng chung cho tất cả KTV của khách này
     const [globalRating, setGlobalRating] = useState<number>(0);
@@ -66,7 +71,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
             // Khách vừa tích lỗi trong khi đang để sẵn mức cao nhất → bỏ chọn điểm,
             // bắt chọn lại. Không tự hạ xuống 3 sao, vì như vậy là hệ thống trả lời
             // thay khách. Nút Gửi đã có sẵn ràng buộc phải chấm điểm mới cho qua.
-            if (next.length > 0 && globalRating > MAX_RATING_WITH_VIOLATION) {
+            if (next.length > 0 && globalRating > capWithViolation) {
                 setGlobalRating(0);
             }
             return next;
@@ -111,8 +116,11 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         return Array.from(groupsMap.values());
     }, [booking.ktvList]);
 
-    /** Có lỗi bị tích thì mức cao nhất chỉ còn 3 sao — 4 sao là "không có gì để phàn nàn". */
-    const maxRating = violations.length > 0 ? MAX_RATING_WITH_VIOLATION : 4;
+    /** Có lỗi bị tích thì bỏ mức cao nhất của thang — mức đó là "không có gì để phàn nàn". */
+    const maxRating = violations.length > 0 ? capWithViolation : ratingScale;
+    /** Các mức khách chọn được, chữ theo ngôn ngữ kiosk (admin sửa được). */
+    const ratingLevels = Array.from({ length: ratingScale }, (_, i) => i + 1)
+        .map(score => ({ score, label: ratingLabelFor(score, ratingScale, ratingConfig.labels, language) || String(score) }));
 
     const handleRatingChange = (rating: number) => {
         // Chặn ngay ở đây nữa, phòng khi giao diện lỡ vẽ ra nút vượt trần.
@@ -144,7 +152,8 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
                 ktvList: booking.ktvList,
                 globalRating: globalRating,
                 globalComment: globalComment,
-                violations: violations
+                violations: violations,
+                ratingScale
             };
 
             const result = await submitFeedbackAction(payload);
@@ -295,7 +304,7 @@ export function useKioskFeedback(booking: ChildBookingForFeedback, onClose: () =
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation, maxRating,
+        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels,
         isSubmitting, handleSubmit,
         isSuccess, setIsSuccess,
         t

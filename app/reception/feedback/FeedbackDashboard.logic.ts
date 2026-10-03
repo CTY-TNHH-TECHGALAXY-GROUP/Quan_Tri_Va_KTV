@@ -9,6 +9,8 @@ export type FeedbackKtvInfo = {
     workType?: string;
     serviceNames: string[];
     rating?: number;
+    /** Scale the rating was given on (4|5). */
+    ratingScale?: number;
     timeEnd?: string;
 };
 
@@ -147,6 +149,7 @@ export function useFeedbackDashboard(selectedDate: string) {
                                             workType: staffInfo?.work_type,
                                             serviceNames: [svcName],
                                             rating,
+                                            ratingScale: Number(guest.rating_scale ?? item.rating_scale) === 5 ? 5 : 4,
                                             timeEnd: getFallbackTimeEnd(item, code)
                                         });
                                     } else {
@@ -256,6 +259,7 @@ export function useFeedbackDashboard(selectedDate: string) {
                                     workType: staffInfo?.work_type,
                                     serviceNames: [item.serviceName || item.service_name || 'Dịch vụ'],
                                     rating,
+                                    ratingScale: Number(item.rating_scale) === 5 ? 5 : 4,
                                     timeEnd: getFallbackTimeEnd(item, code)
                                 });
                             });

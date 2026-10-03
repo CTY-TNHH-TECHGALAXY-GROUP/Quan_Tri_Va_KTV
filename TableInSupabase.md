@@ -38,6 +38,7 @@
 | `status` | BookingStatus | Trạng thái: NEW → PREPARING → READY → IN_PROGRESS → COMPLETED → FEEDBACK → CLEANING → DONE. `SPLIT` (đơn cha đã bị tách) |
 | `source` | text | Phân loại nguồn đơn hàng: `STANDARD_WALK_IN`, `VIP_MENU`, `WEB_BOOKING` (default: `STANDARD_WALK_IN`) |
 | `rating` | numeric | Rating tổng đơn hàng (legacy — ít dùng) |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc chấm `rating` (4 hoặc 5, CHECK). Diễn giải `rating` theo cột này — xem `lib/services/RatingScaleService.ts`. |
 | `tipAmount` | numeric | Tiền tip khách gửi |
 | `violations` | jsonb | Danh sách vi phạm khách phản hồi |
 | `feedbackNote` | text | Ghi chú phản hồi từ khách |
@@ -81,6 +82,7 @@
 | `checkout_time` | timestamptz | **[NEW]** Thời điểm thanh toán |
 | `ktv_ratings` | jsonb | **[NEW]** Đánh giá chi tiết cho từng KTV phục vụ khách này (vd: `{"NH016": 4}`) |
 | `rating` | numeric | **[NEW]** Điểm trung bình đánh giá của khách này (1-5) |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc khách chấm `rating` / `ktv_ratings` (4 hoặc 5). Đánh giá cũ = 4. |
 | `guest_feedback` | text | **[NEW]** Lời nhận xét / phản hồi từ khách này |
 | `created_at` | timestamptz | Thời gian tạo |
 | `updated_at` | timestamptz | Thời gian cập nhật |
@@ -116,6 +118,7 @@
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
 | `itemFeedback` | text | Phản hồi text từ khách cho item |
 | `ktvRatings` | jsonb | ⭐ **Rating riêng từng KTV** — `{"NH016": 4, "NH001": 3}`. Dùng cho lịch sử KTV + trigger thưởng |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc chấm `itemRating` / `ktvRatings` (4 hoặc 5). Đánh giá cũ = 4. |
 | `tip` | numeric | Tiền tip riêng item (default 0) |
 
 **Triggers:**
@@ -232,6 +235,7 @@
 | `actual_minutes` | numeric | Phút thực tế dùng cho giờ tích lũy |
 | `paid_minutes` | numeric | Phút được trả tiền; revision 2 trả đủ thời lượng giao khi hoàn tất bình thường |
 | `rate_per_60m` | numeric | Đơn giá snapshot |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang của `rating_used` (4\|5, migration `20261002130000`). Ghi bởi `ktvd_commit_recompute`; dòng cũ = 4. |
 | `commission_gross`, `commission_net`, `bonus_amount`, `tax_amount`, `tip` | numeric | Các thành phần tiền của tua |
 | `entry_status` | text | `OPEN`, `FINAL`, `LOCKED`, `VOID` |
 | `source`, `computed_at` | text, timestamptz | Nguồn và thời điểm tính |
@@ -560,6 +564,12 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 
 ### 8. SystemConfigs ✅ CHỦ LỰC
 **Nhiệm vụ**: Cấu hình toàn cục (key-value store).
+
+**Key thang đánh giá** (migration `20261002110000`, nguồn đọc duy nhất `RatingScaleService`):
+- `customer_rating_scale`: `4` | `5` — thang cho đánh giá MỚI (mặc định 4).
+- `ktv_type_d_rating_deduction` (thang 4, key cũ) / `ktv_type_d_rating_deduction_5`: % trừ Loại D theo sao, tỉ lệ 0–1.
+- `ktv_abc_rating_deduction_4` / `ktv_abc_rating_deduction_5`: % trừ hoa hồng A/B/C theo sao (mặc định 0).
+- `rating_labels`: nhãn chữ từng mức theo thang `{ "4": { "1": { "internal", "VN", "EN", "KR", "JP", "ZH" } }, "5": {...} }`.
 
 | Cột | Kiểu | Mô tả chức năng |
 |-----|------|-----------------|

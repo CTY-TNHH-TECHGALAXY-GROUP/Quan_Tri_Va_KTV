@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeRows, TurnRow, TypeDConfigs, EngineService } from './KtvDLedgerEngine';
 import { getDayCutoffHours } from '../business-date';
+import { buildRatingConfig } from '@/lib/services/RatingScaleService';
 
 /**
  * ================================================================
@@ -49,8 +50,8 @@ export async function loadContext(supabase: SupabaseClient): Promise<LedgerConte
         configs: {
             rateVIP: Number(cfg['ktv_type_d_vip_rate_per_60m']) || 180000,
             ratePT: Number(cfg['ktv_type_d_pt_rate_per_60m']) || 100000,
-            ratingDeductions: cfg['ktv_type_d_rating_deduction']
-                || { '0': 0, '1': 0.75, '2': 0.5, '3': 0.25, '4': 0 },
+            ratingDeductions: buildRatingConfig(cfg).typeD[4],
+            ratingDeductionsByScale: buildRatingConfig(cfg).typeD,
             cutoffHours,
             taxRate: 0.1,
             taxEffectiveFrom: taxFrom || null,
@@ -106,12 +107,12 @@ async function computeAndCommit(
         const { data, error } = await supabase
             .from('Bookings')
             .select(`
-                id, billCode, timeStart, status, rating,
+                id, billCode, timeStart, status, rating, rating_scale,
                 BookingItems!fk_bookingitems_booking (
                     id, serviceId, guest_id, technicianCodes, segments, status, tip,
-                    itemRating, ktvRatings, options, handover_status, handover_comment
+                    itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment
                 ),
-                BookingGuests ( id, rating, ktv_ratings )
+                BookingGuests ( id, rating, ktv_ratings, rating_scale )
             `)
             .in('id', bookingIds);
         if (error) throw error;

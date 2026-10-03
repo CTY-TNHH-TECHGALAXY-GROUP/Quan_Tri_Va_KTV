@@ -14,6 +14,8 @@ export interface HistoryRecord {
   createdAt: string;
   status: string;
   rating: number | null;
+  /** Scale the rating was given on (4|5). */
+  ratingScale?: number | null;
   tip: number;
   commission: number;
   serviceName: string;

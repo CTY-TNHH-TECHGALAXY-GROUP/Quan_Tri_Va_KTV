@@ -3,6 +3,7 @@ import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, Sh
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
 
 /**
  * Ba chế tài, viết bằng tiếng người. Giá trị phải khớp `TypeDDisciplineAction`
@@ -50,7 +51,7 @@ export function KtvTypeDSettingsBlock() {
                 
                 // Defaults
                 if (!parsed.ktv_type_d_rating_deduction) {
-                    parsed.ktv_type_d_rating_deduction = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
+                    parsed.ktv_type_d_rating_deduction = { ...DEFAULT_TYPE_D_DEDUCTION[4] };
                 }
                 if (!parsed.ktv_type_d_discipline_rules) { parsed.ktv_type_d_discipline_rules = { "ABSENT_NO_NOTICE":10, "ABSENT_EARLY_NOTICE":5, "LATE_NO_UPDATE":5, "ORDER_REJECT_MULTIPLIER":3, "MIN_HOURS_TO_REJECT":3 }; }
                 // Cấu hình cũ chưa có khối CASES → điền mặc định quy chế, để bảng
@@ -201,23 +202,9 @@ export function KtvTypeDSettingsBlock() {
                             </div>
                             <h2 className="text-lg font-black text-gray-900">Khấu trừ đánh giá (%)</h2>
                         </div>
-                        <SaveButton group="stars" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_rating_deduction'], 'stars')} />
                     </div>
-                    <div className="space-y-3">
-                        {[0,1,2,3,4].map(star => (
-                            <div key={star} className="flex items-center gap-4">
-                                <div className="w-16 font-bold text-gray-700">{star} Sao</div>
-                                <NumberInput
-                                    value={((configs.ktv_type_d_rating_deduction?.[star] !== undefined ? configs.ktv_type_d_rating_deduction[star] : (star === 4 ? 0 : 1))) * 100}
-                                    onChange={(v: any) => {
-                                        const newVal = { ...configs.ktv_type_d_rating_deduction, [star]: v / 100 };
-                                        handleChange('ktv_type_d_rating_deduction', newVal);
-                                    }}
-                                    suffix="%"
-                                />
-                            </div>
-                        ))}
-                    </div>
+                    {/* Bảng % trừ theo sao đã chuyển lên khung "Thang đánh giá" (chung mọi loại, theo thang 4/5). */}
+                    <p className="text-sm text-gray-500">Chỉnh ở khung <b>Thang đánh giá &amp; khấu trừ theo sao</b> phía trên.</p>
                 </div>
             </div>
 

@@ -40,6 +40,8 @@ export async function GET(request: Request) {
 
         // 1. Get configs from centralized service
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase);
         const bonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
         // 2. Fetch KTVs
@@ -139,7 +141,7 @@ export async function GET(request: Request) {
         // 4. Fetch Realtime Bookings from realtimeStartStr (ALL TIME)
         const bookings = await fetchAll(
             supabase.from('Bookings')
-            .select(`id, timeStart, timeEnd, status, technicianCode, rating, guestCount, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment ) `)
+            .select(`id, timeStart, timeEnd, status, technicianCode, rating, rating_scale, guestCount, BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment ) `)
             .gte('timeStart', realtimeStartStr)
             .not('status', 'in', '("CANCELLED","NEW")')
         );
@@ -279,9 +281,11 @@ export async function GET(request: Request) {
                     const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                     let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                     if (itemDuration <= 0) itemDuration = 60;
-                    bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                    bookingCommission += KtvCommissionService.applyAbcRatingDeduction(
+                        KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId), item, b, techCode, abcTables, workType);
                 }
-                if (bookingCommission === 0 && coItemConQuyenLoi) bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                if (bookingCommission === 0 && coItemConQuyenLoi) bookingCommission = KtvCommissionService.applyAbcRatingDeduction(
+                    KtvCommissionService.calcCommission(60, commConfigs, workType, ''), null, { ...b, BookingItems: relevantItems }, techCode, abcTables, workType);
                 const bookingTip = relevantItems.reduce((sum: number, i: any) => sum + (Number(i.tip) || 0), 0);
                 const bookingBonus = KtvCommissionService.calculateBookingBonus(b, techCode, todayStr, shiftsData || [], bConfig, ktvWorkTypeMap, staffBonusMap);
 

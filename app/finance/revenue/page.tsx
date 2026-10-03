@@ -1008,7 +1008,7 @@ export default function RevenueReportsPage() {
                                         subtitle={summary.avgRating >= 4 ? 'Xuất sắc' : summary.avgRating >= 3 ? 'Tốt' : ''}
                                         icon={<Star size={18} />}
                                         color="bg-yellow-50 text-yellow-600"
-                                        helpText="Σ itemRating ÷ Số lượt đánh giá. Điểm hài lòng trung bình từ khách (thang 5 sao)."
+                                        helpText="Σ itemRating ÷ Số lượt đánh giá, quy về thang 4 sao (đánh giá chấm theo thang 5 được quy đổi: sao × 4 ÷ 5)."
                                     />
                                     {/* Tổng Tip */}
                                     <KPICard

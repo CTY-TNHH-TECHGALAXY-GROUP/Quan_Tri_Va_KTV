@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { KtvTypeDCommissionService } from './KtvTypeDCommissionService';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
 
 /**
  * Dòng KHÔNG phải lệnh rút tiền thật:
@@ -55,7 +56,7 @@ export class KtvTypeDWalletService {
         const rateVIP = Number(configs['ktv_type_d_vip_rate_per_60m']) || 180000;
         const ratePT = Number(configs['ktv_type_d_pt_rate_per_60m']) || 100000;
         
-        let ratingDeductions = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
+        let ratingDeductions: Record<string, number> = { ...DEFAULT_TYPE_D_DEDUCTION[4] };
         try {
             if (configs['ktv_type_d_rating_deduction']) {
                 ratingDeductions = typeof configs['ktv_type_d_rating_deduction'] === 'string' 

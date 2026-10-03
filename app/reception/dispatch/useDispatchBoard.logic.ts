@@ -231,6 +231,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     if (!calculatedRating) {
                         calculatedRating = (b.BookingItems || []).find((i: any) => i.itemRating != null)?.itemRating || null;
                     }
+                    // Same source order as the rating itself: bill → first rated guest → first rated item.
+                    const ratingScale = Number(b.rating ? b.rating_scale
+                        : guestListForRating.find((g: any) => g.rating != null)?.rating_scale
+                        ?? (b.BookingItems || []).find((i: any) => i.itemRating != null)?.rating_scale) === 5 ? 5 : 4;
 
                     return {
                         id: b.id,
@@ -253,6 +257,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         hasAssignedKtv,
                         accessToken: b.accessToken || null,
                         rating: calculatedRating,
+                        ratingScale,
                         feedbackNote: b.feedbackNote || null,
                         ktvReviewsOfReception: Array.isArray(b.ktvReviewsOfReception) ? b.ktvReviewsOfReception : [],
                         ktvReports: Array.isArray(b.ktvReports) ? b.ktvReports : [],
@@ -468,6 +473,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 focusArea: g.focus_area,
                                 status: g.status,
                                 rating: g.rating,
+                                ratingScale: Number(g.rating_scale) === 5 ? 5 : 4,
                                 items: (b.BookingItems || []).filter((bi: any) => bi.guest_id === g.id)
                             };
                         })

@@ -10,6 +10,7 @@ import { ktvMetadataMap, parseKtvOptions, parseKtvSegments, ktvMatchesSeg } from
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { performSequentialLifecycle } from '@/lib/services/SequentialLifecycleService';
 import { currentCounterActor } from '@/lib/counter-action-log';
+import { loadRatingConfig, clampRating, type RatingScale } from '@/lib/services/RatingScaleService';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
@@ -29,6 +30,12 @@ function stripDraftOnlyOptions(payload: any) {
         const { _draftSequential, ...options } = u.options;
         return { ...u, options };
     }) };
+}
+
+/** Scale of a rating being entered now: the one the screen showed, else the current setting. */
+async function resolveRatingScale(supabase: any, scaleShown?: number): Promise<RatingScale> {
+    if (scaleShown === 4 || scaleShown === 5) return scaleShown;
+    return (await loadRatingConfig(supabase)).scale;
 }
 
 async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
@@ -271,7 +278,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, rating_scale, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -2463,14 +2470,20 @@ export async function editBookingService(bookingId: string, itemId: string, newS
     return await BookingModificationService.editBookingService(bookingId, itemId, newServiceId);
 }
 
-export async function submitCustomerRating(bookingId: string, rating: number, feedbackNote?: string) {
+export async function submitCustomerRating(bookingId: string, rating: number, feedbackNote?: string, scaleShown?: number) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+        // Thang của lần chấm này (thang màn quầy đang hiện; thiếu thì cấu hình). Kẹp 1..thang.
+        const ratingScale = await resolveRatingScale(supabase, scaleShown);
+        const clamped = clampRating(rating, ratingScale);
+        if (clamped === null) throw new Error('Điểm đánh giá không hợp lệ');
+        rating = clamped;
 
         const updatePayload: any = { 
             rating, 
+            rating_scale: ratingScale,
             feedbackNote,
             updatedAt: new Date().toISOString() 
         };
@@ -2509,7 +2522,7 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
 
             const { error: rErr } = await supabase
                 .from('BookingItems')
-                .update({ itemRating: rating, ktvRatings: currentRatings })
+                .update({ itemRating: rating, ktvRatings: currentRatings, rating_scale: ratingScale })
                 .eq('id', item.id);
             if (rErr) console.error('[submitCustomerRating] không gán được sao cho item', item.id, rErr.message);
         }
@@ -2518,7 +2531,7 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
         // GUEST thay vì phải lần xuống item.
         const { error: gErr } = await supabase
             .from('BookingGuests')
-            .update({ rating, updated_at: new Date().toISOString() })
+            .update({ rating, rating_scale: ratingScale, updated_at: new Date().toISOString() })
             .eq('booking_id', bookingId)
             .is('rating', null);
         if (gErr) console.warn('[submitCustomerRating] chưa ghi được sao xuống BookingGuests:', gErr.message);
@@ -2898,17 +2911,23 @@ export async function unmergeServicesAction(
     }
 }
 
-export async function submitGuestRating(guestId: string, rating: number, feedbackNote?: string) {
+export async function submitGuestRating(guestId: string, rating: number, feedbackNote?: string, scaleShown?: number) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
+        // Thang của lần chấm này (thang màn quầy đang hiện; thiếu thì cấu hình). Kẹp 1..thang.
+        const ratingScale = await resolveRatingScale(supabase, scaleShown);
+        const clamped = clampRating(rating, ratingScale);
+        if (clamped === null) throw new Error('Điểm đánh giá không hợp lệ');
+        rating = clamped;
 
         // Update BookingGuests
         const { error: guestErr } = await supabase
             .from('BookingGuests')
             .update({
                 rating,
+                rating_scale: ratingScale,
                 guest_feedback: feedbackNote || null,
                 status: 'DONE',
                 updated_at: new Date().toISOString()
@@ -2939,7 +2958,8 @@ export async function submitGuestRating(guestId: string, rating: number, feedbac
                         .from('BookingItems')
                         .update({
                             itemRating: rating,
-                            ktvRatings: currentRatings
+                            ktvRatings: currentRatings,
+                            rating_scale: ratingScale
                         })
                         .eq('id', item.id);
                 }

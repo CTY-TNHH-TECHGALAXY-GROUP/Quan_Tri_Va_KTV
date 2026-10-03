@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requireBusinessUser } from '@/lib/auth-server';
 
 import { MAX_RATING_WITH_VIOLATION } from './feedback.constants';
+import { loadRatingConfig, clampRating, maxRatingWithViolation, ratingLabelFor } from '@/lib/services/RatingScaleService';
 
 /** Một ô góp ý khách đã tích, kèm nội dung chụp lại lúc bấm. */
 type ViolationDetail = { id: string; text: string };
@@ -44,6 +45,8 @@ export async function submitFeedbackAction(payload: {
     globalRating: number;
     globalComment: string;
     violations: string[];
+    /** Scale the kiosk showed (4|5). Missing → current setting. */
+    ratingScale?: number;
 }) {
     const supabase = getSupabaseAdmin();
     if (!supabase) return { success: false, error: 'No admin client' };
@@ -53,11 +56,16 @@ export async function submitFeedbackAction(payload: {
         if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const { bookingId, isGuestFlow, ktvList, globalComment, violations } = payload;
 
-        // Kẹp trần theo số lỗi khách tích. Mọi chỗ ghi điểm bên dưới đều phải dùng
-        // `globalRating` đã kẹp này, không được dùng lại `payload.globalRating`.
+        // Thang của lần chấm này: thang kiosk đang hiện (khách bấm theo đó), thiếu thì cấu hình hiện tại.
+        const ratingConfig = await loadRatingConfig(supabase);
+        const ratingScale = payload.ratingScale === 4 || payload.ratingScale === 5 ? payload.ratingScale : ratingConfig.scale;
+        // Kẹp 1..thang rồi kẹp trần theo số lỗi khách tích (thang − 1). Mọi chỗ ghi điểm bên dưới
+        // đều phải dùng `globalRating` đã kẹp này, không được dùng lại `payload.globalRating`.
+        const inRange = clampRating(payload.globalRating, ratingScale);
+        if (inRange === null) throw new Error('Điểm đánh giá không hợp lệ');
         const globalRating = (violations && violations.length > 0)
-            ? Math.min(payload.globalRating, MAX_RATING_WITH_VIOLATION)
-            : payload.globalRating;
+            ? Math.min(inRange, maxRatingWithViolation(ratingScale))
+            : inRange;
 
         if (globalRating !== payload.globalRating) {
             console.warn(
@@ -95,6 +103,7 @@ export async function submitFeedbackAction(payload: {
                 const { error: updateGuestErr } = await supabase.from('BookingGuests').update({
                     ktv_ratings: currentRatings,
                     rating: globalRating,
+                    rating_scale: ratingScale,
                     ...(guestFeedback !== null && { guest_feedback: guestFeedback }),
                     ...(guestHasCol && { violations: violationDetails }),
                     status: 'DONE',
@@ -127,6 +136,7 @@ export async function submitFeedbackAction(payload: {
                     const { error: updateItemErr } = await supabase.from('BookingItems').update({
                         ktvRatings: currentRatings,
                         itemRating: globalRating,
+                        rating_scale: ratingScale,
                         ...(itemHasCol && { violations: violationDetails })
                     }).eq('id', item.id);
 
@@ -153,6 +163,7 @@ export async function submitFeedbackAction(payload: {
                 const { error: updateItemErr } = await supabase.from('BookingItems').update({
                     ktvRatings: currentRatings,
                     itemRating: globalRating,
+                    rating_scale: ratingScale,
                     ...(itemFeedback !== null && { itemFeedback: itemFeedback }),
                     ...(itemHasCol && { violations: violationDetails })
                 }).eq('id', item.id);
@@ -196,6 +207,7 @@ export async function submitFeedbackAction(payload: {
             ...(!keepFinishedStatus && { status: 'FEEDBACK' }),
             violations: bookingViolations,
             rating: globalRating,
+            rating_scale: ratingScale,
             ...(bookingFeedback !== null && { feedbackNote: bookingFeedback }),
             updatedAt: new Date().toISOString()
         }).eq('id', bookingId);
@@ -203,14 +215,16 @@ export async function submitFeedbackAction(payload: {
         if (updateBookingErr) throw updateBookingErr;
         
         // Push Notifications cho Staff
-        const ratingText = globalRating >= 4 ? 'Xuất sắc' : globalRating === 3 ? 'Tốt' : globalRating === 2 ? 'Tạm được' : 'Tệ';
+        const ratingText = ratingLabelFor(globalRating, ratingScale, ratingConfig.labels) || `${globalRating} sao`;
+        // Real StaffNotifications columns (employeeId / bookingId). The old staffId / title /
+        // referenceId keys do not exist, so this insert always failed (since 375ddf90).
+        // Shown only per the FEEDBACK rule in notification_rules (target employee).
         const notifPayloads = ktvList.map((k) => ({
-            staffId: k.ktvId,
+            employeeId: k.ktvId,
+            bookingId,
             type: 'FEEDBACK',
-            title: `Khách hàng đánh giá: ${globalRating} sao`,
-            message: `Khách hàng đã đánh giá ${ratingText} (${globalRating} sao) cho ${k.ktvName}.` + (globalComment ? ` Ghi chú: ${globalComment}` : ''),
+            message: `Khách hàng đã đánh giá ${ratingText} (${globalRating}/${ratingScale} sao) cho ${k.ktvName}.` + (globalComment ? ` Ghi chú: ${globalComment}` : ''),
             source: 'SYSTEM',
-            referenceId: bookingId,
             isRead: false
         }));
         
