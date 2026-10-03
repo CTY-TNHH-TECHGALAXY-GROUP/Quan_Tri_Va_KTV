@@ -433,83 +433,7 @@ export async function confirmWebBooking(bookingId: string) {
     else if (!isEmailEnabled) emailSkippedReason = 'DISABLED';
 
     if (bData?.customerEmail && !isEmailDummy && isEmailEnabled) {
-        // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
-        let isNewCustomer = true;
-        if (bData.customerPhone) {
-            // 1. Kiểm tra "Blacklist": Khách có từng bùng kèo (CANCELLED) lần nào chưa?
-            const { data: cancelledBookings } = await supabase
-              .from('Bookings')
-              .select('id')
-              .eq('customerPhone', bData.customerPhone)
-              .eq('status', 'CANCELLED')
-              .limit(1);
-
-            // Nếu KHÔNG CÓ lịch sử hủy kèo, mới bắt đầu xét uy tín
-            if (!cancelledBookings || cancelledBookings.length === 0) {
-                // 2. Lấy cấu hình số lượng đơn tối thiểu để thành khách VIP (mặc định 1)
-                const { data: configData } = await supabase
-                   .from('SystemConfigs')
-                   .select('value')
-                   .eq('key', 'web_booking_trusted_threshold')
-                   .maybeSingle();
-                
-                const threshold = parseInt(configData?.value || '1', 10);
-
-                // 3. Tìm đúng N đơn Web trước đó của SĐT này (tối ưu hóa bằng LIMIT)
-                const { data: pastBookings } = await supabase
-                  .from('Bookings')
-                  .select('id')
-                  .eq('customerPhone', bData.customerPhone)
-                  .eq('isWebBooking', true)
-                  .neq('status', 'CANCELLED') // Không tính những đơn web bị hủy vào quota
-                  .neq('id', bookingId) // Loại trừ đơn hiện tại
-                  .limit(threshold);
-                
-                // 4. Nếu khách có đủ số đơn yêu cầu, họ được tính là khách cũ (không cần cọc)
-                if (pastBookings && pastBookings.length >= threshold) {
-                    isNewCustomer = false;
-                }
-            }
-        }
-
-        // 5. Lấy % cọc từ SystemConfigs
-        let depositPercent = 40;
-        try {
-            const { data: configData } = await supabase
-                .from('SystemConfigs')
-                .select('value')
-                .eq('key', 'web_booking_deposit_percent')
-                .maybeSingle();
-            if (configData && configData.value) {
-                depositPercent = parseInt(configData.value, 10);
-            }
-        } catch (e) {}
-
-        // Thuật toán: Lấy depositPercent % tổng bill, làm tròn ĐẾN 100.000 gần nhất
-        let depositAmountVND = 0;
-        if (bData.totalAmount && bData.totalAmount > 0) {
-            const rawDeposit = (bData.totalAmount * depositPercent) / 100;
-            // Làm tròn đến hàng trăm nghìn (vd: 525k -> 5.25 -> round=5 -> 500k)
-            depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
-        }
-
-        // Dịch vụ, thời lượng, số khách và yêu cầu theo TỪNG dịch vụ.
-        // Dùng chung với route gửi lại email — xem lib/booking-email.logic.ts.
-        const lang = bData.customerLang || 'vi';
-        const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
-        const bookingDetails = {
-            bookingId: emailBookingCode(bData) || bookingId,
-            customerName: bData.customerName || '',
-            customerPhone: bData.customerPhone || '',
-            date: bData.bookingDate || '',
-            time: bData.timeBooking || '',
-            depositAmount: depositAmountVND,
-            totalAmount: bData.totalAmount || 0,
-            therapist: (bData.technicianCode || '').trim(),
-            note: extractBookingNote(bData.notes),
-            ...buildServiceSection(bData.BookingItems, lang),
-            guests: customerRealGuests,
-        };
+        const { isNewCustomer, bookingDetails } = await buildConfirmationEmail(supabase, bData, bookingId);
 
         // Gọi hàm gửi email (BẮT BUỘC CÓ AWAIT trên Vercel/Serverless để hàm không bị ngắt giữa chừng)
         try {
@@ -531,6 +455,161 @@ export async function confirmWebBooking(bookingId: string) {
   } catch (error: any) {
     console.error('❌ [WebBooking] confirmWebBooking error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+// ─── EMAIL HELPERS ────────────────────────────────────────────────────────────
+
+/** Các cột của Bookings (kèm BookingItems + Services) mà email xác nhận cần. */
+const BOOKING_EMAIL_SELECT = `
+  source, technicianCode, roomName, bedId, billCode, customerName, customerEmail, customerLang, customerPhone,
+  bookingDate, timeBooking, totalAmount, id, notes, guestCount,
+  BookingItems!BookingItems_bookingId_fkey (
+    quantity,
+    serviceId,
+    guest_id,
+    options,
+    Services!BookingItems_serviceId_fkey (
+      nameVN, nameEN, nameKR, nameJP, nameCN, duration, is_utility
+    )
+  )
+`;
+
+/**
+ * Dựng nội dung email xác nhận cho một đơn: khách cũ/mới (quyết định có đòi cọc),
+ * % cọc và chi tiết dịch vụ. Dùng chung cho lúc XÁC NHẬN và lúc GỬI LẠI —
+ * một nguồn duy nhất, hai nút không thể lệch nhau.
+ */
+async function buildConfirmationEmail(supabase: any, bData: any, bookingId: string) {
+    // Kiểm tra xem khách cũ hay mới dựa trên cấu hình "ngưỡng tin cậy"
+    let isNewCustomer = true;
+    if (bData.customerPhone) {
+        // 1. Kiểm tra "Blacklist": Khách có từng bùng kèo (CANCELLED) lần nào chưa?
+        const { data: cancelledBookings } = await supabase
+          .from('Bookings')
+          .select('id')
+          .eq('customerPhone', bData.customerPhone)
+          .eq('status', 'CANCELLED')
+          .limit(1);
+
+        // Nếu KHÔNG CÓ lịch sử hủy kèo, mới bắt đầu xét uy tín
+        if (!cancelledBookings || cancelledBookings.length === 0) {
+            // 2. Lấy cấu hình số lượng đơn tối thiểu để thành khách VIP (mặc định 1)
+            const { data: configData } = await supabase
+               .from('SystemConfigs')
+               .select('value')
+               .eq('key', 'web_booking_trusted_threshold')
+               .maybeSingle();
+
+            const threshold = parseInt(configData?.value || '1', 10);
+
+            // 3. Tìm đúng N đơn Web trước đó của SĐT này (tối ưu hóa bằng LIMIT)
+            const { data: pastBookings } = await supabase
+              .from('Bookings')
+              .select('id')
+              .eq('customerPhone', bData.customerPhone)
+              .eq('isWebBooking', true)
+              .neq('status', 'CANCELLED') // Không tính những đơn web bị hủy vào quota
+              .neq('id', bookingId) // Loại trừ đơn hiện tại
+              .limit(threshold);
+
+            // 4. Nếu khách có đủ số đơn yêu cầu, họ được tính là khách cũ (không cần cọc)
+            if (pastBookings && pastBookings.length >= threshold) {
+                isNewCustomer = false;
+            }
+        }
+    }
+
+    // 5. Lấy % cọc từ SystemConfigs
+    let depositPercent = 40;
+    try {
+        const { data: configData } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'web_booking_deposit_percent')
+            .maybeSingle();
+        if (configData && configData.value) {
+            depositPercent = parseInt(configData.value, 10);
+        }
+    } catch (e) {}
+
+    // Thuật toán: Lấy depositPercent % tổng bill, làm tròn ĐẾN 100.000 gần nhất
+    let depositAmountVND = 0;
+    if (bData.totalAmount && bData.totalAmount > 0) {
+        const rawDeposit = (bData.totalAmount * depositPercent) / 100;
+        // Làm tròn đến hàng trăm nghìn (vd: 525k -> 5.25 -> round=5 -> 500k)
+        depositAmountVND = Math.max(100000, Math.round(rawDeposit / 100000) * 100000);
+    }
+
+    // Dịch vụ, thời lượng, số khách và yêu cầu theo TỪNG dịch vụ — xem lib/booking-email.logic.ts.
+    const lang = bData.customerLang || 'vi';
+    const customerRealGuests = parseGuestCountFromNotes(bData.notes, bData.guestCount || 1);
+    const bookingDetails = {
+        bookingId: emailBookingCode(bData) || bookingId,
+        customerName: bData.customerName || '',
+        customerPhone: bData.customerPhone || '',
+        date: bData.bookingDate || '',
+        time: bData.timeBooking || '',
+        depositAmount: depositAmountVND,
+        totalAmount: bData.totalAmount || 0,
+        therapist: (bData.technicianCode || '').trim(),
+        note: extractBookingNote(bData.notes),
+        ...buildServiceSection(bData.BookingItems, lang),
+        guests: customerRealGuests,
+    };
+
+    return { isNewCustomer, bookingDetails };
+}
+
+/**
+ * Gửi lại email xác nhận cho một đơn web ĐÃ xác nhận — dùng khi lần gửi đầu
+ * lỗi (SMTP, email sai vừa được sửa...). Thao tác tay của quầy nên bỏ qua
+ * công tắc bật/tắt email (`force`), giống nút "Gửi thử" ở trang cấu hình.
+ *
+ * Thay cho route GET /api/resend-email/[billCode] cũ — route đó không có nút
+ * nào gọi và mở cho người ngoài kích hoạt gửi mail bằng mã đơn đoán được.
+ */
+export async function resendBookingEmail(bookingId: string): Promise<
+    { success: true; email: string } | { success: false; error: string; reason?: 'NO_EMAIL' | 'INVALID_EMAIL' }
+> {
+  try {
+    await requirePermission('dispatch_board');
+    const supabase = getSupabaseAdmin();
+    if (!supabase) throw new Error('Supabase admin not initialized');
+
+    const { data: bData, error } = await supabase
+      .from('Bookings')
+      .select(BOOKING_EMAIL_SELECT)
+      .eq('id', bookingId)
+      .single();
+    if (error || !bData) return { success: false, error: 'Không tìm thấy đơn.' };
+
+    const b: any = bData;
+    if (!b.customerEmail) return { success: false, error: 'Đơn này không có email khách.', reason: 'NO_EMAIL' };
+    if (isDummyEmail(b.customerEmail)) {
+      return {
+        success: false, reason: 'INVALID_EMAIL',
+        error: `Email khách là email ảo (${b.customerEmail}). Sửa email thật của khách trước khi gửi lại.`,
+      };
+    }
+
+    const { isNewCustomer, bookingDetails } = await buildConfirmationEmail(supabase, b, bookingId);
+    const result = await sendBookingConfirmationEmail(
+      b.customerEmail,
+      b.customerName || 'Quý khách',
+      b.customerLang || 'vi',
+      isNewCustomer,
+      bookingDetails,
+      { force: true }
+    );
+    if (!result.success) {
+      const msg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || 'SMTP không gửi được.';
+      return { success: false, error: msg };
+    }
+    return { success: true, email: b.customerEmail };
+  } catch (error: any) {
+    console.error('❌ [WebBooking] resendBookingEmail error:', error);
+    return { success: false, error: error.message || 'Unknown error' };
   }
 }
 
