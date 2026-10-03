@@ -1,7 +1,8 @@
-# Promotion Engine — API contract v8 (cho Agent B / Frontend, wrb-noi-bo, Web Booking)
+# Promotion Engine — API contract v9 (cho Agent B / Frontend, wrb-noi-bo, Web Booking)
 
 > Backend: nhánh `feat/promotion-engine`.
 > Migration: `20261002120000_promotion_engine.sql` + `20261002180000_promotion_engine_v2.sql` + `20261002200000_promotion_engine_v3.sql`.
+> **v9:** **phân quyền theo thao tác** (mục 0.1) — mọi API khuyến mãi bắt đăng nhập; prefix voucher tự sinh từ mã chương trình khi bỏ trống.
 > **v8:** quầy **áp ngoại lệ** cho đơn chưa đủ điều kiện, bắt buộc ghi lý do (mục 4.1).
 > **v7:** **điều kiện áp dụng** nhiều tiêu chí (mục 2.2), engine **kiểm cả số phút lúc áp**, voucher trả kèm `conditionsSummary`. Trả lời mục 9 của B.
 > **v6:** trang khách có tên menu: `menuLabels` (public voucher) và `applicableMenus.labels` (campaign), mục 6.1.
@@ -31,6 +32,33 @@
 - `dispatch_board`: cho lookup, active-orders, apply, cancel, và lịch sử khuyến mãi của khách.
 
 **Người thao tác (`staffId`):** server tự lấy từ session, client không gửi lên.
+
+### 0.1 Phân quyền (v9, user 04/10/2026) — thay mọi chỗ ghi `promotions` / `dispatch_board` ở các mục dưới
+
+**Cơ chế:**
+- **Admin tick quyền** theo vai trò / tài khoản ở trang Phân quyền (`Users.permissions`). Không chỗ nào viết cứng ai được làm gì.
+- **Code chỉ có một bảng** thao tác → quyền: `PROMOTION_ACTION_PERMISSIONS` trong `lib/constants/promotion.ts`. Hàm `promotionCan(permissions, action)` dùng chung cho server và UI.
+
+| Mã quyền (B thêm vào `MODULES`, nhóm "Khuyến mãi") | Mở các API |
+|---|---|
+| `promotions_scan_apply` — Quét & áp voucher | `lookup`, `active-orders`, `apply` (đơn đủ điều kiện), `promotion-usages/:id/cancel` |
+| `promotions_override` — Áp ngoại lệ | `apply` với `overrideConditions: true` |
+| `promotions_view` — Xem voucher & lịch sử | `overview`, `passes` GET, `passes/:id` GET, `usages`, `customers/:id/promotions`, `campaigns` GET |
+| `promotions_issue` — Phát voucher | `customers`, `customer-candidates`, `passes` POST, `passes/bulk`, `send-email`, `passes/:id` PATCH, `campaigns` GET |
+| `promotions_campaign_manage` — Quản lý chương trình | `campaigns` POST / PATCH, `campaigns/:id/status`, `menus`, `campaigns` GET |
+| `promotions` — toàn quyền (giữ từ bản đầu) | Tất cả |
+
+- **`dispatch_board` không còn mở API khuyến mãi nào.** Khi deploy, admin tick `promotions_scan_apply` cho vai trò Lễ tân.
+- **Luôn bắt đăng nhập**, kể cả khi `AUTH_ENFORCE_API` tắt:
+  - Không có phiên → `401 UNAUTHORIZED`.
+  - Thiếu quyền → `403 FORBIDDEN`.
+  - Tài khoản bị khoá → `423 ACCOUNT_LOCKED`.
+- **Không có quyền xem SĐT / email** (không có `promotions_view` / `promotions_issue`): kết quả `lookup` và `apply` trả `customer.phone` / `customer.email` / `emailTo` = `null`, chỉ còn tên chủ voucher.
+- **`active-orders`:** `canOverride` = `false` nếu người quét không có `promotions_override`.
+- **Gửi `overrideConditions` khi không có quyền** → `403`, message "Bạn không có quyền áp ngoại lệ…".
+- **Gợi ý UI cho B:** ẩn / hiện menu và nút bằng `hasPermission(...)` theo đúng bảng trên, hoặc dùng luôn `promotionCan(user.permissions, action)`.
+
+**Prefix voucher (v9):** form để trống thì server tự sinh từ mã chương trình (`OCT_FREE30_2026` → `OCT`; trùng thì `OCT2`…), lưu một lần lúc tạo. Campaign trả `voucherPrefix`.
 
 ## 1. Enum
 

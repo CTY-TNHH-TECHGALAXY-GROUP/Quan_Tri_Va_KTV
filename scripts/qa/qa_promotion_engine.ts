@@ -1104,6 +1104,25 @@ async function main() {
     await q(`DELETE FROM "BookingItems" WHERE "serviceId" IN ($1, $2, $3)`, [svA, svB, svC]);
     await q(`DELETE FROM "Services" WHERE id IN ($1, $2, $3)`, [svA, svB, svC]);
 
+    // ---------- v9: derived voucher prefix
+    console.log('\n[v9 — voucher prefix]');
+    const mkNoPrefix = (code: string) => rpc('promo_create_campaign', JSON.stringify({ campaign_code: code, name: 'x', benefit_type: 'FREE_MINUTES',
+        benefit_value: 10, valid_from: iso(new Date()), valid_until: iso(new Date(Date.now() + DAY)) }), 'QA');
+    const tagP = `Z${Date.now().toString(36).toUpperCase().slice(-5)}`;
+    const p1c = await mkNoPrefix(`${RUN}_${tagP}A`);
+    const pfx1 = p1c.data?.voucherPrefix;
+    const p2c = await mkNoPrefix(`${RUN}-${tagP}B`);
+    check('empty prefix → derived from code (first segment, ≤ 8 chars); same base again → numbered', /^[A-Z0-9]{2,10}$/.test(pfx1 ?? '')
+        && pfx1.startsWith(RUN.slice(0, 8)) && p2c.data?.voucherPrefix?.startsWith(RUN.slice(0, 8)) && p2c.data.voucherPrefix !== pfx1
+        && Number(p2c.data.voucherPrefix.slice(8) || 1) === Number(pfx1.slice(8) || 1) + 1, [pfx1, p2c.data?.voucherPrefix]);
+    const given = await rpc('promo_create_campaign', JSON.stringify({ campaign_code: `${RUN}_GIVEN`, name: 'x', benefit_type: 'FREE_MINUTES', benefit_value: 10,
+        voucher_prefix: 'vip30', valid_from: iso(new Date()), valid_until: iso(new Date(Date.now() + DAY)) }), 'QA');
+    check('prefix given by admin is kept (upper-cased)', given.data?.voucherPrefix === 'VIP30', given.data?.voucherPrefix);
+    const c9 = await newCustomer();
+    await rpc('promo_set_campaign_status', p1c.data.id, 'ACTIVATE', 'QA');
+    const pass9 = await rpc('promo_issue_manual', p1c.data.id, c9, 'QA');
+    check('voucher codes use the derived prefix', pass9.data?.voucherCode?.startsWith(`${pfx1}-`), pass9.data?.voucherCode);
+
     const errs = await q(`SELECT * FROM "PromotionIssueErrors" WHERE booking_id LIKE $1`, [`${RUN}%`]);
     check('no trigger errors logged', errs.length === 0, errs);
 }

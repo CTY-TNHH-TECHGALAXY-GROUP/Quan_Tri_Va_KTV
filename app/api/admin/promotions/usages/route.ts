@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { PROMOTION_USAGE_STATUSES } from '@/lib/constants/promotion';
-import { PROMOTION_ADMIN_PERMISSION, authorizePromotion, promotionInternalError, promotionJson } from '@/lib/promotion-route';
+import { authorizePromotion, promotionInternalError, promotionJson } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // GET /api/admin/promotions/usages?from=yyyy-MM-dd&to=yyyy-MM-dd&campaignId&status&q&passId&overridden=1|0
 // from / to are VN calendar dates (inclusive). Max 500 rows, newest first.
 export async function GET(request: NextRequest) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.view');
     if (auth instanceof Response) return auth;
     try {
         const sp = request.nextUrl.searchParams;

@@ -1,5 +1,5 @@
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
-import { PROMOTION_ADMIN_PERMISSION, authorizePromotion, promotionInternalError, promotionJson } from '@/lib/promotion-route';
+import { authorizePromotion, promotionInternalError, promotionJson } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 // [{ code: 'NHP', label: 'Menu VIP', serviceCount, categories: [{ code, label, serviceCount }], services: [...] }]
 // Menus = service id prefixes found in Services; labels from SystemConfigs.promotion_menu_labels.
 export async function GET() {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('campaign.manage');
     if (auth instanceof Response) return auth;
     try {
         return promotionJson(await PromotionEngineService.getMenuCatalog());

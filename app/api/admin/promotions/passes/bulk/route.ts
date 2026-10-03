@@ -3,8 +3,7 @@ import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { PromotionEmailService } from '@/lib/services/PromotionEmailService';
 import { PROMOTION_BULK_ISSUE_MAX } from '@/lib/constants/promotion';
 import type { PromotionBulkIssueItemDto, PromotionBulkIssueResultDto } from '@/lib/types/promotion';
-import {
-    PROMOTION_ADMIN_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +25,7 @@ const BodySchema = z.object({
  * reported ALREADY_EXISTS (no duplicate, no re-send).
  */
 export async function POST(request: Request) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.issue');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, BodySchema);
     if (body instanceof Response) return body;

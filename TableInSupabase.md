@@ -946,7 +946,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `qualification_config` | jsonb | **Menu áp dụng** `{serviceIds, serviceIdPrefixes, serviceCategories}`. Admin chọn từ `promo_menu_catalog()` (Services thật). **[v3]** Dùng chung cho điều kiện phát, đơn được áp (`ORDER_MENU_NOT_ELIGIBLE`) và tiền tính giảm %. Rỗng = mọi menu. Category so khớp không phân biệt hoa thường, hiểu cả dạng `["Body"]` |
 | `assignment_mode` | text | `AUTO` (phát khi đơn DONE) / `MANUAL_ONLY` / `SPECIFIC_CUSTOMER` / `CUSTOMER_GROUP` |
 | `one_pass_per_customer` | bool | default true |
-| `voucher_prefix` | text | VD `OCT30` → mã `OCT30-X7K92A` |
+| `voucher_prefix` | text | VD `OCT30` → mã `OCT30-X7K92A`. **[v9]** Để trống thì tự sinh từ `campaign_code` (`promo_derive_voucher_prefix`: đoạn chữ/số đầu, ≤ 8 ký tự, trùng thì thêm số), lưu một lần lúc tạo |
 | `status` | text | `DRAFT` → `ACTIVE` ⇄ `INACTIVE` → `ENDED` |
 | `apply_conditions` | jsonb | **[v7]** Điều kiện áp dụng, dùng chung cho áp và phát tự động: `{match: ALL\|ANY, conditions: [{menus, categories, serviceIds, minMinutes, minOrderAmount}]}`. Một dịch vụ gốc của đơn phải thoả mọi tiêu chí của 1 điều kiện; `minMinutes` tính trên **một** dịch vụ. `qualification_config` giờ là hợp của các tiêu chí, chỉ dùng cho nhãn |
 | `validity_type` | text | **[v2]** `CAMPAIGN_PERIOD` (cả khoảng campaign, VD theo tháng) / `DAYS_FROM_ISSUE` (N ngày từ lúc phát, không quá `valid_until`) |

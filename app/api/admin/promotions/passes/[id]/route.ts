@@ -1,7 +1,6 @@
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { PromotionPassStatusSchema } from '@/lib/schemas/promotion.schema';
-import {
-    PROMOTION_ADMIN_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 // GET /api/admin/promotions/passes/:id — pass + qrPayload
 export async function GET(_request: Request, { params }: Ctx) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.view');
     if (auth instanceof Response) return auth;
     try {
         const { id } = await params;
@@ -26,7 +25,7 @@ export async function GET(_request: Request, { params }: Ctx) {
 
 // PATCH /api/admin/promotions/passes/:id  { action: SUSPEND | REACTIVATE | CANCEL, reason? }
 export async function PATCH(request: Request, { params }: Ctx) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.issue');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, PromotionPassStatusSchema);
     if (body instanceof Response) return body;

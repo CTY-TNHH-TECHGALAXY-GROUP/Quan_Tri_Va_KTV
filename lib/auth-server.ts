@@ -296,11 +296,30 @@ function hasPermissionOf(
 }
 
 /**
+ * Session + EFFECTIVE permissions (explicit list, else the role fallback). Never throws,
+ * and — unlike requirePermission — never lets a request without a session through,
+ * whatever AUTH_ENFORCE_API says. Used by the promotion routes (user 04/10/2026).
+ */
+/**
  * Does the CURRENT session hold `permissionId`? Never throws.
  * Unlike `requirePermission`, there is no "allow when AUTH_ENFORCE_API is off"
  * fallback: no session → false. Use it to branch UI (e.g. the public
  * /voucher page redirects staff to the scanner), never as an API guard.
  */
+export async function getSessionAccess(): Promise<
+    { status: 'OK'; techCode: string; businessUserId: string; permissions: string[] } | { status: 'NO_SESSION' | 'LOCKED' }
+> {
+    try {
+        const bUser = await requireBusinessUser();
+        if (!bUser) return { status: 'NO_SESSION' };
+        const roleId = resolveRoleId(bUser.role);
+        const permissions = bUser.permissions.length > 0 ? bUser.permissions : getFallbackPermissions(roleId);
+        return { status: 'OK', techCode: bUser.techCode, businessUserId: bUser.businessUserId, permissions };
+    } catch (e) {
+        return { status: (e as Error)?.message === 'ACCOUNT_LOCKED' ? 'LOCKED' : 'NO_SESSION' };
+    }
+}
+
 export async function sessionHasPermission(permissionId: string): Promise<boolean> {
     try {
         const bUser = await requireBusinessUser();

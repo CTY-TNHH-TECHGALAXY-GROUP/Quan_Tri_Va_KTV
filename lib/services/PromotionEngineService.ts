@@ -98,6 +98,13 @@ export const mapPass = (pass: RawPass | null | undefined, withQr: boolean): Prom
     return withQr ? { ...rest, qrPayload: buildPromotionQrPayload(qrToken) } : rest;
 };
 
+/** Scan / apply results for staff without `customer.pii`: owner's name only, no phone / email. */
+export const maskPassPii = <T extends { customer?: { phone?: string | null; email?: string | null } | null; emailTo?: string | null }>(pass: T): T => ({
+    ...pass,
+    customer: pass.customer ? { ...pass.customer, phone: null, email: null } : pass.customer,
+    emailTo: null,
+});
+
 const mapBooking = <T extends Omit<PromotionBookingDto, 'displayCode'>>(b: T) =>
     ({ ...b, displayCode: displayBookingCode(b.billCode) });
 

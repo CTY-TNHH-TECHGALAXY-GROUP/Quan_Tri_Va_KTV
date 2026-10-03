@@ -1,40 +1,39 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import type { z } from 'zod';
-import { requireBusinessUser, requirePermission } from '@/lib/auth-server';
-import { PROMOTION_ERROR_HTTP_STATUS } from '@/lib/constants/promotion';
+import { getSessionAccess } from '@/lib/auth-server';
+import { PROMOTION_ERROR_HTTP_STATUS, promotionCan, type PromotionAction } from '@/lib/constants/promotion';
 import type { PromotionResult } from '@/lib/types/promotion';
 
 // Shared plumbing for /api/**/promotion* routes: auth, body validation, and
 // mapping PromotionResult -> HTTP. Response body is always
 // { success: true, data } | { success: false, error: { code, message }, data? }.
 
-export const PROMOTION_ADMIN_PERMISSION = 'promotions';
-export const PROMOTION_COUNTER_PERMISSION = 'dispatch_board';
+const authFailure = (status: 401 | 403 | 423) => NextResponse.json({
+    success: false,
+    error: status === 401 ? { code: 'UNAUTHORIZED', message: 'Vui lòng đăng nhập lại' }
+        : status === 423 ? { code: 'ACCOUNT_LOCKED', message: 'Tài khoản đang bị khoá' }
+        : { code: 'FORBIDDEN', message: 'Bạn không có quyền thực hiện thao tác này' },
+}, { status });
 
-const authFailure = (e: unknown): Response => {
-    const msg = (e as Error)?.message;
-    const [code, status, message] =
-        msg === 'Forbidden' ? ['FORBIDDEN', 403, 'Bạn không có quyền thực hiện thao tác này']
-        : msg === 'ACCOUNT_LOCKED' ? ['ACCOUNT_LOCKED', 423, 'Tài khoản đang bị khoá']
-        : ['UNAUTHORIZED', 401, 'Vui lòng đăng nhập lại'];
-    return NextResponse.json({ success: false, error: { code, message } }, { status: status as number });
-};
+export interface PromotionAuth {
+    staffId: string;
+    /** Same table as the guard — e.g. auth.can('apply.override'), auth.can('customer.pii'). */
+    can: (action: PromotionAction) => boolean;
+}
 
-/** Checks permission and resolves the acting staff id from the session (never from the body). */
-export async function authorizePromotion(permissionId: string): Promise<{ staffId: string | null } | Response> {
-    try {
-        await requirePermission(permissionId);
-    } catch (e) {
-        return authFailure(e);
-    }
-    try {
-        const user = await requireBusinessUser();
-        return { staffId: user?.techCode || user?.businessUserId || null };
-    } catch (e) {
-        if ((e as Error)?.message === 'ACCOUNT_LOCKED' || (e as Error)?.message === 'Unauthorized') return authFailure(e);
-        return { staffId: null };   // AUTH_ENFORCE_API off and no mapped user: same fallback as other routes
-    }
+/**
+ * Guard for every promotion route: a real session is ALWAYS required (independent of
+ * AUTH_ENFORCE_API), then the action must be allowed by PROMOTION_ACTION_PERMISSIONS.
+ * Who holds which permission is configured by the admin (Roles page → Users.permissions).
+ */
+export async function authorizePromotion(action: PromotionAction): Promise<PromotionAuth | Response> {
+    const access = await getSessionAccess();
+    if (access.status === 'LOCKED') return authFailure(423);
+    if (access.status !== 'OK') return authFailure(401);
+    const can = (a: PromotionAction) => promotionCan(access.permissions, a);
+    if (!can(action)) return authFailure(403);
+    return { staffId: access.techCode || access.businessUserId, can };
 }
 
 export function promotionJson<T>(result: PromotionResult<T>, successStatus = 200) {

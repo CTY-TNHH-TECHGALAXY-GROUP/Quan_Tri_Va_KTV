@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
-import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
-import {
-    PROMOTION_COUNTER_PERMISSION, authorizePromotion, promotionInternalError, promotionJson,
+import { PromotionEngineService, maskPassPii } from '@/lib/services/PromotionEngineService';
+import { authorizePromotion, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/promotion-passes/lookup?t=<qrToken>  |  ?code=<voucherCode>
 // Accepts the full scanned URL in `t` too (…/promotion/scan?t=xxx).
 export async function GET(request: NextRequest) {
-    const auth = await authorizePromotion(PROMOTION_COUNTER_PERMISSION);
+    const auth = await authorizePromotion('scan.apply');
     if (auth instanceof Response) return auth;
     try {
         let token = request.nextUrl.searchParams.get('t');
@@ -21,7 +20,9 @@ export async function GET(request: NextRequest) {
         if (code && code.length > 40) {
             return promotionJson({ success: false, error: { code: 'PROMOTION_NOT_FOUND', message: 'Mã voucher không hợp lệ' } });
         }
-        return promotionJson(await PromotionEngineService.lookupPass({ qrToken: token, voucherCode: code }));
+        const res = await PromotionEngineService.lookupPass({ qrToken: token, voucherCode: code });
+        if (res.success && !auth.can('customer.pii')) return promotionJson({ success: true, data: maskPassPii(res.data) });
+        return promotionJson(res);
     } catch (e) {
         return promotionInternalError(e);
     }

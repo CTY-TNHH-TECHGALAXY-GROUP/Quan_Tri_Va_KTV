@@ -76,3 +76,41 @@ export const PROMOTION_ERROR_HTTP_STATUS: Record<string, number> = {
     ACCOUNT_LOCKED: 423,
     INTERNAL_ERROR: 500,
 };
+
+// ─── Permissions (user 04/10/2026) ──────────────────────────────────────────
+// WHO holds which permission is configured by the admin on the Roles page
+// (Users.permissions). This table only says which permission each ACTION needs.
+
+/** Full promotion access (kept from the first version). Implies every action. */
+export const PROMOTION_FULL_PERMISSION = 'promotions';
+
+export const PROMOTION_PERMISSIONS = [
+    { id: 'promotions_scan_apply', name: 'KM: Quét & áp voucher', hint: 'Quét / tra mã, xem đơn đang mở, áp voucher cho đơn đủ điều kiện, huỷ lượt áp' },
+    { id: 'promotions_override', name: 'KM: Áp ngoại lệ', hint: 'Áp voucher cho đơn chưa đủ điều kiện (bắt buộc ghi lý do)' },
+    { id: 'promotions_view', name: 'KM: Xem voucher & lịch sử', hint: 'Tổng quan, voucher đã phát cho khách nào (SĐT / email), lịch sử dùng' },
+    { id: 'promotions_issue', name: 'KM: Phát voucher', hint: 'Lọc khách, phát lẻ / hàng loạt, gửi lại email, khoá / huỷ voucher' },
+    { id: 'promotions_campaign_manage', name: 'KM: Quản lý chương trình', hint: 'Tạo / sửa / kích hoạt / kết thúc chương trình, menu & điều kiện' },
+] as const;
+
+export type PromotionPermissionId = typeof PROMOTION_PERMISSIONS[number]['id'];
+
+/** Action → any of these permissions (or PROMOTION_FULL_PERMISSION). */
+export const PROMOTION_ACTION_PERMISSIONS = {
+    'scan.apply': ['promotions_scan_apply'],
+    'apply.override': ['promotions_override'],
+    'pass.view': ['promotions_view'],
+    'pass.issue': ['promotions_issue'],
+    'campaign.read': ['promotions_view', 'promotions_issue', 'promotions_campaign_manage'],
+    'campaign.manage': ['promotions_campaign_manage'],
+    /** See the voucher owner's phone / email (scan results hide them otherwise). */
+    'customer.pii': ['promotions_view', 'promotions_issue'],
+} as const satisfies Record<string, readonly PromotionPermissionId[]>;
+
+export type PromotionAction = keyof typeof PROMOTION_ACTION_PERMISSIONS;
+
+/** Pure check (no I/O) — shared by the server guard, the UI and the QA script. */
+export const promotionCan = (permissions: readonly string[] | null | undefined, action: PromotionAction): boolean => {
+    const owned = new Set(permissions ?? []);
+    if (owned.has(PROMOTION_FULL_PERMISSION)) return true;
+    return PROMOTION_ACTION_PERMISSIONS[action].some(p => owned.has(p));
+};

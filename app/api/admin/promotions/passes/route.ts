@@ -3,8 +3,7 @@ import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { PromotionEmailService } from '@/lib/services/PromotionEmailService';
 import { IssuePromotionPassSchema } from '@/lib/schemas/promotion.schema';
 import { PROMOTION_EXPIRY_FILTERS, PROMOTION_PASS_EFFECTIVE_STATUSES, PROMOTION_PASS_GROUPS } from '@/lib/constants/promotion';
-import {
-    PROMOTION_ADMIN_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +15,7 @@ const pick = <T extends readonly string[]>(v: string | null, allowed: T) =>
 // q: customer name / phone / email / voucher code. status = effective status. No qrPayload in rows.
 // group=ACTIVE (usable / re-openable, soonest expiry first) | PAST (expired / used up / cancelled, latest end first).
 export async function GET(request: NextRequest) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.view');
     if (auth instanceof Response) return auth;
     try {
         const sp = request.nextUrl.searchParams;
@@ -41,7 +40,7 @@ export async function GET(request: NextRequest) {
 // Manual issue to the selected customer profile; e-voucher is emailed to that profile's email.
 // 201 created | 409 PASS_ALREADY_EXISTS (existing pass in error.data)
 export async function POST(request: Request) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.issue');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, IssuePromotionPassSchema);
     if (body instanceof Response) return body;

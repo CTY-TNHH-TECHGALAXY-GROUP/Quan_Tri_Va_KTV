@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { PromotionEmailService } from '@/lib/services/PromotionEmailService';
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
-import {
-    PROMOTION_ADMIN_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +12,7 @@ const BodySchema = z.object({ kind: z.enum(['ISSUE', 'REMINDER']).optional() }).
 // POST /api/admin/promotions/passes/:id/send-email  { kind? }
 // (Re)sends the e-voucher to the email CURRENTLY on the owner's customer profile. No custom recipient.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('pass.issue');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, BodySchema);
     if (body instanceof Response) return body;

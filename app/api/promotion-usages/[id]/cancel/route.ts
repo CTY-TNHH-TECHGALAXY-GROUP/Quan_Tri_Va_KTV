@@ -1,7 +1,6 @@
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { CancelPromotionUsageSchema } from '@/lib/schemas/promotion.schema';
-import {
-    PROMOTION_COUNTER_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +10,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // POST /api/promotion-usages/:id/cancel  { reason? }
 // Free-minutes usage can only be cancelled while its KM item is not dispatched yet.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const auth = await authorizePromotion(PROMOTION_COUNTER_PERMISSION);
+    const auth = await authorizePromotion('scan.apply');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, CancelPromotionUsageSchema);
     if (body instanceof Response) return body;

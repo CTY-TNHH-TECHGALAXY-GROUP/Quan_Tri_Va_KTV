@@ -2,15 +2,14 @@ import { NextRequest } from 'next/server';
 import { PromotionEngineService } from '@/lib/services/PromotionEngineService';
 import { CreatePromotionCampaignSchema } from '@/lib/schemas/promotion.schema';
 import { PROMOTION_CAMPAIGN_STATUSES } from '@/lib/constants/promotion';
-import {
-    PROMOTION_ADMIN_PERMISSION, authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
+import { authorizePromotion, parsePromotionBody, promotionInternalError, promotionJson,
 } from '@/lib/promotion-route';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/admin/promotions/campaigns?status=ACTIVE
 export async function GET(request: NextRequest) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('campaign.read');
     if (auth instanceof Response) return auth;
     try {
         const status = request.nextUrl.searchParams.get('status');
@@ -23,7 +22,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/promotions/campaigns — creates a DRAFT campaign + its KM#### service
 export async function POST(request: Request) {
-    const auth = await authorizePromotion(PROMOTION_ADMIN_PERMISSION);
+    const auth = await authorizePromotion('campaign.manage');
     if (auth instanceof Response) return auth;
     const body = await parsePromotionBody(request, CreatePromotionCampaignSchema);
     if (body instanceof Response) return body;
