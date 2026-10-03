@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { isDummyEmail } from '@/lib/customer.logic';
 import { WebBooking } from './actions';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -79,8 +79,8 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, onResend
               }
           } else if (parsedNotes.type === 'CHECKOUT_CART') {
               finalNote = 'Checkout Giỏ Hàng';
-              if (parsedNotes.vipCustomerNotes) {
-                  finalNote += ` | Ghi chú VIP: ${parsedNotes.vipCustomerNotes}`;
+              if (stripBodyAreaTags(parsedNotes.vipCustomerNotes)) {
+                  finalNote += ` | Ghi chú VIP: ${stripBodyAreaTags(parsedNotes.vipCustomerNotes)}`;
               }
               const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
               if (cNote) {
@@ -265,7 +265,7 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, onResend
                              {item.options.focus && formatBodyAreas(item.options.focus) && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> <span className="font-medium">Tập trung:</span> {formatBodyAreas(item.options.focus)}</p>}
                              {item.options.avoid && formatBodyAreas(item.options.avoid) && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-400"></span> <span className="font-medium">Tránh vùng:</span> {formatBodyAreas(item.options.avoid)}</p>}
                              {item.options.tags && item.options.tags.length > 0 && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span> <span className="font-medium">Yêu cầu khác:</span> {item.options.tags.join(', ')}</p>}
-                             {(item.options.note || item.options.customerNotes) && <p className="flex gap-1 mt-0.5 text-gray-500 italic">" {item.options.note || item.options.customerNotes} "</p>}
+                             {stripBodyAreaTags(item.options.note || item.options.customerNotes) && <p className="flex gap-1 mt-0.5 text-gray-500 italic">" {stripBodyAreaTags(item.options.note || item.options.customerNotes)} "</p>}
                           </div>
                         )}
                         {item.requestedKTVs && item.requestedKTVs.length > 0 && (

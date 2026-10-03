@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
@@ -300,12 +300,12 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
 
                             const parsedOptions = parseBookingOptions(bi.options);
 
+                            // Chỉ lấy phần khách gõ tay — vùng tập trung/tránh đã có cột riêng (focus/avoid),
+                            // không để WRB ghép sẵn vào ghi chú rồi hiện trùng hai lần.
                             const freeCustomerNote = [
-                                parsedOptions.note,
-                                parsedOptions.customerNotes,
-                            ].find((value) =>
-                                typeof value === 'string' && value.trim()
-                            )?.trim() || '';
+                                stripBodyAreaTags(parsedOptions.note),
+                                stripBodyAreaTags(parsedOptions.customerNotes),
+                            ].find((value) => value)?.trim() || '';
 
                             const specialTags = Array.isArray(parsedOptions.tags)
                                 ? parsedOptions.tags
