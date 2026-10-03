@@ -40,8 +40,6 @@ const isPlaceholderPhone = (p: string | null | undefined) => !p || isDummyPhone(
 const DEFAULT_WRB_URL = 'https://oriaspa.vercel.app';
 /** Ngôn ngữ mở WRB; khách đổi ngôn ngữ tiếp trên kiosk. */
 const WRB_LANG = 'en';
-/** Hiện lịch hẹn từ hôm nay tới N ngày tới — lịch cho ngày mai không được "biến mất" sau khi tạo. */
-const PREBOOKING_DAYS_AHEAD = 7;
 /** Khối lịch hẹn trên lưới giờ — chưa có dịch vụ nên vẽ cao bằng một tua tiêu chuẩn. */
 const PREBOOKING_BLOCK_MINUTES = 60;
 const TIME_START = 8; // 08:00
@@ -96,6 +94,17 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      const d = new Date();
      return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   });
+  // Ngày: cột theo KTV. Tuần: cột theo 7 ngày (T2→CN) của tuần chứa viewDate.
+  const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
+  const weekDays = useMemo(() => {
+     const d = new Date(`${viewDate}T00:00:00`);
+     const dow = (d.getDay() + 6) % 7; // T2 = 0
+     d.setDate(d.getDate() - dow);
+     return Array.from({ length: 7 }, (_, i) => {
+        const x = new Date(d); x.setDate(d.getDate() + i);
+        return new Date(x.getTime() - (x.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+     });
+  }, [viewDate]);
 
   // --- FETCH LỊCH HẸN TỪ SUPABASE ---
   React.useEffect(() => {
@@ -108,22 +117,24 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
       }).subscribe();
       
     return () => { supabase.removeChannel(sub); };
-  }, []);
+  // Đổi sang tuần khác → tải lại cửa sổ dữ liệu (và đăng ký lại realtime với fetch mới).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekDays[0]]);
 
   /** 'YYYY-MM-DD' theo giờ máy (trình duyệt quầy đặt giờ VN). */
   const toLocalDateStr = (d: Date) =>
     new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
   const fetchPreBookings = async () => {
-    const today = new Date();
-    const localDate = toLocalDateStr(today);
-    const until = new Date(today); until.setDate(until.getDate() + PREBOOKING_DAYS_AHEAD);
+    // Cửa sổ = tuần đang xem ± 1 tuần: chuyển ngày/tuần liền kề không phải chờ tải.
+    const from = new Date(`${weekDays[0]}T00:00:00`); from.setDate(from.getDate() - 7);
+    const to = new Date(`${weekDays[6]}T00:00:00`); to.setDate(to.getDate() + 7);
 
     const { data: pbs, error } = await supabase
        .from('PreBookings')
        .select('*')
-       .gte('booking_date', localDate)
-       .lte('booking_date', toLocalDateStr(until))
+       .gte('booking_date', toLocalDateStr(from))
+       .lte('booking_date', toLocalDateStr(to))
        .eq('status', 'PENDING')
        .order('booking_date', { ascending: true })
        .order('booking_time', { ascending: true });
@@ -170,9 +181,9 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
 
   const handleSelectCustomer = (c: any) => {
      setNewPbName(c.fullName || '');
-     // Hồ sơ từ kiosk có thể mang SĐT giả 'GUEST-…' / email ảo — không điền, để quầy nhập thật.
-     // (Ca Charlotte 03/10: SĐT giả bị WRB xoá → checkout trống SĐT.)
-     if (c.phone && !isPlaceholderPhone(c.phone)) {
+     // Điền cả SĐT giữ chỗ 'GUEST-…' của hồ sơ kiosk: WRB dùng mã này để khớp đúng khách cũ
+     // khi chốt đơn (tránh sinh thêm một khách GUEST- mới). Quầy có thể sửa thành SĐT thật.
+     if (c.phone) {
         // Hồ sơ đã lưu SĐT đầy đủ (có thể kèm mã nước) → bỏ ô mã nước để không ghép đôi.
         setNewPbPhoneCode('');
         setNewPbPhone(String(c.phone).replace(/\s+/g, ''));
@@ -196,7 +207,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                  >
                     <span className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Sparkles size={11} className="text-amber-500" /> {c.fullName || '—'}</span>
                     <span className="flex items-center gap-3 text-[11px] font-medium text-gray-500">
-                       {c.phone && !isPlaceholderPhone(c.phone) && <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>}
+                       {c.phone && <span className="flex items-center gap-1"><Phone size={10} /> {isPlaceholderPhone(c.phone) ? `${c.phone} (mã kiosk)` : c.phone}</span>}
                        {c.email && !isDummyEmail(c.email) && <span className="flex items-center gap-1"><Tag size={10} /> {c.email}</span>}
                     </span>
                  </button>
@@ -244,7 +255,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      const url = new URL(`${baseUrl}/${WRB_LANG}/${pb.menu_type || 'standard'}/menu`);
      url.searchParams.set('preBookingId', pb.id);
      if (pb.customer_name) url.searchParams.set('name', pb.customer_name);
-     if (pb.customer_phone && !isPlaceholderPhone(pb.customer_phone)) url.searchParams.set('phone', pb.customer_phone);
+     if (pb.customer_phone) url.searchParams.set('phone', pb.customer_phone);
      if (pb.customer_email && !isDummyEmail(pb.customer_email)) url.searchParams.set('email', pb.customer_email);
      if (pb.menu_type) url.searchParams.set('menuType', pb.menu_type);
      if (pb.guest_count) url.searchParams.set('guests', pb.guest_count.toString());
@@ -259,12 +270,8 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   };
 
   const shiftViewDate = (days: number) => {
-     const today = toLocalDateStr(new Date());
-     const max = new Date(); max.setDate(max.getDate() + PREBOOKING_DAYS_AHEAD);
      const d = new Date(`${viewDate}T00:00:00`); d.setDate(d.getDate() + days);
-     const next = toLocalDateStr(d);
-     if (next < today || next > toLocalDateStr(max)) return;
-     setViewDate(next);
+     setViewDate(toLocalDateStr(d));
   };
   const isViewingToday = viewDate === toLocalDateStr(new Date());
   /** Cột phải chỉ hiện lịch hẹn của NGÀY ĐANG XEM trên lưới giờ (đổi ngày → đổi danh sách). */
@@ -357,19 +364,33 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   };
 
   const columns = useMemo(() => {
+    if (viewMode === 'week') {
+      const today = toLocalDateStr(new Date());
+      return weekDays.map(dt => ({
+        id: dt,
+        name: new Date(`${dt}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+        isSpecial: dt === today,
+        isDay: true,
+      }));
+    }
     const activeStaffs = staffs.length > 0 ? staffs.map(s => ({ id: s.id || s.code, name: s.full_name || s.name })) : extractStaffs();
     return [
       { id: 'UNASSIGNED', name: 'Chưa Phân Công', isSpecial: true },
       ...activeStaffs
     ];
-  }, [orders, staffs]);
+  }, [orders, staffs, viewMode, weekDays]);
 
   // Chuẩn hoá dữ liệu để vẽ lên Lưới
   const gridBlocks = useMemo(() => {
     const blocks: any[] = [];
 
-    // Lịch hẹn của ngày đang xem — cột "Chưa Phân Công" vì chưa gán KTV/dịch vụ.
-    preBookings.filter(pb => pb.booking_date === viewDate).forEach(pb => {
+    const todayStr = toLocalDateStr(new Date());
+    // Ngày: lịch hẹn của ngày đang xem vào cột "Chưa Phân Công" (chưa gán KTV/dịch vụ).
+    // Tuần: mỗi lịch hẹn vào cột của ngày hẹn.
+    const pbsToDraw = viewMode === 'week'
+      ? preBookings.filter(pb => weekDays.includes(pb.booking_date))
+      : preBookings.filter(pb => pb.booking_date === viewDate);
+    pbsToDraw.forEach(pb => {
       blocks.push({
         id: `pb-${pb.id}`,
         isPreBooking: true,
@@ -381,12 +402,13 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
         duration: PREBOOKING_BLOCK_MINUTES,
         status: 'PRE_BOOKING',
         serviceName: `${t.preBookingBlock} · ${pb.guest_count || 1} ${t.guests} · ${MENU_TYPE_LABEL[pb.menu_type] || 'Standard'}`,
-        ktvId: 'UNASSIGNED',
+        ktvId: viewMode === 'week' ? pb.booking_date : 'UNASSIGNED',
       });
     });
 
     // Đơn hàng thực tế chỉ có của hôm nay (bảng điều phối tải theo ngày hiện tại).
-    if (!isViewingToday) return blocks;
+    if (viewMode === 'day' && !isViewingToday) return blocks;
+    if (viewMode === 'week' && !weekDays.includes(todayStr)) return blocks;
 
     // Thêm Đơn hàng thực tế
     orders.forEach(o => {
@@ -450,8 +472,9 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
       });
     });
 
-    return blocks;
-  }, [orders, preBookings, viewDate, isViewingToday]);
+    // Chế độ tuần: mọi đơn thật hôm nay dồn vào cột của hôm nay.
+    return viewMode === 'week' ? blocks.map(b => (b.isPreBooking ? b : { ...b, ktvId: todayStr })) : blocks;
+  }, [orders, preBookings, viewDate, isViewingToday, viewMode, weekDays]);
 
 
   return (
@@ -461,20 +484,35 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
       {/* HEADER TỔNG */}
       <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-200">
-            <CalendarIcon size={20} strokeWidth={3} />
-          </div>
+          <CalendarIcon size={24} strokeWidth={2.5} className="text-indigo-600" />
           <div>
             <h2 className="text-xl font-black text-gray-900 tracking-tight">Lịch Trực Quan</h2>
             <p className="text-xs font-bold text-gray-500 mt-0.5">Hiển thị mọi đơn hàng theo từng khung giờ & KTV</p>
           </div>
           {/* Chọn ngày xem: hôm nay có đơn thật + lịch hẹn; ngày tới chỉ có lịch hẹn */}
           <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-1 py-1 shadow-sm ml-2">
-            <button onClick={() => shiftViewDate(-1)} disabled={isViewingToday} className="w-8 h-8 rounded-lg hover:bg-gray-100 disabled:opacity-30 flex items-center justify-center font-black text-gray-600">‹</button>
-            <button onClick={() => setViewDate(toLocalDateStr(new Date()))} className="px-3 h-8 rounded-lg text-xs font-black text-gray-800 hover:bg-gray-100 min-w-[150px]">
-              {dateGroupLabel(viewDate)} · {new Date(`${viewDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
-            </button>
-            <button onClick={() => shiftViewDate(1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center font-black text-gray-600">›</button>
+            <button onClick={() => shiftViewDate(viewMode === 'week' ? -7 : -1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center font-black text-gray-600">‹</button>
+            {/* Bấm vào nhãn ngày là chọn ngày bất kỳ (input date phủ lên nhãn). */}
+            <label className="relative px-3 h-8 rounded-lg text-xs font-black text-gray-800 hover:bg-gray-100 min-w-[150px] flex items-center justify-center cursor-pointer">
+              {viewMode === 'week'
+                ? `${t.weekOf} ${new Date(`${weekDays[0]}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} – ${new Date(`${weekDays[6]}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`
+                : `${dateGroupLabel(viewDate)} · ${new Date(`${viewDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`}
+              <input type="date" value={viewDate} onChange={e => e.target.value && setViewDate(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer" aria-label="Chọn ngày" />
+            </label>
+            <button onClick={() => shiftViewDate(viewMode === 'week' ? 7 : 1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center font-black text-gray-600">›</button>
+            {!isViewingToday && (
+              <button onClick={() => setViewDate(toLocalDateStr(new Date()))} className="px-2 h-8 rounded-lg text-[11px] font-bold text-indigo-600 hover:bg-indigo-50">{t.today}</button>
+            )}
+          </div>
+          {/* Ngày / Tuần */}
+          <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+            {(['day', 'week'] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)}
+                className={`px-3 h-8 rounded-lg text-xs font-black transition-colors ${viewMode === m ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                {m === 'day' ? t.viewDay : t.viewWeek}
+              </button>
+            ))}
           </div>
         </div>
         
@@ -512,7 +550,10 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
               {columns.map(col => (
                  <div 
                    key={col.id} 
+                   onClick={() => { if ((col as any).isDay) { setViewDate(col.id); setViewMode('day'); } }}
+                   title={(col as any).isDay ? 'Bấm để xem ngày này' : undefined}
                    className={`w-[240px] h-14 shrink-0 flex items-center justify-center border-r border-gray-200 p-2 
+                     ${(col as any).isDay ? 'cursor-pointer hover:bg-indigo-50' : ''}
                      ${col.isSpecial ? 'bg-amber-50 text-amber-900 border-b-2 border-b-amber-400' : 'text-gray-700'}`}
                  >
                    <span className="text-sm font-black truncate">{col.name}</span>

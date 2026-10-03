@@ -11,6 +11,9 @@ export const t = {
     guests: 'khách',
     tapForDetail: 'Bấm xem thông tin & tạo đơn',
     preBookingBlock: 'Khách hẹn',
+    viewDay: 'Ngày',
+    viewWeek: 'Tuần',
+    weekOf: 'Tuần',
     addButton: 'THÊM KHÁCH HẸN',
 
     detailTitle: 'Thông tin khách hẹn',
