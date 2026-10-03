@@ -10,21 +10,31 @@
  *  1. Hien thi danh sach khach hen (PENDING) o sidebar ben phai.
  *  2. Them khach hen moi (Modal form: ten, SDT + ma quoc gia, email, so khach, ngay/gio, ghi chu).
  *  3. Nhan dien "Khach cu" - tu dong tra cuu bang Customers theo SDT.
- *  4. Click vao the khach hen -> mo tab Web Noi Bo tai /en/new-user/standard/menu
- *     kem query params de auto-fill thong tin o buoc Checkout.
+ *  4. Click vao the khach hen -> panel thong tin khach; nut "Mo WRB" mo tab Web Noi Bo
+ *     tai /{lang}/{menuType}/menu kem query params de auto-fill o buoc Checkout.
+ *     (03/10/2026: WRB da xoa thu muc new-user — link cu 404.)
  *
  * Database: Bang PreBookings (xem TableInSupabase.md muc 12).
  * Env var: NEXT_PUBLIC_WEB_NOI_BO_URL (URL Web Noi Bo de redirect).
  *
- * Phia Web Noi Bo: src/app/[lang]/new-user/[menuType]/menu/page.tsx
+ * Phia Web Noi Bo: src/app/[lang]/[menuType]/menu/page.tsx
  *   co useEffect bat query params -> luu localStorage("contactedFirstInfo").
  */
 import React, { useState, useMemo } from 'react';
 import { CalendarClock, User, Tag, Clock, ChevronRight, X, AlertCircle, Info, Phone, Calendar as CalendarIcon, Sparkles, Plus, ExternalLink, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
+import { t } from './ScheduleBoard.i18n';
 
 // 🔧 UI CONFIGURATION
+/** Web Nội Bộ (WRB) — nơi khách order. Ghi đè bằng NEXT_PUBLIC_WEB_NOI_BO_URL. */
+const DEFAULT_WRB_URL = 'https://oriaspa.vercel.app';
+/** Ngôn ngữ mở WRB; khách đổi ngôn ngữ tiếp trên kiosk. */
+const WRB_LANG = 'en';
+/** Hiện lịch hẹn từ hôm nay tới N ngày tới — lịch cho ngày mai không được "biến mất" sau khi tạo. */
+const PREBOOKING_DAYS_AHEAD = 7;
+/** Khối lịch hẹn trên lưới giờ — chưa có dịch vụ nên vẽ cao bằng một tua tiêu chuẩn. */
+const PREBOOKING_BLOCK_MINUTES = 60;
 const TIME_START = 8; // 08:00
 const TIME_END = 23; // 23:00
 const ROW_HEIGHT = 80; // Chiều cao mỗi 1 tiếng (px)
@@ -65,6 +75,14 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   const [newPbNotes, setNewPbNotes] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isFormOldCustomer, setIsFormOldCustomer] = React.useState(false);
+  // Thẻ lịch hẹn đang mở panel thông tin khách.
+  const [selectedPreBooking, setSelectedPreBooking] = React.useState<any | null>(null);
+  const [isCancelling, setIsCancelling] = React.useState(false);
+  // Ngày đang xem trên lưới giờ. Đơn thật (orders) chỉ có của hôm nay; các ngày tới chỉ có lịch hẹn.
+  const [viewDate, setViewDate] = React.useState(() => {
+     const d = new Date();
+     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  });
 
   // --- FETCH LỊCH HẸN TỪ SUPABASE ---
   React.useEffect(() => {
@@ -79,15 +97,22 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
     return () => { supabase.removeChannel(sub); };
   }, []);
 
+  /** 'YYYY-MM-DD' theo giờ máy (trình duyệt quầy đặt giờ VN). */
+  const toLocalDateStr = (d: Date) =>
+    new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
   const fetchPreBookings = async () => {
     const today = new Date();
-    const localDate = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-    
+    const localDate = toLocalDateStr(today);
+    const until = new Date(today); until.setDate(until.getDate() + PREBOOKING_DAYS_AHEAD);
+
     const { data: pbs, error } = await supabase
        .from('PreBookings')
        .select('*')
-       .eq('booking_date', localDate)
+       .gte('booking_date', localDate)
+       .lte('booking_date', toLocalDateStr(until))
        .eq('status', 'PENDING')
+       .order('booking_date', { ascending: true })
        .order('booking_time', { ascending: true });
        
     if (pbs) {
@@ -144,9 +169,13 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      }
   };
 
-  const handlePreBookingClick = (pb: any) => {
-     const baseUrl = process.env.NEXT_PUBLIC_WEB_NOI_BO_URL || 'http://localhost:3001';
-     const url = new URL(`${baseUrl}/en/new-user/${pb.menu_type || 'standard'}/menu`);
+  /**
+   * Link sang WRB: trang menu đọc các query này rồi lưu localStorage("contactedFirstInfo")
+   * để bước Thanh toán tự điền. preBookingId để WRB đổi lịch hẹn sang CONVERTED khi chốt đơn.
+   */
+  const buildWrbUrl = (pb: any) => {
+     const baseUrl = (process.env.NEXT_PUBLIC_WEB_NOI_BO_URL || DEFAULT_WRB_URL).replace(/\/+$/, '');
+     const url = new URL(`${baseUrl}/${WRB_LANG}/${pb.menu_type || 'standard'}/menu`);
      url.searchParams.set('preBookingId', pb.id);
      if (pb.customer_name) url.searchParams.set('name', pb.customer_name);
      if (pb.customer_phone) url.searchParams.set('phone', pb.customer_phone);
@@ -154,8 +183,65 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      if (pb.menu_type) url.searchParams.set('menuType', pb.menu_type);
      if (pb.guest_count) url.searchParams.set('guests', pb.guest_count.toString());
      if (pb.notes) url.searchParams.set('notes', pb.notes);
-     window.open(url.toString(), '_blank');
+     return url.toString();
   };
+
+  const handlePreBookingClick = (pb: any) => {
+     setSelectedPreBooking(pb);
+     // Nhảy lưới giờ tới đúng ngày hẹn để thấy khối khách này ở đúng chỗ.
+     if (pb.booking_date) setViewDate(pb.booking_date);
+  };
+
+  const shiftViewDate = (days: number) => {
+     const today = toLocalDateStr(new Date());
+     const max = new Date(); max.setDate(max.getDate() + PREBOOKING_DAYS_AHEAD);
+     const d = new Date(`${viewDate}T00:00:00`); d.setDate(d.getDate() + days);
+     const next = toLocalDateStr(d);
+     if (next < today || next > toLocalDateStr(max)) return;
+     setViewDate(next);
+  };
+  const isViewingToday = viewDate === toLocalDateStr(new Date());
+  /** Cột phải chỉ hiện lịch hẹn của NGÀY ĐANG XEM trên lưới giờ (đổi ngày → đổi danh sách). */
+  const preBookingsOfViewDate = useMemo(
+     () => preBookings.filter(pb => pb.booking_date === viewDate),
+     [preBookings, viewDate]
+  );
+
+  const openWrbForPreBooking = (pb: any) => {
+     window.open(buildWrbUrl(pb), '_blank', 'noopener');
+  };
+
+  const cancelPreBooking = async (pb: any) => {
+     if (!window.confirm(t.cancelConfirm)) return;
+     setIsCancelling(true);
+     const { error } = await supabase.from('PreBookings')
+        .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+        .eq('id', pb.id);
+     setIsCancelling(false);
+     if (error) { console.error('Lỗi huỷ lịch hẹn:', error); alert(t.cancelError); return; }
+     setSelectedPreBooking(null);
+     fetchPreBookings();
+  };
+
+  /** Nhãn nhóm ngày cho danh sách: Hôm nay / Ngày mai / Thứ, dd/MM. */
+  const dateGroupLabel = (dateStr: string) => {
+     const today = toLocalDateStr(new Date());
+     const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+     if (dateStr === today) return t.today;
+     if (dateStr === toLocalDateStr(tmr)) return t.tomorrow;
+     const d = new Date(`${dateStr}T00:00:00`);
+     return d.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  };
+
+  /** Lịch hôm nay đã quá giờ hẹn mà khách chưa order. */
+  const isLatePreBooking = (pb: any) => {
+     const now = new Date();
+     if (pb.booking_date !== toLocalDateStr(now)) return false;
+     const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+     return String(pb.booking_time || '').slice(0, 5) < hhmm;
+  };
+
+  const MENU_TYPE_LABEL: Record<string, string> = { standard: 'Standard', vip: 'VIP', spa: 'Spa' };
 
   const formatTime = (time: string) => {
     if (!time) return "";
@@ -215,6 +301,26 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   // Chuẩn hoá dữ liệu để vẽ lên Lưới
   const gridBlocks = useMemo(() => {
     const blocks: any[] = [];
+
+    // Lịch hẹn của ngày đang xem — cột "Chưa Phân Công" vì chưa gán KTV/dịch vụ.
+    preBookings.filter(pb => pb.booking_date === viewDate).forEach(pb => {
+      blocks.push({
+        id: `pb-${pb.id}`,
+        isPreBooking: true,
+        preBooking: pb,
+        customerName: pb.customer_name || 'Khách hẹn',
+        customerPhone: pb.customer_phone,
+        source: 'PRE_BOOKING',
+        timeStart: String(pb.booking_time || '12:00').slice(0, 5),
+        duration: PREBOOKING_BLOCK_MINUTES,
+        status: 'PRE_BOOKING',
+        serviceName: `${t.preBookingBlock} · ${pb.guest_count || 1} ${t.guests} · ${MENU_TYPE_LABEL[pb.menu_type] || 'Standard'}`,
+        ktvId: 'UNASSIGNED',
+      });
+    });
+
+    // Đơn hàng thực tế chỉ có của hôm nay (bảng điều phối tải theo ngày hiện tại).
+    if (!isViewingToday) return blocks;
 
     // Thêm Đơn hàng thực tế
     orders.forEach(o => {
@@ -279,7 +385,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
     });
 
     return blocks;
-  }, [orders]);
+  }, [orders, preBookings, viewDate, isViewingToday]);
 
 
   return (
@@ -293,13 +399,22 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
             <CalendarIcon size={20} strokeWidth={3} />
           </div>
           <div>
-            <h2 className="text-xl font-black text-gray-900 tracking-tight">Lịch Trực Quan (Demo)</h2>
+            <h2 className="text-xl font-black text-gray-900 tracking-tight">Lịch Trực Quan</h2>
             <p className="text-xs font-bold text-gray-500 mt-0.5">Hiển thị mọi đơn hàng theo từng khung giờ & KTV</p>
+          </div>
+          {/* Chọn ngày xem: hôm nay có đơn thật + lịch hẹn; ngày tới chỉ có lịch hẹn */}
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-1 py-1 shadow-sm ml-2">
+            <button onClick={() => shiftViewDate(-1)} disabled={isViewingToday} className="w-8 h-8 rounded-lg hover:bg-gray-100 disabled:opacity-30 flex items-center justify-center font-black text-gray-600">‹</button>
+            <button onClick={() => setViewDate(toLocalDateStr(new Date()))} className="px-3 h-8 rounded-lg text-xs font-black text-gray-800 hover:bg-gray-100 min-w-[150px]">
+              {dateGroupLabel(viewDate)} · {new Date(`${viewDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+            </button>
+            <button onClick={() => shiftViewDate(1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center font-black text-gray-600">›</button>
           </div>
         </div>
         
         {/* Chú thích màu sắc */}
         <div className="hidden md:flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
+           <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-500"></span>{t.preBookingBlock}</div>
            <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-red-500 border border-red-600"></span>VIP Booking</div>
            <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-amber-400 border border-amber-500"></span>Web (Mới)</div>
            <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-blue-400 border border-blue-500"></span>Khách đã xác nhận</div>
@@ -370,7 +485,10 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                          let bgColor = 'bg-blue-100 border-blue-300 text-blue-900 shadow-blue-200/50';
                          let tagColor = 'bg-blue-500';
                          
-                         if (block.source?.includes('VIP')) {
+                         if (block.isPreBooking) {
+                            bgColor = 'bg-emerald-50 border-emerald-400 border-dashed text-emerald-900 shadow-emerald-200/50';
+                            tagColor = 'bg-emerald-500';
+                         } else if (block.source?.includes('VIP')) {
                             bgColor = 'bg-red-50 border-red-300 text-red-900 shadow-red-200/50';
                             tagColor = 'bg-red-500';
                          } else if (block.status === 'NEW' || block.source?.includes('WEB')) {
@@ -384,7 +502,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                          return (
                            <div 
                              key={block.id}
-                             onClick={() => setSelectedOrder(block)}
+                             onClick={() => block.isPreBooking ? handlePreBookingClick(block.preBooking) : setSelectedOrder(block)}
                              className={`absolute left-2 right-2 rounded-xl border pointer-events-auto cursor-pointer p-2 overflow-hidden shadow-sm hover:shadow-md transition-all hover:scale-[1.02] hover:z-10 flex flex-col ${bgColor}`}
                              style={{ 
                                top: calculateTop(block.timeStart), 
@@ -409,6 +527,11 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                                   <Sparkles size={12} />
                                 </div>
                               )}
+                              {block.isPreBooking && (
+                                <div className="absolute top-2 right-2 text-emerald-600 bg-emerald-100 p-0.5 rounded-full">
+                                  <CalendarClock size={12} />
+                                </div>
+                              )}
                            </div>
                          );
                       })}
@@ -426,33 +549,43 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
           <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
              <div className="flex items-center gap-2">
                 <CalendarClock size={20} className="text-emerald-600" />
-                <h3 className="font-black text-gray-800 text-lg">Khách Đã Hẹn</h3>
+                <div>
+                   <h3 className="font-black text-gray-800 text-lg leading-tight">{t.panelTitle}</h3>
+                   <p className="text-[11px] font-bold text-gray-500">{dateGroupLabel(viewDate)} · {new Date(`${viewDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</p>
+                </div>
              </div>
              <div className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full text-xs">
-                {preBookings.length}
+                {preBookingsOfViewDate.length}
              </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar bg-slate-50/50">
-             {preBookings.length === 0 ? (
+             {preBookingsOfViewDate.length === 0 ? (
                 <div className="text-center text-sm font-medium text-gray-400 py-10">
-                   Chưa có khách hẹn trước
+                   {t.emptyForDay}
                 </div>
              ) : (
-                preBookings.map(pb => (
+                preBookingsOfViewDate.map(pb => (
+                   <React.Fragment key={pb.id}>
                    <div 
-                     key={pb.id} 
                      onClick={() => handlePreBookingClick(pb)}
                      className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group hover:border-emerald-300"
                    >
                       <div className="flex justify-between items-start mb-2">
                          <div className="font-black text-gray-800 text-base flex flex-col gap-1">
                             {pb.customer_name}
+                            <div className="flex gap-1 flex-wrap">
                             {oldCustomerPhones.has(pb.customer_phone) && (
                                <span className="text-[9px] w-max bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wider">
-                                 <Sparkles size={10} /> Khách cũ
+                                 <Sparkles size={10} /> {t.oldCustomer}
                                </span>
                             )}
+                            {isLatePreBooking(pb) && (
+                               <span className="text-[9px] w-max bg-red-100 text-red-700 px-1.5 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wider">
+                                 <AlertCircle size={10} /> {t.late}
+                               </span>
+                            )}
+                            </div>
                          </div>
                          <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">
                            {formatTime(pb.booking_time)}
@@ -464,9 +597,10 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                          {pb.notes && <div className="flex items-center gap-1.5 text-gray-500"><Info size={13} className="text-gray-400" /> {pb.notes}</div>}
                       </div>
                       <div className="mt-3 flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <ExternalLink size={12} /> Bấm để tạo đơn
+                         <ChevronRight size={12} /> {t.tapForDetail}
                       </div>
                    </div>
+                   </React.Fragment>
                 ))
              )}
           </div>
@@ -476,7 +610,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                 onClick={() => setIsAddModalOpen(true)}
                 className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-colors shadow-sm shadow-emerald-200"
              >
-                <Plus size={16} strokeWidth={3} /> THÊM KHÁCH HẸN
+                <Plus size={16} strokeWidth={3} /> {t.addButton}
              </button>
           </div>
        </div>
@@ -546,6 +680,62 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
 
       {/* NEW Modal Add PreBooking */}
       <AnimatePresence>
+        {selectedPreBooking && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setSelectedPreBooking(null)}>
+             <motion.div
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               onClick={(e) => e.stopPropagation()}
+               className="bg-white rounded-3xl shadow-2xl border border-gray-100 max-w-sm w-full overflow-hidden flex flex-col"
+             >
+               <div className="p-5 bg-emerald-600 text-white flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                     <p className="text-[10px] font-black uppercase tracking-widest text-emerald-100">{t.detailTitle}</p>
+                     <h3 className="text-xl font-black truncate">{selectedPreBooking.customer_name}</h3>
+                     <span className={`inline-flex items-center gap-1 mt-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                        oldCustomerPhones.has(selectedPreBooking.customer_phone) ? 'bg-amber-100 text-amber-700' : 'bg-white/20 text-white'
+                     }`}>
+                        <Sparkles size={10} /> {oldCustomerPhones.has(selectedPreBooking.customer_phone) ? t.oldCustomer : t.newCustomer}
+                     </span>
+                  </div>
+                  <button onClick={() => setSelectedPreBooking(null)} className="p-1 hover:bg-white/20 rounded-full transition-colors shrink-0"><X size={20}/></button>
+               </div>
+
+               <div className="p-5 space-y-3 text-sm">
+                  <div className="flex items-center gap-3"><Phone size={16} className="text-gray-400 shrink-0" /><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.phone}</p><p className="font-bold text-gray-800">{selectedPreBooking.customer_phone || '—'}</p></div></div>
+                  <div className="flex items-center gap-3"><Info size={16} className="text-gray-400 shrink-0" /><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.email}</p><p className="font-bold text-gray-800 break-all">{selectedPreBooking.customer_email || '—'}</p></div></div>
+                  <div className="grid grid-cols-2 gap-3">
+                     <div className="flex items-center gap-3"><CalendarIcon size={16} className="text-gray-400 shrink-0" /><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.appointmentAt}</p><p className="font-bold text-gray-800">{dateGroupLabel(selectedPreBooking.booking_date)} · {formatTime(selectedPreBooking.booking_time)}</p></div></div>
+                     <div className="flex items-center gap-3"><Users size={16} className="text-gray-400 shrink-0" /><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.guestCount}</p><p className="font-bold text-gray-800">{selectedPreBooking.guest_count || 1} {t.guests}</p></div></div>
+                  </div>
+                  <div className="flex items-center gap-3"><Tag size={16} className="text-gray-400 shrink-0" /><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.menuType}</p><p className="font-bold text-gray-800">{MENU_TYPE_LABEL[selectedPreBooking.menu_type] || selectedPreBooking.menu_type || 'Standard'}</p></div></div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                     <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">{t.notes}</p>
+                     <p className="text-gray-700">{selectedPreBooking.notes || <span className="text-gray-400">{t.noNotes}</span>}</p>
+                  </div>
+               </div>
+
+               <div className="p-5 border-t border-gray-100 bg-gray-50 space-y-2">
+                  <button
+                     onClick={() => openWrbForPreBooking(selectedPreBooking)}
+                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-colors"
+                  >
+                     <ExternalLink size={16} /> {t.openWrb}
+                  </button>
+                  <p className="text-[11px] text-gray-500 text-center leading-snug">{t.openWrbHint}</p>
+                  <div className="flex gap-2 pt-1">
+                     <button
+                        onClick={() => cancelPreBooking(selectedPreBooking)}
+                        disabled={isCancelling}
+                        className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-bold text-xs disabled:opacity-50"
+                     >{t.cancel}</button>
+                     <button onClick={() => setSelectedPreBooking(null)} className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 rounded-xl font-bold text-xs">{t.close}</button>
+                  </div>
+               </div>
+             </motion.div>
+          </div>
+        )}
         {isAddModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setIsAddModalOpen(false)}>
              <motion.div
