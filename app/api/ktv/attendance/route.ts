@@ -223,7 +223,7 @@ export async function POST(request: Request) {
         let typeDRegistrationId: string | null = null;
 
         if (isTypeD && (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN')) {
-            const { vnNow } = await import('@/lib/vn-time');
+            const { vnNow, vnToday } = await import('@/lib/vn-time');
             const { format } = await import('date-fns');
             // Ngày phạt phải theo NGÀY LÀM VIỆC (cutoff), không phải ngày lịch —
             // để khớp với sổ giờ tích lũy khi trừ giờ.
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
             const todayStr = await getBusinessToday(supabase);
             const { data: registration, error: regLookupError } = await supabase
                 .from('KTVTypeDDailyRegistration')
-                .select('id, status, expected_time, late_expected_time')
+                .select('id, status, expected_time, late_expected_time, expected_end_time')
                 .eq('staff_id', staffCode)
                 .eq('work_date', todayStr)
                 .maybeSingle();
@@ -289,7 +289,26 @@ export async function POST(request: Request) {
                     // đồng hồ trần sẽ tính oan (23:00 "muộn hơn" 01:50 cùng ca).
                     const expectedMinutes = phutTrongNgayLamViec(String(deadline).slice(0, 5), cutoffHoursD) ?? 0;
                     const phutThucTe = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
-                    if (phutThucTe > expectedMinutes) {
+
+                    // Chỉ xét trễ cho LẦN VÀO CA ĐẦU TIÊN. KTV đã làm xong ca đăng ký (VD 14:00–18:00),
+                    // tan ca rồi 21:00 quay lại vì có khách yêu cầu → không phải "đến trễ".
+                    // (Chốt 03/10/2026: T021 sẽ bị trừ 5h oan nếu không có luật này.)
+                    const { data: todayAtt } = await supabase
+                        .from('KTVAttendance')
+                        .select('checkType')
+                        .eq('employeeId', staffCode)
+                        .in('date', Array.from(new Set([todayStr, vnToday()])))
+                        .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']);
+                    const daVaoCaHomNay = (todayAtt || []).length > 0;
+                    const phutTanCa = registration.expected_end_time
+                        ? phutTrongNgayLamViec(String(registration.expected_end_time).slice(0, 5), cutoffHoursD)
+                        : null;
+                    const quayLaiSauGioTanCa = phutTanCa != null && phutThucTe > phutTanCa;
+
+                    if (daVaoCaHomNay || quayLaiSauGioTanCa) {
+                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: `
+                            + (daVaoCaHomNay ? 'đã vào ca hôm nay' : 'quay lại sau giờ tan ca đăng ký'));
+                    } else if (phutThucTe > expectedMinutes) {
                         await KtvTypeDDisciplineService.deductDailyViolation(
                           supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
                         );
