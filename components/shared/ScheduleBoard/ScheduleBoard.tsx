@@ -26,6 +26,14 @@ import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { t } from './ScheduleBoard.i18n';
 import { searchCustomers } from '@/app/reception/dispatch/actions';
+import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
+
+/**
+ * SĐT giữ chỗ: '0000…' (isDummyPhone) hoặc 'GUEST-<id>' do kiosk WRB sinh cho khách không
+ * nhập SĐT (2.934 hồ sơ, 03/10/2026). Không mở rộng isDummyPhone dùng chung — các luồng gộp
+ * khách đang dựa vào nghĩa hiện tại của nó (xem BookingModificationService).
+ */
+const isPlaceholderPhone = (p: string | null | undefined) => !p || isDummyPhone(p) || /^GUEST-/i.test(p.trim());
 
 // 🔧 UI CONFIGURATION
 /** Web Nội Bộ (WRB) — nơi khách order. Ghi đè bằng NEXT_PUBLIC_WEB_NOI_BO_URL. */
@@ -162,12 +170,14 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
 
   const handleSelectCustomer = (c: any) => {
      setNewPbName(c.fullName || '');
-     if (c.phone) {
+     // Hồ sơ từ kiosk có thể mang SĐT giả 'GUEST-…' / email ảo — không điền, để quầy nhập thật.
+     // (Ca Charlotte 03/10: SĐT giả bị WRB xoá → checkout trống SĐT.)
+     if (c.phone && !isPlaceholderPhone(c.phone)) {
         // Hồ sơ đã lưu SĐT đầy đủ (có thể kèm mã nước) → bỏ ô mã nước để không ghép đôi.
         setNewPbPhoneCode('');
         setNewPbPhone(String(c.phone).replace(/\s+/g, ''));
      }
-     if (c.email) setNewPbEmail(c.email);
+     if (c.email && !isDummyEmail(c.email)) setNewPbEmail(c.email);
      setCustSuggestions([]);
      setSuggestField(null);
   };
@@ -186,8 +196,8 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                  >
                     <span className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Sparkles size={11} className="text-amber-500" /> {c.fullName || '—'}</span>
                     <span className="flex items-center gap-3 text-[11px] font-medium text-gray-500">
-                       {c.phone && <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>}
-                       {c.email && <span className="flex items-center gap-1"><Tag size={10} /> {c.email}</span>}
+                       {c.phone && !isPlaceholderPhone(c.phone) && <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>}
+                       {c.email && !isDummyEmail(c.email) && <span className="flex items-center gap-1"><Tag size={10} /> {c.email}</span>}
                     </span>
                  </button>
               ))}
@@ -197,14 +207,15 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   );
 
   const handleAddPreBooking = async () => {
-     if (!newPbName || !newPbPhone || !newPbDate || !newPbTime) return;
+     // Cần tên và ít nhất một kênh liên lạc thật (SĐT hoặc email).
+     if (!newPbName || (!newPbPhone && !newPbEmail) || !newPbDate || !newPbTime) return;
      setIsSubmitting(true);
      
      const formattedTime = newPbTime.length === 5 ? `${newPbTime}:00` : newPbTime;
      
      const { error } = await supabase.from('PreBookings').insert([{
         customer_name: newPbName,
-        customer_phone: (newPbPhoneCode || "").replace(/\s+/g, "") + (newPbPhone || "").replace(/\s+/g, ""),
+        customer_phone: newPbPhone ? (newPbPhoneCode || "").replace(/\s+/g, "") + newPbPhone.replace(/\s+/g, "") : null,
         customer_email: newPbEmail,
         menu_type: newPbMenuType,
         guest_count: Number(newPbGuests) || 1,
@@ -233,8 +244,8 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      const url = new URL(`${baseUrl}/${WRB_LANG}/${pb.menu_type || 'standard'}/menu`);
      url.searchParams.set('preBookingId', pb.id);
      if (pb.customer_name) url.searchParams.set('name', pb.customer_name);
-     if (pb.customer_phone) url.searchParams.set('phone', pb.customer_phone);
-     if (pb.customer_email) url.searchParams.set('email', pb.customer_email);
+     if (pb.customer_phone && !isPlaceholderPhone(pb.customer_phone)) url.searchParams.set('phone', pb.customer_phone);
+     if (pb.customer_email && !isDummyEmail(pb.customer_email)) url.searchParams.set('email', pb.customer_email);
      if (pb.menu_type) url.searchParams.set('menuType', pb.menu_type);
      if (pb.guest_count) url.searchParams.set('guests', pb.guest_count.toString());
      if (pb.notes) url.searchParams.set('notes', pb.notes);
@@ -1139,7 +1150,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                   <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-black transition-colors text-sm">
                      HỦY
                   </button>
-                  <button onClick={handleAddPreBooking} disabled={isSubmitting || !newPbName || !newPbPhone} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-black transition-colors text-sm shadow-md shadow-emerald-200">
+                  <button onClick={handleAddPreBooking} disabled={isSubmitting || !newPbName || (!newPbPhone && !newPbEmail)} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-black transition-colors text-sm shadow-md shadow-emerald-200">
                      {isSubmitting ? 'ĐANG LƯU...' : 'LƯU LẠI'}
                   </button>
                </div>
