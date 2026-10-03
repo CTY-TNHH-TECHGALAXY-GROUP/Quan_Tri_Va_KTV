@@ -66,6 +66,7 @@ export async function GET(request: Request) {
                 locked: s.status === 'KHÓA_TÀI_KHOẢN',
                 earned: h.earned,
                 penalty: h.penalty,
+                granted: h.granted,
                 net: h.net,
                 turns: h.turns,
                 days: h.days,

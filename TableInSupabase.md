@@ -243,6 +243,27 @@
 
 **Constraint**: `UNIQUE(staff_id, booking_item_id)`. Từ migration `20260922091000`, mọi INSERT/UPDATE/DELETE phải đi qua RPC revision 2; direct writer cũ bị từ chối ở trigger DB.
 
+### 4.6b. KTVDPenaltyLedger ✅ GIỜ PHẠT / BÙ GIỜ LOẠI D
+**Nhiệm vụ**: Phạt giờ, dấu mốc kỷ luật và **bù giờ thủ công** của KTV loại D. Tách khỏi `KTVDTurnLedger` vì không gắn với BookingItem. Migration `20260904120000_ktvd_turn_ledger.sql`.
+
+**Công thức duy nhất** (`KtvDLedgerReader.netHoursByStaff`): `giờ ròng = Σ KTVDTurnLedger.actual_minutes/60 − Σ hours_penalty`. Thứ tự nhận tua, xếp hạng giờ, quỹ giờ xét khoá đều đọc từ đây.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | |
+| `staff_id` | text | Mã KTV |
+| `work_date` | date | Ngày làm việc (mốc cắt sáng) — quyết định THÁNG được tính |
+| `penalty_type` | text | `ABSENT_NO_NOTICE`, `ABSENT_EARLY_NOTICE`, `LATE_NO_UPDATE`, `ORDER_REJECT` (trừ giờ) · `ACCOUNT_LOCK` (dấu mốc, 0h) · `REACTIVATION_FEE` (chỉ tiền) · **`HOURS_GRANT`** [03/10/2026] admin/DEV cộng giờ: `hours_penalty` **ÂM** (−5 = cộng 5h), cộng dồn trong ngày, `note` = "+Xh — người cộng: lý do". Route `/api/admin/ktv-office/hours-grant`, `requireRole(['ADMIN','DEV'])`. |
+| `hours_penalty` | numeric | Giờ trừ (dương) hoặc giờ cộng (âm, chỉ `HOURS_GRANT`). Không có CHECK ≥ 0. |
+| `money_penalty` | numeric | Tiền phạt/phí (chỉ `REACTIVATION_FEE`) |
+| `note` | text | Lý do |
+| `created_by` | text | Mã người ghi; `CRON_MIDNIGHT` nếu do cron chốt sổ |
+| `created_at` | timestamptz | |
+
+**Constraint**: `UNIQUE(staff_id, work_date, penalty_type)` — mỗi loại một dòng mỗi ngày (upsert cộng dồn).
+
+---
+
 ### 4.7. KTVDRecomputeQueue ✅ HÀNG ĐỢI TÍNH LẠI LOẠI D
 
 | Cột | Kiểu | Mô tả chức năng |

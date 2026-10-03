@@ -18,6 +18,8 @@ export interface RankRow {
   /** Chỉ có giá trị ở dòng của chính mình — server không trả của người khác. */
   earned: number | null;
   penalty: number | null;
+  /** Giờ admin cộng thêm — chỉ có ở dòng của chính mình. */
+  granted?: number | null;
   days: number | null;
   lastDate: string | null;
 }
@@ -33,6 +35,8 @@ export interface LedgerRow {
   at: string | null;
   /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
   penaltyLabel: string | null;
+  /** Admin/DEV cộng giờ thủ công. */
+  isGrant?: boolean;
   orderCode: string | null;
 }
 

@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Search, RefreshCw, Timer, Lock, ClipboardCheck, X, Clock, User, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, RefreshCw, Timer, Lock, ClipboardCheck, X, Clock, User, AlertTriangle, PlusCircle } from 'lucide-react';
 import { useAdminKtvHoursLogic, fmtHours, fmtShortDate } from './AdminKtvHours.logic';
 import { fmtWeekday, fmtFullDate, fmtClock, fmtClockOnDate } from '@/lib/hours-format';
 
@@ -52,13 +52,19 @@ const StatCard = ({ label, value, hint }: { label: string; value: string; hint?:
   </div>
 );
 
-/** Khung 3 con số của 1 KTV: làm thực → bị phạt → thực nhận. */
-const HoursBreakdown = ({ earned, penalty, net }: { earned: number; penalty: number; net: number }) => (
-  <div className="grid grid-cols-3 gap-2">
+/** Khung con số của 1 KTV: làm thực → (cộng thêm) → bị phạt → thực nhận. */
+const HoursBreakdown = ({ earned, penalty, granted = 0, net }: { earned: number; penalty: number; granted?: number; net: number }) => (
+  <div className={`grid ${granted > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-2`}>
     <div className="bg-[var(--green-2)] rounded-2xl p-3 text-center">
       <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--green)]">Làm thực</p>
       <p className="text-base md:text-xl font-bold tabular-nums mt-1 text-[var(--green)]">{fmtHours(earned)}</p>
     </div>
+    {granted > 0 && (
+      <div className="bg-[var(--amber-2)] rounded-2xl p-3 text-center">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--amber)]">Cộng thêm</p>
+        <p className="text-base md:text-xl font-bold tabular-nums mt-1 text-[var(--amber)]">+ {fmtHours(granted)}</p>
+      </div>
+    )}
     <div className={`rounded-2xl p-3 text-center ${penalty > 0 ? 'bg-[var(--rust-2)]' : 'bg-[var(--surface-soft)]'}`}>
       <p className={`text-[10px] font-bold uppercase tracking-widest ${penalty > 0 ? 'text-[var(--rust)]' : 'text-[var(--muted)]'}`}>Bị phạt</p>
       <p className={`text-base md:text-xl font-bold tabular-nums mt-1 ${penalty > 0 ? 'text-[var(--rust)]' : 'text-[var(--muted)]'}`}>
@@ -82,17 +88,20 @@ const HoursBreakdown = ({ earned, penalty, net }: { earned: number; penalty: num
 function readLedgerRow(r: any) {
   const isPenalty = !!r.penaltyType;
   const isMarker = isPenalty && r.penalty === 0;
+  // Admin/DEV bù giờ: dòng cộng nhưng không phải tua — không có mã đơn, `note` là lý do.
+  const isGrant = !isPenalty && r.isGrant === true;
   return {
     isPenalty,
     isMarker,
+    isGrant,
     /** Nhãn nhóm ở cột Nội dung. */
-    badge: isMarker ? 'Dấu mốc' : isPenalty ? 'Vi phạm nội quy' : 'Giờ làm khách',
+    badge: isMarker ? 'Dấu mốc' : isPenalty ? 'Vi phạm nội quy' : isGrant ? 'Bù giờ' : 'Giờ làm khách',
     /** Dòng đậm ở cột Nội dung: mã đơn với tua, tên lỗi với phiếu phạt. */
-    heading: isPenalty ? (r.penaltyLabel || 'Phạt giờ') : (r.orderCode || 'Tua dịch vụ'),
-    /** Dòng mờ bên dưới: `note` là tên dịch vụ với tua, là ghi chú với phiếu phạt. */
+    heading: isPenalty ? (r.penaltyLabel || 'Phạt giờ') : isGrant ? 'Cộng giờ (admin)' : (r.orderCode || 'Tua dịch vụ'),
+    /** Dòng mờ bên dưới: `note` là tên dịch vụ với tua, là ghi chú với phiếu phạt / lý do bù giờ. */
     sub: r.note || '',
-    kindLabel: isMarker ? 'Ghi nhận' : isPenalty ? 'Vi phạm' : 'Làm khách',
-    kindNote: isMarker ? 'Không trừ giờ' : isPenalty ? 'Trừ giờ' : 'Cộng giờ',
+    kindLabel: isMarker ? 'Ghi nhận' : isPenalty ? 'Vi phạm' : isGrant ? 'Bù giờ' : 'Làm khách',
+    kindNote: isMarker ? 'Không trừ giờ' : isPenalty ? 'Trừ giờ' : isGrant ? 'Admin cộng' : 'Cộng giờ',
     amount: isMarker ? null : isPenalty ? `− ${fmtHours(r.penalty)}` : `+ ${fmtHours(r.earned)}`,
   };
 }
@@ -390,6 +399,9 @@ const AdminKtvHoursPage = () => {
 
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--muted)] mt-1.5">
                           <span>Làm thực {fmtHours(r.earned)}</span>
+                          {r.granted > 0 && (
+                            <span className="text-[var(--amber)] font-bold">Cộng + {fmtHours(r.granted)}</span>
+                          )}
                           {r.penalty > 0 && (
                             <span className="text-[var(--rust)] font-bold">Phạt − {fmtHours(r.penalty)}</span>
                           )}
@@ -460,7 +472,7 @@ const AdminKtvHoursPage = () => {
 
                   {!logic.detailLoading && d && (
                     <>
-                      <HoursBreakdown earned={d.hours.earned} penalty={d.hours.penalty} net={d.hours.net} />
+                      <HoursBreakdown earned={d.hours.earned} penalty={d.hours.penalty} granted={d.hours.granted ?? 0} net={d.hours.net} />
 
                       <p className="text-xs text-[var(--muted)] text-center mt-3">
                         {d.hours.turns} tua · {d.hours.days} ngày có tua
@@ -478,11 +490,61 @@ const AdminKtvHoursPage = () => {
                   )}
                 </div>
 
+                {/* Cộng giờ — chỉ ADMIN / DEV */}
+                {logic.canGrant && logic.grantOpen && (
+                  <div className="p-4 border-t border-[var(--line)] bg-[var(--surface-soft)] space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-[var(--amber)] flex items-center gap-1.5">
+                      <PlusCircle size={14} /> Cộng giờ tích luỹ cho {logic.detailOf.name}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="text-xs text-[var(--muted)]">
+                        Số giờ (bước {logic.GRANT_STEP}, tối đa {logic.GRANT_MAX_HOURS})
+                        <input
+                          type="number" inputMode="decimal" step={logic.GRANT_STEP} min={logic.GRANT_STEP} max={logic.GRANT_MAX_HOURS}
+                          value={logic.grantHours} onChange={e => logic.setGrantHours(e.target.value)}
+                          className="mt-1 w-full h-11 px-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)] font-bold tabular-nums"
+                        />
+                      </label>
+                      <label className="text-xs text-[var(--muted)]">
+                        Ngày áp dụng (tính vào tháng của ngày này)
+                        <input
+                          type="date" value={logic.grantDate} max={logic.grantDateMax}
+                          onChange={e => logic.setGrantDate(e.target.value)}
+                          className="mt-1 w-full h-11 px-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)] font-bold"
+                        />
+                      </label>
+                    </div>
+                    <label className="text-xs text-[var(--muted)] block">
+                      Lý do (bắt buộc — KTV sẽ thấy dòng này)
+                      <input
+                        type="text" value={logic.grantReason} onChange={e => logic.setGrantReason(e.target.value)}
+                        placeholder="VD: Bù 10h bị trừ nhầm ngày 17/09"
+                        className="mt-1 w-full h-11 px-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)]"
+                      />
+                    </label>
+                    {logic.grantError && <p className="text-xs text-[var(--rust)] font-bold">{logic.grantError}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={logic.closeGrant} disabled={logic.grantSaving}
+                        className="flex-1 h-11 rounded-xl font-bold border border-[var(--line)] bg-white text-[var(--muted)]">Huỷ</button>
+                      <button onClick={logic.submitGrant} disabled={!!logic.grantError || logic.grantSaving}
+                        className="flex-1 h-11 rounded-xl font-bold bg-[var(--amber)] text-white disabled:opacity-50">
+                        {logic.grantSaving ? 'Đang cộng…' : `Cộng ${logic.grantHours || 0} giờ`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Footer */}
-                <div className="p-4 border-t border-[var(--line)]">
+                <div className="p-4 border-t border-[var(--line)] flex gap-2">
+                  {logic.canGrant && !logic.grantOpen && (
+                    <button
+                      onClick={logic.openGrant}
+                      className="flex-1 h-12 rounded-xl font-bold border-2 border-[var(--amber)] text-[var(--amber)] bg-[var(--amber-2)] flex items-center justify-center gap-2"
+                    ><PlusCircle size={18} /> Cộng giờ</button>
+                  )}
                   <button
                     onClick={logic.closeDetail}
-                    className="w-full h-12 rounded-xl font-bold bg-[var(--green)] text-white"
+                    className="flex-1 h-12 rounded-xl font-bold bg-[var(--green)] text-white"
                   >Đóng</button>
                 </div>
               </motion.div>
