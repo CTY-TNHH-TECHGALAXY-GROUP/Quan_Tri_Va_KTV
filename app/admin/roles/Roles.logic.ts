@@ -21,7 +21,8 @@ const MOCK_ROLES: Role[] = [
     {
         id: 'reception',
         name: 'Lễ Tân',
-        permissions: ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'finance_management', 'ktv_hub', 'turn_tracking', 'service_handbook', 'settings'],
+        // promotions_scan_apply: quét & áp voucher (user 04/10/2026). Áp ngoại lệ KHÔNG nằm trong mẫu — admin tick tay.
+        permissions: ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'finance_management', 'ktv_hub', 'turn_tracking', 'service_handbook', 'settings', 'promotions_scan_apply'],
     },
     {
         id: 'ktv',

@@ -1,11 +1,14 @@
 import { ModuleId, ModuleDefinition } from './types';
+import { PROMOTION_PERMISSIONS } from './constants/promotion';
 
 export const MODULES: ModuleDefinition[] = [
   { id: 'dashboard', name: 'Dashboard', group: 'Vận Hành' },
   { id: 'dispatch_board', name: 'Điều Phối & Giám Sát', group: 'Vận Hành' },
   { id: 'staff_notifications', name: 'Thông Báo', group: 'Vận Hành' },
   { id: 'customer_management', name: 'Khách Hàng', group: 'Vận Hành' },
-  { id: 'promotions', name: 'Khuyến Mãi', group: 'Vận Hành' },
+  { id: 'promotions', name: 'Khuyến Mãi (toàn quyền)', group: 'Vận Hành' },
+  // Per-action promotion permissions: names come from the engine's table (single source).
+  ...PROMOTION_PERMISSIONS.map((p): ModuleDefinition => ({ id: p.id, name: p.name, group: 'Khuyến Mãi', menu: false })),
   { id: 'revenue_reports', name: 'Báo Cáo', group: 'Tài Chính & Kế Toán' },
   { id: 'payroll_commissions', name: 'Lương & Hoa Hồng', group: 'Tài Chính & Kế Toán' },
   { id: 'cashbook_supplies', name: 'Sổ Quỹ & Vật Tư', group: 'Tài Chính & Kế Toán' },

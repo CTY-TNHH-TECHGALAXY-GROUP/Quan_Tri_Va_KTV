@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import CustomerCandidatesPanel from '@/components/promotions/CustomerCandidatesPanel';
@@ -45,6 +46,7 @@ const CampaignDetailPage = () => {
   const { addToast } = useToast();
   const { state, reload, setData } = usePromotionQuery(() => promotionApi.getCampaign(id), [id]);
   const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
+  const access = usePromotionAccess();
   const spaContact = useSpaContact();
   const menuLabel = (code: string) => menus.state.data?.find((m) => m.code === code)?.label ?? code;
   const [pending, setPending] = useState<CampaignStatusAction | null>(null);
@@ -65,7 +67,7 @@ const CampaignDetailPage = () => {
   };
 
   return (
-    <PromotionsShell title={t.campaign.detailTitle}>
+    <PromotionsShell action={'campaign.read'} title={t.campaign.detailTitle}>
       {state.status === 'loading' && !state.data ? (
         <PromotionLoading />
       ) : state.status === 'error' ? (
@@ -116,12 +118,12 @@ const CampaignDetailPage = () => {
                 </dl>
 
                 <div className="mt-6 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
-                  {c.status !== 'ENDED' && (
+                  {access.manageCampaign && c.status !== 'ENDED' && (
                     <Link href={PROMOTION_PATHS.editCampaign(c.id)} className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                       {t.actions.edit}
                     </Link>
                   )}
-                  {ACTIONS_BY_STATUS[c.status].map((a) => (
+                  {(access.manageCampaign ? ACTIONS_BY_STATUS[c.status] : []).map((a) => (
                     <button
                       key={a}
                       type="button"
@@ -133,13 +135,15 @@ const CampaignDetailPage = () => {
                       {ACTION_COPY[a].label}
                     </button>
                   ))}
+                  {access.tabs.passes && (
                   <Link href={`${PROMOTION_PATHS.passes}?campaignId=${encodeURIComponent(c.id)}`} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-semibold text-indigo-600 hover:bg-indigo-50">
                     {t.nav.passes}
                   </Link>
+                  )}
                 </div>
               </section>
 
-              {c.status !== 'ENDED' && (
+              {access.issue && c.status !== 'ENDED' && (
                 <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                   <h2 className="mb-3 font-semibold text-gray-900">{t.assign.title}</h2>
                   <CustomerCandidatesPanel campaign={c} />

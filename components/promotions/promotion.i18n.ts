@@ -336,6 +336,7 @@ export const t = {
     notEligible: 'Chưa đủ điều kiện',
     blocked: 'Không áp được',
     applyOverride: 'Áp ngoại lệ…',
+    overrideNoPermission: 'Cần quyền "Áp ngoại lệ" để áp voucher cho đơn này.',
     overrideTitle: 'Đơn chưa đủ điều kiện',
     overrideIntro: 'Đơn này chưa đạt điều kiện của chương trình:',
     overrideNoteLabel: 'Lý do áp ngoại lệ (bắt buộc)',

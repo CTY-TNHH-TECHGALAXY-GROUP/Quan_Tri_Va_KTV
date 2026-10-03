@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import { PromotionEmpty, PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
@@ -15,12 +16,13 @@ import { formatPromoDate, formatUsageType, promotionErrorMessage } from '@/lib/p
 
 const CampaignListPage = () => {
   const { state, reload } = usePromotionQuery(() => promotionApi.listCampaigns(), []);
+  const access = usePromotionAccess();
   const rows = state.data ?? [];
   const showIssued = rows.some((c) => c.issuedPassCount != null);
   const showUsed = rows.some((c) => c.usageCount != null);
 
   return (
-    <PromotionsShell title={t.campaign.listTitle}>
+    <PromotionsShell action={'campaign.read'} title={t.campaign.listTitle}>
       <h1 className="text-xl font-semibold text-gray-900">{t.campaign.listTitle}</h1>
       <p className="mb-4 mt-1 text-sm text-gray-500">{t.campaign.listSubtitle}</p>
       {state.status === 'loading' && !state.data ? (
@@ -30,9 +32,11 @@ const CampaignListPage = () => {
       ) : rows.length === 0 ? (
         <PromotionEmpty
           action={
+            access.createCampaign && (
             <Link href={PROMOTION_PATHS.newCampaign} className="inline-flex min-h-11 items-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white">
               {t.actions.createPromotion}
             </Link>
+            )
           }
         />
       ) : (
@@ -95,7 +99,7 @@ const CampaignListPage = () => {
                     <Link href={PROMOTION_PATHS.campaign(c.id)} className="rounded-lg px-2 py-1 text-sm font-medium text-indigo-600 hover:bg-indigo-50">
                       {t.actions.view}
                     </Link>
-                    {c.status !== 'ENDED' && (
+                    {access.manageCampaign && c.status !== 'ENDED' && (
                       <Link href={PROMOTION_PATHS.editCampaign(c.id)} className="rounded-lg px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100">
                         {t.actions.edit}
                       </Link>

@@ -35,6 +35,9 @@ import { qualifiedRangeError } from '../../components/promotions/CustomerCandida
 import { VOUCHER_CARD_LABELS } from '../../components/promotions/voucher-card.i18n';
 import { voucherCardFromCampaign, voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
 import { BULK_ISSUE_MAX } from '../../lib/types/promotion-client';
+import { promotionAccess } from '../../components/promotions/promotion.access';
+import { MODULES } from '../../lib/constants';
+import { readFileSync } from 'fs';
 import type { CampaignFormInput, PromotionErrorCode, PromotionPassWithQr } from '../../lib/types/promotion-client';
 
 let passed = 0;
@@ -340,6 +343,28 @@ const main = async () => {
   const contact = unwrap(await api.getSpaContact());
   check('contact has hotline, address, website (no bank data)', !!contact.hotline && !!contact.address && !!contact.websiteUrl && !JSON.stringify(contact).toLowerCase().includes('bank'));
   check('contact shape = SpaContact only', Object.keys(contact).sort().join() === 'address,brandName,hotline,websiteUrl');
+
+  console.log('\n— Permissions by action (plan_promotion_ui_permissions.md)');
+  const P = (...ids: string[]) => promotionAccess(ids);
+  const reception = P('dashboard', 'dispatch_board', 'promotions_scan_apply');
+  check('Lễ tân: menu → thẳng trang quét, chỉ quét + huỷ lượt', reception.any && reception.home === '/admin/promotions/scan' && reception.scan && reception.cancelUsage && !reception.override && !reception.issue && !reception.createCampaign && !reception.tabs.overview && reception.scanBack === '/reception/dispatch');
+  const lead = P('promotions_scan_apply', 'promotions_override');
+  check('Lễ tân trưởng: quét + áp ngoại lệ', lead.scan && lead.override && !lead.issue);
+  const mkt = P('promotions_issue', 'promotions_view');
+  check('Marketing: xem + phát, không quét, không sửa chương trình', mkt.home === '/admin/promotions' && mkt.tabs.passes && mkt.tabs.campaigns && mkt.issue && !mkt.scan && !mkt.createCampaign && !mkt.override);
+  const manager = P('promotions_campaign_manage');
+  check('Quản lý chương trình: thấy tab Chương trình, tạo/sửa, không thấy voucher', manager.tabs.campaigns && manager.createCampaign && !manager.tabs.passes && manager.home === '/admin/promotions');
+  const full = P('promotions');
+  check('Admin (promotions = toàn quyền): mọi thứ', full.scan && full.override && full.issue && full.createCampaign && Object.values(full.tabs).every(Boolean));
+  const ktv = P('ktv_dashboard', 'ktv_wallet', 'dispatch_board');
+  check('KTV / quyền cũ dispatch_board: không thấy Khuyến Mãi', !ktv.any && !ktv.scan);
+  const modIds = MODULES.map((m) => m.id as string);
+  check('5 quyền mới có trong MODULES (trang Phân quyền tick được)', ['promotions_scan_apply', 'promotions_override', 'promotions_view', 'promotions_issue', 'promotions_campaign_manage'].every((id) => modIds.includes(id)));
+  check('5 quyền con không thành mục Sidebar (menu: false), mục "promotions" vẫn là menu', MODULES.filter((m) => m.id.startsWith('promotions_')).every((m) => m.menu === false) && MODULES.find((m) => m.id === 'promotions')?.menu !== false);
+  // Role templates live in a client hook file (not exported) — read the source instead of importing it.
+  const rolesSrc = readFileSync('app/admin/roles/Roles.logic.ts', 'utf8');
+  const recLine = rolesSrc.slice(rolesSrc.indexOf("id: 'reception'"), rolesSrc.indexOf("id: 'ktv'"));
+  check('Mẫu Lễ tân có "Quét & áp", không mẫu nào có "Áp ngoại lệ"', recLine.includes("'promotions_scan_apply'") && !rolesSrc.includes("'promotions_override'"));
 
   console.log('\n— Every error code has a staff message');
   const codes: PromotionErrorCode[] = ['CAMPAIGN_LOCKED', 'CUSTOMER_NO_EMAIL', 'EMAIL_SEND_FAILED', 'ACCOUNT_LOCKED', 'INTERNAL_ERROR', 'USAGE_COMPLETED', 'PROMOTION_ITEM_IN_SERVICE'];

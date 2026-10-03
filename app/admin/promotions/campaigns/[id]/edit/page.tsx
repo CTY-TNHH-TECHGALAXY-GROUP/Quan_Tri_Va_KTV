@@ -36,7 +36,7 @@ const EditCampaignPage = () => {
   };
 
   return (
-    <PromotionsShell title={t.campaign.editTitle}>
+    <PromotionsShell action={'campaign.manage'} title={t.campaign.editTitle}>
       <h1 className="mb-4 text-xl font-semibold text-gray-900">{t.campaign.editTitle}</h1>
       {state.status === 'loading' ? (
         <PromotionLoading />

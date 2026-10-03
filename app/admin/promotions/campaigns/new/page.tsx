@@ -30,7 +30,7 @@ const NewCampaignPage = () => {
   };
 
   return (
-    <PromotionsShell title={t.campaign.createTitle}>
+    <PromotionsShell action={'campaign.manage'} title={t.campaign.createTitle}>
       <h1 className="mb-4 text-xl font-semibold text-gray-900">{t.campaign.createTitle}</h1>
       <div>
         <CampaignForm initial={EMPTY_CAMPAIGN_FORM} submitting={submitting} submitLabel={t.actions.createPromotion} onSubmit={handleSubmit} />

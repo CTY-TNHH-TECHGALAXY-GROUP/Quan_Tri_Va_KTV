@@ -263,7 +263,7 @@ const PassList = () => {
 };
 
 const PassListPage = () => (
-  <PromotionsShell title={t.pass.listTitle}>
+  <PromotionsShell action={'pass.view'} title={t.pass.listTitle}>
     <Suspense fallback={<PromotionLoading />}>
       <PassList />
     </Suspense>

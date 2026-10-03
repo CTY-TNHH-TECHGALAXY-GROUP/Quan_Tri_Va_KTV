@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import UsageHistoryList from '@/components/promotions/UsageHistoryList';
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { usePromotionQuery } from '@/components/promotions/usePromotionQuery';
@@ -34,9 +35,10 @@ const UsageHistoryPage = () => {
     [filter.search, filter.campaignId, filter.status, filter.dateFrom, filter.dateTo, filter.overridden],
   );
   const cancel = useCancelUsage(reload);
+  const access = usePromotionAccess();
 
   return (
-    <PromotionsShell title={t.usage.listTitle}>
+    <PromotionsShell action={'pass.view'} title={t.usage.listTitle}>
       <h1 className="text-xl font-semibold text-gray-900">{t.usage.listTitle}</h1>
       <p className="mb-4 mt-1 text-sm text-gray-500">{t.usage.listSubtitle}</p>
       <div className="mb-4 space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -95,7 +97,7 @@ const UsageHistoryPage = () => {
             <PromotionError message={promotionErrorMessage(state.code)} onRetry={reload} />
           </div>
         ) : (
-          <UsageHistoryList items={state.data ?? []} onCancel={cancel.request} />
+          <UsageHistoryList items={state.data ?? []} onCancel={access.cancelUsage ? cancel.request : undefined} />
         )}
       </div>
       {cancel.dialog}

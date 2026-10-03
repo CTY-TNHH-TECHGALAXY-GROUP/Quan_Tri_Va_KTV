@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isServingLockedScreen } from '@/lib/ktv-screen';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 
 const ICONS: Record<string, React.ReactNode> = {
   dashboard: <Home size={20} />,
@@ -161,11 +162,14 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
   const { hasPermission, user, role, logout } = useAuth();
   const pathname = usePathname();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
+  // One "Khuyến Mãi" entry for any promotion permission; scan-only staff land on the scanner.
+  const promo = usePromotionAccess();
+  const pathOf = (id: string) => (id === 'promotions' ? promo.home : PATHS[id]);
 
   // Group modules by their group property
   const groupedModules = React.useMemo(() => {
     return MODULES
-      .filter(m => m.id !== 'settings' && hasPermission(m.id as any))
+      .filter(m => m.id !== 'settings' && m.menu !== false && (m.id === 'promotions' ? promo.any : hasPermission(m.id as any)))
       .reduce((acc, module) => {
         let groupName = module.group;
         
@@ -180,7 +184,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
         acc[groupName].push(module);
         return acc;
       }, {} as Record<string, typeof MODULES>);
-  }, [hasPermission, role?.id]);
+  }, [hasPermission, role?.id, promo.any]);
 
   // Auto-expand groups that contain the active link
   React.useEffect(() => {
@@ -203,8 +207,9 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
   };
 
   const renderLink = (module: typeof MODULES[0], showLabel: boolean) => {
-    const path = PATHS[module.id];
-    const isActive = isPathActive(pathname, path);
+    const path = pathOf(module.id);
+    // Active state uses the module root so every /admin/promotions/* page highlights the entry.
+    const isActive = isPathActive(pathname, PATHS[module.id]);
 
     // Đang phục vụ khách: khoá mọi mục trừ chính trang đang đứng.
     if (isServingLocked && !isActive) {

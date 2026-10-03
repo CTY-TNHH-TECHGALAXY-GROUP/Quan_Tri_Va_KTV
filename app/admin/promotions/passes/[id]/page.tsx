@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Loader2, Mail } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import VoucherCard3D from '@/components/promotions/VoucherCard3D';
@@ -39,6 +40,7 @@ const PassDetailPage = () => {
   const { addToast } = useToast();
   const pass = usePromotionQuery(() => promotionApi.getPass(id), [id]);
   const spaContact = useSpaContact();
+  const access = usePromotionAccess();
   const usages = usePromotionQuery(() => promotionApi.getUsageHistory({ passId: id }), [id]);
   const [qrOpen, setQrOpen] = useState(false);
   const [pending, setPending] = useState<PassStatusAction | null>(null);
@@ -81,7 +83,7 @@ const PassDetailPage = () => {
   const p = pass.state.data;
 
   return (
-    <PromotionsShell title={t.pass.detailTitle}>
+    <PromotionsShell action={'pass.view'} title={t.pass.detailTitle}>
       {pass.state.status === 'loading' && !p ? (
         <PromotionLoading />
       ) : pass.state.status === 'error' ? (
@@ -135,7 +137,7 @@ const PassDetailPage = () => {
                   >
                     {t.actions.viewQr}
                   </button>
-                  {p.effectiveStatus === 'ACTIVE' && p.customer.email && (
+                  {access.issue && p.effectiveStatus === 'ACTIVE' && p.customer.email && (
                     <button
                       type="button"
                       onClick={resendEmail}
@@ -146,7 +148,7 @@ const PassDetailPage = () => {
                       {t.pass.resendEmail}
                     </button>
                   )}
-                  {ACTIONS_BY_STATUS[p.status].map((a) => (
+                  {(access.issue ? ACTIONS_BY_STATUS[p.status] : []).map((a) => (
                     <button
                       key={a}
                       type="button"
@@ -214,7 +216,7 @@ const PassDetailPage = () => {
               ) : usages.state.status === 'error' ? (
                 <PromotionError message={promotionErrorMessage(usages.state.code)} onRetry={usages.reload} />
               ) : (
-                <UsageHistoryList items={usages.state.data ?? []} compact onCancel={cancel.request} />
+                <UsageHistoryList items={usages.state.data ?? []} compact onCancel={access.cancelUsage ? cancel.request : undefined} />
               )}
             </section>
           </div>

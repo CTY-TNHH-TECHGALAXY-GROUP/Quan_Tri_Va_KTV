@@ -10,7 +10,7 @@ import OrderSelectCard from '@/components/promotions/OrderSelectCard';
 import QRScanner from '@/components/promotions/QRScanner';
 import { PromotionEmpty, PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
-import { useAuth } from '@/lib/auth-context';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import { t } from '@/components/promotions/promotion.i18n';
 import { formatBenefit, formatVnd, orderCode, passBlockedCode, promotionErrorMessage } from '@/lib/promotion-format';
 import { OVERRIDE_NOTE_MAX, lookupFromUrl, useScanVoucher } from './ScanVoucher.logic';
@@ -25,9 +25,9 @@ const ScanVoucher = () => {
   const params = useSearchParams();
   const router = useRouter();
   const s = useScanVoucher(lookupFromUrl(params));
-  const { hasPermission } = useAuth();
+  const access = usePromotionAccess();
   // Fixed target (not history.back): a QR deep link opens this page with no history to return to.
-  const goBack = () => router.push(hasPermission('promotions') ? PROMOTION_PATHS.overview : PROMOTION_PATHS.dispatch);
+  const goBack = () => router.push(access.scanBack);
 
   return (
       <div className="mx-auto max-w-md pb-28">
@@ -177,7 +177,7 @@ const ScanVoucher = () => {
                         <div key={g.label} className="space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{g.label}</p>
                           {g.rows.map((o) => (
-                            <OrderSelectCard key={o.id} order={o} selected={s.selectedOrderId === o.id} onSelect={s.selectOrder} />
+                            <OrderSelectCard key={o.id} order={o} selected={s.selectedOrderId === o.id} onSelect={s.selectOrder} allowOverride={access.override} />
                           ))}
                         </div>
                       ))}
@@ -272,7 +272,7 @@ const ScanVoucher = () => {
 };
 
 const ScanVoucherPage = () => (
-  <PromotionsShell title={t.scan.title} bare permission="dispatch_board">
+  <PromotionsShell title={t.scan.title} bare action="scan.apply">
     <Suspense fallback={<PromotionLoading />}>
       <ScanVoucher />
     </Suspense>

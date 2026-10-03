@@ -10,6 +10,8 @@ interface OrderSelectCardProps {
   order: PromotionOrderCandidate;
   selected: boolean;
   onSelect: (id: string) => void;
+  /** User holds "Áp ngoại lệ" (promotions_override). Without it a NOT_ELIGIBLE order is shown but not selectable. */
+  allowOverride?: boolean;
 }
 
 const ELIGIBILITY_BADGE = {
@@ -23,9 +25,10 @@ const ELIGIBILITY_BADGE = {
  * all come from the server: BLOCKED is disabled; NOT_ELIGIBLE stays selectable
  * so the counter can apply it as an exception (with a mandatory reason).
  */
-const OrderSelectCard = ({ order, selected, onSelect }: OrderSelectCardProps) => {
+const OrderSelectCard = ({ order, selected, onSelect, allowOverride = false }: OrderSelectCardProps) => {
   const eligibility = orderEligibility(order);
-  const disabled = eligibility === 'BLOCKED';
+  const overridable = eligibility === 'NOT_ELIGIBLE' && order.canOverride !== false && allowOverride;
+  const disabled = eligibility === 'BLOCKED' || (eligibility === 'NOT_ELIGIBLE' && !overridable);
   const badge = ELIGIBILITY_BADGE[eligibility];
   const reasons = order.unmetReasons ?? [];
   const mainService = order.items.filter((i) => !i.isPromotion).map((i) => i.serviceName).join(', ');
@@ -88,6 +91,7 @@ const OrderSelectCard = ({ order, selected, onSelect }: OrderSelectCardProps) =>
               ))}
             </ul>
           )}
+          {eligibility === 'NOT_ELIGIBLE' && !overridable && <p className="mt-2 text-xs font-medium text-gray-600">{t.scan.overrideNoPermission}</p>}
           {disabled && order.blockedReasonCode && (
             <p className="mt-2 text-xs font-medium text-rose-600">{order.blockedReasonCode && order.blockedReasonCode in ERROR_MESSAGE ? promotionErrorMessage(order.blockedReasonCode) : (order.blockedReason ?? promotionErrorMessage(order.blockedReasonCode))}</p>
           )}

@@ -23,7 +23,7 @@ const PromotionsOverviewPage = () => {
   const { state, reload } = usePromotionQuery(() => promotionApi.getOverview(), []);
 
   return (
-    <PromotionsShell>
+    <PromotionsShell action={'pass.view'}>
       <header className="mb-5">
         <h1 className="text-2xl font-semibold text-gray-900">{t.overview.title}</h1>
         <p className="mt-1 text-sm text-gray-500">{t.overview.subtitle}</p>
