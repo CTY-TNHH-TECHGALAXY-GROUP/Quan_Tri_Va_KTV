@@ -165,6 +165,7 @@
 | `min_ktv_required` | integer | Số lượng nhân viên làm tối thiểu cho dịch vụ (Default: 1) |
 | `service_group` | text | Nhóm dịch vụ: `MAIN` (Chính), `ADDON` (Lẻ/Phụ), `COMBO`. Dùng để nội suy số khách. Default: `MAIN` |
 | `strengthConfig` | jsonb NOT NULL | Lực tay cho phép chọn khi đặt: `{"light":true,"medium":true,"strong":true}` (migration `20260924180000_services_strength_config`). Admin bật/tắt ở Menu dịch vụ. |
+| `is_promotion` | boolean NOT NULL | Dịch vụ do **Promotion Engine** tạo (`KM####`, category `PROMOTION`). Default `false`. Không tính vào phút đủ điều kiện khuyến mãi, ẩn khỏi popup Thêm dịch vụ. Migration `20261002120000_promotion_engine`. |
 
 ---
 
@@ -918,3 +919,97 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 **Index**:
 - `ux_office_once_per_day` — unique `(staff_id, work_date, criteria_id)` **WHERE `revoked_at IS NULL`**: mỗi lỗi chỉ trừ 1 lần/ngày, nhưng thu hồi xong thì chấm lại được.
 - `ix_office_staff_month` — `(staff_id, work_date)`.
+
+---
+
+## NHÓM 9: KHUYẾN MÃI (Promotion Engine) — migration `20261002120000_promotion_engine.sql`
+
+> Mọi quy tắc nằm trong RPC `promo_*` (SECURITY DEFINER, chỉ `service_role`). RLS bật, không policy. Plan: `plans/plan_promotion_engine_backend.md`, API: `plans/promotion_engine_api_contract.md`.
+
+### PromotionCampaigns
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `id` | uuid PK | |
+| `campaign_code` | text UNIQUE | VD `OCT_FREE30_2026` |
+| `name`, `description` | text | |
+| `benefit_type` | text | `FREE_MINUTES` / `PERCENT_DISCOUNT` / `FIXED_DISCOUNT` / `FREE_SERVICE`* / `FREE_UPGRADE`* (*chưa hỗ trợ apply) |
+| `benefit_value` | numeric > 0 | phút, %, hoặc VND |
+| `benefit_config` | jsonb | `{maxDiscountAmount, discountScope: ORDER\|QUALIFYING_ITEMS}` |
+| `benefit_service_id` | text FK → Services | Dịch vụ `KM####` engine tự tạo |
+| `valid_from`, `valid_until` | timestamptz | CHECK `valid_until > valid_from` |
+| `usage_type` | text | `ONE_TIME` / `LIMITED` / `UNLIMITED` |
+| `usage_limit` | int | lượt/pass khi `LIMITED` |
+| `max_usage_per_customer` | int NULL | |
+| `max_usage_per_order` | int ≥ 1 | default 1 |
+| `qualification_type` | text | `MIN_PAID_DURATION` / `MIN_ORDER_AMOUNT` / `SPECIFIC_SERVICE` / `MANUAL_ASSIGNMENT` / `CUSTOM` |
+| `qualification_value` | numeric | VD 90 (phút) |
+| `qualification_config` | jsonb | **Menu áp dụng** `{serviceIds, serviceIdPrefixes, serviceCategories}`. Admin chọn từ `promo_menu_catalog()` (Services thật). **[v3]** Dùng chung cho điều kiện phát, đơn được áp (`ORDER_MENU_NOT_ELIGIBLE`) và tiền tính giảm %. Rỗng = mọi menu. Category so khớp không phân biệt hoa thường, hiểu cả dạng `["Body"]` |
+| `assignment_mode` | text | `AUTO` (phát khi đơn DONE) / `MANUAL_ONLY` / `SPECIFIC_CUSTOMER` / `CUSTOMER_GROUP` |
+| `one_pass_per_customer` | bool | default true |
+| `voucher_prefix` | text | VD `OCT30` → mã `OCT30-X7K92A`. **[v9]** Để trống thì tự sinh từ `campaign_code` (`promo_derive_voucher_prefix`: đoạn chữ/số đầu, ≤ 8 ký tự, trùng thì thêm số), lưu một lần lúc tạo |
+| `status` | text | `DRAFT` → `ACTIVE` ⇄ `INACTIVE` → `ENDED` |
+| `apply_conditions` | jsonb | **[v7]** Điều kiện áp dụng, dùng chung cho áp và phát tự động: `{match: ALL\|ANY, conditions: [{menus, categories, serviceIds, minMinutes, minOrderAmount}]}`. Một dịch vụ gốc của đơn phải thoả mọi tiêu chí của 1 điều kiện; `minMinutes` tính trên **một** dịch vụ. `qualification_config` giờ là hợp của các tiêu chí, chỉ dùng cho nhãn |
+| `validity_type` | text | **[v2]** `CAMPAIGN_PERIOD` (cả khoảng campaign, VD theo tháng) / `DAYS_FROM_ISSUE` (N ngày từ lúc phát, không quá `valid_until`) |
+| `validity_days` | int | **[v2]** N ngày khi `DAYS_FROM_ISSUE` |
+| `created_by`, `created_at`, `updated_at` | | |
+
+### CustomerPromotionPasses (E-Voucher)
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `id` | uuid PK | |
+| `campaign_id` | uuid FK | |
+| `customer_id` | text FK → Customers | |
+| `voucher_code` | text UNIQUE | `<prefix>-<6 ký tự>` |
+| `qr_token` | text UNIQUE | 256-bit base64url, không chứa dữ liệu khách |
+| `status` | text | `ACTIVE` / `EXPIRED` / `SUSPENDED` / `CANCELLED` (không có REDEEMED) |
+| `benefit_type`, `benefit_value`, `usage_type`, `usage_limit`, `valid_from`, `valid_until`, `one_pass_per_customer` | | snapshot lúc phát |
+| `source_booking_id` | text FK → Bookings | đơn làm phát sinh (AUTO) |
+| `issue_source` | text | `AUTO` / `MANUAL` |
+| `issued_at`, `issued_by`, `status_reason`, `created_at`, `updated_at` | | |
+| `email_status` | text | **[v2]** Outbox e-voucher: `PENDING` / `SENDING` / `SENT` / `FAILED` / `SKIPPED` (khách không có email) |
+| `email_to`, `email_lang` | text | **[v2]** Email + ngôn ngữ (vi/en/cn/jp/kr) lúc gửi — lấy từ hồ sơ khách |
+| `email_attempts`, `email_last_error`, `email_claimed_at`, `email_sent_at` | | **[v2]** Tối đa 5 lần thử |
+| `reminder_status`, `reminder_attempts`, `reminder_claimed_at`, `reminder_sent_at` | | **[v2]** Email nhắc hết hạn: `NONE` / `SENDING` / `SENT` / `FAILED` |
+
+| `superseded_at`, `superseded_by` | timestamptz, uuid FK | **[v5]** Pass EXPIRED / USED_UP đã được thay bằng pass mới (phát lại). Đóng hẳn |
+
+**Index**: **[v5]** UNIQUE `(customer_id, campaign_id) WHERE one_pass_per_customer AND status <> 'CANCELLED' AND superseded_at IS NULL` (một pass **đang mở** mỗi khách mỗi chương trình; pass đã huỷ / đã thay là lịch sử); UNIQUE `(source_booking_id, campaign_id)`.
+**Trạng thái hiệu lực [v5]**: `promo_pass_effective_status` thêm `USED_UP` (ONE_TIME / LIMITED đã dùng đủ, tính theo lượt dùng chưa huỷ).
+
+### PromotionUsages
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `id` | uuid PK | |
+| `promotion_pass_id`, `campaign_id` | | |
+| `customer_id` | text NULL | **[v2]** Khách của **đơn** (voucher dùng chung được); NULL khi đơn chưa gắn khách |
+| `pass_owner_id` | text | **[v2]** Chủ voucher |
+| `booking_id` | text FK → Bookings | |
+| `booking_item_id` | text | item `KM####` đã thêm vào đơn (`options.promotionUsageId` trỏ ngược lại) |
+| `benefit_type`, `benefit_value` | | |
+| `applied_minutes` | int | phút KM |
+| `conditions_overridden` | bool | **[v8]** Quầy áp ngoại lệ khi đơn chưa đủ điều kiện |
+| `override_reasons` | jsonb | **[v8]** Các dòng lý do không đủ điều kiện tại lúc áp |
+| `override_note` | text | **[v8]** Lý do quầy ghi (bắt buộc khi áp ngoại lệ) |
+| `discount_amount` | numeric | VND đã giảm |
+| `staff_id` | text | lấy từ session |
+| `status` | text | `APPLIED` → `COMPLETED` (đơn DONE) / `CANCELLED` |
+| `applied_at`, `completed_at`, `cancelled_at`, `cancel_reason` | | |
+
+**Index**: UNIQUE `(promotion_pass_id, booking_id) WHERE status <> 'CANCELLED'` → 1 lần/đơn kể cả khi 2 quầy bấm cùng lúc.
+
+> **[v10]** Bảng `PromotionIssueErrors` đã bỏ (user 04/10/2026: giữ 3 bảng). Lỗi trigger ghi bằng `RAISE WARNING` → Supabase → Logs → Postgres, tìm `promo trigger`.
+
+**Triggers**: `tr_promo_on_booking_status` (Bookings → DONE: usage COMPLETED + phát pass AUTO; → CANCELLED: usage CANCELLED), `tr_promo_on_item_cancel` / `tr_promo_on_item_delete` (item KM bị huỷ/xoá → usage CANCELLED).
+**SystemConfigs [v2]**: `promotion_auto_issue_enabled` (mặc định `false` — trigger không tự phát), `promotion_email_enabled` (`true`), `promotion_expiry_reminder_days` (`3`). Ngày làm việc của danh sách đơn áp voucher dùng `spa_day_cutoff_hours` (mặc định 7).
+**Vercel cron [v2]**: `/api/cron/promotion-emails` mỗi 5 phút — gửi e-voucher đang chờ + email nhắc hạn (`promo_claim_email_batch`, SKIP LOCKED).
+**SystemConfigs [v3]**: `promotion_menu_labels` = `{"NHP":"Menu VIP","NHS":"Menu Standard","NHT":"Menu Deep Body"}` (tên hiển thị của menu theo prefix mã dịch vụ).
+**SystemConfigs [v4]**: `customer_returning_min_visits` = `2` (Khách cũ ≥ 2 lượt — lượt = đơn cha đã hoàn tất).
+**RPC [v8]**: `promo_apply_pass(..., p_override_conditions, p_override_note)` — chỉ vượt được `ORDER_CONDITION_NOT_MET`; `promo_unmet_reasons` (lý do tiếng Việt), `promo_check_apply_ex`, `promo_compute_discount_ex`.
+**RPC [v7]**: `promo_evaluate_conditions(booking, conditions)` (nguồn duy nhất cho áp, danh sách đơn, giảm %, phát tự động), `promo_initial_items` (dịch vụ khách chọn khi gửi đơn — bỏ add-on gọi sau), `promo_conditions_summary`, `promo_normalize_conditions`, `promo_conditions_from_legacy`. Mã chặn `ORDER_CONDITION_NOT_MET`.
+**RPC [v6]**: `promo_scope_labels(config)` → tên hiển thị của phạm vi menu (theo `promotion_menu_labels`; category phủ hết menu thì bỏ đuôi). Trả trong public voucher `menuLabels` và campaign `applicableMenus.labels`.
+**RPC [v4]**: `promo_customer_stats(ids[])` (chỉ số khách cho bộ lọc voucher: lượt ghé hoàn tất, chi tiêu, menu VIP, khách lẻ/nhóm, quốc tịch, ngôn ngữ, hạng NEW/RETURNING; ghép đơn giống CRM), `promo_customer_candidates`, `promo_issue_bulk`, `promo_real_email` (bỏ email ảo `@guest.com` — cùng quy tắc `isDummyEmail`).
+**RPC [v3]**: `promo_menu_catalog()` (menu / category / dịch vụ đang bật), `promo_public_voucher_by_token(token)` (dữ liệu thẻ cho trang công khai `/voucher?t=`, không có SĐT / email), `promo_service_in_scope`, `promo_service_categories`.
+**RPC đọc [v2]**: `promo_order_candidates` (đơn mở cả spa trong ngày làm việc + `canApply` từ `promo_check_apply`), `promo_search_passes`, `promo_list_usages`, `promo_search_customers`, `promo_overview`, `promo_public_vouchers_by_email` (Web Booking History).
+**Cron**: `promo_expire_passes_job` 00:05 VN — pass quá hạn → EXPIRED, campaign quá hạn → ENDED (apply vẫn luôn kiểm `now()`).
+**Item KM trên `BookingItems`**: `options = {isPromotion, promotionUsageId, promotionPassId, promotionCampaignCode, duration, discountAmount, isAddon, isPaid}`. FREE_MINUTES: giá 0, `WAITING`. Giảm giá: dịch vụ `is_utility`, giá âm, `DONE`, `Bookings.totalAmount` trừ tương ứng.
+

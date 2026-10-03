@@ -23,6 +23,9 @@ npx ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/qa
 | `qa_04_multi_service_order.ts` | #4 Một đơn nhiều dịch vụ, nhận/từ chối từng cái | Ghi rồi xoá (đơn `QA-MULTI-04`) |
 | `qa_05_skip_limit.ts` | #5 Giới hạn bỏ qua dọn phòng lần thứ 3 | Ghi rồi xoá (đơn `QA-SKIP-05`) |
 | `qa_06_feature_flags.ts` | #6 Bật/tắt riêng từng tính năng, không ảnh hưởng chéo | Chỉ đọc |
+| `qa_promotion_engine.ts` | Promotion Engine: phát voucher, áp vào đơn, huỷ, giảm giá, đồng thời (cần `PROMO_QA_DB_URL`, từ chối DB production) | Ghi rồi xoá (tiền tố `QAPROMO…`) |
+| `qa_promotion_email.ts` | Render e-voucher email 5 ngôn ngữ + QR PNG cục bộ, không lộ token trong nội dung | Không |
+| `qa_promotion_permissions.ts` | Phân quyền khuyến mãi: bảng thao tác → quyền, mọi route có guard, không còn `dispatch_board` | Không |
 | `qa_07_office_bonus_wallet.ts` | Ví Thu Nhập + Ví Điểm tính theo điểm Office | Chỉ đọc |
 | `qa_10_bonus_in_turn.ts` | Thưởng 4★ nằm trong tiền tua, thuế tính trên (tua + thưởng), không trả hai lần | Chỉ đọc |
 
