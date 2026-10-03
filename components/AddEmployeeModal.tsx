@@ -65,7 +65,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
             if (name === 'role') {
                 if (value === 'SUPPORT') nextData.position = 'Nhân viên Hậu Cần';
                 else if (value === 'TECHNICIAN') nextData.position = 'Kỹ Thuật Viên';
-                else if (value === 'RECEPTION') nextData.position = 'Lễ Tân';
+                else if (value === 'RECEPTIONIST') nextData.position = 'Lễ Tân';
                 else if (value === 'MANAGER') nextData.position = 'Quản Lý';
                 else if (value === 'ADMIN') nextData.position = 'Quản Trị Viên';
             }
@@ -144,7 +144,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModa
                                         <select name="role" value={formData.role} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-indigo-50 font-bold text-indigo-700">
                                             <option value="TECHNICIAN">Kỹ Thuật Viên</option>
                                             <option value="SUPPORT">Nhân viên Hậu Cần</option>
-                                            <option value="RECEPTION">Lễ Tân</option>
+                                            <option value="RECEPTIONIST">Lễ Tân</option>
                                             <option value="MANAGER">Quản Lý</option>
                                             <option value="ADMIN">Admin (Toàn quyền)</option>
                                         </select>

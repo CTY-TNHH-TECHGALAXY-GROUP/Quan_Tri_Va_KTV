@@ -245,7 +245,7 @@ export async function GET(request: Request) {
     const username = (user.email || '').split('@')[0];
     const { data: dbUser } = await adminClient.from('Users').select('code, role').ilike('username', username).single();
     const role = (dbUser?.role || '').toUpperCase();
-    const isManagerOrAdmin = role === 'ADMIN' || role === 'DEV' || role === 'MANAGER' || role === 'RECEPTIONIST' || role === 'LEAD_RECEPTIONIST';
+    const isManagerOrAdmin = role === 'ADMIN' || role === 'DEV' || role === 'MANAGER' || role === 'RECEPTIONIST' || role === 'LEAD_RECEPTIONIST' || role === 'RECEPTION';
 
     let targetStaffId: string | null = null;
     if (isManagerOrAdmin) {

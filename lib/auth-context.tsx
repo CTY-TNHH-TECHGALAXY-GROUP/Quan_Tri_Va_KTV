@@ -269,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (rawRole === 'ADMIN') roleId = 'admin';
         else if (rawRole === 'DEV') roleId = 'dev';
         else if (rawRole === 'MANAGER') roleId = 'branch_manager';
-        else if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST') roleId = 'reception';
+        else if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST' || rawRole === 'RECEPTION') roleId = 'reception';
         else if (rawRole === 'TECHNICIAN' || rawRole === 'KTV') roleId = 'ktv';
         else if (rawRole === 'SUPPORT') roleId = 'support';
 
