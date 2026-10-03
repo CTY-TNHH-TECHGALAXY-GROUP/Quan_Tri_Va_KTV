@@ -75,7 +75,7 @@ const CampaignDetailPage = () => {
             <div className="space-y-5">
             <section className="flex flex-col items-center gap-3 rounded-3xl border border-gray-100 bg-gradient-to-b from-white to-indigo-50/40 p-5 shadow-sm sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
-              <VoucherCard3D data={voucherCardFromCampaign(c)} />
+              <VoucherCard3D data={voucherCardFromCampaign(c, menuLabel)} />
               <p className="text-center text-xs text-gray-500">{t.voucher.previewHint}</p>
             </section>
             <div className="space-y-5">

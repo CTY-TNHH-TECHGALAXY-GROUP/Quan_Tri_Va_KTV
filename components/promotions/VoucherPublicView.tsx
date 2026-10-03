@@ -47,11 +47,11 @@ interface VoucherPublicViewProps {
   langs: PromotionEmailLang[];
 }
 
-const menusText = (v: PublicVoucher, s: VoucherPageStrings): string => {
-  const m = v.applicableMenus;
-  if (m.allMenus || (!m.menus.length && !m.categories.length && !m.serviceIds.length)) return s.allMenus;
-  const names = v.menuLabels?.length ? v.menuLabels : m.categories.length ? m.categories : m.menus;
-  return names.join(', ');
+/** Same sentence as on the card: "Dành cho Menu VIP từ 90 phút trở lên". */
+const conditionText = (v: PublicVoucher, lang: PromotionEmailLang, s: VoucherPageStrings): string => {
+  const c = voucherCardFromPublic(v).conditions;
+  if (!c || (!c.menuLabels.length && !c.minPaidMinutes)) return s.allMenus;
+  return VOUCHER_CARD_LABELS[lang].condition(c.menuLabels, c.minPaidMinutes);
 };
 
 /**
@@ -111,7 +111,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <dt className="shrink-0 text-gray-500">{strings.applicableMenus}</dt>
-                <dd className="text-right font-medium">{menusText(view.voucher, strings)}</dd>
+                <dd className="text-right font-medium">{conditionText(view.voucher, lang, strings)}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <dt className="text-gray-500">{VOUCHER_CARD_LABELS[lang].statusLabel}</dt>

@@ -2,14 +2,15 @@
 
 import React, { Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, Camera, CheckCircle2, Keyboard, Loader2, RefreshCw, ScanLine, Search, WifiOff } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Keyboard, Loader2, RefreshCw, ScanLine, Search, WifiOff } from 'lucide-react';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import PromotionPassCard from '@/components/promotions/PromotionPassCard';
 import OrderSelectCard from '@/components/promotions/OrderSelectCard';
 import QRScanner from '@/components/promotions/QRScanner';
 import { PromotionEmpty, PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
+import { useAuth } from '@/lib/auth-context';
 import { t } from '@/components/promotions/promotion.i18n';
 import { formatBenefit, formatVnd, orderCode, passBlockedCode, promotionErrorMessage } from '@/lib/promotion-format';
 import { lookupFromUrl, useScanVoucher } from './ScanVoucher.logic';
@@ -21,14 +22,28 @@ const primaryBtn =
 
 const ScanVoucher = () => {
   const params = useSearchParams();
+  const router = useRouter();
   const s = useScanVoucher(lookupFromUrl(params));
+  const { hasPermission } = useAuth();
+  // Fixed target (not history.back): a QR deep link opens this page with no history to return to.
+  const goBack = () => router.push(hasPermission('promotions') ? PROMOTION_PATHS.overview : PROMOTION_PATHS.dispatch);
 
   return (
       <div className="mx-auto max-w-md pb-28">
-        <h1 className="mb-4 flex items-center gap-2 text-xl font-semibold text-gray-900">
-          <ScanLine size={22} className="text-indigo-600" aria-hidden />
-          {t.scan.title}
-        </h1>
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goBack}
+            aria-label={t.actions.back}
+            className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100"
+          >
+            <ArrowLeft size={22} aria-hidden />
+          </button>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
+            <ScanLine size={22} className="text-indigo-600" aria-hidden />
+            {t.scan.title}
+          </h1>
+        </div>
 
         {s.step.name === 'scan' && (
           <div className="space-y-4">

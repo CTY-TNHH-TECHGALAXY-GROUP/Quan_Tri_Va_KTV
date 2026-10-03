@@ -81,6 +81,8 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
   const inactive = data.status !== null && data.status !== 'ACTIVE';
   const code = data.voucherCode ?? `${data.voucherPrefix || 'CODE'}-${'•'.repeat(PLACEHOLDER_CODE_LENGTH)}`;
   const benefitLabel = L.benefit(data.benefit);
+  const c = data.conditions;
+  const conditionText = c && (c.menuLabels.length || c.minPaidMinutes) ? L.condition(c.menuLabels, c.minPaidMinutes) : null;
   const flipLabel = flipped ? L.showFront : L.showBack;
 
   return (
@@ -127,7 +129,11 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
                   <p className="mt-0.5 bg-gradient-to-r from-amber-100 via-amber-300 to-amber-100 bg-clip-text text-[clamp(26px,9vw,40px)] font-bold uppercase leading-none tracking-tight text-transparent">
                     {benefitLabel}
                   </p>
-                  <p className="mt-1 text-[10px] uppercase tracking-[0.24em] text-white/60">{L.complimentary}</p>
+                  {conditionText ? (
+                    <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-snug text-amber-100/90">{conditionText}</p>
+                  ) : (
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.24em] text-white/60">{L.complimentary}</p>
+                  )}
                 </div>
 
                 {/* Code gets its own full line: it is what staff read back to the customer */}

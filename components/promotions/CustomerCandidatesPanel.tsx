@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Filter, Loader2, MailWarning, RotateCcw, Search, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Crown, Filter, Loader2, MailWarning, RotateCcw, Search, X } from 'lucide-react';
 import type { CustomerCandidate, CustomerCandidateFilter, PromotionCampaign } from '@/lib/types/promotion-client';
 import { BULK_ISSUE_MAX } from '@/lib/services/promotionApi';
 import { formatBenefit, formatPromoDate, formatVnd, promotionErrorMessage } from '@/lib/promotion-format';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CANDIDATE_PAGE_SIZE, useCustomerCandidates } from './CustomerCandidates.logic';
+import { DateControl, SelectControl } from './FormControls';
 import { PromotionEmpty, PromotionError, PromotionLoading } from './PromotionStates';
 import { CUSTOMER_TIER_LABEL, GENDER_LABEL, GUEST_TYPE_LABEL, LANGUAGE_LABEL, t } from './promotion.i18n';
 
@@ -35,14 +36,14 @@ const Select = <V extends string>({
   const entries: [string, string][] = Array.isArray(options) ? options.map((o) => [o, o]) : Object.entries(options);
   return (
     <L label={label}>
-      <select className={control} value={value ?? ''} onChange={(e) => onChange((e.target.value || undefined) as V | undefined)}>
+      <SelectControl value={value ?? ''} onChange={(e) => onChange((e.target.value || undefined) as V | undefined)}>
         <option value="">{t.assign.any}</option>
         {entries.map(([k, v]) => (
           <option key={k} value={k}>
             {v}
           </option>
         ))}
-      </select>
+      </SelectControl>
     </L>
   );
 };
@@ -136,10 +137,10 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
           {f.onlyQualified && !noCondition && (
             <>
               <L label={`${t.assign.qualifiedRange} — ${t.assign.from}`}>
-                <input type="date" className={control} value={f.qualifiedFrom ?? ''} onChange={(e) => set('qualifiedFrom', e.target.value)} />
+                <DateControl value={f.qualifiedFrom ?? ''} max={f.qualifiedTo} onChange={(v) => set('qualifiedFrom', v)} />
               </L>
               <L label={`${t.assign.qualifiedRange} — ${t.assign.to}`}>
-                <input type="date" className={control} value={f.qualifiedTo ?? ''} onChange={(e) => set('qualifiedTo', e.target.value)} />
+                <DateControl value={f.qualifiedTo ?? ''} min={f.qualifiedFrom} onChange={(v) => set('qualifiedTo', v)} />
               </L>
               {s.rangeError && (
                 <p role="alert" className="text-xs font-medium text-rose-600 sm:col-span-2">
@@ -159,10 +160,10 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
           </button>
           <div className={showMore ? 'contents' : 'hidden xl:contents'}>
           <L label={`${t.assign.visitRange} — ${t.assign.from}`}>
-            <input type="date" className={control} value={f.visitFrom ?? ''} onChange={(e) => set('visitFrom', e.target.value)} />
+            <DateControl value={f.visitFrom ?? ''} max={f.visitTo} onChange={(v) => set('visitFrom', v)} />
           </L>
           <L label={`${t.assign.visitRange} — ${t.assign.to}`}>
-            <input type="date" className={control} value={f.visitTo ?? ''} onChange={(e) => set('visitTo', e.target.value)} />
+            <DateControl value={f.visitTo ?? ''} min={f.visitFrom} onChange={(v) => set('visitTo', v)} />
           </L>
           <L label={t.assign.minVisits} hint={t.assign.minVisitsHint}>
             <input type="number" inputMode="numeric" min={1} className={control} value={f.minVisits ?? ''} onChange={(e) => set('minVisits', num(e.target.value))} />
@@ -213,7 +214,10 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2">
             <div className="flex items-center gap-1">
               {s.rows.length > 0 && <RowCheck on={s.allOnPageSelected} onClick={s.togglePage} label={t.assign.selectPage} />}
-              <span className="text-sm font-semibold text-gray-900">{t.assign.results(page!.total)}</span>
+              <span className="text-sm">
+                <span className="font-semibold text-gray-900">{t.assign.results(page!.total)}</span>
+                {s.rows.length > 0 && <span className="ml-2 text-xs text-gray-500">· {t.assign.selectPage}</span>}
+              </span>
             </div>
             {page!.excludedNoEmail > 0 && (
               <span className="inline-flex items-center gap-1 text-xs text-amber-700">
@@ -255,9 +259,9 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
                         <RowCheck on={s.selected.has(c.id)} disabled={c.alreadyHasPass} onClick={() => s.toggle(c.id)} label={c.name} />
                       </td>
                       <td className="px-3 py-2">
-                        <p className="font-medium text-gray-900">
+                        <p className="flex flex-wrap items-center gap-1.5 font-medium text-gray-900">
                           {c.name}
-                          {c.alreadyHasPass && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600">{t.assign.alreadyHasPass}</span>}
+                          <CandidateTags c={c} />
                         </p>
                         <p className="text-xs text-gray-500">{[c.phone, c.email].filter(Boolean).join(' · ')}</p>
                       </td>
@@ -337,13 +341,26 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
   );
 };
 
+/** VIP-menu tag (customer used the VIP menu) + "already has a voucher" tag. */
+const CandidateTags = ({ c }: { c: CustomerCandidate }) => (
+  <>
+    {(c.vipMenuUsed ?? c.vipMenuCount > 0) && (
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+        <Crown size={12} aria-hidden />
+        {t.assign.vipTag}
+      </span>
+    )}
+    {c.alreadyHasPass && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600">{t.assign.alreadyHasPass}</span>}
+  </>
+);
+
 const CandidateCard = ({ c, on, onToggle }: { c: CustomerCandidate; on: boolean; onToggle: () => void }) => (
   <li onClick={onToggle} className={`flex items-start gap-1 px-1 py-2 ${c.alreadyHasPass ? 'opacity-50' : `cursor-pointer ${on ? 'bg-indigo-50/60' : ''}`}`}>
     <RowCheck on={on} disabled={c.alreadyHasPass} onClick={onToggle} label={c.name} />
     <div className="min-w-0 flex-1 py-2 pr-3">
-      <p className="font-medium text-gray-900">
+      <p className="flex flex-wrap items-center gap-1.5 font-medium text-gray-900">
         {c.name}
-        {c.alreadyHasPass && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600">{t.assign.alreadyHasPass}</span>}
+        <CandidateTags c={c} />
       </p>
       <p className="break-all text-xs text-gray-500">{[c.phone, c.email].filter(Boolean).join(' · ')}</p>
       <p className="mt-1 text-xs text-gray-600">

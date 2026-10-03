@@ -31,7 +31,7 @@ import {
 import { ERROR_MESSAGE, SUPPORTED_ASSIGNMENTS, t as i18n } from '../../components/promotions/promotion.i18n';
 import { qualifiedRangeError } from '../../components/promotions/CustomerCandidates.logic';
 import { VOUCHER_CARD_LABELS } from '../../components/promotions/voucher-card.i18n';
-import { voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
+import { voucherCardFromCampaign, voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
 import { BULK_ISSUE_MAX } from '../../lib/types/promotion-client';
 import type { CampaignFormInput, PromotionErrorCode, PromotionPassWithQr } from '../../lib/types/promotion-client';
 
@@ -305,6 +305,15 @@ const main = async () => {
   check('public DTO → card (status from effectiveStatus, no QR when unusable)', pub.status === 'USED_UP' && pub.qrPayload === null && !pub.isTemplate);
   check('card text in 5 languages', VOUCHER_CARD_LABELS.vi.benefit({ type: 'FREE_MINUTES', value: 30 }) === '+30 phút' && VOUCHER_CARD_LABELS.en.benefit({ type: 'FREE_MINUTES', value: 30 }) === '+30 min' && VOUCHER_CARD_LABELS.jp.usage({ type: 'UNLIMITED', limit: null, maxPerOrder: 1 }) === '回数無制限' && VOUCHER_CARD_LABELS.kr.status.USED_UP === '사용 완료' && VOUCHER_CARD_LABELS.cn.voucherCode === '券码');
   check('every language has every status', Object.values(VOUCHER_CARD_LABELS).every((l) => ['ACTIVE', 'NOT_STARTED', 'INACTIVE', 'EXPIRED', 'USED_UP', 'SUSPENDED', 'CANCELLED'].every((s) => !!l.status[s as keyof typeof l.status])));
+
+  console.log('\n— Condition line on the e-voucher');
+  check('vi: "Dành cho Menu VIP từ 90 phút trở lên"', VOUCHER_CARD_LABELS.vi.condition(['Menu VIP'], 90) === 'Dành cho Menu VIP từ 90 phút trở lên');
+  check('vi: menu only / minutes only', VOUCHER_CARD_LABELS.vi.condition(['Menu VIP'], null) === 'Dành cho Menu VIP' && VOUCHER_CARD_LABELS.vi.condition([], 90) === 'Dành cho mọi dịch vụ từ 90 phút trở lên');
+  check('en / jp condition', VOUCHER_CARD_LABELS.en.condition(['VIP Menu'], 90) === 'For VIP Menu, 90+ min' && VOUCHER_CARD_LABELS.jp.condition(['VIP'], 90) === 'VIP（90分以上）対象');
+  const tpl = voucherCardFromCampaign(unwrap(await api.getCampaign('CMP_OCT30')), (code) => (code === 'NHP' ? 'Menu VIP' : code));
+  check('campaign template: menu label + 90 min', tpl.conditions?.menuLabels.join() === 'Menu VIP' && tpl.conditions?.minPaidMinutes === 90);
+  check('issued pass carries conditions', unwrap(await api.getPass('PASS_001')).conditions?.minPaidMinutes === 90);
+  check('manual campaign (no rule, all menus) → no condition line', (() => { const c = voucherCardFromCampaign(campaigns.find((x) => x.id === 'CMP_TEN10')!).conditions; return !!c && c.menuLabels.length === 0 && c.minPaidMinutes === null; })());
 
   console.log('\n— Every error code has a staff message');
   const codes: PromotionErrorCode[] = ['CAMPAIGN_LOCKED', 'CUSTOMER_NO_EMAIL', 'EMAIL_SEND_FAILED', 'ACCOUNT_LOCKED', 'INTERNAL_ERROR', 'USAGE_COMPLETED', 'PROMOTION_ITEM_IN_SERVICE'];

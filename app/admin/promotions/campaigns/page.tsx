@@ -21,7 +21,8 @@ const CampaignListPage = () => {
 
   return (
     <PromotionsShell title={t.campaign.listTitle}>
-      <h1 className="mb-4 text-xl font-semibold text-gray-900">{t.campaign.listTitle}</h1>
+      <h1 className="text-xl font-semibold text-gray-900">{t.campaign.listTitle}</h1>
+      <p className="mb-4 mt-1 text-sm text-gray-500">{t.campaign.listSubtitle}</p>
       {state.status === 'loading' && !state.data ? (
         <PromotionLoading />
       ) : state.status === 'error' ? (

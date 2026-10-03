@@ -119,3 +119,13 @@ B đã khớp với `plans/promotion_engine_api_contract.md`, gồm cả mục 3
 
 1. **Tên menu cho trang khách:** `PromotionPublicVoucherDto.applicableMenus.menus` chỉ có mã (`NHP`). B đã chừa field `menuLabels?: string[]`; nhờ A trả tên menu để khách không thấy mã. Chưa có thì trang hiện tên category, rồi mới tới mã.
 2. **Số đếm "hết hạn trong 7 ngày":** chưa có trong `overview`. Có thì B hiện con số trên nút lọc nhanh.
+
+## 9. Điều kiện áp dụng in trên e-voucher (03/10/2026)
+
+User muốn thẻ e-voucher ghi rõ điều kiện, VD **"Dành cho Menu VIP từ 90 phút trở lên"**. B đã làm phần hiển thị, đủ 5 ngôn ngữ, dựng từ `applicableMenus` + `qualification` (MIN_PAID_DURATION).
+
+**Cần A:**
+1. **Pass (admin) và `PromotionPublicVoucherDto`:** thêm `conditions: { menuLabels: string[], minPaidMinutes: number | null }`. Bản công khai thì chỉ cần thêm `minPaidMinutes`, vì `menuLabels` đã xin ở mục 8. Chưa có field này thì thẻ của voucher thật chỉ hiện "Ưu đãi miễn phí"; thẻ mẫu của chương trình thì đã hiện đủ.
+2. **Quy tắc lúc áp voucher — cần A chốt:** hiện `promo_check_apply` chỉ chặn theo menu (`ORDER_MENU_NOT_ELIGIBLE`), không kiểm số phút. Nếu thẻ ghi "từ 90 phút trở lên" mà đơn 60 phút vẫn áp được thì quầy và khách sẽ hiểu sai.
+   - **Khuyến nghị:** kiểm thêm `paid_qualifying_minutes ≥ qualification_value` lúc áp, trả mã mới `ORDER_MIN_DURATION_NOT_MET`. B sẽ thêm câu tiếng Việt cho mã này.
+   - Nếu không kiểm lúc áp thì B bỏ phần "từ N phút" khỏi thẻ, chỉ ghi menu.

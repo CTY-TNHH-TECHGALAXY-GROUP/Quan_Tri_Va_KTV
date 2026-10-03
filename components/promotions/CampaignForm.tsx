@@ -12,6 +12,7 @@ import type {
 } from '@/lib/types/promotion-client';
 import { promotionApi } from '@/lib/services/promotionApi';
 import { useCampaignForm, type CampaignFormErrors } from './CampaignForm.logic';
+import { DateControl, SelectControl } from './FormControls';
 import { usePromotionQuery } from './usePromotionQuery';
 import VoucherCard3D from './VoucherCard3D';
 import { voucherCardFromForm } from './VoucherCard3D.logic';
@@ -104,7 +105,7 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
         <p className="mb-4 mt-1 text-xs text-gray-500">{t.voucher.previewHint}</p>
         <div className="flex justify-center">
-          <VoucherCard3D data={voucherCardFromForm(form)} />
+          <VoucherCard3D data={voucherCardFromForm(form, (code) => menus.state.data?.find((m) => m.code === code)?.label ?? code)} />
         </div>
       </aside>
 
@@ -149,8 +150,8 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
 
         <Section title={t.form.sectionBenefit}>
           <Field label={t.form.benefitType} error={shownErrors.benefitType}>
-            <select
-              className={inputClass(!!shownErrors.benefitType, lockRules)}
+            <SelectControl
+              invalid={!!shownErrors.benefitType}
               value={form.benefitType}
               disabled={lockRules}
               onChange={(e) => set('benefitType', e.target.value as PromotionBenefitType)}
@@ -161,7 +162,7 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
                   {!SUPPORTED_BENEFIT_TYPES.includes(b) ? ` (${t.form.benefitComingSoon})` : ''}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </Field>
           <Field label={benefitValueLabel} error={shownErrors.benefitValue}>
             <input
@@ -197,19 +198,19 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
 
         <Section title={t.form.sectionValidity}>
           <Field label={t.form.validFrom} error={shownErrors.validFrom}>
-            <input type="date" className={inputClass(!!shownErrors.validFrom, lockRules)} disabled={lockRules} value={form.validFrom} onChange={(e) => set('validFrom', e.target.value)} />
+            <DateControl invalid={!!shownErrors.validFrom} disabled={lockRules} value={form.validFrom} onChange={(v) => set('validFrom', v)} />
           </Field>
           <Field label={t.form.validUntil} error={shownErrors.validUntil}>
-            <input type="date" className={inputClass(!!shownErrors.validUntil)} value={form.validUntil} min={form.validFrom || undefined} onChange={(e) => set('validUntil', e.target.value)} />
+            <DateControl invalid={!!shownErrors.validUntil} value={form.validUntil} min={form.validFrom || undefined} onChange={(v) => set('validUntil', v)} />
           </Field>
           <Field label={t.form.validityType}>
-            <select className={inputClass(false, lockRules)} disabled={lockRules} value={form.validityType} onChange={(e) => set('validityType', e.target.value as PromotionValidityType)}>
+            <SelectControl invalid={false} disabled={lockRules} value={form.validityType} onChange={(e) => set('validityType', e.target.value as PromotionValidityType)}>
               {VALIDITY_TYPES.map((v) => (
                 <option key={v.value} value={v.value}>
                   {v.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </Field>
           {form.validityType === 'DAYS_FROM_ISSUE' && (
             <Field label={t.form.validityDaysLabel} hint={t.form.validityDaysHint} error={shownErrors.validityDays}>
@@ -229,13 +230,13 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
 
         <Section title={t.form.sectionUsage}>
           <Field label={t.form.usageType}>
-            <select className={inputClass(false, lockRules)} disabled={lockRules} value={form.usageType} onChange={(e) => set('usageType', e.target.value as PromotionUsageType)}>
+            <SelectControl invalid={false} disabled={lockRules} value={form.usageType} onChange={(e) => set('usageType', e.target.value as PromotionUsageType)}>
               {USAGE_TYPES.map((u) => (
                 <option key={u} value={u}>
                   {USAGE_TYPE_LABEL[u]}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </Field>
           {form.usageType === 'LIMITED' && (
             <Field label={t.form.usageLimit} hint={t.form.usageLimitHint} error={shownErrors.usageLimit}>
@@ -265,14 +266,14 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
 
         <Section title={t.form.sectionEligibility}>
           <Field label={t.form.qualificationType}>
-            <select className={inputClass(false, lockRules)} disabled={lockRules} value={form.qualificationType} onChange={(e) => set('qualificationType', e.target.value as PromotionQualificationType)}>
+            <SelectControl invalid={false} disabled={lockRules} value={form.qualificationType} onChange={(e) => set('qualificationType', e.target.value as PromotionQualificationType)}>
               {QUALIFICATION_TYPES.map((q) => (
                 <option key={q} value={q} disabled={!SUPPORTED_QUALIFICATIONS.includes(q)}>
                   {QUALIFICATION_LABEL[q]}
                   {!SUPPORTED_QUALIFICATIONS.includes(q) ? ` (${t.form.benefitComingSoon})` : ''}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </Field>
           {form.qualificationType === 'MIN_PAID_DURATION' && (
             <Field label={t.form.minPaidDuration} hint={t.campaign.eligibleServicesNote} error={shownErrors.qualificationValue}>
@@ -324,14 +325,14 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
           </fieldset>
 
           <Field label={t.form.assignmentMode} error={shownErrors.assignmentMode}>
-            <select className={inputClass(!!shownErrors.assignmentMode, lockRules)} disabled={lockRules} value={form.assignmentMode} onChange={(e) => set('assignmentMode', e.target.value as PromotionAssignmentMode)}>
+            <SelectControl invalid={!!shownErrors.assignmentMode} disabled={lockRules} value={form.assignmentMode} onChange={(e) => set('assignmentMode', e.target.value as PromotionAssignmentMode)}>
               {ASSIGNMENT_MODES.map((a) => (
                 <option key={a} value={a} disabled={!SUPPORTED_ASSIGNMENTS.includes(a)}>
                   {ASSIGNMENT_LABEL[a]}
                   {!SUPPORTED_ASSIGNMENTS.includes(a) ? ` (${DISABLED_ASSIGNMENT_NOTE[a] ?? t.form.benefitComingSoon})` : ''}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </Field>
         </Section>
 

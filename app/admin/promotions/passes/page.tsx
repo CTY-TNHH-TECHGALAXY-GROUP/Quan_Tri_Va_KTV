@@ -14,6 +14,7 @@ import { promotionApi } from '@/lib/services/promotionApi';
 import { formatPromoDate, formatUsedCount, promotionErrorMessage } from '@/lib/promotion-format';
 import type { PassGroup, PassListFilter, PromotionOverviewStats, PromotionPass, PromotionPassWithQr } from '@/lib/types/promotion-client';
 import { CalendarClock, ChevronLeft } from 'lucide-react';
+import { SelectControl } from '@/components/promotions/FormControls';
 import VoucherCard3D from '@/components/promotions/VoucherCard3D';
 import { voucherCardFromPass } from '@/components/promotions/VoucherCard3D.logic';
 
@@ -26,7 +27,6 @@ const GROUPS: { id: PassGroup; label: string; hint: string; count: (o: Promotion
 ];
 const isGroup = (v: string | null): v is PassGroup => v === 'ACTIVE' || v === 'PAST';
 
-const selectClass = 'min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm focus:border-indigo-400 focus:outline-none';
 
 /** Status + "re-issued" tag for closed passes that were replaced by a new one. */
 const PassBadge = ({ p }: { p: PromotionPass }) => (
@@ -82,7 +82,8 @@ const PassList = () => {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-semibold text-gray-900">{t.pass.listTitle}</h1>
+      <h1 className="text-xl font-semibold text-gray-900">{t.pass.listTitle}</h1>
+      <p className="mb-4 mt-1 text-sm text-gray-500">{t.pass.listSubtitle}</p>
 
       {/* Monitoring tabs: active / paused / past vouchers */}
       <div role="tablist" aria-label={t.pass.listTitle} className="mb-3 grid grid-cols-2 gap-2">
@@ -108,12 +109,14 @@ const PassList = () => {
           );
         })}
       </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-gray-500">{past ? t.pass.sortPast : t.pass.sortActive}</p>
       {filter.group === 'ACTIVE' && (
         <button
           type="button"
           aria-pressed={filter.expiry === 'EXPIRING_7D'}
           onClick={toggleExpiring}
-          className={`mb-3 inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium ${
+          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium ${
             filter.expiry === 'EXPIRING_7D' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 bg-white text-gray-700'
           }`}
         >
@@ -121,8 +124,9 @@ const PassList = () => {
           {t.pass.expiring7d}
         </button>
       )}
+      </div>
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+      <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_minmax(220px,auto)]">
         <label className="relative">
           <span className="sr-only">{t.pass.searchPlaceholder}</span>
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
@@ -134,14 +138,14 @@ const PassList = () => {
             className="min-h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm focus:border-indigo-400 focus:outline-none"
           />
         </label>
-        <select className={selectClass} value={filter.campaignId ?? ''} onChange={(e) => setFilter((f) => ({ ...f, campaignId: e.target.value || undefined, offset: 0 }))} aria-label={t.pass.cols.promotion}>
+        <SelectControl value={filter.campaignId ?? ''} onChange={(e) => setFilter((f) => ({ ...f, campaignId: e.target.value || undefined, offset: 0 }))} aria-label={t.pass.cols.promotion}>
           <option value="">{t.pass.filterAllCampaigns}</option>
           {(campaigns.state.data ?? []).map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
+        </SelectControl>
       </div>
 
       {state.status === 'loading' && !state.data ? (

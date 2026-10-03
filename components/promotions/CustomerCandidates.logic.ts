@@ -8,7 +8,8 @@ import type {
 } from '@/lib/types/promotion-client';
 
 // 🔧 UI CONFIGURATION
-export const CANDIDATE_PAGE_SIZE = BULK_ISSUE_MAX;
+/** Rows per page (user, 03/10/2026). Selection is kept across pages, up to BULK_ISSUE_MAX. */
+export const CANDIDATE_PAGE_SIZE = 10;
 
 export const DEFAULT_CANDIDATE_FILTER: CustomerCandidateFilter = { hasEmail: true };
 /** Engine limit for the "qualified order" date range. */
@@ -55,7 +56,6 @@ export const useCustomerCandidates = (campaignId: string) => {
     setState({ status: 'loading' });
     const res = await promotionApi.getCustomerCandidates(campaignId, { ...applied, limit: CANDIDATE_PAGE_SIZE, offset });
     if (id !== reqId.current) return;
-    setSelected(new Set());
     setState(res.success ? { status: 'success', page: res.data } : { status: 'error', code: res.error.code });
   }, [campaignId, applied, offset]);
 
@@ -80,11 +80,13 @@ export const useCustomerCandidates = (campaignId: string) => {
       return;
     }
     setRangeError(false);
+    setSelected(new Set()); // new criteria → previous picks may no longer match
     setOffset(0);
     setApplied({ ...draft, search: draft.search?.trim() || undefined });
   };
   const reset = () => {
     setRangeError(false);
+    setSelected(new Set());
     setDraft(DEFAULT_CANDIDATE_FILTER);
     setOffset(0);
     setApplied(DEFAULT_CANDIDATE_FILTER);
@@ -101,7 +103,14 @@ export const useCustomerCandidates = (campaignId: string) => {
     });
   const pickable = rows.filter(selectable);
   const allOnPageSelected = pickable.length > 0 && pickable.every((r) => selected.has(r.id));
-  const togglePage = () => setSelected(allOnPageSelected ? new Set() : new Set(pickable.slice(0, BULK_ISSUE_MAX).map((r) => r.id)));
+  /** Adds / removes this page's rows only; picks on other pages are kept. */
+  const togglePage = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pickable.forEach((r) => next.delete(r.id));
+      else pickable.forEach((r) => next.size < BULK_ISSUE_MAX && next.add(r.id));
+      return next;
+    });
 
   const issue = async () => {
     if (issuing || selected.size === 0) return;
@@ -114,7 +123,8 @@ export const useCustomerCandidates = (campaignId: string) => {
       return;
     }
     setResult(res.data);
-    // Issued customers drop out of the list (server excludes existing pass holders).
+    setSelected(new Set());
+    // Issued customers now show as "already has a voucher".
     load();
   };
 

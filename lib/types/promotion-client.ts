@@ -132,6 +132,12 @@ export interface PromotionMenu {
   serviceCount: number;
 }
 
+/** What the voucher applies to: menu display names + minimum paid minutes. */
+export interface PromotionConditions {
+  menuLabels: string[];
+  minPaidMinutes: number | null;
+}
+
 export interface PromotionCustomerRef {
   id: string | null;
   name: string | null;
@@ -163,6 +169,8 @@ export interface PromotionPass {
   emailLastError?: string | null;
   /** When a closed pass ended (cancel / last use / expiry); null while usable. */
   endedAt?: string | null;
+  /** Conditions printed on the e-voucher (requested from Agent A). */
+  conditions?: PromotionConditions;
   /** Set when a new pass replaced this closed one (re-issue). */
   supersededAt?: string | null;
 }

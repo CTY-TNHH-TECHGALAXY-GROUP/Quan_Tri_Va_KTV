@@ -76,6 +76,11 @@ const CANDIDATES: CustomerCandidate[] = [
   })),
 ];
 
+const conditionsOf = (c: PromotionCampaign) => ({
+  menuLabels: c.applicableMenus && !c.applicableMenus.allMenus ? c.applicableMenus.menus.map((code) => MENUS.find((m) => m.code === code)?.label ?? code) : [],
+  minPaidMinutes: c.qualification.type === 'MIN_PAID_DURATION' ? c.qualification.value : null,
+});
+
 const refOf = (c: CustomerCandidate) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email });
 
 const buildFixtures = () => {
@@ -169,6 +174,7 @@ const buildFixtures = () => {
       emailSentAt: customer.email ? '2026-10-01T15:20:05+07:00' : null,
       emailLastError: null,
       qrPayload: `${MOCK_SCAN_BASE}mock-qr-token-${id}`,
+      conditions: conditionsOf(c),
       ...over,
     };
   };
@@ -372,6 +378,7 @@ export const createMockPromotionApi = (): PromotionApi => {
       emailSentAt: cus.email ? issuedAt : null,
       emailLastError: null,
       qrPayload: `${MOCK_SCAN_BASE}mock-qr-token-${id}`,
+      conditions: conditionsOf(c),
     };
     db.passes.unshift(refresh(p));
     return { ...structuredClone(p), emailDelivery: cus.email ? { status: 'SENT' } : { status: 'SKIPPED', reason: 'CUSTOMER_NO_EMAIL' } };
