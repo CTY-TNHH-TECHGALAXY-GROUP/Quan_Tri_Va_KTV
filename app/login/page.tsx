@@ -3,12 +3,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import { MOCK_USERS } from '@/lib/mock-db';
 import { motion } from 'motion/react';
 import { Lock, User, Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, getLoginError } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState('u1');
   const [password, setPassword] = useState('');
@@ -19,6 +18,25 @@ export default function LoginPage() {
 
   React.useEffect(() => {
     setMounted(true);
+    // Bị đá về đây do JWT hết hạn → nói rõ lý do, tránh user tưởng app hỏng.
+    const reason = new URLSearchParams(window.location.search).get('error');
+    if (reason === 'session_expired') {
+      setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    }
+    // Đang dùng dở mà quản lý khoá tài khoản → auth-context đá về đây kèm cờ này.
+    if (reason === 'account_locked') {
+      setError('Tài khoản đã bị khoá. Liên hệ admin Oria Spa để mở lại.');
+    }
+    // Quản lý vừa đổi cấu hình tính năng → phải đăng nhập lại thì mới nhận
+    // được cờ/quyền mới, chứ không phải app hỏng.
+    // Tab đang mở bằng tài khoản A nhưng cookie JWT là của tài khoản B (mở 2 tài
+    // khoản trên cùng trình duyệt). Đã đẩy ra đây để đăng nhập lại cho dứt điểm.
+    if (reason === 'identity_mismatch') {
+      setError('Trình duyệt này đã đăng nhập một tài khoản khác ở tab khác. Mỗi trình duyệt chỉ dùng được một tài khoản — vui lòng đăng nhập lại.');
+    }
+    if (reason === 'config_changed') {
+      setError('Cài đặt tính năng vừa được cập nhật. Vui lòng đăng nhập lại để áp dụng.');
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -30,7 +48,12 @@ export default function LoginPage() {
     if (success) {
       router.push('/');
     } else {
-      setError('Tài khoản hoặc mật khẩu không chính xác.');
+      // Khoá tài khoản là lý do RIÊNG — đổ tại sai mật khẩu ở đây thì KTV
+      // sẽ gõ lại mãi mà không hiểu vì sao vào không được.
+      //
+      // Đọc qua hàm chứ không qua biến state: biến trong closure này được chốt
+      // từ lượt render TRƯỚC khi login() chạy, nên luôn còn là null.
+      setError(getLoginError() || 'Tài khoản hoặc mật khẩu không chính xác.');
       setIsLoading(false);
     }
   };
@@ -50,7 +73,7 @@ export default function LoginPage() {
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                 <Sparkles size={32} />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">Ngân Hà Spa</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Oria Spa</h1>
               <p className="text-indigo-100 text-sm mt-1">Hệ thống quản trị trung tâm</p>
             </div>
             {/* Decorative circles */}

@@ -1,0 +1,40 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { KtvWalletService } from '@/lib/services/KtvWalletService';
+import { WalletAccessService } from '@/lib/services/WalletAccessService';
+import { requireStaffOrPermission } from '@/lib/auth-server';
+
+export const dynamic = 'force-dynamic';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+export async function GET(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const techCode = searchParams.get('techCode');
+
+        if (!techCode) {
+            return NextResponse.json({ success: false, error: 'Thiếu mã KTV' }, { status: 400 });
+        }
+
+        // Chỉ chủ ví hoặc người có quyền tài chính mới xem được số dư.
+        const deniedAuth = await requireStaffOrPermission(techCode, 'finance_management');
+        if (deniedAuth) return deniedAuth;
+
+        const denied = await WalletAccessService.denyIfDisabled(supabase, techCode, 'TUA');
+        if (denied) return denied;
+
+        const balanceData = await KtvWalletService.getBalance(supabase, techCode);
+
+        return NextResponse.json({
+            success: true,
+            data: balanceData
+        });
+
+    } catch (err: any) {
+        console.error('Exception in /api/ktv/wallet/balance:', err);
+        return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
+    }
+}

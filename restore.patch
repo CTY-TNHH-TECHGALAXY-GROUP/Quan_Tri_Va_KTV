@@ -1,0 +1,208 @@
+﻿--- a/app/ktv/schedule/page.tsx
++++ b/app/ktv/schedule/page.tsx
+@@ -51,7 +51,10 @@ const TAB_CONFIG: { id: ScheduleTab; label: string; icon: React.ReactNode }[] =
+ 
+ const KTVSchedulePage = () => {
+     const logic = useKTVSchedule();
+-    const {
++    const { workRegistrationList, expectedTime, setExpectedTime, handleSubmitWorkRegistration, handleCancelWorkRegistration,
+         mounted, canAccessPage, user,
+         activeTab, setActiveTab,
+         currentShift, tomorrowShift, shiftHistory, isLoadingShift, newShiftType, isSubmittingShift, shiftError, shiftSuccess, setNewShiftType, setShiftError, handleSubmitShift,
+@@ -83,6 +86,13 @@ const KTVSchedulePage = () => {
+     let startDow = firstDayOfMonth.getDay(); 
+     startDow = startDow === 0 ? 6 : startDow - 1; 
+ 
++    
++    const workRegByDate: Record<string, any[]> = {};
++    if (workRegistrationList) {
++        workRegistrationList.forEach((reg: any) => {
++            if (!workRegByDate[reg.work_date]) workRegByDate[reg.work_date] = [];
++            workRegByDate[reg.work_date].push(reg);
++        });
++    }
++
+     const leaveByDate: Record<string, LeaveRequest[]> = {};
+     leaveList.forEach(leave => {
+         if (!leaveByDate[leave.date]) leaveByDate[leave.date] = [];
+@@ -106,12 +116,19 @@ const KTVSchedulePage = () => {
+         
+         // Kiểm tra xem user hiện tại đã đăng ký ngày này chưa
+         const dayLeaves = leaveByDate[dateStr] || [];
+         const myLeave = dayLeaves.find(l => l.employeeId === user?.id);
++                                        const myWorkReg = workRegByDate[dateStr]?.find((r: any) => r.staff_id === user?.id);
+ 
+         const isBlocked = BLOCKED_HOLIDAYS.includes(dateStr.slice(5));
+ 
+         // Chỉ cho phép chọn/huỷ chọn những ngày > today VÀ chưa từng đăng ký VÀ không bị khoá
+         if (!myLeave && !isBlocked) {
+             const isSelected = selectedDates.includes(dateStr);
+             
+@@ -165,7 +182,7 @@ const KTVSchedulePage = () => {
+                     {TAB_CONFIG.map(tab => (
+                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+-                            {tab.icon}{tab.label}
++                            {tab.icon}{tab.id === "shift" && user?.work_type === "TYPE_D" ? "Đăng Ký Làm" : tab.label}
+                         </button>
+                     ))}
+                 </div>
+ 
+-                {(activeTab === "off") && (<>
++                {(activeTab === "off" || (activeTab === "shift" && user?.work_type === "TYPE_D")) && (<>
+                 {/* ── CALENDAR ── */}
+                 <div className="bg-white rounded-3xl border border-gray-100 shadow-lg overflow-hidden">
+@@ -216,16 +233,26 @@ const KTVSchedulePage = () => {
+                                         
+                                         // Kiểm tra xem user hiện tại đã đăng ký ngày này chưa
+                                         const myLeave = dayLeaves.find(l => l.employeeId === user?.id);
++                                        const myWorkReg = workRegByDate[dateStr]?.find((r: any) => r.staff_id === user?.id);
+                                         
+                                         let cellStyle = "text-gray-500 hover:bg-gray-50";
+                                         
+                                         if (isBlocked) {
+                                             cellStyle = "bg-gray-100 text-gray-400 cursor-not-allowed";
++                                        } else if (myWorkReg && myWorkReg.status === "REGISTERED") {
++                                            cellStyle = "bg-emerald-500 text-white shadow-md shadow-emerald-200 font-bold";
++                                        } else if (myWorkReg && myWorkReg.status === "OFF_REGISTERED") {
++                                            cellStyle = "bg-rose-600 text-white shadow-md shadow-rose-200 font-bold";
+                                         } else if (isSelected) {
+-                                            cellStyle = "bg-rose-500 text-white shadow-md shadow-rose-200 scale-105 font-bold";
++                                            cellStyle = activeTab === "shift" 
++                                                ? "bg-emerald-500 text-white shadow-md shadow-emerald-200 scale-105 font-bold"
++                                                : "bg-rose-500 text-white shadow-md shadow-rose-200 scale-105 font-bold";
+                                         } else if (myLeave) {
+@@ -250,7 +277,13 @@ const KTVSchedulePage = () => {
+                                         return (
+                                             <button
+                                                 key={dateStr}
+-                                                onClick={() => handleDateClick(dateStr)}
++                                                onClick={() => {
++if (myWorkReg && myWorkReg.status === "REGISTERED") {
++handleCancelWorkRegistration(dateStr);
++} else {
++handleDateClick(dateStr);
++}
++}}
+                                                 className={`aspect-square rounded-xl flex flex-col items-center justify-center relative transition-all text-sm ${cellStyle}`}
+                                             >
+@@ -333,6 +366,57 @@ const KTVSchedulePage = () => {
+                     </div>
+                 )}
+ 
++                {selectedDates.length > 0 && activeTab === "shift" && user?.work_type === "TYPE_D" && (
++                    <div className="bg-white rounded-3xl border border-gray-100 shadow-lg p-5 space-y-4 animate-in fade-in slide-in-from-bottom-4">
++                        <div className="flex items-center gap-3">
++                            <div className="bg-blue-100 text-blue-600 p-2 rounded-xl">
++                                <Briefcase size={20} />
++                            </div>
++                            <div>
++                                <h3 className="font-bold text-gray-900 text-sm">Đăng ký Đi Làm</h3>
++                                <p className="text-xs text-gray-500">Đã chọn {selectedDates.length} ngày</p>
++                            </div>
++                        </div>
++
++                        <div>
++                            <label className="block text-xs font-bold text-gray-700 mb-2">Giờ đến tiệm (Bắt buộc)</label>
++                            <input 
++                                type="time"
++                                value={expectedTime || ""}
++                                onChange={e => setExpectedTime(e.target.value)}
++                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold"
++                            />
++                        </div>
++
++                        {offError && (
++                            <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2 flex items-center gap-2">
++                                <AlertCircle size={14} className="shrink-0" />
++                                <span>{offError}</span>
++                                <button onClick={() => setOffError(null)} className="ml-auto"><XCircle size={14} /></button>
++                            </div>
++                        )}
++
++                        {offSuccess && (
++                            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-xl px-3 py-2 flex items-center gap-2">
++                                <CheckCircle2 size={14} className="shrink-0" />
++                                <span>Đăng ký làm thành công!</span>
++                            </div>
++                        )}
++
++                        <button
++                            onClick={() => handleSubmitWorkRegistration()}
++                            disabled={isSubmittingOff || !expectedTime}
++                            className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shadow-md shadow-blue-200"
++                        >
++                            {isSubmittingOff ? (
++                                <><Loader2 size={18} className="animate-spin" /> Đang gửi...</>
++                            ) : (
++                                <><Send size={18} /> Gửi yêu cầu Đăng ký làm</>
++                            )}
++                        </button>
++                    </div>
++                )}
++
+                 {/* ── CONFIRMATION DIALOG ── */}
+                 {confirmDialog && confirmDialog.isOpen && (
+                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+@@ -384,8 +468,40 @@ const KTVSchedulePage = () => {
+                                         <p className="text-xs font-bold text-gray-700 uppercase">{formattedDate}</p>
+                                     </div>
+                                     <div className="p-4">
++                                        
++                                        {user?.work_type === "TYPE_D" && (
++                                            (() => {
++                                                const myReg = workRegistrationList.find(r => r.work_date === date);
++                                                if (!myReg) return null;
++                                                const isWork = myReg.status === "REGISTERED";
++                                                return (
++                                                    <div className={`flex flex-col gap-2 p-3 mb-3 rounded-2xl border ${isWork ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
++                                                        <div className="flex justify-between items-center">
++                                                            <div className="flex items-center gap-2">
++                                                                {isWork ? <Briefcase size={16} className="text-emerald-600"/> : <CalendarOff size={16} className="text-rose-600"/>}
++                                                                <span className={`font-bold text-sm ${isWork ? "text-emerald-700" : "text-rose-700"}`}>
++                                                                    {isWork ? "ĐĂNG KÝ ĐI LÀM" : "ĐĂNG KÝ OFF"}
++                                                                </span>
++                                                            </div>
++                                                            {isWork && myReg.expected_time && (
++                                                                <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm border border-emerald-100">
++                                                                    <Clock size={12} className="text-emerald-600"/>
++                                                                    <span className="text-xs font-bold text-emerald-700">{myReg.expected_time.slice(0, 5)}</span>
++                                                                </div>
++                                                            )}
++                                                        </div>
++                                                        {myReg.late_report_count > 0 && (
++                                                            <p className="text-[10px] text-gray-500 italic mt-1">
++                                                                Số lần báo trễ: {myReg.late_report_count}
++                                                            </p>
++                                                        )}
++                                                    </div>
++                                                );
++                                            })()
++                                        )}
++
+                                         {leaves.length === 0 ? (
+-                                            <p className="text-xs text-gray-400 text-center py-2">Không có nhân sự nào OFF</p>
++                                            <p className="text-xs text-gray-400 text-center py-2">Không có nhân sự nào khác OFF</p>
+                                         ) : (
+                                             <div className="space-y-2">
+                                                 {leaves.map(leave => {
+@@ -407,6 +523,7 @@ const KTVSchedulePage = () => {
+                                                 })}
+                                             </div>
+                                         )}
++
+                                     </div>
+                                 </div>
+                             );
+@@ -415,7 +532,10 @@ const KTVSchedulePage = () => {
+                 )}
+             </>)}
+ 
+-                {activeTab === "shift" && (
++                
++                {/* 📝 SHIFT TAB (TYPE A/B/C) 📝 */}
++                {activeTab === "shift" && user?.work_type !== "TYPE_D" && (
++
+                     <ShiftTab
+                         currentShift={currentShift}
+                         tomorrowShift={tomorrowShift}

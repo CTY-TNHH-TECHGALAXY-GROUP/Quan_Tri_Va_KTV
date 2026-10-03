@@ -1,23 +1,143 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireRole, requireBusinessUser, requirePermissionAny } from '@/lib/auth-server';
 import { revalidatePath } from 'next/cache';
+import { DEFAULT_FEATURE_FLAGS_TYPE_A, DEFAULT_FEATURE_FLAGS_TYPE_B, DEFAULT_FEATURE_FLAGS_TYPE_C, DEFAULT_FEATURE_FLAGS_TYPE_D, isPlaceholderStaffId, SKILL_KEYS } from '@/lib/constants/staff.constants';
+import { STAFF_STATUS, isSystemAccount, normalizeStaffStatus } from '@/lib/constants/staffStatus';
+import type { GalleryItem } from '@/lib/types';
+import { isGalleryImageUrl } from '@/lib/galleryHelper';
+
+const DOMAIN_SUFFIX = '@nganhaspa.internal';
+
+const GALLERY_THERAPY_IDS = new Set([
+  'coconutOil',
+  'thaiTherapy',
+  'shiatsu',
+  'hotStone',
+]);
+
+function normalizeStaffGallery(value: unknown): Array<string | GalleryItem> {
+  const items = typeof value === 'string'
+    ? value.split(/\n|,/)
+    : value;
+
+  if (!Array.isArray(items)) {
+    throw new Error('Gallery phải là danh sách ảnh.');
+  }
+
+  return items.flatMap((item: unknown): Array<string | GalleryItem> => {
+    if (item == null) return [];
+
+    if (typeof item === 'string') {
+      const url = item.trim();
+      if (!url) return [];
+      if (!isGalleryImageUrl(url)) {
+        throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
+      }
+      return [url];
+    }
+
+    if (typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Ảnh gallery không hợp lệ.');
+    }
+
+    const record = item as Record<string, unknown>;
+
+    if (typeof record.url !== 'string' || !record.url.trim()) {
+      throw new Error('Ảnh gallery thiếu URL hợp lệ.');
+    }
+
+    const url = record.url.trim();
+    if (!isGalleryImageUrl(url)) {
+      throw new Error(`URL ảnh gallery không hợp lệ: "${url}".`);
+    }
+
+    const orderFields = {
+      ...(typeof record.order === 'number' ? { order: record.order } : {}),
+      ...(typeof record.orderNhp === 'number' ? { orderNhp: record.orderNhp } : {}),
+      ...(typeof record.orderNht === 'number' ? { orderNht: record.orderNht } : {}),
+    };
+
+    if (record.kind === 'privilege') {
+      return [{
+        url,
+        kind: 'privilege',
+        ...(typeof record.privilegeId === 'string' ? { privilegeId: record.privilegeId as string } : {}),
+        ...(typeof record.skillId === 'string' ? { skillId: record.skillId as string } : {}),
+        ...(typeof record.therapyId === 'string' ? { therapyId: record.therapyId as string } : {}),
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
+    }
+
+    if (record.kind === 'therapy') {
+      if (
+        typeof record.therapyId !== 'string' ||
+        !GALLERY_THERAPY_IDS.has(record.therapyId)
+      ) {
+        throw new Error('Phương pháp trị liệu của ảnh không hợp lệ.');
+      }
+
+      return [{
+        url,
+        kind: 'therapy',
+        therapyId: record.therapyId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
+    }
+
+    if (record.kind === 'vip') {
+      const isPrivilegeSkill = typeof record.skillId === 'string' &&
+        ['privilege', 'dacquyen', 'dac_quyen', 'dac-quyen'].includes(record.skillId.toLowerCase());
+      if (!isPrivilegeSkill && (typeof record.skillId !== 'string' || !SKILL_KEYS.includes(record.skillId as typeof SKILL_KEYS[number]))) {
+        throw new Error('Kỹ năng VIP của ảnh không hợp lệ.');
+      }
+      return [{
+        url,
+        kind: 'vip',
+        skillId: record.skillId as string,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
+    }
+
+    if (record.kind === 'mix' || record.kind === 'legacy') {
+      return [{
+        url,
+        kind: record.kind,
+        ...(record.hidden === true ? { hidden: true } : {}),
+        ...orderFields,
+      }];
+    }
+
+    throw new Error('Phân loại ảnh gallery không hợp lệ.');
+  });
+}
 
 export async function getStaffList() {
     try {
+        // Quầy (ktv-hub) cũng gọi hàm này → chỉ cần đã đăng nhập; cờ tắt thì giữ hành vi cũ.
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
+        // Tài khoản hệ thống (admin/dev) không phải nhân sự. Trước đây chúng vẫn
+        // nằm trong danh sách này và bị hiển thị là "Đã nghỉ" — sai và gây rối.
+        // Loại C từ 12/09/2026 là tài khoản thật nên KHÔNG lọc theo work_type
+        // nữa; chỉ giấu mã placeholder cũ (EXT_/C_) — xem `isPlaceholderStaffId`.
         const { data: staff, error } = await supabase
             .from('Staff')
             .select('*')
+            .neq('status', STAFF_STATUS.SYSTEM)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
 
-        // Fetch user login data to display username and password
+        // Fetch user login data to display username, password and role
         const { data: users, error: usersError } = await supabase
             .from('Users')
-            .select('id, username, password');
+            .select('id, username, password, role');
 
         if (usersError) {
             console.warn("Could not fetch Users data", usersError);
@@ -28,9 +148,11 @@ export async function getStaffList() {
             return {
                 ...s,
                 username: authInfo?.username || s.id,
-                password: authInfo?.password || '---'
+                password: authInfo?.password || '---',
+                userRole: authInfo?.role || 'TECHNICIAN',
+                enableBonus: s.feature_flags?.enable_bonus ?? true
             };
-        });
+        }).filter(s => s.userRole !== 'DEV' && s.id !== 'dev' && s.username !== 'dev' && !isPlaceholderStaffId(s.id));
 
         return { success: true, data: staffWithAuth };
     } catch (error: any) {
@@ -41,13 +163,21 @@ export async function getStaffList() {
 
 export async function createStaffMember(formData: any) {
     try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
+
+        // 0. Validate gallery FIRST before creating Users / Auth / Staff
+        const galleryRaw = formData.galleryUrls ?? formData.gallery_urls ?? [];
+        const galleryUrls = normalizeStaffGallery(galleryRaw);
+
         // 1. Create entry in custom public."Users" table
         const password = formData.password;
         if (!password) {
             throw new Error("Vui lòng nhập mật khẩu đăng nhập cho nhân viên.");
         }
+
+        const role = formData.role || 'TECHNICIAN';
 
         const userPayload = {
             id: formData.id,
@@ -56,17 +186,28 @@ export async function createStaffMember(formData: any) {
             code: formData.id,
             fullName: formData.full_name,
             gender: formData.gender || null,
-            role: 'TECHNICIAN',
-            // Default KTV permissions mapping based on mock-db
-            permissions: [
+            role: role,
+            // Default KTV permissions mapping based on system defaults
+            permissions: role === 'SUPPORT' ? [
+                'support_dashboard',
+                'ktv_attendance',
+                'service_handbook',
+                'settings'
+            ] : role === 'TECHNICIAN' ? [
                 'ktv_dashboard',
                 'ktv_attendance',
-                'ktv_leave',
+                'ktv_schedule',
                 'ktv_performance',
                 'ktv_history',
                 'service_handbook',
                 'settings'
-            ]
+            // Lễ tân: đúng mã module trong lib/constants.ts (MODULES) và khớp mặc định
+            // ở lib/auth-context.tsx. Trước đây ghi 'reception_dispatch'... — mã không tồn
+            // tại → tài khoản đăng nhập xong không thấy menu nào (ca ORIA000, 03/10/2026).
+            ] : (role === 'RECEPTIONIST' || role === 'RECEPTION' || role === 'LEAD_RECEPTIONIST') ? ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings'] : role === 'ADMIN' ? [
+                'role_management',
+                'employee_management'
+            ] : []
         };
 
         const { error: userError } = await supabase
@@ -78,11 +219,23 @@ export async function createStaffMember(formData: any) {
             throw new Error(`Lỗi tạo tài khoản đăng nhập: ${userError.message}`);
         }
 
+        // 🔄 Sync to Supabase Auth
+        const { createAuthUser } = await import('@/lib/auth-sync');
+        const authResult = await createAuthUser(supabase, formData.id, password, {
+            business_user_id: formData.id,
+            techCode: formData.id,
+            role: role,
+            fullName: formData.full_name
+        });
+        if (!authResult.success) {
+            console.warn(`[Employees] ⚠️ Staff created in DB but Auth sync failed for ${formData.id}: ${authResult.error}`);
+        }
+
         // 2. Insert into Staff Table
         const staffPayload = {
             id: formData.id, // ID gõ tay (e.g. NV-001)
             full_name: formData.full_name,
-            status: formData.status || 'ĐANG LÀM',
+            status: normalizeStaffStatus(formData.status),
             birthday: formData.birthday || null,
             gender: formData.gender || null,
             id_card: formData.id_card || null,
@@ -91,24 +244,43 @@ export async function createStaffMember(formData: any) {
             bank_account: formData.bank_account || null,
             bank_name: formData.bank_name || null,
             avatar_url: formData.avatar_url || null,
+            gallery_urls: galleryUrls,
             position: formData.position || 'Kỹ Thuật Viên',
             experience: formData.experience || null,
             join_date: formData.join_date || new Date().toISOString().split('T')[0],
             height: formData.height ? parseInt(formData.height) : null,
             weight: formData.weight ? parseInt(formData.weight) : null,
-            skills: formData.skills || {}
+            work_type: formData.work_type || 'TYPE_A',
+            skills: formData.skills || {},
+            // Ba công tắc menu — trước đây form có tick nhưng tạo mới không ghi xuống.
+            is_active_vip_menu: formData.isActiveVipMenu === true || formData.is_active_vip_menu === true,
+            is_home_spa: formData.isHomeSpa === true || formData.is_home_spa === true,
+            is_active_therapy_menu: formData.isActiveTherapyMenu === true || formData.is_active_therapy_menu === true,
+            feature_flags: {
+                ...(formData.work_type === 'TYPE_D' ? DEFAULT_FEATURE_FLAGS_TYPE_D
+                    : formData.work_type === 'TYPE_C' ? DEFAULT_FEATURE_FLAGS_TYPE_C
+                    : formData.work_type === 'TYPE_B' ? DEFAULT_FEATURE_FLAGS_TYPE_B
+                    : DEFAULT_FEATURE_FLAGS_TYPE_A),
+                ...(formData.feature_flags || formData.featureFlags || {}),
+                ...(formData.privilegeUrl || formData.privilege_url ? { privilege_url: (formData.privilegeUrl || formData.privilege_url).trim() } : {}),
+                ...(formData.isAvatarHidden !== undefined || formData.showAvatar !== undefined || formData.hideAvatar !== undefined
+                    ? {
+                        show_avatar: !(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar),
+                        hide_avatar: Boolean(formData.isAvatarHidden ?? formData.hideAvatar ?? !formData.showAvatar)
+                      }
+                    : {}),
+            }
         };
 
         const { data: staffData, error: staffError } = await supabase
             .from('Staff')
-            .insert(staffPayload)
+            .insert([staffPayload])
             .select()
             .single();
 
         if (staffError) {
-            // Rollback auth user creation could be handled here if strictly necessary
-            console.error('Error creating staff record:', staffError);
-            throw new Error(`Lỗi lưu thông tin: ${staffError.message}`);
+            console.error('Error creating staff member:', staffError);
+            throw staffError;
         }
 
         revalidatePath('/admin/employees');
@@ -120,10 +292,180 @@ export async function createStaffMember(formData: any) {
     }
 }
 
-export async function deleteStaffMember(id: string) {
+export async function updateStaffMember(id: string, updates: any) {
     try {
+        // Quầy sửa kỹ năng KTV ở ktv-hub → dùng quyền module thay vì role.
+        // Quầy sửa kỹ năng KTV từ ktv-hub — màn đó mở bằng ktv_attendance / turn_tracking.
+        await requirePermissionAny(['ktv_attendance', 'turn_tracking', 'ktv_hub', 'employee_management']);
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error("Supabase admin client not initialized");
+
+        // 0. Validate gallery if sent, BEFORE any DB write/delete operations (e.g. TurnQueue)
+        let validatedGalleryUrls: Array<string | GalleryItem> | undefined = undefined;
+        if (updates.galleryUrls !== undefined || updates.gallery_urls !== undefined) {
+            const galleryRaw = updates.galleryUrls ?? updates.gallery_urls ?? [];
+            validatedGalleryUrls = normalizeStaffGallery(galleryRaw);
+        }
+
+        // 1. Map camelCase (from Modal) to snake_case (for DB) if needed
+        // The modal might pass Employee type (camelCase)
+        const staffPayload: any = {};
+        if (updates.name !== undefined) staffPayload.full_name = typeof updates.name === 'string' ? updates.name.trim() : updates.name;
+        if (updates.full_name !== undefined) staffPayload.full_name = typeof updates.full_name === 'string' ? updates.full_name.trim() : updates.full_name;
+        // Modal chỉ có hai nút active/inactive, không biết tới 'HỆ THỐNG'. Lưu
+        // một tài khoản hệ thống mà không chặn ở đây là nó thành 'ĐÃ NGHỈ' —
+        // admin/dev bị ép đăng xuất ngay.
+        const { data: currentStaff } = await supabase
+            .from('Staff').select('status').eq('id', id).maybeSingle();
+
+        if (updates.status !== undefined && !isSystemAccount(currentStaff?.status)) {
+            staffPayload.status = updates.status === 'active' ? STAFF_STATUS.WORKING : STAFF_STATUS.RESIGNED;
+            if (staffPayload.status === STAFF_STATUS.RESIGNED || staffPayload.status === 'ĐÃ NGHỈ') {
+                staffPayload.is_active_vip_menu = false;
+                staffPayload.is_home_spa = false;
+                staffPayload.is_active_therapy_menu = false;
+                
+                // Remove from TurnQueue
+                const { error: turnQueueError } = await supabase
+                    .from('TurnQueue')
+                    .delete()
+                    .eq('employee_id', id);
+                    
+                if (turnQueueError) {
+                    throw new Error(`Không thể xóa KTV ${id} khỏi sổ tua: ${turnQueueError.message}`);
+                }
+            }
+        }
+        if (updates.dob !== undefined) staffPayload.birthday = updates.dob || null;
+        if (updates.gender !== undefined) staffPayload.gender = updates.gender || null;
+        if (updates.idCard !== undefined) staffPayload.id_card = updates.idCard || null;
+        if (updates.phone !== undefined) staffPayload.phone = updates.phone || null;
+        if (updates.email !== undefined) staffPayload.email = updates.email || null;
+        if (updates.bankAccount !== undefined) staffPayload.bank_account = updates.bankAccount || null;
+        if (updates.bankName !== undefined) staffPayload.bank_name = updates.bankName || null;
+        if (updates.photoUrl !== undefined) staffPayload.avatar_url = updates.photoUrl || null;
+        if (validatedGalleryUrls !== undefined) {
+            staffPayload.gallery_urls = validatedGalleryUrls;
+        }
+        if (updates.position !== undefined) staffPayload.position = updates.position || null;
+        if (updates.experience !== undefined) staffPayload.experience = updates.experience || null;
+        if (updates.joinDate !== undefined) staffPayload.join_date = updates.joinDate || null;
+        if (updates.height !== undefined) staffPayload.height = updates.height || null;
+        if (updates.weight !== undefined) staffPayload.weight = updates.weight || null;
+        if (updates.work_type !== undefined) staffPayload.work_type = updates.work_type;
+        if (updates.skills !== undefined) staffPayload.skills = updates.skills;
+        let currentFlags = updates.featureFlags || updates.feature_flags || {};
+        if (updates.enableKpiDemo !== undefined || updates.enableBonus !== undefined) {
+            currentFlags = { ...currentFlags };
+            if (updates.enableKpiDemo !== undefined) {
+                if (updates.enableKpiDemo) {
+                    currentFlags.kpi_target_hours = 80;
+                } else {
+                    currentFlags.kpi_target_hours = 0;
+                }
+            }
+            if (updates.enableBonus !== undefined) {
+                currentFlags.enable_bonus = updates.enableBonus;
+            }
+            staffPayload.feature_flags = currentFlags;
+        } else if (updates.featureFlags !== undefined) {
+            staffPayload.feature_flags = updates.featureFlags;
+        } else if (updates.feature_flags !== undefined) {
+            staffPayload.feature_flags = updates.feature_flags;
+        }
+        if (updates.isActiveVipMenu !== undefined) staffPayload.is_active_vip_menu = updates.isActiveVipMenu;
+        if (updates.is_active_vip_menu !== undefined) staffPayload.is_active_vip_menu = updates.is_active_vip_menu;
+        if (updates.isActiveTherapyMenu !== undefined) staffPayload.is_active_therapy_menu = updates.isActiveTherapyMenu;
+        if (updates.is_active_therapy_menu !== undefined) staffPayload.is_active_therapy_menu = updates.is_active_therapy_menu;
+        if (updates.isHomeSpa !== undefined) staffPayload.is_home_spa = updates.isHomeSpa;
+        if (updates.is_home_spa !== undefined) staffPayload.is_home_spa = updates.is_home_spa;
+
+        const privUrl = updates.privilegeUrl ?? updates.privilege_url;
+        if (privUrl !== undefined) {
+            const trimmedPriv = typeof privUrl === 'string' ? privUrl.trim() : null;
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.privilege_url = trimmedPriv;
+        }
+
+        const isAvatarHidden = updates.isAvatarHidden ?? updates.hideAvatar ?? (updates.showAvatar !== undefined ? !updates.showAvatar : undefined);
+        if (isAvatarHidden !== undefined) {
+            if (!staffPayload.feature_flags) {
+                staffPayload.feature_flags = { ...(updates.featureFlags || updates.feature_flags || {}) };
+            }
+            staffPayload.feature_flags.show_avatar = !isAvatarHidden;
+            staffPayload.feature_flags.hide_avatar = isAvatarHidden;
+        }
+
+        if (staffPayload.status === STAFF_STATUS.RESIGNED || staffPayload.status === 'ĐÃ NGHỈ') {
+            staffPayload.is_active_vip_menu = false;
+            staffPayload.is_active_therapy_menu = false;
+            staffPayload.is_home_spa = false;
+        }
+
+        const { error: staffError } = await supabase
+            .from('Staff')
+            .update(staffPayload)
+            .eq('id', id);
+
+        if (staffError) throw new Error(`Lỗi cập nhật Staff: ${staffError.message}`);
+
+        // 2. If login info provided, update Users table
+        const resolvedName = (updates.name ?? updates.full_name)?.toString()?.trim();
+        if (updates.password || updates.username || resolvedName) {
+            // Get current username BEFORE updating (needed for Auth lookup)
+            const { data: currentUser } = await supabase.from('Users').select('username').eq('id', id).single();
+            const oldUsername = currentUser?.username || id;
+
+            const userPayload: any = {};
+            if (updates.password) userPayload.password = updates.password;
+            if (updates.username) userPayload.username = updates.username;
+            if (resolvedName) userPayload.fullName = resolvedName;
+
+            if (Object.keys(userPayload).length > 0) {
+                const { error: userError } = await supabase
+                    .from('Users')
+                    .update(userPayload)
+                    .eq('id', id);
+
+                if (userError) console.warn("Could not update Users login info", userError);
+            }
+
+            // 🔄 Sync to Supabase Auth (atomic update)
+            const { updateAuthUser } = await import('@/lib/auth-sync');
+            const authUpdates: any = {};
+            if (updates.password) authUpdates.password = updates.password;
+            if (updates.username && updates.username !== oldUsername) {
+                authUpdates.newUsername = updates.username;
+            }
+            if (resolvedName) authUpdates.metadata = { fullName: resolvedName };
+
+            if (Object.keys(authUpdates).length > 0) {
+                const result = await updateAuthUser(supabase, oldUsername, authUpdates);
+                if (!result.success) {
+                    console.warn(`[Employees] ⚠️ Staff updated in DB but Auth sync failed for ${oldUsername}: ${result.error}`);
+                }
+            }
+        }
+
+        revalidatePath('/admin/employees');
+        revalidatePath('/reception/ktv-hub');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error in updateStaffMember action:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function deleteStaffMember(id: string) {
+    try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error("Supabase admin client not initialized");
+
+        // 0. Get username before deleting (for Auth cleanup)
+        const { data: userRecord } = await supabase.from('Users').select('username').eq('id', id).single();
 
         // 1. Delete from Staff Table
         const { error: staffError } = await supabase
@@ -147,10 +489,50 @@ export async function deleteStaffMember(id: string) {
             // Non-fatal error
         }
 
+        // 3. 🔄 Delete from Supabase Auth
+        if (userRecord?.username) {
+            const { deleteAuthUser } = await import('@/lib/auth-sync');
+            const result = await deleteAuthUser(supabase, userRecord.username);
+            if (!result.success) {
+                console.warn(`[Employees] ⚠️ Staff deleted from DB but Auth cleanup failed for ${userRecord.username}: ${result.error}`);
+            }
+        }
+
         revalidatePath('/admin/employees');
         return { success: true };
     } catch (error: any) {
         console.error('Error in deleteStaffMember action:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updateEmployeeRole(employeeId: string, newRole: string) {
+    try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error("Supabase admin client not initialized");
+
+        const { error } = await supabase
+            .from('Users')
+            .update({ role: newRole })
+            .eq('id', employeeId);
+
+        if (error) throw error;
+
+        // 🔄 Sync role to Supabase Auth metadata
+        const { data: userRecord } = await supabase.from('Users').select('username').eq('id', employeeId).single();
+        if (userRecord?.username) {
+            const { updateAuthUser } = await import('@/lib/auth-sync');
+            const result = await updateAuthUser(supabase, userRecord.username, { metadata: { role: newRole } });
+            if (!result.success) {
+                console.warn(`[Employees] ⚠️ Role updated in DB but Auth sync failed for ${userRecord.username}: ${result.error}`);
+            }
+        }
+
+        revalidatePath('/admin/employees');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating employee role:', error);
         return { success: false, error: error.message };
     }
 }

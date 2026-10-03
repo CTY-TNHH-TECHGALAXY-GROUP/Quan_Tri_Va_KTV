@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oria Spa KTV</title>
+    <meta name="description" content="Oria Spa KTV">
+    <meta property="og:title" content="Oria Spa KTV">
+    <meta property="og:description" content="Oria Spa KTV">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Oria Spa KTV">
+    <meta name="twitter:description" content="Oria Spa KTV">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <style>
+        :root{
+            --ink:#15211b; --ink-2:#1c2c24;
+            --paper:#efe7d3; --paper-2:#f6f1e3;
+            --moss:#4b6650; --moss-dark:#324a38;
+            --jade:#24352b;
+            --gold:#b9873c; --gold-dim:#8f6a30;
+            --clay:#a8503a; --clay-dim:#7c3a29;
+            --line:#d8cdae; --line-dark:#3a4a3f;
+            --text-ink:#232a20; --text-mute:#5c6b57;
+        }
+        *{box-sizing:border-box;}
+        html,body{margin:0;padding:0;}
+        body{
+            background:var(--ink);
+            background-image: radial-gradient(circle at 15% 0%, rgba(75,102,80,0.35), transparent 55%), radial-gradient(circle at 90% 10%, rgba(185,135,60,0.10), transparent 45%);
+            font-family:'Inter',sans-serif;
+            color:var(--text-ink);
+            min-height:100vh;
+            padding:28px 14px 60px;
+        }
+        .wrap{max-width:760px;margin:0 auto;}
+        .brand{
+            display:flex;align-items:center;gap:12px;
+            margin-bottom:22px;padding:0 4px;
+        }
+        .brand-mark{
+            width:38px;height:38px;border-radius:50%;
+            background:var(--paper);
+            display:flex;align-items:center;justify-content:center;
+            font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--jade);
+            flex-shrink:0;
+        }
+        .brand-text .eyebrow{
+            font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+            color:rgba(239,231,211,.55);font-weight:600;
+        }
+        .brand-text .title{
+            font-family:'Fraunces',serif;font-weight:600;font-size:19px;color:var(--paper-2);
+            line-height:1.2;
+        }
+        nav.tabs{
+            display:flex;gap:4px;overflow-x:auto;
+            padding:0 4px;margin-bottom:0;
+            scrollbar-width:none;
+        }
+        nav.tabs::-webkit-scrollbar{display:none;}
+        nav.tabs button{
+            font-family:'Inter',sans-serif;font-weight:500;font-size:13.5px;
+            color:rgba(239,231,211,.62);
+            background:rgba(255,255,255,0.04);
+            border:1px solid rgba(239,231,211,.14); border-bottom:none;
+            padding:11px 16px 13px; border-radius:12px 12px 0 0;
+            white-space:nowrap;cursor:pointer;
+            transition:background .15s, color .15s;
+            flex-shrink:0;
+        }
+        nav.tabs button:hover{color:var(--paper-2);}
+        nav.tabs button.active{
+            background:var(--paper);
+            color:var(--jade);
+            border-color:var(--paper);
+        }
+        .panel{
+            background:var(--paper);
+            border-radius:0 12px 12px 12px;
+            padding:26px 20px 30px;
+            box-shadow:0 18px 40px rgba(0,0,0,0.28);
+        }
+        .panel h1{
+            font-family:'Fraunces',serif;font-weight:600;font-size:24px;
+            color:var(--jade);margin:0 0 6px;line-height:1.25;
+        }
+        .panel .sub{
+            font-size:13.5px;color:var(--text-mute);margin:0 0 20px;line-height:1.55;
+        }
+        .section{display:none;}
+        .section.active{display:block;}
+
+        .hero{
+            background:var(--jade);border-radius:14px;padding:20px 18px;margin-bottom:18px;
+        }
+        .hero .kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(239,231,211,.6);font-weight:600;margin-bottom:8px;}
+        .hero h2{
+            font-family:'Fraunces',serif;font-weight:600;font-size:20px;color:var(--paper-2);
+            margin:0 0 10px;line-height:1.35;
+        }
+        .hero p{font-size:13.5px;color:rgba(239,231,211,.78);line-height:1.6;margin:0;}
+        .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 4px;}
+        .chip{
+            background:var(--paper-2);border:1px solid var(--line);border-radius:10px;
+            padding:10px 12px;flex:1;min-width:96px;
+        }
+        .chip .num{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;color:var(--gold-dim);}
+        .chip .lbl{font-size:11px;color:var(--text-mute);margin-top:2px;}
+
+        .nav-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px;}
+        .nav-card{
+            border:1px solid var(--line);border-radius:12px;padding:14px;
+            background:var(--paper-2);cursor:pointer;text-align:left;
+            font-family:'Inter',sans-serif;
+        }
+        .nav-card .t{font-weight:600;font-size:13.5px;color:var(--jade);margin-bottom:4px;}
+        .nav-card .d{font-size:12px;color:var(--text-mute);line-height:1.5;}
+
+        /* income calculator */
+        .field-label{font-size:12px;font-weight:600;color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px;}
+        .field-label:first-child{margin-top:0;}
+        .pill-row{display:flex;gap:8px;}
+        .pill{
+            flex:1;border:1px solid var(--line);background:var(--paper-2);
+            border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;
+            font-family:'Inter',sans-serif;font-weight:500;font-size:13.5px;color:var(--text-ink);
+            transition:all .15s;
+        }
+        .pill .p{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-mute);margin-top:3px;}
+        .pill.sel{background:var(--moss);border-color:var(--moss);color:#fff;}
+        .pill.sel .p{color:rgba(255,255,255,.75);}
+        .star-row{display:flex;gap:6px;}
+        .star{
+            flex:1;border:1px solid var(--line);background:var(--paper-2);border-radius:10px;
+            padding:10px 4px;text-align:center;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text-ink);
+        }
+        .star.sel{background:var(--gold);border-color:var(--gold);color:#3a2a10;}
+        .result-card{
+            margin-top:20px;background:var(--jade);border-radius:14px;padding:18px;
+        }
+        .result-card .rlabel{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(239,231,211,.55);margin-bottom:6px;}
+        .result-card .rtotal{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:28px;color:var(--paper-2);}
+        .result-card .rbreak{margin-top:12px;border-top:1px solid rgba(239,231,211,.15);padding-top:10px;}
+        .result-card .rline{display:flex;justify-content:space-between;font-size:13px;color:rgba(239,231,211,.8);padding:3px 0;}
+        .result-card .rline b{font-family:'IBM Plex Mono',monospace;color:var(--paper-2);font-weight:500;}
+        .result-note{font-size:12px;color:var(--text-mute);margin-top:10px;line-height:1.5;}
+        
+        table.ref{width:100%;border-collapse:collapse;margin-top:18px;font-size:12.5px;}
+        table.ref th{
+            text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+            color:var(--text-mute);padding:6px 6px;border-bottom:1px solid var(--line);
+        }
+        table.ref td{padding:8px 6px;border-bottom:1px solid var(--line);color:var(--text-ink);}
+        table.ref tr.hi td{background:rgba(75,102,80,0.12);font-weight:600;}
+
+        /* accordion */
+        .acc-item{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--paper-2);}
+        .acc-head{
+            display:flex;justify-content:space-between;align-items:center;gap:10px;
+            padding:14px 14px;cursor:pointer;
+        }
+        .acc-head .n{
+            font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--gold-dim);font-weight:600;
+            flex-shrink:0;
+        }
+        .acc-head .t{font-weight:600;font-size:14px;color:var(--jade);flex:1;}
+        .acc-head .arrow{font-size:13px;color:var(--text-mute);transition:transform .2s;flex-shrink:0;}
+        .acc-item.open .arrow{transform:rotate(180deg);}
+        .acc-body{display:none;padding:0 14px 16px;font-size:13px;line-height:1.65;color:var(--text-ink);}
+        .acc-item.open .acc-body{display:block;}
+        .acc-body ul{margin:0;padding-left:18px;}
+        .acc-body li{margin-bottom:8px;}
+        .acc-body li b{color:var(--jade);}
+        .warn{color:var(--clay-dim);font-weight:600;}
+
+        /* timeline */
+        .tl{position:relative;padding-left:24px;margin-top:6px;}
+        .tl::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:1px;background:var(--line);}
+        .tl-item{position:relative;padding-bottom:20px;}
+        .tl-item:last-child{padding-bottom:0;}
+        .tl-item::before{
+            content:"";position:absolute;left:-24px;top:4px;width:11px;height:11px;
+            border-radius:50%;background:var(--moss);border:2px solid var(--paper);
+        }
+        .tl-item .tt{font-weight:600;font-size:13.5px;color:var(--jade);margin-bottom:4px;}
+        .tl-item .td2{font-size:12.5px;color:var(--text-ink);line-height:1.6;}
+
+        /* checklist / scoring */
+        .score-bar{
+            position:sticky;top:10px;z-index:5;
+            background:var(--jade);border-radius:12px;padding:14px 16px;margin-bottom:16px;
+            display:flex;justify-content:space-between;align-items:center;
+        }
+        .score-bar .sl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(239,231,211,.55);}
+        .score-bar .sv{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:22px;color:var(--paper-2);}
+        .cat{margin-bottom:18px;}
+        .cat-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding:0 2px;}
+        .cat-h .name{font-weight:600;font-size:13px;color:var(--jade);text-transform:uppercase;letter-spacing:.03em;}
+        .cat-h .max{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--gold-dim);}
+        .chk-item{
+            display:flex;gap:10px;align-items:flex-start;
+            border:1px solid var(--line);background:var(--paper-2);border-radius:10px;
+            padding:11px 12px;margin-bottom:7px;cursor:pointer;
+        }
+        .chk-item input{margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--moss);}
+        .chk-item .ct{font-size:13px;font-weight:500;color:var(--text-ink);line-height:1.5;}
+        .chk-item .cw{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-mute);margin-top:2px;}
+        .reset-btn{
+            display:block;width:100%;margin-top:6px;padding:11px;border-radius:10px;
+            border:1px solid var(--line);background:transparent;color:var(--text-mute);
+            font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;cursor:pointer;
+        }
+
+        .office-tab-row{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;}
+        .office-tab,.team-tab{
+            display:flex;justify-content:space-between;align-items:center;gap:10px;
+            text-align:left;border:1px solid var(--line);background:var(--paper-2);border-radius:10px;
+            padding:12px 14px;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;color:var(--text-ink);
+        }
+        .office-tab .oc-max{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-mute);font-weight:500;flex-shrink:0;}
+        .office-tab.sel,.team-tab.sel{background:var(--moss);border-color:var(--moss);color:#fff;}
+        .office-tab.sel .oc-max{color:rgba(255,255,255,.75);}
+        .office-sub,.team-sub{display:none;}
+        .office-sub.active,.team-sub.active{display:block;}
+
+        .notice{
+            background:var(--gold);border-radius:14px;padding:18px;margin-bottom:18px;
+        }
+        .notice .kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(58,42,16,.65);font-weight:600;margin-bottom:8px;}
+        .notice h2{font-family:'Fraunces',serif;font-weight:600;font-size:18px;color:#2b1e08;margin:0 0 10px;line-height:1.35;}
+        .notice p{font-size:13px;color:#3a2a10;line-height:1.65;margin:0 0 8px;}
+        .notice p:last-child{margin-bottom:0;}
+        .notice b{color:#2b1e08;}
+        .foot-note{
+            margin-top:22px;padding-top:14px;border-top:1px solid var(--line);
+            font-size:11.5px;color:var(--text-mute);line-height:1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="wrap">
+        <div class="brand">
+            <div class="brand-mark">O</div>
+            <div class="brand-text">
+                <div class="eyebrow">Oria Spa</div>
+                <div class="title">Oria Spa KTV</div>
+            </div>
+        </div>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="home">Tổng quan</button>
+            <button class="tab-btn" data-tab="income">Thu nhập</button>
+            <button class="tab-btn" data-tab="rules">Quy chế</button>
+            <button class="tab-btn" data-tab="office">Office</button>
+            <button class="tab-btn" data-tab="score">Chấm điểm</button>
+            <button class="tab-btn" data-tab="setup">Set up</button>
+        </nav>
+
+        <div class="panel">
+            
+            <!-- TỔNG QUAN -->
+            <section class="section active" id="home">
+                <h1>Chào KTV</h1>
+                <p class="sub">Nơi tra cứu nhanh quy chế thu nhập, quy trình làm việc theo tua và bảng tự chấm điểm mỗi ca.</p>
+                
+                <div class="notice">
+                    <div class="kicker">Thông báo áp dụng cơ chế mới</div>
+                    <h2>Chính thức áp dụng từ 01/09/2026</h2>
+                    <p>Đây là nơi tổng hợp toàn bộ cơ chế mới về thu nhập, quy trình làm việc và chấm điểm — chính thức áp dụng từ ngày <b>01/09/2026</b>.</p>
+                    <p>Cơ chế sẽ tiếp tục được cải thiện, điều chỉnh và cập nhật dựa theo tình hình thực tế, với mốc đánh giá tối thiểu <b>3 tháng</b>.</p>
+                </div>
+
+                <div class="hero">
+                    <div class="kicker">Tinh thần làm việc</div>
+                    <h2>Tự do bật ca — trọn thu nhập mỗi tua</h2>
+                    <p>Không lương cứng, không chiết khấu. KTV chủ động bật ứng dụng khi sẵn sàng, tắt ứng dụng khi cần nghỉ, và nhận trọn đơn giá của tua đã hoàn thành.</p>
+                </div>
+
+                <div class="chip-row">
+                    <div class="chip"><div class="num">100.000đ</div><div class="lbl">Menu phổ thông / 60p</div></div>
+                    <div class="chip"><div class="num">180.000đ</div><div class="lbl">Menu VIP / 60p</div></div>
+                    <div class="chip"><div class="num">+20.000đ</div><div class="lbl">Bonus 4 sao</div></div>
+                </div>
+
+                <div class="field-label" style="margin-top:22px;">Đi nhanh đến mục</div>
+                <div class="nav-grid">
+                    <button class="nav-card" data-goto="income">
+                        <div class="t">Tính thu nhập tua</div>
+                        <div class="d">Chọn menu & mức sao để xem tiền nhận thực tế.</div>
+                    </button>
+                    <button class="nav-card" data-goto="rules">
+                        <div class="t">Quy chế đầy đủ</div>
+                        <div class="d">8 mục: điều kiện, điểm danh, sổ tua, kỷ luật…</div>
+                    </button>
+                    <button class="nav-card" data-goto="office">
+                        <div class="t">Office</div>
+                        <div class="d">3 nhóm: Quy trình công việc · Thời gian làm việc · Thái độ, tác phong.</div>
+                    </button>
+                    <button class="nav-card" data-goto="score">
+                        <div class="t">Tự chấm điểm</div>
+                        <div class="d">Checklist 100 điểm theo 3 tiêu chí đánh giá.</div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- THU NHẬP -->
+            <section class="section" id="income">
+                <h1>Tính thu nhập tua</h1>
+                <p class="sub">Đơn giá 60 phút, cộng bonus 20.000đ khi đạt đánh giá 4 sao. Từ 3 sao trở xuống không xét bonus và bị khấu trừ theo bậc. <span class="warn">Bonus chỉ được cộng khi đơn hàng chỉ có KTV cùng chế độ; không áp dụng cộng bonus khi đơn có KTV khác chế độ.</span></p>
+                
+                <div class="field-label">Menu dịch vụ</div>
+                <div class="pill-row">
+                    <div class="pill sel" data-menu="pho" data-price="100000">Phổ thông<div class="p">100.000đ/60p</div></div>
+                    <div class="pill" data-menu="vip" data-price="180000">VIP<div class="p">180.000đ/60p</div></div>
+                </div>
+
+                <div class="field-label">Đánh giá khách hàng</div>
+                <div class="star-row">
+                    <div class="star sel" data-star="4">4 ★</div>
+                    <div class="star" data-star="3">3 ★</div>
+                    <div class="star" data-star="2">2 ★</div>
+                    <div class="star" data-star="1">1 ★</div>
+                </div>
+
+                <div class="result-card">
+                    <div class="rlabel">Thu nhập tua này</div>
+                    <div class="rtotal" id="res-total">120.000đ</div>
+                    <div class="rbreak">
+                        <div class="rline"><span>Tiền tua</span><b id="res-base">100.000đ</b></div>
+                        <div class="rline"><span>Bonus 4 sao</span><b id="res-bonus">20.000đ</b></div>
+                    </div>
+                </div>
+                <div class="result-note" id="res-note">Đạt chuẩn xuất sắc — nhận trọn 100% đơn giá kèm bonus.</div>
+                
+                <table class="ref">
+                    <tr><th>Mức sao</th><th>Tỷ lệ nhận</th><th>Phổ thông</th><th>VIP</th></tr>
+                    <tr class="ref-row" data-row-star="4"><td>4 ★ Xuất sắc</td><td>100% + bonus</td><td>100.000đ + 20.000đ</td><td>180.000đ + 20.000đ</td></tr>
+                    <tr class="ref-row" data-row-star="3"><td>3 ★</td><td>Trừ 25%</td><td>75.000đ</td><td>135.000đ</td></tr>
+                    <tr class="ref-row" data-row-star="2"><td>2 ★</td><td>Trừ 50%</td><td>50.000đ</td><td>90.000đ</td></tr>
+                    <tr class="ref-row" data-row-star="1"><td>1 ★</td><td>Trừ 75%</td><td>25.000đ</td><td>45.000đ</td></tr>
+                </table>
+            </section>
+
+            <!-- QUY CHẾ -->
+            <section class="section" id="rules">
+                <h1>Quy chế chế độ làm việc & thu nhập theo tua</h1>
+                <p class="sub">Trong thời gian hệ thống đang bảo trì, nâng cấp, nhóm Zalo nội bộ là kênh tương tác chính, nhưng cũng phải thao tác trên hệ thống song song để làm quen. Sau khi hệ thống hoàn tất bảo trì, nâng cấp, kênh thao tác chính sẽ được cập nhật lại.</p>
+
+                <div class="acc-item open">
+                    <div class="acc-head"><span class="n">01</span><span class="t">Mục đích & phạm vi áp dụng</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>Áp dụng cho KTV tay nghề cao, hợp tác làm việc theo tua trên tinh thần tự do, chủ động tại cơ sở.</li>
+                            <li>Môi trường không ràng buộc thời gian, không khung giờ cố định — KTV tự bật/tắt ứng dụng theo nhu cầu.</li>
+                            <li>Thu nhập tương xứng năng suất và tay nghề thực tế, khuyến khích nâng cao chất lượng phục vụ và bảo toàn sức khoẻ.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">02</span><span class="t">Tiêu chuẩn & yêu cầu tham gia</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>Có <b>chứng chỉ hành nghề</b> hợp lệ theo quy định công ty.</li>
+                            <li>Đạt chuẩn <b>tay nghề Full chuyên môn</b> theo đúng quy trình dịch vụ.</li>
+                            <li>Công ty khấu trừ và nộp thay <b>thuế TNCN</b> theo quy định pháp luật.</li>
+                            <li>Tự túc đồng phục đúng kiểu dáng, màu sắc, tiêu chuẩn thương hiệu; giữ tác phong chỉn chu.</li>
+                            <li>Đóng <b>quỹ nội bộ 250.000đ/tháng</b>.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">03</span><span class="t">Quyền lợi & thu nhập</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>Không lương cứng, không chiết khấu — nhận trọn đơn giá mỗi tua hoàn thành.</li>
+                            <li>Menu phổ thông 100.000đ/60p · Menu VIP 180.000đ/60p, cộng bonus 20.000đ/tua nếu đạt 4 sao.</li>
+                            <li class="warn">Rút tiền phải đăng ký ngay khi điểm danh ca đầu ngày. Không báo từ đầu ngày → công ty không giải quyết khiếu nại phát sinh sau đó.</li>
+                            <li><b>Tính năng sắp ra mắt — Rút tiền khẩn cấp:</b> KTV có thể rút tiền dù đang ở nhà hay đang đi chơi, nhận tiền qua tài khoản ngân hàng, có tính phí.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">04</span><span class="t">Đăng ký giờ có mặt, điểm danh & trạng thái (Zalo chính)</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>Báo giờ có mặt qua nhóm Zalo nội bộ và ứng dụng trước <b>00:00 hằng ngày</b>.</li>
+                            <li>Vào làm đột xuất chưa đăng ký trước: nhắn Zalo nội bộ trước khi vào ca.</li>
+                            <li>Đến trễ hơn giờ đã báo: chủ động nhắn cập nhật tiến độ trên nhóm kèm giờ cụ thể, rõ ràng.</li>
+                            <li>Đã đăng ký không đi làm nhưng muốn vào làm: phải báo giờ cụ thể, rõ ràng.</li>
+                            <li>Có mặt đúng giờ đã đăng ký → bật ứng dụng, điểm danh, sẵn sàng nhận điều phối.</li>
+                            <li>Muốn kết thúc ca giữa chừng: tắt ứng dụng, chụp màn hình xác nhận gửi nhóm Zalo. <span class="warn">Không tự ý tắt khi đã có thông báo khách vào/sắp vào.</span></li>
+                            <li>Đang trong tua: không thao tác báo tắt ứng dụng bằng điện thoại. Đang canh tua đầu mà khách chưa vào: có thể báo trước "xong tua này em về". <span class="warn">Mọi thao tác thông báo sau khi khách đã vào đều không hợp lệ.</span></li>
+                            <li>Đã báo "Làm thêm 1 tua rồi về" nhưng khách chưa vào và muốn tắt ứng dụng đi về: <span class="warn">chỉ hợp lệ khi chưa có tin nhắn báo khách vào / sắp vào.</span></li>
+                            <li>Đã báo "Làm hết tua về" nhưng muốn làm thêm tua thì phải chủ động báo với quầy để quầy sắp xếp.</li>
+                            <li><b>Đăng ký lịch làm việc:</b> qua form trên ứng dụng và nhóm Zalo nội bộ. Không đăng ký lịch làm việc → hệ thống tự khóa tài khoản. <span class="warn">Phí kích hoạt lại: 1.000.000 – 2.000.000đ.</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">05</span><span class="t">Điều phối & xếp thứ tự tua (Sổ tua tích lũy)</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>KTV có tổng giờ phục vụ khách cao hơn được ưu tiên xếp tua đầu; cập nhật liên tục trong ngày.</li>
+                            <li>Thứ tự tính theo tổng giờ làm khách thực tế của mỗi KTV.</li>
+                            <li>Sổ tua được chốt và <b>reset về mốc ban đầu vào cuối mỗi tháng</b>.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">06</span><span class="t">Kỷ luật & vi phạm</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <p style="margin:0 0 10px;">Không phạt tiền — mọi vi phạm khấu trừ trực tiếp vào giờ tích lũy, ảnh hưởng thứ tự nhận tua:</p>
+                        <ul>
+                            <li>Bỏ lịch đã đăng ký (không báo/báo trễ) → <b>trừ 10 giờ</b>.</li>
+                            <li>Báo vắng trước 07:00 sáng ngày hôm sau → <b>trừ 5 giờ</b>.</li>
+                            <li>Đến trễ không nhắn cập nhật → <b>trừ 5 giờ</b>.</li>
+                            <li>Từ chối tua đã gán → <b>trừ gấp 3 lần</b> số giờ gói dịch vụ (VD: gói 60p → trừ 3 giờ).</li>
+                            <li class="warn">Không hoàn thành đơn do tự ý đưa khách xuống sớm mà không bấm nút khẩn cấp, hoặc đưa khách xuống sớm với lý do không xuất phát từ khách, khiến khách giận và bỏ về → <b>không có cơ sở tính tiền tua đó</b>; công ty phải xử lý bồi hoàn cho khách hàng.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">07</span><span class="t">Đánh giá chất lượng & khấu trừ tự động</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <p style="margin:0 0 8px;">Thang điểm tối đa 4 sao, hệ thống tự khấu trừ 25% mỗi bậc dưới chuẩn 4 sao. Bonus 20.000đ chỉ trao khi đạt đúng 4 sao. <i>(Có thể điều chỉnh sau 1 tháng)</i> Xem chi tiết ở tab <b>Thu nhập</b>.</p>
+                        <p class="warn" style="margin:0;">Hệ thống tự động tính tiền tua tới đúng thời điểm hoàn thành đơn hoặc dừng đơn — không làm tròn phút, tính chính xác số tiền theo thời gian thực tế đã thực hiện.</p>
+                        <p style="margin:8px 0 0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-mute);">Ví dụ: Menu phổ thông (100.000đ/60 phút), thời gian thực hiện dịch vụ trên khách 40 phút → 40 × (100.000 ÷ 60) = 66.666đ.</p>
+                    </div>
+                </div>
+
+                <div class="acc-item">
+                    <div class="acc-head"><span class="n">08</span><span class="t">Hiệu lực thi hành</span><span class="arrow">▾</span></div>
+                    <div class="acc-body">
+                        <ul>
+                            <li>Quy chế có hiệu lực kể từ ngày ban hành.</li>
+                            <li>Toàn bộ dữ liệu đăng ký, điểm danh, gán tua, kết quả đánh giá sao, thu hộ/khấu trừ đều trích xuất minh bạch từ hệ thống quản lý nội bộ.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="foot-note">Quy chế nội bộ dành cho Kỹ thuật viên đối tác Oria — vui lòng đối chiếu bản mới nhất do công ty ban hành khi có cập nhật.</div>
+            </section>
+
+            <!-- OFFICE -->
+            <section class="section" id="office">
+                <h1>Office</h1>
+                <p class="sub">3 nhóm tiêu chuẩn công việc trong ngày. Bảng Chấm điểm được xây dựng dựa trên đúng 3 nhóm này.</p>
+                
+                <div class="office-tab-row">
+                    <button class="office-tab sel" data-office="proc">Quy trình công việc<span class="oc-max">40đ</span></button>
+                    <button class="office-tab" data-office="time">Thời gian làm việc<span class="oc-max">30đ</span></button>
+                    <button class="office-tab" data-office="attitude">Thái độ, ngoại hình, tác phong, trách nhiệm<span class="oc-max">30đ</span></button>
+                </div>
+
+                <div class="office-sub active" id="office-proc">
+                    <div class="tl">
+                        <div class="tl-item">
+                            <div class="tt">Trước tua (khi có đơn hàng)</div>
+                            <div class="td2">Nhận thông báo & số thứ tự khách; đọc kỹ ghi chú; chuẩn bị nước ngâm chân, túi chườm cổ; mở phòng trên hệ thống; setup chuẩn: máy lạnh 20°C / phòng gội 22°C, đèn tinh dầu, tủ nóng, set up giường gồm khăn lót - quần áo - khăn đắp, châm nước nóng nếu có gội, đèn vàng, đèn hành lang; tick hoàn tất mở phòng.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Nhận tua & đón khách tại sảnh</div>
+                            <div class="td2">Ra sảnh đón khách, chào "Oria xin chào"; cất dép và chụp ảnh vị trí; mời khách ngâm chân, chườm cổ thảo dược, rửa chân sạch; hướng dẫn khách lên phòng.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Trong dịch vụ</div>
+                            <div class="td2">Bấm "BẮT ĐẦU" trên app trước mặt khách; làm đủ 100% thời lượng & đúng quy trình từng dịch vụ; thao tác chuẩn chỉnh, chuyên nghiệp. <span class="warn">Nếu phát sinh bất cứ vấn đề gì trong thời gian thực hiện dịch vụ, bắt buộc dùng nút báo cáo/khẩn cấp trên app ngay lập tức — tuyệt đối không được tự ý đưa khách xuống mà không bấm nút báo cáo.</span></div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Kết thúc dịch vụ</div>
+                            <div class="td2">Nhắc và cùng khách kiểm tra tư trang trước khi rời khỏi phòng; đưa khách xuống sảnh.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Sau dịch vụ — tại sảnh</div>
+                            <div class="td2">Tiễn khách, chào "Oria xin cảm ơn"; dẹp dép; chỉnh gối tựa; dọn rửa ly tách trà.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Sau dịch vụ — tại phòng - bàn giao</div>
+                            <div class="td2">Thu gom khăn dơ; khử khuẩn và tiệt trùng toàn bộ dụng cụ đồ nghề; làm sạch tấm trải giường/bồn gội; setup lại phòng theo đúng tiêu chuẩn bàn giao; tick xác nhận trả phòng; hoàn tất đơn & viết feedback khách trên web app.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="office-sub" id="office-time">
+                    <div class="tl">
+                        <div class="tl-item">
+                            <div class="tt">Bật app</div>
+                            <div class="td2">Điểm danh đúng giờ trên app và nhóm Zalo nội bộ theo đúng giờ đã đăng ký; đồng phục theo ngày quy định, bảng tên, khẩu trang, tiệt trùng đồ nghề, châm đầy đủ bộ mỹ phẩm dùng cho khách, pin dự phòng và đèn ráy tai luôn trong trạng thái đầy pin.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Trạng thái bật app</div>
+                            <div class="td2">Luôn trong trạng thái sẵn sàng nhận tua; tua đầu chủ động châm nước nóng; tuân thủ phân bổ và quy tắc trực lầu; không để thiếu đồ dùng cho khách.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Tắt app kết thúc ngày làm việc</div>
+                            <div class="td2">Châm đầy vật tư khu vực phụ trách; hoàn tất checklist bàn giao qua hệ thống office; bấm "Out ca". Chụp ảnh đã tắt app xác nhận lên nhóm Zalo nội bộ, kết thúc ngày làm việc.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Chuyên cần</div>
+                            <div class="td2">Có lịch sử đi làm đều, ít off. Tuân thủ đăng ký lịch làm việc theo quy định.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="office-sub" id="office-attitude">
+                    <div class="tl">
+                        <div class="tl-item">
+                            <div class="tt">Đồng phục</div>
+                            <div class="td2">Mặc đồng phục sạch sẽ, phẳng phiu đúng lịch mỗi ngày, mang bảng tên và đeo khẩu trang đầy đủ.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Ngoại hình</div>
+                            <div class="td2">Đầu tóc gọn gàng theo form quy định, không nhuộm/tẩy màu sặc sỡ; giữ vệ sinh cá nhân, răng miệng sạch sẽ, không có mùi cơ thể, móng tay cắt ngắn gọn gàng.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Tác phong & chuẩn mực chào hỏi</div>
+                            <div class="td2">Nhanh nhẹn, ân cần, lễ phép; thực hiện đúng form chào hỏi "Oria xin chào" (đón khách) và "Oria xin cảm ơn" (tiễn khách, giao tiếp cấp trên & đồng nghiệp).</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Tinh thần đồng đội & hòa khí nội bộ</div>
+                            <div class="td2">Tôn trọng đồng nghiệp, giữ hòa khí nội bộ, không cãi vã hay hơn thua, hỗ trợ lẫn nhau trong vận hành ca.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Minh bạch kênh tương tác & báo cáo hệ thống</div>
+                            <div class="td2">100% thao tác nhận việc, bật/tắt app, gửi báo cáo và phản hồi qua hệ thống hoặc Hotline; không tự ý nhắn tin riêng (Zalo, Messenger, SĐT riêng) để trao đổi công việc hay liên hệ khách.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Trung thực & trách nhiệm nghề nghiệp</div>
+                            <div class="td2">Trung thực 100% trong báo cáo sự cố, tình trạng cơ sở vật chất và đánh giá khách hàng.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Minh bạch tài chính & cấm thu lợi bất chính</div>
+                            <div class="td2">Nghiêm cấm cấu kết, chia chác tiền dịch vụ, vòi tiền tip sai quy định hoặc làm sai lệch giá niêm yết, ảnh hưởng uy tín công ty.</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Bảo mật thông tin tuyệt đối</div>
+                            <div class="td2">Bảo mật 100% danh tính, số điện thoại, hình ảnh và thông tin cá nhân khách hàng; không xin SĐT hay cung cấp dữ liệu khách cho bên thứ ba; bảo mật tài khoản app cá nhân, không chia sẻ mật khẩu.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- CHẤM ĐIỂM -->
+            <section class="section" id="score">
+                <h1>Bảng tự chấm điểm cuối ca</h1>
+                <p class="sub">Điểm ngày = 100 − Tổng điểm trừ các vi phạm trong ngày (mỗi lỗi chỉ trừ 1 lần/ngày dù lặp lại nhiều lần). Điểm tháng = Tổng điểm các ngày có làm việc ÷ Số ngày thực tế có làm việc trong tháng. Checklist bên dưới dùng để tự soát điểm ngày trước khi quản lý đánh giá chính thức.</p>
+                
+                <div class="score-bar">
+                    <span class="sl">Tổng điểm tự chấm</span>
+                    <span class="sv"><span id="score-val">0</span> / 100</span>
+                </div>
+
+                <div class="cat">
+                    <div class="cat-h"><span class="name">I. Quy trình công việc</span><span class="max">40 điểm</span></div>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="5"><span><span class="ct">Trước tua (khi có đơn hàng)</span><span class="cw">5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="5"><span><span class="ct">Nhận tua & đón khách tại sảnh</span><span class="cw">5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="10"><span><span class="ct">Trong dịch vụ</span><span class="cw">10đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="5"><span><span class="ct">Kết thúc dịch vụ</span><span class="cw">5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="5"><span><span class="ct">Sau dịch vụ — tại sảnh</span><span class="cw">5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="10"><span><span class="ct">Sau dịch vụ — tại phòng - bàn giao</span><span class="cw">10đ</span></span></label>
+                </div>
+
+                <div class="cat">
+                    <div class="cat-h"><span class="name">II. Thời gian làm việc</span><span class="max">30 điểm</span></div>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="7.5"><span><span class="ct">Bật app đúng giờ đã đăng ký</span><span class="cw">7.5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="7.5"><span><span class="ct">Trạng thái bật app — sẵn sàng nhận tua trong ca</span><span class="cw">7.5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="7.5"><span><span class="ct">Tắt app kết thúc ngày làm việc</span><span class="cw">7.5đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="7.5"><span><span class="ct">Chuyên cần — đi làm đều</span><span class="cw">7.5đ</span></span></label>
+                </div>
+
+                <div class="cat">
+                    <div class="cat-h"><span class="name">III. Thái độ, ngoại hình, tác phong, trách nhiệm</span><span class="max">30 điểm</span></div>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Đồng phục</span><span class="cw">3đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="6"><span><span class="ct">Ngoại hình</span><span class="cw">6đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="6"><span><span class="ct">Tác phong & chuẩn mực chào hỏi</span><span class="cw">6đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Tinh thần đồng đội & hòa khí nội bộ</span><span class="cw">3đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Minh bạch kênh tương tác & báo cáo hệ thống</span><span class="cw">3đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Trung thực & trách nhiệm nghề nghiệp</span><span class="cw">3đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Minh bạch tài chính & cấm thu lợi bất chính</span><span class="cw">3đ</span></span></label>
+                    <label class="chk-item"><input type="checkbox" class="scoreChk" data-weight="3"><span><span class="ct">Bảo mật thông tin tuyệt đối</span><span class="cw">3đ</span></span></label>
+                </div>
+
+                <button class="reset-btn" id="reset-score">Đặt lại checklist</button>
+
+                <div class="field-label" style="margin-top:24px;">Miễn quỹ nội bộ theo điểm tháng</div>
+                <table class="ref">
+                    <tr><th>Điểm tháng</th><th>Tỷ lệ miễn</th><th>Số tiền miễn</th></tr>
+                    <tr class="hi"><td>≥ 98 điểm</td><td>100%</td><td>250.000đ</td></tr>
+                    <tr><td>96 – 97,9 điểm</td><td>50%</td><td>125.000đ</td></tr>
+                    <tr><td>90 – 95,9 điểm</td><td>30%</td><td>75.000đ</td></tr>
+                    <tr><td>85 – 89,9 điểm</td><td>10%</td><td>25.000đ</td></tr>
+                    <tr><td>&lt; 85 điểm</td><td>0%</td><td>0đ (đóng đủ 250.000đ)</td></tr>
+                </table>
+                <div class="result-note">Quỹ nội bộ gốc 250.000đ/tháng (Quy chế mục 2). Mức miễn áp dụng theo điểm tháng tính từ bảng tự chấm điểm Office ở trên, chia đều theo số ngày đi làm thực tế. <span class="warn">Nếu cùng 1 lỗi lặp lại từ 3 lần trở lên trong tháng, bị trừ thêm 1 lần điểm tương ứng vào điểm tháng, ngoài công thức trung bình cộng ở trên.</span></div>
+                
+                <div class="foot-note">Điểm số mang tính tự soát cá nhân; điểm chính thức do quản lý ghi nhận trên hệ thống theo phiếu đánh giá gốc.</div>
+            </section>
+
+            <!-- SET UP -->
+            <section class="section" id="setup">
+                <h1>Set up</h1>
+                <p class="sub">KTV phụ trách khu vực được phân công có trách nhiệm giám sát và đảm bảo khu vực đó được hoàn thành đầy đủ, đúng tiêu chuẩn. Khu vực không đạt chuẩn sẽ ảnh hưởng trực tiếp đến thang điểm Office.</p>
+                
+                <div class="office-tab-row">
+                    <button class="office-tab sel" data-setup="daily">Việc ngày</button>
+                    <button class="office-tab" data-setup="weekly">Việc tuần</button>
+                </div>
+
+                <div class="office-sub active" id="setup-daily">
+                    <div class="office-tab-row">
+                        <button class="team-tab sel" data-team="team1">Team 1 (V1 · V2 · V3 · Nhà tắm · Toilet lầu 1)</button>
+                        <button class="team-tab" data-team="team3">Team 3</button>
+                        <button class="team-tab" data-team="team4">Team 4 (Yumi)</button>
+                        <button class="team-tab" data-team="team5">Team 5 (V4 - Tolet lầu 2)</button>
+                    </div>
+
+                    <div class="team-sub active" id="team-team1">
+                        <p class="sub" style="margin:0 0 14px;">Nhân sự trong team: NH021 – NH018</p>
+                        <div class="tl">
+                            <div class="tl-item"><div class="td2">Chăm giấy khô - giấy ướt - khẩu trang - cồn ở phòng V1 - V2 - V3</div></div>
+                            <div class="tl-item"><div class="td2">Chăm nước rửa tay ở Tolet lầu 1 và nhà tắm.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm full tủ đồ khách ở 2 tủ đồ lầu 1 và tủ đồ V3</div></div>
+                            <div class="tl-item"><div class="td2">Chăm tinh dầu máy xông Tolet lầu 1 - hành lang lầu 1 - V1 - V2 - V3, nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm giấy Tolet lầu 1 và giấy lavabo tolet lầu 1.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra kính toàn bộ lavabo Tolet lầu 1 - Tolet lầu 1 - hành lang lầu 1 - Khu vực buồng thay đồ - V3, nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm khăn tắm ở nhà tắm lầu 1 ít nhất 3 cái.</div></div>
+                            <div class="tl-item"><div class="td2">Thay thảm và đặt đúng vị trí. (3 thảm ở khu vực thay đồ - Tolet lầu 1 - V3)</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra đủ số lượng và đặt đúng vị trí giỏ để đồ khách - móc treo - túi mây)</div></div>
+                            <div class="tl-item"><div class="td2">Sắp xếp túi cổ, túi mắt trong tủ nóng ngay ngắn, gọn gàng ở tủ nóng lầu 1 và V3.</div></div>
+                            <div class="tl-item"><div class="td2">Thay khăn lau tay Tolet lầu 1.</div></div>
+                            <div class="tl-item"><div class="td2">Mang đồ dơ lầu 1 và V3 lên phòng giặt, phân loại đồ.</div></div>
+                            <div class="tl-item"><div class="td2">Đặt remote máy lạnh đúng vị trí 3 khu vực V1 - V2 - V3.</div></div>
+                            <div class="tl-item"><div class="td2">Luôn giữ sàn Tolet lầu 1 và sàn nhà tắm khô ráo.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm nước máy xông mặt lầu 1 2 máy, V3 1 máy.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm full rổ facial.</div></div>
+                            <div class="tl-item"><div class="td2">Rửa sạch tóc, làm sạch bồn gội V3.</div></div>
+                            <div class="tl-item"><div class="td2">Set up máy sấy đủ số lượng và đặt đúng vị trí (2 máy V3).</div></div>
+                        </div>
+                    </div>
+
+                    <div class="team-sub" id="team-team3">
+                        <p class="sub" style="margin:0 0 14px;">Nhân sự trong team: NH025</p>
+                        <div class="tl">
+                            <div class="tl-item"><div class="td2">Tắt thiết bị toàn bộ cơ sở có hình ảnh.</div></div>
+                        </div>
+                    </div>
+
+                    <div class="team-sub" id="team-team4">
+                        <p class="sub" style="margin:0 0 14px;">Nhân sự trong team: NH02</p>
+                        <div class="tl">
+                            <div class="tl-item"><div class="td2">Kiểm tra kính toàn bộ kính Yumi nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm giấy khô - giấy ướt - khẩu trang - cồn ở Yumi.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm full tủ đồ khách ở Yumi.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm tinh dầu máy xông ở Yumi, nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra đủ số lượng và đặt đúng vị trí (giỏ để đồ khách - móc treo - túi mây ở Yumi).</div></div>
+                            <div class="tl-item"><div class="td2">Sắp xếp túi cổ, túi mắt trong tủ nóng ngay ngắn, gọn gàng ở Yumi.</div></div>
+                            <div class="tl-item"><div class="td2">Đặt remote máy lạnh đúng vị trí khu vực Yumi. (2 máy lạnh).</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm nước máy xông mặt lầu 2 máy.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm full rổ facial.</div></div>
+                            <div class="tl-item"><div class="td2">Mang đồ dơ Yumi lên phòng giặt, phân loại đồ.</div></div>
+                        </div>
+                    </div>
+
+                    <div class="team-sub" id="team-team5">
+                        <p class="sub" style="margin:0 0 14px;">Nhân sự trong team: NH027 – NH011</p>
+                        <div class="tl">
+                            <div class="tl-item"><div class="td2">Chăm khăn tắm ít nhất 3 cái ở Tolet lầu 2.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm giấy Tolet lầu 2 và giấy lavabo tolet lầu 2.</div></div>
+                            <div class="tl-item"><div class="td2">Luôn giữ sàn Tolet lầu 2 khô ráo.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm nước rửa tay - sữa tắm ở Tolet lầu 2 và Lavabo V4.</div></div>
+                            <div class="tl-item"><div class="td2">Thay thảm và đặt đúng vị trí. (1 thảm trước Tolet lầu 2, 1 thảm V4).</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra đủ số lượng móc treo ở Tolet lầu 2 (Ít nhất 2 móc).</div></div>
+                            <div class="tl-item"><div class="td2">Thay khăn lau tay Tolet lầu 2 và Lavabo V4.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm giấy khô - giấy ướt - khẩu trang - cồn ở phòng V4.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra kính toàn bộ kính V4 - lavabo V4, nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm full tủ đồ khách ở tủ đồ V4.</div></div>
+                            <div class="tl-item"><div class="td2">Chăm tinh dầu máy xông V4 nếu dơ báo cáo để điều phối hậu cần xử lý.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra đủ số lượng và đặt đúng vị trí ở V4 (móc treo - túi mây)</div></div>
+                            <div class="tl-item"><div class="td2">Sắp xếp túi cổ, túi mắt trong tủ nóng ngay ngắn, gọn gàng ở tủ nóng V4.</div></div>
+                            <div class="tl-item"><div class="td2">Mang đồ dơ V4 lên phòng giặt, phân loại đồ.</div></div>
+                            <div class="tl-item"><div class="td2">Đặt remote máy lạnh đúng vị trí ở V4.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm nước máy xông mặt V4.</div></div>
+                            <div class="tl-item"><div class="td2">Kiểm tra và chăm full rổ facial V4.</div></div>
+                            <div class="tl-item"><div class="td2">Rửa sạch tóc, làm sạch bồn gội V4.</div></div>
+                            <div class="tl-item"><div class="td2">Set up máy sấy đủ số lượng và đặt đúng vị trí (1 máy V4).</div></div>
+                            <div class="tl-item"><div class="td2">Tắt thiết bị toàn bộ cơ sở có hình ảnh.</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="office-sub" id="setup-weekly">
+                    <div class="tl">
+                        <div class="tl-item">
+                            <div class="tt">Thứ 2</div>
+                            <div class="td2">Thay khăn trải giường & áo gối (V1 - V2 - V3 - Yumi - V4)</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Thứ 3</div>
+                            <div class="td2">Vệ sinh dụng cụ facial & máy xông mặt: vệ sinh bằng khăn đa năng và thay nước máy xông mặt - vệ sinh bằng khăn đa năng dụng cụ facial - chăm rổ facial. (Lầu 1 có 2 máy, V3 có 1 máy, Yumi có 2 máy, V4 có 1 máy)</div>
+                        </div>
+                        <div class="tl-item">
+                            <div class="tt">Thứ 6</div>
+                            <div class="td2">Thay khăn trải giường & áo gối (V1 - V2 - V3 - Yumi - V4).</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script>
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const sections = document.querySelectorAll('.section');
+
+        function goTo(name){
+            tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+            sections.forEach(s => s.classList.toggle('active', s.id === name));
+        }
+
+        tabBtns.forEach(b => b.addEventListener('click', () => goTo(b.dataset.tab)));
+        document.querySelectorAll('.nav-card').forEach(c => c.addEventListener('click', () => goTo(c.dataset.goto)));
+
+        document.querySelectorAll('.acc-head').forEach(h => {
+            h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+        });
+
+        document.querySelectorAll('#office .office-tab').forEach(t => {
+            t.addEventListener('click', () => {
+                document.querySelectorAll('#office .office-tab').forEach(x => x.classList.remove('sel'));
+                t.classList.add('sel');
+                document.querySelectorAll('#office .office-sub').forEach(s => s.classList.remove('active'));
+                document.getElementById('office-' + t.dataset.office).classList.add('active');
+            });
+        });
+
+        document.querySelectorAll('#setup .office-tab').forEach(t => {
+            t.addEventListener('click', () => {
+                document.querySelectorAll('#setup .office-tab').forEach(x => x.classList.remove('sel'));
+                t.classList.add('sel');
+                document.querySelectorAll('#setup .office-sub').forEach(s => s.classList.remove('active'));
+                document.getElementById('setup-' + t.dataset.setup).classList.add('active');
+            });
+        });
+
+        document.querySelectorAll('#setup-daily .team-tab').forEach(t => {
+            t.addEventListener('click', () => {
+                document.querySelectorAll('#setup-daily .team-tab').forEach(x => x.classList.remove('sel'));
+                t.classList.add('sel');
+                document.querySelectorAll('#setup-daily .team-sub').forEach(s => s.classList.remove('active'));
+                document.getElementById('team-' + t.dataset.team).classList.add('active');
+            });
+        });
+
+        let menu = 'pho', price = 100000, star = 4;
+        const fmt = n => n.toLocaleString('vi-VN') + 'đ';
+
+        function calc(){
+            let base, bonus = 0, note;
+            if(star === 4){
+                base = price;
+                bonus = 20000;
+                note = 'Đạt chuẩn xuất sắc — nhận trọn 100% đơn giá kèm bonus.';
+            } else {
+                const cut = {3:0.25, 2:0.5, 1:0.75}[star];
+                base = Math.round(price * (1 - cut));
+                note = 'Dưới chuẩn 4 sao — tự động khấu trừ ' + (cut*100) + '% trên tiền tua, không xét bonus.';
+            }
+            
+            document.getElementById('res-base').textContent = fmt(base);
+            document.getElementById('res-bonus').textContent = bonus ? fmt(bonus) : '—';
+            document.getElementById('res-total').textContent = fmt(base + bonus);
+            document.getElementById('res-note').textContent = note;
+
+            document.querySelectorAll('.ref-row').forEach(r => {
+                r.classList.toggle('hi', Number(r.dataset.rowStar) === star);
+            });
+        }
+
+        document.querySelectorAll('.pill').forEach(p => {
+            p.addEventListener('click', () => {
+                document.querySelectorAll('.pill').forEach(x => x.classList.remove('sel'));
+                p.classList.add('sel');
+                menu = p.dataset.menu;
+                price = Number(p.dataset.price);
+                calc();
+            });
+        });
+
+        document.querySelectorAll('.star').forEach(s => {
+            s.addEventListener('click', () => {
+                document.querySelectorAll('.star').forEach(x => x.classList.remove('sel'));
+                s.classList.add('sel');
+                star = Number(s.dataset.star);
+                calc();
+            });
+        });
+
+        calc();
+
+        function updateScore(){
+            let total = 0;
+            document.querySelectorAll('.scoreChk').forEach(c => {
+                if(c.checked) total += Number(c.dataset.weight);
+            });
+            document.getElementById('score-val').textContent = Math.round(total);
+        }
+
+        document.querySelectorAll('.scoreChk').forEach(c => c.addEventListener('change', updateScore));
+        document.getElementById('reset-score').addEventListener('click', () => {
+            document.querySelectorAll('.scoreChk').forEach(c => c.checked = false);
+            updateScore();
+        });
+    </script>
+</body>
+</html>

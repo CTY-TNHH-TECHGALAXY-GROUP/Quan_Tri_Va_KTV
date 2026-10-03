@@ -1,3 +1,6 @@
-'use client';
-import PlaceholderPage from '@/components/PlaceholderPage';
-export default function WebBookingPage() { return <PlaceholderPage title="Quản Lý Web Booking" />; }
+// Redirect to the operational web-booking page in reception group
+import { redirect } from 'next/navigation';
+
+export default function WebBookingAdminPage() {
+  redirect('/reception/web-booking');
+}

@@ -1,3 +1,4 @@
+import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -7,10 +8,10 @@ import { createClient } from '@supabase/supabase-js';
  */
 export const getSupabaseAdmin = () => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
-        console.warn('⚠️ [SupabaseAdmin] Missing env vars (SUPABASE_SERVICE_ROLE_KEY). This is expected during build.');
+        console.warn('⚠️ [SupabaseAdmin] Missing env vars (SUPABASE_SECRET_KEY). This is expected during build.');
         return null;
     }
 

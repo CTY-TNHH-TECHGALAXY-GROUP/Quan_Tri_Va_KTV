@@ -1,0 +1,40 @@
+{
+  "orphanTurnQueues": [],
+  "orphanTurnLedgers": [
+    {
+      "id": "4f4add30-69d2-431d-a9fc-67e77d552aa3",
+      "date": "2026-08-24",
+      "booking_id": "NDK-001-24082026",
+      "employee_id": "NH025"
+    },
+    {
+      "id": "015a8958-3ba4-44c9-b7d8-2a9ae94ec2bc",
+      "date": "2026-08-29",
+      "booking_id": "11NDK-002-29082026-A",
+      "employee_id": "NH011"
+    },
+    {
+      "id": "f31dcf2c-9bde-4c13-b81e-5d07ff26340e",
+      "date": "2026-08-29",
+      "booking_id": "11NDK-002-29082026-B",
+      "employee_id": "NH021"
+    }
+  ],
+  "orphanAssignments": [],
+  "stuckBookings": [],
+  "summary": {
+    "totalTurnQueueOrphans": 0,
+    "totalTurnLedgerOrphans": 3,
+    "totalKtvAssignmentsOrphans": 0,
+    "totalStuckBookings": 0,
+    "turnLedgerDateRange": {
+      "minDate": "2026-08-24",
+      "maxDate": "2026-08-29"
+    },
+    "estimatedExtraTurnsByKtv": {
+      "NH025": 1,
+      "NH011": 1,
+      "NH021": 1
+    }
+  }
+}

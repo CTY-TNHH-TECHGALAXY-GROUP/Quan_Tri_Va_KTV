@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe - Quản lý Kho Việc</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; padding: 40px; margin: 0; }
+    .container { max-width: 1000px; margin: 0 auto; background-color: white; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); overflow: hidden; }
+    
+    .header { background: #0ea5e9; padding: 24px 32px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 24px; font-weight: bold; }
+    .header p { margin: 8px 0 0; font-size: 14px; opacity: 0.9; }
+    .btn-white { background: white; color: #0ea5e9; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s; }
+    
+    .content { padding: 32px; background: #f8fafc; min-height: 500px; }
+    
+    /* Category Box */
+    .category-box { background: white; border: 1px solid #cbd5e1; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); overflow: hidden; }
+    .category-header { background: #f1f5f9; padding: 16px 20px; border-bottom: 1px solid #cbd5e1; display: flex; align-items: center; gap: 12px; }
+    .category-header h2 { margin: 0; font-size: 16px; font-weight: bold; color: #1e293b; text-transform: uppercase; flex: 1; }
+    
+    /* Input for editing/creating category */
+    .input-category { flex: 1; font-size: 16px; font-weight: bold; color: #1e293b; text-transform: uppercase; padding: 8px 12px; border: 2px dashed #94a3b8; border-radius: 8px; background: white; }
+    .input-task { flex: 1; font-size: 15px; color: #0f172a; padding: 10px 12px; border: 2px solid #cbd5e1; border-radius: 8px; }
+
+    /* Task Row */
+    .task-list { padding: 8px 0; }
+    .task-row { padding: 12px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px dashed #e2e8f0; transition: background 0.2s; }
+    .task-row:last-child { border-bottom: none; }
+    .task-row:hover { background: #f8fafc; }
+    
+    .drag-handle { color: #cbd5e1; cursor: grab; font-size: 20px; }
+    .task-name { flex: 1; font-size: 15px; color: #334155; font-weight: 500; }
+    
+    /* Photo Toggle */
+    .photo-toggle { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: #64748b; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .photo-toggle.active { background: #eff6ff; border-color: #3b82f6; color: #3b82f6; }
+
+    .btn-icon { background: none; border: none; font-size: 18px; color: #94a3b8; cursor: pointer; padding: 4px; border-radius: 4px; }
+    .btn-icon:hover { color: #ef4444; background: #fee2e2; }
+
+    /* Add Task Button */
+    .add-task-row { padding: 12px 20px 16px; background: white; }
+    .btn-add-task { background: none; border: 2px dashed #cbd5e1; color: #64748b; padding: 10px; border-radius: 8px; font-weight: bold; font-size: 13px; width: 100%; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+    .btn-add-task:hover { border-color: #0ea5e9; color: #0ea5e9; background: #f0f9ff; }
+
+    /* Modal Overlay (Simulated) */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; justify-content: center; align-items: center; padding: 20px; z-index: 50; }
+    .modal { background: white; width: 100%; max-width: 600px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
+    .modal-header { padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+    .modal-header h2 { margin: 0; font-size: 18px; color: #0f172a; }
+    
+  </style>
+</head>
+<body>
+
+  <!-- BACKGROUND: KHO VIỆC PAGE -->
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>📋 Kho Tiêu Đề & Công Việc</h1>
+        <p>Quản lý các bộ mẫu công việc chuẩn của Spa để gán cho nhân viên</p>
+      </div>
+      <button class="btn-white">+ Thêm Tiêu Đề Mới</button>
+    </div>
+
+    <div class="content">
+      
+      <!-- CATEGORY 1.1 -->
+      <div class="category-box">
+        <div class="category-header">
+          <h2>1.1 Setup Khu Vực Sân Ngoài</h2>
+          <button class="btn-icon">✏️</button>
+        </div>
+        <div class="task-list">
+          <div class="task-row">
+            <span class="drag-handle">⋮⋮</span>
+            <div class="task-name">1. Quét dọn sạch rác sân ngoài; Lau sạch bàn ghế</div>
+            <button class="photo-toggle active">✅ Bắt buộc chụp ảnh</button>
+            <button class="btn-icon">🗑️</button>
+          </div>
+          <div class="task-row">
+            <span class="drag-handle">⋮⋮</span>
+            <div class="task-name">2. Lau sạch và đặt menu đứng kèm menu lật ngay ngắn</div>
+            <button class="photo-toggle active">✅ Bắt buộc chụp ảnh</button>
+            <button class="btn-icon">🗑️</button>
+          </div>
+        </div>
+        <div class="add-task-row">
+          <button class="btn-add-task">+ Thêm việc nhỏ vào tiêu đề này...</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SIMULATED POPUP: WHEN USER CLICKS "+ THÊM TIÊU ĐỀ MỚI" -->
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Tạo Tiêu Đề & Công Việc</h2>
+        <button style="background:none; border:none; font-size:24px; cursor:pointer; color:#64748b;">✕</button>
+      </div>
+      
+      <div style="padding: 24px; background: #f8fafc;">
+        
+        <label style="font-size: 13px; font-weight: bold; color: #64748b; margin-bottom: 8px; display: block;">1. NHẬP TIÊU ĐỀ LỚN (CATEGORY)</label>
+        <input type="text" class="input-category" value="1.2 Chuẩn Bị Phòng Gội (PG) & Thiết Bị" style="width: 100%; box-sizing: border-box; margin-bottom: 24px;" />
+
+        <label style="font-size: 13px; font-weight: bold; color: #64748b; margin-bottom: 8px; display: block;">2. DANH SÁCH VIỆC NHỎ</label>
+        
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px;">
+          <!-- Item 1 -->
+          <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+            <input type="text" class="input-task" value="5. Chuẩn bị sẵn sàng nồi xông thảo dược đầu ca" />
+            <button class="photo-toggle active" style="flex-shrink: 0; padding: 0 16px;">📸 Cần Ảnh</button>
+            <button class="btn-icon" style="background: #fee2e2; color: #ef4444; padding: 0 12px;">✕</button>
+          </div>
+
+          <!-- Item 2 (New empty row) -->
+          <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+            <input type="text" class="input-task" placeholder="Nhập tên việc nhỏ..." value="6. Ghim điện tủ nóng và đèn ở sảnh" />
+            <button class="photo-toggle" style="flex-shrink: 0; padding: 0 16px;">📷 Không cần</button>
+            <button class="btn-icon" style="background: #fee2e2; color: #ef4444; padding: 0 12px;">✕</button>
+          </div>
+
+          <!-- Add new row button -->
+          <button style="background: none; border: 2px dashed #cbd5e1; color: #0ea5e9; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 13px; width: 100%; cursor: pointer;">
+            + Thêm 1 việc nhỏ nữa
+          </button>
+        </div>
+
+      </div>
+
+      <div style="padding: 16px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; background: white;">
+        <button style="background: white; color: #64748b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer;">Hủy</button>
+        <button style="background: #0ea5e9; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">Lưu Tiêu Đề & Công Việc</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

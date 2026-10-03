@@ -1,0 +1,101 @@
+[
+  {
+    "id": "f189c21c-0ef5-4c0c-9cf7-acc4646bd3e3",
+    "staff_id": "NH007",
+    "amount": 1000000,
+    "type": "GIFT",
+    "reason": "Test",
+    "created_by": "Admin",
+    "created_at": "2026-05-05T18:05:35.740608+00:00"
+  },
+  {
+    "id": "51d1f2ca-4928-44bd-9d1c-fae3a914096d",
+    "staff_id": "NH018",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-06T08:10:27.848564+00:00"
+  },
+  {
+    "id": "fee7a86d-24ec-400e-b3f5-a0265815ab5f",
+    "staff_id": "NH025",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-06T08:10:54.365665+00:00"
+  },
+  {
+    "id": "2ff31958-25cc-4187-8c54-b8ca0a88423f",
+    "staff_id": "NH021",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-06T08:11:07.033764+00:00"
+  },
+  {
+    "id": "3c46cce4-197b-468b-941c-7b17febb25c9",
+    "staff_id": "NH002",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-06T08:11:38.400236+00:00"
+  },
+  {
+    "id": "113b4f92-cdc6-4205-8a9e-571ece54a4f4",
+    "staff_id": "NH079",
+    "amount": 5000000,
+    "type": "GIFT",
+    "reason": "tiền test ",
+    "created_by": "Admin",
+    "created_at": "2026-05-06T08:12:23.188139+00:00"
+  },
+  {
+    "id": "29593cb9-9341-4f14-a7af-b1f8453c4ac4",
+    "staff_id": "NH027",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "THUONG",
+    "created_by": "Admin",
+    "created_at": "2026-05-08T11:50:39.615476+00:00"
+  },
+  {
+    "id": "5c7c65de-fbcf-47b7-86a5-25c102aac9d8",
+    "staff_id": "NH011",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "c2 thuong",
+    "created_by": "Admin",
+    "created_at": "2026-05-08T12:11:20.821861+00:00"
+  },
+  {
+    "id": "aa75a47a-49e0-428f-950b-25e5e166b8f4",
+    "staff_id": "NH001",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Chủ tịch thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-12T09:37:03.735885+00:00"
+  },
+  {
+    "id": "9b96c63d-0cf9-4536-9d76-367b5bbecfb3",
+    "staff_id": "NH014",
+    "amount": 500000,
+    "type": "GIFT",
+    "reason": "Chủ tịch thưởng",
+    "created_by": "Admin",
+    "created_at": "2026-05-12T09:37:21.798349+00:00"
+  },
+  {
+    "id": "21460810-9dd1-4482-83dd-c4004f5d3d68",
+    "staff_id": "NH016",
+    "amount": -20000,
+    "type": "PENALTY",
+    "reason": "Giặt đồ ngày 27/05/2026",
+    "created_by": "SYSTEM",
+    "created_at": "2026-05-27T07:10:47.265184+00:00"
+  }
+]

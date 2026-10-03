@@ -1,0 +1,306 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { format } from 'date-fns';
+import { requireActiveStaff } from '@/lib/auth-server';
+import { vnDate } from '@/lib/vn-time';
+import { getBusinessToday } from '@/lib/business-date';
+
+// 🔧 KHUNG GIỜ ĐĂNG KÝ HỢP LỆ — ca Loại D luôn bắt đầu trong giờ mở cửa.
+const GIO_SOM_NHAT = '09:00';
+const GIO_MUON_NHAT = '23:59';
+
+export async function POST(request: Request) {
+  try {
+    const lockedError = await requireActiveStaff();
+    if (lockedError) return lockedError;
+
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Lấy thông tin KTV
+    const username = (user.email || '').split('@')[0];
+    const { data: dbUser } = await supabase.from('Users').select('code').ilike('username', username).single();
+    const { data: staff } = dbUser ? await supabase.from('Staff').select('id, work_type').eq('id', dbUser.code).single() : { data: null };
+
+    if (!staff) {
+      return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+    }
+
+    if (staff.work_type !== 'TYPE_D') {
+      return NextResponse.json({ error: 'Chỉ áp dụng cho KTV TYPE_D' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { work_date, dates, type, expected_time, expected_end_time, entries } = body;
+    // Hỗ trợ payload cũ (dates, work_date) và mới (entries)
+    const targetDates: string[] = dates || (work_date ? [work_date] : []);
+    
+    // Normalize thành dạng entry: { work_date, expected_time, expected_end_time }
+    let processedEntries: { work_date: string; expected_time: string | null; expected_end_time: string | null }[] = [];
+    if (entries && entries.length > 0) {
+      processedEntries = entries.map((e: any) => ({
+        work_date: e.work_date,
+        expected_time: type === 'WORKING' ? (e.expected_time || null) : null,
+        expected_end_time: type === 'WORKING' ? (e.expected_end_time || null) : null,
+      }));
+    } else {
+      processedEntries = targetDates.map(d => ({
+        work_date: d,
+        expected_time: type === 'WORKING' ? (expected_time || null) : null,
+        expected_end_time: type === 'WORKING' ? (expected_end_time || null) : null,
+      }));
+    }
+
+    // Postgres `time` reads back as 'HH:mm:ss'. Accept it and cut to 'HH:mm'
+    processedEntries = processedEntries.map(e => ({
+      ...e,
+      expected_time: typeof e.expected_time === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(e.expected_time)
+        ? e.expected_time.slice(0, 5)
+        : e.expected_time,
+      expected_end_time: typeof e.expected_end_time === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(e.expected_end_time)
+        ? e.expected_end_time.slice(0, 5)
+        : e.expected_end_time,
+    }));
+
+    if (processedEntries.length === 0 || !type) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const { canEditRegistration, canCreateRegistration, getRegistrationEditWindow, registrationLockedMessage, vnNow, vnToday } = await import('@/lib/vn-time');
+
+    // Lấy các ngày đã đăng ký TRƯỚC khi kiểm quyền: SỬA dòng có sẵn và TẠO dòng
+    // mới theo hai luật khác nhau. Ngày làm việc phải có dòng trước 00:00;
+    // từ 00:00 đến 06:59 chỉ được sửa dòng đã có.
+    const datesToUpdate = processedEntries.map(e => e.work_date);
+    const { data: existingRecords } = await supabase
+      .from('KTVTypeDDailyRegistration')
+      .select('work_date, status, check_in_at, penalty_applied')
+      .eq('staff_id', staff.id)
+      .in('work_date', datesToUpdate);
+    const daCoDong = new Set((existingRecords || []).map((r: any) => r.work_date));
+    // "Hôm nay" theo NGÀY LÀM VIỆC: 01:00 rạng sáng vẫn thuộc ca hôm trước.
+    const homNay = await getBusinessToday(supabase as any);
+    const gioHienTai = format(vnNow(), 'HH:mm');
+
+    for (const entry of processedEntries) {
+      const coDong = daCoDong.has(entry.work_date);
+      const duocPhep = coDong ? canEditRegistration(entry.work_date) : canCreateRegistration(entry.work_date);
+      if (!duocPhep) {
+        return NextResponse.json(
+          { error: registrationLockedMessage(entry.work_date) },
+          { status: 400 });
+      }
+      
+      if (type === 'WORKING') {
+        if (!entry.expected_time) {
+          return NextResponse.json({ error: `Vui lòng nhập giờ đến tiệm cho ngày ${vnDate(entry.work_date)}` }, { status: 400 });
+        }
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.expected_time)) {
+          return NextResponse.json({ error: `Giờ đến tiệm ngày ${vnDate(entry.work_date)} không hợp lệ (HH:mm)` }, { status: 400 });
+        }
+        // Ca Loại D luôn bắt đầu trong giờ mở cửa. Giờ hẹn rơi vào 00:00–08:59 là
+        // giờ của ca HÔM TRƯỚC (tiệm đóng lúc 00:00), nhận vào thì không ai biết
+        // "00:10" là đêm nào — đã có KTV bị khoá oan vì chuyện này.
+        if (entry.expected_time < GIO_SOM_NHAT || entry.expected_time > GIO_MUON_NHAT) {
+          return NextResponse.json({
+            error: `Giờ đến tiệm ngày ${vnDate(entry.work_date)} phải trong khoảng ${GIO_SOM_NHAT} – ${GIO_MUON_NHAT}`,
+          }, { status: 400 });
+        }
+        // Đăng ký bù cho hôm nay mà hẹn giờ đã qua thì vừa điểm danh là dính
+        // −5h đi trễ — chặn ngay từ đây.
+        if (!coDong && entry.work_date === homNay && entry.expected_time <= gioHienTai) {
+          return NextResponse.json({ error: `Giờ đến tiệm hôm nay phải sau ${gioHienTai}` }, { status: 400 });
+        }
+
+        // Validate giờ tan làm cho KTV D
+        if (!entry.expected_end_time) {
+          return NextResponse.json({ error: `Vui lòng nhập giờ tan làm cho ngày ${vnDate(entry.work_date)}` }, { status: 400 });
+        }
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.expected_end_time)) {
+          return NextResponse.json({ error: `Giờ tan làm ngày ${vnDate(entry.work_date)} không hợp lệ (HH:mm)` }, { status: 400 });
+        }
+
+        const { phutTrongNgayLamViec, getDayCutoffHours } = await import('@/lib/business-date');
+        const cutoff = await getDayCutoffHours(supabase as any);
+        const phutDen = phutTrongNgayLamViec(entry.expected_time, cutoff);
+        const phutTan = phutTrongNgayLamViec(entry.expected_end_time, cutoff);
+        if (phutDen === null || phutTan === null || phutTan <= phutDen) {
+          return NextResponse.json({
+            error: `Giờ tan làm ngày ${vnDate(entry.work_date)} phải sau giờ đến tiệm`
+          }, { status: 400 });
+        }
+      }
+    }
+
+    // Ngày đã check-in hoặc đã bị phạt thì không cho sửa.
+      
+    if (existingRecords) {
+      for (const rec of existingRecords) {
+        if (rec.check_in_at || rec.penalty_applied) {
+          return NextResponse.json({ error: `Ngày ${rec.work_date} đã có check-in hoặc bị phạt, không thể sửa.` }, { status: 400 });
+        }
+      }
+    }
+
+    // ⚠️ HUỶ ĐĂNG KÝ = CHUYỂN SANG OFF, không xoá bản ghi.
+    // Trước đây `CANCEL` xoá sạch dòng đăng ký. Cron chốt sổ cuối ngày thấy
+    // "không đăng ký gì" → KHOÁ TÀI KHOẢN. Nghĩa là KTV bấm một nút trông vô
+    // hại là mất tài khoản, không cảnh báo gì.
+    const effectiveType = type === 'CANCEL' ? 'OFF' : type;
+    const status = effectiveType === 'OFF' ? 'OFF_REGISTERED' : 'REGISTERED';
+
+    // ─── Trừ 5 giờ nếu bỏ ca sau hạn miễn phạt ────────────────────────
+    // Bỏ ca = đang đăng ký LÀM mà chuyển sang OFF (hoặc bấm huỷ).
+    // Hạn miễn phạt: hết ngày hôm trước (00:00 ngày làm). Quá hạn vẫn cho đổi,
+    // nhưng trừ 5 giờ tích lũy — giao diện đã cảnh báo trước khi xác nhận.
+    const penalised: { work_date: string; hours: number }[] = [];
+
+    if (effectiveType === 'OFF') {
+      const dangDangKyLam = new Set(
+        (existingRecords || [])
+          .filter((r: any) => r.status === 'REGISTERED' || r.status === 'LATE_REPORTED')
+          .map((r: any) => r.work_date));
+
+      for (const entry of processedEntries) {
+        if (!dangDangKyLam.has(entry.work_date)) continue;              // vốn đã OFF → không phạt
+        if (getRegistrationEditWindow(entry.work_date) !== 'PENALTY') continue;
+
+        // ⚠️ Ghi sổ phạt PHẢI dùng client quản trị. `supabase` ở trên là phiên
+        // đăng nhập của KTV, mà KTVDPenaltyLedger bật RLS chỉ cho authenticated
+        // ĐỌC (migration 20260904120000). Trước đây truyền thẳng `supabase as any`
+        // vào đây → ghi phạt bị chặn (42501) → ném lỗi → cả request 500 → lịch
+        // vẫn là ĐI LÀM. Tức là đổi sang OFF lúc 00:00–06:59 chưa bao giờ chạy
+        // được, còn đổi ngày tương lai thì chạy vì không phải ghi phạt.
+        //
+        // Danh tính vẫn lấy từ phiên đăng nhập ở trên (`staff.id`), nên dùng
+        // khoá quản trị ở đây không mở thêm quyền nào: KTV chỉ phạt được chính mình.
+        const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+        const admin = getSupabaseAdmin();
+        if (!admin) {
+          return NextResponse.json({ error: 'Supabase admin chưa được cấu hình' }, { status: 500 });
+        }
+
+        const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
+        const hours = await KtvTypeDDisciplineService.deductDailyViolation(
+          admin, staff.id, entry.work_date, 'ABSENT_EARLY_NOTICE',
+          'Bỏ ca đã đăng ký sau 00:00 ngày làm việc', staff.id,
+        );
+        // Kỷ luật tắt thì deductDailyViolation trả 0 và không ghi sổ — đừng
+        // đưa vào danh sách, kẻo màn hình báo "bị trừ 0 giờ".
+        if (hours > 0) penalised.push({ work_date: entry.work_date, hours });
+      }
+    }
+
+    const upsertData = processedEntries.map(entry => ({
+        staff_id: staff.id,
+        work_date: entry.work_date,
+        expected_time: effectiveType === 'WORKING' ? entry.expected_time : null,
+        expected_end_time: effectiveType === 'WORKING' ? entry.expected_end_time : null,
+        status,
+        // Mốc thật, KHÔNG cộng 7 tiếng rồi gắn nhãn UTC như trước.
+        registered_at: new Date().toISOString()
+    }));
+
+    const { data, error } = await supabase
+      .from('KTVTypeDDailyRegistration')
+      .upsert(upsertData, { onConflict: 'staff_id,work_date' })
+      .select();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      success: true,
+      data,
+      penalised,
+      message: penalised.length > 0
+        ? `Đã chuyển sang OFF. Bạn bị trừ ${penalised[0].hours} giờ tích lũy do bỏ ca sau 00:00 ngày làm việc.`
+        : (type === 'CANCEL' ? 'Đã chuyển ngày này sang OFF.' : undefined),
+    });
+  } catch (error: any) {
+    console.error('Error in daily-registration:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    const date = searchParams.get('date');
+    const all = searchParams.get('all') === 'true';
+    const reqStaffId = searchParams.get('staff_id') || searchParams.get('employeeId');
+
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+    const adminClient = getSupabaseAdmin() || supabase;
+
+    const username = (user.email || '').split('@')[0];
+    const { data: dbUser } = await adminClient.from('Users').select('code, role').ilike('username', username).single();
+    const role = (dbUser?.role || '').toUpperCase();
+    const isManagerOrAdmin = role === 'ADMIN' || role === 'DEV' || role === 'MANAGER' || role === 'RECEPTIONIST' || role === 'LEAD_RECEPTIONIST' || role === 'RECEPTION';
+
+    let targetStaffId: string | null = null;
+    if (isManagerOrAdmin) {
+      if (reqStaffId) {
+        targetStaffId = reqStaffId;
+      } else if (!all) {
+        targetStaffId = dbUser?.code || null;
+      }
+    } else {
+      const lockedError = await requireActiveStaff();
+      if (lockedError) return lockedError;
+      targetStaffId = dbUser?.code || null;
+      if (!targetStaffId) {
+        return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
+      }
+    }
+
+    let query = adminClient.from('KTVTypeDDailyRegistration').select('*');
+    if (targetStaffId) {
+      query = query.eq('staff_id', targetStaffId);
+    }
+    if (date) {
+      query = query.eq('work_date', date);
+    } else {
+      if (from) query = query.gte('work_date', from);
+      if (to) query = query.lte('work_date', to);
+    }
+    query = query.order('work_date', { ascending: true }).order('expected_time', { ascending: true });
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const regs = data || [];
+    const staffIds = [...new Set(regs.map((r: any) => r.staff_id))];
+    let staffMap: Record<string, any> = {};
+    if (staffIds.length > 0) {
+      const { data: staffList } = await adminClient
+        .from('Staff')
+        .select('id, full_name, work_type, status, avatar_url')
+        .in('id', staffIds);
+      if (staffList) {
+        staffMap = Object.fromEntries(staffList.map((s: any) => [s.id, s]));
+      }
+    }
+
+    const enriched = regs.map((r: any) => ({
+      ...r,
+      staff_name: staffMap[r.staff_id]?.full_name || r.staff_id,
+      work_type: staffMap[r.staff_id]?.work_type || 'TYPE_D',
+      staff_status: staffMap[r.staff_id]?.status || 'ĐANG LÀM',
+      avatar_url: staffMap[r.staff_id]?.avatar_url || null,
+    }));
+
+    return NextResponse.json({ data: enriched, staff_id: targetStaffId });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
