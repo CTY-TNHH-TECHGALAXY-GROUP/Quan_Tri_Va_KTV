@@ -1099,6 +1099,23 @@ async function main() {
     check('usage history: overridden filter + note + reasons', usOv.success && usOv.data.length >= 2
         && usOv.data.every((u: any) => u.conditionsOverridden && u.overrideNote && u.overrideReasons.length > 0), usOv.data?.length);
 
+    // v11: customer filter "onlyQualified" must follow apply_conditions (campaign created ONLY with applyConditions)
+    const condOnly = await createCampaign('CONDONLY', { benefit_type: 'FREE_MINUTES', benefit_value: 30,
+        apply_conditions: { match: 'ALL', conditions: [{ serviceIds: [svA], minMinutes: 90 }] } });
+    const condRow = (await q(`SELECT qualification_type FROM "PromotionCampaigns" WHERE id = $1`, [condOnly.id]))[0];
+    const tagQ = `QF${RUN.slice(-6)}`;
+    const mkQ = async (s2: string) => { const id = `${RUN}-Q${s2}`; await q(`INSERT INTO "Customers"(id, "fullName", phone, "updatedAt") VALUES ($1, $2, $3, now())`, [id, `${tagQ} ${s2}`, `06${Date.now().toString().slice(-7)}${s2}`]); return id; };
+    const qYes = await mkQ('1'), qNo = await mkQ('2');
+    const bY = await newBooking(qYes, [{ serviceId: svA }]); await setStatus(bY, 'DONE');
+    const bN = await newBooking(qNo, [{ serviceId: svB }]); await setStatus(bN, 'DONE');
+    const todayQ = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const cf = await rpc('promo_customer_candidates', condOnly.id, JSON.stringify({ q: tagQ, hasEmail: false, onlyQualified: true, qualifiedFrom: todayQ, qualifiedTo: todayQ }), 50, 0);
+    check('v11: campaign made only with applyConditions (qualification_type MANUAL_ASSIGNMENT) → onlyQualified filters by the conditions',
+        condRow.qualification_type === 'MANUAL_ASSIGNMENT' && cf.data?.qualificationIgnored === false && cf.data.qualifyingComputed === true
+        && cf.data.total === 1 && cf.data.rows[0].id === qYes && cf.data.rows[0].qualifyingOrderCount === 1, cf.data ?? cf.error);
+    const noCond = await rpc('promo_customer_candidates', manual.id, JSON.stringify({ q: tagQ, hasEmail: false, onlyQualified: true, qualifiedFrom: todayQ, qualifiedTo: todayQ }), 50, 0);
+    check('v11: campaign with NO conditions → qualificationIgnored true, list not emptied', noCond.data?.qualificationIgnored === true && noCond.data.total === 2, noCond.data);
+
     const passJ = await rpc('promo_pass_json', pV.data.id, false);
     const listJ = await rpc('promo_search_passes', pV.data.voucherCode, null, null, null, 10, 0);
     check('pass JSON (detail + list rows) carries conditionsSummary "Menu VIP · ≥ 90" — card text = real rule',
