@@ -290,24 +290,30 @@ export async function POST(request: Request) {
                     const expectedMinutes = phutTrongNgayLamViec(String(deadline).slice(0, 5), cutoffHoursD) ?? 0;
                     const phutThucTe = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
 
-                    // Chỉ xét trễ cho LẦN VÀO CA ĐẦU TIÊN. KTV đã làm xong ca đăng ký (VD 14:00–18:00),
-                    // tan ca rồi 21:00 quay lại vì có khách yêu cầu → không phải "đến trễ".
-                    // (Chốt 03/10/2026: T021 sẽ bị trừ 5h oan nếu không có luật này.)
-                    const { data: todayAtt } = await supabase
-                        .from('KTVAttendance')
-                        .select('checkType')
-                        .eq('employeeId', staffCode)
-                        .in('date', Array.from(new Set([todayStr, vnToday()])))
-                        .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']);
-                    const daVaoCaHomNay = (todayAtt || []).length > 0;
+                    // Miễn xét trễ CHỈ KHI ca đăng ký đã làm xong: đã có CHECK_OUT từ giờ tan ca đăng ký
+                    // trở đi, và giờ quay lại (VD 21:00 làm khách yêu cầu) cũng đã qua giờ tan ca.
+                    // Vào ca đúng giờ → "xin cảm ơn" sớm → "xin chào" lại trong ca thì KHÔNG được miễn:
+                    // lần vào lại đó vẫn so với giờ đăng ký đầu ca như hôm nay (chốt 03/10/2026).
+                    const { gioDongHoVN } = await import('@/lib/segment-time');
                     const phutTanCa = registration.expected_end_time
                         ? phutTrongNgayLamViec(String(registration.expected_end_time).slice(0, 5), cutoffHoursD)
                         : null;
-                    const quayLaiSauGioTanCa = phutTanCa != null && phutThucTe > phutTanCa;
+                    let daLamXongCa = false;
+                    if (phutTanCa != null && phutThucTe > phutTanCa) {
+                        const { data: todayOuts } = await supabase
+                            .from('KTVAttendance')
+                            .select('checkType, checkedAt')
+                            .eq('employeeId', staffCode)
+                            .in('date', Array.from(new Set([todayStr, vnToday()])))
+                            .eq('checkType', 'CHECK_OUT');
+                        daLamXongCa = (todayOuts || []).some(r => {
+                            const phutRa = phutTrongNgayLamViec(gioDongHoVN(r.checkedAt), cutoffHoursD);
+                            return phutRa != null && phutRa >= phutTanCa;
+                        });
+                    }
 
-                    if (daVaoCaHomNay || quayLaiSauGioTanCa) {
-                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: `
-                            + (daVaoCaHomNay ? 'đã vào ca hôm nay' : 'quay lại sau giờ tan ca đăng ký'));
+                    if (daLamXongCa) {
+                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: đã làm xong ca đăng ký, quay lại sau giờ tan ca`);
                     } else if (phutThucTe > expectedMinutes) {
                         await KtvTypeDDisciplineService.deductDailyViolation(
                           supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
