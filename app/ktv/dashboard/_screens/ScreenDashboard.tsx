@@ -522,13 +522,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               <div className="flex flex-col gap-4">
                 {/* Header trạng thái điều phối mới */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-700">Đơn mới điều phối</span>
-                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-700">Đơn mới điều phối</span>
                   {booking.billCode && (
                     <span className="text-xs font-black text-slate-500">#{booking.billCode}</span>
                   )}
@@ -906,8 +900,8 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               <div className="mb-4">
                    <div className="flex flex-col">
                       <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-[11px] tracking-wide border border-emerald-100 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> ĐÃ NHẬN ĐƠN
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-[11px] tracking-wide border border-emerald-100">
+                          ĐÃ NHẬN ĐƠN
                         </span>
                         <button 
                           onClick={() => setShowProcedure(true)}

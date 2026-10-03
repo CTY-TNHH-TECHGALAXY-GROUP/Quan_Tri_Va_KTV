@@ -316,13 +316,7 @@ export default function KTVDashboardDemoPage() {
               <div className="flex flex-col gap-4">
                 {/* Header trạng thái */}
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-700">Đơn mới điều phối</span>
-                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-700">Đơn mới điều phối</span>
                   <span className="text-[11px] font-bold text-slate-400">Vui lòng xác nhận</span>
                 </div>
 
@@ -414,10 +408,6 @@ export default function KTVDashboardDemoPage() {
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
                   <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">Đơn đang thực hiện</span>
                   <span className="text-[11px] font-bold text-slate-400">• Đơn {billCode}</span>
                 </div>
@@ -607,10 +597,6 @@ export default function KTVDashboardDemoPage() {
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3.5">
               <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
                   <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">Đang phục vụ</span>
                   <span className="text-[11px] font-bold text-slate-400">• Đơn {billCode}</span>
                 </div>
