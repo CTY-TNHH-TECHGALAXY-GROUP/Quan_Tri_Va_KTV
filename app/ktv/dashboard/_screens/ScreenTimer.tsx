@@ -5,7 +5,7 @@ import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
 import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
-import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Image as ImageIcon, Info, LogOut, Play, PlusSquare, RefreshCw, RotateCcw, ShieldAlert, Users } from 'lucide-react';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
 import { apiClient } from '@/lib/apiClient';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
@@ -289,68 +289,92 @@ export function ScreenTimer({ logic }: { logic: any }) {
   return (
     <div className="p-4 md:p-8 h-full flex flex-col pt-8 md:pt-12 md:max-w-4xl md:mx-auto w-full">
       {/* Header Info */}
-      <div className="flex justify-between items-start mb-6 px-2">
-        <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-3xl font-black text-emerald-700 leading-tight tracking-tight flex items-center gap-2 flex-wrap break-words">
-            {item.guest_label && (
-               <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
-                 👨 {item.guest_label}
-               </span>
-            )}
-            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
-          </h1>
-          <div className="flex flex-wrap items-center gap-3 gap-y-1">
-            <div className="flex items-center gap-1.5 text-slate-800 font-black shrink-0">
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest">
-                {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}` : 'Phòng'}
+      <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-5 sm:p-6 mb-6">
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}/${ktvSegments.length}` : 'Dịch vụ'}
               </span>
-              <span className="text-lg">
-                {roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName)}
-                {(currentSeg?.bedId || booking?.assignedBedId) && ` (G: ${(currentSeg?.bedId || booking.assignedBedId).split('-').pop()})`}
-              </span>
-            </div>
-            <div className="w-px h-3 bg-slate-200 hidden sm:block" />
-            <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs shrink-0">
-              <Clock size={14} />
-              <span>{displayDuration} phút</span>
-            </div>
-            <div className="shrink-0">
               <ServiceTypeLabel serviceId={item.serviceId} />
+              {booking?.billCode && (
+                <span className="text-xs font-black text-slate-400">#{booking.billCode}</span>
+              )}
+            </div>
+
+            <h1 className="text-xl sm:text-2xl font-black text-slate-800 leading-tight tracking-tight flex items-center gap-2 flex-wrap break-words">
+              {item.guest_label && (
+                 <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-base sm:text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
+                   👨 {item.guest_label}
+                 </span>
+              )}
+              <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
+            </h1>
+
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold mt-1 flex-wrap">
+              <span className="text-slate-700 font-bold bg-slate-100 px-2 py-0.5 rounded-md">⏱️ {displayDuration} phút</span>
+              <span>•</span>
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">🕒 {displayStartTime} - {displayEndTime}</span>
             </div>
           </div>
-          {/* CoWorkers display in Timer - chỉ khi cùng 1 dịch vụ */}
-          {(() => {
-            const timerAssignedItem = booking?.assignedItemId
-              ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
-              : null;
-            const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
-            return timerCoWorkers.length > 0 ? (
-              <p className="mt-1 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {timerCoWorkers.join(', ')}</p>
-            ) : null;
-          })()}
-        </div>
-        <div className="flex gap-2 shrink-0">
-          {isTimerRunning && (
+
+          <div className="flex gap-2 shrink-0">
+            {isTimerRunning && (
+              <button 
+                onClick={() => logic.forceRefresh?.()}
+                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 active:scale-90 transition-all shrink-0 cursor-pointer"
+                title="Tải lại"
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
+                  <RefreshCw size={18} />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-tighter">Tải lại</span>
+              </button>
+            )}
             <button 
-              onClick={() => logic.forceRefresh?.()}
-              className="flex flex-col items-center gap-1 text-slate-400 active:scale-90 transition-all shrink-0"
+              onClick={() => logic.setShowProcedure(true)}
+              className="flex flex-col items-center gap-1 text-emerald-600 hover:text-emerald-700 active:scale-90 transition-all shrink-0 cursor-pointer"
+              title="Quy trình"
             >
-              <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
-                <RefreshCw size={22} />
+              <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 shadow-sm">
+                <BookOpen size={18} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter">Tải lại</span>
+              <span className="text-[9px] font-black uppercase tracking-tighter">Quy trình</span>
             </button>
-          )}
-          <button 
-            onClick={() => logic.setShowProcedure(true)}
-            className="flex flex-col items-center gap-1 text-emerald-600 active:scale-90 transition-all shrink-0"
-          >
-            <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 shadow-sm">
-              <BookOpen size={22} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-tighter">Quy trình</span>
-          </button>
+          </div>
         </div>
+
+        {/* Khối Phòng - Giường 2 cột thanh thoát */}
+        <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+          <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
+            <p className="font-black text-emerald-950 text-lg mt-0.5 truncate">
+              {roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName) || '—'}
+            </p>
+          </div>
+          <div className="p-3 bg-teal-50/70 border border-teal-100 rounded-2xl">
+            <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
+            <p className="font-black text-teal-950 text-lg mt-0.5 truncate">
+              {(currentSeg?.bedId || booking?.assignedBedId)
+                ? String(currentSeg?.bedId || booking.assignedBedId).split('-').pop()
+                : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* CoWorkers display in Timer */}
+        {(() => {
+          const timerAssignedItem = booking?.assignedItemId
+            ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
+            : null;
+          const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
+          return timerCoWorkers.length > 0 ? (
+            <div className="mt-3 px-3.5 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700 flex items-center gap-2">
+              <Users size={14} className="text-indigo-600 shrink-0" />
+              <span>👥 Cùng làm với: <span className="font-black">{timerCoWorkers.join(', ')}</span></span>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Rejected Handover Alert */}
@@ -477,107 +501,140 @@ export function ScreenTimer({ logic }: { logic: any }) {
 
       {/* Primary Action Button */}
       {((!isTimerRunning && !isPaused) || isPrepping) ? (
-        <div className="px-6 mb-10">
-          <div className="space-y-4">
-            {[
-              {
-                label: 'Ảnh dép khách',
-                value: logic.guestSlipperPhotoBase64,
-                setter: logic.setGuestSlipperPhotoBase64,
-                onChange: handleSlipperFileUpload
-              },
-              {
-                label: 'Ảnh bắt đầu dịch vụ',
-                value: logic.startPhotoBase64,
-                setter: logic.setStartPhotoBase64,
-                onChange: handleFileUpload
-              }
-            ].map((photo, index) => (
-              <div key={photo.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    {index + 1}. {photo.label}
-                    {photo.value && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
-                  </span>
-
-                  {photo.value && (
-                    <button
-                      type="button"
-                      onClick={() => photo.setter(null)}
-                      className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1"
-                    >
-                      <RotateCcw size={12} />
-                      Chụp lại
-                    </button>
-                  )}
-                </div>
-
-                {photo.value ? (
-                  <img
-                    src={photo.value}
-                    alt={photo.label}
-                    className="w-20 h-20 rounded-xl object-cover border-2 border-emerald-500"
-                  />
-                ) : (
-                  <div className="flex gap-2">
-                    <label className={`relative flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                      logic.canStart
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-200 text-slate-400'
-                    }`}>
-                      <Camera size={16} />
-                      Chụp ảnh
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={photo.onChange}
-                        disabled={logic.isLoading || !logic.canStart}
-                      />
-                    </label>
-
-                    <label className="relative px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">
-                      Tải ảnh
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={photo.onChange}
-                        disabled={logic.isLoading || !logic.canStart}
-                      />
-                    </label>
-                  </div>
-                )}
+        <div className="px-4 sm:px-6 mb-10">
+          {activeSegmentIndex > 0 ? (
+            /* Chặng tiếp theo (Chặng 2+): Khách đã ở trong phòng, không cần chụp lại ảnh dép */
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl text-center">
+                <p className="text-xs font-bold text-emerald-800">
+                  🔔 Chặng {activeSegmentIndex} đã xong. Khách đang ở trong phòng.
+                </p>
+                <p className="text-[11px] text-emerald-600 mt-1">
+                  Bấm nút bên dưới khi sẵn sàng để bắt đầu đếm ngược Chặng {activeSegmentIndex + 1} ({displayDuration} phút).
+                </p>
               </div>
-            ))}
 
-            {logic.guestSlipperPhotoBase64 && logic.startPhotoBase64 ? (
               <button
                 onClick={handleStartTimer}
-                disabled={logic.isLoading || !logic.canStart}
-                className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40"
+                disabled={logic.isLoading}
+                className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all cursor-pointer"
               >
                 <Play fill="white" size={24} />
-                {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
+                {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : `BẮT ĐẦU PHỤC VỤ CHẶNG ${activeSegmentIndex + 1}`}
               </button>
-            ) : (
-              <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
-                <Camera size={18} /> Chụp đủ 2 ảnh để bắt đầu
-              </button>
-            )}
+            </div>
+          ) : (
+            /* Chặng 1: Bắt buộc chụp ảnh dép khách và ảnh bắt đầu */
+            <div className="space-y-4">
+              {[
+                {
+                  label: 'Ảnh dép khách',
+                  value: logic.guestSlipperPhotoBase64,
+                  setter: logic.setGuestSlipperPhotoBase64,
+                  onChange: handleSlipperFileUpload
+                },
+                {
+                  label: 'Ảnh bắt đầu dịch vụ',
+                  value: logic.startPhotoBase64,
+                  setter: logic.setStartPhotoBase64,
+                  onChange: handleFileUpload
+                }
+              ].map((photo, index) => (
+                <div key={photo.label} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      {index + 1}. {photo.label}
+                      {photo.value && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
+                    </span>
 
-            {!logic.canStart && logic.allowedStartTime && (
-              <motion.p 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center text-rose-600 font-black text-[11px] bg-rose-50 py-2 rounded-xl border border-rose-100 flex items-center justify-center gap-1.5"
-              >
-                <Clock size={12} strokeWidth={3} />
-                Bạn có thể bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              </motion.p>
-            )}
-          </div>
+                    {photo.value && (
+                      <button
+                        type="button"
+                        onClick={() => photo.setter(null)}
+                        className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        Chụp lại
+                      </button>
+                    )}
+                  </div>
+
+                  {photo.value ? (
+                    <img
+                      src={photo.value}
+                      alt={photo.label}
+                      className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {/* Nút 1: Chụp ảnh -> Bật Cam liền */}
+                      <label className={`relative py-3 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
+                        logic.canStart
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
+                          : 'bg-slate-200 text-slate-400'
+                      }`}>
+                        <div className="flex items-center gap-1.5">
+                          <Camera size={16} />
+                          <span>Chụp ảnh</span>
+                        </div>
+                        <span className="text-[9px] opacity-80 font-normal">(Bật Camera)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={photo.onChange}
+                          disabled={logic.isLoading || !logic.canStart}
+                        />
+                      </label>
+
+                      {/* Nút 2: Tải ảnh -> Mở Gallery */}
+                      <label className="relative py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-bold text-xs flex flex-col items-center justify-center gap-1 cursor-pointer transition-all active:scale-95 shadow-xs text-center">
+                        <div className="flex items-center gap-1.5">
+                          <ImageIcon size={16} className="text-slate-500" />
+                          <span>Tải ảnh</span>
+                        </div>
+                        <span className="text-[9px] text-slate-400 font-normal">(Mở Gallery)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={photo.onChange}
+                          disabled={logic.isLoading || !logic.canStart}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {logic.guestSlipperPhotoBase64 && logic.startPhotoBase64 ? (
+                <button
+                  onClick={handleStartTimer}
+                  disabled={logic.isLoading || !logic.canStart}
+                  className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <Play fill="white" size={24} />
+                  {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
+                </button>
+              ) : (
+                <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                  <Camera size={18} /> Chụp đủ 2 ảnh để bắt đầu
+                </button>
+              )}
+
+              {!logic.canStart && logic.allowedStartTime && (
+                <motion.p 
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center text-rose-600 font-black text-[11px] bg-rose-50 py-2 rounded-xl border border-rose-100 flex items-center justify-center gap-1.5"
+                >
+                  <Clock size={12} strokeWidth={3} />
+                  Bạn có thể bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </motion.p>
+              )}
+            </div>
+          )}
         </div>
       ) : logic.booking?.nextBookingId ? (
         <div className="px-6 mb-6">

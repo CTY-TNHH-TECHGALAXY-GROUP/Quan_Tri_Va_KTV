@@ -2038,6 +2038,20 @@ export function useKTVDashboard(config?: DashboardConfig) {
         const isFinishedMerge = allFinished && allMySegs[0].actualEndTime === allMySegs[allMySegs.length - 1].actualEndTime;
         const shouldMerge = allMySegs.length > 1 && uniqueItemIds.size === allMySegs.length && uniqueRoomIds.size === 1 && !hasFinishedSegment;
 
+        // ⭐ Cách B: Nếu bắt đầu chặng tiếp theo (activeSegmentIndex > 0)
+        // Segment đã được backend cập nhật NEXT_SEGMENT, chỉ cần kích hoạt timer đếm ngược
+        if (activeSegmentIndex > 0) {
+            const nextSeg = allMySegs[activeSegmentIndex];
+            const segDuration = (nextSeg?.duration != null && nextSeg?.duration !== '' ? Number(nextSeg.duration) : 60);
+            timerStartMsRef.current = Date.now() + timeOffsetRef.current;
+            timerTotalSecsRef.current = segDuration * 60;
+            setTimeRemaining(segDuration * 60);
+            setIsTimerRunning(true);
+            setScreen('TIMER');
+            addToast(`🚀 Đã bắt đầu phục vụ Chặng ${activeSegmentIndex + 1}!`, 'success');
+            return;
+        }
+
         setIsLoading(true);
         try {
             const res = await apiClient.patch<any>(API.KTV.BOOKING, { 
@@ -2148,7 +2162,10 @@ export function useKTVDashboard(config?: DashboardConfig) {
                 const nextSeg = allMySegs[nextIdx];
                 const nextDuration = (nextSeg?.duration != null && nextSeg?.duration !== '' ? Number(nextSeg.duration) : 60);
                 setTimeRemaining(nextDuration * 60);
-                console.log(`⏱️ [AutoAdvance] Timer reset to ${nextDuration} minutes for segment ${nextIdx}`);
+                // ⭐ Cách B: Dừng timer ở chặng mới, đợi KTV bấm Bắt đầu
+                setIsTimerRunning(false);
+                addToast(`🔔 Đã xong chặng ${currentIdx + 1}. Vui lòng bấm Bắt đầu khi sẵn sàng làm chặng ${nextIdx + 1}!`, 'info');
+                console.log(`⏱️ [AutoAdvance] Timer reset to ${nextDuration} minutes for segment ${nextIdx} (paused waiting for KTV start)`);
 
                 // Fetch lại booking để cập nhật segments mới (actualStartTime/EndTime)
                 if (fetchBookingRef.current) fetchBookingRef.current();

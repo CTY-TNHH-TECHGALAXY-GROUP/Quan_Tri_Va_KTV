@@ -6,7 +6,7 @@ import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
 import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
-import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Wallet, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Users, Wallet, X } from 'lucide-react';
 import { ProcedureModal, RoomIssueModal, RejectOrderModal, TurnQueueTypeDModal, OfficeScoreModal } from '../_components/modals';
 import { CheckInReminder } from '../_components/CheckInReminder';
 import { ScreenTimer, WorkingTimeline } from './ScreenTimer';
@@ -18,6 +18,50 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 import { fmtHours } from '@/lib/hours-format';
 import { officeScoreText } from '../OfficeScore.i18n';
+
+/**
+ * Âm thanh chuông Ding-Dong spa nhẹ nhàng (Web Audio API)
+ * Dùng tần số E5 (659Hz) và G#5 (830Hz) dịu êm, không gây giật mình cho KTV
+ */
+function playOrderChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    const now = ctx.currentTime;
+
+    // Nốt thứ 1 (E5: ~659.25 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now);
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.2, now + 0.05);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.8);
+
+    // Nốt thứ 2 (G#5: ~830.61 Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(830.61, now + 0.25);
+    gain2.gain.setValueAtTime(0, now + 0.25);
+    gain2.gain.linearRampToValueAtTime(0.25, now + 0.3);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.25);
+    osc2.stop(now + 1.2);
+  } catch (e) {
+    console.warn('[Audio Alert] Cannot play chime:', e);
+  }
+}
 
 /**
  * Giao diện một dòng trong danh sách chuông, theo NHÓM thông báo.
@@ -335,6 +379,18 @@ export function ScreenDashboard({ logic }: { logic: any }) {
   // Chỉ người được xếp CÙNG LÀN (chồng giờ, không bị huỷ chặng) — xem lib/co-workers.
   const coWorkers = coWorkersOf(assignedItem, logic.ktvId);
 
+  // Phát chuông nhẹ nhàng & rung khi có đơn mới cần xác nhận
+  const lastChimedBookingRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (needsAcceptance && booking?.id && lastChimedBookingRef.current !== booking.id) {
+      lastChimedBookingRef.current = booking.id;
+      playOrderChime();
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+      }
+    }
+  }, [needsAcceptance, booking?.id]);
+
   return (
     <div className="p-3 md:p-5 lg:p-6 space-y-4 lg:space-y-6 relative min-h-[90vh] pb-24 md:max-w-5xl md:mx-auto">
       {/* ─── HEADER ─── */}
@@ -461,58 +517,67 @@ export function ScreenDashboard({ logic }: { logic: any }) {
             /* ─── CHẶN: đơn vừa điều phối, phải xác nhận nhận hay từ chối đã ─── */
             <motion.div
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              className="p-6 rounded-[32px] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)]"
+              className="p-5 sm:p-6 rounded-[32px] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)]"
             >
               <div className="flex flex-col gap-4">
-                {/* Tên dịch vụ + thời lượng là thứ KTV cần đọc trước tiên để biết
-                    mình sắp làm gì và trong bao lâu. Mã đơn chỉ để đối chiếu với quầy. */}
-                <div className="min-w-0">
-                  <p className="font-black text-2xl leading-tight tracking-tight text-slate-800 break-words">
-                    {item?.service_name || 'Dịch vụ'}
-                  </p>
-                  {/* KHONG hien thoi luong o man xac nhan.
-                      Con so o day lay tu `item.duration` — thoi luong CA DICH VU,
-                      khong phai phan KTV nay se lam. Don doi nguoi thi no sai han:
-                      dich vu 60 phut nhung nguoi vao thay chi lam 21 phut. Hien mot
-                      con so sai ngay o buoc nhan don la de cai nhau ve sau. So dung
-                      nam o chi tiet don va o dong ho, sau khi da nhan. */}
+                {/* Header trạng thái điều phối mới */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-700">Đơn mới điều phối</span>
+                  </div>
                   {booking.billCode && (
-                    <p className="text-[11px] font-bold text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
-                      <span>Đơn {booking.billCode}</span>
-                      {orderStartTime !== '—' && (
-                        <>
-                          <span>•</span>
-                          <span className="text-emerald-700 font-extrabold flex items-center gap-1">
-                            <Clock size={12} className="text-emerald-600" />
-                            <span>Bắt đầu {orderStartTime}</span>
-                          </span>
-                        </>
-                      )}
-                    </p>
+                    <span className="text-xs font-black text-slate-500">#{booking.billCode}</span>
                   )}
                 </div>
 
-                {/* MỘT dòng, chữ to. Đứng ở thẻ nhận đơn KTV chỉ cần biết đúng một
-                    điều: phòng đã mở, khách đã nằm sẵn trên đó — đừng làm lại nghi thức đón khách.
-                    Dài dòng hơn là không ai đọc. Phần còn lại nhắc ở màn đồng hồ,
-                    đúng lúc họ đứng trước cửa phòng. */}
+                {/* Tên dịch vụ + thông tin thời lượng & giờ bắt đầu */}
+                <div className="min-w-0">
+                  <h2 className="font-black text-xl sm:text-2xl leading-tight tracking-tight text-slate-800 break-words">
+                    {allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : (item?.service_name || 'Dịch vụ')}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-2 text-xs text-slate-500 font-semibold flex-wrap">
+                    <span className="text-slate-700 font-bold bg-slate-100 px-2.5 py-0.5 rounded-lg">
+                      ⏱️ {totalAssignedMins || item?.duration || 60} phút
+                    </span>
+                    {allServiceNames.length > 1 && (
+                      <span className="text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-lg">
+                        {allServiceNames.length} DV
+                      </span>
+                    )}
+                    {orderStartTime !== '—' && (
+                      <span className="text-emerald-700 font-extrabold bg-emerald-50 border border-emerald-100/80 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                        <Clock size={12} className="text-emerald-600" />
+                        <span>Bắt đầu {orderStartTime}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Dòng cảnh báo nếu là đơn vào thay */}
                 {laDonVaoThay && (
-                  <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-4">
-                    <p className="flex items-center gap-2 text-lg font-black leading-snug text-amber-800">
-                      <AlertTriangle size={22} strokeWidth={3} className="shrink-0" />
+                  <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
+                    <p className="flex items-center gap-2 text-base sm:text-lg font-black leading-snug text-amber-800">
+                      <AlertTriangle size={20} strokeWidth={2.5} className="shrink-0" />
                       Phòng đã mở, khách đang nằm trên phòng
                     </p>
                   </div>
                 )}
 
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Phòng</p>
-                    <p className="font-black text-slate-800">{roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}</p>
+                {/* Khối 2 cột Phòng - Giường rõ ràng, thanh thoát */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
+                    <p className="font-black text-emerald-950 text-lg mt-0.5 truncate">
+                      {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}
+                    </p>
                   </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Giường</p>
-                    <p className="font-black text-slate-800">
+                  <div className="p-3.5 bg-teal-50/70 border border-teal-100 rounded-2xl">
+                    <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
+                    <p className="font-black text-teal-950 text-lg mt-0.5 truncate">
                       {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
                         ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
                         : '—'}
@@ -520,19 +585,34 @@ export function ScreenDashboard({ logic }: { logic: any }) {
                   </div>
                 </div>
 
-                {/* Nhận là hành động chính nên nằm bên phải, chiếm 2 phần. */}
-                <div className="grid grid-cols-3 gap-3">
+                {/* Đồng đội cùng làm nếu có */}
+                {coWorkers.length > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700">
+                    <Users size={14} className="text-indigo-600 shrink-0" />
+                    <span className="truncate">Cùng làm với: <span className="font-black">{coWorkers.join(', ')}</span></span>
+                  </div>
+                )}
+
+                {/* Lưu ý từ khách / quầy nếu có */}
+                {booking?.note && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-100 rounded-xl text-xs text-amber-900">
+                    <span className="font-extrabold">Lưu ý: </span>{booking.note}
+                  </div>
+                )}
+
+                {/* Công thái học nút bấm: TỪ CHỐI (1/3) | NHẬN ĐƠN (2/3) */}
+                <div className="grid grid-cols-3 gap-3 pt-1">
                   <button
                     onClick={() => setShowRejectModal(true)}
                     disabled={isAccepting}
-                    className="py-4 bg-rose-50 border border-rose-100 text-rose-600 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all disabled:opacity-60"
+                    className="py-4 bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all disabled:opacity-60 cursor-pointer"
                   >
                     TỪ CHỐI
                   </button>
                   <button
                     onClick={handleAcceptOrder}
                     disabled={isAccepting}
-                    className="col-span-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-md shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                    className="col-span-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-md shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
                   >
                     <Check size={16} strokeWidth={3} />
                     {isAccepting ? 'ĐANG BÁO…' : 'NHẬN ĐƠN'}
@@ -820,67 +900,75 @@ export function ScreenDashboard({ logic }: { logic: any }) {
 
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Active Booking Card - ONLY SHOW ASSIGNED ITEM */}
-          <div className={`${THEME.bgCard} ${THEME.border} ${THEME.radius} overflow-hidden border shadow-sm p-6 pb-0`}>
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-5 sm:p-6">
               <div className="mb-4">
                    <div className="flex flex-col">
-                      <h3 className="font-black text-3xl text-emerald-700 leading-tight tracking-tight flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-[11px] tracking-wide border border-emerald-100 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> ĐÃ NHẬN ĐƠN
+                        </span>
+                        <button 
+                          onClick={() => setShowProcedure(true)}
+                          className="text-emerald-600 hover:text-emerald-700 text-xs font-bold flex items-center gap-1 shrink-0"
+                        >
+                           <ClipboardList size={14} /> Quy trình
+                        </button>
+                      </div>
+
+                      <h2 className="font-black text-2xl sm:text-3xl text-emerald-800 leading-tight tracking-tight flex items-center gap-2 flex-wrap">
                         {item.guest_label && (
-                           <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
+                           <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-base sm:text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
                              👨 {item.guest_label}
                            </span>
                         )}
-                        <span>{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
-                      </h3>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
-                        {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
+                        <span className="break-words">{allServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
+                      </h2>
+
+                      <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
+                        <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg">{totalAssignedMins || item.duration} phút</span>
+                        {allServiceNames.length > 1 && <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{allServiceNames.length} DV</span>}
                         <ServiceTypeLabel serviceId={item.serviceId} />
-                        {/* Không hiện tên khách cho KTV — chỉ cần nhãn khách và mã đơn
-                            là đủ để đối chiếu với quầy. */}
-                        {/* Dùng ternary chứ KHÔNG dùng `&&`: guest_index = 0 sẽ khiến
-                            React render ra số 0 thay vì bỏ qua. */}
                         {item.guest_index ? (
-                          <span className="text-base font-black text-slate-800 truncate block mt-0.5 flex-1 min-w-[120px]">
+                          <span className="font-bold text-slate-600 truncate">
                             Khách {String.fromCharCode(64 + item.guest_index)}
                           </span>
                         ) : null}
-                        <span className="text-sm font-black text-slate-800 shrink-0">#{item.guest_index ? `${(booking.billCode || '').split('-')[0]}-${String.fromCharCode(64 + item.guest_index)}` : (booking.billCode || '').split('-')[0]}</span>
+                        <span className="font-bold text-slate-400 shrink-0">#{item.guest_index ? `${(booking.billCode || '').split('-')[0]}-${String.fromCharCode(64 + item.guest_index)}` : (booking.billCode || '').split('-')[0]}</span>
                       </div>
-                      {coWorkers.length > 0 && (
-                        <p className="mt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {coWorkers.join(', ')}</p>
-                      )}
                    </div>
               </div>
 
-              <div className="flex justify-between items-end mb-6 flex-wrap gap-2">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">
-                    {ktvSegments.length > 1 ? `Vị trí chặng ${activeSegmentIndex + 1}` : 'Vị trí'}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <div className="bg-emerald-600 text-white px-4 py-2 rounded-2xl font-black text-lg shadow-lg shadow-emerald-100">
-                      Phòng {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName)}
-                    </div>
-                    {(currentSeg?.bedId || booking.assignedBedId || booking.bedId) && (
-                      <div className="bg-white border-2 border-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl font-black text-lg">
-                        Giường {(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()}
-                      </div>
-                    )}
-                  </div>
+              {/* Khối Phòng - Giường 2 cột thanh thoát */}
+              <div className="grid grid-cols-2 gap-3 my-4">
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
+                  <p className="text-xl font-black text-emerald-950 mt-0.5 truncate">
+                    {roomLabel(currentSeg?.roomId || booking.assignedRoomId || booking.roomName) || '—'}
+                  </p>
                 </div>
-                <button 
-                  onClick={() => setShowProcedure(true)}
-                  className="text-emerald-600 text-xs font-bold flex items-center gap-1 underline mb-2 shrink-0"
-                >
-                   <ClipboardList size={14} /> Quy trình
-                </button>
+                <div className="p-3.5 bg-teal-50/70 border border-teal-100 rounded-2xl">
+                  <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
+                  <p className="text-xl font-black text-teal-950 mt-0.5 truncate">
+                    {(currentSeg?.bedId || booking.assignedBedId || booking.bedId)
+                      ? String(currentSeg?.bedId || booking.assignedBedId || booking.bedId).split('-').pop()
+                      : '—'}
+                  </p>
+                </div>
               </div>
+
+              {/* KTV làm cùng nếu có */}
+              {coWorkers.length > 0 && (
+                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs font-bold text-indigo-700 mb-4">
+                  <Users size={15} className="text-indigo-600 shrink-0" />
+                  <span className="truncate">👥 Cùng làm với: <span className="font-black">{coWorkers.join(', ')}</span></span>
+                </div>
+              )}
 
               {/* Timeline Section */}
               {ktvSegments.length > 0 && (
-                <div className="mb-6">
+                <div className="mb-4">
                   <WorkingTimeline 
                     segments={ktvSegments} 
                     activeIndex={booking.status === 'IN_PROGRESS' ? activeSegmentIndex : undefined}
@@ -895,20 +983,17 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               <CollapsibleRequirements booking={booking} />
           </div>
 
-          {/* Setup Checklist
-              Đơn VÀO THAY thì bỏ hẳn phần này: phòng đã mở, khách đang nằm trên
-              đó, không có gì để vệ sinh máy lạnh hay setup giường nữa. Bắt tích
-              đủ 5 mục mới cho đi tiếp là bắt họ khai gian. */}
+          {/* Setup Checklist */}
           {!laDonVaoThay && (
-          <div>
-            <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-              <h3 className={`font-bold ${THEME.textBase} flex items-center gap-2 uppercase text-[11px] tracking-widest min-w-[120px]`}>
-                <CheckCircle size={18} className={THEME.gold} />
-                Quy trình chuẩn bị
+          <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-5 sm:p-6 space-y-3">
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2 uppercase text-[11px] tracking-widest min-w-[120px]">
+                <CheckCircle size={16} className="text-emerald-600" />
+                Quy trình chuẩn bị phòng
               </h3>
               <button 
                  onClick={checkAllChecklist}
-                 className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg active:scale-95 transition-all uppercase tracking-widest border border-emerald-100 shadow-sm shrink-0 whitespace-nowrap"
+                 className="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-1.5 rounded-xl active:scale-95 transition-all uppercase tracking-wider border border-emerald-100 shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
               >
                  Chọn tất cả
               </button>
@@ -922,22 +1007,21 @@ export function ScreenDashboard({ logic }: { logic: any }) {
           </div>
           )}
 
-          {/* Room Issue Report Button */}
+          {/* Room Issue Report Button - GIỮ NGUYÊN VIỀN ĐỎ NÉT ĐỨT THEO YÊU CẦU */}
           <button
             onClick={() => setShowRoomIssueModal(true)}
-            className="w-full py-3 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/50 text-rose-600 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-rose-100/50"
+            className="w-full py-3.5 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/50 text-rose-600 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-rose-100/50 cursor-pointer"
           >
             <AlertTriangle size={16} />
             Báo sự cố phòng
           </button>
 
-          {/* Đơn vào thay không có checklist để tích, nên không được khoá nút theo
-              checklist — khoá là kẹt luôn, không vào phòng làm tiếp được. */}
+          {/* Nút Xác nhận chuẩn bị xong / Vào phòng làm tiếp */}
           <button
             disabled={(!laDonVaoThay && !isChecklistComplete) || logic.isLoading}
             onClick={handleConfirmSetup}
-            className={`w-full py-4 ${THEME.radius} font-bold text-white transition-all
-              ${(laDonVaoThay || isChecklistComplete) ? THEME.primary + ' shadow-lg shadow-emerald-200' : 'bg-slate-300'}`}
+            className={`w-full h-14 rounded-2xl font-black text-sm uppercase tracking-wider text-white transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer
+              ${(laDonVaoThay || isChecklistComplete) ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200' : 'bg-slate-300 cursor-not-allowed'}`}
           >
             {logic.isLoading
               ? 'Đang xử lý...'
