@@ -651,8 +651,18 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                          <div className="flex items-center gap-1.5"><Users size={13} className="text-gray-400" /> {pb.guest_count} khách</div>
                          {pb.notes && <div className="flex items-center gap-1.5 text-gray-500"><Info size={13} className="text-gray-400" /> {pb.notes}</div>}
                       </div>
-                      <div className="mt-3 flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <ChevronRight size={12} /> {t.tapForDetail}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                         <span className="flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ChevronRight size={12} /> {t.tapForDetail}
+                         </span>
+                         {/* Đi thẳng sang WRB, không qua panel — stopPropagation để không mở panel. */}
+                         <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openWrbForPreBooking(pb); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black transition-colors"
+                         >
+                            <ExternalLink size={12} /> {t.openWrbShort}
+                         </button>
                       </div>
                    </div>
                    </React.Fragment>
