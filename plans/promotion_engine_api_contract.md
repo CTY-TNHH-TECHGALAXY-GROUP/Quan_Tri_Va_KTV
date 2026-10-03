@@ -260,7 +260,7 @@ Tham số query:
 - `tier` chỉ có `NEW` hoặc `RETURNING` (≥ 2 lượt). **Không có `VIP`**: muốn lọc khách dùng menu VIP thì dùng `vipMenu=USED`. Gửi `tier=VIP` → `400 VALIDATION_ERROR`, `field = tier`.
 - `hasEmail`: `1` (mặc định) hoặc `0`. Email ảo `…@guest.com` **không được tính là có email**.
 - `limit` tối đa 50.
-- `onlyQualified` cần `qualifiedFrom` + `qualifiedTo` (ngày VN, tối đa 93 ngày). Điều kiện "đạt" kiểm bằng chính hàm của engine: đơn DONE trong khoảng, đạt ngưỡng phút của campaign và thuộc menu áp dụng.
+- `onlyQualified` cần `qualifiedFrom` + `qualifiedTo` (ngày VN, tối đa 93 ngày). Điều kiện "đạt" kiểm bằng chính bộ đánh giá `apply_conditions` của engine: đơn DONE trong khoảng thoả các điều kiện áp dụng. **(v11)** `qualificationIgnored = true` chỉ khi chương trình **không có điều kiện nào** — không còn phụ thuộc `qualification_type`.
 
 Response:
 
