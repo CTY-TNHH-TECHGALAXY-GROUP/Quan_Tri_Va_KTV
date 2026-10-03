@@ -136,3 +136,48 @@ export async function createService(payload: Partial<import('@/lib/types').Servi
         return { success: false, error: error.message || 'Unknown error' };
     }
 }
+
+// Deep Body menu config (SystemConfigs.menu_deep_body_config), kept from main
+// (39c3e0d9 / 6ad803b5 / ef5e579e). Guarded the same way as the other actions here.
+export async function getDeepBodyConfig() {
+    try {
+        if (!(await requireBusinessUser()) && process.env.AUTH_ENFORCE_API === '1') throw new Error('Unauthorized');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const { data, error } = await supabase
+            .from('SystemConfigs')
+            .select('value')
+            .eq('key', 'menu_deep_body_config')
+            .single();
+
+        if (error) throw error;
+
+        return { success: true, data: data.value };
+    } catch (error: any) {
+        console.error('❌ [Server] getDeepBodyConfig error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+export async function updateDeepBodyConfig(payload: any) {
+    try {
+        await requireRole(['ADMIN', 'DEV', 'MANAGER']);
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const { data, error } = await supabase
+            .from('SystemConfigs')
+            .update({ value: payload, updated_at: new Date().toISOString() })
+            .eq('key', 'menu_deep_body_config')
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return { success: true, data: data.value };
+    } catch (error: any) {
+        console.error('❌ [Server] updateDeepBodyConfig error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
