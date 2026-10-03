@@ -252,12 +252,16 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
    */
   const buildWrbUrl = (pb: any) => {
      const baseUrl = (process.env.NEXT_PUBLIC_WEB_NOI_BO_URL || DEFAULT_WRB_URL).replace(/\/+$/, '');
-     const url = new URL(`${baseUrl}/${WRB_LANG}/${pb.menu_type || 'standard'}/menu`);
+     // Deep Body (và giá trị cũ 'spa') nằm trong VIP menu, tab deep_body — không có route riêng.
+     const isDeepBody = pb.menu_type === 'deep_body' || pb.menu_type === 'spa';
+     const menuPath = isDeepBody ? 'vip' : (pb.menu_type || 'standard');
+     const url = new URL(`${baseUrl}/${WRB_LANG}/${menuPath}/menu`);
+     if (isDeepBody) url.searchParams.set('tab', 'deep_body');
      url.searchParams.set('preBookingId', pb.id);
      if (pb.customer_name) url.searchParams.set('name', pb.customer_name);
      if (pb.customer_phone) url.searchParams.set('phone', pb.customer_phone);
      if (pb.customer_email && !isDummyEmail(pb.customer_email)) url.searchParams.set('email', pb.customer_email);
-     if (pb.menu_type) url.searchParams.set('menuType', pb.menu_type);
+     url.searchParams.set('menuType', menuPath);
      if (pb.guest_count) url.searchParams.set('guests', pb.guest_count.toString());
      if (pb.notes) url.searchParams.set('notes', pb.notes);
      return url.toString();
@@ -314,7 +318,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
      return String(pb.booking_time || '').slice(0, 5) < hhmm;
   };
 
-  const MENU_TYPE_LABEL: Record<string, string> = { standard: 'Standard', vip: 'VIP', spa: 'Spa' };
+  const MENU_TYPE_LABEL: Record<string, string> = { standard: 'Standard', vip: 'VIP', deep_body: 'Deep Body', spa: 'Deep Body' };
 
   const formatTime = (time: string) => {
     if (!time) return "";
@@ -1150,7 +1154,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                      <select value={newPbMenuType} onChange={e => setNewPbMenuType(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 font-medium text-gray-700 mb-4">
                         <option value="standard">Standard Menu (Tiêu chuẩn)</option>
                         <option value="vip">VIP Menu (Cao cấp)</option>
-                        <option value="spa">Spa Menu (Trị liệu)</option>
+                        <option value="deep_body">Deep Body (Trị liệu)</option>
                      </select>
                   </div>
                   <div>
