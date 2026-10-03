@@ -1,10 +1,16 @@
 -- =====================================================================================
 -- PRODUCTION — Migrate DB cho bản merge test/sequential-two-slot-handoff-20260928 + phase1
--- Ngày soạn: 04/10/2026. Gồm 34 migration (đủ, nguyên văn) mà production (origin/main) CHƯA có:
+-- Ngày soạn: 04/10/2026. Gồm 35 migration mà production (origin/main) CHƯA có:
 --   PHẦN 1: 29 migration đơn nối tiếp / điều phối (20260925120000 … 20261002100000)
 --   PHẦN 2:  4 migration thang sao 4/5          (20261002110000 … 20261003091000)
 --   PHẦN 3:  1 migration thông báo FEEDBACK cho quầy + admin (20261004100000)
--- Đã đối chiếu tự động: 34/34 file supabase/migrations có mặt nguyên văn trong file này.
+--   PHẦN 4:  1 migration giới hạn ràng buộc phân công từ ngày 04/10/2026 (20261004110000)
+--
+-- KHÔNG ĐỤNG DỮ LIỆU QUÁ KHỨ (quyết định 04/10/2026): bản production thêm điều kiện
+--   business_date >= 2026-10-04 (Bookings.bookingDate cho technicianCodes) vào: bước kiểm tra [0],
+--   ràng buộc chống trùng giờ, trigger kiểm giờ phân công, 2 lệnh sửa dữ liệu (segment_id, technicianCodes).
+--   Các chỗ đó có ghi chú '-- PROD 04/10'. Phân công cũ còn ACTIVE/QUEUED/READY được để nguyên.
+-- Đối chiếu: 35/35 migration có mặt; nguyên văn trừ các dòng ghi '-- PROD 04/10'.
 --
 -- KHÔNG đụng pg_cron / Vercel cron: không có cron.schedule / cron.unschedule nào.
 -- Mọi DELETE trong file đều nằm TRONG thân hàm (chạy khi RPC được gọi), không xoá dữ liệu lúc chạy file.
@@ -16,7 +22,7 @@
 -- =====================================================================================
 
 -- #####################################################################################
--- PHẦN 1/3 — ĐƠN NỐI TIẾP + ĐIỀU PHỐI (29 migration)
+-- PHẦN 1/4 — ĐƠN NỐI TIẾP + ĐIỀU PHỐI (29 migration)
 -- #####################################################################################
 -- =====================================================================================
 -- PRODUCTION — Đơn nối tiếp (sequential 2 slot) + điều phối: 29 migration
@@ -55,6 +61,8 @@ BEGIN
     FROM "KtvAssignments" a JOIN "KtvAssignments" b
       ON a.employee_id = b.employee_id AND a.id < b.id
      AND a.status IN ('ACTIVE','QUEUED','READY') AND b.status IN ('ACTIVE','QUEUED','READY')
+     -- PROD 04/10/2026: chỉ xét từ ngày làm việc 04/10 — không đụng dữ liệu quá khứ.
+     AND a.business_date >= DATE '2026-10-04' AND b.business_date >= DATE '2026-10-04'
      AND a.planned_start_time IS NOT NULL AND a.planned_end_time IS NOT NULL
      AND b.planned_start_time IS NOT NULL AND b.planned_end_time IS NOT NULL
      AND tstzrange(a.planned_start_time, GREATEST(a.planned_start_time, a.planned_end_time), '[)')
@@ -67,7 +75,7 @@ BEGIN
   -- thiếu giờ / giờ kết thúc <= bắt đầu khi bị ghi. Backfill segment_id (20261001101000) ghi vào
   -- đúng các dòng đó → COMMIT lỗi. Dòng đổi KTV cũ (SWAP_KTV) thiếu planned_end_time.
   SELECT count(*) INTO v_bad FROM "KtvAssignments"
-   WHERE status IN ('ACTIVE','QUEUED','READY')
+   WHERE status IN ('ACTIVE','QUEUED','READY') AND business_date >= DATE '2026-10-04'
      AND (planned_start_time IS NULL OR planned_end_time IS NULL OR planned_end_time <= planned_start_time);
   IF v_bad > 0 THEN
     RAISE EXCEPTION 'Có % phân công còn sống thiếu giờ / giờ sai trong KtvAssignments — xử lý trước (xem truy vấn [B] cuối file), dừng.', v_bad;
@@ -3070,7 +3078,7 @@ ALTER TABLE "KtvAssignments" ADD CONSTRAINT ktv_assignments_no_live_overlap
   EXCLUDE USING gist (
     employee_id WITH =,
     tstzrange(planned_start_time,GREATEST(planned_start_time,planned_end_time),'[)') WITH &&
-  ) WHERE (status IN ('ACTIVE','QUEUED','READY')
+  ) WHERE (status IN ('ACTIVE','QUEUED','READY') AND business_date >= DATE '2026-10-04' -- PROD 04/10: chỉ từ 04/10
     AND planned_start_time IS NOT NULL AND planned_end_time IS NOT NULL)
   DEFERRABLE INITIALLY DEFERRED;
 
@@ -3079,6 +3087,7 @@ LANGUAGE plpgsql SET search_path=public AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "KtvAssignments" WHERE id=NEW.id
     AND status IN ('ACTIVE','QUEUED','READY')
+    AND business_date >= DATE '2026-10-04' -- PROD 04/10: dòng quá khứ không bị chặn
     AND (planned_start_time IS NULL OR planned_end_time IS NULL
       OR NOT isfinite(planned_start_time) OR NOT isfinite(planned_end_time)
       OR planned_end_time<=planned_start_time)) THEN
@@ -3582,7 +3591,8 @@ ALTER TABLE "KtvAssignments" ADD CONSTRAINT ktv_assignments_no_live_overlap
   EXCLUDE USING gist (
     employee_id WITH =,
     tstzrange(planned_start_time,GREATEST(planned_start_time,planned_end_time),'[)') WITH &&
-  ) WHERE (status='ACTIVE' AND planned_start_time IS NOT NULL AND planned_end_time IS NOT NULL)
+  ) WHERE (status='ACTIVE' AND business_date >= DATE '2026-10-04' -- PROD 04/10: chỉ từ 04/10
+    AND planned_start_time IS NOT NULL AND planned_end_time IS NOT NULL)
   DEFERRABLE INITIALLY DEFERRED;
 
 CREATE OR REPLACE FUNCTION dispatch_adjust_running_sequential_a(
@@ -5491,7 +5501,9 @@ $$;
 -- Dọn mảng đã bị trùng (giữ thứ tự xuất hiện đầu tiên).
 UPDATE "BookingItems" SET "technicianCodes" = ARRAY(
     SELECT c FROM (SELECT c, min(o) o FROM unnest("technicianCodes") WITH ORDINALITY u(c, o) GROUP BY c) x ORDER BY o)
-WHERE cardinality("technicianCodes") <> (SELECT count(DISTINCT c) FROM unnest("technicianCodes") c);
+WHERE cardinality("technicianCodes") <> (SELECT count(DISTINCT c) FROM unnest("technicianCodes") c)
+  -- PROD 04/10/2026: chỉ đơn từ 04/10 — không sửa dữ liệu quá khứ.
+  AND EXISTS (SELECT 1 FROM "Bookings" b WHERE b.id = "BookingItems"."bookingId" AND b."bookingDate" >= TIMESTAMP '2026-10-04');
 
 INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261001100000', 'assign_b_dedupe_technician_codes') ON CONFLICT (version) DO NOTHING;
 
@@ -5568,6 +5580,7 @@ FROM (SELECT ka2.id, min(s->>'id') seg_id
       FROM "KtvAssignments" ka2 JOIN "BookingItems" i ON i.id = ka2.booking_item_id,
            jsonb_array_elements(COALESCE(jsonb_unwrap_string(i.segments),'[]')) s
       WHERE ka2.segment_id IS NULL AND ka2.status IN ('ACTIVE','QUEUED','READY')
+        AND ka2.business_date >= DATE '2026-10-04' -- PROD 04/10: không sửa dữ liệu quá khứ
         AND s->>'ktvId' = ka2.employee_id AND COALESCE(s->>'voided','false') <> 'true'
       GROUP BY ka2.id HAVING count(*) = 1) x
 WHERE ka.id = x.id;
@@ -6258,6 +6271,7 @@ COMMIT;
 --        b.id AS b_id, b.status AS b_status, b.business_date AS b_day, b.booking_item_id AS b_item, b.planned_start_time AS b_start, b.planned_end_time AS b_end
 --   FROM "KtvAssignments" a JOIN "KtvAssignments" b ON a.employee_id = b.employee_id AND a.id < b.id
 --  WHERE a.status IN ('ACTIVE','QUEUED','READY') AND b.status IN ('ACTIVE','QUEUED','READY')
+--    AND a.business_date >= DATE '2026-10-04' AND b.business_date >= DATE '2026-10-04'
 --    AND a.planned_start_time IS NOT NULL AND a.planned_end_time IS NOT NULL
 --    AND b.planned_start_time IS NOT NULL AND b.planned_end_time IS NOT NULL
 --    AND tstzrange(a.planned_start_time, GREATEST(a.planned_start_time, a.planned_end_time), '[)')
@@ -6268,7 +6282,7 @@ COMMIT;
 -- SELECT ka.id, ka.employee_id, ka.business_date, ka.status, ka.dispatch_source, ka.booking_id, ka.booking_item_id,
 --        ka.planned_start_time, ka.planned_end_time, bi.status AS item_status
 --   FROM "KtvAssignments" ka LEFT JOIN "BookingItems" bi ON bi.id = ka.booking_item_id
---  WHERE ka.status IN ('ACTIVE','QUEUED','READY')
+--  WHERE ka.status IN ('ACTIVE','QUEUED','READY') AND ka.business_date >= DATE '2026-10-04'
 --    AND (ka.planned_start_time IS NULL OR ka.planned_end_time IS NULL OR ka.planned_end_time <= ka.planned_start_time)
 --  ORDER BY ka.business_date, ka.employee_id;
 --
@@ -6284,7 +6298,7 @@ COMMIT;
 
 
 -- #####################################################################################
--- PHẦN 2/3 — THANG SAO 4/5 (4 migration) — chỉ chạy khi PHẦN 1 đã COMMIT thành công
+-- PHẦN 2/4 — THANG SAO 4/5 (4 migration) — chỉ chạy khi PHẦN 1 đã COMMIT thành công
 -- #####################################################################################
 -- =====================================================================================
 -- PRODUCTION — Thang đánh giá 4/5 sao (admin + kiosk + journey WRB)
@@ -6846,7 +6860,7 @@ COMMIT;
 
 
 -- #####################################################################################
--- PHẦN 3/3 — THÔNG BÁO FEEDBACK CHO QUẦY + ADMIN (1 migration) — chạy SAU PHẦN 2
+-- PHẦN 3/4 — THÔNG BÁO FEEDBACK CHO QUẦY + ADMIN (1 migration) — chạy SAU PHẦN 2
 -- 20261003091000 (phần 2) đặt FEEDBACK chỉ gửi KTV được chấm; quyết định 04/10/2026: quầy/admin cũng nhận.
 -- #####################################################################################
 BEGIN;
@@ -6876,7 +6890,49 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261
 
 COMMIT;
 
--- [KIỂM TRA SAU] phải ra 34 dòng
--- SELECT version, name FROM supabase_migrations.schema_migrations WHERE version >= '20260925120000' AND version <= '20261004100000' ORDER BY version;
+-- #####################################################################################
+-- PHẦN 4/4 — GIỮ NGUYÊN DỮ LIỆU QUÁ KHỨ: ràng buộc phân công chỉ áp từ ngày làm việc 04/10/2026
+-- (đồng bộ với TEST; phần 1 ở bản production đã thêm sẵn cùng điều kiện nên phần này không đổi gì thêm)
+-- #####################################################################################
+BEGIN;
+
+-- ───────────────────────────── 20261004110000_scope_ktv_assignment_guards_from_20261004 ─────────────────────────────
+-- 04/10/2026: the live-assignment guards only apply from business date 2026-10-04 on.
+-- Production holds ~320 assignments of earlier days still ACTIVE/QUEUED/READY (orders finished or
+-- abandoned before the release/finish RPCs closed them), some overlapping or with an end before the
+-- start (old cross-midnight bug). Decision: do not touch past data — leave those rows as they are
+-- and enforce the rules for new work only. Same final state on TEST and production; idempotent.
+-- Replaces the predicates of 20260928020000 / 20260929160000.
+
+ALTER TABLE "KtvAssignments" DROP CONSTRAINT IF EXISTS ktv_assignments_no_live_overlap;
+ALTER TABLE "KtvAssignments" ADD CONSTRAINT ktv_assignments_no_live_overlap
+  EXCLUDE USING gist (
+    employee_id WITH =,
+    tstzrange(planned_start_time,GREATEST(planned_start_time,planned_end_time),'[)') WITH &&
+  ) WHERE (status='ACTIVE' AND business_date >= DATE '2026-10-04'
+    AND planned_start_time IS NOT NULL AND planned_end_time IS NOT NULL)
+  DEFERRABLE INITIALLY DEFERRED;
+
+CREATE OR REPLACE FUNCTION validate_final_ktv_assignment_plan() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "KtvAssignments" WHERE id=NEW.id
+    AND status IN ('ACTIVE','QUEUED','READY')
+    AND business_date >= DATE '2026-10-04'
+    AND (planned_start_time IS NULL OR planned_end_time IS NULL
+      OR NOT isfinite(planned_start_time) OR NOT isfinite(planned_end_time)
+      OR planned_end_time<=planned_start_time)) THEN
+    RAISE EXCEPTION 'Giờ phân công không hợp lệ; tải lại và kiểm tra';
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION validate_final_ktv_assignment_plan() FROM PUBLIC,anon,authenticated;
+
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261004110000', 'scope_ktv_assignment_guards_from_20261004') ON CONFLICT (version) DO NOTHING;
+
+COMMIT;
+
+-- [KIỂM TRA SAU] phải ra 35 dòng
+-- SELECT version, name FROM supabase_migrations.schema_migrations WHERE version >= '20260925120000' AND version <= '20261004110000' ORDER BY version;
 -- FEEDBACK phải có admin + reception:
 -- SELECT jsonb_unwrap_string(value)->'FEEDBACK' FROM "SystemConfigs" WHERE key = 'notification_rules';

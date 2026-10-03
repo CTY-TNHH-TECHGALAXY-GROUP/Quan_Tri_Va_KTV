@@ -308,6 +308,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 **Constraint / Invariant:**
 - `UNIQUE(employee_id, booking_item_id)` — 1 KTV không bị phân trùng 1 item.
 - `UNIQUE(employee_id, business_date) WHERE status = 'ACTIVE'` — mỗi KTV chỉ 1 assignment ACTIVE/ngày.
+- `ktv_assignments_no_live_overlap` (EXCLUDE gist, DEFERRABLE) — 2 phân công ACTIVE của cùng KTV không được chồng giờ (`planned_start_time`→`planned_end_time`). **Chỉ áp từ `business_date >= 2026-10-04`** (20261004110000; dòng cũ được để nguyên).
+- Trigger `validate_final_ktv_assignment_plan_trigger` (constraint trigger, cuối transaction) — phân công ACTIVE/QUEUED/READY từ 2026-10-04 phải có `planned_start_time` và `planned_end_time > planned_start_time`; ghi thiếu (VD đổi KTV không kèm giờ kết thúc) → lỗi "Giờ phân công không hợp lệ".
 
 ---
 
