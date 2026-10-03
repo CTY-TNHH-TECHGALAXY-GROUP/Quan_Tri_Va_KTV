@@ -181,9 +181,16 @@ export function qualifiesForBonus(rating: number | null | undefined, scale: Rati
     return isTopRating(rating, scale);
 }
 
-/** Đã chọn góp ý / vi phạm thì không được chấm mức cao nhất. */
-export function maxRatingWithViolation(scale: RatingScale): number {
-    return scale - 1;
+/**
+ * Trần điểm theo số góp ý khách tích (kiosk + journey WRB dùng cùng luật):
+ * 1 lỗi → thang − 1 · 2 lỗi → 2 · từ 3 lỗi → 1 · không lỗi → thang.
+ * Thang 4 giữ đúng luật WRB cũ (3 / 2 / 1).
+ */
+export function maxRatingWithViolation(scale: RatingScale, violationCount = 1): number {
+    if (violationCount >= 3) return 1;
+    if (violationCount >= 2) return 2;
+    if (violationCount >= 1) return scale - 1;
+    return scale;
 }
 
 /** Giữ trong khoảng 1..scale (đầu vào từ form). Trả null khi không phải số hợp lệ. */

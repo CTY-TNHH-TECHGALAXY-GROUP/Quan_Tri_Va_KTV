@@ -2,7 +2,7 @@
 const fs = require('fs'); const { Client } = require('pg');
 const env = require('dotenv').parse(fs.readFileSync('.env.local'));
 if (!String(env.DATABASE_URL).includes('eknggruuiuadwldacpmb')) throw new Error('Not TEST');
-const P = 'DEMO5LANG'; const KTV = `${P}-KTV`; const N = Number(process.env.COUNT || 1); const IDS = Array.from({ length: Math.max(N, 3) }, (_, i) => `${P}-B${i + 1}`);
+const P = process.env.PREFIX || 'DEMO5LANG'; const KTV = `${P}-KTV`; const N = Number(process.env.COUNT || 1); const IDS = Array.from({ length: Math.max(N, 3) }, (_, i) => `${P}-B${i + 1}`);
 const db = new Client({ connectionString: env.DATABASE_URL }); const q = (s, p = []) => db.query(s, p);
 const vnNow = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 async function cleanup() {

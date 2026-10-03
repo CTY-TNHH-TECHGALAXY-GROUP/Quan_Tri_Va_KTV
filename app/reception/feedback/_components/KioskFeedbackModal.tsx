@@ -3,16 +3,13 @@
 import React, { useState } from 'react';
 import { ChildBookingForFeedback } from '../FeedbackDashboard.logic';
 import { useKioskFeedback } from './KioskFeedback.logic';
-import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
+import { AlertTriangle, UserCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { KioskStarRow } from './KioskStarRow';
 import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // 🔧 UI CONFIGURATION
-// Star icon size per scale (static classes so Tailwind emits them): 5 stars must fit the narrower tile.
-const RATING_STAR_CLASS: Record<number, string> = { 4: 'h-3.5 w-3.5 sm:h-5 sm:w-5', 5: 'h-3 w-3 sm:h-4 sm:w-4' };
 const GRID_COLS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5' };
-// Narrower padding for 5 tiles so short CJK labels fit on one line.
-const RATING_TILE_PAD: Record<number, string> = { 4: 'p-3 sm:p-5', 5: 'p-2 sm:p-3' };
 const LOADING_TILE_COUNT = 5;
 
 export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
@@ -280,45 +277,20 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                     {!ratingConfigLoaded ? (
                                         <div className={`grid gap-2 sm:gap-4 mb-8 ${GRID_COLS[LOADING_TILE_COUNT]}`} aria-busy="true">
                                             {Array.from({ length: LOADING_TILE_COUNT }, (_, i) => (
-                                                <div key={i} className="h-20 sm:h-24 rounded-2xl bg-gray-100 animate-pulse" />
+                                                <div key={i} className="h-[88px] rounded-2xl bg-gray-100 animate-pulse" />
                                             ))}
                                         </div>
                                     ) : (
-                                    <div className={`grid gap-2 sm:gap-4 mb-8 ${GRID_COLS[maxRating] || 'grid-cols-4'}`}>
-                                        {ratingLevels
-                                        // Đã tích lỗi thì bỏ hẳn mức cao nhất — không thể vừa phàn nàn vừa "tuyệt vời".
-                                        .filter((r: { score: number }) => r.score <= maxRating).map((r: { score: number; label: string }) => {
-                                            const isSelected = globalRating === r.score;
-                                            return (
-                                                <button
-                                                    key={r.score}
-                                                    onClick={() => handleRatingChange(r.score)}
-                                                    className={`${RATING_TILE_PAD[ratingScale] || RATING_TILE_PAD[4]} rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${
-                                                        isSelected 
-                                                            ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
-                                                            : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    {/* Level shown as stars: `score` filled out of the scale (Oria rating sheet). */}
-                                                    <span className="flex items-center gap-0.5" aria-label={`${r.score}/${ratingScale}`}>
-                                                        {Array.from({ length: ratingScale }, (_, i) => (
-                                                            <Star key={i} className={`${RATING_STAR_CLASS[ratingScale] || RATING_STAR_CLASS[4]} ${i < r.score ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-200'}`} />
-                                                        ))}
-                                                    </span>
-                                                    <span className={`text-xs sm:text-sm font-bold text-center mt-1 break-keep leading-tight ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
-                                                        {r.label}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
+                                    <div className="mb-8">
+                                        <KioskStarRow scale={ratingScale} levels={ratingLevels} selected={globalRating}
+                                            maxRating={maxRating} onSelect={handleRatingChange} />
                                     </div>
-
                                     )}
 
                                     {ratingConfigLoaded && maxRating < ratingScale && (
                                         <div className="-mt-6 mb-6 text-center">
                                             <span className="inline-block text-xs sm:text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
-                                                {t.cappedByViolation || 'Bạn đã chọn góp ý ở trên nên mức "Tuyệt vời" tạm ẩn. Bỏ chọn góp ý nếu muốn chấm mức cao nhất.'}
+                                                {t.cappedByViolation}
                                             </span>
                                         </div>
                                     )}

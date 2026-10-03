@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requireBusinessUser } from '@/lib/auth-server';
 
 import { MAX_RATING_WITH_VIOLATION } from './feedback.constants';
-import { loadRatingConfig, clampRating, maxRatingWithViolation, ratingLabelFor } from '@/lib/services/RatingScaleService';
+import { loadRatingConfig, clampRating, maxRatingWithViolation, ratingLabelFor, type RatingLabels, type RatingScale } from '@/lib/services/RatingScaleService';
 
 /** Một ô góp ý khách đã tích, kèm nội dung chụp lại lúc bấm. */
 type ViolationDetail = { id: string; text: string };
@@ -38,6 +38,23 @@ async function buildViolationDetails(supabase: any, ids: string[]): Promise<Viol
     return ids.map(id => ({ id: String(id), text: String(map.get(String(id)) || '') }));
 }
 
+/**
+ * Scale + labels the kiosk must show. Read on the server so it does not depend on the
+ * admin-settings API (permissions, timeouts). Returns success:false on error — the kiosk
+ * retries instead of guessing a scale.
+ */
+export async function getKioskRatingDisplayAction(): Promise<{ success: true; scale: RatingScale; labels: RatingLabels } | { success: false }> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return { success: false };
+    try {
+        const config = await loadRatingConfig(supabase);
+        return { success: true, scale: config.scale, labels: config.labels };
+    } catch (err) {
+        console.error('[Feedback Action] rating display config failed:', err);
+        return { success: false };
+    }
+}
+
 export async function submitFeedbackAction(payload: {
     bookingId: string;
     isGuestFlow: boolean;
@@ -64,7 +81,7 @@ export async function submitFeedbackAction(payload: {
         const inRange = clampRating(payload.globalRating, ratingScale);
         if (inRange === null) throw new Error('Điểm đánh giá không hợp lệ');
         const globalRating = (violations && violations.length > 0)
-            ? Math.min(inRange, maxRatingWithViolation(ratingScale))
+            ? Math.min(inRange, maxRatingWithViolation(ratingScale, violations.length))
             : inRange;
 
         if (globalRating !== payload.globalRating) {
