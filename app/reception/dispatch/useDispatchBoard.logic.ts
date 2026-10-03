@@ -443,7 +443,17 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // `dsKtvHienThi` ở KanbanBoard.tsx.
                                 segments: parsedSegments,
                                 adminNote: itemCustomerNote,
-                                genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
+                                // Đơn NHP/NHT (menu VIP / trị liệu) khách đã chọn đích danh KTV trên WRB:
+                                // không gắn tag "Ngẫu nhiên" nữa khi item đã có KTV (chốt 03/10/2026).
+                                // Vẫn giữ yêu cầu giới tính thật (Nam/Nữ) nếu khách có ghi.
+                                genderReq: (() => {
+                                    const req = String(parsedOptions?.therapist || '').trim();
+                                    const isRandomReq = !req || /^(ngẫu nhiên|random)$/i.test(req);
+                                    const sidUp = String(bi.serviceId || '').toUpperCase();
+                                    const isVipOrTherapy = sidUp.startsWith('NHP') || sidUp.startsWith('NHT') || sidUp.startsWith('VIP_');
+                                    if (isRandomReq && isVipOrTherapy && techCodes.length > 0) return '';
+                                    return req || 'Ngẫu nhiên';
+                                })(),
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
                                 focus: formatBodyAreas(parsedOptions?.focus || ''),
                                 avoid: formatBodyAreas(parsedOptions?.avoid || ''),
