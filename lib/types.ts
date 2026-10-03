@@ -10,6 +10,7 @@ export type ModuleId =
   | 'web_booking'
   | 'service_menu'
   | 'customer_reminders'
+  | 'promotions'
   | 'role_management'
   | 'employee_management'
   | 'ktv_hub'

@@ -5,6 +5,7 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'dispatch_board', name: 'Điều Phối & Giám Sát', group: 'Vận Hành' },
   { id: 'staff_notifications', name: 'Thông Báo', group: 'Vận Hành' },
   { id: 'customer_management', name: 'Khách Hàng', group: 'Vận Hành' },
+  { id: 'promotions', name: 'Khuyến Mãi', group: 'Vận Hành' },
   { id: 'revenue_reports', name: 'Báo Cáo', group: 'Tài Chính & Kế Toán' },
   { id: 'payroll_commissions', name: 'Lương & Hoa Hồng', group: 'Tài Chính & Kế Toán' },
   { id: 'cashbook_supplies', name: 'Sổ Quỹ & Vật Tư', group: 'Tài Chính & Kế Toán' },

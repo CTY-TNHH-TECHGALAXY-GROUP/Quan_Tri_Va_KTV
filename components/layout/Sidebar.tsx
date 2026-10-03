@@ -43,7 +43,8 @@ import {
   ToggleLeft,
   Timer,
   Trophy,
-  RefreshCw
+  RefreshCw,
+  Ticket
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isServingLockedScreen } from '@/lib/ktv-screen';
@@ -59,6 +60,7 @@ const ICONS: Record<string, React.ReactNode> = {
   finance_management: <Banknote size={20} />,
   service_menu: <MenuSquare size={20} />,
   customer_reminders: <MessageSquare size={20} />,
+  promotions: <Ticket size={20} />,
   role_management: <ShieldAlert size={20} />,
   employee_management: <UserRound size={20} />,
   ktv_dashboard: <UserCheck size={20} />,
@@ -98,6 +100,7 @@ const PATHS: Record<string, string> = {
   finance_management: '/finance/ktv',
   service_menu: '/admin/service-menu',
   customer_reminders: '/admin/customer-reminders',
+  promotions: '/admin/promotions',
   role_management: '/admin/roles',
   employee_management: '/admin/employees',
   ktv_dashboard: '/ktv/dashboard',
