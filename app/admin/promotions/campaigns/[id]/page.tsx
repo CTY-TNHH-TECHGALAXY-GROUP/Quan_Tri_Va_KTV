@@ -14,7 +14,8 @@ import { voucherCardFromCampaign } from '@/components/promotions/VoucherCard3D.l
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { usePromotionQuery } from '@/components/promotions/usePromotionQuery';
 import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
-import { ASSIGNMENT_LABEL, QUALIFICATION_LABEL, t } from '@/components/promotions/promotion.i18n';
+import { ASSIGNMENT_LABEL, t } from '@/components/promotions/promotion.i18n';
+import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { promotionApi } from '@/lib/services/promotionApi';
@@ -45,10 +46,8 @@ const CampaignDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const { addToast } = useToast();
   const { state, reload, setData } = usePromotionQuery(() => promotionApi.getCampaign(id), [id]);
-  const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
   const access = usePromotionAccess();
   const spaContact = useSpaContact();
-  const menuLabel = (code: string) => menus.state.data?.find((m) => m.code === code)?.label ?? code;
   const [pending, setPending] = useState<CampaignStatusAction | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -79,7 +78,7 @@ const CampaignDetailPage = () => {
             <div className="space-y-5">
             <section className="flex flex-col items-center gap-3 rounded-3xl border border-gray-100 bg-gradient-to-b from-white to-indigo-50/40 p-5 shadow-sm sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
-              <VoucherCard3D data={voucherCardFromCampaign(c, menuLabel)} contact={spaContact} />
+              <VoucherCard3D data={voucherCardFromCampaign(c)} contact={spaContact} />
               <p className="text-center text-xs text-gray-500">{t.voucher.previewHint}</p>
             </section>
             <div className="space-y-5">
@@ -99,15 +98,12 @@ const CampaignDetailPage = () => {
                   <Row label={t.campaign.cols.validFrom}>{formatPromoDate(c.validFrom)}</Row>
                   <Row label={t.campaign.cols.validUntil}>{formatPromoDate(c.validUntil)}</Row>
                   <Row label={t.campaign.cols.usageType}>{formatUsageType(c.usage)}</Row>
-                  <Row label={t.form.qualificationType}>
-                    {QUALIFICATION_LABEL[c.qualification.type]}
-                    {c.qualification.type === 'MIN_PAID_DURATION' && c.qualification.value ? ` ≥ ${c.qualification.value} phút` : ''}
-                  </Row>
                   <Row label={t.form.validityType}>
                     {c.validity?.type === 'DAYS_FROM_ISSUE' && c.validity.days ? `${c.validity.days} ngày kể từ ngày phát` : t.form.validityCampaign}
                   </Row>
-                  <Row label={t.form.applicableMenus}>
-                    {c.applicableMenus && !c.applicableMenus.allMenus && c.applicableMenus.menus.length ? c.applicableMenus.menus.map(menuLabel).join(', ') : t.campaign.allMenus}
+                  <Row label={t.conditions.title}>
+                    {/* Engine wording (same as the card / e-mail); empty = any order. */}
+                    {formatPromotionConditions(c.conditionsSummary, 'vi').join(c.conditionsSummary?.match === 'ANY' ? '' : '; ') || t.conditions.none}
                   </Row>
                   <Row label={t.form.assignmentMode}>{ASSIGNMENT_LABEL[c.assignmentMode]}</Row>
                   <Row label={t.form.voucherPrefix}>

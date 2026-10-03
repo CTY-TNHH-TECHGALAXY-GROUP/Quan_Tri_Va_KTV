@@ -9,6 +9,10 @@
  * counters, effective status and voucher codes / QR tokens all come from the server.
  */
 
+// Apply conditions are owned by the engine (Agent A, contract v7 §2.2): reuse its types, never redefine.
+import type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionMenuDto } from '@/lib/types/promotion';
+export type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary };
+
 export type PromotionBenefitType =
   | 'FREE_MINUTES'
   | 'PERCENT_DISCOUNT'
@@ -91,6 +95,10 @@ export interface PromotionCampaign {
     config: Record<string, unknown> | null;
   };
   applicableMenus?: PromotionApplicableMenus;
+  /** v7: ONE config for apply + auto issue. Replaces applicableMenus / qualification in the form. */
+  applyConditions?: PromotionApplyConditions;
+  /** Same conditions with labels, for display (formatPromotionConditions). */
+  conditionsSummary?: PromotionConditionsSummary;
   validity?: { type: PromotionValidityType; days: number | null };
   assignmentMode: PromotionAssignmentMode;
   status: PromotionCampaignStatus;
@@ -118,19 +126,14 @@ export interface CampaignFormInput {
   usageType: PromotionUsageType;
   usageLimit: number | null;
   maxUsagePerOrder: number;
-  qualificationType: PromotionQualificationType;
-  qualificationValue: number | null;
-  /** Menu prefixes picked by the admin (e.g. ["NHP"]). Empty = all menus. */
-  applicableMenus: { menus: string[] } | null;
+  /** v7 §2.2. Empty list = any order. Wins over any legacy qualification field on the server. */
+  applyConditions: PromotionApplyConditions;
   assignmentMode: PromotionAssignmentMode;
   voucherPrefix: string;
 }
 
-export interface PromotionMenu {
-  code: string;
-  label: string;
-  serviceCount: number;
-}
+/** Menu catalogue for the conditions editor (engine GET /menus). */
+export type PromotionMenu = PromotionMenuDto;
 
 /** Spa contact printed on the e-voucher (same data as Agent A `VoucherContact`, from the email config). */
 export interface SpaContact {
@@ -138,12 +141,6 @@ export interface SpaContact {
   hotline: string | null;
   address: string | null;
   websiteUrl: string | null;
-}
-
-/** What the voucher applies to: menu display names + minimum paid minutes. */
-export interface PromotionConditions {
-  menuLabels: string[];
-  minPaidMinutes: number | null;
 }
 
 export interface PromotionCustomerRef {
@@ -177,8 +174,8 @@ export interface PromotionPass {
   emailLastError?: string | null;
   /** When a closed pass ended (cancel / last use / expiry); null while usable. */
   endedAt?: string | null;
-  /** Conditions printed on the e-voucher (requested from Agent A). */
-  conditions?: PromotionConditions;
+  /** Apply conditions with labels — exactly what the engine enforces (v7). */
+  conditionsSummary?: PromotionConditionsSummary;
   /** Set when a new pass replaced this closed one (re-issue). */
   supersededAt?: string | null;
 }

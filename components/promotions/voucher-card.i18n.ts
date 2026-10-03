@@ -24,8 +24,10 @@ export interface VoucherCardLabels {
   status: Record<PromotionPassEffectiveStatus, string>;
   benefit: (b: PromotionBenefit) => string;
   usage: (u: Pick<PromotionUsageRule, 'type' | 'limit' | 'maxPerOrder'>) => string;
-  /** "Dành cho Menu VIP từ 90 phút trở lên". */
-  condition: (menus: string[], minMinutes: number | null) => string;
+  /** Language code for the engine's formatPromotionConditions(). */
+  lang: PromotionEmailLang;
+  /** Wraps the engine's condition text: "Dành cho Menu VIP · từ 90 phút". */
+  conditionPrefix: (text: string) => string;
 }
 
 const money = (locale: string, v: number) => `${new Intl.NumberFormat(locale).format(v)} VND`;
@@ -63,7 +65,8 @@ export const VOUCHER_CARD_LABELS: Record<PromotionEmailLang, VoucherCardLabels> 
       const base = u.type === 'UNLIMITED' ? 'Không giới hạn' : u.type === 'ONE_TIME' ? 'Dùng 1 lần' : `Giới hạn ${u.limit ?? ''} lần`;
       return u.maxPerOrder > 1 ? `${base} · tối đa ${u.maxPerOrder}/đơn` : base;
     },
-    condition: (m, min) => `Dành cho ${m.length ? m.join(', ') : 'mọi dịch vụ'}${min ? ` từ ${min} phút trở lên` : ''}`,
+    lang: 'vi',
+    conditionPrefix: (x) => `Dành cho ${x}`,
   },
   en: {
     eVoucher: 'E-Voucher',
@@ -87,7 +90,8 @@ export const VOUCHER_CARD_LABELS: Record<PromotionEmailLang, VoucherCardLabels> 
       const base = u.type === 'UNLIMITED' ? 'Unlimited use' : u.type === 'ONE_TIME' ? 'One-time use' : `Up to ${u.limit ?? ''} uses`;
       return u.maxPerOrder > 1 ? `${base} · max ${u.maxPerOrder}/order` : base;
     },
-    condition: (m, min) => `For ${m.length ? m.join(', ') : 'all services'}${min ? `, ${min}+ min` : ''}`,
+    lang: 'en',
+    conditionPrefix: (x) => `For ${x}`,
   },
   cn: {
     eVoucher: '电子优惠券',
@@ -108,7 +112,8 @@ export const VOUCHER_CARD_LABELS: Record<PromotionEmailLang, VoucherCardLabels> 
     status: { ACTIVE: '有效', NOT_STARTED: '尚未生效', INACTIVE: '已暂停', EXPIRED: '已过期', USED_UP: '已用完', SUSPENDED: '已冻结', CANCELLED: '已取消' },
     benefit: benefitWith((n) => `+${n} 分钟`, 'zh-CN'),
     usage: (u) => (u.type === 'UNLIMITED' ? '不限次数' : u.type === 'ONE_TIME' ? '限用一次' : `限 ${u.limit ?? ''} 次`),
-    condition: (m, min) => `适用于${m.length ? m.join('、') : '全部服务'}${min ? `，${min}分钟以上` : ''}`,
+    lang: 'cn',
+    conditionPrefix: (x) => `适用于${x}`,
   },
   jp: {
     eVoucher: 'Eクーポン',
@@ -129,7 +134,8 @@ export const VOUCHER_CARD_LABELS: Record<PromotionEmailLang, VoucherCardLabels> 
     status: { ACTIVE: '有効', NOT_STARTED: '利用開始前', INACTIVE: '一時停止中', EXPIRED: '期限切れ', USED_UP: '利用回数終了', SUSPENDED: '利用停止', CANCELLED: '取消済み' },
     benefit: benefitWith((n) => `+${n} 分`, 'ja-JP'),
     usage: (u) => (u.type === 'UNLIMITED' ? '回数無制限' : u.type === 'ONE_TIME' ? '1回限り' : `${u.limit ?? ''} 回まで`),
-    condition: (m, min) => `${m.length ? m.join('・') : '全メニュー'}${min ? `（${min}分以上）` : ''}対象`,
+    lang: 'jp',
+    conditionPrefix: (x) => `${x} 対象`,
   },
   kr: {
     eVoucher: 'E-바우처',
@@ -150,6 +156,7 @@ export const VOUCHER_CARD_LABELS: Record<PromotionEmailLang, VoucherCardLabels> 
     status: { ACTIVE: '사용 가능', NOT_STARTED: '사용 시작 전', INACTIVE: '일시 중지', EXPIRED: '만료됨', USED_UP: '사용 완료', SUSPENDED: '사용 정지', CANCELLED: '취소됨' },
     benefit: benefitWith((n) => `+${n}분`, 'ko-KR'),
     usage: (u) => (u.type === 'UNLIMITED' ? '무제한' : u.type === 'ONE_TIME' ? '1회용' : `${u.limit ?? ''}회 한정`),
-    condition: (m, min) => `${m.length ? m.join(', ') : '전체 서비스'}${min ? ` ${min}분 이상` : ''} 대상`,
+    lang: 'kr',
+    conditionPrefix: (x) => `${x} 대상`,
   },
 };

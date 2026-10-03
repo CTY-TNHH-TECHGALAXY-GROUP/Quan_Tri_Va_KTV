@@ -1,17 +1,17 @@
 'use client';
 
 import React from 'react';
-import { Check, Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock } from 'lucide-react';
 import type {
   CampaignFormInput,
   PromotionAssignmentMode,
   PromotionBenefitType,
-  PromotionQualificationType,
   PromotionUsageType,
   PromotionValidityType,
 } from '@/lib/types/promotion-client';
 import { promotionApi } from '@/lib/services/promotionApi';
 import { useCampaignForm, type CampaignFormErrors } from './CampaignForm.logic';
+import ApplyConditionsEditor from './ApplyConditionsEditor';
 import { DateControl, SelectControl } from './FormControls';
 import { usePromotionQuery } from './usePromotionQuery';
 import VoucherCard3D from './VoucherCard3D';
@@ -21,10 +21,8 @@ import {
   ASSIGNMENT_LABEL,
   BENEFIT_TYPE_LABEL,
   DISABLED_ASSIGNMENT_NOTE,
-  QUALIFICATION_LABEL,
   SUPPORTED_ASSIGNMENTS,
   SUPPORTED_BENEFIT_TYPES,
-  SUPPORTED_QUALIFICATIONS,
   USAGE_TYPE_LABEL,
   t,
 } from './promotion.i18n';
@@ -36,7 +34,6 @@ const VALIDITY_TYPES: { value: PromotionValidityType; label: string }[] = [
   { value: 'CAMPAIGN_PERIOD', label: t.form.validityCampaign },
   { value: 'DAYS_FROM_ISSUE', label: t.form.validityDays },
 ];
-const QUALIFICATION_TYPES = Object.keys(QUALIFICATION_LABEL) as PromotionQualificationType[];
 const ASSIGNMENT_MODES = Object.keys(ASSIGNMENT_LABEL) as PromotionAssignmentMode[];
 /** Fields an active campaign may still change (engine locks rule keys). */
 const LOCKED_EDITABLE: (keyof CampaignFormInput)[] = ['name', 'description', 'validUntil'];
@@ -75,10 +72,9 @@ interface CampaignFormProps {
 }
 
 const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submitting, submitLabel, onSubmit }: CampaignFormProps) => {
-  const { form, set, toggleMenu, errors, isValid, touch } = useCampaignForm(initial);
+  const { form, set, setConditions, errors, isValid, touch } = useCampaignForm(initial);
   const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
   const spaContact = useSpaContact();
-  const selectedMenus = form.applicableMenus?.menus ?? [];
 
   // When rules are locked only the editable fields can block saving.
   const shownErrors: CampaignFormErrors = lockRules
@@ -107,7 +103,7 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
         <p className="mb-4 mt-1 text-xs text-gray-500">{t.voucher.previewHint}</p>
         <div className="flex justify-center">
-          <VoucherCard3D data={voucherCardFromForm(form, (code) => menus.state.data?.find((m) => m.code === code)?.label ?? code)} contact={spaContact} />
+          <VoucherCard3D data={voucherCardFromForm(form, menus.state.data)} contact={spaContact} />
         </div>
       </aside>
 
@@ -267,65 +263,13 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
         </Section>
 
         <Section title={t.form.sectionEligibility}>
-          <Field label={t.form.qualificationType}>
-            <SelectControl invalid={false} disabled={lockRules} value={form.qualificationType} onChange={(e) => set('qualificationType', e.target.value as PromotionQualificationType)}>
-              {QUALIFICATION_TYPES.map((q) => (
-                <option key={q} value={q} disabled={!SUPPORTED_QUALIFICATIONS.includes(q)}>
-                  {QUALIFICATION_LABEL[q]}
-                  {!SUPPORTED_QUALIFICATIONS.includes(q) ? ` (${t.form.benefitComingSoon})` : ''}
-                </option>
-              ))}
-            </SelectControl>
-          </Field>
-          {form.qualificationType === 'MIN_PAID_DURATION' && (
-            <Field label={t.form.minPaidDuration} hint={t.campaign.eligibleServicesNote} error={shownErrors.qualificationValue}>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                className={inputClass(!!shownErrors.qualificationValue, lockRules)}
-                disabled={lockRules}
-                value={form.qualificationValue ?? ''}
-                onChange={(e) => set('qualificationValue', toNumber(e.target.value))}
-              />
-            </Field>
-          )}
-
-          <fieldset className="sm:col-span-2" disabled={lockRules}>
-            <legend className="mb-1.5 text-sm font-medium text-gray-700">{t.form.applicableMenus}</legend>
-            {menus.state.status === 'loading' ? (
-              <p className="text-sm text-gray-500">{t.form.menusLoading}</p>
-            ) : menus.state.status === 'error' ? (
-              <p className="text-sm text-rose-600">{t.form.menusError}</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {(menus.state.data ?? []).map((m) => {
-                  const on = selectedMenus.includes(m.code);
-                  return (
-                    <button
-                      key={m.code}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={on}
-                      disabled={lockRules}
-                      onClick={() => toggleMenu(m.code)}
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${
-                        on ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-200'
-                      }`}
-                    >
-                      <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${on ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300'}`} aria-hidden>
-                        {on && <Check size={14} />}
-                      </span>
-                      {m.label}
-                      <span className="text-xs text-gray-400">{m.serviceCount}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <p className="mt-1 text-xs text-gray-500">{selectedMenus.length ? t.form.applicableMenusHint : `${t.campaign.allMenus} — ${t.form.applicableMenusHint}`}</p>
-          </fieldset>
-
+          <ApplyConditionsEditor
+            value={form.applyConditions}
+            onChange={setConditions}
+            menus={menus.state.data ?? []}
+            disabled={lockRules}
+            error={shownErrors.applyConditions}
+          />
           <Field label={t.form.assignmentMode} error={shownErrors.assignmentMode}>
             <SelectControl invalid={!!shownErrors.assignmentMode} disabled={lockRules} value={form.assignmentMode} onChange={(e) => set('assignmentMode', e.target.value as PromotionAssignmentMode)}>
               {ASSIGNMENT_MODES.map((a) => (

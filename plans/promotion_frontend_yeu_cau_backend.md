@@ -160,3 +160,14 @@ User yêu cầu e-voucher có **địa chỉ, hotline, website** của Oria Spa.
   - Lý do không dùng `/api/admin/settings/email`: route đó cần quyền cài đặt hệ thống và trả cả số tài khoản.
   - Chưa có endpoint này thì thẻ trong admin chỉ ẩn dải liên hệ, không báo lỗi.
 - **Email e-voucher của A** nên in cùng 3 dòng này ở cùng chỗ, để thẻ trong email khớp với thẻ trên web.
+
+## 12. Điều kiện áp dụng v7 — B đã chuyển xong (04/10/2026)
+
+- **Form chương trình:** chỉ gửi `applyConditions` (bộ soạn nhiều điều kiện: menu / nhóm / dịch vụ / số phút của 1 dịch vụ / tổng tiền tối thiểu, ghép ALL hoặc ANY, tối đa 10). **Không gửi** `qualification*` hay `applicableMenus` nữa.
+- **Câu điều kiện** trên thẻ (admin, `/voucher`), trang chi tiết chương trình và bảng lọc khách: dựng từ `conditionsSummary` bằng `formatPromotionConditions()` của A, nên khớp đúng câu trong email.
+- **Danh mục menu, nhóm, dịch vụ** lấy từ `GET /menus`.
+
+**Lỗi bên A cần sửa (ưu tiên cao):** `promo_customer_candidates` (bản mới nhất ở migration v5) vẫn xét "đơn đạt điều kiện" theo `qualification_type` / `qualification_value` cũ.
+- Chương trình tạo bằng `applyConditions` sẽ có `qualification_type = 'MANUAL_ASSIGNMENT'` (mặc định trong `promo_create_campaign` v7/v9), nên trả `qualificationIgnored = true`. Ô **"Có đơn đạt điều kiện chương trình" không lọc được gì**.
+- **Đề nghị:** RPC lọc khách dùng chính `apply_conditions` (cùng hàm `promo_check_apply` / bộ đánh giá điều kiện), và `qualificationIgnored` chỉ bằng `true` khi chương trình **không có điều kiện nào**.
+- Mock của B đã làm theo hành vi đúng này.

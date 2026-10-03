@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { CampaignFormInput, PromotionCampaign } from '@/lib/types/promotion-client';
+import type { CampaignFormInput, PromotionApplyCondition, PromotionCampaign } from '@/lib/types/promotion-client';
 import { toVnDateInput } from '@/lib/promotion-format';
 import { SUPPORTED_ASSIGNMENTS, SUPPORTED_BENEFIT_TYPES, t } from './promotion.i18n';
 
@@ -24,17 +24,14 @@ export const EMPTY_CAMPAIGN_FORM: CampaignFormInput = {
   usageType: 'UNLIMITED',
   usageLimit: null,
   maxUsagePerOrder: 1,
-  qualificationType: 'MIN_PAID_DURATION',
-  qualificationValue: 90,
-  // Not pre-selected (user, 02/10/2026): no menu = every menu.
-  applicableMenus: null,
+  // No condition pre-filled (user, 02/10/2026): empty = any order.
+  applyConditions: { match: 'ALL', conditions: [] },
   // Auto issue is switched off: vouchers are issued by picking customer profiles.
   assignmentMode: 'MANUAL_ONLY',
   voucherPrefix: '',
 };
 
 export const campaignToForm = (c: PromotionCampaign): CampaignFormInput => {
-  const menus = c.applicableMenus && !c.applicableMenus.allMenus ? c.applicableMenus.menus : [];
   return {
     name: c.name,
     campaignCode: c.campaignCode,
@@ -49,15 +46,13 @@ export const campaignToForm = (c: PromotionCampaign): CampaignFormInput => {
     usageType: c.usage.type,
     usageLimit: c.usage.limit,
     maxUsagePerOrder: c.usage.maxPerOrder,
-    qualificationType: c.qualification.type,
-    qualificationValue: c.qualification.value,
-    applicableMenus: menus.length ? { menus } : null,
+    applyConditions: c.applyConditions ?? { match: 'ALL', conditions: [] },
     assignmentMode: c.assignmentMode,
     voucherPrefix: c.voucherPrefix ?? '',
   };
 };
 
-/** Body for POST: trimmed, empty menu list = all menus. */
+/** Body for POST: trimmed; conditions sent as-is (empty list = any order). */
 export const toCampaignPayload = (f: CampaignFormInput): CampaignFormInput => ({
   ...f,
   name: f.name.trim(),
@@ -65,7 +60,16 @@ export const toCampaignPayload = (f: CampaignFormInput): CampaignFormInput => ({
   voucherPrefix: f.voucherPrefix.trim().toUpperCase(),
   benefitConfig: f.benefitType === 'PERCENT_DISCOUNT' && f.benefitConfig?.maxDiscountAmount ? f.benefitConfig : null,
   validityDays: f.validityType === 'DAYS_FROM_ISSUE' ? f.validityDays : null,
-  applicableMenus: f.applicableMenus?.menus.length ? f.applicableMenus : null,
+  applyConditions: {
+    match: f.applyConditions.match,
+    conditions: f.applyConditions.conditions.map((c) => ({
+      menus: c.menus,
+      categories: c.categories,
+      serviceIds: c.serviceIds,
+      minMinutes: c.minMinutes || null,
+      minOrderAmount: c.minOrderAmount ?? null,
+    })),
+  },
 });
 
 /** Fields an ACTIVE / INACTIVE campaign still accepts (engine: rule keys are locked). */
@@ -110,11 +114,28 @@ export const validateCampaignForm = (f: CampaignFormInput): CampaignFormErrors =
   }
   if (!f.maxUsagePerOrder || f.maxUsagePerOrder < 1) e.maxUsagePerOrder = err.perOrder;
 
-  if (f.qualificationType === 'MIN_PAID_DURATION' && (!f.qualificationValue || f.qualificationValue <= 0)) {
-    e.qualificationValue = err.positive;
-  }
+  const condError = applyConditionsError(f.applyConditions);
+  if (condError) e.applyConditions = condError;
   if (!SUPPORTED_ASSIGNMENTS.includes(f.assignmentMode)) e.assignmentMode = err.autoNeedsRule;
   return e;
+};
+
+export const MAX_APPLY_CONDITIONS = 10;
+
+export const EMPTY_APPLY_CONDITION: PromotionApplyCondition = { menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null };
+
+/** Same rules as the engine schema: ≥ 1 criterion per condition, ≤ 10 conditions, positive numbers. */
+export const applyConditionsError = (ac: CampaignFormInput['applyConditions']): string | undefined => {
+  const err = t.form.errors;
+  if (ac.conditions.length > MAX_APPLY_CONDITIONS) return err.tooManyConditions(MAX_APPLY_CONDITIONS);
+  for (let i = 0; i < ac.conditions.length; i++) {
+    const c = ac.conditions[i];
+    const hasCriterion = c.menus.length || c.categories.length || c.serviceIds.length || c.minMinutes || c.minOrderAmount != null;
+    if (!hasCriterion) return err.emptyCondition(i + 1);
+    if (c.minMinutes != null && (!Number.isInteger(c.minMinutes) || c.minMinutes <= 0)) return err.conditionMinutes(i + 1);
+    if (c.minOrderAmount != null && (Number.isNaN(c.minOrderAmount) || c.minOrderAmount < 0)) return err.conditionAmount(i + 1);
+  }
+  return undefined;
 };
 
 export const useCampaignForm = (initial: CampaignFormInput) => {
@@ -126,23 +147,19 @@ export const useCampaignForm = (initial: CampaignFormInput) => {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === 'usageType' && value !== 'LIMITED') next.usageLimit = null;
-      if (key === 'qualificationType' && value !== 'MIN_PAID_DURATION') next.qualificationValue = null;
       if (key === 'benefitType' && value !== 'PERCENT_DISCOUNT') next.benefitConfig = null;
       if (key === 'validityType' && value !== 'DAYS_FROM_ISSUE') next.validityDays = null;
       return next;
     });
 
-  const toggleMenu = (code: string) =>
-    setForm((prev) => {
-      const menus = prev.applicableMenus?.menus ?? [];
-      const next = menus.includes(code) ? menus.filter((m) => m !== code) : [...menus, code];
-      return { ...prev, applicableMenus: next.length ? { menus: next } : null };
-    });
+  /** Conditions editor (v7 §2.2): replace the whole object so React sees the change. */
+  const setConditions = (fn: (ac: CampaignFormInput['applyConditions']) => CampaignFormInput['applyConditions']) =>
+    setForm((prev) => ({ ...prev, applyConditions: fn(prev.applyConditions) }));
 
   return {
     form,
     set,
-    toggleMenu,
+    setConditions,
     errors: touched ? errors : {},
     isValid: Object.keys(errors).length === 0,
     touch: () => setTouched(true),

@@ -7,6 +7,8 @@ import { formatPromoDate } from '@/lib/promotion-format';
 import VoucherCard3D from './VoucherCard3D';
 import { voucherCardFromPublic, type PublicVoucher } from './VoucherCard3D.logic';
 import { VOUCHER_CARD_LABELS } from './voucher-card.i18n';
+import { voucherBrush } from './voucher.fonts';
+import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 
 // 🔧 UI CONFIGURATION
 const LANG_NAMES: Record<PromotionEmailLang, string> = { vi: 'VI', en: 'EN', cn: '中文', jp: '日本語', kr: '한국어' };
@@ -49,9 +51,8 @@ interface VoucherPublicViewProps {
 
 /** Same sentence as on the card: "Dành cho Menu VIP từ 90 phút trở lên". */
 const conditionText = (v: PublicVoucher, lang: PromotionEmailLang, s: VoucherPageStrings): string => {
-  const c = voucherCardFromPublic(v).conditions;
-  if (!c || (!c.menuLabels.length && !c.minPaidMinutes)) return s.allMenus;
-  return VOUCHER_CARD_LABELS[lang].condition(c.menuLabels, c.minPaidMinutes);
+  const lines = formatPromotionConditions(v.conditionsSummary, lang);
+  return lines.length ? lines.join('; ') : s.allMenus;
 };
 
 /**
@@ -64,7 +65,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
   const href = (l: PromotionEmailLang) => `?t=${encodeURIComponent(token)}&lang=${l}`;
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f6f3ff] via-white to-[#fbf7ef] px-4 pb-12 pt-6 text-gray-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#FFF4E0] via-[#FCE6C2] to-[#F6CF94] px-4 pb-12 pt-6 text-[#2B1A0E]">
       <div className="mx-auto flex max-w-md flex-col items-center">
         <header className="flex w-full items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -72,7 +73,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
               // eslint-disable-next-line @next/next/no-img-element
               <img src={contact.logoUrl} alt={contact.brandName} className="h-9 w-auto max-w-[140px] object-contain" />
             ) : (
-              <span className="truncate text-sm font-semibold uppercase tracking-[0.25em] text-indigo-900">{contact.brandName}</span>
+              <span className={`${voucherBrush.className} truncate text-2xl leading-none text-[#2B1A0E]`}>{contact.brandName}</span>
             )}
           </div>
           <nav aria-label="Language" className="flex shrink-0 gap-1">
@@ -81,7 +82,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
                 key={l}
                 href={href(l)}
                 aria-current={l === lang ? 'true' : undefined}
-                className={`flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-xs font-semibold ${l === lang ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-white'}`}
+                className={`flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-xs font-semibold ${l === lang ? 'bg-[#2B1A0E] text-[#F7D9A6]' : 'text-[#4A2C14] hover:bg-[#FFF4E0]'}`}
               >
                 {LANG_NAMES[l]}
               </a>
@@ -90,51 +91,51 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
         </header>
 
         {view.mode === 'INVALID' ? (
-          <section role="alert" className="mt-16 w-full rounded-3xl border border-rose-100 bg-white p-8 text-center shadow-sm">
-            <AlertTriangle size={40} className="mx-auto text-rose-500" aria-hidden />
+          <section role="alert" className="mt-16 w-full rounded-3xl border border-[#E9C99A] bg-[#FFF8EC] p-8 text-center shadow-sm">
+            <AlertTriangle size={40} className="mx-auto text-[#B4531A]" aria-hidden />
             <h1 className="mt-4 text-xl font-semibold">{strings.invalidTitle}</h1>
-            <p className="mt-2 text-sm text-gray-600">{strings.invalidBody(contact.brandName)}</p>
+            <p className="mt-2 text-sm text-[#4A2C14]">{strings.invalidBody(contact.brandName)}</p>
           </section>
         ) : (
           <>
-            <h1 className="mb-6 mt-8 text-center text-2xl font-semibold tracking-tight">{strings.title}</h1>
+            <h1 className={`${voucherBrush.className} mb-6 mt-8 text-center text-4xl leading-none text-[#2B1A0E]`}>{strings.title}</h1>
             <VoucherCard3D data={voucherCardFromPublic(view.voucher)} labels={VOUCHER_CARD_LABELS[lang]} brandName={contact.brandName} contact={contact} />
 
-            <dl className="mt-8 w-full divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-white/80 text-sm shadow-sm">
+            <dl className="mt-8 w-full divide-y divide-[#F0D9B5] rounded-2xl border border-[#E9C99A] bg-[#FFF8EC]/90 text-sm shadow-sm">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="text-gray-500">{VOUCHER_CARD_LABELS[lang].voucherCode}</dt>
+                <dt className="text-[#6B4A2A]">{VOUCHER_CARD_LABELS[lang].voucherCode}</dt>
                 <dd className="font-mono font-semibold tracking-wider">{view.voucher.voucherCode}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="text-gray-500">{strings.validUntil}</dt>
+                <dt className="text-[#6B4A2A]">{strings.validUntil}</dt>
                 <dd className="font-medium">{formatPromoDate(view.voucher.validUntil)}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="shrink-0 text-gray-500">{strings.applicableMenus}</dt>
+                <dt className="shrink-0 text-[#6B4A2A]">{strings.applicableMenus}</dt>
                 <dd className="text-right font-medium">{conditionText(view.voucher, lang, strings)}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="text-gray-500">{VOUCHER_CARD_LABELS[lang].statusLabel}</dt>
-                <dd className={`font-semibold ${view.voucher.effectiveStatus === 'ACTIVE' ? 'text-emerald-700' : 'text-gray-700'}`}>
+                <dt className="text-[#6B4A2A]">{VOUCHER_CARD_LABELS[lang].statusLabel}</dt>
+                <dd className={`font-semibold ${view.voucher.effectiveStatus === 'ACTIVE' ? 'text-[#3E6B1E]' : 'text-[#6B3410]'}`}>
                   {strings.status[view.voucher.effectiveStatus] ?? view.voucher.effectiveStatus}
                 </dd>
               </div>
             </dl>
 
-            <p className="mt-6 text-center text-sm font-medium text-indigo-900">{strings.contactToApply(contact.brandName)}</p>
+            <p className="mt-6 text-center text-sm font-semibold text-[#4A2C14]">{strings.contactToApply(contact.brandName)}</p>
           </>
         )}
 
         {(contact.hotline || contact.address || contact.websiteUrl) && (
           <section className="mt-4 flex w-full flex-col gap-2">
             {contact.hotline && (
-              <a href={`tel:${contact.hotline.replace(/\s+/g, '')}`} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm">
+              <a href={`tel:${contact.hotline.replace(/\s+/g, '')}`} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#24160D] px-4 text-sm font-semibold text-[#F4A64A] shadow-sm">
                 <Phone size={18} aria-hidden />
                 {strings.hotline}: {contact.hotline}
               </a>
             )}
             {contact.address && (
-              <p className="flex items-start justify-center gap-2 px-2 text-center text-sm text-gray-600">
+              <p className="flex items-start justify-center gap-2 px-2 text-center text-sm text-[#4A2C14]">
                 <MapPin size={16} className="mt-0.5 shrink-0" aria-hidden />
                 <span>
                   {strings.address}: {contact.address}
@@ -142,7 +143,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
               </p>
             )}
             {contact.websiteUrl && (
-              <a href={contact.websiteUrl} className="flex min-h-11 items-center justify-center gap-2 text-sm font-medium text-indigo-700" rel="noopener">
+              <a href={contact.websiteUrl} className="flex min-h-11 items-center justify-center gap-2 text-sm font-medium text-[#6B3410]" rel="noopener">
                 <Globe size={16} aria-hidden />
                 {contact.websiteUrl.replace(/^https?:\/\//, '')}
               </a>

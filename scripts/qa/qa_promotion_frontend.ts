@@ -33,7 +33,8 @@ import {
 import { ERROR_MESSAGE, SUPPORTED_ASSIGNMENTS, t as i18n } from '../../components/promotions/promotion.i18n';
 import { qualifiedRangeError } from '../../components/promotions/CustomerCandidates.logic';
 import { VOUCHER_CARD_LABELS } from '../../components/promotions/voucher-card.i18n';
-import { voucherCardFromCampaign, voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
+import { summarizeConditions, voucherCardFromCampaign, voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
+import { formatPromotionConditions } from '../../lib/promotion-voucher.i18n';
 import { BULK_ISSUE_MAX } from '../../lib/types/promotion-client';
 import { promotionAccess } from '../../components/promotions/promotion.access';
 import { MODULES } from '../../lib/constants';
@@ -69,7 +70,7 @@ const lookupScan = async (api: Api, text: string) => {
 const ENGINE_CAMPAIGN_KEYS = new Set([
   'campaignCode', 'name', 'description', 'validityType', 'validityDays', 'benefitType', 'benefitValue', 'benefitConfig',
   'validFrom', 'validUntil', 'usageType', 'usageLimit', 'maxUsagePerCustomer', 'maxUsagePerOrder', 'qualificationType',
-  'qualificationValue', 'qualificationConfig', 'applicableMenus', 'assignmentMode', 'onePassPerCustomer', 'voucherPrefix',
+  'qualificationValue', 'qualificationConfig', 'applicableMenus', 'applyConditions', 'assignmentMode', 'onePassPerCustomer', 'voucherPrefix',
   'serviceNameVN', 'serviceNameEN',
 ]);
 
@@ -91,7 +92,7 @@ const main = async () => {
   const empty = validateCampaignForm(EMPTY_CAMPAIGN_FORM);
   check('empty form → name/code/dates required', !!(empty.name && empty.campaignCode && empty.validFrom && empty.validUntil));
   check('voucher prefix is optional', !empty.voucherPrefix);
-  check('default: manual issue, no menu pre-selected', EMPTY_CAMPAIGN_FORM.assignmentMode === 'MANUAL_ONLY' && EMPTY_CAMPAIGN_FORM.applicableMenus === null);
+  check('default: manual issue, no condition pre-filled', EMPTY_CAMPAIGN_FORM.assignmentMode === 'MANUAL_ONLY' && EMPTY_CAMPAIGN_FORM.applyConditions.conditions.length === 0);
   check('AUTO is disabled (auto issue off)', !SUPPORTED_ASSIGNMENTS.includes('AUTO'));
   const good: CampaignFormInput = { ...EMPTY_CAMPAIGN_FORM, name: 'Nov +30', campaignCode: 'NOV_FREE30_2026', voucherPrefix: 'NOV30', validFrom: '2026-11-01', validUntil: '2026-11-30' };
   check('engine-style code with _ accepted', Object.keys(validateCampaignForm(good)).length === 0, validateCampaignForm(good));
@@ -108,7 +109,13 @@ const main = async () => {
   const payload = toCampaignPayload({ ...good, benefitConfig: { maxDiscountAmount: 100000 }, validityDays: 5 });
   check('payload has only engine keys', Object.keys(payload).every((k) => ENGINE_CAMPAIGN_KEYS.has(k)), Object.keys(payload).filter((k) => !ENGINE_CAMPAIGN_KEYS.has(k)));
   check('payload drops benefitConfig for minutes, days for campaign period', payload.benefitConfig === null && payload.validityDays === null);
-  check('payload: empty menus → null (all menus)', toCampaignPayload({ ...good, applicableMenus: { menus: [] } }).applicableMenus === null);
+  const vip90 = { match: 'ALL' as const, conditions: [{ menus: ['NHP'], categories: [], serviceIds: [], minMinutes: 90, minOrderAmount: null }] };
+  const pl = toCampaignPayload({ ...good, applyConditions: vip90 });
+  check('payload sends applyConditions only (no legacy qualification / applicableMenus)', !!pl.applyConditions && !('qualificationType' in pl) && !('applicableMenus' in pl) && pl.applyConditions.conditions[0].minMinutes === 90);
+  check('condition without any criterion → error', !!validateCampaignForm({ ...good, applyConditions: { match: 'ALL', conditions: [{ menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null }] } }).applyConditions);
+  check('condition minutes 30.5 → error', !!validateCampaignForm({ ...good, applyConditions: { match: 'ALL', conditions: [{ ...vip90.conditions[0], minMinutes: 30.5 }] } }).applyConditions);
+  check('11 conditions → error (max 10)', !!validateCampaignForm({ ...good, applyConditions: { match: 'ANY', conditions: Array.from({ length: 11 }, () => vip90.conditions[0]) } }).applyConditions);
+  check('valid VIP-90 condition → ok', !validateCampaignForm({ ...good, applyConditions: vip90 }).applyConditions);
   check('locked patch = name/description/validUntil only', Object.keys(toLockedCampaignPatch(good)).sort().join() === 'description,name,validUntil');
   const created = await api.createCampaign(toCampaignPayload({ ...good, usageType: 'LIMITED', usageLimit: 10 }));
   check('create LIMITED 10 → "Giới hạn 10 lần"', created.success && formatUsageType(created.data.usage) === 'Giới hạn 10 lần');
@@ -330,14 +337,19 @@ const main = async () => {
   check('card text in 5 languages', VOUCHER_CARD_LABELS.vi.benefit({ type: 'FREE_MINUTES', value: 30 }) === '+30 phút' && VOUCHER_CARD_LABELS.en.benefit({ type: 'FREE_MINUTES', value: 30 }) === '+30 min' && VOUCHER_CARD_LABELS.jp.usage({ type: 'UNLIMITED', limit: null, maxPerOrder: 1 }) === '回数無制限' && VOUCHER_CARD_LABELS.kr.status.USED_UP === '사용 완료' && VOUCHER_CARD_LABELS.cn.voucherCode === '券码');
   check('every language has every status', Object.values(VOUCHER_CARD_LABELS).every((l) => ['ACTIVE', 'NOT_STARTED', 'INACTIVE', 'EXPIRED', 'USED_UP', 'SUSPENDED', 'CANCELLED'].every((s) => !!l.status[s as keyof typeof l.status])));
 
-  console.log('\n— Condition line on the e-voucher');
-  check('vi: "Dành cho Menu VIP từ 90 phút trở lên"', VOUCHER_CARD_LABELS.vi.condition(['Menu VIP'], 90) === 'Dành cho Menu VIP từ 90 phút trở lên');
-  check('vi: menu only / minutes only', VOUCHER_CARD_LABELS.vi.condition(['Menu VIP'], null) === 'Dành cho Menu VIP' && VOUCHER_CARD_LABELS.vi.condition([], 90) === 'Dành cho mọi dịch vụ từ 90 phút trở lên');
-  check('en / jp condition', VOUCHER_CARD_LABELS.en.condition(['VIP Menu'], 90) === 'For VIP Menu, 90+ min' && VOUCHER_CARD_LABELS.jp.condition(['VIP'], 90) === 'VIP（90分以上）対象');
-  const tpl = voucherCardFromCampaign(unwrap(await api.getCampaign('CMP_OCT30')), (code) => (code === 'NHP' ? 'Menu VIP' : code));
-  check('campaign template: menu label + 90 min', tpl.conditions?.menuLabels.join() === 'Menu VIP' && tpl.conditions?.minPaidMinutes === 90);
-  check('issued pass carries conditions', unwrap(await api.getPass('PASS_001')).conditions?.minPaidMinutes === 90);
-  check('manual campaign (no rule, all menus) → no condition line', (() => { const c = voucherCardFromCampaign(campaigns.find((x) => x.id === 'CMP_TEN10')!).conditions; return !!c && c.menuLabels.length === 0 && c.minPaidMinutes === null; })());
+  console.log('\n— Condition line on the e-voucher (engine wording)');
+  const menusCat = unwrap(await api.getMenus());
+  const sum = summarizeConditions(vip90, menusCat);
+  check('form preview labels codes → names', sum.conditions[0].menus[0] === 'Menu VIP' && sum.conditions[0].minMinutes === 90);
+  check('vi card line: "Dành cho Menu VIP · từ 90 phút"', VOUCHER_CARD_LABELS.vi.conditionPrefix(formatPromotionConditions(sum, 'vi').join('; ')) === 'Dành cho Menu VIP · từ 90 phút');
+  check('en / jp come from the engine formatter', formatPromotionConditions(sum, 'en')[0] === 'Menu VIP · 90 min or longer' && formatPromotionConditions(sum, 'jp')[0] === 'Menu VIP · 90分以上');
+  const anySum = summarizeConditions({ match: 'ANY', conditions: [vip90.conditions[0], { menus: ['NHT'], categories: [], serviceIds: [], minMinutes: 120, minOrderAmount: null }] }, menusCat);
+  check('ANY → one line joined with "hoặc"', formatPromotionConditions(anySum, 'vi').length === 1 && formatPromotionConditions(anySum, 'vi')[0].includes(' hoặc '));
+  const tpl = voucherCardFromCampaign(unwrap(await api.getCampaign('CMP_OCT30')));
+  check('campaign template carries conditionsSummary', tpl.conditionsSummary?.conditions[0].menus[0] === 'Menu VIP');
+  check('issued pass carries conditionsSummary', unwrap(await api.getPass('PASS_001')).conditionsSummary?.conditions[0].minMinutes === 90);
+  check('campaign without conditions → no condition line', formatPromotionConditions(voucherCardFromCampaign(campaigns.find((x) => x.id === 'CMP_TEN10')!).conditionsSummary, 'vi').length === 0);
+  check('candidates: "qualified" filter ignored only when the campaign has no conditions', !!unwrap(await api.getCustomerCandidates('CMP_TEN10', {})).qualificationIgnored && !unwrap(await api.getCustomerCandidates('CMP_OCT30', { onlyQualified: true, qualifiedFrom: '2026-09-01', qualifiedTo: '2026-10-02' })).qualificationIgnored);
 
   console.log('\n— Spa contact on the e-voucher');
   const contact = unwrap(await api.getSpaContact());

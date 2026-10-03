@@ -16,13 +16,16 @@
  */
 import type { PromotionApi } from './promotionApi';
 import { BULK_ISSUE_MAX } from '@/lib/types/promotion-client';
+import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import type {
   BulkIssueItem,
   CampaignFormInput,
   CustomerCandidate,
   IssuedPass,
   PromotionBooking,
+  PromotionApplyConditions,
   PromotionCampaign,
+  PromotionConditionsSummary,
   PromotionErrorCode,
   PromotionMenu,
   PromotionOrderCandidate,
@@ -47,11 +50,38 @@ const vnEndOfDay = (date: string) => `${date}T23:59:59+07:00`;
 const vnStartOfDay = (date: string) => `${date}T00:00:00+07:00`;
 const vnToday = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 
+const svc = (id: string, name: string, cat: string) => ({ id, name, category: cat, categoryCodes: [cat.toUpperCase()] });
 const MENUS: PromotionMenu[] = [
-  { code: 'NHP', label: 'Menu VIP', serviceCount: 18 },
-  { code: 'NHS', label: 'Menu thường', serviceCount: 42 },
-  { code: 'NHT', label: 'Gói trị liệu', serviceCount: 9 },
+  {
+    code: 'NHP', label: 'Menu VIP', serviceCount: 4,
+    categories: [{ code: 'BODY', label: 'Body', serviceCount: 3 }, { code: 'FACE', label: 'Face', serviceCount: 1 }],
+    services: [svc('NHP0001', 'VIP Aroma 90', 'Body'), svc('NHP0002', 'VIP Hot Stone 120', 'Body'), svc('NHP0003', 'VIP Thai 90', 'Body'), svc('NHP0010', 'VIP Facial 60', 'Face')],
+  },
+  {
+    code: 'NHS', label: 'Menu Standard', serviceCount: 3,
+    categories: [{ code: 'BODY', label: 'Body', serviceCount: 2 }, { code: 'FOOT', label: 'Foot', serviceCount: 1 }],
+    services: [svc('NHS0003', 'Body Massage 60', 'Body'), svc('NHS0007', 'Body Massage 90', 'Body'), svc('NHS0020', 'Foot Massage 60', 'Foot')],
+  },
+  {
+    code: 'NHT', label: 'Menu Deep Body', serviceCount: 1,
+    categories: [{ code: 'DEEP BODY', label: 'Deep Body', serviceCount: 1 }],
+    services: [svc('NHT0001', 'Deep Body 120', 'Deep Body')],
+  },
 ];
+
+/** Mirror of the engine's label resolution (display only). */
+const summaryOf = (ac: PromotionApplyConditions): PromotionConditionsSummary => ({
+  match: ac.match,
+  conditions: ac.conditions.map((c) => ({
+    menus: c.menus.map((code) => MENUS.find((m) => m.code === code)?.label ?? code),
+    categories: c.categories.map((code) => MENUS.flatMap((m) => m.categories).find((x) => x.code === code)?.label ?? code),
+    services: c.serviceIds.map((id) => MENUS.flatMap((m) => m.services).find((x) => x.id === id)?.name ?? id),
+    minMinutes: c.minMinutes,
+    minOrderAmount: c.minOrderAmount,
+  })),
+});
+const NO_CONDITIONS: PromotionApplyConditions = { match: 'ALL', conditions: [] };
+const VIP_90: PromotionApplyConditions = { match: 'ALL', conditions: [{ menus: ['NHP'], categories: [], serviceIds: [], minMinutes: 90, minOrderAmount: null }] };
 
 const CANDIDATES: CustomerCandidate[] = [
   { id: 'CUS001', name: 'Charlotte Nguyen', phone: '0901234567', email: 'charlotte@example.com', gender: 'FEMALE', nationality: 'Việt Nam', language: 'vi', visitCount: 12, totalSpent: 14_400_000, lastVisitAt: '2026-10-01T18:05:00', vipMenuCount: 9, guestType: 'SINGLE', qualifyingOrderCount: 6 },
@@ -76,10 +106,6 @@ const CANDIDATES: CustomerCandidate[] = [
   })),
 ];
 
-const conditionsOf = (c: PromotionCampaign) => ({
-  menuLabels: c.applicableMenus && !c.applicableMenus.allMenus ? c.applicableMenus.menus.map((code) => MENUS.find((m) => m.code === code)?.label ?? code) : [],
-  minPaidMinutes: c.qualification.type === 'MIN_PAID_DURATION' ? c.qualification.value : null,
-});
 
 const refOf = (c: CustomerCandidate) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email });
 
@@ -92,8 +118,10 @@ const buildFixtures = () => {
       description: 'Tặng thêm 30 phút cho đơn VIP từ 90 phút.',
       benefit: { type: 'FREE_MINUTES', value: 30, config: {}, serviceId: 'KM0001' },
       usage: { type: 'UNLIMITED', limit: null, maxPerOrder: 1, maxPerCustomer: null },
-      qualification: { type: 'MIN_PAID_DURATION', value: 90, config: { serviceIdPrefixes: ['NHP'] } },
+      qualification: { type: 'MANUAL_ASSIGNMENT', value: null, config: null },
       applicableMenus: { menus: ['NHP'], categories: [], serviceIds: [], allMenus: false },
+      applyConditions: VIP_90,
+      conditionsSummary: summaryOf(VIP_90),
       validity: { type: 'CAMPAIGN_PERIOD', days: null },
       assignmentMode: 'MANUAL_ONLY',
       status: 'ACTIVE',
@@ -113,6 +141,8 @@ const buildFixtures = () => {
       usage: { type: 'LIMITED', limit: 10, maxPerOrder: 1, maxPerCustomer: null },
       qualification: { type: 'MANUAL_ASSIGNMENT', value: null, config: null },
       applicableMenus: { menus: [], categories: [], serviceIds: [], allMenus: true },
+      applyConditions: NO_CONDITIONS,
+      conditionsSummary: summaryOf(NO_CONDITIONS),
       validity: { type: 'DAYS_FROM_ISSUE', days: 90 },
       assignmentMode: 'MANUAL_ONLY',
       status: 'ACTIVE',
@@ -130,8 +160,10 @@ const buildFixtures = () => {
       description: null,
       benefit: { type: 'FREE_MINUTES', value: 30, config: {}, serviceId: 'KM0001' },
       usage: { type: 'UNLIMITED', limit: null, maxPerOrder: 1, maxPerCustomer: null },
-      qualification: { type: 'MIN_PAID_DURATION', value: 90, config: null },
-      applicableMenus: { menus: [], categories: [], serviceIds: [], allMenus: true },
+      qualification: { type: 'MANUAL_ASSIGNMENT', value: null, config: null },
+      applicableMenus: { menus: ['NHP'], categories: [], serviceIds: [], allMenus: false },
+      applyConditions: VIP_90,
+      conditionsSummary: summaryOf(VIP_90),
       validity: { type: 'CAMPAIGN_PERIOD', days: null },
       assignmentMode: 'MANUAL_ONLY',
       status: 'ENDED',
@@ -174,7 +206,7 @@ const buildFixtures = () => {
       emailSentAt: customer.email ? '2026-10-01T15:20:05+07:00' : null,
       emailLastError: null,
       qrPayload: `${MOCK_SCAN_BASE}mock-qr-token-${id}`,
-      conditions: conditionsOf(c),
+      conditionsSummary: c.conditionsSummary,
       ...over,
     };
   };
@@ -310,12 +342,13 @@ export const createMockPromotionApi = (): PromotionApi => {
   const toCandidate = (o: (typeof db.orders)[number], p: PromotionPassWithQr): PromotionOrderCandidate => {
     const already = db.usages.some((u) => u.passId === p.id && u.booking.id === o.id && u.status !== 'CANCELLED');
     const blocked: PromotionErrorCode | null = already ? 'PROMOTION_ALREADY_APPLIED' : passIsUsable(p);
-    // Conditions (v8): only the minimum duration is simulated here.
-    const min = p.conditions?.minPaidMinutes ?? null;
+    // Conditions (v7/v8): only the per-service minimum minutes is simulated here.
+    const first = p.conditionsSummary?.conditions[0];
+    const min = first?.minMinutes ?? null;
     const longest = Math.max(0, ...o.items.filter((i) => !i.isPromotion).map((i) => i.durationMinutes));
     const unmet =
       !blocked && min && longest < min
-        ? [`Cần ${p.conditions?.menuLabels.join(', ') || 'dịch vụ'} · từ ${min} phút — dịch vụ phù hợp dài nhất của đơn là ${longest} phút`]
+        ? [`Cần ${formatPromotionConditions(p.conditionsSummary, 'vi')[0]} — dịch vụ phù hợp dài nhất của đơn là ${longest} phút`]
         : [];
     return {
       ...toBooking(o),
@@ -330,7 +363,7 @@ export const createMockPromotionApi = (): PromotionApi => {
   };
 
   const fromForm = (input: CampaignFormInput, base?: PromotionCampaign): PromotionCampaign => {
-    const menus = input.applicableMenus?.menus ?? [];
+    const menus = [...new Set(input.applyConditions.conditions.flatMap((c) => c.menus))];
     return {
       id: base?.id ?? `CMP_${++seq}`,
       campaignCode: input.campaignCode,
@@ -343,8 +376,10 @@ export const createMockPromotionApi = (): PromotionApi => {
         maxPerOrder: input.maxUsagePerOrder,
         maxPerCustomer: null,
       },
-      qualification: { type: input.qualificationType, value: input.qualificationValue, config: menus.length ? { serviceIdPrefixes: menus } : null },
+      qualification: { type: 'MANUAL_ASSIGNMENT', value: null, config: null },
       applicableMenus: { menus, categories: [], serviceIds: [], allMenus: menus.length === 0 },
+      applyConditions: input.applyConditions,
+      conditionsSummary: summaryOf(input.applyConditions),
       validity: { type: input.validityType, days: input.validityType === 'DAYS_FROM_ISSUE' ? input.validityDays : null },
       assignmentMode: input.assignmentMode,
       status: base?.status ?? 'DRAFT',
@@ -357,7 +392,7 @@ export const createMockPromotionApi = (): PromotionApi => {
     };
   };
 
-  const RULE_KEYS: (keyof CampaignFormInput)[] = ['benefitType', 'benefitValue', 'usageType', 'usageLimit', 'maxUsagePerOrder', 'qualificationType', 'qualificationValue', 'validityType', 'validityDays', 'validFrom'];
+  const RULE_KEYS: (keyof CampaignFormInput)[] = ['benefitType', 'benefitValue', 'usageType', 'usageLimit', 'maxUsagePerOrder', 'applyConditions', 'validityType', 'validityDays', 'validFrom'];
 
   const issueOne = (c: PromotionCampaign, cus: CustomerCandidate): IssuedPass => {
     const id = `PASS_${++seq}`;
@@ -388,7 +423,7 @@ export const createMockPromotionApi = (): PromotionApi => {
       emailSentAt: cus.email ? issuedAt : null,
       emailLastError: null,
       qrPayload: `${MOCK_SCAN_BASE}mock-qr-token-${id}`,
-      conditions: conditionsOf(c),
+      conditionsSummary: c.conditionsSummary,
     };
     db.passes.unshift(refresh(p));
     return { ...structuredClone(p), emailDelivery: cus.email ? { status: 'SENT' } : { status: 'SKIPPED', reason: 'CUSTOMER_NO_EMAIL' } };
@@ -524,7 +559,8 @@ export const createMockPromotionApi = (): PromotionApi => {
       const camp = db.campaigns.find((c) => c.id === campaignId);
       if (!camp) return fail('CAMPAIGN_NOT_FOUND');
       if ((f.tier as string) === 'VIP') return fail('VALIDATION_ERROR', { field: 'tier' });
-      const qualificationIgnored = camp.qualification.type === 'MANUAL_ASSIGNMENT';
+      // Intended behaviour (requested from A): the filter uses the campaign's apply conditions.
+      const qualificationIgnored = !(camp.applyConditions?.conditions.length);
       if (f.onlyQualified && !qualificationIgnored && (!f.qualifiedFrom || !f.qualifiedTo)) return fail('VALIDATION_ERROR', { field: 'qualifiedFrom' });
       // Any existing pass (even cancelled) blocks a new one: one pass per customer per campaign.
       const has = new Set(db.passes.filter((p) => p.campaign.id === campaignId).map((p) => p.customer.id));
@@ -714,9 +750,7 @@ const campaignFormOf = (c: PromotionCampaign): CampaignFormInput => ({
   usageType: c.usage.type,
   usageLimit: c.usage.limit,
   maxUsagePerOrder: c.usage.maxPerOrder,
-  qualificationType: c.qualification.type,
-  qualificationValue: c.qualification.value,
-  applicableMenus: c.applicableMenus && !c.applicableMenus.allMenus ? { menus: c.applicableMenus.menus } : null,
+  applyConditions: c.applyConditions ?? NO_CONDITIONS,
   assignmentMode: c.assignmentMode,
   voucherPrefix: c.voucherPrefix,
 });
@@ -727,8 +761,7 @@ const pickRules = (c: PromotionCampaign): Partial<CampaignFormInput> => ({
   usageType: c.usage.type,
   usageLimit: c.usage.limit,
   maxUsagePerOrder: c.usage.maxPerOrder,
-  qualificationType: c.qualification.type,
-  qualificationValue: c.qualification.value,
+  applyConditions: c.applyConditions ?? NO_CONDITIONS,
   validityType: c.validity?.type ?? 'CAMPAIGN_PERIOD',
   validityDays: c.validity?.days ?? null,
   validFrom: c.validFrom.slice(0, 10),

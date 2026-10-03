@@ -2,7 +2,8 @@ import type {
   CampaignFormInput,
   PromotionBenefit,
   PromotionCampaign,
-  PromotionConditions,
+  PromotionConditionsSummary,
+  PromotionMenu,
   PromotionPass,
   PromotionPassEffectiveStatus,
   PromotionPassWithQr,
@@ -27,15 +28,33 @@ export interface VoucherCardData {
   /** Server QR value; null on list rows and templates. */
   qrPayload: string | null;
   isTemplate: boolean;
-  /** "Dành cho Menu VIP từ 90 phút trở lên"; omitted → generic "complimentary" line. */
-  conditions?: PromotionConditions;
+  /** Engine conditions with labels; formatted by formatPromotionConditions. Empty → "complimentary" line. */
+  conditionsSummary?: PromotionConditionsSummary;
 }
 
-/** Menu codes → display names (codes kept when no label is known). */
-export type MenuLabelOf = (code: string) => string;
-
-const minMinutesOf = (type: PromotionCampaign['qualification']['type'], value: number | null): number | null =>
-  type === 'MIN_PAID_DURATION' && value ? value : null;
+/**
+ * Form preview only: label the conditions being typed (codes → names from the
+ * /menus catalogue). Saved campaigns / passes use the server's conditionsSummary.
+ */
+export const summarizeConditions = (
+  ac: CampaignFormInput['applyConditions'],
+  menus: PromotionMenu[] | null | undefined,
+): PromotionConditionsSummary => {
+  const list = menus ?? [];
+  const menuLabel = (code: string) => list.find((m) => m.code === code)?.label ?? code;
+  const catLabel = (code: string) => list.flatMap((m) => m.categories).find((c) => c.code === code)?.label ?? code;
+  const svcName = (id: string) => list.flatMap((m) => m.services).find((s) => s.id === id)?.name ?? id;
+  return {
+    match: ac.match,
+    conditions: ac.conditions.map((c) => ({
+      menus: c.menus.map(menuLabel),
+      categories: c.categories.map(catLabel),
+      services: c.serviceIds.map(svcName),
+      minMinutes: c.minMinutes,
+      minOrderAmount: c.minOrderAmount,
+    })),
+  };
+};
 
 const prefixOf = (code: string) => code.split('-')[0] ?? code;
 
@@ -50,10 +69,10 @@ export const voucherCardFromPass = (pass: PromotionPass | PromotionPassWithQr): 
   status: pass.effectiveStatus,
   qrPayload: 'qrPayload' in pass ? pass.qrPayload : null,
   isTemplate: false,
-  conditions: pass.conditions,
+  conditionsSummary: pass.conditionsSummary,
 });
 
-export const voucherCardFromCampaign = (c: PromotionCampaign, menuLabel: MenuLabelOf = (x) => x): VoucherCardData => ({
+export const voucherCardFromCampaign = (c: PromotionCampaign): VoucherCardData => ({
   campaignName: c.name,
   benefit: c.benefit,
   usage: { ...c.usage, usedCount: null },
@@ -64,14 +83,11 @@ export const voucherCardFromCampaign = (c: PromotionCampaign, menuLabel: MenuLab
   status: null,
   qrPayload: null,
   isTemplate: true,
-  conditions: {
-    menuLabels: c.applicableMenus && !c.applicableMenus.allMenus ? c.applicableMenus.menus.map(menuLabel) : [],
-    minPaidMinutes: minMinutesOf(c.qualification.type, c.qualification.value),
-  },
+  conditionsSummary: c.conditionsSummary,
 });
 
 /** Live preview while the admin is filling the campaign form. */
-export const voucherCardFromForm = (f: CampaignFormInput, menuLabel: MenuLabelOf = (x) => x): VoucherCardData => ({
+export const voucherCardFromForm = (f: CampaignFormInput, menus?: PromotionMenu[] | null): VoucherCardData => ({
   campaignName: f.name.trim(),
   benefit: { type: f.benefitType, value: f.benefitValue ?? 0 },
   usage: {
@@ -87,10 +103,7 @@ export const voucherCardFromForm = (f: CampaignFormInput, menuLabel: MenuLabelOf
   status: null,
   qrPayload: null,
   isTemplate: true,
-  conditions: {
-    menuLabels: (f.applicableMenus?.menus ?? []).map(menuLabel),
-    minPaidMinutes: minMinutesOf(f.qualificationType, f.qualificationValue),
-  },
+  conditionsSummary: summarizeConditions(f.applyConditions, menus),
 });
 
 /** Public e-voucher (/voucher?t=) — mirrors Agent A `PromotionPublicVoucherDto`. No phone / email / orders. */
@@ -105,10 +118,10 @@ export interface PublicVoucher {
   customerName: string | null;
   effectiveStatus: PromotionPassEffectiveStatus;
   applicableMenus: { menus: string[]; categories: string[]; serviceIds: string[]; allMenus: boolean };
-  /** Display names of `applicableMenus.menus` when the server provides them. */
+  /** Display names of the scope for the customer page; [] = all menus. */
   menuLabels?: string[];
-  /** Minimum paid minutes printed as a condition (requested from Agent A). */
-  minPaidMinutes?: number | null;
+  /** Conditions with labels; formatted by formatPromotionConditions. */
+  conditionsSummary?: PromotionConditionsSummary;
   /** Present while the voucher is usable (ACTIVE / NOT_STARTED). */
   qrPayload: string | null;
 }
@@ -124,8 +137,5 @@ export const voucherCardFromPublic = (v: PublicVoucher): VoucherCardData => ({
   status: v.effectiveStatus,
   qrPayload: v.qrPayload,
   isTemplate: false,
-  conditions: {
-    menuLabels: v.applicableMenus.allMenus ? [] : (v.menuLabels?.length ? v.menuLabels : v.applicableMenus.categories.length ? v.applicableMenus.categories : v.applicableMenus.menus),
-    minPaidMinutes: v.minPaidMinutes ?? null,
-  },
+  conditionsSummary: v.conditionsSummary,
 });

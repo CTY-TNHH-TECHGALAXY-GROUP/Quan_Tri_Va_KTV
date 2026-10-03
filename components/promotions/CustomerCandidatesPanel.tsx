@@ -8,6 +8,7 @@ import { formatBenefit, formatPromoDate, formatVnd, promotionErrorMessage } from
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CANDIDATE_PAGE_SIZE, useCustomerCandidates } from './CustomerCandidates.logic';
 import { DateControl, SelectControl } from './FormControls';
+import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import { PromotionEmpty, PromotionError, PromotionLoading } from './PromotionStates';
 import { CUSTOMER_TIER_LABEL, GENDER_LABEL, GUEST_TYPE_LABEL, LANGUAGE_LABEL, t } from './promotion.i18n';
 
@@ -85,8 +86,11 @@ const RowCheck = ({ on, onClick, label, disabled = false }: { on: boolean; onCli
 
 const ADVANCED_KEYS = ['visitFrom', 'visitTo', 'minVisits', 'minSpent', 'tier', 'vipMenu', 'guestType', 'gender', 'nationality', 'language'] as const;
 
-const qualificationLabel = (c: PromotionCampaign): string =>
-  c.qualification.type === 'MIN_PAID_DURATION' && c.qualification.value ? `${t.assign.onlyQualified} (≥ ${c.qualification.value} phút)` : t.assign.onlyQualified;
+const qualificationLabel = (c: PromotionCampaign): string => {
+  // Same wording as the card: "Có đơn đạt điều kiện chương trình (Menu VIP · từ 90 phút)".
+  const text = formatPromotionConditions(c.conditionsSummary, 'vi').join('; ');
+  return text ? `${t.assign.onlyQualified} (${text})` : t.assign.onlyQualified;
+};
 
 /** Campaign detail → filter customer profiles → select (max one page) → issue + email. */
 const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) => {
@@ -100,7 +104,7 @@ const CustomerCandidatesPanel = ({ campaign }: { campaign: PromotionCampaign }) 
 
   const num = (v: string) => (v === '' ? undefined : Number(v));
   // MANUAL_ASSIGNMENT campaigns have no order condition → the "qualified" filter does not apply.
-  const noCondition = campaign.qualification.type === 'MANUAL_ASSIGNMENT' || !!page?.qualificationIgnored;
+  const noCondition = !campaign.applyConditions?.conditions.length || !!page?.qualificationIgnored;
   const advancedCount = ADVANCED_KEYS.filter((k) => f[k] !== undefined && f[k] !== '').length;
   const field = <K extends keyof CustomerCandidateFilter>(k: K) => (v: CustomerCandidateFilter[K]) => set(k, v);
 
