@@ -28,6 +28,10 @@ const check = (name: string, cond: boolean, detail?: unknown) => {
 
 const db = new Client({ connectionString: DB_URL, ssl: DB_URL.includes('localhost') || DB_URL.includes('127.0.0.1') ? false : { rejectUnauthorized: false } });
 
+// Trigger failures are RAISE WARNING (no error table since v10) — collect them.
+const triggerWarnings: string[] = [];
+db.on('notice', (n: { message?: string }) => { if (String(n.message ?? '').startsWith('promo trigger')) triggerWarnings.push(String(n.message)); });
+
 async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
     return (await db.query(sql, params)).rows as T[];
 }
@@ -137,7 +141,6 @@ async function cleanup() {
     const hasNotifications = await q(`SELECT to_regclass('public."StaffNotifications"') IS NOT NULL AS ok`);
     if (hasNotifications[0].ok) await q(`DELETE FROM "StaffNotifications" WHERE "bookingId" LIKE $1`, [like]);
     await q(`DELETE FROM "PromotionUsages" WHERE booking_id LIKE $1 OR customer_id LIKE $1`, [like]);
-    await q(`DELETE FROM "PromotionIssueErrors" WHERE booking_id LIKE $1`, [like]);
     await q(`DELETE FROM "BookingItems" WHERE "bookingId" LIKE $1`, [like]);
     await q(`DELETE FROM "CustomerPromotionPasses" WHERE customer_id LIKE $1`, [like]);
     await q(`DELETE FROM "BookingGuests" WHERE booking_id LIKE $1`, [like]);
@@ -255,8 +258,8 @@ async function main() {
     const bNoCust = await newBooking(null, [{ serviceId: svc.vip90 }]);
     await setStatus(bNoCust, 'DONE');
     const st = await q(`SELECT status::text AS s FROM "Bookings" WHERE id = $1`, [bNoCust]);
-    check('    booking without customerId → DONE succeeds, no pass, no error', st[0].s === 'DONE'
-        && (await q(`SELECT 1 FROM "PromotionIssueErrors" WHERE booking_id = $1`, [bNoCust])).length === 0);
+    check('    booking without customerId → DONE succeeds, no pass, no trigger warning', st[0].s === 'DONE'
+        && !triggerWarnings.some(w => w.includes(bNoCust)));
 
     // Manual campaign used to put real promo minutes on orders.
     const manual = await createCampaign('MAN30', {
@@ -1123,8 +1126,13 @@ async function main() {
     const pass9 = await rpc('promo_issue_manual', p1c.data.id, c9, 'QA');
     check('voucher codes use the derived prefix', pass9.data?.voucherCode?.startsWith(`${pfx1}-`), pass9.data?.voucherCode);
 
-    const errs = await q(`SELECT * FROM "PromotionIssueErrors" WHERE booking_id LIKE $1`, [`${RUN}%`]);
-    check('no trigger errors logged', errs.length === 0, errs);
+    const realWarnings = [...triggerWarnings];
+    await q(`DO $$ BEGIN RAISE WARNING 'promo trigger qa-selftest'; END $$;`);
+    await new Promise(r => setTimeout(r, 50));
+    check('warning capture works (self-test seen)', triggerWarnings.includes('promo trigger qa-selftest'), triggerWarnings);
+    check('no promo trigger warnings raised during the run', realWarnings.length === 0, realWarnings);
+    const errTable = await q(`SELECT to_regclass('public."PromotionIssueErrors"') IS NULL AS gone`);
+    check('v10: PromotionIssueErrors dropped (3 tables)', errTable[0].gone === true);
 }
 
 main()

@@ -997,8 +997,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 
 **Index**: UNIQUE `(promotion_pass_id, booking_id) WHERE status <> 'CANCELLED'` → 1 lần/đơn kể cả khi 2 quầy bấm cùng lúc.
 
-### PromotionIssueErrors
-Log lỗi trigger (`booking_id`, `stage`, `error`). Trigger không bao giờ chặn đổi trạng thái đơn.
+> **[v10]** Bảng `PromotionIssueErrors` đã bỏ (user 04/10/2026: giữ 3 bảng). Lỗi trigger ghi bằng `RAISE WARNING` → Supabase → Logs → Postgres, tìm `promo trigger`.
 
 **Triggers**: `tr_promo_on_booking_status` (Bookings → DONE: usage COMPLETED + phát pass AUTO; → CANCELLED: usage CANCELLED), `tr_promo_on_item_cancel` / `tr_promo_on_item_delete` (item KM bị huỷ/xoá → usage CANCELLED).
 **SystemConfigs [v2]**: `promotion_auto_issue_enabled` (mặc định `false` — trigger không tự phát), `promotion_email_enabled` (`true`), `promotion_expiry_reminder_days` (`3`). Ngày làm việc của danh sách đơn áp voucher dùng `spa_day_cutoff_hours` (mặc định 7).

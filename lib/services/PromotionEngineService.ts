@@ -83,6 +83,9 @@ const toRpcPayload = (input: Partial<CreatePromotionCampaignInput>) => {
 const scanBaseUrl = () =>
     (process.env.PROMOTION_SCAN_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
 
+/** Emails and printed QR codes need an absolute link; in-app API responses can stay relative. */
+export const hasAbsoluteVoucherBaseUrl = () => /^https?:\/\/[^/]+/i.test(scanBaseUrl());
+
 /**
  * QR payload of the e-voucher: public /voucher?t=<opaque token> page.
  * Staff opening it are redirected to the reception scanner; anyone else sees the card.

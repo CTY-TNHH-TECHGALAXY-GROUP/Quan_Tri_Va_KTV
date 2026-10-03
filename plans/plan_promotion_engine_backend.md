@@ -423,3 +423,10 @@ Adapter của B không map lại response, nên backend trả **đúng shape B d
 **Khác so với v2:** `qualification_config` trước đây khớp theo prefix **HOẶC** category. Từ v3 là: dịch vụ chọn lẻ, **hoặc** (menu **VÀ** category, nếu có lọc category).
 
 **Test:** `qa_promotion_engine.ts` 134 case (local + Supabase test, cả `TZ=UTC`); `qa_promotion_email.ts` 26 case; smoke HTTP v3 6 case.
+
+---
+
+## v10 (04/10/2026): bỏ `PromotionIssueErrors`, giữ 3 bảng (user chốt)
+
+- Lý do giữ 3 bảng `PromotionCampaigns` / `CustomerPromotionPasses` / `PromotionUsages`: quan hệ 1 → nhiều → nhiều, và các ràng buộc UNIQUE chống trùng voucher / lượt áp nằm trên chúng.
+- Lỗi của trigger chuyển sang `RAISE WARNING`, xem ở Postgres logs. Trigger vẫn không chặn việc chốt đơn.

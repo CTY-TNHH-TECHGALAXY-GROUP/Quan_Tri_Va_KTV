@@ -1,6 +1,6 @@
 import 'server-only';
 import { sendPromotionEmail } from '@/lib/promotion-email';
-import { PromotionEngineService, buildPromotionQrPayload, mapPass } from '@/lib/services/PromotionEngineService';
+import { PromotionEngineService, buildPromotionQrPayload, hasAbsoluteVoucherBaseUrl, mapPass } from '@/lib/services/PromotionEngineService';
 import type { PromotionConditionsSummary, PromotionEmailLang, PromotionEmailOutcome, PromotionPassDto, PromotionResult } from '@/lib/types/promotion';
 
 // E-voucher email delivery. The outbox state lives on CustomerPromotionPasses
@@ -21,6 +21,8 @@ async function deliver(claim: Claim, reminderDays: number): Promise<PromotionEma
     const qrPayload = buildPromotionQrPayload(claim.pass.qrToken);
     try {
         if (!qrPayload) throw new Error('Missing QR token');
+        // Never mail a QR / button that points nowhere: the link must carry the app domain.
+        if (!hasAbsoluteVoucherBaseUrl()) throw new Error('PROMOTION_SCAN_BASE_URL chưa cấu hình (VD https://oria-spa.vercel.app) — không gửi e-voucher');
         await sendPromotionEmail(claim.to, {
             kind: claim.kind,
             lang: asLang(claim.lang),

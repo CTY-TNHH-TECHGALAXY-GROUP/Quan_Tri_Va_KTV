@@ -78,6 +78,14 @@ async function main() {
     const withCond = renderPromotionEmail({ kind: 'ISSUE', lang: 'vi', pass, qrPayload, conditionsSummary: sumOne }, EMAIL_CONFIG_DEFAULTS);
     check('email card shows "Điều kiện: Menu VIP · từ 90 phút"', withCond.html.includes('Điều kiện') && withCond.html.includes('Menu VIP · từ 90 phút')
         && withCond.text.includes('Điều kiện: Menu VIP · từ 90 phút'));
+    const engine = require('@/lib/services/PromotionEngineService');
+    const saved = { a: process.env.PROMOTION_SCAN_BASE_URL, b: process.env.APP_URL };
+    delete process.env.PROMOTION_SCAN_BASE_URL; delete process.env.APP_URL;
+    const noBase = engine.hasAbsoluteVoucherBaseUrl();
+    process.env.PROMOTION_SCAN_BASE_URL = 'https://oria-spa.vercel.app/';
+    const withBase = engine.hasAbsoluteVoucherBaseUrl() && engine.buildPromotionQrPayload('tok') === 'https://oria-spa.vercel.app/voucher?t=tok';
+    process.env.PROMOTION_SCAN_BASE_URL = saved.a ?? ''; if (saved.b !== undefined) process.env.APP_URL = saved.b;
+    check('voucher link needs the app domain: missing → emails refused; set → https://oria-spa.vercel.app/voucher?t=…', noBase === false && withBase === true, { noBase, withBase });
     const png: Buffer = await buildPromotionQrPng(qrPayload);
     check('QR PNG generated locally (valid PNG header, > 2KB)', png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) && png.length > 2000, png.length);
 }
