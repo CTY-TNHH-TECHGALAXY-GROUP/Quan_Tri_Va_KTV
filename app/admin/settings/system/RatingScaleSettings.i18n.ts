@@ -5,7 +5,8 @@ export const t = {
     summary: (scale: number, on: boolean) => `Thang ${scale} sao · Khấu trừ: ${on ? 'Đang bật' : 'Đang tắt'} — bấm để mở`,
     scaleLabel: 'Thang đánh giá',
     scaleOption: (n: number) => `${n} sao`,
-    qrWarning: 'Trang đánh giá qua QR của khách (app khác) hiện vẫn chấm 4 sao. Chỉ nên bật 5 sao khi trang đó đã cập nhật.',
+    // WRB nội bộ (trang QR / nút Link trên Kanban) đọc thang từ đây từ 04/10/2026 — không còn kẹt 4 sao.
+    qrWarning: 'Thang 5 sao: chỉ khách chấm 5★ (mức cao nhất) mới được thưởng; 4★ không thưởng. Kiosk và trang đánh giá QR của khách đều chấm theo thang này.',
     deductionTitle: (n: number) => `Khấu trừ theo sao — thang ${n} sao (%)`,
     typeD: 'Loại D (trừ tiền tua)',
     abc: 'Loại A / B / C (trừ hoa hồng)',
