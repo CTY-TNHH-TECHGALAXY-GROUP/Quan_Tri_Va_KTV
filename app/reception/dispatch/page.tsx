@@ -75,7 +75,9 @@ import {
   PendingOrder,
   StaffData,
   TurnQueueData,
-  StaffNotification
+  StaffNotification,
+  TEMP_SVC_PREFIX,
+  isTempServiceId
 } from './types';
 
 import { dispatchFormSignature, mergeSavedDispatchForm, dispatchFormMissingInfo, mergeDispatchRealtimeDraft } from '@/lib/dispatch-form-draft';
@@ -160,6 +162,8 @@ const formatTime = (timeStr: string | null | undefined) => {
 
 
 const genId = () => Math.random().toString(36).slice(2, 8);
+// Dirty-row suffix for a service added from the board but not yet dispatched.
+const NEW_SVC_DIRTY_SUFFIX = '/_new';
 
 // QUICK_SERVICES_LIST removed — now using allServices from Supabase
 
@@ -200,6 +204,8 @@ export default function DispatchBoardPage() {
     } catch (error) { console.warn('Draft cache unavailable; draft remains in memory',error); }
   };
   const dirtyRowsRef = useRef<Set<string>>(new Set());
+  // Add/remove-service calls still in flight: leaving now could lose them.
+  const serviceOpsPendingRef = useRef(0);
   const [unsavedCount, setUnsavedCount] = useState(0);
   const updateDirtyRows = (next: Set<string>) => { dirtyRowsRef.current = next; setUnsavedCount(next.size); persistDraftCache(); };
   const clearDirtyItem = (bookingId: string, itemId: string) => {
@@ -209,7 +215,7 @@ export default function DispatchBoardPage() {
     updateDirtyRows(new Set([...dirtyRowsRef.current].filter(key => !key.startsWith(prefix))));
   };
   const confirmLeaveDraft = () => {
-    if (dispatchPendingRef.current || queueSavingRef.current) { addToast('Đang lưu thay đổi. Chờ hoàn tất trước khi chuyển trang.','info'); return false; }
+    if (dispatchPendingRef.current || queueSavingRef.current || serviceOpsPendingRef.current > 0) { addToast('Đang lưu thay đổi. Chờ hoàn tất trước khi chuyển trang.','info'); return false; }
     if (!dirtyRowsRef.current.size && !queueDirtyRef.current) return true;
     if (!window.confirm('Có thay đổi chưa lưu. Chuyển trang và bỏ các thay đổi?')) return false;
     discardQueueRef.current?.();
@@ -217,7 +223,7 @@ export default function DispatchBoardPage() {
   };
   useEffect(() => {
     const warnOnRefresh = (event: BeforeUnloadEvent) => {
-      if (!dirtyRowsRef.current.size && !queueDirtyRef.current && !dispatchPendingRef.current && !queueSavingRef.current) return;
+      if (!dirtyRowsRef.current.size && !queueDirtyRef.current && !dispatchPendingRef.current && !queueSavingRef.current && serviceOpsPendingRef.current === 0) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -430,7 +436,7 @@ export default function DispatchBoardPage() {
     try {
       const cached=JSON.parse(sessionStorage.getItem(key) || '{}');
       draftItemsRef.current=new Map(cached.items || []);
-      dirtyRowsRef.current=new Set(cached.dirty || []);
+      dirtyRowsRef.current=new Set((cached.dirty || []).filter((row:string)=>!row.endsWith(NEW_SVC_DIRTY_SUFFIX)));
       setUnsavedCount(dirtyRowsRef.current.size);
     } catch { draftItemsRef.current.clear(); updateDirtyRows(new Set()); }
   },[user?.id,selectedDate]);
@@ -1129,81 +1135,95 @@ if (!hasPermission('dispatch_board')) {
 
   const addServiceBlock = async (svcId: string, svcName: string, duration: number) => {
     if (!selectedOrderId) return;
+    const svcDef = allServices.find((s: any) => s.id === svcId);
+    const guestIdToUse = selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || undefined;
+    const targetBookingId = selectedSubOrder?.bookingId || selectedOrderId;
+    if (!targetBookingId) return;
+    const tempId = `${TEMP_SVC_PREFIX}${genId()}`;
 
+    const now = new Date();
+    const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const existingSvcForGuest = selectedSubOrder?.services?.find((s: any) => guestIdToUse && (s.guestId === guestIdToUse || s.customerGroupId === guestIdToUse));
+    // Copy the grouping keys of a sibling in the open sub-order so the board shows the new
+    // service in that same guest card (buildOrderTimeline groups by customerGroupId || guestId).
+    const sibling = existingSvcForGuest || selectedSubOrder?.services?.[0];
+
+    const newBlock: ServiceBlock = {
+      id: tempId, // Replaced by the real DB id once the server answers
+      serviceId: svcId,
+      serviceName: svcName,
+      duration,
+      customerGroupId: sibling?.customerGroupId,
+      selectedRoomId: null,
+      bedId: null,
+      staffList: [{
+        id: `sr-${genId()}`,
+        ktvId: '',
+        ktvName: '',
+        segments: [{
+            id: `seg-${genId()}`,
+            roomId: null,
+            bedId: null,
+            startTime,
+            duration,
+            endTime: calcEndTime(startTime, duration)
+        }],
+        noteForKtv: ''
+      }],
+      adminNote: '',
+      genderReq: 'ANY',
+      strength: 'NORMAL',
+      focus: '',
+      avoid: '',
+      customerNote: '',
+      timeStart: null,
+      timeEnd: null,
+      status: 'WAITING',
+      is_utility: (svcDef as any)?.is_utility || svcId === 'NHS0900',
+      guestId: guestIdToUse || sibling?.guestId,
+
+      options: { isAddon: true, isPaid: false }
+    };
+
+    // Show the service right away; the server call below only swaps in the real id and total.
+    setOrders(prev => prev.map(o => o.id === targetBookingId ? { ...o, services: [...o.services, newBlock] } : o));
+    setShowAddSvcModal(false);
+    setTimeout(() => {
+        const dispatchContainer = document.getElementById('dispatch-container');
+        if (dispatchContainer) dispatchContainer.scrollTo({ top: dispatchContainer.scrollHeight, behavior: 'smooth' });
+    }, 100);
+
+    const dropTemp = () => setOrders(prev => prev.map(o => o.id === targetBookingId ? { ...o, services: o.services.filter(s => s.id !== tempId) } : o));
+    serviceOpsPendingRef.current += 1;
     try {
-        const svcDef = allServices.find((s: any) => s.id === svcId);
         const { addAddonServices } = await import('./actions');
-        // Thêm dịch vụ vào DB ngay lập tức để lấy ID chuẩn, nhưng KHÔNG fetchData để tránh mất dữ liệu đang sửa dở
-        const guestIdToUse = selectedGuestForAddon || (selectedSubOrder as any)?.guest?.id || undefined;
-        const targetBookingId = selectedSubOrder?.bookingId || selectedOrderId;
-        if (!targetBookingId) return;
+        // Persisted immediately to get the real id, but NO fetchData so in-progress edits are kept.
         const res = await addAddonServices(targetBookingId, [{ serviceId: svcId, qty: 1, guestId: guestIdToUse }], 'ADMIN');
-
-        if (res.success && res.newItems && res.newItems.length > 0) {
-            const newItem = res.newItems[0];
-            const realId = newItem.id;
-
-            const now = new Date();
-            const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-            const existingSvcForGuest = selectedSubOrder?.services?.find((s: any) => guestIdToUse && (s.guestId === guestIdToUse || s.customerGroupId === guestIdToUse));
-            const targetGroupId = existingSvcForGuest ? (existingSvcForGuest.customerGroupId || existingSvcForGuest.id) : (selectedSubOrder?.services?.[0]?.customerGroupId || selectedSubOrder?.services?.[0]?.id);
-
-            const newBlock: ServiceBlock = {
-              id: realId, // Dùng ID thật từ DB
-              serviceId: svcId,
-              serviceName: svcName,
-              duration,
-              customerGroupId: targetGroupId,
-              selectedRoomId: null,
-              bedId: null,
-              staffList: [{
-                id: `sr-${genId()}`,
-                ktvId: '',
-                ktvName: '',
-                segments: [{
-                    id: `seg-${genId()}`,
-                    roomId: null,
-                    bedId: null,
-                    startTime,
-                    duration,
-                    endTime: calcEndTime(startTime, duration)
-                }],
-                noteForKtv: ''
-              }],
-              adminNote: '',
-              genderReq: 'ANY',
-              strength: 'NORMAL',
-              focus: '',
-              avoid: '',
-              customerNote: '',
-              timeStart: null,
-              timeEnd: null,
-              status: 'WAITING',
-              is_utility: (svcDef as any)?.is_utility || svcId === 'NHS0900',
-              guestId: guestIdToUse,
-
-              options: { isAddon: true, isPaid: false }
-            };
-
-            setOrders(prev => prev.map(o =>
-              o.id === targetBookingId
-                  ? { ...o, services: [...o.services, newBlock], totalAmount: res.newTotalAmount }
-                  : o
-            ));
-            setShowAddSvcModal(false);
-            setTimeout(() => {
-                const dispatchContainer = document.getElementById('dispatch-container');
-                if (dispatchContainer) {
-                    dispatchContainer.scrollTo({ top: dispatchContainer.scrollHeight, behavior: 'smooth' });
-                }
-            }, 100);
-        } else {
-            alert('Lỗi thêm dịch vụ: ' + (res.error || 'Unknown error'));
+        const realId = res.success ? res.newItems?.[0]?.id : null;
+        if (!realId) {
+            dropTemp();
+            addToast('Chưa thêm được dịch vụ: ' + (res.error || 'Unknown error'), 'error');
+            return;
         }
+        setOrders(prev => prev.map(o => {
+            if (o.id !== targetBookingId) return o;
+            const hasTemp = o.services.some(s => s.id === tempId);
+            const hasReal = o.services.some(s => s.id === realId);
+            // A refresh may already have brought the real row in, or dropped the temp one.
+            const services = hasTemp
+                ? (hasReal ? o.services.filter(s => s.id !== tempId) : o.services.map(s => s.id === tempId ? { ...newBlock, id: realId } : s))
+                : (hasReal ? o.services : [...o.services, { ...newBlock, id: realId }]);
+            return { ...o, services, totalAmount: res.newTotalAmount };
+        }));
+        // Not dispatched yet: remind on leave until the counter dispatches it.
+        updateDirtyRows(new Set([...dirtyRowsRef.current, `${targetBookingId}/${realId}${NEW_SVC_DIRTY_SUFFIX}`]));
     } catch (err) {
         console.error(err);
-        alert('Lỗi hệ thống khi thêm dịch vụ!');
+        dropTemp();
+        addToast('Lỗi hệ thống khi thêm dịch vụ!', 'error');
+    } finally {
+        serviceOpsPendingRef.current -= 1;
     }
   };
 
@@ -1331,19 +1351,40 @@ if (!hasPermission('dispatch_board')) {
 
   const removeServiceBlock = async (orderId: string, svcId: string) => {
     if (!confirm('Xác nhận xóa dịch vụ này khỏi đơn? Tổng tiền sẽ được tính lại.')) return;
+    if (isTempServiceId(svcId)) { addToast('Dịch vụ này đang được lưu. Chờ vài giây rồi xoá lại.','info'); return; }
+    const order = pageOrdersRef.current.find(o => o.id === orderId);
+    const index = order?.services.findIndex(s => s.id === svcId) ?? -1;
+    const removed = index >= 0 ? order!.services[index] : null;
+    // Hide it right away; put it back where it was if the server refuses.
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, services: o.services.filter(s => s.id !== svcId) } : o));
+    const restore = () => {
+      if (!removed) return;
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId || o.services.some(s => s.id === svcId)) return o;
+        const services = [...o.services];
+        services.splice(Math.min(index, services.length), 0, removed);
+        return { ...o, services };
+      }));
+    };
+    serviceOpsPendingRef.current += 1;
     try {
       const { removeBookingItem } = await import('./actions');
       const res = await removeBookingItem(orderId, svcId);
       if (res.success) {
+        clearDirtyItem(orderId, svcId);
         setOrders(prev => prev.map(o =>
           o.id === orderId ? { ...o, services: o.services.filter(s => s.id !== svcId), totalAmount: res.newTotalAmount } : o
         ));
       } else {
-        alert('Lỗi: ' + res.error);
+        restore();
+        addToast('Chưa xoá được dịch vụ: ' + res.error, 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Lỗi hệ thống khi xóa dịch vụ!');
+      restore();
+      addToast('Lỗi hệ thống khi xóa dịch vụ!', 'error');
+    } finally {
+      serviceOpsPendingRef.current -= 1;
     }
   };
 
@@ -1404,6 +1445,7 @@ if (!hasPermission('dispatch_board')) {
   const handleSaveDraft = async (skipPreview: any = false, intent: 'DRAFT' | 'DISPATCH' = 'DRAFT', dispatchArgs?: { skipValidation?: boolean, specificSvcIds?: string[], overrideOrderId?: string }, customGuestNames?: Record<string, string>): Promise<boolean | undefined> => {
     if (typeof skipPreview !== 'boolean') skipPreview = false;
     if (dispatchPendingRef.current) return false;
+    if (serviceOpsPendingRef.current > 0) { addToast('Đang lưu dịch vụ vừa thêm/xoá. Chờ vài giây rồi bấm lại.','info'); return false; }
 
     // When dispatching a specific sub-order, use that order instead of selectedOrder
     const effectiveOrder = dispatchArgs?.overrideOrderId
@@ -1640,6 +1682,7 @@ if (!hasPermission('dispatch_board')) {
   const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[], savedRevisions?: Record<string, number>): Promise<boolean | undefined> => {
     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
     if (!orderToDispatch) return false;
+    if (orderToDispatch.services.some(s => isTempServiceId(s.id))) { addToast('Đang lưu dịch vụ vừa thêm. Chờ vài giây rồi bấm lại.','info'); return false; }
     if (!skipValidation) {
       // ⚠️ Khi dispatch lẻ (specificSvcIds), chỉ validate các DV đang dispatch, không check toàn bộ đơn
       const orderToValidate = specificSvcIds && specificSvcIds.length > 0

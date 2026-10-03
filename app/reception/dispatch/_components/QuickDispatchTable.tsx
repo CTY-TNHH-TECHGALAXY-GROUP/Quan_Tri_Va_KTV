@@ -6,7 +6,7 @@ import { isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2, ArrowLeftRight, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
+import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment, isTempServiceId } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
 import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalKtvNameProblem, externalKtvNameKey, newExternalKtvToken, normalizeExternalKtvName } from '@/lib/constants/staff.constants';
@@ -1382,11 +1382,15 @@ const ServiceGroupCard = ({
                        <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode}</span></span>
                      </>
                    )}
-                   
+                   {groupItems.some(item => isTempServiceId(item.id)) && (
+                     <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg animate-pulse">
+                         Đang lưu…
+                     </span>
+                   )}
                 </div>
             </div>
             
-            {onRemoveSvc && groupItems.length === 1 && orderId && (
+            {onRemoveSvc && groupItems.length === 1 && orderId && !isTempServiceId(groupItems[0].id) && (
               <button onClick={() => onRemoveSvc(orderId, groupItems[0].id)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100 bg-white" title="Xóa dịch vụ">
                   <Trash2 size={14} />
               </button>

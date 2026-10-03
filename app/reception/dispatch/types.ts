@@ -80,6 +80,10 @@ export interface ServiceBlock {
   guestId?: string; // ID của Guest đang sử dụng dịch vụ này
 }
 
+// Id of a service shown on the board before the server has created it (swapped for the real id on success).
+export const TEMP_SVC_PREFIX = 'tmp-svc-';
+export const isTempServiceId = (id: string) => id.startsWith(TEMP_SVC_PREFIX);
+
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE' | 'CANCELLED';
 
 export interface PendingOrder {
