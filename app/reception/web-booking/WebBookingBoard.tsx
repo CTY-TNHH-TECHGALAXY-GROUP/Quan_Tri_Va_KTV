@@ -203,6 +203,9 @@ export function WebBookingBoard() {
 
   const handleConfirm = async (id: string) => {
     setProcessingId(id);
+    // Giữ lại bản ghi trước khi nó rời danh sách: nếu mail lỗi, mở ngay panel
+    // của đơn này ở trạng thái đã xác nhận để quầy bấm "Gửi lại email" tại chỗ.
+    const confirmedBooking = bookings.find((b) => b.id === id) || selectedBooking;
     try {
       const res = await confirmWebBooking(id);
       if (res.success) {
@@ -211,7 +214,7 @@ export function WebBookingBoard() {
         let msg = '✅ Đã xác nhận! Đơn đã chuyển sang bảng Điều phối.';
         let kind: 'success' | 'error' = 'success';
         if (res.emailSent === false) {
-          msg = 'Đơn đã vào Điều phối nhưng email chưa gửi được. Mở đơn (tab Lịch) → bấm "Gửi lại email xác nhận".';
+          msg = 'Đơn đã vào Điều phối nhưng email chưa gửi được. Bấm "Gửi lại email xác nhận" ở cuối đơn.';
           kind = 'error';
           setEmailFailedIds((prev) => new Set(prev).add(id));
         } else if (res.emailSent === true) {
@@ -225,7 +228,12 @@ export function WebBookingBoard() {
           msg = '✅ Đã xác nhận. Không gửi email vì công tắc gửi email đang TẮT (Cài đặt › Cấu hình Email).';
         }
         showToast(msg, kind);
-        setSelectedBooking(null);
+        if (res.emailSent === false && confirmedBooking) {
+          // Đơn đã rời trạng thái NEW phía server; phản chiếu để panel hiện nút gửi lại.
+          setSelectedBooking({ ...confirmedBooking, status: 'PREPARING' });
+        } else {
+          setSelectedBooking(null);
+        }
         // Mark as confirmed locally so it won't reappear after realtime refetch
         confirmedIdsRef.current.add(id);
         // Remove from local list immediately
