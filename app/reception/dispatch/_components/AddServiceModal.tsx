@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus } from 'lucide-react';
 import { isUtilityService } from '@/lib/booking.logic';
+import { PROMOTION_SERVICE_ID_PREFIX } from '@/lib/constants/promotion';
 
 /** Tên dịch vụ có thể là chuỗi hoặc object đa ngôn ngữ tuỳ đời dữ liệu. */
 function serviceName(svc: any): string {
@@ -50,6 +51,9 @@ export function AddServiceModal({
   }, [open]);
 
   const filtered = services.filter((svc: any) => {
+    // Promotion services (KM####) are attached only through a voucher, never picked by hand.
+    if (svc.is_promotion === true || svc.category === 'PROMOTION'
+      || new RegExp(`^${PROMOTION_SERVICE_ID_PREFIX}\\d+$`).test(String(svc.id || ''))) return false;
     if (!query.trim()) return true;
     return serviceName(svc).toLowerCase().includes(query.toLowerCase());
   });

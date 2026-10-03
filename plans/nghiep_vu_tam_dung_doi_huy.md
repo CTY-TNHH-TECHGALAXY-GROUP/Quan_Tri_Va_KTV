@@ -63,6 +63,28 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | 16 | **Nhật ký quầy** | PAUSE / RESUME | FINISH_EARLY | CANCEL + lý do | CANCEL + lý do | SWAP_KTV `"cũ → mới · lý do"` | SWAP_SEND `"mới"` |
 | 17 | **Lý do bắt buộc** | không | không | có | có | **có** — hiện ở lịch sử người bị đổi | — |
 
+
+### 2.1. Sự kiện "Áp khuyến mãi +phút" (Promotion Engine, 02/10/2026)
+
+Quầy áp voucher `FREE_MINUTES` → engine thêm 1 dịch vụ `KM####` giá 0đ, trạng thái `WAITING`, **không gán KTV**. Từ đó nó là một dịch vụ nối tiếp bình thường (user chốt 02/10/2026: KTV **được** tính tua cho phút KM). Voucher giảm giá (`PERCENT_DISCOUNT` / `FIXED_DISCOUNT`) là dòng tiện ích giá âm, không có KTV → mọi khía cạnh KTV "không áp dụng".
+
+| # | Khía cạnh | KTV làm dịch vụ KM | KTV đang làm dịch vụ đã trả tiền |
+|---|---|---|---|
+| 1 | Tiền tua | theo phút gán của item KM (luồng add-on) | không đổi — item đã trả tiền không bị sửa |
+| 2 | Giờ tích luỹ (D) | theo phút gán | không đổi |
+| 3 | Lượt tua | theo luồng điều phối add-on hiện có | không đổi |
+| 4 | Thưởng Xuất sắc | như dịch vụ thường | không đổi |
+| 5 | Đánh giá khách | item KM đi qua FEEDBACK như dịch vụ thường | không đổi |
+| 6–8 | Dọn phòng / nợ phòng / hạn mức bỏ qua | như dịch vụ thường | không đổi |
+| 9 | Hàng đợi | chỉ vào hàng khi quầy điều phối item KM | không đổi |
+| 10–12 | Màn app / đồng hồ / tự chốt | như add-on | không đổi |
+| 13 | Kanban | thẻ dịch vụ "Khuyến mãi +30 phút" | không đổi |
+| 14–15 | Cùng làm / lịch sử | như dịch vụ thường | không đổi |
+| 16 | Nhật ký | `PromotionUsages` (staff_id, applied_at, cancel_reason) | — |
+| 17 | Huỷ KM | `promo_cancel_usage` chỉ khi item KM chưa điều phối; đã điều phối → huỷ dịch vụ ở màn Điều phối, trigger tự huỷ usage | — |
+
+Điều kiện phát voucher đọc **phút đã trả của dịch vụ VIP** (`promo_order_minutes`) và loại item KM → 60 trả + 30 KM không thành 90.
+
 ---
 
 ## 3. Trạng thái triển khai (11/09/2026 · cập nhật 21/09/2026)
@@ -83,6 +105,8 @@ Ký hiệu cột: **TD** Tạm dừng → Tiếp tục · **KS** Kết thúc s�
 | VT dòng 14 | `coWorkersOf` trên đơn thật trả `[]` |
 | VT dòng 3, 9 — người vào thay **loại C không có dòng TurnQueue** (14/09) | `scripts/qa/qa_swap_ktv_e2e.ts` — 121/121, cả dưới `TZ=UTC`: tạo dòng `working` (không `assigned`), 2KTV-1DV không bị đụng, 3 bộ lọc huỷ đơn / huỷ dịch vụ / Hoàn tất đều tìm thấy C, huỷ không công → C mất tua như A/B, C bị đổi ra lại → về `waiting` + phiếu CANCELLED, D on-call không bị tạo dòng, race 2 lệnh → 1 dòng |
 | Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 73/73 trên DB thật trong transaction ROLLBACK (biên 31/08 23:30 ↔ 01/09 00:10 VN, số phút chờ 20 / 8 / 0 / hỏng / âm, và **chờ cả đơn con xong** sau sự cố 14/09: người sau trong chuỗi đang làm / chưa bắt đầu / bị tước, 2 KTV **song song** (một người còn làm / vừa xong / cả hai xong), dịch vụ khác còn CLEANING / IN_PROGRESS / PAUSED; **đổi KTV / kết thúc sớm / huỷ có công – không công** × nối tiếp / song song). Kanban giữ dịch vụ "Đang làm" khi một người xong: `scripts/qa/qa_kanban_sequential_hold.ts` 36/36 (nối tiếp, song song, đổi KTV, kết thúc sớm, huỷ — dựng chặng bằng `voidSegment` / `closeOpenPause` thật) + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). Migration `20260914120000` đã áp 14/09 16:24, lần chạy đầu chốt 13 dịch vụ |
+
+- **Khuyến mãi +phút (02/10/2026)**: item KM đi theo luồng add-on, không sửa item đã trả tiền; kiểm bằng `scripts/qa/qa_promotion_engine.ts` (local + Supabase test, cả `TZ=UTC`). Chưa deploy production. Plan: `plan_promotion_engine_backend.md`.
 
 ### ⚠️ Còn lỗ — chưa sửa
 

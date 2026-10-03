@@ -295,6 +295,21 @@ function hasPermissionOf(
     return permissions.includes(permissionId);
 }
 
+/**
+ * Does the CURRENT session hold `permissionId`? Never throws.
+ * Unlike `requirePermission`, there is no "allow when AUTH_ENFORCE_API is off"
+ * fallback: no session → false. Use it to branch UI (e.g. the public
+ * /voucher page redirects staff to the scanner), never as an API guard.
+ */
+export async function sessionHasPermission(permissionId: string): Promise<boolean> {
+    try {
+        const bUser = await requireBusinessUser();
+        return !!bUser && hasPermissionOf(bUser, permissionId);
+    } catch {
+        return false;
+    }
+}
+
 export async function requireRole(requiredRoles: string[]) {
     const bUser = await requireBusinessUser();
 
