@@ -225,6 +225,7 @@ const KtvHoursRankingPage = () => {
           subtitle={`${me.code} · Tháng ${logic.month} · Hạng ${me.rank}`}
           earned={me.earned ?? 0}
           penalty={me.penalty ?? 0}
+          granted={me.granted ?? 0}
           net={me.net}
           rows={logic.ledger}
           onClose={() => logic.setShowDetail(false)}

@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
         // Lấy tổng đã cộng từ số gốc trong hoursLedger, KHÔNG tự cộng lại các dòng
         // đã làm tròn — nếu không, ô "Thực nhận" lệch số dư dòng mới nhất 0.01h.
-        const { earnedTotal, penaltyTotal, total } = ledger;
+        const { earnedTotal, penaltyTotal, grantTotal, total } = ledger;
 
         return NextResponse.json({
             success: true,
@@ -75,6 +75,7 @@ export async function GET(request: Request) {
             hours: {
                 earned: earnedTotal,
                 penalty: penaltyTotal,
+                granted: grantTotal,
                 net: total,
                 turns: rows.filter(r => r.earned > 0).length,
                 days: new Set(rows.filter(r => r.earned > 0).map(r => r.date)).size,
