@@ -329,9 +329,10 @@ export async function requirePermission(permissionId: string) {
         ? bUser.permissions
         : getFallbackPermissions(roleId);
 
-    // Auto-inject quyền Office mới cho admin, dev, reception (tránh lỗi cache DB cũ)
+    // Admin/dev luôn có Office; lễ tân theo bảng Phân quyền (bỏ cấp cứng 03/10/2026,
+    // khớp hasPermission phía client — hai bên phải cùng một luật).
     if (permissionId === 'ktv_office_scoring' || permissionId === 'ktv_office_hours') {
-        if (roleId === 'admin' || roleId === 'dev' || roleId === 'reception') {
+        if (roleId === 'admin' || roleId === 'dev') {
             return true;
         }
     }

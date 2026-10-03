@@ -204,7 +204,7 @@ export async function createStaffMember(formData: any) {
             // Lễ tân: đúng mã module trong lib/constants.ts (MODULES) và khớp mặc định
             // ở lib/auth-context.tsx. Trước đây ghi 'reception_dispatch'... — mã không tồn
             // tại → tài khoản đăng nhập xong không thấy menu nào (ca ORIA000, 03/10/2026).
-            ] : (role === 'RECEPTIONIST' || role === 'RECEPTION' || role === 'LEAD_RECEPTIONIST') ? ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings', 'ktv_office_scoring', 'ktv_office_hours'] : role === 'ADMIN' ? [
+            ] : (role === 'RECEPTIONIST' || role === 'RECEPTION' || role === 'LEAD_RECEPTIONIST') ? ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings'] : role === 'ADMIN' ? [
                 'role_management',
                 'employee_management'
             ] : []
