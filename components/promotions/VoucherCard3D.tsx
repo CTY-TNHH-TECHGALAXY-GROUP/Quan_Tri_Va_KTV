@@ -3,13 +3,17 @@
 import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
-import { QrCode, RotateCw, Sparkles } from 'lucide-react';
+import { Globe, MapPin, Phone, QrCode, RotateCw, Sparkles } from 'lucide-react';
+import type { SpaContact } from '@/lib/types/promotion-client';
 import { formatPromoDate } from '@/lib/promotion-format';
 import { t } from './promotion.i18n';
 import { VOUCHER_CARD_LABELS, type VoucherCardLabels } from './voucher-card.i18n';
 import type { VoucherCardData } from './VoucherCard3D.logic';
 
 // 🔧 UI CONFIGURATION
+const CARD_ASPECT = 'aspect-[1.22/1] min-[400px]:aspect-[1.4/1] sm:aspect-[1.62/1]';
+/** Taller when the spa contact strip is printed on the front. */
+const CARD_ASPECT_WITH_CONTACT = 'aspect-[1.05/1] min-[400px]:aspect-[1.2/1] sm:aspect-[1.42/1]';
 const MAX_TILT_DEG = 12;
 const TILT_SPRING = { stiffness: 220, damping: 20, mass: 0.6 };
 const FLIP_SPRING = { stiffness: 140, damping: 18 };
@@ -21,6 +25,9 @@ const PLACEHOLDER_CODE_LENGTH = 6;
 
 /** Ticket notches at the perforation line (mask = static shape, not styling). */
 const NOTCH_MASK = `radial-gradient(circle at ${(1 - STUB_RATIO) * 100}% 0, transparent ${NOTCH_RADIUS_PX}px, #000 ${NOTCH_RADIUS_PX + 0.5}px), radial-gradient(circle at ${(1 - STUB_RATIO) * 100}% 100%, transparent ${NOTCH_RADIUS_PX}px, #000 ${NOTCH_RADIUS_PX + 0.5}px)`;
+/** With the contact strip at the bottom only the top notch is cut, so the address is never bitten. */
+const NOTCH_MASK_TOP = `radial-gradient(circle at ${(1 - STUB_RATIO) * 100}% 0, transparent ${NOTCH_RADIUS_PX}px, #000 ${NOTCH_RADIUS_PX + 0.5}px)`;
+const NOTCH_STYLE_TOP: React.CSSProperties = { WebkitMaskImage: NOTCH_MASK_TOP, maskImage: NOTCH_MASK_TOP };
 const NOTCH_STYLE: React.CSSProperties = {
   WebkitMaskImage: NOTCH_MASK,
   maskImage: NOTCH_MASK,
@@ -28,12 +35,42 @@ const NOTCH_STYLE: React.CSSProperties = {
   maskComposite: 'intersect',
 };
 
+type CardContact = Pick<SpaContact, 'hotline' | 'address' | 'websiteUrl'>;
+
+/** Hotline · website / address — icons only, readable in every language. */
+const ContactLines = ({ contact, tone }: { contact: CardContact; tone: 'dark' | 'light' }) => (
+  <div className={`grid gap-0.5 text-[9px] leading-tight min-[400px]:text-[10px] sm:text-[11px] ${tone === 'dark' ? 'text-white/85' : 'text-indigo-900/80'}`}>
+    <div className="flex min-w-0 items-center gap-x-2 min-[400px]:gap-x-3">
+      {contact.hotline && (
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-semibold">
+          <Phone size={11} aria-hidden />
+          {contact.hotline}
+        </span>
+      )}
+      {contact.websiteUrl && (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <Globe size={11} className="shrink-0" aria-hidden />
+          <span className="truncate">{contact.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+        </span>
+      )}
+    </div>
+    {contact.address && (
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <MapPin size={11} className="shrink-0" aria-hidden />
+        <span className="truncate">{contact.address}</span>
+      </span>
+    )}
+  </div>
+);
+
 interface VoucherCard3DProps {
   data: VoucherCardData;
   /** Card text; admin = vi, public /voucher page = customer language. */
   labels?: VoucherCardLabels;
   /** Brand printed on the card; defaults to the system spa name. */
   brandName?: string;
+  /** Hotline / website / address printed on the back of the card. */
+  contact?: CardContact | null;
   /** Hint line under the card ("tap to flip"). */
   showHint?: boolean;
   className?: string;
@@ -44,8 +81,9 @@ interface VoucherCard3DProps {
  * the customer's screen / email. Tilts with the pointer, taps to flip to the QR.
  * Renders server data only; the template mode masks the code (no code is made here).
  */
-const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.voucher.brand, showHint = true, className = '' }: VoucherCard3DProps) => {
+const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.voucher.brand, contact = null, showHint = true, className = '' }: VoucherCard3DProps) => {
   const L = labels;
+  const hasContact = !!(contact && (contact.hotline || contact.address || contact.websiteUrl));
   const reduceMotion = useReducedMotion();
   const [flipped, setFlipped] = useState(false);
 
@@ -100,19 +138,20 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
           onClick={toggleFlip}
           aria-pressed={flipped}
           aria-label={`${data.campaignName || L.untitled} — ${flipLabel}`}
-          className="relative block aspect-[1.22/1] w-full min-[400px]:aspect-[1.4/1] sm:aspect-[1.62/1] cursor-pointer rounded-[24px] text-left transform-3d focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300"
+          className={`relative block w-full cursor-pointer rounded-[24px] text-left transform-3d focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 ${hasContact ? CARD_ASPECT_WITH_CONTACT : CARD_ASPECT}`}
           style={{ rotateX: reduceMotion ? 0 : tiltX, rotateY }}
         >
           {/* FRONT */}
           <div
             className={`absolute inset-0 overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1f1846] via-[#2e2675] to-[#4b3fa8] text-white shadow-[0_24px_48px_-16px_rgba(30,27,75,0.55),0_2px_6px_rgba(30,27,75,0.25)] backface-hidden ${inactive ? 'grayscale-[0.85]' : ''}`}
-            style={NOTCH_STYLE}
+            style={hasContact ? NOTCH_STYLE_TOP : NOTCH_STYLE}
           >
             <div aria-hidden className="absolute -right-10 -top-16 h-48 w-48 rounded-full bg-amber-300/15 blur-2xl" />
             <div aria-hidden className="absolute -bottom-20 left-10 h-44 w-44 rounded-full bg-fuchsia-300/10 blur-2xl" />
             <div aria-hidden className="absolute inset-0 bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.035)_0_2px,transparent_2px_14px)]" />
 
-            <div className="relative flex h-full">
+            <div className="relative flex h-full flex-col">
+            <div className="flex min-h-0 flex-1">
               {/* Main area */}
               <div className="flex min-w-0 flex-1 flex-col justify-between p-[6%]">
                 <div className="flex items-center justify-between gap-2">
@@ -166,6 +205,12 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
                 <span className="text-center text-[9px] leading-tight text-white/70">{L.usage(data.usage)}</span>
               </div>
             </div>
+            {hasContact && contact && (
+              <div className="shrink-0 border-t border-white/15 bg-black/15 px-[6%] py-[2.5%]">
+                <ContactLines contact={contact} tone="dark" />
+              </div>
+            )}
+            </div>
 
             {/* Status stamp / template ribbon */}
             {inactive && data.status && (
@@ -178,8 +223,9 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
           </div>
 
           {/* BACK */}
-          <div className="absolute inset-0 flex items-center gap-[5%] overflow-hidden rounded-[24px] border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 p-[6%] text-indigo-950 shadow-[0_24px_48px_-16px_rgba(30,27,75,0.45)] backface-hidden rotate-y-180">
-            <span className="flex w-[42%] shrink-0 items-center justify-center rounded-2xl bg-white p-2 shadow-sm ring-1 ring-indigo-100">
+          <div className="absolute inset-0 flex flex-col overflow-hidden rounded-[24px] border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 p-[5%] text-indigo-950 shadow-[0_24px_48px_-16px_rgba(30,27,75,0.45)] backface-hidden rotate-y-180">
+            <div className="flex min-h-0 flex-1 items-center gap-[5%]">
+            <span className={`flex shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-indigo-100 ${hasContact ? 'w-[34%]' : 'w-[42%]'}`}>
               {data.qrPayload && !inactive ? (
                 <QRCodeSVG value={data.qrPayload} size={BACK_QR_SIZE} marginSize={1} level="M" className="h-auto w-full" />
               ) : (
@@ -189,12 +235,19 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
                 </span>
               )}
             </span>
-            <div className="min-w-0 space-y-2">
+            <div className="min-w-0 space-y-1.5">
               <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.16em] text-indigo-500 sm:tracking-[0.28em]">{brandName}</p>
               <p className="whitespace-nowrap font-mono text-[clamp(12px,3.4vw,14px)] font-bold tracking-[0.04em] sm:tracking-[0.12em]">{code}</p>
-              <p className="text-[12px] leading-snug text-indigo-900/70">{L.qrInstruction}</p>
+              <p className="line-clamp-3 text-[11px] leading-snug text-indigo-900/70 sm:text-[12px]">{L.qrInstruction}</p>
               {data.status && <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-700">{L.status[data.status]}</p>}
             </div>
+            </div>
+            {/* Spa contact strip: icons only, so it reads the same in every language. */}
+            {hasContact && contact && (
+              <div className="mt-[3%] shrink-0 border-t border-indigo-100 pt-[3%]">
+                <ContactLines contact={contact} tone="light" />
+              </div>
+            )}
           </div>
         </motion.button>
       </div>

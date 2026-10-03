@@ -7,6 +7,7 @@ import PromotionsShell from '@/components/promotions/PromotionsShell';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import VoucherCard3D from '@/components/promotions/VoucherCard3D';
+import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromPass } from '@/components/promotions/VoucherCard3D.logic';
 import QRCodeViewer from '@/components/promotions/QRCodeViewer';
 import UsageHistoryList from '@/components/promotions/UsageHistoryList';
@@ -37,6 +38,7 @@ const PassDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const { addToast } = useToast();
   const pass = usePromotionQuery(() => promotionApi.getPass(id), [id]);
+  const spaContact = useSpaContact();
   const usages = usePromotionQuery(() => promotionApi.getUsageHistory({ passId: id }), [id]);
   const [qrOpen, setQrOpen] = useState(false);
   const [pending, setPending] = useState<PassStatusAction | null>(null);
@@ -89,7 +91,7 @@ const PassDetailPage = () => {
           {/* 1. Voucher face first — staff compares it with the customer's e-voucher */}
           <section className="rounded-3xl border border-gray-100 bg-gradient-to-b from-white to-indigo-50/40 p-5 shadow-sm sm:p-8">
             <div className="flex flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-10">
-              <VoucherCard3D data={voucherCardFromPass(p)} className="shrink-0" />
+              <VoucherCard3D data={voucherCardFromPass(p)} contact={spaContact} className="shrink-0" />
               <div className="w-full min-w-0 flex-1 space-y-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.compareTitle}</p>

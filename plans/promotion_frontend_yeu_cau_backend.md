@@ -129,3 +129,34 @@ User muốn thẻ e-voucher ghi rõ điều kiện, VD **"Dành cho Menu VIP t�
 2. **Quy tắc lúc áp voucher — cần A chốt:** hiện `promo_check_apply` chỉ chặn theo menu (`ORDER_MENU_NOT_ELIGIBLE`), không kiểm số phút. Nếu thẻ ghi "từ 90 phút trở lên" mà đơn 60 phút vẫn áp được thì quầy và khách sẽ hiểu sai.
    - **Khuyến nghị:** kiểm thêm `paid_qualifying_minutes ≥ qualification_value` lúc áp, trả mã mới `ORDER_MIN_DURATION_NOT_MET`. B sẽ thêm câu tiếng Việt cho mã này.
    - Nếu không kiểm lúc áp thì B bỏ phần "từ N phút" khỏi thẻ, chỉ ghi menu.
+
+## 10. Áp ngoại lệ (contract v8 §4.1) — B đã làm (03/10/2026)
+
+- **Màn quét:**
+  - Mỗi đơn có badge theo `eligibility`: Đủ điều kiện / Chưa đủ điều kiện / Không áp được.
+  - `unmetReasons` hiện nguyên văn dưới đơn.
+  - Đơn `NOT_ELIGIBLE` vẫn chọn được; khi đó nút chính đổi thành "Áp ngoại lệ…".
+- **Popup áp ngoại lệ:**
+  - Mở khi chọn đơn `NOT_ELIGIBLE`, hoặc khi server trả `ORDER_CONDITION_NOT_MET` có `canOverride`.
+  - Popup liệt kê `unmetReasons`, và bắt buộc nhập lý do 3–500 ký tự (kiểm ở client và server).
+  - Lý do hợp lệ thì gửi lại `{ bookingId, overrideConditions: true, overrideNote }`.
+  - Server trả `OVERRIDE_REASON_REQUIRED` thì báo lỗi ngay trong popup.
+  - Áp xong, màn thành công gắn nhãn "Đã áp ngoại lệ".
+- **Lịch sử áp dụng:**
+  - Lượt áp ngoại lệ có nhãn "Áp ngoại lệ", kèm "Lý do: `overrideNote`" và "Người áp: `staffName`".
+  - Có ô lọc "Chỉ lượt áp ngoại lệ" (`overridden=1`).
+- **Tự chọn đơn:** chỉ tự chọn sẵn đơn `canApply`. Đơn lễ tân đã chọn (kể cả đơn chưa đủ điều kiện) được giữ khi danh sách tải lại.
+
+**Còn cần chốt (nghiệp vụ):** contract cho mọi người có quyền `dispatch_board` áp ngoại lệ. Nếu chỉ muốn quản lý được duyệt, A phải chặn ở server (ví dụ thêm một quyền riêng). Frontend chỉ ẩn nút thì không đủ an toàn.
+
+## 11. Liên hệ của spa in trên e-voucher (03/10/2026)
+
+User yêu cầu e-voucher có **địa chỉ, hotline, website** của Oria Spa. B in thông tin này ở **cả mặt trước lẫn mặt sau thẻ 3D**, dạng một dải nhỏ có icon, đọc được ở mọi ngôn ngữ. Khi có dải này, thẻ cao hơn một chút và mặt trước chỉ khoét khía trên.
+
+- **Trang `/voucher`:** dùng `view.contact` của `resolveVoucherView()`, không cần đổi gì.
+- **Trang admin:** **cần A thêm `GET /api/admin/promotions/contact`** dưới quyền `promotions`.
+  - Trả `{ brandName, hotline, address, websiteUrl }`, cùng nguồn `getEmailConfig()` như trang `/voucher`.
+  - **Không** trả thông tin ngân hàng.
+  - Lý do không dùng `/api/admin/settings/email`: route đó cần quyền cài đặt hệ thống và trả cả số tài khoản.
+  - Chưa có endpoint này thì thẻ trong admin chỉ ẩn dải liên hệ, không báo lỗi.
+- **Email e-voucher của A** nên in cùng 3 dòng này ở cùng chỗ, để thẻ trong email khớp với thẻ trên web.

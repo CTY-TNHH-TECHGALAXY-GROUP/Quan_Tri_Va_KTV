@@ -13,6 +13,7 @@
 import { apiClient, ApiError } from '@/lib/apiClient';
 import { createMockPromotionApi } from './promotionApi.mock';
 import type {
+  ApplyOverride,
   ApplyPromotionResult,
   BulkIssueResult,
   CustomerCandidateFilter,
@@ -33,11 +34,14 @@ import type {
   PromotionPassWithQr,
   PromotionResult,
   PromotionUsageRecord,
+  SpaContact,
   UsageListFilter,
 } from '@/lib/types/promotion-client';
 
 export interface PromotionApi {
   getOverview(): Promise<PromotionResult<PromotionOverviewStats>>;
+  /** Hotline / address / website printed on the e-voucher (requested from Agent A). */
+  getSpaContact(): Promise<PromotionResult<SpaContact>>;
 
   listCampaigns(): Promise<PromotionResult<PromotionCampaign[]>>;
   getCampaign(id: string): Promise<PromotionResult<PromotionCampaign>>;
@@ -68,7 +72,11 @@ export interface PromotionApi {
 
   /** Open orders a staff can apply this pass to (owner's first). */
   getActiveOrders(passId: string, filter?: OrderCandidateFilter): Promise<PromotionResult<PromotionOrderCandidate[]>>;
-  applyPass(passId: string, bookingId: string): Promise<PromotionResult<ApplyPromotionResult>>;
+  /**
+   * Unmet conditions → ORDER_CONDITION_NOT_MET with `data = { unmetReasons, canOverride }`;
+   * resend with `override` (staff reason) to apply as an exception.
+   */
+  applyPass(passId: string, bookingId: string, override?: ApplyOverride): Promise<PromotionResult<ApplyPromotionResult>>;
   /** Only while the promotion service has not been dispatched (else PROMOTION_ITEM_IN_SERVICE). */
   cancelUsage(usageId: string, reason?: string): Promise<PromotionResult<unknown>>;
 
@@ -131,6 +139,7 @@ const readEnvelopeError = (raw: unknown): { code: PromotionErrorCode; message: s
 
 const httpPromotionApi: PromotionApi = {
   getOverview: () => call(() => apiClient.get(`${ADMIN_BASE}/overview`)),
+  getSpaContact: () => call(() => apiClient.get(`${ADMIN_BASE}/contact`)),
 
   listCampaigns: () => call(() => apiClient.get(`${ADMIN_BASE}/campaigns`)),
   getCampaign: (id) => call(() => apiClient.get(`${ADMIN_BASE}/campaigns/${encodeURIComponent(id)}`)),
@@ -195,8 +204,13 @@ const httpPromotionApi: PromotionApi = {
 
   getActiveOrders: (passId, filter = {}) =>
     call(() => apiClient.get(`${PASS_BASE}/${encodeURIComponent(passId)}/active-orders${toQuery({ q: filter.search })}`)),
-  applyPass: (passId, bookingId) =>
-    call(() => apiClient.post(`${PASS_BASE}/${encodeURIComponent(passId)}/apply`, { bookingId })),
+  applyPass: (passId, bookingId, override) =>
+    call(() =>
+      apiClient.post(
+        `${PASS_BASE}/${encodeURIComponent(passId)}/apply`,
+        override ? { bookingId, overrideConditions: true, overrideNote: override.note.trim() } : { bookingId },
+      ),
+    ),
   cancelUsage: (usageId, reason) =>
     call(() => apiClient.post(`/api/promotion-usages/${encodeURIComponent(usageId)}/cancel`, reason ? { reason } : {})),
 
@@ -210,6 +224,7 @@ const httpPromotionApi: PromotionApi = {
           status: filter.status,
           q: filter.search,
           passId: filter.passId,
+          overridden: filter.overridden ? '1' : undefined,
         })}`,
       ),
     ),

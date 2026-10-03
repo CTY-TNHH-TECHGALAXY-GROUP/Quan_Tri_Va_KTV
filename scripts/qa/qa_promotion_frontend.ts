@@ -17,14 +17,16 @@ import {
   toLockedCampaignPatch,
   validateCampaignForm,
 } from '../../components/promotions/CampaignForm.logic';
-import { lookupFromUrl, pickDefaultOrderId } from '../../app/admin/promotions/scan/ScanVoucher.logic';
+import { isOverrideNoteValid, lookupFromUrl, pickDefaultOrderId } from '../../app/admin/promotions/scan/ScanVoucher.logic';
 import {
   formatBenefit,
   formatPromoDate,
   formatPromoDateTime,
   formatUsageType,
   formatUsedCount,
+  formatVnd,
   orderCode,
+  orderEligibility,
   passBlockedCode,
   promotionErrorMessage,
 } from '../../lib/promotion-format';
@@ -79,6 +81,7 @@ const main = async () => {
   check('October +30: benefit label', formatBenefit(oct.benefit) === '+30 phút', formatBenefit(oct.benefit));
   check('October +30: usage label', formatUsageType(oct.usage) === 'Không giới hạn', formatUsageType(oct.usage));
   check('October +30: valid until 31/10/2026 (VN day)', formatPromoDate(oct.validUntil) === '31/10/2026', formatPromoDate(oct.validUntil));
+  check('-0 prints as 0 VND', formatVnd(-0) === '0 VND');
   check('datetime = date then time', formatPromoDateTime('2026-10-01T18:05:00+07:00') === '01/10/2026 18:05');
 
   console.log('\n2. Campaign form (validation + strict payload)');
@@ -179,8 +182,26 @@ const main = async () => {
 
   console.log('\n9. Owner has MULTIPLE open orders');
   const o2 = unwrap(await api.getActiveOrders('PASS_002'));
-  check('2 owner orders → no auto-select', o2.filter((o) => o.isPassOwnerOrder).length === 2 && pickDefaultOrderId(o2, null) === null);
-  check('keeps staff choice', pickDefaultOrderId(o2, 'BK_1032') === 'BK_1032');
+  check('2 owner orders, 60-min one not eligible → auto-select the eligible one', o2.filter((o) => o.isPassOwnerOrder).length === 2 && pickDefaultOrderId(o2, null) === 'BK_1031');
+  check('keeps staff choice (even a NOT_ELIGIBLE order that can be overridden)', pickDefaultOrderId(o2, 'BK_1032') === 'BK_1032');
+  const twoOk = o2.map((o) => ({ ...o, canApply: true, eligibility: 'ELIGIBLE' as const }));
+  check('2 eligible owner orders → no auto-select', pickDefaultOrderId(twoOk, null) === null);
+
+  console.log('\n— Apply as an exception (v8 §4.1)');
+  const foot = o2.find((o) => o.id === 'BK_1032')!;
+  check('60-min order: NOT_ELIGIBLE, canOverride, reason from server', foot.eligibility === 'NOT_ELIGIBLE' && foot.canOverride === true && /90 phút/.test(foot.unmetReasons?.[0] ?? ''), foot.unmetReasons);
+  check('UI eligibility helper', orderEligibility(foot) === 'NOT_ELIGIBLE' && orderEligibility({ canApply: false }) === 'BLOCKED' && orderEligibility({ canApply: true }) === 'ELIGIBLE');
+  const plain = await api.applyPass('PASS_002', 'BK_1032');
+  check('apply without override → ORDER_CONDITION_NOT_MET + reasons', !plain.success && plain.error.code === 'ORDER_CONDITION_NOT_MET' && Array.isArray((plain.error.data as { unmetReasons?: string[] })?.unmetReasons));
+  check('note < 3 chars rejected (client + server)', !isOverrideNoteValid(' a ') && !(await api.applyPass('PASS_002', 'BK_1032', { note: 'ok' })).success);
+  check('note > 500 chars rejected (client)', !isOverrideNoteValid('x'.repeat(501)));
+  const ovApply = await api.applyPass('PASS_002', 'BK_1032', { note: 'Khách quen, quản lý duyệt' });
+  check('override with reason → applied, flagged', ovApply.success && ovApply.data.conditionsOverridden === true);
+  const ovHist = unwrap(await api.getUsageHistory({ overridden: true }));
+  check('history: overridden filter + note + staff', ovHist.length === 1 && ovHist[0].overrideNote === 'Khách quen, quản lý duyệt' && !!ovHist[0].staffName && (ovHist[0].overrideReasons?.length ?? 0) > 0);
+  const okOverride = await api.applyPass('PASS_002', 'BK_1031', { note: 'thừa' });
+  check('override on an ELIGIBLE order = normal apply (not flagged)', okOverride.success && !okOverride.data.conditionsOverridden);
+  check('expired voucher stays BLOCKED (no override)', unwrap(await api.getActiveOrders('PASS_004')).every((o) => o.eligibility === 'BLOCKED' && !o.canOverride));
   check('order search by bill code', unwrap(await api.getActiveOrders('PASS_002', { search: '035' })).length === 1);
 
   console.log('\n10. No open orders');
@@ -314,6 +335,11 @@ const main = async () => {
   check('campaign template: menu label + 90 min', tpl.conditions?.menuLabels.join() === 'Menu VIP' && tpl.conditions?.minPaidMinutes === 90);
   check('issued pass carries conditions', unwrap(await api.getPass('PASS_001')).conditions?.minPaidMinutes === 90);
   check('manual campaign (no rule, all menus) → no condition line', (() => { const c = voucherCardFromCampaign(campaigns.find((x) => x.id === 'CMP_TEN10')!).conditions; return !!c && c.menuLabels.length === 0 && c.minPaidMinutes === null; })());
+
+  console.log('\n— Spa contact on the e-voucher');
+  const contact = unwrap(await api.getSpaContact());
+  check('contact has hotline, address, website (no bank data)', !!contact.hotline && !!contact.address && !!contact.websiteUrl && !JSON.stringify(contact).toLowerCase().includes('bank'));
+  check('contact shape = SpaContact only', Object.keys(contact).sort().join() === 'address,brandName,hotline,websiteUrl');
 
   console.log('\n— Every error code has a staff message');
   const codes: PromotionErrorCode[] = ['CAMPAIGN_LOCKED', 'CUSTOMER_NO_EMAIL', 'EMAIL_SEND_FAILED', 'ACCOUNT_LOCKED', 'INTERNAL_ERROR', 'USAGE_COMPLETED', 'PROMOTION_ITEM_IN_SERVICE'];

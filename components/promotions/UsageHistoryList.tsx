@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Undo2 } from 'lucide-react';
+import { AlertTriangle, Undo2 } from 'lucide-react';
 import type { PromotionUsageRecord } from '@/lib/types/promotion-client';
 import { formatPromoDateTime, formatVnd, orderCode } from '@/lib/promotion-format';
 import PromotionBenefitDisplay from './PromotionBenefitDisplay';
@@ -33,6 +33,19 @@ const CancelButton = ({ u, onCancel }: { u: PromotionUsageRecord; onCancel?: (u:
     </button>
   ) : null;
 
+/** "Áp ngoại lệ" tag + who applied it and the counter's reason (contract v8 §4.1). */
+const OverrideInfo = ({ u, showStaff = true }: { u: PromotionUsageRecord; showStaff?: boolean }) =>
+  u.conditionsOverridden ? (
+    <div className="mt-1 space-y-0.5">
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+        <AlertTriangle size={12} aria-hidden />
+        {t.usage.overrideTag}
+      </span>
+      {u.overrideNote && <p className="text-xs text-amber-900">{t.usage.overrideNote(u.overrideNote)}</p>}
+      {showStaff && u.staffName && <p className="text-xs text-gray-500">{t.usage.overrideBy(u.staffName)}</p>}
+    </div>
+  ) : null;
+
 const BenefitCell = ({ u }: { u: PromotionUsageRecord }) => (
   <span className="flex flex-col items-end gap-0.5 xl:items-start">
     <PromotionBenefitDisplay benefit={u.benefit} size="sm" />
@@ -57,6 +70,7 @@ const UsageHistoryList = ({ items, compact = false, onCancel }: UsageHistoryList
               {ownerNote(u) && <p className="text-xs text-amber-700">{ownerNote(u)}</p>}
               {!compact && <p className="font-mono text-xs text-gray-500">{u.voucherCode}</p>}
               {u.status === 'CANCELLED' && u.cancelReason && <p className="text-xs text-gray-500">{u.cancelReason}</p>}
+              <OverrideInfo u={u} />
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <BenefitCell u={u} />
@@ -100,6 +114,7 @@ const UsageHistoryList = ({ items, compact = false, onCancel }: UsageHistoryList
                   <td className="px-3 py-3 text-gray-700">{u.staffName ?? '—'}</td>
                   <td className="px-3 py-3">
                     <PromotionStatusBadge kind="usage" status={u.status} />
+                    <OverrideInfo u={u} showStaff={false} />
                   </td>
                   {onCancel && (
                     <td className="px-3 py-3 text-right">

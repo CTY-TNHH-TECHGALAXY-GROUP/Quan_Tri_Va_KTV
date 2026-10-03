@@ -13,7 +13,8 @@ import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
 import { useAuth } from '@/lib/auth-context';
 import { t } from '@/components/promotions/promotion.i18n';
 import { formatBenefit, formatVnd, orderCode, passBlockedCode, promotionErrorMessage } from '@/lib/promotion-format';
-import { lookupFromUrl, useScanVoucher } from './ScanVoucher.logic';
+import { OVERRIDE_NOTE_MAX, lookupFromUrl, useScanVoucher } from './ScanVoucher.logic';
+import OverrideDialog from '@/components/promotions/OverrideDialog';
 
 const secondaryBtn =
   'inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50';
@@ -195,7 +196,7 @@ const ScanVoucher = () => {
                   )}
                   <button type="button" className={primaryBtn} disabled={!s.selectedOrderId || s.applying} onClick={s.apply} aria-busy={s.applying}>
                     {s.applying ? <Loader2 size={18} className="animate-spin" aria-hidden /> : null}
-                    {s.applying ? t.scan.applying : t.scan.applyTo(formatBenefit(s.step.pass.benefit))}
+                    {s.applying ? t.scan.applying : s.selectedNeedsOverride ? t.scan.applyOverride : t.scan.applyTo(formatBenefit(s.step.pass.benefit))}
                   </button>
                   <button type="button" onClick={s.reset} className="w-full py-1 text-sm font-medium text-gray-500">
                     {t.actions.scanAnother}
@@ -215,6 +216,12 @@ const ScanVoucher = () => {
               <p className="mt-2 text-sm text-emerald-800">
                 {s.step.result.discountAmount ? t.scan.successDiscount(formatVnd(s.step.result.discountAmount)) : t.scan.successAdded(formatBenefit(s.step.pass.benefit))}
               </p>
+              {s.step.result.conditionsOverridden && (
+                <p className="mt-3 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+                  <AlertTriangle size={14} aria-hidden />
+                  {t.scan.overriddenDone}
+                </p>
+              )}
             </div>
 
             <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -249,6 +256,17 @@ const ScanVoucher = () => {
             </div>
           </div>
         )}
+        <OverrideDialog
+          open={!!s.override}
+          reasons={s.override?.reasons ?? []}
+          note={s.override?.note ?? ''}
+          maxLength={OVERRIDE_NOTE_MAX}
+          error={s.override?.error ?? null}
+          submitting={!!s.override?.submitting}
+          onNoteChange={s.setOverrideNote}
+          onConfirm={s.confirmOverride}
+          onClose={s.closeOverride}
+        />
       </div>
   );
 };

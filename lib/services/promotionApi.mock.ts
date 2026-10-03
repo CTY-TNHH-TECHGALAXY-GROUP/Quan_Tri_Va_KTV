@@ -310,12 +310,22 @@ export const createMockPromotionApi = (): PromotionApi => {
   const toCandidate = (o: (typeof db.orders)[number], p: PromotionPassWithQr): PromotionOrderCandidate => {
     const already = db.usages.some((u) => u.passId === p.id && u.booking.id === o.id && u.status !== 'CANCELLED');
     const blocked: PromotionErrorCode | null = already ? 'PROMOTION_ALREADY_APPLIED' : passIsUsable(p);
+    // Conditions (v8): only the minimum duration is simulated here.
+    const min = p.conditions?.minPaidMinutes ?? null;
+    const longest = Math.max(0, ...o.items.filter((i) => !i.isPromotion).map((i) => i.durationMinutes));
+    const unmet =
+      !blocked && min && longest < min
+        ? [`Cần ${p.conditions?.menuLabels.join(', ') || 'dịch vụ'} · từ ${min} phút — dịch vụ phù hợp dài nhất của đơn là ${longest} phút`]
+        : [];
     return {
       ...toBooking(o),
       isPassOwnerOrder: o.customerId === p.customer.id,
-      canApply: blocked === null,
+      canApply: blocked === null && unmet.length === 0,
       blockedReasonCode: blocked,
       blockedReason: blocked,
+      eligibility: blocked ? 'BLOCKED' : unmet.length ? 'NOT_ELIGIBLE' : 'ELIGIBLE',
+      canOverride: !blocked && unmet.length > 0,
+      unmetReasons: unmet,
     };
   };
 
@@ -385,6 +395,12 @@ export const createMockPromotionApi = (): PromotionApi => {
   };
 
   return {
+    async getSpaContact() {
+      await delay();
+      // Mirrors EMAIL_CONFIG_DEFAULTS (lib/email-config.ts); the real API reads the saved email config.
+      return ok({ brandName: 'ORIA SPA', hotline: '+84 964 090 277', address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh', websiteUrl: 'https://oria-spa.vercel.app' });
+    },
+
     async getOverview() {
       await delay();
       db.passes.forEach(refresh);
@@ -604,19 +620,23 @@ export const createMockPromotionApi = (): PromotionApi => {
         .sort((a, b) => Number(b.isPassOwnerOrder) - Number(a.isPassOwnerOrder) || (a.bookingTime ?? '').localeCompare(b.bookingTime ?? ''));
       return ok(rows);
     },
-    async applyPass(passId, bookingId) {
+    async applyPass(passId, bookingId, override) {
       await delay();
       const p = db.passes.find((x) => x.id === passId);
       if (!p) return fail('PROMOTION_NOT_FOUND');
       const o = db.orders.find((x) => x.id === bookingId);
       if (!o) return fail('ORDER_NOT_FOUND');
       const cand = toCandidate(o, p);
-      if (!cand.canApply) return fail(cand.blockedReasonCode ?? 'ORDER_NOT_ELIGIBLE');
+      if (cand.eligibility === 'BLOCKED') return fail(cand.blockedReasonCode ?? 'ORDER_NOT_ELIGIBLE');
+      const overridden = cand.eligibility === 'NOT_ELIGIBLE';
+      if (overridden && !override) return fail('ORDER_CONDITION_NOT_MET', { unmetReasons: cand.unmetReasons, canOverride: true });
+      const note = override?.note.trim() ?? '';
+      if (overridden && (note.length < 3 || note.length > 500)) return fail('OVERRIDE_REASON_REQUIRED');
 
       const minutes = p.benefit.type === 'FREE_MINUTES' ? p.benefit.value : 0;
       const paid = o.items.filter((i) => !i.isPromotion).reduce((s, i) => s + i.price, 0);
       const discount = p.benefit.type === 'PERCENT_DISCOUNT' ? Math.round((paid * p.benefit.value) / 100) : p.benefit.type === 'FIXED_DISCOUNT' ? Math.min(p.benefit.value, paid) : 0;
-      o.items.push({ id: `${o.id}-km-${++seq}`, serviceName: p.campaign.name, durationMinutes: minutes, price: -discount, isPromotion: true });
+      o.items.push({ id: `${o.id}-km-${++seq}`, serviceName: p.campaign.name, durationMinutes: minutes, price: discount ? -discount : 0, isPromotion: true });
       p.usage.usedCount += 1;
       p.lastUsedAt = new Date().toISOString();
       const cus = CANDIDATES.find((c) => c.id === o.customerId)!;
@@ -634,9 +654,13 @@ export const createMockPromotionApi = (): PromotionApi => {
         passOwner: { id: p.customer.id, name: p.customer.name },
         booking: { id: o.id, billCode: o.billCode, displayCode: o.displayCode },
         staffName: 'Bạn',
+        // Overriding an eligible order is a normal apply, not an exception (v8).
+        conditionsOverridden: overridden,
+        overrideReasons: overridden ? cand.unmetReasons : [],
+        overrideNote: overridden ? note : null,
       };
       db.usages.unshift(usage);
-      return ok({ usageId: usage.id, appliedMinutes: minutes, discountAmount: discount, booking: toBooking(o), pass: stripQr(refresh(p)) });
+      return ok({ usageId: usage.id, appliedMinutes: minutes, discountAmount: discount, conditionsOverridden: overridden, overrideReasons: overridden ? cand.unmetReasons : null, booking: toBooking(o), pass: stripQr(refresh(p)) });
     },
     async cancelUsage(usageId) {
       await delay();
@@ -658,6 +682,7 @@ export const createMockPromotionApi = (): PromotionApi => {
       return ok(
         db.usages.filter((u) => {
           if (filter.passId && u.passId !== filter.passId) return false;
+          if (filter.overridden && !u.conditionsOverridden) return false;
           if (filter.status && u.status !== filter.status) return false;
           if (filter.campaignId) {
             const c = db.campaigns.find((x) => x.id === filter.campaignId);

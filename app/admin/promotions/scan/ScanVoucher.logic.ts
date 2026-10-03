@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { promotionApi } from '@/lib/services/promotionApi';
+import { orderEligibility } from '@/lib/promotion-format';
 import type {
   ApplyPromotionResult,
   PromotionErrorCode,
@@ -10,6 +11,17 @@ import { parseManualCode, parseScannedText, type ScanLookup } from '@/components
 
 // 🔧 UI CONFIGURATION
 const ORDER_SEARCH_DEBOUNCE_MS = 300;
+/** Same bounds as the engine (OVERRIDE_REASON_REQUIRED). */
+export const OVERRIDE_NOTE_MIN = 3;
+export const OVERRIDE_NOTE_MAX = 500;
+
+export const isOverrideNoteValid = (note: string) => {
+  const n = note.trim().length;
+  return n >= OVERRIDE_NOTE_MIN && n <= OVERRIDE_NOTE_MAX;
+};
+
+/** Popup state when the selected order misses the campaign conditions. */
+export type OverridePrompt = { reasons: string[]; note: string; error: PromotionErrorCode | null; submitting: boolean };
 
 export type ScanStep =
   | { name: 'scan' }
@@ -32,7 +44,8 @@ export type OrdersState =
  */
 export const pickDefaultOrderId = (orders: PromotionOrderCandidate[], prev: string | null): string | null => {
   const applicable = orders.filter((o) => o.canApply);
-  if (prev && applicable.some((o) => o.id === prev)) return prev;
+  // A staff pick survives a reload while it can still be applied (normally or as an exception).
+  if (prev && orders.some((o) => o.id === prev && (o.canApply || o.canOverride))) return prev;
   const owner = applicable.filter((o) => o.isPassOwnerOrder);
   if (owner.length === 1) return owner[0].id;
   if (owner.length === 0 && applicable.length === 1) return applicable[0].id;
@@ -67,6 +80,7 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<PromotionErrorCode | null>(null);
+  const [override, setOverride] = useState<OverridePrompt | null>(null);
   const applyingRef = useRef(false);
   const lastLookupRef = useRef<ScanLookup | null>(null);
   const ordersReqRef = useRef(0);
@@ -145,26 +159,61 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     return () => clearTimeout(timer);
   }, [passId, passUsable, orderSearch, loadOrders]);
 
-  const apply = async () => {
+  const selectedOrder = orders.status === 'success' ? orders.orders.find((o) => o.id === selectedOrderId) ?? null : null;
+  const selectedNeedsOverride = !!selectedOrder && orderEligibility(selectedOrder) === 'NOT_ELIGIBLE';
+
+  const openOverride = (reasons: string[]) => setOverride({ reasons, note: '', error: null, submitting: false });
+
+  /**
+   * Apply. A NOT_ELIGIBLE order opens the exception popup first; the server can
+   * also answer ORDER_CONDITION_NOT_MET (conditions changed meanwhile) → popup too.
+   */
+  const apply = async (note?: string) => {
     if (step.name !== 'found' || !selectedOrderId || applyingRef.current) return;
+    if (note === undefined && selectedNeedsOverride) {
+      openOverride(selectedOrder?.unmetReasons ?? []);
+      return;
+    }
     const offline = offlineCode();
     if (offline) {
-      setApplyError(offline);
+      if (note !== undefined) setOverride((o) => o && { ...o, error: offline });
+      else setApplyError(offline);
       return;
     }
     applyingRef.current = true;
     setApplying(true);
     setApplyError(null);
-    const res = await promotionApi.applyPass(step.pass.id, selectedOrderId);
+    if (note !== undefined) setOverride((o) => o && { ...o, error: null, submitting: true });
+    const res = await promotionApi.applyPass(step.pass.id, selectedOrderId, note !== undefined ? { note } : undefined);
     applyingRef.current = false;
     setApplying(false);
     if (!res.success) {
+      const data = res.error.data as { unmetReasons?: string[]; canOverride?: boolean } | undefined;
+      if (res.error.code === 'ORDER_CONDITION_NOT_MET' && data?.canOverride && note === undefined) {
+        openOverride(data.unmetReasons ?? []);
+        return;
+      }
+      if (res.error.code === 'OVERRIDE_REASON_REQUIRED') {
+        setOverride((o) => o && { ...o, error: res.error.code, submitting: false });
+        return;
+      }
+      setOverride(null);
       setApplyError(res.error.code);
       // Server state may have moved (e.g. applied from another device) → refresh verdicts.
       loadOrders(step.pass.id, orderSearch);
       return;
     }
+    setOverride(null);
     setStep({ name: 'success', pass: { ...step.pass, ...res.data.pass }, result: res.data });
+  };
+
+  const confirmOverride = () => {
+    if (!override) return;
+    if (!isOverrideNoteValid(override.note)) {
+      setOverride({ ...override, error: 'OVERRIDE_REASON_REQUIRED' });
+      return;
+    }
+    apply(override.note.trim());
   };
 
   const reset = () => {
@@ -174,6 +223,7 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     setOrders({ status: 'idle' });
     setSelectedOrderId(null);
     setApplyError(null);
+    setOverride(null);
     setStep({ name: 'scan' });
   };
 
@@ -203,7 +253,12 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     },
     applying,
     applyError,
-    apply,
+    apply: () => apply(),
+    selectedNeedsOverride,
+    override,
+    setOverrideNote: (note: string) => setOverride((o) => o && { ...o, note, error: null }),
+    closeOverride: () => setOverride(null),
+    confirmOverride,
     reset,
   };
 };

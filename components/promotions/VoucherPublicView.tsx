@@ -98,7 +98,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
         ) : (
           <>
             <h1 className="mb-6 mt-8 text-center text-2xl font-semibold tracking-tight">{strings.title}</h1>
-            <VoucherCard3D data={voucherCardFromPublic(view.voucher)} labels={VOUCHER_CARD_LABELS[lang]} brandName={contact.brandName} />
+            <VoucherCard3D data={voucherCardFromPublic(view.voucher)} labels={VOUCHER_CARD_LABELS[lang]} brandName={contact.brandName} contact={contact} />
 
             <dl className="mt-8 w-full divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-white/80 text-sm shadow-sm">
               <div className="flex items-center justify-between gap-3 px-4 py-3">

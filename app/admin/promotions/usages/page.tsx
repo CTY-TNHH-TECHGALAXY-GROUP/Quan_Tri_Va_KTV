@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Check, Search } from 'lucide-react';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import UsageHistoryList from '@/components/promotions/UsageHistoryList';
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
@@ -31,7 +31,7 @@ const UsageHistoryPage = () => {
   const campaigns = usePromotionQuery(() => promotionApi.listCampaigns(), []);
   const { state, reload } = usePromotionQuery(
     () => promotionApi.getUsageHistory(filter),
-    [filter.search, filter.campaignId, filter.status, filter.dateFrom, filter.dateTo],
+    [filter.search, filter.campaignId, filter.status, filter.dateFrom, filter.dateTo, filter.overridden],
   );
   const cancel = useCancelUsage(reload);
 
@@ -73,6 +73,18 @@ const UsageHistoryPage = () => {
             </SelectControl>
           </FilterField>
         </div>
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={!!filter.overridden}
+          onClick={() => setFilter((f) => ({ ...f, overridden: !f.overridden || undefined }))}
+          className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-gray-800"
+        >
+          <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${filter.overridden ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-300 bg-white'}`} aria-hidden>
+            {filter.overridden && <Check size={14} />}
+          </span>
+          {t.usage.onlyOverridden}
+        </button>
       </div>
 
       <div className="rounded-2xl border border-gray-100 bg-white px-4 py-2 shadow-sm">

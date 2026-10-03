@@ -62,7 +62,8 @@ export const toVnDateInput = (iso: string | null | undefined): string => {
   return new Intl.DateTimeFormat('en-CA', { timeZone: VN_TZ }).format(d);
 };
 
-export const formatVnd = (amount: number): string => `${vndFmt.format(amount)} VND`;
+// `|| 0` turns -0 into 0 (a 0đ discount line must not print "-0 VND").
+export const formatVnd = (amount: number): string => `${vndFmt.format(amount || 0)} VND`;
 
 /** "+30 phút", "-15%", "-100.000 VND" */
 export const formatBenefit = (b: PromotionBenefit): string => {
@@ -103,6 +104,10 @@ export const passBlockedCode = (s: PromotionPassEffectiveStatus): PromotionError
       CANCELLED: 'PROMOTION_CANCELLED',
     } as const
   )[s];
+
+/** Server verdict for an order (v8). Older servers without `eligibility`: derived from canApply. */
+export const orderEligibility = (o: { eligibility?: 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'BLOCKED'; canApply: boolean; canOverride?: boolean }) =>
+  o.eligibility ?? (o.canApply ? 'ELIGIBLE' : o.canOverride ? 'NOT_ELIGIBLE' : 'BLOCKED');
 
 /** Order code shown to staff: the bill code when the server has one. */
 export const orderCode = (o: { billCode?: string | null; displayCode: string }): string => o.billCode || o.displayCode;

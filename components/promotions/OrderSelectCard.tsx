@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, Circle, Clock, DoorOpen, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Clock, DoorOpen, Lock } from 'lucide-react';
 import type { PromotionOrderCandidate } from '@/lib/types/promotion-client';
-import { formatVnd, orderCode, promotionErrorMessage } from '@/lib/promotion-format';
+import { formatVnd, orderCode, orderEligibility, promotionErrorMessage } from '@/lib/promotion-format';
 import { ERROR_MESSAGE, ORDER_STATUS_LABEL, t } from './promotion.i18n';
 
 interface OrderSelectCardProps {
@@ -12,9 +12,22 @@ interface OrderSelectCardProps {
   onSelect: (id: string) => void;
 }
 
-/** Radio-style order card. Disabled state + reason come from the server verdict. */
+const ELIGIBILITY_BADGE = {
+  ELIGIBLE: { label: t.scan.eligible, className: 'border-emerald-200 bg-emerald-50 text-emerald-700', Icon: CheckCircle2 },
+  NOT_ELIGIBLE: { label: t.scan.notEligible, className: 'border-amber-200 bg-amber-50 text-amber-800', Icon: AlertTriangle },
+  BLOCKED: { label: t.scan.blocked, className: 'border-gray-200 bg-gray-100 text-gray-600', Icon: Lock },
+} as const;
+
+/**
+ * Radio-style order card. Eligibility, reasons and whether it can be selected
+ * all come from the server: BLOCKED is disabled; NOT_ELIGIBLE stays selectable
+ * so the counter can apply it as an exception (with a mandatory reason).
+ */
 const OrderSelectCard = ({ order, selected, onSelect }: OrderSelectCardProps) => {
-  const disabled = !order.canApply;
+  const eligibility = orderEligibility(order);
+  const disabled = eligibility === 'BLOCKED';
+  const badge = ELIGIBILITY_BADGE[eligibility];
+  const reasons = order.unmetReasons ?? [];
   const mainService = order.items.filter((i) => !i.isPromotion).map((i) => i.serviceName).join(', ');
 
   return (
@@ -40,7 +53,13 @@ const OrderSelectCard = ({ order, selected, onSelect }: OrderSelectCardProps) =>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-mono text-sm font-semibold text-gray-900">{orderCode(order)}</span>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700">{ORDER_STATUS_LABEL[order.status as keyof typeof ORDER_STATUS_LABEL] ?? order.status}</span>
+            <span className="flex flex-wrap items-center gap-1">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}>
+                <badge.Icon size={12} aria-hidden />
+                {badge.label}
+              </span>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700">{ORDER_STATUS_LABEL[order.status as keyof typeof ORDER_STATUS_LABEL] ?? order.status}</span>
+            </span>
           </div>
           <p className="mt-1 truncate text-sm font-medium text-gray-800">{mainService || '—'}</p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
@@ -62,6 +81,13 @@ const OrderSelectCard = ({ order, selected, onSelect }: OrderSelectCardProps) =>
           <p className="mt-1 text-xs text-gray-600">
             {t.order.minutes(order.totalDurationMinutes)} · {formatVnd(order.totalAmount)}
           </p>
+          {eligibility === 'NOT_ELIGIBLE' && reasons.length > 0 && (
+            <ul className="mt-2 space-y-0.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+              {reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          )}
           {disabled && order.blockedReasonCode && (
             <p className="mt-2 text-xs font-medium text-rose-600">{order.blockedReasonCode && order.blockedReasonCode in ERROR_MESSAGE ? promotionErrorMessage(order.blockedReasonCode) : (order.blockedReason ?? promotionErrorMessage(order.blockedReasonCode))}</p>
           )}

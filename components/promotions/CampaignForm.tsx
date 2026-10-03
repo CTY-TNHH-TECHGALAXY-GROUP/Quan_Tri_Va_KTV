@@ -15,6 +15,7 @@ import { useCampaignForm, type CampaignFormErrors } from './CampaignForm.logic';
 import { DateControl, SelectControl } from './FormControls';
 import { usePromotionQuery } from './usePromotionQuery';
 import VoucherCard3D from './VoucherCard3D';
+import { useSpaContact } from './useSpaContact';
 import { voucherCardFromForm } from './VoucherCard3D.logic';
 import {
   ASSIGNMENT_LABEL,
@@ -76,6 +77,7 @@ interface CampaignFormProps {
 const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submitting, submitLabel, onSubmit }: CampaignFormProps) => {
   const { form, set, toggleMenu, errors, isValid, touch } = useCampaignForm(initial);
   const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
+  const spaContact = useSpaContact();
   const selectedMenus = form.applicableMenus?.menus ?? [];
 
   // When rules are locked only the editable fields can block saving.
@@ -105,7 +107,7 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
         <p className="mb-4 mt-1 text-xs text-gray-500">{t.voucher.previewHint}</p>
         <div className="flex justify-center">
-          <VoucherCard3D data={voucherCardFromForm(form, (code) => menus.state.data?.find((m) => m.code === code)?.label ?? code)} />
+          <VoucherCard3D data={voucherCardFromForm(form, (code) => menus.state.data?.find((m) => m.code === code)?.label ?? code)} contact={spaContact} />
         </div>
       </aside>
 

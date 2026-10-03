@@ -16,6 +16,7 @@ import type { PassGroup, PassListFilter, PromotionOverviewStats, PromotionPass, 
 import { CalendarClock, ChevronLeft } from 'lucide-react';
 import { SelectControl } from '@/components/promotions/FormControls';
 import VoucherCard3D from '@/components/promotions/VoucherCard3D';
+import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromPass } from '@/components/promotions/VoucherCard3D.logic';
 
 // 🔧 UI CONFIGURATION
@@ -75,6 +76,7 @@ const PassList = () => {
     setSelectedId((prev) => (prev && state.data.rows.some((p) => p.id === prev) ? prev : (state.data.rows[0]?.id ?? null)));
   }, [state]);
 
+  const spaContact = useSpaContact();
   const preview = usePromotionQuery<PromotionPassWithQr | null>(
     () => (selectedId ? promotionApi.getPass(selectedId) : Promise.resolve({ success: true as const, data: null })),
     [selectedId],
@@ -238,7 +240,7 @@ const PassList = () => {
             <PromotionError message={promotionErrorMessage(preview.state.code)} onRetry={preview.reload} />
           ) : preview.state.data ? (
             <div className="flex flex-col items-center gap-4">
-              <VoucherCard3D key={preview.state.data.id} data={voucherCardFromPass(preview.state.data)} />
+              <VoucherCard3D key={preview.state.data.id} data={voucherCardFromPass(preview.state.data)} contact={spaContact} />
               <div className="w-full text-sm text-gray-600">
                 <p className="font-medium text-gray-900">{preview.state.data.customer.name}</p>
                 <p>{[preview.state.data.customer.phone, preview.state.data.customer.email].filter(Boolean).join(' · ')}</p>

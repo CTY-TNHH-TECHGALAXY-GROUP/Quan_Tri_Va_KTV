@@ -8,6 +8,7 @@ import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDis
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import CustomerCandidatesPanel from '@/components/promotions/CustomerCandidatesPanel';
 import VoucherCard3D from '@/components/promotions/VoucherCard3D';
+import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromCampaign } from '@/components/promotions/VoucherCard3D.logic';
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { usePromotionQuery } from '@/components/promotions/usePromotionQuery';
@@ -44,6 +45,7 @@ const CampaignDetailPage = () => {
   const { addToast } = useToast();
   const { state, reload, setData } = usePromotionQuery(() => promotionApi.getCampaign(id), [id]);
   const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
+  const spaContact = useSpaContact();
   const menuLabel = (code: string) => menus.state.data?.find((m) => m.code === code)?.label ?? code;
   const [pending, setPending] = useState<CampaignStatusAction | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,7 +77,7 @@ const CampaignDetailPage = () => {
             <div className="space-y-5">
             <section className="flex flex-col items-center gap-3 rounded-3xl border border-gray-100 bg-gradient-to-b from-white to-indigo-50/40 p-5 shadow-sm sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
-              <VoucherCard3D data={voucherCardFromCampaign(c, menuLabel)} />
+              <VoucherCard3D data={voucherCardFromCampaign(c, menuLabel)} contact={spaContact} />
               <p className="text-center text-xs text-gray-500">{t.voucher.previewHint}</p>
             </section>
             <div className="space-y-5">

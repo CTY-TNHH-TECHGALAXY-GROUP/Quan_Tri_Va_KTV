@@ -132,6 +132,14 @@ export interface PromotionMenu {
   serviceCount: number;
 }
 
+/** Spa contact printed on the e-voucher (same data as Agent A `VoucherContact`, from the email config). */
+export interface SpaContact {
+  brandName: string;
+  hotline: string | null;
+  address: string | null;
+  websiteUrl: string | null;
+}
+
 /** What the voucher applies to: menu display names + minimum paid minutes. */
 export interface PromotionConditions {
   menuLabels: string[];
@@ -208,6 +216,10 @@ export interface PromotionUsageRecord {
   booking: { id: string; billCode?: string | null; displayCode: string };
   staffName: string | null;
   cancelReason?: string | null;
+  /** Applied as an exception (conditions missed): who (staffName), why (overrideNote). */
+  conditionsOverridden?: boolean;
+  overrideReasons?: string[];
+  overrideNote?: string | null;
 }
 
 export interface PromotionOrderItem {
@@ -235,6 +247,9 @@ export interface PromotionBooking {
   items: PromotionOrderItem[];
 }
 
+/** ELIGIBLE · NOT_ELIGIBLE = only conditions missed (counter may override with a reason) · BLOCKED = hard block. */
+export type OrderEligibility = 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'BLOCKED';
+
 export interface PromotionOrderCandidate extends PromotionBooking {
   /** True when the order belongs to the voucher owner — sorted first. */
   isPassOwnerOrder: boolean;
@@ -242,12 +257,24 @@ export interface PromotionOrderCandidate extends PromotionBooking {
   canApply: boolean;
   blockedReasonCode: PromotionErrorCode | null;
   blockedReason?: string | null;
+  /** Contract v8 §4.1. Missing on older servers → treated from canApply. */
+  eligibility?: OrderEligibility;
+  canOverride?: boolean;
+  /** Ready-made Vietnamese lines from the server, shown as-is. */
+  unmetReasons?: string[];
+}
+
+/** Override an unmet condition (v8 §4.1): reason is mandatory, 3–500 chars. */
+export interface ApplyOverride {
+  note: string;
 }
 
 export interface ApplyPromotionResult {
   usageId: string;
   appliedMinutes: number | null;
   discountAmount?: number;
+  conditionsOverridden?: boolean;
+  overrideReasons?: string[] | null;
   booking: PromotionBooking;
   pass: PromotionPass;
 }
@@ -290,6 +317,8 @@ export interface UsageListFilter {
   campaignId?: string;
   status?: PromotionUsageStatus;
   search?: string;
+  /** Only exception (override) applies. */
+  overridden?: boolean;
 }
 
 export interface OrderCandidateFilter {
@@ -394,6 +423,8 @@ export type PromotionErrorCode =
   | 'PROMOTION_USAGE_LIMIT_REACHED'
   | 'BENEFIT_NOT_SUPPORTED'
   | 'ORDER_NOT_ELIGIBLE'
+  | 'ORDER_CONDITION_NOT_MET'
+  | 'OVERRIDE_REASON_REQUIRED'
   | 'PROMOTION_ITEM_IN_SERVICE'
   | 'PASS_ALREADY_EXISTS'
   | 'CUSTOMER_NOT_FOUND'
