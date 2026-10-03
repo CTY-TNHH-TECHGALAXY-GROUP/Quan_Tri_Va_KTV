@@ -171,3 +171,5 @@ User yêu cầu e-voucher có **địa chỉ, hotline, website** của Oria Spa.
 - Chương trình tạo bằng `applyConditions` sẽ có `qualification_type = 'MANUAL_ASSIGNMENT'` (mặc định trong `promo_create_campaign` v7/v9), nên trả `qualificationIgnored = true`. Ô **"Có đơn đạt điều kiện chương trình" không lọc được gì**.
 - **Đề nghị:** RPC lọc khách dùng chính `apply_conditions` (cùng hàm `promo_check_apply` / bộ đánh giá điều kiện), và `qualificationIgnored` chỉ bằng `true` khi chương trình **không có điều kiện nào**.
 - Mock của B đã làm theo hành vi đúng này.
+
+> **Cập nhật 04/10/2026:** lỗi bộ lọc "đạt điều kiện" ở mục 12 **đã được A sửa** (`cee0e017`, migration v11 `20261004150000`). B đã merge vào `feat/promotion-frontend` (`55e476b8`). Logic khớp với mock của B: `qualificationIgnored` chỉ bằng `true` khi chương trình không có điều kiện nào.
