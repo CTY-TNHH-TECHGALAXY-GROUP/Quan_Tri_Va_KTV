@@ -25,6 +25,7 @@ import { CalendarClock, User, Tag, Clock, ChevronRight, X, AlertCircle, Info, Ph
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { t } from './ScheduleBoard.i18n';
+import { searchCustomers } from '@/app/reception/dispatch/actions';
 
 // 🔧 UI CONFIGURATION
 /** Web Nội Bộ (WRB) — nơi khách order. Ghi đè bằng NEXT_PUBLIC_WEB_NOI_BO_URL. */
@@ -75,6 +76,10 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
   const [newPbNotes, setNewPbNotes] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isFormOldCustomer, setIsFormOldCustomer] = React.useState(false);
+  // Gợi ý hồ sơ khách khi gõ tên / email — cùng nguồn `searchCustomers` với Tạo đơn nhanh.
+  const [custSuggestions, setCustSuggestions] = React.useState<any[]>([]);
+  const [suggestField, setSuggestField] = React.useState<'name' | 'email' | null>(null);
+  const [isSearchingCust, setIsSearchingCust] = React.useState(false);
   // Thẻ lịch hẹn đang mở panel thông tin khách.
   const [selectedPreBooking, setSelectedPreBooking] = React.useState<any | null>(null);
   const [isCancelling, setIsCancelling] = React.useState(false);
@@ -140,6 +145,56 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
       setIsFormOldCustomer(false);
     }
   }, [newPbPhone]);
+
+  // Debounce tra hồ sơ khách theo ô đang gõ (tên hoặc email), từ 2 ký tự.
+  React.useEffect(() => {
+     if (!isAddModalOpen || !suggestField) return;
+     const query = (suggestField === 'name' ? newPbName : newPbEmail).trim();
+     if (query.length < 2) { setCustSuggestions([]); return; }
+     const timer = setTimeout(async () => {
+        setIsSearchingCust(true);
+        const res = await searchCustomers(query);
+        setCustSuggestions(res?.success && res.data ? res.data : []);
+        setIsSearchingCust(false);
+     }, 300);
+     return () => clearTimeout(timer);
+  }, [newPbName, newPbEmail, suggestField, isAddModalOpen]);
+
+  const handleSelectCustomer = (c: any) => {
+     setNewPbName(c.fullName || '');
+     if (c.phone) {
+        // Hồ sơ đã lưu SĐT đầy đủ (có thể kèm mã nước) → bỏ ô mã nước để không ghép đôi.
+        setNewPbPhoneCode('');
+        setNewPbPhone(String(c.phone).replace(/\s+/g, ''));
+     }
+     if (c.email) setNewPbEmail(c.email);
+     setCustSuggestions([]);
+     setSuggestField(null);
+  };
+
+  const renderCustSuggestions = (field: 'name' | 'email') => (
+     suggestField === field && custSuggestions.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+           <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
+              {custSuggestions.map((c: any) => (
+                 <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleSelectCustomer(c)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-50 transition-colors flex flex-col gap-0.5"
+                 >
+                    <span className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Sparkles size={11} className="text-amber-500" /> {c.fullName || '—'}</span>
+                    <span className="flex items-center gap-3 text-[11px] font-medium text-gray-500">
+                       {c.phone && <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>}
+                       {c.email && <span className="flex items-center gap-1"><Tag size={10} /> {c.email}</span>}
+                    </span>
+                 </button>
+              ))}
+           </div>
+        </div>
+     )
+  );
 
   const handleAddPreBooking = async () => {
      if (!newPbName || !newPbPhone || !newPbDate || !newPbTime) return;
@@ -753,7 +808,15 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                <div className="p-5 space-y-4">
                   <div>
                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Họ tên</label>
-                     <input type="text" value={newPbName} onChange={e => setNewPbName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 font-medium" placeholder="Tên khách hàng" />
+                     <div className="relative">
+                        <input type="text" value={newPbName}
+                           onChange={e => { setNewPbName(e.target.value); setSuggestField('name'); }}
+                           onFocus={() => setSuggestField('name')}
+                           onBlur={() => setTimeout(() => setSuggestField(f => (f === 'name' ? null : f)), 150)}
+                           className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 font-medium" placeholder="Tên khách hàng — gõ để gợi ý hồ sơ" />
+                        {isSearchingCust && suggestField === 'name' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">…</span>}
+                        {renderCustSuggestions('name')}
+                     </div>
                   </div>
                   <div>
                      <div className="flex justify-between items-end mb-1">
@@ -1030,7 +1093,15 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                   </div>
                   <div>
                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email (Tùy chọn)</label>
-                     <input type="email" value={newPbEmail} onChange={e => setNewPbEmail(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 font-medium" placeholder="example@email.com" />
+                     <div className="relative">
+                        <input type="email" value={newPbEmail}
+                           onChange={e => { setNewPbEmail(e.target.value); setSuggestField('email'); }}
+                           onFocus={() => setSuggestField('email')}
+                           onBlur={() => setTimeout(() => setSuggestField(f => (f === 'email' ? null : f)), 150)}
+                           className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 font-medium" placeholder="example@email.com — gõ để gợi ý hồ sơ" />
+                        {isSearchingCust && suggestField === 'email' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">…</span>}
+                        {renderCustSuggestions('email')}
+                     </div>
                   </div>
                   <div className="flex gap-3">
                      <div className="flex-1">
