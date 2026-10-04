@@ -364,6 +364,7 @@ export const t = {
     ownerOrders: 'Đơn của chủ voucher',
     otherOrders: 'Đơn khác đang mở hôm nay',
     orderSearchPlaceholder: 'Tìm mã đơn, tên khách, phòng',
+    refreshOrders: 'Làm mới',
     noOrders: 'Không có đơn nào đang mở.',
     noOrdersHint: 'Tạo đơn cho khách trước, rồi quét lại voucher.',
     applyTo: (label: string) => `Áp dụng ${label}`,

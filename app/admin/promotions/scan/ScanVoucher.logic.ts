@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { promotionApi } from '@/lib/services/promotionApi';
+import { PROMOTION_API_MODE, promotionApi } from '@/lib/services/promotionApi';
+import { supabase } from '@/lib/supabase';
 import { orderEligibility } from '@/lib/promotion-format';
 import type {
   ApplyPromotionResult,
@@ -11,6 +12,10 @@ import { parseManualCode, parseScannedText, type ScanLookup } from '@/components
 
 // 🔧 UI CONFIGURATION
 const ORDER_SEARCH_DEBOUNCE_MS = 300;
+/** New / changed orders arrive in bursts (one booking = several rows): wait, then reload once. */
+const ORDER_REALTIME_DEBOUNCE_MS = 800;
+/** Safety net when a realtime event is missed (flaky mobile network). */
+const ORDER_POLL_MS = 30_000;
 /** Same bounds as the engine (OVERRIDE_REASON_REQUIRED). */
 export const OVERRIDE_NOTE_MIN = 3;
 export const OVERRIDE_NOTE_MAX = 500;
@@ -84,6 +89,7 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
   const applyingRef = useRef(false);
   const lastLookupRef = useRef<ScanLookup | null>(null);
   const ordersReqRef = useRef(0);
+  const [ordersRefreshing, setOrdersRefreshing] = useState(false);
 
   const pass = step.name === 'found' || step.name === 'success' ? step.pass : null;
   const passId = step.name === 'found' ? step.pass.id : null;
@@ -133,13 +139,16 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     else reset();
   };
 
-  const loadOrders = useCallback(async (id: string, search: string) => {
+  /** `silent` = background refresh: keep the current list on screen (no spinner, no error swap). */
+  const loadOrders = useCallback(async (id: string, search: string, silent = false) => {
     const reqId = ++ordersReqRef.current;
-    setOrders({ status: 'loading' });
+    if (silent) setOrdersRefreshing(true);
+    else setOrders({ status: 'loading' });
     const res = await promotionApi.getActiveOrders(id, { search: search.trim() || undefined });
     if (reqId !== ordersReqRef.current) return;
+    setOrdersRefreshing(false);
     if (!res.success) {
-      setOrders({ status: 'error', code: res.error.code });
+      if (!silent) setOrders({ status: 'error', code: res.error.code });
       return;
     }
     setOrders({ status: 'success', orders: res.data });
@@ -158,6 +167,37 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     const timer = setTimeout(() => loadOrders(passId, orderSearch), orderSearch ? ORDER_SEARCH_DEBOUNCE_MS : 0);
     return () => clearTimeout(timer);
   }, [passId, passUsable, orderSearch, loadOrders]);
+
+  // Keep the open-order list live: a customer may book (web / counter) right after the scan.
+  // Realtime on Bookings (same as the dispatch board) + refresh when the tab comes back + slow poll.
+  const liveRef = useRef({ passId, orderSearch });
+  liveRef.current = { passId, orderSearch };
+  useEffect(() => {
+    if (!passId || !passUsable) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const { passId: id, orderSearch: q } = liveRef.current;
+        if (id) loadOrders(id, q, true);
+      }, ORDER_REALTIME_DEBOUNCE_MS);
+    };
+    const onVisible = () => document.visibilityState === 'visible' && refresh();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const poll = setInterval(() => document.visibilityState === 'visible' && refresh(), ORDER_POLL_MS);
+    const channel =
+      PROMOTION_API_MODE === 'http'
+        ? supabase.channel(`promo_scan_orders_${passId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'Bookings' }, refresh).subscribe()
+        : null;
+    return () => {
+      if (timer) clearTimeout(timer);
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [passId, passUsable, loadOrders]);
 
   const selectedOrder = orders.status === 'success' ? orders.orders.find((o) => o.id === selectedOrderId) ?? null : null;
   const selectedNeedsOverride = !!selectedOrder && orderEligibility(selectedOrder) === 'NOT_ELIGIBLE';
@@ -244,6 +284,9 @@ export const useScanVoucher = (initialLookup: ScanLookup | null = null) => {
     retryLookup,
     orders,
     reloadOrders: () => passId && loadOrders(passId, orderSearch),
+    /** Manual "Làm mới": keeps the list on screen while fetching. */
+    refreshOrders: () => passId && loadOrders(passId, orderSearch, true),
+    ordersRefreshing,
     orderSearch,
     setOrderSearch,
     selectedOrderId,

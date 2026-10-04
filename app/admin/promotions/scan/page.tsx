@@ -145,9 +145,20 @@ const ScanVoucher = () => {
               </div>
             ) : (
               <section aria-labelledby="select-order">
-                <h2 id="select-order" className="mb-2 font-semibold text-gray-900">
-                  {t.scan.selectOrder}
-                </h2>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 id="select-order" className="font-semibold text-gray-900">
+                    {t.scan.selectOrder}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={s.refreshOrders}
+                    disabled={s.ordersRefreshing}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-60"
+                  >
+                    <RefreshCw size={16} className={s.ordersRefreshing ? 'animate-spin' : ''} aria-hidden />
+                    {t.scan.refreshOrders}
+                  </button>
+                </div>
                 <label className="relative mb-3 block">
                   <span className="sr-only">{t.scan.orderSearchPlaceholder}</span>
                   <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
