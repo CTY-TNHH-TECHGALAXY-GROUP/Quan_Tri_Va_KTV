@@ -172,7 +172,7 @@ User yêu cầu e-voucher có **địa chỉ, hotline, website** của Oria Spa.
 - **Đề nghị:** RPC lọc khách dùng chính `apply_conditions` (cùng hàm `promo_check_apply` / bộ đánh giá điều kiện), và `qualificationIgnored` chỉ bằng `true` khi chương trình **không có điều kiện nào**.
 - Mock của B đã làm theo hành vi đúng này.
 
-> **Cập nhật 04/10/2026:** lỗi bộ lọc "đạt điều kiện" ở mục 12 **đã được A sửa** (`cee0e017`, migration v11 `20261004150000`). B đã merge vào `feat/promotion-frontend` (`55e476b8`). Logic khớp với mock của B: `qualificationIgnored` chỉ bằng `true` khi chương trình không có điều kiện nào.
+> **Cập nhật 04/10/2026:** lỗi bộ lọc "đạt điều kiện" ở mục 12 **đã được A sửa** (`cee0e017`, migration v11 `20261004150500`). B đã merge vào `feat/promotion-frontend` (`55e476b8`). Logic khớp với mock của B: `qualificationIgnored` chỉ bằng `true` khi chương trình không có điều kiện nào.
 
 ## 13. `promo_menu_catalog` đang lọc mất cả menu Deep Body (04/10/2026)
 

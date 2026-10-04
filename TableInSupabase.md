@@ -165,7 +165,7 @@
 | `min_ktv_required` | integer | Số lượng nhân viên làm tối thiểu cho dịch vụ (Default: 1) |
 | `service_group` | text | Nhóm dịch vụ: `MAIN` (Chính), `ADDON` (Lẻ/Phụ), `COMBO`. Dùng để nội suy số khách. Default: `MAIN` |
 | `strengthConfig` | jsonb NOT NULL | Lực tay cho phép chọn khi đặt: `{"light":true,"medium":true,"strong":true}` (migration `20260924180000_services_strength_config`). Admin bật/tắt ở Menu dịch vụ. |
-| `is_promotion` | boolean NOT NULL | Dịch vụ do **Promotion Engine** tạo (`KM####`, category `PROMOTION`). Default `false`. Không tính vào phút đủ điều kiện khuyến mãi, ẩn khỏi popup Thêm dịch vụ. Migration `20261002120000_promotion_engine`. |
+| `is_promotion` | boolean NOT NULL | Dịch vụ do **Promotion Engine** tạo (`KM####`, category `PROMOTION`). Default `false`. Không tính vào phút đủ điều kiện khuyến mãi, ẩn khỏi popup Thêm dịch vụ. Migration `20261002120500_promotion_engine`. |
 
 ---
 
@@ -922,7 +922,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 
 ---
 
-## NHÓM 9: KHUYẾN MÃI (Promotion Engine) — migration `20261002120000_promotion_engine.sql`
+## NHÓM 9: KHUYẾN MÃI (Promotion Engine) — migration `20261002120500_promotion_engine.sql`
 
 > Mọi quy tắc nằm trong RPC `promo_*` (SECURITY DEFINER, chỉ `service_role`). RLS bật, không policy. Plan: `plans/plan_promotion_engine_backend.md`, API: `plans/promotion_engine_api_contract.md`.
 

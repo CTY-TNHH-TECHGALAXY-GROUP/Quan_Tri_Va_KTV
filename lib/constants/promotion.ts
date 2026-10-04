@@ -1,5 +1,5 @@
 // Promotion Engine enums & error codes. Business rules live in SQL (promo_* RPCs,
-// migration 20261002120000_promotion_engine.sql); these mirror the DB CHECKs.
+// migration 20261002120500_promotion_engine.sql); these mirror the DB CHECKs.
 
 export const PROMOTION_BENEFIT_TYPES = ['FREE_MINUTES', 'PERCENT_DISCOUNT', 'FIXED_DISCOUNT', 'FREE_SERVICE', 'FREE_UPGRADE'] as const;
 /** Benefit types the engine can apply today. FREE_SERVICE / FREE_UPGRADE are reserved. */

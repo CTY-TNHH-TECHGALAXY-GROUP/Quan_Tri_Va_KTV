@@ -22,7 +22,7 @@ import type { CreatePromotionCampaignInput, UpdatePromotionCampaignInput } from 
 
 /**
  * Promotion Engine — thin TS facade over the promo_* RPCs
- * (supabase/migrations/20261002120000_promotion_engine.sql + 20261002180000_promotion_engine_v2.sql).
+ * (supabase/migrations/20261002120500_promotion_engine.sql + 20261002180000_promotion_engine_v2.sql).
  *
  * Every rule (eligibility, paid qualifying minutes, canApply, usage limits,
  * validity, expiry, voucher/QR generation) lives in SQL so the pg_cron
