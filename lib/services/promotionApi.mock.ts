@@ -35,6 +35,7 @@ import type {
   PromotionResult,
   PromotionUsageRecord,
 } from '@/lib/types/promotion-client';
+import { MOCK_MENUS } from './promotionApi.mock.menus';
 
 const MOCK_LATENCY_MS = 350;
 const MOCK_SCAN_BASE = 'https://admin.example/voucher?t=';
@@ -50,24 +51,7 @@ const vnEndOfDay = (date: string) => `${date}T23:59:59+07:00`;
 const vnStartOfDay = (date: string) => `${date}T00:00:00+07:00`;
 const vnToday = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 
-const svc = (id: string, name: string, cat: string) => ({ id, name, category: cat, categoryCodes: [cat.toUpperCase()] });
-const MENUS: PromotionMenu[] = [
-  {
-    code: 'NHP', label: 'Menu VIP', serviceCount: 4,
-    categories: [{ code: 'BODY', label: 'Body', serviceCount: 3 }, { code: 'FACE', label: 'Face', serviceCount: 1 }],
-    services: [svc('NHP0001', 'VIP Aroma 90', 'Body'), svc('NHP0002', 'VIP Hot Stone 120', 'Body'), svc('NHP0003', 'VIP Thai 90', 'Body'), svc('NHP0010', 'VIP Facial 60', 'Face')],
-  },
-  {
-    code: 'NHS', label: 'Menu Standard', serviceCount: 3,
-    categories: [{ code: 'BODY', label: 'Body', serviceCount: 2 }, { code: 'FOOT', label: 'Foot', serviceCount: 1 }],
-    services: [svc('NHS0003', 'Body Massage 60', 'Body'), svc('NHS0007', 'Body Massage 90', 'Body'), svc('NHS0020', 'Foot Massage 60', 'Foot')],
-  },
-  {
-    code: 'NHT', label: 'Menu Deep Body', serviceCount: 1,
-    categories: [{ code: 'DEEP BODY', label: 'Deep Body', serviceCount: 1 }],
-    services: [svc('NHT0001', 'Deep Body 120', 'Deep Body')],
-  },
-];
+const MENUS: PromotionMenu[] = MOCK_MENUS;
 
 /** Mirror of the engine's label resolution (display only). */
 const summaryOf = (ac: PromotionApplyConditions): PromotionConditionsSummary => ({

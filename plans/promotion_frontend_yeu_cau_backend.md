@@ -173,3 +173,23 @@ User yêu cầu e-voucher có **địa chỉ, hotline, website** của Oria Spa.
 - Mock của B đã làm theo hành vi đúng này.
 
 > **Cập nhật 04/10/2026:** lỗi bộ lọc "đạt điều kiện" ở mục 12 **đã được A sửa** (`cee0e017`, migration v11 `20261004150000`). B đã merge vào `feat/promotion-frontend` (`55e476b8`). Logic khớp với mock của B: `qualificationIgnored` chỉ bằng `true` khi chương trình không có điều kiện nào.
+
+## 13. `promo_menu_catalog` đang lọc mất cả menu Deep Body (04/10/2026)
+
+User yêu cầu danh mục menu và nhóm trong form chương trình **lấy đúng theo DB**, không đổi tên hay ẩn theo ý riêng.
+
+**Lỗi:** RPC lọc `COALESCE(s."isActive", true)`. Trên DB thật có 72 dịch vụ `isActive = false` ("Tạm ngưng" ở Admin → Menu dịch vụ), nhưng các dịch vụ này **vẫn được đặt**:
+- **Toàn bộ menu NHT (Deep Body)** đang `isActive = false`, có 27 lượt đặt, lượt gần nhất là 03/10/2026.
+- 30 ngày gần đây: NHT0002, NHS0606, NHS0201 vẫn có đơn.
+- Kết quả: form không có menu Deep Body, và thiếu các nhóm Facial, Hair Wash, Heel Skin Shave.
+
+**Đề nghị:**
+1. Bỏ điều kiện `isActive` khỏi `promo_menu_catalog`, chỉ giữ `is_promotion` / `is_utility`.
+2. Nhãn category trả đúng giá trị DB, không `initcap`. Hiện `VIP_MENU` đang thành `Vip_Menu`.
+3. Migration chứa RPC này **chưa có trên DB**: gọi thử báo PGRST202, và cột `Services.is_promotion` chưa tồn tại.
+
+**Mock của B** (`lib/services/promotionApi.mock.menus.ts`) là snapshot bảng `Services` ngày 04/10/2026, không lọc `isActive`:
+- NHP: 14 dịch vụ.
+- NHS: 128 dịch vụ.
+- NHT: 6 dịch vụ.
+- Nhãn vẫn giữ `initcap` cho đến khi A đổi.
