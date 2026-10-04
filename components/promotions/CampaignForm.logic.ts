@@ -78,6 +78,7 @@ export const toCampaignPayload = (f: CampaignFormInput): CampaignFormInput => ({
       serviceIds: c.serviceIds,
       minMinutes: c.minMinutes || null,
       minOrderAmount: c.minOrderAmount ?? null,
+      sources: c.sources ?? [],
     })),
   },
 });
@@ -137,7 +138,7 @@ export const validateCampaignForm = (f: CampaignFormInput): CampaignFormErrors =
 
 export const MAX_APPLY_CONDITIONS = 10;
 
-export const EMPTY_APPLY_CONDITION: PromotionApplyCondition = { menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null };
+export const EMPTY_APPLY_CONDITION: PromotionApplyCondition = { menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null, sources: [] };
 
 /** Same rules as the engine schema: ≥ 1 criterion per condition, ≤ 10 conditions, positive numbers. */
 export const applyConditionsError = (ac: CampaignFormInput['applyConditions']): string | undefined => {
@@ -145,7 +146,7 @@ export const applyConditionsError = (ac: CampaignFormInput['applyConditions']): 
   if (ac.conditions.length > MAX_APPLY_CONDITIONS) return err.tooManyConditions(MAX_APPLY_CONDITIONS);
   for (let i = 0; i < ac.conditions.length; i++) {
     const c = ac.conditions[i];
-    const hasCriterion = c.menus.length || c.categories.length || c.serviceIds.length || c.minMinutes || c.minOrderAmount != null;
+    const hasCriterion = c.menus.length || c.categories.length || c.serviceIds.length || c.minMinutes || c.minOrderAmount != null || c.sources?.length;
     if (!hasCriterion) return err.emptyCondition(i + 1);
     if (c.minMinutes != null && (!Number.isInteger(c.minMinutes) || c.minMinutes <= 0)) return err.conditionMinutes(i + 1);
     if (c.minOrderAmount != null && (Number.isNaN(c.minOrderAmount) || c.minOrderAmount < 0)) return err.conditionAmount(i + 1);

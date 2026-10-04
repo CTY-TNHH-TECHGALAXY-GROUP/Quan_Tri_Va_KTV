@@ -61,6 +61,9 @@ const OrderSelectCard = ({ order, selected, onSelect, allowOverride = false }: O
                 <badge.Icon size={12} aria-hidden />
                 {badge.label}
               </span>
+              {order.channel && (
+                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">{t.channel[order.channel]}</span>
+              )}
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700">{ORDER_STATUS_LABEL[order.status as keyof typeof ORDER_STATUS_LABEL] ?? order.status}</span>
             </span>
           </div>

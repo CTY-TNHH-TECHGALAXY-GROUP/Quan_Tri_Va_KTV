@@ -568,3 +568,21 @@ Migration `20261004180000_promotion_engine_v12.sql`. Plan: `plans/plan_promotion
 - **Logo:** logo gốc màu kem bị chìm trên nền email, nên khi gửi được đổi màu sang nâu `#4A2C14` bằng `sharp` (giữ độ trong suốt), đính kèm CID `promotion-brand-logo`. Lỗi thì hiện tên thương hiệu bằng chữ nâu.
 - **Người gửi:** `"OriaSpa" <SMTP_FROM_EMAIL>`, đổi được bằng env `PROMOTION_EMAIL_FROM_NAME`. Reply-To là `SMTP_REPLY_TO`, mặc định `cskh@techgalaxygroup.com`. Chân thư mời khách trả lời email (không còn câu "không trả lời").
 - **`GET /api/admin/promotions/passes/:id/email-preview?lang=`** (quyền `pass.issue`): trả `{ lang, from, replyTo, to, subject, html }`, ảnh nhúng sẵn dạng data URI. **Không gửi và không đổi trạng thái email.**
+
+
+## v13 — Điều kiện theo nguồn đơn (05/10/2026)
+
+**Hàm phân nguồn:** `promo_booking_channel(booking_id)`, chỉ cấp quyền `service_role`. Trả về **một** nguồn, xét theo thứ tự:
+1. `WEB_BOOKING`: `id` / `billCode` bắt đầu `WB-`, hoặc `source` thuộc `WEB_BOOKING`, `WebBooking`, `HOME_BOOKING`.
+2. `ADVANCE_BOOKING`: `id` bắt đầu `BK-`, ghi chú `WEB_ADVANCE_BOOKING`, hoặc `source` dạng `*_BOOKING`.
+3. `WALK_IN`: các đơn còn lại.
+
+**Request:** mỗi điều kiện trong `applyConditions.conditions[]` có thêm `sources?: ('WEB_BOOKING'|'WALK_IN'|'ADVANCE_BOOKING')[]`. Rỗng nghĩa là mọi nguồn. Điều kiện chỉ có `sources` vẫn hợp lệ.
+
+**Response:**
+- `conditionsSummary.conditions[].sources`.
+- `conditionResult.channel` và `results[].sourceMet`.
+- Đơn ở màn quét có thêm `channel`.
+- `unmetReasons`: "Cần đơn Web Booking — đơn này là Khách tại quầy". Quầy vẫn áp ngoại lệ được.
+
+**Câu điều kiện 5 ngôn ngữ:** `formatPromotionConditions` thêm cụm nguồn đơn (`ORDER_CHANNEL_I18N`), ví dụ "Web Booking orders · Menu VIP · 90 min or longer".

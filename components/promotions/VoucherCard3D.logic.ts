@@ -55,6 +55,7 @@ export const summarizeConditions = (
       services: c.serviceIds.map(svcName),
       minMinutes: c.minMinutes,
       minOrderAmount: c.minOrderAmount,
+      sources: c.sources ?? [],
     })),
   };
 };

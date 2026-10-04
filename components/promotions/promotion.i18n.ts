@@ -27,6 +27,8 @@ export const t = {
     usages: 'Lịch sử áp dụng',
     scan: 'Quét voucher',
   },
+  /** Staff labels for the order source (engine promo_booking_channel). */
+  channel: { WEB_BOOKING: 'Web Booking', WALK_IN: 'Khách tại quầy', ADVANCE_BOOKING: 'Đặt trước' } as Record<'WEB_BOOKING' | 'WALK_IN' | 'ADVANCE_BOOKING', string>,
   conditions: {
     title: 'Điều kiện áp dụng',
     match: 'Cách ghép điều kiện',
@@ -35,6 +37,7 @@ export const t = {
     none: 'Chưa có điều kiện — voucher áp được cho mọi đơn.',
     item: (i: number) => `Điều kiện ${i}`,
     remove: (i: number) => `Xoá điều kiện ${i}`,
+    sources: 'Nguồn đơn (một trong — bỏ trống = mọi nguồn)',
     menus: 'Menu (một trong)',
     categories: 'Nhóm dịch vụ (một trong)',
     services: 'Dịch vụ cụ thể (một trong)',
