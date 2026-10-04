@@ -48,7 +48,8 @@ const applyCondition = z.object({
     serviceIds: z.array(z.string().trim().min(1)).max(200).optional(),
     minMinutes: z.number().int().min(1).max(1440).nullable().optional(),
     minOrderAmount: z.number().nonnegative().nullable().optional(),
-}).strict().refine(c => (c.menus?.length || c.categories?.length || c.serviceIds?.length || c.minMinutes || c.minOrderAmount != null), {
+    sources: z.array(z.enum(['WEB_BOOKING', 'WALK_IN', 'ADVANCE_BOOKING'])).max(3).optional(),
+}).strict().refine(c => (c.menus?.length || c.categories?.length || c.serviceIds?.length || c.minMinutes || c.minOrderAmount != null || c.sources?.length), {
     message: 'Mỗi điều kiện cần ít nhất một tiêu chí',
 });
 const applyConditions = z.object({
