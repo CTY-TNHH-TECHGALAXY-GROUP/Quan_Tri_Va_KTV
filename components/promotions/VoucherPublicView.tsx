@@ -1,10 +1,8 @@
-'use client';
-
 import React from 'react';
 import { AlertTriangle, Globe, MapPin, Phone } from 'lucide-react';
 import type { PromotionEmailLang, PromotionPassEffectiveStatus } from '@/lib/types/promotion-client';
 import { formatPromoDate } from '@/lib/promotion-format';
-import VoucherCard3D from './VoucherCard3D';
+import VoucherCardLocalized from './VoucherCardLocalized';
 import { voucherCardFromPublic, type PublicVoucher } from './VoucherCard3D.logic';
 import { VOUCHER_CARD_LABELS } from './voucher-card.i18n';
 import { voucherBrush } from './voucher.fonts';
@@ -99,7 +97,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
         ) : (
           <>
             <h1 className={`${voucherBrush.className} mb-6 mt-8 text-center text-4xl leading-none text-[#2B1A0E]`}>{strings.title}</h1>
-            <VoucherCard3D data={voucherCardFromPublic(view.voucher)} labels={VOUCHER_CARD_LABELS[lang]} brandName={contact.brandName} contact={contact} />
+            <VoucherCardLocalized data={voucherCardFromPublic(view.voucher)} lang={lang} brandName={contact.brandName} contact={contact} />
 
             <dl className="mt-8 w-full divide-y divide-[#F0D9B5] rounded-2xl border border-[#E9C99A] bg-[#FFF8EC]/90 text-sm shadow-sm">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
