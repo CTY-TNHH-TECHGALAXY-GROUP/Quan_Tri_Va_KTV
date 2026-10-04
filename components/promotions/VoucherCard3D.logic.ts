@@ -3,12 +3,15 @@ import type {
   PromotionBenefit,
   PromotionCampaign,
   PromotionConditionsSummary,
+  PromotionEmailLang,
   PromotionMenu,
   PromotionPass,
   PromotionPassEffectiveStatus,
   PromotionPassWithQr,
+  PromotionTextI18n,
   PromotionUsageRule,
 } from '@/lib/types/promotion-client';
+import { pickPromotionText } from '@/lib/promotion-voucher.i18n';
 
 /**
  * What the voucher card renders. Built either from a real pass (staff checks
@@ -58,8 +61,9 @@ export const summarizeConditions = (
 
 const prefixOf = (code: string) => code.split('-')[0] ?? code;
 
-export const voucherCardFromPass = (pass: PromotionPass | PromotionPassWithQr): VoucherCardData => ({
-  campaignName: pass.campaign.name,
+// Campaign name follows the card language: translation if entered, else English (v12).
+export const voucherCardFromPass = (pass: PromotionPass | PromotionPassWithQr, lang: PromotionEmailLang = 'en'): VoucherCardData => ({
+  campaignName: pickPromotionText(pass.campaign.name, pass.campaign.nameI18n, lang),
   benefit: pass.benefit,
   usage: pass.usage,
   validUntil: pass.validUntil,
@@ -72,8 +76,8 @@ export const voucherCardFromPass = (pass: PromotionPass | PromotionPassWithQr): 
   conditionsSummary: pass.conditionsSummary,
 });
 
-export const voucherCardFromCampaign = (c: PromotionCampaign): VoucherCardData => ({
-  campaignName: c.name,
+export const voucherCardFromCampaign = (c: PromotionCampaign, lang: PromotionEmailLang = 'en'): VoucherCardData => ({
+  campaignName: pickPromotionText(c.name, c.nameI18n, lang),
   benefit: c.benefit,
   usage: { ...c.usage, usedCount: null },
   validUntil: c.validUntil,
@@ -87,8 +91,8 @@ export const voucherCardFromCampaign = (c: PromotionCampaign): VoucherCardData =
 });
 
 /** Live preview while the admin is filling the campaign form. */
-export const voucherCardFromForm = (f: CampaignFormInput, menus?: PromotionMenu[] | null): VoucherCardData => ({
-  campaignName: f.name.trim(),
+export const voucherCardFromForm = (f: CampaignFormInput, menus?: PromotionMenu[] | null, lang: PromotionEmailLang = 'en'): VoucherCardData => ({
+  campaignName: pickPromotionText(f.name.trim(), f.nameI18n, lang),
   benefit: { type: f.benefitType, value: f.benefitValue ?? 0 },
   usage: {
     type: f.usageType,
@@ -109,6 +113,7 @@ export const voucherCardFromForm = (f: CampaignFormInput, menus?: PromotionMenu[
 /** Public e-voucher (/voucher?t=) — mirrors Agent A `PromotionPublicVoucherDto`. No phone / email / orders. */
 export interface PublicVoucher {
   campaignName: string;
+  campaignNameI18n?: PromotionTextI18n;
   benefit: PromotionBenefit;
   usage: { type: PromotionUsageRule['type']; limit: number | null; maxPerOrder: number; usedCount: number };
   validFrom: string;
@@ -126,8 +131,8 @@ export interface PublicVoucher {
   qrPayload: string | null;
 }
 
-export const voucherCardFromPublic = (v: PublicVoucher): VoucherCardData => ({
-  campaignName: v.campaignName,
+export const voucherCardFromPublic = (v: PublicVoucher, lang: PromotionEmailLang = 'en'): VoucherCardData => ({
+  campaignName: pickPromotionText(v.campaignName, v.campaignNameI18n, lang),
   benefit: v.benefit,
   usage: v.usage,
   validUntil: v.validUntil,

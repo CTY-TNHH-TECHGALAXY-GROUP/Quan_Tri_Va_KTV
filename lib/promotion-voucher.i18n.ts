@@ -1,7 +1,7 @@
-import type { PromotionConditionsSummary, PromotionEmailLang } from '@/lib/types/promotion';
+import type { PromotionConditionsSummary, PromotionEmailLang, PromotionTextI18n } from '@/lib/types/promotion';
 
 // Copy for the PUBLIC e-voucher page /voucher?t= (customer side), 5 languages.
-// Language: ?lang= → Accept-Language → vi. UI belongs to the frontend (VoucherCard3D);
+// Language: ?lang= → en. UI belongs to the frontend (VoucherCard3D);
 // this file only fixes the customer-facing wording so page and email say the same thing.
 
 export const PROMOTION_VOUCHER_LANGS: PromotionEmailLang[] = ['vi', 'en', 'cn', 'jp', 'kr'];
@@ -62,16 +62,22 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
     },
 };
 
-/** ?lang= first, then the first supported Accept-Language tag, else vi. */
-export function pickVoucherLang(langParam: string | null | undefined, acceptLanguage: string | null | undefined): PromotionEmailLang {
+/**
+ * ?lang= (the customer tapped VI/EN/…) first, otherwise English (user 04/10/2026).
+ * The phone language is deliberately ignored: vouchers are forwarded to friends,
+ * so one fixed default is easier for the counter to explain.
+ */
+export function pickVoucherLang(langParam: string | null | undefined): PromotionEmailLang {
     const map: Record<string, PromotionEmailLang> = { vi: 'vi', vn: 'vi', en: 'en', zh: 'cn', cn: 'cn', ja: 'jp', jp: 'jp', ko: 'kr', kr: 'kr' };
-    const fromParam = map[String(langParam || '').toLowerCase()];
-    if (fromParam) return fromParam;
-    for (const part of String(acceptLanguage || '').split(',')) {
-        const tag = part.split(';')[0].trim().toLowerCase().split('-')[0];
-        if (map[tag]) return map[tag];
-    }
-    return 'vi';
+    return map[String(langParam || '').toLowerCase()] ?? 'en';
+}
+
+/** Campaign text in `lang`: translation when entered, else the English base text. */
+export function pickPromotionText(base: string, i18n: PromotionTextI18n | null | undefined, lang: PromotionEmailLang): string;
+export function pickPromotionText(base: string | null, i18n: PromotionTextI18n | null | undefined, lang: PromotionEmailLang): string | null;
+export function pickPromotionText(base: string | null, i18n: PromotionTextI18n | null | undefined, lang: PromotionEmailLang): string | null {
+    const t = lang === 'en' ? '' : (i18n?.[lang] ?? '').trim();
+    return t || base;
 }
 
 // ─── Conditions wording (one formatter for email + /voucher page) ───────────

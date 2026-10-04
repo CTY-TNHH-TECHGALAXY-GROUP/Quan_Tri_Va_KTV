@@ -1,7 +1,8 @@
 import 'server-only';
 import { sendPromotionEmail } from '@/lib/promotion-email';
 import { PromotionEngineService, buildPromotionQrPayload, hasAbsoluteVoucherBaseUrl, mapPass } from '@/lib/services/PromotionEngineService';
-import type { PromotionConditionsSummary, PromotionEmailLang, PromotionEmailOutcome, PromotionPassDto, PromotionResult } from '@/lib/types/promotion';
+import { pickPromotionText } from '@/lib/promotion-voucher.i18n';
+import type { PromotionConditionsSummary, PromotionEmailLang, PromotionEmailOutcome, PromotionPassDto, PromotionResult, PromotionTextI18n } from '@/lib/types/promotion';
 
 // E-voucher email delivery. The outbox state lives on CustomerPromotionPasses
 // (email_status / reminder_status); promo_claim_* make sure one pass is never
@@ -9,11 +10,12 @@ import type { PromotionConditionsSummary, PromotionEmailLang, PromotionEmailOutc
 
 const LANGS: PromotionEmailLang[] = ['vi', 'en', 'cn', 'jp', 'kr'];
 const asLang = (v: string | null | undefined): PromotionEmailLang =>
-    (LANGS as string[]).includes(String(v)) ? (v as PromotionEmailLang) : 'vi';
+    (LANGS as string[]).includes(String(v)) ? (v as PromotionEmailLang) : 'en';
 
 type Claim = {
     passId: string; kind: 'ISSUE' | 'REMINDER'; to: string; lang: string;
     pass: PromotionPassDto & { qrToken?: string | null }; campaignDescription: string | null;
+    campaignDescriptionI18n?: PromotionTextI18n | null;
     conditionsSummary?: PromotionConditionsSummary | null;
 };
 
@@ -23,12 +25,15 @@ async function deliver(claim: Claim, reminderDays: number): Promise<PromotionEma
         if (!qrPayload) throw new Error('Missing QR token');
         // Never mail a QR / button that points nowhere: the link must carry the app domain.
         if (!hasAbsoluteVoucherBaseUrl()) throw new Error('PROMOTION_SCAN_BASE_URL chưa cấu hình (VD https://oria-spa.vercel.app) — không gửi e-voucher');
+        const lang = asLang(claim.lang);
+        const pass = mapPass(claim.pass, false);
         await sendPromotionEmail(claim.to, {
             kind: claim.kind,
-            lang: asLang(claim.lang),
-            pass: mapPass(claim.pass, false),
+            lang,
+            // Campaign text in the email language; missing translation → English (v12).
+            pass: { ...pass, campaign: { ...pass.campaign, name: pickPromotionText(pass.campaign.name, pass.campaign.nameI18n, lang) } },
             qrPayload,
-            campaignDescription: claim.campaignDescription,
+            campaignDescription: pickPromotionText(claim.campaignDescription, claim.campaignDescriptionI18n, lang),
             conditionsSummary: claim.conditionsSummary,
             reminderDays,
         });

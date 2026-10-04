@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import VoucherPublicView from '@/components/promotions/VoucherPublicView';
 import { resolveVoucherView } from '@/lib/promotion-voucher-view';
-import { PROMOTION_VOUCHER_LANGS, PROMOTION_VOUCHER_PAGE_I18N, pickVoucherLang } from '@/lib/promotion-voucher.i18n';
+import { VOUCHER_LANG_ORDER } from '@/components/promotions/voucher-card.i18n';
+import { PROMOTION_VOUCHER_PAGE_I18N, pickVoucherLang } from '@/lib/promotion-voucher.i18n';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,14 +24,14 @@ const VoucherPage = async ({ searchParams }: { searchParams: SearchParams }) => 
   const view = await resolveVoucherView(params.t);
   if (view.mode === 'STAFF') redirect(view.redirectTo);
 
-  const lang = pickVoucherLang(first(params.lang), (await headers()).get('accept-language'));
+  const lang = pickVoucherLang(first(params.lang));
   return (
     <VoucherPublicView
       view={view}
       strings={PROMOTION_VOUCHER_PAGE_I18N[lang]}
       lang={lang}
       token={first(params.t)}
-      langs={PROMOTION_VOUCHER_LANGS}
+      langs={VOUCHER_LANG_ORDER}
     />
   );
 };

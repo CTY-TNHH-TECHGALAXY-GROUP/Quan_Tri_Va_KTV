@@ -93,7 +93,7 @@ interface VoucherCard3DProps {
  * the customer's screen / email. Tilts with the pointer, taps to flip to the QR.
  * Renders server data only; the template mode masks the code (no code is made here).
  */
-const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.voucher.brand, contact = null, showHint = true, className = '' }: VoucherCard3DProps) => {
+const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.en, brandName = t.voucher.brand, contact = null, showHint = true, className = '' }: VoucherCard3DProps) => {
   const L = labels;
   const hasContact = !!(contact && (contact.hotline || contact.address || contact.websiteUrl));
   const reduceMotion = useReducedMotion();

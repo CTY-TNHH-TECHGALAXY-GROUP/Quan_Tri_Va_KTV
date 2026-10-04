@@ -26,6 +26,9 @@ export type PromotionValidityType = typeof PROMOTION_VALIDITY_TYPES[number];
 export type PromotionEmailStatus = typeof PROMOTION_EMAIL_STATUSES[number];
 export type PromotionEmailLang = 'vi' | 'en' | 'cn' | 'jp' | 'kr';
 
+/** Translations of an English base text; missing language → the English base (v12). */
+export type PromotionTextI18n = Partial<Record<Exclude<PromotionEmailLang, 'en'>, string>>;
+
 export interface PromotionError {
     code: string;
     message: string;
@@ -95,8 +98,11 @@ export interface PromotionConditionResult {
 export interface PromotionCampaignDto {
     id: string;
     campaignCode: string;
+    /** English (base) text. */
     name: string;
     description: string | null;
+    nameI18n: PromotionTextI18n;
+    descriptionI18n: PromotionTextI18n;
     benefit: { type: PromotionBenefitType; value: number; config: PromotionBenefitConfig; serviceId: string | null };
     usage: { type: PromotionUsageType; limit: number | null; maxPerOrder: number; maxPerCustomer: number | null };
     qualification: { type: PromotionQualificationType; value: number | null; config: PromotionQualificationConfig };
@@ -128,7 +134,7 @@ export interface PromotionPassDto {
     status: PromotionPassStatus;
     effectiveStatus: PromotionPassEffectiveStatus;
     statusReason: string | null;
-    campaign: { id: string; name: string; campaignCode: string; status: PromotionCampaignStatus };
+    campaign: { id: string; name: string; nameI18n?: PromotionTextI18n; campaignCode: string; status: PromotionCampaignStatus };
     /** Voucher OWNER. The voucher may be used on other customers' orders. */
     customer: PromotionCustomerRef;
     benefit: { type: PromotionBenefitType; value: number; serviceId: string | null };
@@ -280,6 +286,7 @@ export interface PromotionMenuDto {
 /** Public e-voucher card (VoucherCardData-compatible) for /voucher?t=. */
 export interface PromotionPublicVoucherDto {
     campaignName: string;
+    campaignNameI18n: PromotionTextI18n;
     benefit: { type: PromotionBenefitType; value: number };
     usage: { type: PromotionUsageType; limit: number | null; maxPerOrder: number; usedCount: number };
     validFrom: IsoDateTime;

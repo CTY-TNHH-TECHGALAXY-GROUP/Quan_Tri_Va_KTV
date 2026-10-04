@@ -8,7 +8,7 @@ import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import CustomerCandidatesPanel from '@/components/promotions/CustomerCandidatesPanel';
-import VoucherCard3D from '@/components/promotions/VoucherCard3D';
+import VoucherCardSwitchable from '@/components/promotions/VoucherCardSwitchable';
 import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromCampaign } from '@/components/promotions/VoucherCard3D.logic';
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
@@ -78,7 +78,7 @@ const CampaignDetailPage = () => {
             <div className="space-y-5">
             <section className="flex flex-col items-center gap-3 rounded-3xl border border-gray-100 bg-gradient-to-b from-white to-indigo-50/40 p-5 shadow-sm sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
-              <VoucherCard3D data={voucherCardFromCampaign(c)} contact={spaContact} />
+              <VoucherCardSwitchable build={(l) => voucherCardFromCampaign(c, l)} contact={spaContact} />
               <p className="text-center text-xs text-gray-500">{t.voucher.previewHint}</p>
             </section>
             <div className="space-y-5">

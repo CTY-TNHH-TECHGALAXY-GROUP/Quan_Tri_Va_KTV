@@ -193,3 +193,21 @@ User yêu cầu danh mục menu và nhóm trong form chương trình **lấy đ�
 - NHS: 128 dịch vụ.
 - NHT: 6 dịch vụ.
 - Nhãn vẫn giữ `initcap` cho đến khi A đổi.
+
+
+## 14. B đã làm thay phần backend v12 — A cần review (04/10/2026)
+
+User muốn e-voucher dùng tiếng Anh trước và admin nhập được 5 ngôn ngữ. B đã làm migration `20261004180000_promotion_engine_v12.sql` và đã chạy trên Supabase TEST.
+
+**Hàm SQL sửa lại**, mỗi hàm dựng từ bản mới nhất của A, chỉ thêm dòng:
+- `promo_create_campaign`, `promo_update_campaign`
+- `promo_campaign_json`, `promo_pass_json`, `promo_public_voucher_by_token`, `promo_claim_pass_email`
+- `promo_conditions_summary`, `promo_scope_labels`, `promo_menu_catalog` (dùng `nameEN` trước)
+- `promo_customer_language` (mặc định `en`)
+
+**File TS sửa:**
+- `promotion.schema.ts`, `PromotionEngineService.ts` (`CAMPAIGN_KEY_MAP`)
+- `PromotionEmailService.ts`: chọn tên/mô tả theo ngôn ngữ email, `asLang` mặc định `en`
+- `promotion-voucher.i18n.ts`: `pickVoucherLang` mặc định `en`, thêm `pickPromotionText`
+
+Chi tiết xem hợp đồng API mục v12. **A sửa tiếp hàm nào trong danh sách trên thì phải dựng từ bản v12**, nếu không sẽ mất phần đa ngôn ngữ.

@@ -15,7 +15,7 @@ import { formatPromoDate, formatUsedCount, promotionErrorMessage } from '@/lib/p
 import type { PassGroup, PassListFilter, PromotionOverviewStats, PromotionPass, PromotionPassWithQr } from '@/lib/types/promotion-client';
 import { CalendarClock, ChevronLeft } from 'lucide-react';
 import { SelectControl } from '@/components/promotions/FormControls';
-import VoucherCard3D from '@/components/promotions/VoucherCard3D';
+import VoucherCardSwitchable from '@/components/promotions/VoucherCardSwitchable';
 import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromPass } from '@/components/promotions/VoucherCard3D.logic';
 
@@ -240,7 +240,7 @@ const PassList = () => {
             <PromotionError message={promotionErrorMessage(preview.state.code)} onRetry={preview.reload} />
           ) : preview.state.data ? (
             <div className="flex flex-col items-center gap-4">
-              <VoucherCard3D key={preview.state.data.id} data={voucherCardFromPass(preview.state.data)} contact={spaContact} />
+              <VoucherCardSwitchable key={preview.state.data.id} build={(l) => voucherCardFromPass(preview.state.data!, l)} contact={spaContact} />
               <div className="w-full text-sm text-gray-600">
                 <p className="font-medium text-gray-900">{preview.state.data.customer.name}</p>
                 <p>{[preview.state.data.customer.phone, preview.state.data.customer.email].filter(Boolean).join(' · ')}</p>

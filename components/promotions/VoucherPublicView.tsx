@@ -4,12 +4,11 @@ import type { PromotionEmailLang, PromotionPassEffectiveStatus } from '@/lib/typ
 import { formatPromoDate } from '@/lib/promotion-format';
 import VoucherCardLocalized from './VoucherCardLocalized';
 import { voucherCardFromPublic, type PublicVoucher } from './VoucherCard3D.logic';
-import { VOUCHER_CARD_LABELS } from './voucher-card.i18n';
+import { VOUCHER_CARD_LABELS, VOUCHER_LANG_NAMES } from './voucher-card.i18n';
 import { voucherBrush } from './voucher.fonts';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 
 // 🔧 UI CONFIGURATION
-const LANG_NAMES: Record<PromotionEmailLang, string> = { vi: 'VI', en: 'EN', cn: '中文', jp: '日本語', kr: '한국어' };
 
 /** Spa contact block (Agent A `VoucherContact`, from the email config). */
 export interface VoucherContact {
@@ -82,7 +81,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
                 aria-current={l === lang ? 'true' : undefined}
                 className={`flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-xs font-semibold ${l === lang ? 'bg-[#2B1A0E] text-[#F7D9A6]' : 'text-[#4A2C14] hover:bg-[#FFF4E0]'}`}
               >
-                {LANG_NAMES[l]}
+                {VOUCHER_LANG_NAMES[l]}
               </a>
             ))}
           </nav>
@@ -97,7 +96,7 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
         ) : (
           <>
             <h1 className={`${voucherBrush.className} mb-6 mt-8 text-center text-4xl leading-none text-[#2B1A0E]`}>{strings.title}</h1>
-            <VoucherCardLocalized data={voucherCardFromPublic(view.voucher)} lang={lang} brandName={contact.brandName} contact={contact} />
+            <VoucherCardLocalized data={voucherCardFromPublic(view.voucher, lang)} lang={lang} brandName={contact.brandName} contact={contact} />
 
             <dl className="mt-8 w-full divide-y divide-[#F0D9B5] rounded-2xl border border-[#E9C99A] bg-[#FFF8EC]/90 text-sm shadow-sm">
               <div className="flex items-center justify-between gap-3 px-4 py-3">

@@ -10,8 +10,8 @@
  */
 
 // Apply conditions are owned by the engine (Agent A, contract v7 §2.2): reuse its types, never redefine.
-import type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionMenuDto } from '@/lib/types/promotion';
-export type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary };
+import type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionMenuDto, PromotionTextI18n } from '@/lib/types/promotion';
+export type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionTextI18n };
 
 export type PromotionBenefitType =
   | 'FREE_MINUTES'
@@ -84,8 +84,11 @@ export interface PromotionApplicableMenus {
 export interface PromotionCampaign {
   id: string;
   campaignCode: string;
+  /** English (base) text; translations in nameI18n / descriptionI18n (v12). */
   name: string;
   description: string | null;
+  nameI18n?: PromotionTextI18n;
+  descriptionI18n?: PromotionTextI18n;
   benefit: PromotionBenefit & { config?: PromotionBenefitConfig; serviceId?: string | null };
   usage: Omit<PromotionUsageRule, 'usedCount'> & { maxPerCustomer?: number | null };
   qualification: {
@@ -113,9 +116,13 @@ export interface PromotionCampaign {
 
 /** Body of POST / PATCH campaign. Strict on the server: never add unknown keys. */
 export interface CampaignFormInput {
+  /** English — required; shown when a language has no translation. */
   name: string;
   campaignCode: string;
   description: string;
+  /** Optional translations (vi / cn / jp / kr). */
+  nameI18n: PromotionTextI18n;
+  descriptionI18n: PromotionTextI18n;
   benefitType: PromotionBenefitType;
   benefitValue: number | null;
   benefitConfig: PromotionBenefitConfig | null;
@@ -156,7 +163,7 @@ export interface PromotionPass {
   status: PromotionPassStatus;
   effectiveStatus: PromotionPassEffectiveStatus;
   statusReason: string | null;
-  campaign: { id: string; name: string; campaignCode: string; status?: PromotionCampaignStatus };
+  campaign: { id: string; name: string; nameI18n?: PromotionTextI18n; campaignCode: string; status?: PromotionCampaignStatus };
   /** Voucher OWNER. The voucher may be used on other customers' orders. */
   customer: PromotionCustomerRef;
   benefit: PromotionBenefit;
