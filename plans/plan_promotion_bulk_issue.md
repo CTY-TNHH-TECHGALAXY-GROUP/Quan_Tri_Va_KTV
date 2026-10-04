@@ -1,7 +1,7 @@
 # Plan — Lọc hồ sơ khách và phát e-voucher hàng loạt (Agent A)
 
 > Mức 2: RPC mới, đọc dữ liệu khách có SĐT/email, ghi pass hàng loạt, gửi email.
-> Trạng thái: **ĐÃ TRIỂN KHAI** (03/10/2026), migration `20261003090000_promotion_engine_v4.sql`. Đã test trên local và Supabase test. Chưa commit.
+> Trạng thái: **ĐÃ TRIỂN KHAI** (03/10/2026), migration `20261003090500_promotion_engine_v4.sql`. Đã test trên local và Supabase test. Chưa commit.
 > Ngày: 02/10/2026. Nhánh: `feat/promotion-engine`.
 > Đầu vào: yêu cầu số 4 của B. Contract phía B: `lib/types/promotion-client.ts` (`CustomerCandidateFilter`, `CustomerCandidate`, `CustomerCandidatePage`, `BulkIssueItem`, `BulkIssueResult`), `lib/services/promotionApi.ts` (`getCustomerCandidates`, `bulkIssue`, `BULK_ISSUE_MAX = 50`).
 

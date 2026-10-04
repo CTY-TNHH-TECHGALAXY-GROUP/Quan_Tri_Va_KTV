@@ -118,6 +118,6 @@ Thêm cột `PromotionCampaigns.apply_conditions jsonb`:
 ## 9. Sửa lỗi v11 (04/10/2026, B báo ở mục 12)
 
 - **Lỗi:** `promo_customer_candidates` vẫn xét "có điều kiện" bằng `qualification_type`. Campaign tạo bằng `applyConditions` (mặc định `MANUAL_ASSIGNMENT`) bị `qualificationIgnored = true`, nên ô lọc "Có đơn đạt điều kiện" không lọc gì.
-- **Sửa:** migration `20261004150000_promotion_engine_v11.sql`, xét "có điều kiện" bằng `apply_conditions` có ít nhất 1 điều kiện.
+- **Sửa:** migration `20261004150500_promotion_engine_v11.sql`, xét "có điều kiện" bằng `apply_conditions` có ít nhất 1 điều kiện.
 - **Rà soát:** không còn chỗ nào khác quyết định theo `qualification_type`. Trường này chỉ còn để hiển thị và để chuyển cấu hình cũ.
 - **Test:** thêm 2 case. Đã xác nhận case mới **trượt trên hàm cũ** và đạt sau khi sửa. QA 216 case trên local + Supabase test, cả `TZ=UTC`.

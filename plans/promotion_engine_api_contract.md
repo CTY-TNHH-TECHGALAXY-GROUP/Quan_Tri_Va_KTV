@@ -1,7 +1,7 @@
 # Promotion Engine — API contract v9 (cho Agent B / Frontend, wrb-noi-bo, Web Booking)
 
 > Backend: nhánh `feat/promotion-engine`.
-> Migration: `20261002120000_promotion_engine.sql` + `20261002180000_promotion_engine_v2.sql` + `20261002200000_promotion_engine_v3.sql`.
+> Migration: `20261002120500_promotion_engine.sql` + `20261002180000_promotion_engine_v2.sql` + `20261002200000_promotion_engine_v3.sql`.
 > **v9:** **phân quyền theo thao tác** (mục 0.1) — mọi API khuyến mãi bắt đăng nhập; prefix voucher tự sinh từ mã chương trình khi bỏ trống.
 > **v8:** quầy **áp ngoại lệ** cho đơn chưa đủ điều kiện, bắt buộc ghi lý do (mục 4.1).
 > **v7:** **điều kiện áp dụng** nhiều tiêu chí (mục 2.2), engine **kiểm cả số phút lúc áp**, voucher trả kèm `conditionsSummary`. Trả lời mục 9 của B.

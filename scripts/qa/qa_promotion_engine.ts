@@ -1,5 +1,5 @@
 /**
- * QA — Promotion Engine (migration 20261002120000_promotion_engine.sql).
+ * QA — Promotion Engine (migration 20261002120500_promotion_engine.sql).
  *
  * Runs the promo_* RPCs directly against a Postgres that already has the
  * migration applied, with fixtures in real DB shape. Writes rows prefixed
