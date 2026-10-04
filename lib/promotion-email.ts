@@ -22,6 +22,10 @@ const CARD_BG = '#1f1b16';
 /** Sender shown in the inbox (user 04/10/2026). Override with PROMOTION_EMAIL_FROM_NAME. */
 const FROM_NAME = process.env.PROMOTION_EMAIL_FROM_NAME || 'OriaSpa';
 const REPLY_TO = process.env.SMTP_REPLY_TO || 'cskh@techgalaxygroup.com';
+const SMTP_CONNECT_TIMEOUT_MS = 15_000;
+const SMTP_RETRY_DELAY_MS = 1_000;
+/** Network blips worth one immediate retry (seen: ETIMEDOUT to smtp.zoho.com from Vercel, 04/10/2026). */
+const TRANSIENT_SMTP = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|ESOCKET|ECONNECTION|EAI_AGAIN|Greeting never received/i;
 
 /** Renders the e-voucher QR as PNG locally — the token never goes to a third-party QR service. */
 export async function buildPromotionQrPng(payload: string): Promise<Buffer> {
@@ -139,6 +143,9 @@ const getTransporter = () => {
             port: Number(process.env.SMTP_PORT) || 465,
             secure: Number(process.env.SMTP_PORT) === 465,
             auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+            // Fail fast so a retry still fits in the function time budget (default is 2 min).
+            connectionTimeout: SMTP_CONNECT_TIMEOUT_MS,
+            greetingTimeout: SMTP_CONNECT_TIMEOUT_MS,
         });
     }
     return transporter;
@@ -148,7 +155,16 @@ const getTransporter = () => {
 export async function sendPromotionEmail(to: string, input: PromotionEmailInput) {
     if (!process.env.SMTP_HOST || !process.env.SMTP_FROM_EMAIL) throw new Error('SMTP is not configured');
     const { message } = await buildPromotionEmail(to, input);
-    await getTransporter().sendMail(message);
+    try {
+        await getTransporter().sendMail(message);
+    } catch (e) {
+        const err = e as { code?: string; message?: string };
+        if (!TRANSIENT_SMTP.test(`${err.code ?? ''} ${err.message ?? ''}`)) throw e;
+        console.warn(`[PromotionEmail] SMTP ${err.code ?? ''} ${err.message ?? ''} — retrying once`);
+        transporter = null; // fresh connection
+        await new Promise((r) => setTimeout(r, SMTP_RETRY_DELAY_MS));
+        await getTransporter().sendMail(message);
+    }
 }
 
 /**
