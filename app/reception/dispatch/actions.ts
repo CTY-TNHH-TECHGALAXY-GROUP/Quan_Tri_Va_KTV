@@ -16,6 +16,7 @@ import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-chec
 import { BookingModificationService } from '@/lib/services/BookingModificationService';
 import { recalculateEstimatedEndTime } from '@/lib/time-helper';
 import { isPlaceholderStaffId, isNewExternalKtvToken, externalNameOfToken, externalKtvNameProblem, findExternalKtvByName } from '@/lib/constants/staff.constants';
+import { ensureTurnQueueRowForSequentialB, renameMetadataKey } from '@/lib/dispatch/sequential-b-prep';
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
@@ -1070,7 +1071,28 @@ export async function handoffSequentialKtv(input: {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
-        const { data, error } = await applyDispatchEdit(supabase, input.bookingId, 'ASSIGN_B', input);
+
+        // B có thể là KTV ngoài (05/10/2026) — làm đúng hai bước form điều phối vẫn làm:
+        // (1) tên mới `NEW_EXT:<TÊN>` → mã `EXT_` thật (kiểm tên ở máy chủ, dùng lại dòng cũ);
+        // (2) chưa có dòng sổ tua ngày đó → chèn `waiting` cuối hàng, vì RPC đòi dòng này.
+        let toKtvId = input.toKtvId;
+        let toKtvName: string | null = null;
+        let metadata = input.metadata;
+        if (isNewExternalKtvToken(toKtvId)) {
+            const draft = { staffAssignments: [{ ktvId: toKtvId, ktvName: externalNameOfToken(toKtvId) }] };
+            const extError = await resolveNewExternalKtvIds(supabase, draft);
+            if (extError) throw new Error(extError);
+            const resolvedId = draft.staffAssignments[0].ktvId;
+            if (!resolvedId || isNewExternalKtvToken(resolvedId)) throw new Error('Không tạo được mã cho KTV ngoài');
+            metadata = renameMetadataKey(metadata, toKtvId, resolvedId);
+            toKtvName = draft.staffAssignments[0].ktvName || null;
+            toKtvId = resolvedId;
+        }
+        const prep = await ensureTurnQueueRowForSequentialB(supabase, { bookingId: input.bookingId, itemId: input.itemId, ktvId: toKtvId });
+        if (!prep.ok) throw new Error(prep.error);
+
+        const payload = { ...input, toKtvId, metadata };
+        const { data, error } = await applyDispatchEdit(supabase, input.bookingId, 'ASSIGN_B', payload);
         if (error) throw error;
         if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return {
             success: false, code: 'OVERLAP_CONFIRM_REQUIRED' as const,
@@ -1078,13 +1100,17 @@ export async function handoffSequentialKtv(input: {
             referenceKind: data.referenceKind as 'actual' | 'planned',
         };
         if (!data?.success) throw new Error(data?.error || 'DB không xác nhận gán B');
-        const notified = await createNotification({
+        // KTV ngoài không có tài khoản → không có app để nhận thông báo; quầy báo trực tiếp, không coi là lỗi.
+        const notified = isPlaceholderStaffId(toKtvId) ? true : await createNotification({
             bookingId: input.bookingId,
-            employeeId: input.toKtvId,
+            employeeId: toKtvId,
             type: 'KTV_NEW_ORDER',
             message: 'Bạn được phân công lượt B của dịch vụ nối tiếp. Vui lòng kiểm tra ứng dụng.',
         });
-        return { success: true, warnings: notified ? [] : ['Đã lưu phân công B, chưa tạo được thông báo. Báo trực tiếp cho nhân viên.'] };
+        return {
+            success: true, toKtvId, toKtvName,
+            warnings: notified ? [] : ['Đã lưu phân công B, chưa tạo được thông báo. Báo trực tiếp cho nhân viên.'],
+        };
     } catch (error: any) {
         return { success: false, error: error.message || 'Không thể bàn giao nối tiếp' };
     }

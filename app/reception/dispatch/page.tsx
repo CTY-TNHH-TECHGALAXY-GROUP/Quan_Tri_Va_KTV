@@ -18,6 +18,8 @@ import { ConfirmActionModal } from './_components/ConfirmActionModal';
 import { buildCheckinConfirmMessage } from './CheckinConfirm.i18n';
 import type { CheckinGateKtv } from '@/lib/attendance/dispatchCheckinGate';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
+import { KtvPickerCombo } from './_components/KtvPickerCombo';
+import { isPlaceholderStaffId, isNewExternalKtvToken, ktvDisplayLabel } from '@/lib/constants/staff.constants';
 import { PhotoViewerModal } from './_components/PhotoViewerModal';
 import { QrJourneyModal } from './_components/QrJourneyModal';
 import { StartServiceModal } from './_components/StartServiceModal';
@@ -971,7 +973,9 @@ if (!hasPermission('dispatch_board')) {
     const segment = item?.staffList.find(row => row.ktvId === fromKtvId)?.segments.find(seg => Number(seg.sequenceSlot) === 1 || seg.actualStartTime);
     if (!item || !segment) { alert('Ca đã thay đổi. Vui lòng tải lại đơn.'); return; }
     const existingB = item.staffList.flatMap(row => row.segments).find(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true);
-    const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || turns.some(t => t.employee_id === toKtvId && isVisibleInKtvPicker(t))) ? toKtvId : '';
+    // KTV ngoài (EXT_/C_) và tên mới (NEW_EXT:) không có sổ tua nhưng vẫn chọn được làm B (05/10/2026).
+    const selectedB = toKtvId && (toKtvId === (existingB as any)?.ktvId || isPlaceholderStaffId(toKtvId) || isNewExternalKtvToken(toKtvId)
+      || turns.some(t => t.employee_id === toKtvId && isVisibleInKtvPicker(t))) ? toKtvId : '';
     let existingStart = existingB ? Date.parse(`${selectedDate}T${existingB.startTime.slice(0, 5)}:00+07:00`) : NaN;
     if (existingB && existingB.startTime.slice(0, 5) < segment.startTime.slice(0, 5)) existingStart += 86400000;
     const reference = (existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment));
@@ -1000,6 +1004,11 @@ if (!hasPermission('dispatch_board')) {
     liveHandoffBusyRef.current = true;
     try { await submitLiveHandoff(liveHandoff); } finally { liveHandoffBusyRef.current = false; }
   };
+
+  /** Nhãn KTV cho toast: KTV ngoài / loại C hiện tên, còn lại hiện mã. */
+  const bLabel = (id: string) => ktvDisplayLabel(
+    turns.find(t => t.employee_id === id)?.staff?.work_type ?? staffs.find(st => st.id === id)?.work_type,
+    id, turns.find(t => t.employee_id === id)?.staff?.full_name ?? staffs.find(st => st.id === id)?.full_name);
 
   const submitLiveHandoff = async (liveHandoff: LiveHandoffState) => {
     setLiveHandoff(prev => prev ? { ...prev, saving: true } : null);
@@ -1067,9 +1076,9 @@ if (!hasPermission('dispatch_board')) {
         if (recovered === null) alert('Không thể bàn giao: ' + res.error);
         return;
       }
-      addToast(tConfirm.assignBAlreadySaved(liveHandoff.toKtvId), 'success');
+      addToast(tConfirm.assignBAlreadySaved(bLabel(liveHandoff.toKtvId)), 'success');
     } else {
-      addToast(tConfirm.assignBSaved(liveHandoff.toKtvId), 'success');
+      addToast(tConfirm.assignBSaved(res.toKtvName || bLabel(res.toKtvId || liveHandoff.toKtvId)), 'success');
       if (res.warnings?.length) alert(res.warnings.join('\n'));
     }
     setLiveHandoff(null);
@@ -3650,13 +3659,10 @@ Vẫn kết thúc sớm?`)) return;
             <h2 className="text-lg font-bold">Chọn nhân viên làm tiếp</h2>
             <p className="text-sm text-slate-600">Nhân viên A: {liveHandoff.fromKtvId}. Chọn người làm tiếp và chỉnh giờ dự kiến bên dưới.</p>
             <label className="block text-sm font-semibold">KTV B
-              <select className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.toKtvId}
-                onChange={e => setLiveHandoff(prev => prev ? { ...prev, toKtvId: e.target.value } : null)}>
-                <option value="">Chọn KTV đang rảnh</option>
-                {turns.filter(t => t.employee_id !== liveHandoff.fromKtvId &&
-                  ((t.status === 'waiting' && isVisibleInKtvPicker(t)) || t.employee_id === liveHandoff.toKtvId))
-                  .map(t => <option key={t.employee_id} value={t.employee_id}>{t.employee_id} — {t.staff?.full_name || ''}</option>)}
-              </select>
+              {/* Cùng luật ô chọn A: sổ tua đang rảnh, KTV ngoài không tài khoản, gõ tên mới. */}
+              <KtvPickerCombo ariaLabel="KTV B" className="mt-1" turns={turns} staffs={staffs} requireWaiting
+                value={liveHandoff.toKtvId} excludeIds={[liveHandoff.fromKtvId]} placeholder="Chọn KTV đang rảnh hoặc gõ tên KTV ngoài"
+                onPick={picked => setLiveHandoff(prev => prev ? { ...prev, toKtvId: picked } : null)} />
             </label>
             <label className="block text-sm font-semibold">B bắt đầu dự kiến
               <input type="time" className="mt-1 w-full rounded-lg border p-2" value={liveHandoff.plannedStartAt.slice(11, 16)}

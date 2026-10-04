@@ -13,6 +13,8 @@ import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalK
 import { t as tCheckin } from '../CheckinConfirm.i18n';
 import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
+import { KtvPickerCombo } from './KtvPickerCombo';
+import { pickKtvByExactInput } from './KtvPickerCombo.logic';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { remainingHandoffMinutes } from '@/lib/dispatch-handoff';
 
@@ -87,22 +89,7 @@ const getCurrentTime = () => {
 
 const genId = () => Math.random().toString(36).substring(2, 9);
 
-/**
- * Gõ ĐÚNG mã hoặc ĐÚNG tên rồi Enter (chốt 14/09/2026): ưu tiên người đang có trong
- * sổ tua; không có (hoặc đang tắt) thì tra toàn bộ KTV đang làm — kể cả CHƯA điểm
- * danh. Gõ một phần thì dropdown vẫn chỉ hiện người đã có trong sổ tua.
- * `processDispatch` sẽ hỏi xác nhận "chưa điểm danh" khi gửi đơn.
- */
-const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: StaffData })[], staffs: StaffData[]): string | null => {
-  const same = (v?: string | null) => (v || '').toLowerCase().trim() === term;
-  const hit = turns.find(t => t.status !== 'off' && (same(t.employee_id) || same(t.staff?.full_name)));
-  if (hit) return hit.employee_id;
-  const staff = staffs.find(st => st.status === 'ĐANG LÀM' && !isPlaceholderStaffId(st.id) && (same(st.id) || same(st.full_name)));
-  if (staff) return staff.id;
-  // KTV ngoài không tài khoản đã có (15/09/2026), so không dấu — kể cả ĐÃ NGHỈ:
-  // gửi đơn sẽ bật lại, không sinh thêm dòng trùng tên.
-  return findExternalKtvByName(term, staffs)?.id ?? null;
-};
+// `pickKtvByExactInput` chuyển sang KtvPickerCombo.logic.ts (05/10/2026) để ô chọn B dùng chung.
 
 /** Loại KTV để hiện nhãn: sổ tua → danh sách KTV → mã placeholder cũ coi như loại C. */
 const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffData }) | undefined, staffs: StaffData[]) =>
@@ -1679,19 +1666,19 @@ const ServiceGroupCard = ({
                         className="rounded border border-gray-200 p-1 text-gray-500 hover:bg-white disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"><ChevronDown size={14} /></button>
                     </div>}
                     {replacedB && <span className="text-[9px] font-bold text-rose-600">Đã đổi · chưa làm</span>}
-                    {state.confirmedSequential && idx === 1 && !timeLocked && <select aria-label="Nhân viên B" value={ktvId}
-                      onChange={e => {
-                        const ids = [...state.selectedKtvIds]; ids[idx] = e.target.value;
+                    {/* Đổi B: cùng luật ô chọn A — sổ tua, KTV ngoài, gõ tên mới (token NEW_EXT: → processDispatch đổi mã). */}
+                    {state.confirmedSequential && idx === 1 && !timeLocked && <KtvPickerCombo ariaLabel="Nhân viên B" className="w-[160px]"
+                      turns={availableTurns} staffs={staffs} value={ktvId} placeholder="Đổi nhân viên B..."
+                      excludeIds={state.selectedKtvIds.filter(id => id !== ktvId)}
+                      onPick={picked => {
+                        if (picked === ktvId) return;
+                        const ids = [...state.selectedKtvIds]; ids[idx] = picked;
                         const names = [...(state.ktvServiceNames || [])];
                         const notes = [...(state.ktvNotes || [])];
-                        names[idx] = groupItems[0]?.options?.serviceNamesForKtvs?.[e.target.value] || '';
-                        notes[idx] = groupItems[0]?.options?.notesForKtvs?.[e.target.value] || '';
+                        names[idx] = groupItems[0]?.options?.serviceNamesForKtvs?.[picked] || '';
+                        notes[idx] = groupItems[0]?.options?.notesForKtvs?.[picked] || '';
                         onUpdate({ selectedKtvIds: ids, ktvServiceNames: names, ktvNotes: notes });
-                      }} className="max-w-[140px] rounded-lg border border-indigo-200 bg-white p-1.5 text-xs text-indigo-600">
-                      <option value={ktvId}>{name}</option>
-                      {availableTurns.filter(isVisibleInKtvPicker).filter(turn => !state.selectedKtvIds.includes(turn.employee_id)).map(turn =>
-                        <option key={turn.employee_id} value={turn.employee_id}>{turn.employee_id} · {turn.staff?.full_name || turn.employee_id}{turn.status === 'working' ? ' · Đang làm' : turn.status === 'assigned' ? ' · Đã xếp lịch' : ''}</option>)}
-                    </select>}
+                      }} />}
                     <button type="button" title={timeLocked ? 'Nhân viên đã bắt đầu/ca đã đóng; dùng Dừng hoặc Đổi KTV để giữ giờ thực tế' : 'Bỏ nhân viên khỏi bản nháp'}
                       aria-label={`Bỏ nhân viên hàng ${idx + 1} khỏi bản nháp`} disabled={timeLocked || savingRow !== null}
                       className="rounded-lg border border-rose-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500"
@@ -1914,12 +1901,9 @@ const ServiceGroupCard = ({
                       try { await onCloseEmptySlotB(groupItems[0].id); } finally { setClosingSlotB(false); }
                     }}>×</button>}
                 </div>
-                {<select aria-label="Chọn nhân viên B" value="" onChange={e => { if (e.target.value) addKtv(e.target.value); }}
-                  className="w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs font-bold">
-                  <option value="">+ Chọn nhân viên B (có thể chọn sau)</option>
-                  {availableTurns.filter(isVisibleInKtvPicker).filter(turn => !state.selectedKtvIds.includes(turn.employee_id)).map(turn =>
-                    <option key={turn.employee_id} value={turn.employee_id}>{turn.employee_id} · {turn.staff?.full_name || turn.employee_id}</option>)}
-                </select>}
+                <KtvPickerCombo ariaLabel="Chọn nhân viên B" turns={availableTurns} staffs={staffs}
+                  excludeIds={state.selectedKtvIds} placeholder="+ Chọn nhân viên B hoặc gõ tên KTV ngoài (có thể chọn sau)"
+                  onPick={picked => addKtv(picked)} />
                 <p className="text-[10px] text-gray-500">{remainingMinutes > 0 ? `Dự kiến ${state.ktvEndTimes?.[0] || 'sau A'} · ${remainingMinutes} phút còn lại` : 'Nhập thời lượng B khi chọn nhân viên.'} · Cùng phòng/giường A</p>
               </div>}
             </div>
