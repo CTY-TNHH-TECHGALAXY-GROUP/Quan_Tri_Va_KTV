@@ -41,6 +41,11 @@ const nextConfig: NextConfig = {
   // nodemailer require() cac module con luc chay; de webpack bundle se sinh loi
   // "Cannot find module" khi goi sendMail. Danh dau external de Next require native.
   serverExternalPackages: ['nodemailer'],
+  // The e-voucher email paints the card with fonts read from assets/fonts at runtime.
+  outputFileTracingIncludes: {
+    '/api/admin/promotions/**': ['./assets/fonts/**'],
+    '/api/cron/promotion-emails': ['./assets/fonts/**'],
+  },
 };
 
 export default nextConfig;

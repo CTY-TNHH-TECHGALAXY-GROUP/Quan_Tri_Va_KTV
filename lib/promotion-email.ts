@@ -2,6 +2,7 @@ import 'server-only';
 import QRCode from 'qrcode';
 import nodemailer from 'nodemailer';
 import { getEmailConfig, type EmailConfig } from '@/lib/email-config';
+import { CARD_DISPLAY_WIDTH, getBrownLogoPng, renderPromotionEmailCardPng } from '@/lib/promotion-email-card';
 import { PROMOTION_EMAIL_I18N } from '@/lib/promotion-email.i18n';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import type { PromotionConditionsSummary, PromotionEmailLang, PromotionPassDto } from '@/lib/types/promotion';
@@ -10,8 +11,17 @@ import type { PromotionConditionsSummary, PromotionEmailLang, PromotionPassDto }
 const QR_SIZE_PX = 480;
 const QR_DISPLAY_PX = 132;
 const QR_CID = 'promotion-voucher-qr';
-const ACCENT = '#C9A96E';
+const CARD_CID = 'promotion-voucher-card';
+const LOGO_CID = 'promotion-brand-logo';
+// Oria Spa e-voucher palette (same as the 3D card): brown ink, amber, dark band.
+const ACCENT = '#B4600F';
+const INK = '#4A2C14';
+const BUTTON_BG = '#24160D';
+const BUTTON_TEXT = '#F4A64A';
 const CARD_BG = '#1f1b16';
+/** Sender shown in the inbox (user 04/10/2026). Override with PROMOTION_EMAIL_FROM_NAME. */
+const FROM_NAME = process.env.PROMOTION_EMAIL_FROM_NAME || 'OriaSpa';
+const REPLY_TO = process.env.SMTP_REPLY_TO || 'cskh@techgalaxygroup.com';
 
 /** Renders the e-voucher QR as PNG locally — the token never goes to a third-party QR service. */
 export async function buildPromotionQrPng(payload: string): Promise<Buffer> {
@@ -38,7 +48,10 @@ export interface PromotionEmailInput {
     conditionsSummary?: PromotionConditionsSummary | null;
 }
 
-export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfig) {
+/** Which inline images were attached; missing ones fall back to HTML / text. */
+export interface PromotionEmailImages { card: boolean; logo: boolean }
+
+export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfig, images: PromotionEmailImages = { card: false, logo: false }) {
     const t = PROMOTION_EMAIL_I18N[input.lang] ?? PROMOTION_EMAIL_I18N.vi;
     const { pass } = input;
     const brand = cfg.email_brand_name || 'Spa';
@@ -53,13 +66,22 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
         : t.subjectReminder(brand, input.reminderDays ?? 3);
     const intro = input.kind === 'ISSUE' ? t.introIssue : t.introReminder(vnDate(pass.validUntil));
 
-    const header = cfg.email_logo_url
-        ? `<img src="${esc(cfg.email_logo_url)}" alt="${esc(brand)}" style="max-height:52px;max-width:200px">`
-        : `<div style="font-size:22px;letter-spacing:4px;color:${ACCENT};font-weight:700">${esc(brand)}</div>`;
+    // The stored logo is cream (for dark headers): use the brown re-coloured copy, else brown text.
+    const header = images.logo
+        ? `<img src="cid:${LOGO_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px">`
+        : `<div style="font-size:22px;letter-spacing:4px;color:${INK};font-weight:700">${esc(brand)}</div>`;
 
-    // Static rendition of the 3D e-voucher (email clients cannot run the 3D card):
-    // main panel + perforated stub holding the QR. The button opens the live 3D card.
-    const card = `
+    // Painted e-voucher (PNG of the 3D card front) + a large QR for the counter.
+    const cardImage = `
+<img src="cid:${CARD_CID}" alt="${esc(`${pass.campaign.name} — ${benefit} — ${pass.voucherCode}`)}" width="${CARD_DISPLAY_WIDTH}" style="display:block;width:100%;max-width:${CARD_DISPLAY_WIDTH}px;height:auto;margin:0 auto;border-radius:18px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-collapse:separate;border:1px solid #F0D9B5;border-radius:16px;background:#FFF8EC">
+<tr><td align="center" style="padding:16px">
+  <img src="cid:${QR_CID}" alt="${esc(t.qrAlt)}" width="${QR_DISPLAY_PX}" height="${QR_DISPLAY_PX}" style="display:block;width:${QR_DISPLAY_PX}px;height:auto">
+  <div style="font-family:monospace;font-size:14px;letter-spacing:2px;color:${INK};margin-top:8px;font-weight:700">${esc(pass.voucherCode)}</div>
+</td></tr></table>`;
+
+    // Fallback when the card image could not be drawn: static HTML rendition of the card.
+    const card = images.card ? cardImage : `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-radius:18px;overflow:hidden;background:${CARD_BG};box-shadow:0 10px 30px rgba(0,0,0,.12)">
 <tr>
 <td valign="top" style="padding:22px 20px;color:#f7f1e6;width:64%">
@@ -77,7 +99,7 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
 </td>
 </tr></table>`;
 
-    const html = `<!doctype html><html><body style="margin:0;background:#f6f3ee;font-family:Helvetica,Arial,sans-serif">
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f3ee;font-family:Helvetica,Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3ee;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden">
 <tr><td align="center" style="padding:28px 24px 8px">${header}</td></tr>
@@ -86,7 +108,7 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
 <tr><td style="padding:20px 20px 4px">${card}</td></tr>
 ${input.campaignDescription ? `<tr><td style="padding:10px 28px 0;font-size:13px;color:#6b6b6b">${esc(input.campaignDescription)}</td></tr>` : ''}
 <tr><td align="center" style="padding:20px 28px 4px">
-<a href="${esc(input.qrPayload)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px">${esc(t.viewVoucher)}</a>
+<a href="${esc(input.qrPayload)}" style="display:inline-block;background:${BUTTON_BG};color:${BUTTON_TEXT};text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px">${esc(t.viewVoucher)}</a>
 </td></tr>
 <tr><td style="padding:16px 28px 0;color:#2b2b2b;font-size:14px;line-height:1.6">
 <div style="font-weight:700;margin-bottom:4px">${esc(t.howToTitle)}</div>
@@ -125,16 +147,46 @@ const getTransporter = () => {
 /** Renders and sends one e-voucher email. Throws on SMTP failure. */
 export async function sendPromotionEmail(to: string, input: PromotionEmailInput) {
     if (!process.env.SMTP_HOST || !process.env.SMTP_FROM_EMAIL) throw new Error('SMTP is not configured');
+    const { message } = await buildPromotionEmail(to, input);
+    await getTransporter().sendMail(message);
+}
+
+/**
+ * Full message (also used by the admin preview). The card image and brown logo are
+ * best-effort: if either fails the email still goes out with the HTML card / text brand.
+ */
+export async function buildPromotionEmail(to: string, input: PromotionEmailInput) {
     const cfg = await getEmailConfig();
-    const { subject, html, text } = renderPromotionEmail(input, cfg);
-    const qr = await buildPromotionQrPng(input.qrPayload);
-    await getTransporter().sendMail({
-        from: `"${process.env.SMTP_FROM_NAME || cfg.email_brand_name}" <${process.env.SMTP_FROM_EMAIL}>`,
-        replyTo: process.env.SMTP_REPLY_TO,
-        to,
-        subject,
-        html,
-        text,
-        attachments: [{ filename: `${input.pass.voucherCode}.png`, content: qr, cid: QR_CID, contentType: 'image/png' }],
-    });
+    const [qr, cardPng, logoPng] = await Promise.all([
+        buildPromotionQrPng(input.qrPayload),
+        renderPromotionEmailCardPng({
+            lang: input.lang,
+            pass: input.pass,
+            qrPayload: input.qrPayload,
+            conditionsSummary: input.conditionsSummary,
+            brandName: cfg.email_brand_name || 'Spa',
+            contact: { hotline: cfg.email_hotline, websiteUrl: cfg.email_website_url, address: cfg.email_branch_address || cfg.email_branch_name },
+        }).catch((e) => {
+            console.error('[PromotionEmail] card image failed, sending HTML card:', (e as Error)?.message);
+            return null;
+        }),
+        cfg.email_logo_url ? getBrownLogoPng(cfg.email_logo_url) : Promise.resolve(null),
+    ]);
+    const { subject, html, text } = renderPromotionEmail(input, cfg, { card: !!cardPng, logo: !!logoPng });
+    const attachments = [
+        { filename: `${input.pass.voucherCode}-qr.png`, content: qr, cid: QR_CID, contentType: 'image/png' },
+        ...(cardPng ? [{ filename: `${input.pass.voucherCode}.png`, content: cardPng, cid: CARD_CID, contentType: 'image/png' }] : []),
+        ...(logoPng ? [{ filename: 'logo.png', content: logoPng, cid: LOGO_CID, contentType: 'image/png' }] : []),
+    ];
+    return {
+        message: {
+            from: `"${FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+            replyTo: REPLY_TO,
+            to,
+            subject,
+            html,
+            text,
+            attachments,
+        },
+    };
 }

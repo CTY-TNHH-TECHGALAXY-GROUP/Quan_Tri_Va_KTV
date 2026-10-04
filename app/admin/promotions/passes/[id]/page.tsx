@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Loader2, Mail } from 'lucide-react';
+import { Eye, Loader2, Mail } from 'lucide-react';
+import EmailPreviewDialog from '@/components/promotions/EmailPreviewDialog';
 import { useParams } from 'next/navigation';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
@@ -47,6 +48,7 @@ const PassDetailPage = () => {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
   const cancel = useCancelUsage(() => {
     usages.reload();
     pass.reload();
@@ -148,6 +150,16 @@ const PassDetailPage = () => {
                       {t.pass.resendEmail}
                     </button>
                   )}
+                  {access.issue && (
+                    <button
+                      type="button"
+                      onClick={() => setEmailPreviewOpen(true)}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700"
+                    >
+                      <Eye size={16} aria-hidden />
+                      {t.pass.previewEmail}
+                    </button>
+                  )}
                   {(access.issue ? ACTIONS_BY_STATUS[p.status] : []).map((a) => (
                     <button
                       key={a}
@@ -225,6 +237,7 @@ const PassDetailPage = () => {
         </div>
       ) : null}
 
+      {emailPreviewOpen && <EmailPreviewDialog passId={id} onClose={() => setEmailPreviewOpen(false)} />}
       <ConfirmDialog
         open={pending !== null}
         title={pending ? ACTION_COPY[pending].label : ''}

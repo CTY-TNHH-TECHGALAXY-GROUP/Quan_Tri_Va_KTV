@@ -1,5 +1,5 @@
 import 'server-only';
-import { sendPromotionEmail } from '@/lib/promotion-email';
+import { buildPromotionEmail, sendPromotionEmail } from '@/lib/promotion-email';
 import { PromotionEngineService, buildPromotionQrPayload, hasAbsoluteVoucherBaseUrl, mapPass } from '@/lib/services/PromotionEngineService';
 import { pickPromotionText } from '@/lib/promotion-voucher.i18n';
 import type { PromotionConditionsSummary, PromotionEmailLang, PromotionEmailOutcome, PromotionPassDto, PromotionResult, PromotionTextI18n } from '@/lib/types/promotion';
@@ -47,7 +47,44 @@ async function deliver(claim: Claim, reminderDays: number): Promise<PromotionEma
     }
 }
 
+/** What the admin preview shows: the exact message the customer would receive. */
+export interface PromotionEmailPreview {
+    lang: PromotionEmailLang;
+    from: string;
+    replyTo: string;
+    to: string | null;
+    subject: string;
+    /** Inline images (cid:) replaced by data URIs so the page can show it in an iframe. */
+    html: string;
+}
+
 export const PromotionEmailService = {
+    /** Render the e-voucher email for one pass without sending or touching the outbox state. */
+    async previewPassEmail(passId: string, langParam?: string | null): Promise<PromotionResult<PromotionEmailPreview>> {
+        const passRes = await PromotionEngineService.getPass(passId);
+        if (!passRes.success) return passRes as PromotionResult<PromotionEmailPreview>;
+        const pass = passRes.data as PromotionPassDto & { qrPayload?: string | null };
+        if (!pass.qrPayload) return { success: false, error: { code: 'PROMOTION_NOT_FOUND', message: 'Voucher không còn QR' } };
+        const campaign = await PromotionEngineService.getCampaign(pass.campaign.id);
+        const lang = asLang(langParam || pass.emailLang || 'en');
+        const { message } = await buildPromotionEmail(pass.customer.email ?? '', {
+            kind: 'ISSUE',
+            lang,
+            pass: { ...pass, campaign: { ...pass.campaign, name: pickPromotionText(pass.campaign.name, pass.campaign.nameI18n, lang) } },
+            qrPayload: pass.qrPayload,
+            campaignDescription: campaign.success ? pickPromotionText(campaign.data.description, campaign.data.descriptionI18n, lang) : null,
+            conditionsSummary: pass.conditionsSummary,
+        });
+        let html = message.html;
+        for (const a of message.attachments) {
+            html = html.split(`cid:${a.cid}`).join(`data:${a.contentType};base64,${a.content.toString('base64')}`);
+        }
+        return {
+            success: true,
+            data: { lang, from: message.from, replyTo: message.replyTo, to: pass.customer.email ?? null, subject: message.subject, html },
+        };
+    },
+
     /** Admin issue / "resend": send the e-voucher to the email on the customer profile now. */
     async sendPassEmail(passId: string, opts: { force?: boolean; kind?: 'ISSUE' | 'REMINDER' } = {}): Promise<PromotionResult<PromotionEmailOutcome>> {
         const kind = opts.kind ?? 'ISSUE';

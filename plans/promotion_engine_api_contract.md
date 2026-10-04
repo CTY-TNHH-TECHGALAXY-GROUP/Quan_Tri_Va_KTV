@@ -560,3 +560,11 @@ Migration `20261004180000_promotion_engine_v12.sql`. Plan: `plans/plan_promotion
 - Thẻ trong admin: mở bằng EN, có nút chuyển 5 ngôn ngữ.
 
 **Tên dịch vụ** trong câu điều kiện, nhãn phạm vi và danh mục menu: lấy `nameEN` trước, rồi mới đến `nameVN`.
+
+## v12.1 — Email e-voucher dùng đúng thiết kế thẻ (04/10/2026)
+
+- **Ảnh thẻ:** email nhúng ảnh PNG mặt trước thẻ e-voucher (CID `promotion-voucher-card`), vẽ bằng `lib/promotion-email-card.tsx` (`next/og`), cùng màu, font Mansalva, hình minh hoạ và nhãn 5 ngôn ngữ như `VoucherCard3D`. Dưới ảnh là QR lớn kèm mã voucher. Vẽ ảnh lỗi thì email vẫn gửi bằng thẻ HTML cũ.
+- **Font:** nằm trong `assets/fonts` (OFL). `next.config.ts` → `outputFileTracingIncludes` đóng gói font cho `/api/admin/promotions/**` và `/api/cron/promotion-emails`. Chữ CJK được `next/og` tự tải từ Google Fonts khi vẽ.
+- **Logo:** logo gốc màu kem bị chìm trên nền email, nên khi gửi được đổi màu sang nâu `#4A2C14` bằng `sharp` (giữ độ trong suốt), đính kèm CID `promotion-brand-logo`. Lỗi thì hiện tên thương hiệu bằng chữ nâu.
+- **Người gửi:** `"OriaSpa" <SMTP_FROM_EMAIL>`, đổi được bằng env `PROMOTION_EMAIL_FROM_NAME`. Reply-To là `SMTP_REPLY_TO`, mặc định `cskh@techgalaxygroup.com`. Chân thư mời khách trả lời email (không còn câu "không trả lời").
+- **`GET /api/admin/promotions/passes/:id/email-preview?lang=`** (quyền `pass.issue`): trả `{ lang, from, replyTo, to, subject, html }`, ảnh nhúng sẵn dạng data URI. **Không gửi và không đổi trạng thái email.**
