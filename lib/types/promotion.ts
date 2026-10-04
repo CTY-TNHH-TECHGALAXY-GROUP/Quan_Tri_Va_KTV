@@ -62,6 +62,10 @@ export interface PromotionCustomerRef {
     email: string | null;
 }
 
+/** Where an order came from — engine promo_booking_channel (v13): WB- → web, BK- → advance, else walk-in. */
+export type PromotionOrderChannel = 'WEB_BOOKING' | 'WALK_IN' | 'ADVANCE_BOOKING';
+export const PROMOTION_ORDER_CHANNELS: PromotionOrderChannel[] = ['WEB_BOOKING', 'WALK_IN', 'ADVANCE_BOOKING'];
+
 export interface PromotionApplyCondition {
     /** Menu codes (service id prefixes), "one of". */
     menus: string[];
@@ -73,6 +77,8 @@ export interface PromotionApplyCondition {
     minMinutes: number | null;
     /** Paid amount of the order's initial services. */
     minOrderAmount: number | null;
+    /** Order sources allowed, "one of"; empty / missing = any source (v13). */
+    sources?: PromotionOrderChannel[];
 }
 
 export interface PromotionApplyConditions {
@@ -83,13 +89,14 @@ export interface PromotionApplyConditions {
 /** Labels resolved for display (menu names, category labels, service names). */
 export interface PromotionConditionsSummary {
     match: 'ALL' | 'ANY';
-    conditions: { menus: string[]; categories: string[]; services: string[]; minMinutes: number | null; minOrderAmount: number | null }[];
+    conditions: { menus: string[]; categories: string[]; services: string[]; minMinutes: number | null; minOrderAmount: number | null; sources?: PromotionOrderChannel[] }[];
 }
 
 export interface PromotionConditionResult {
     met: boolean;
     match: 'ALL' | 'ANY';
     orderAmount: number;
+    channel?: PromotionOrderChannel;
     matchedItemIds: string[];
     matchedAmount: number;
     results: { index: number; met: boolean; matchedItemIds: string[]; bestMinutes: number; minMinutes: number | null; minOrderAmount: number | null; amountMet: boolean }[];
@@ -195,6 +202,8 @@ export interface PromotionBookingDto {
 
 export interface PromotionOrderCandidateDto extends PromotionBookingDto {
     isPassOwnerOrder: boolean;
+    /** Order source (v13). */
+    channel?: PromotionOrderChannel;
     canApply: boolean;
     blockedReasonCode: string | null;
     blockedReason: string | null;
