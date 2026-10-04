@@ -265,6 +265,22 @@ export const normalizeStrength = (s: string | null | undefined): string => {
 };
 
 /**
+ * Promotion item added by the Promotion Engine when a voucher is applied
+ * (service KM####, options.isPromotion). It extends / discounts the main service
+ * and must never become the parent of a merged group (its name would replace the service name).
+ */
+export function isPromotionItem(item: any): boolean {
+    if (!item) return false;
+    let opts = item.options;
+    if (typeof opts === 'string') {
+        try { opts = JSON.parse(opts); } catch { opts = null; }
+    }
+    if (opts?.isPromotion === true) return true;
+    if (item.is_promotion === true || item.isPromotion === true || item.Services?.is_promotion === true) return true;
+    return /^KM\d+$/i.test(String(item.serviceId || ''));
+}
+
+/**
  * Kiểm tra xem một service item có phải là tiện ích (như Phòng riêng) hay không.
  * Cơ chế: Dựa vào cờ is_utility trong DB, fallback về các check string cũ nếu dữ liệu cũ chưa migrate.
  */

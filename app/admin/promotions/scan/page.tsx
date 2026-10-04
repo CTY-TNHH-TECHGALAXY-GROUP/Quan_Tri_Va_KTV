@@ -27,7 +27,12 @@ const ScanVoucher = () => {
   const s = useScanVoucher(lookupFromUrl(params));
   const access = usePromotionAccess();
   // Fixed target (not history.back): a QR deep link opens this page with no history to return to.
-  const goBack = () => router.push(access.scanBack);
+  // Opened from a voucher page ("Áp vào đơn đang mở") → go back there; camera deep link → default.
+  const goBack = () => {
+    const fromApp = typeof document !== 'undefined' && document.referrer.startsWith(window.location.origin);
+    if (fromApp && window.history.length > 1) router.back();
+    else router.push(access.scanBack);
+  };
 
   return (
       <div className="mx-auto max-w-md pb-28">
