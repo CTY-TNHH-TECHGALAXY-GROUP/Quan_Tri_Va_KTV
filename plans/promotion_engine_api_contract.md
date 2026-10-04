@@ -534,3 +534,29 @@ const { data } = await supabaseAdmin.rpc('promo_public_vouchers_by_email', { p_e
 
 > `ORDER_CUSTOMER_MISMATCH` **không còn được trả về** (voucher dùng chung). B có thể giữ mã này trong type để tương thích.
 > Backend không dùng `INVALID_QR`; token sai trả `PROMOTION_NOT_FOUND`.
+
+
+## v12 — E-voucher tiếng Anh trước + nội dung chương trình 5 ngôn ngữ (04/10/2026)
+
+Migration `20261004180000_promotion_engine_v12.sql`. Plan: `plans/plan_promotion_voucher_ngon_ngu.md`.
+
+**Request:** POST/PATCH campaign nhận thêm:
+- `nameI18n` (mỗi bản tối đa 120 ký tự) và `descriptionI18n` (mỗi bản tối đa 2000 ký tự), dạng `{ vi?, cn?, jp?, kr? }`.
+- `name` / `description` là bản **tiếng Anh** (gốc).
+- Bản dịch rỗng bị bỏ. PATCH gửi object nào thì **thay cả object** đó.
+- Đây là chữ hiển thị nên không bị khoá khi chương trình đã kích hoạt.
+
+**Response mới:**
+- Campaign: `nameI18n`, `descriptionI18n`.
+- Pass: `campaign.nameI18n`.
+- `/voucher`: `campaignNameI18n`.
+- Email claim: `campaignDescriptionI18n`.
+
+**Chọn chữ** (dùng một hàm `pickPromotionText(base, i18n, lang)` cho email, trang khách và thẻ admin): ngôn ngữ đang xem → bản tiếng Anh.
+
+**Ngôn ngữ mặc định:**
+- Trang `/voucher`: `?lang=`, không có thì `en`. Không còn đoán theo ngôn ngữ điện thoại.
+- Email: ngôn ngữ đặt lịch của khách (`promo_customer_language`), không có thì `en` (trước là `vi`).
+- Thẻ trong admin: mở bằng EN, có nút chuyển 5 ngôn ngữ.
+
+**Tên dịch vụ** trong câu điều kiện, nhãn phạm vi và danh mục menu: lấy `nameEN` trước, rồi mới đến `nameVN`.

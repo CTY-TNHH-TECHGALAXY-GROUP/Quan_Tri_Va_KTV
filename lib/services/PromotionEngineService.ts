@@ -34,6 +34,8 @@ const CAMPAIGN_KEY_MAP: Record<keyof CreatePromotionCampaignInput, string> = {
     campaignCode: 'campaign_code',
     name: 'name',
     description: 'description',
+    nameI18n: 'name_i18n',
+    descriptionI18n: 'description_i18n',
     benefitType: 'benefit_type',
     benefitValue: 'benefit_value',
     benefitConfig: 'benefit_config',

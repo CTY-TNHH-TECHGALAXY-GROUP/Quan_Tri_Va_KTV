@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Loader2, Lock } from 'lucide-react';
 import type {
   CampaignFormInput,
   PromotionAssignmentMode,
   PromotionBenefitType,
+  PromotionEmailLang,
+  PromotionTextI18n,
   PromotionUsageType,
   PromotionValidityType,
 } from '@/lib/types/promotion-client';
@@ -15,6 +17,8 @@ import ApplyConditionsEditor from './ApplyConditionsEditor';
 import { DateControl, SelectControl } from './FormControls';
 import { usePromotionQuery } from './usePromotionQuery';
 import VoucherCard3D from './VoucherCard3D';
+import VoucherLangTabs from './VoucherLangTabs';
+import { VOUCHER_CARD_LABELS, VOUCHER_LANG_NAMES } from './voucher-card.i18n';
 import { useSpaContact } from './useSpaContact';
 import { voucherCardFromForm } from './VoucherCard3D.logic';
 import {
@@ -36,7 +40,9 @@ const VALIDITY_TYPES: { value: PromotionValidityType; label: string }[] = [
 ];
 const ASSIGNMENT_MODES = Object.keys(ASSIGNMENT_LABEL) as PromotionAssignmentMode[];
 /** Fields an active campaign may still change (engine locks rule keys). */
-const LOCKED_EDITABLE: (keyof CampaignFormInput)[] = ['name', 'description', 'validUntil'];
+const LOCKED_EDITABLE: (keyof CampaignFormInput)[] = ['name', 'description', 'nameI18n', 'descriptionI18n', 'validUntil'];
+const NAME_MAX = 120;
+const DESCRIPTION_MAX = 2000;
 
 const inputClass = (hasError?: boolean, disabled?: boolean) =>
   `min-h-11 w-full rounded-xl border bg-white px-3 text-sm focus:outline-none focus:ring-2 ${
@@ -75,6 +81,14 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
   const { form, set, setConditions, errors, isValid, touch } = useCampaignForm(initial);
   const menus = usePromotionQuery(() => promotionApi.getMenus(), []);
   const spaContact = useSpaContact();
+  // Language being edited for name / description; the preview card follows it.
+  const [lang, setLang] = useState<PromotionEmailLang>('en');
+  const isEn = lang === 'en';
+  const tr = (v: PromotionTextI18n) => (isEn ? '' : (v[lang as keyof PromotionTextI18n] ?? ''));
+  const setTr = (key: 'nameI18n' | 'descriptionI18n', value: string) => set(key, { ...form[key], [lang]: value });
+  const filled = Object.fromEntries(
+    (['vi', 'cn', 'jp', 'kr'] as const).map((l) => [l, !!(form.nameI18n[l]?.trim() || form.descriptionI18n[l]?.trim())]),
+  ) as Partial<Record<PromotionEmailLang, boolean>>;
 
   // When rules are locked only the editable fields can block saving.
   const shownErrors: CampaignFormErrors = lockRules
@@ -103,7 +117,7 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.voucher.previewTitle}</p>
         <p className="mb-4 mt-1 text-xs text-gray-500">{t.voucher.previewHint}</p>
         <div className="flex justify-center">
-          <VoucherCard3D data={voucherCardFromForm(form, menus.state.data)} contact={spaContact} />
+          <VoucherCard3D data={voucherCardFromForm(form, menus.state.data, lang)} labels={VOUCHER_CARD_LABELS[lang]} contact={spaContact} />
         </div>
       </aside>
 
@@ -117,9 +131,27 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
 
         <Section title={t.form.sectionInfo}>
           <div className="sm:col-span-2">
-            <Field label={t.form.name} error={shownErrors.name}>
-              <input className={inputClass(!!shownErrors.name)} value={form.name} placeholder={t.form.namePlaceholder} onChange={(e) => set('name', e.target.value)} />
-            </Field>
+            <span className="mb-1.5 block text-sm font-medium text-gray-700">{t.form.contentLang}</span>
+            <VoucherLangTabs value={lang} onChange={setLang} label={t.form.contentLang} filled={filled} requiredEn />
+            <span className="mt-1.5 block text-xs text-gray-500">{t.form.contentLangHint}</span>
+          </div>
+          <div className="sm:col-span-2">
+            {isEn ? (
+              <Field label={t.form.nameEnglish} error={shownErrors.name}>
+                <input className={inputClass(!!shownErrors.name)} value={form.name} maxLength={NAME_MAX} placeholder={t.form.namePlaceholder} onChange={(e) => set('name', e.target.value)} />
+              </Field>
+            ) : (
+              <Field label={`${t.form.name} · ${t.form.translationOf(VOUCHER_LANG_NAMES[lang])}`}>
+                <input
+                  lang={lang}
+                  className={inputClass()}
+                  value={tr(form.nameI18n)}
+                  maxLength={NAME_MAX}
+                  placeholder={t.form.translationPlaceholder(form.name.trim())}
+                  onChange={(e) => setTr('nameI18n', e.target.value)}
+                />
+              </Field>
+            )}
           </div>
           <Field label={t.form.campaignCode} hint={t.form.campaignCodeHint} error={shownErrors.campaignCode}>
             <input
@@ -140,9 +172,22 @@ const CampaignForm = ({ initial, lockRules = false, lockIdentity = false, submit
             />
           </Field>
           <div className="sm:col-span-2">
-            <Field label={t.form.description}>
-              <textarea className={`${inputClass()} min-h-20 py-2`} value={form.description} onChange={(e) => set('description', e.target.value)} />
-            </Field>
+            {isEn ? (
+              <Field label={`${t.form.description} · ${VOUCHER_LANG_NAMES.en}`}>
+                <textarea className={`${inputClass()} min-h-20 py-2`} value={form.description} maxLength={DESCRIPTION_MAX} onChange={(e) => set('description', e.target.value)} />
+              </Field>
+            ) : (
+              <Field label={`${t.form.description} · ${t.form.translationOf(VOUCHER_LANG_NAMES[lang])}`}>
+                <textarea
+                  lang={lang}
+                  className={`${inputClass()} min-h-20 py-2`}
+                  value={tr(form.descriptionI18n)}
+                  maxLength={DESCRIPTION_MAX}
+                  placeholder={t.form.translationPlaceholder('')}
+                  onChange={(e) => setTr('descriptionI18n', e.target.value)}
+                />
+              </Field>
+            )}
           </div>
         </Section>
 

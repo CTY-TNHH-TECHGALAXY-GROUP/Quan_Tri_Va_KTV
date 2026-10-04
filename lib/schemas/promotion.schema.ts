@@ -61,10 +61,20 @@ const benefitConfig = z.object({
     discountScope: z.enum(['ORDER', 'QUALIFYING_ITEMS']).optional(),
 }).strict();
 
+/** Optional translations of the English name / description; empty strings are dropped by the DB. */
+const textI18n = (max: number) => z.object({
+    vi: z.string().max(max).optional(),
+    cn: z.string().max(max).optional(),
+    jp: z.string().max(max).optional(),
+    kr: z.string().max(max).optional(),
+}).strict();
+
 const campaignFields = {
     campaignCode: z.string().trim().regex(/^[A-Za-z0-9_-]{3,40}$/, 'Mã chương trình 3–40 ký tự (chữ, số, _ -)'),
     name: z.string().trim().min(1).max(120),
     description: z.string().max(2000).nullable().optional(),
+    nameI18n: textI18n(120).optional(),
+    descriptionI18n: textI18n(2000).optional(),
     validityType: z.enum(PROMOTION_VALIDITY_TYPES).optional(),
     validityDays: z.number().int().min(1).max(3650).nullable().optional(),
     benefitType: z.enum(PROMOTION_SUPPORTED_BENEFIT_TYPES),

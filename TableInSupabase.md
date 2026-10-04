@@ -931,7 +931,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 |-----|------|-------|
 | `id` | uuid PK | |
 | `campaign_code` | text UNIQUE | VD `OCT_FREE30_2026` |
-| `name`, `description` | text | |
+| `name`, `description` | text | Bản **tiếng Anh** (gốc, hiện mặc định trên e-voucher) — v12 |
+| `name_i18n`, `description_i18n` | jsonb NOT NULL DEFAULT '{}' | Bản dịch tuỳ chọn `{vi, cn, jp, kr}` (CHECK `promo_i18n_keys_ok`); ngôn ngữ chưa nhập → hiện bản tiếng Anh. Sửa được cả khi đã phát voucher — v12 `20261004180000` |
 | `benefit_type` | text | `FREE_MINUTES` / `PERCENT_DISCOUNT` / `FIXED_DISCOUNT` / `FREE_SERVICE`* / `FREE_UPGRADE`* (*chưa hỗ trợ apply) |
 | `benefit_value` | numeric > 0 | phút, %, hoặc VND |
 | `benefit_config` | jsonb | `{maxDiscountAmount, discountScope: ORDER\|QUALIFYING_ITEMS}` |

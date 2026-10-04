@@ -3,8 +3,14 @@ import type { PromotionBenefit, PromotionEmailLang, PromotionPassEffectiveStatus
 /**
  * Text printed ON the e-voucher card (VoucherCard3D), in the 5 customer
  * languages. The public /voucher page picks the language (Agent A:
- * `pickVoucherLang`); admin pages use `vi`.
+ * `pickVoucherLang`, English by default); admin pages start in English too and
+ * can switch, so the counter sees exactly what the customer sees.
  */
+
+/** English first: it is the default language of the e-voucher (user 04/10/2026). */
+export const VOUCHER_LANG_ORDER: PromotionEmailLang[] = ['en', 'vi', 'cn', 'jp', 'kr'];
+export const VOUCHER_LANG_NAMES: Record<PromotionEmailLang, string> = { en: 'EN', vi: 'VI', cn: '中文', jp: '日本語', kr: '한국어' };
+
 export interface VoucherCardLabels {
   eVoucher: string;
   complimentary: string;

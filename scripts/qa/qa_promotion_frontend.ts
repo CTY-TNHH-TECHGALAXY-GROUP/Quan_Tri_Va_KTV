@@ -34,7 +34,8 @@ import { ERROR_MESSAGE, SUPPORTED_ASSIGNMENTS, t as i18n } from '../../component
 import { qualifiedRangeError } from '../../components/promotions/CustomerCandidates.logic';
 import { VOUCHER_CARD_LABELS } from '../../components/promotions/voucher-card.i18n';
 import { summarizeConditions, voucherCardFromCampaign, voucherCardFromPublic } from '../../components/promotions/VoucherCard3D.logic';
-import { formatPromotionConditions } from '../../lib/promotion-voucher.i18n';
+import { formatPromotionConditions, pickPromotionText, pickVoucherLang } from '../../lib/promotion-voucher.i18n';
+import { CreatePromotionCampaignSchema } from '../../lib/schemas/promotion.schema';
 import { BULK_ISSUE_MAX } from '../../lib/types/promotion-client';
 import { promotionAccess } from '../../components/promotions/promotion.access';
 import { MODULES } from '../../lib/constants';
@@ -68,7 +69,7 @@ const lookupScan = async (api: Api, text: string) => {
 
 /** Keys the engine schema accepts on POST/PATCH (body is strict). */
 const ENGINE_CAMPAIGN_KEYS = new Set([
-  'campaignCode', 'name', 'description', 'validityType', 'validityDays', 'benefitType', 'benefitValue', 'benefitConfig',
+  'campaignCode', 'name', 'description', 'nameI18n', 'descriptionI18n', 'validityType', 'validityDays', 'benefitType', 'benefitValue', 'benefitConfig',
   'validFrom', 'validUntil', 'usageType', 'usageLimit', 'maxUsagePerCustomer', 'maxUsagePerOrder', 'qualificationType',
   'qualificationValue', 'qualificationConfig', 'applicableMenus', 'applyConditions', 'assignmentMode', 'onePassPerCustomer', 'voucherPrefix',
   'serviceNameVN', 'serviceNameEN',
@@ -116,7 +117,7 @@ const main = async () => {
   check('condition minutes 30.5 → error', !!validateCampaignForm({ ...good, applyConditions: { match: 'ALL', conditions: [{ ...vip90.conditions[0], minMinutes: 30.5 }] } }).applyConditions);
   check('11 conditions → error (max 10)', !!validateCampaignForm({ ...good, applyConditions: { match: 'ANY', conditions: Array.from({ length: 11 }, () => vip90.conditions[0]) } }).applyConditions);
   check('valid VIP-90 condition → ok', !validateCampaignForm({ ...good, applyConditions: vip90 }).applyConditions);
-  check('locked patch = name/description/validUntil only', Object.keys(toLockedCampaignPatch(good)).sort().join() === 'description,name,validUntil');
+  check('locked patch = text fields + validUntil only', Object.keys(toLockedCampaignPatch(good)).sort().join() === 'description,descriptionI18n,name,nameI18n,validUntil');
   const created = await api.createCampaign(toCampaignPayload({ ...good, usageType: 'LIMITED', usageLimit: 10 }));
   check('create LIMITED 10 → "Giới hạn 10 lần"', created.success && formatUsageType(created.data.usage) === 'Giới hạn 10 lần');
   const dupCode = await api.createCampaign(toCampaignPayload(good));
@@ -377,6 +378,29 @@ const main = async () => {
   const rolesSrc = readFileSync('app/admin/roles/Roles.logic.ts', 'utf8');
   const recLine = rolesSrc.slice(rolesSrc.indexOf("id: 'reception'"), rolesSrc.indexOf("id: 'ktv'"));
   check('Mẫu Lễ tân có "Quét & áp", không mẫu nào có "Áp ngoại lệ"', recLine.includes("'promotions_scan_apply'") && !rolesSrc.includes("'promotions_override'"));
+
+
+  console.log('\n— E-voucher English first + campaign text in 5 languages (v12)');
+  check('/voucher không ?lang → EN', pickVoucherLang(null) === 'en' && pickVoucherLang('') === 'en');
+  check('/voucher ?lang=vi / zh / ko', pickVoucherLang('vi') === 'vi' && pickVoucherLang('zh') === 'cn' && pickVoucherLang('ko') === 'kr');
+  check('/voucher ?lang lạ → EN', pickVoucherLang('fr') === 'en');
+  const i18nName = { vi: 'Tháng 10 tặng 30 phút', jp: '  ' };
+  check('có bản VI → VI', pickPromotionText('October +30', i18nName, 'vi') === 'Tháng 10 tặng 30 phút');
+  check('bản JP chỉ khoảng trắng → EN', pickPromotionText('October +30', i18nName, 'jp') === 'October +30');
+  check('KR chưa nhập → EN', pickPromotionText('October +30', i18nName, 'kr') === 'October +30');
+  check('EN luôn là bản gốc', pickPromotionText('October +30', { vi: 'x' }, 'en') === 'October +30');
+  check('mô tả null + chưa dịch → null', pickPromotionText(null, {}, 'vi') === null);
+  const formI18n: CampaignFormInput = { ...EMPTY_CAMPAIGN_FORM, name: 'October +30', campaignCode: 'OCT30', validFrom: '2026-10-01', validUntil: '2026-10-31', nameI18n: { vi: ' Tháng 10 ', cn: '   ' }, descriptionI18n: { jp: '説明' } };
+  const payloadI18n = toCampaignPayload(formI18n);
+  check('payload bỏ bản dịch rỗng, trim', JSON.stringify(payloadI18n.nameI18n) === JSON.stringify({ vi: 'Tháng 10' }));
+  check('payload hợp lệ với schema engine', CreatePromotionCampaignSchema.safeParse(payloadI18n).success, CreatePromotionCampaignSchema.safeParse(payloadI18n).error?.issues);
+  const lockedPatch = toLockedCampaignPatch(formI18n);
+  check('chương trình đã khoá vẫn sửa được bản dịch', 'nameI18n' in lockedPatch && 'descriptionI18n' in lockedPatch);
+  check('schema từ chối khoá ngôn ngữ lạ', !CreatePromotionCampaignSchema.safeParse({ ...payloadI18n, nameI18n: { fr: 'x' } }).success);
+  const campI18n = unwrap(await createMockPromotionApi().listCampaigns({}))[0];
+  check('thẻ admin mặc định EN', voucherCardFromCampaign(campI18n).campaignName === campI18n.name);
+  check('thẻ admin đổi VI → tên VI', voucherCardFromCampaign(campI18n, 'vi').campaignName === campI18n.nameI18n?.vi);
+  check('nhãn thẻ có EN', VOUCHER_CARD_LABELS.en.lang === 'en');
 
   console.log('\n— Every error code has a staff message');
   const codes: PromotionErrorCode[] = ['CAMPAIGN_LOCKED', 'CUSTOMER_NO_EMAIL', 'EMAIL_SEND_FAILED', 'ACCOUNT_LOCKED', 'INTERNAL_ERROR', 'USAGE_COMPLETED', 'PROMOTION_ITEM_IN_SERVICE'];

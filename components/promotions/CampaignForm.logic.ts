@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { CampaignFormInput, PromotionApplyCondition, PromotionCampaign } from '@/lib/types/promotion-client';
+import type { CampaignFormInput, PromotionApplyCondition, PromotionCampaign, PromotionTextI18n } from '@/lib/types/promotion-client';
 import { toVnDateInput } from '@/lib/promotion-format';
 import { SUPPORTED_ASSIGNMENTS, SUPPORTED_BENEFIT_TYPES, t } from './promotion.i18n';
 
@@ -14,6 +14,8 @@ export const EMPTY_CAMPAIGN_FORM: CampaignFormInput = {
   name: '',
   campaignCode: '',
   description: '',
+  nameI18n: {},
+  descriptionI18n: {},
   benefitType: 'FREE_MINUTES',
   benefitValue: 30,
   benefitConfig: null,
@@ -36,6 +38,8 @@ export const campaignToForm = (c: PromotionCampaign): CampaignFormInput => {
     name: c.name,
     campaignCode: c.campaignCode,
     description: c.description ?? '',
+    nameI18n: c.nameI18n ?? {},
+    descriptionI18n: c.descriptionI18n ?? {},
     benefitType: c.benefit.type,
     benefitValue: c.benefit.value,
     benefitConfig: c.benefit.config?.maxDiscountAmount ? { maxDiscountAmount: c.benefit.config.maxDiscountAmount } : null,
@@ -52,10 +56,16 @@ export const campaignToForm = (c: PromotionCampaign): CampaignFormInput => {
   };
 };
 
+/** Drop empty translations; a missing language shows the English text. */
+const trimI18n = (v: PromotionTextI18n): PromotionTextI18n =>
+  Object.fromEntries(Object.entries(v).map(([k, x]) => [k, (x ?? '').trim()]).filter(([, x]) => x)) as PromotionTextI18n;
+
 /** Body for POST: trimmed; conditions sent as-is (empty list = any order). */
 export const toCampaignPayload = (f: CampaignFormInput): CampaignFormInput => ({
   ...f,
   name: f.name.trim(),
+  nameI18n: trimI18n(f.nameI18n),
+  descriptionI18n: trimI18n(f.descriptionI18n),
   campaignCode: f.campaignCode.trim(),
   voucherPrefix: f.voucherPrefix.trim().toUpperCase(),
   benefitConfig: f.benefitType === 'PERCENT_DISCOUNT' && f.benefitConfig?.maxDiscountAmount ? f.benefitConfig : null,
@@ -73,9 +83,14 @@ export const toCampaignPayload = (f: CampaignFormInput): CampaignFormInput => ({
 });
 
 /** Fields an ACTIVE / INACTIVE campaign still accepts (engine: rule keys are locked). */
-export const toLockedCampaignPatch = (f: CampaignFormInput): Pick<CampaignFormInput, 'name' | 'description' | 'validUntil'> => ({
+export const toLockedCampaignPatch = (
+  f: CampaignFormInput,
+): Pick<CampaignFormInput, 'name' | 'description' | 'nameI18n' | 'descriptionI18n' | 'validUntil'> => ({
   name: f.name.trim(),
   description: f.description,
+  // Display text only: translations stay editable after vouchers were issued.
+  nameI18n: trimI18n(f.nameI18n),
+  descriptionI18n: trimI18n(f.descriptionI18n),
   validUntil: f.validUntil,
 });
 
