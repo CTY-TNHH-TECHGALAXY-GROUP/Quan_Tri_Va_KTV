@@ -10,6 +10,13 @@ export type ModuleId =
   | 'web_booking'
   | 'service_menu'
   | 'customer_reminders'
+  | 'promotions'
+  // Promotion actions (Agent A v9 §0.1) — permission-only, no own menu entry.
+  | 'promotions_scan_apply'
+  | 'promotions_override'
+  | 'promotions_view'
+  | 'promotions_issue'
+  | 'promotions_campaign_manage'
   | 'role_management'
   | 'employee_management'
   | 'ktv_hub'
@@ -42,6 +49,8 @@ export interface ModuleDefinition {
   id: ModuleId;
   name: string;
   group: string;
+  /** false = permission only (shown on the Roles page, never as a Sidebar link). */
+  menu?: false;
 }
 
 export type SkillLevel = boolean;

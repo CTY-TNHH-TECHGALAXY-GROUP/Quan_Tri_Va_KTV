@@ -2,7 +2,7 @@
 import { isLiveKtvSegment, ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
 import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
 import { displayBookingCode } from '@/lib/booking-display-code';
-import { isUtilityService } from '@/lib/booking.logic';
+import { isPromotionItem, isUtilityService } from '@/lib/booking.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2, ArrowLeftRight, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -135,7 +135,8 @@ export const QuickDispatchTable = ({
       // Calculate display name and duration by including any merged services
       const mergedSvcs = services.filter(s => svc.mergedServiceIds?.includes(s.id));
       const combinedDuration = (isUtilityService(svc) ? 0 : svc.duration) + mergedSvcs.reduce((acc, curr) => acc + ((isUtilityService(curr)) ? 0 : curr.duration), 0);
-      const combinedName = [`${svc.serviceName} (${svc.duration}p)`, ...mergedSvcs.map(s => (isUtilityService(s)) ? s.serviceName : `${s.serviceName} (${s.duration}p)`)].join(' + ');
+      // Promotion items read as-is ("+ Tặng thêm 30 phút"): their name already states the minutes.
+      const combinedName = [`${svc.serviceName} (${svc.duration}p)`, ...mergedSvcs.map(s => (isUtilityService(s) || isPromotionItem(s)) ? s.serviceName : `${s.serviceName} (${s.duration}p)`)].join(' + ');
 
       const validForKtvReqs = [svc, ...mergedSvcs].filter(s => {
           const isRoom = String(s.serviceName || '').toLowerCase().includes('phòng riêng') && !String(s.serviceName || '').includes('+');
@@ -201,8 +202,12 @@ export const QuickDispatchTable = ({
     
     if (selectedItems.length < 2) return;
     
-    const parent = selectedItems[0];
-    const children = selectedItems.slice(1);
+    // The parent names the group (and the KTV app): never a promotion item, prefer a main service.
+    const parent =
+      selectedItems.find(s => !isPromotionItem(s) && !isUtilityService(s)) ??
+      selectedItems.find(s => !isPromotionItem(s)) ??
+      selectedItems[0];
+    const children = selectedItems.filter(s => s.id !== parent.id);
     
     const updatedServices = services.map(svc => {
         if (svc.id === parent.id) {

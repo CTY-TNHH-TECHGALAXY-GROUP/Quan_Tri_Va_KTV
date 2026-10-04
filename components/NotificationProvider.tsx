@@ -154,8 +154,11 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     const pushRegisteredRef = useRef<boolean>(false);
     const router = useRouter();
 
-    // 🔧 Fetch notification rules from SystemConfigs on mount
+    // 🔧 Fetch notification rules from SystemConfigs once someone is logged in.
+    // Public pages (e.g. the customer e-voucher /voucher) have no session: calling this
+    // admin API there returns 401 and apiClient's session_expired sends the customer to /login.
     useEffect(() => {
+        if (!user?.id) return;
         apiClient.get<any>(API.ADMIN.NOTIFICATION_RULES)
             .then(d => {
                 if (d.success && d.data) {
@@ -164,7 +167,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
                 }
             })
             .catch(err => console.warn('⚠️ [NotifRules] Fetch failed:', err));
-    }, []);
+    }, [user?.id]);
 
     // 🔧 VAPID KEY for Push Subscription (same as in usePushNotifications.ts and push API)
     const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BNEVJHwVmuU6e7vYPOm1S2hpAWprAhUNl6ew85ktt_HBH2osu4wkrbMXnC8uFj5IZtYXBawvSa1C33bVHTeo6lE';
