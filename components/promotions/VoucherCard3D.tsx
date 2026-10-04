@@ -105,6 +105,14 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
   const tiltY = useSpring(useTransform(px, [0, 1], [-MAX_TILT_DEG, MAX_TILT_DEG]), TILT_SPRING);
   const flip = useSpring(0, FLIP_SPRING);
   const rotateY = useTransform(() => tiltY.get() + flip.get());
+  // Show exactly one face from the current angle. backface-visibility alone is not
+  // reliable on iOS Safari (the mirrored back face can be painted over the front).
+  const backShown = useTransform(rotateY, (deg) => {
+    const a = ((deg % 360) + 360) % 360;
+    return a > 90 && a < 270;
+  });
+  const frontVisibility = useTransform(backShown, (b) => (b ? 'hidden' : 'visible'));
+  const backVisibility = useTransform(backShown, (b) => (b ? 'visible' : 'hidden'));
   const glareX = useTransform(px, [0, 1], ['0%', '100%']);
   const glareY = useTransform(py, [0, 1], ['0%', '100%']);
   const glare = useMotionTemplate`radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.35), rgba(255,255,255,0) 55%)`;
@@ -193,7 +201,7 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
           style={{ rotateX: reduceMotion ? 0 : tiltX, rotateY }}
         >
           {/* FRONT — painted amber board (Oria Spa shop sign). Backface on the wrapper, mask on the inner layer (WebKit). */}
-          <div className="absolute inset-0" style={FRONT_FACE}>
+          <motion.div className="absolute inset-0" style={{ ...FRONT_FACE, visibility: frontVisibility }}>
           <div
             className={`absolute inset-0 overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.6),0_2px_6px_rgba(90,38,10,0.3)] ${inactive ? 'grayscale-[0.75] sepia-[0.2]' : ''}`}
             style={{ ...FRONT_BOARD, ...(hasContact ? NOTCH_STYLE_TOP : NOTCH_STYLE), color: ORIA.ink }}
@@ -299,12 +307,12 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
 
             {!reduceMotion && <motion.div aria-hidden className="pointer-events-none absolute inset-0 mix-blend-soft-light" style={{ background: glare }} />}
           </div>
-          </div>
+          </motion.div>
 
           {/* BACK — warm parchment */}
-          <div
+          <motion.div
             className="absolute inset-0 flex flex-col overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.5)]"
-            style={{ ...BACK_PAPER, ...BACK_FACE, color: ORIA.ink }}
+            style={{ ...BACK_PAPER, ...BACK_FACE, color: ORIA.ink, visibility: backVisibility }}
           >
             <Sprig className="pointer-events-none absolute -right-2 -top-2 w-[26%] -scale-x-100 rotate-[175deg] opacity-80" />
             <Cinnamon className="pointer-events-none absolute right-[3%] w-[18%] opacity-85" style={{ bottom: hasContact ? '19%' : '4%' }} />
@@ -335,7 +343,7 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
                 <ContactLines contact={contact} />
               </div>
             )}
-          </div>
+          </motion.div>
         </motion.div>
       </div>
 
