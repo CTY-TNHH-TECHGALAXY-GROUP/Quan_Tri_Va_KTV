@@ -238,6 +238,7 @@ export const t = {
     } as Record<string, string>,
     resendEmail: 'Gửi lại email',
     previewEmail: 'Xem trước email',
+    applyToOrder: 'Áp vào đơn đang mở',
     previewEmailTitle: 'Email khách nhận',
     previewEmailHint: 'Đúng email hệ thống gửi cho khách. Xem trước không gửi gì.',
     emailFrom: 'Người gửi',

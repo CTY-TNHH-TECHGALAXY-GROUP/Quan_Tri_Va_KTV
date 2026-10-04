@@ -3,7 +3,8 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, ScanLine, Search } from 'lucide-react';
+import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import { PromotionEmpty, PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
@@ -42,6 +43,7 @@ const endDate = (p: PromotionPass, past: boolean) => formatPromoDate(past ? (p.e
 
 const PassList = () => {
   const params = useSearchParams();
+  const access = usePromotionAccess();
   const [searchInput, setSearchInput] = useState('');
   const tabParam = params.get('tab')?.toUpperCase() ?? null;
   const [filter, setFilter] = useState<PassListFilter>({
@@ -245,6 +247,15 @@ const PassList = () => {
                 <p className="font-medium text-gray-900">{preview.state.data.customer.name}</p>
                 <p>{[preview.state.data.customer.phone, preview.state.data.customer.email].filter(Boolean).join(' · ')}</p>
               </div>
+              {access.scan && preview.state.data.effectiveStatus === 'ACTIVE' && (
+                <Link
+                  href={PROMOTION_PATHS.applyToOrder(preview.state.data.voucherCode)}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  <ScanLine size={16} aria-hidden />
+                  {t.pass.applyToOrder}
+                </Link>
+              )}
               <Link
                 href={PROMOTION_PATHS.pass(preview.state.data.id)}
                 className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"

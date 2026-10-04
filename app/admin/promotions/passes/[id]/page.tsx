@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Eye, Loader2, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { Eye, Loader2, Mail, ScanLine } from 'lucide-react';
+import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
 import EmailPreviewDialog from '@/components/promotions/EmailPreviewDialog';
 import { useParams } from 'next/navigation';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
@@ -131,6 +133,15 @@ const PassDetailPage = () => {
                   )}
                 </dl>
                 <div className="flex flex-wrap gap-2">
+                  {access.scan && p.effectiveStatus === 'ACTIVE' && (
+                    <Link
+                      href={PROMOTION_PATHS.applyToOrder(p.voucherCode)}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                    >
+                      <ScanLine size={16} aria-hidden />
+                      {t.pass.applyToOrder}
+                    </Link>
+                  )}
                   <button
                     type="button"
                     disabled={p.effectiveStatus !== 'ACTIVE'}
