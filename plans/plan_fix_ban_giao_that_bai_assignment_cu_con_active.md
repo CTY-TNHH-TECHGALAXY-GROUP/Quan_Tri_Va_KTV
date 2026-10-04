@@ -29,10 +29,14 @@ Kết luận: không phải lỗi ảnh, không phải lỗi quyền. Là **dữ
 **item không còn ghi KTV đó** trong `BookingItems.technicianCodes` (so sánh không phân biệt hoa thường).
 Đây là dòng "mồ côi" theo định nghĩa — đóng nó không ảnh hưởng ai (KTV khác đang làm item đó có dòng riêng).
 
-### 3.2 Sửa gốc ở dispatch — cùng migration
-`dispatch_confirm_booking` mục 0.5 "Clean up assignments for KTVs no longer in staff list": bỏ điều kiện `booking_id = p_booking_id`,
-dọn theo **`booking_item_id = ANY(v_updated_item_ids)`** bất kể item đó trước đây thuộc booking (cha / đơn con) nào.
-Giữ nguyên phần còn lại (TurnQueue về waiting nếu không còn gì, `v_was_working`).
+### 3.2 Sửa gốc ở dispatch — HOÃN, làm migration riêng trên nền bản "sequential"
+Phát hiện 04/10 (sau khi viết plan): production **sắp nhận bản mới của `dispatch_confirm_booking`** (đơn nối tiếp)
+qua `plans/sql_production_migrate_test_vao_phase1_20261004.sql` (35 migration, chưa chạy). Bản sequential **vẫn còn**
+khối 0.5 với `WHERE "booking_id" = p_booking_id` (dòng 62/73/102 của `20261001090000_…`) → cùng lỗ hổng.
+Nếu migration này định nghĩa lại `dispatch_confirm_booking` theo bản cũ, nó sẽ **ghi đè / bị ghi đè** với bản sequential.
+→ Migration `20261004150000` **chỉ sửa `promote_next_assignment`** (độc lập, không ai định nghĩa lại).
+Phần dọn theo DỊCH VỤ (bỏ điều kiện `booking_id = p_booking_id` ở khối 0.5) sẽ làm thành migration mới
+**sau khi** script production sequential đã chạy, trên nền đúng bản đó (2 dòng, cùng nội dung đã test ở kịch bản E).
 
 ### 3.3 Thông báo lỗi rõ hơn — `handleReleaseKTV.ts`
 Khi RPC lỗi, nối thêm lý do kỹ thuật rút gọn (`error.message` / `data.error`) vào thông báo, VD:
@@ -66,6 +70,10 @@ Không đổi: luật ảnh, hạn mức bỏ qua, nợ phòng, tiền tua, gi�
 5. **Tái hiện ca T027**: tách đơn → chuyển item sang đơn con khác / KTV khác → KTV cũ bàn giao → phải thành công; dòng mồ côi `COMPLETED`.
 6. Dữ liệu hiện tại: đếm assignment ACTIVE/QUEUED mà KTV không còn trong `technicianCodes` (read-only) → báo số trước khi deploy.
 
-## 7. Deploy
-- Migration SQL áp lên Supabase (Mức 2, xin lệnh riêng) — có hiệu lực ngay cho cả production và preview vì dùng chung DB.
-- Code `handleReleaseKTV.ts`: commit phase1 → cherry-pick `main`.
+## 7. Deploy & trạng thái (04/10/2026)
+- Migration `20261004150000` (chỉ `promote_next_assignment`): QA `scripts/qa/qa_orphan_assignment_rollback.ts` ĐẠT 4/4 kịch bản
+  (A tái hiện T027, B KTV bận thật không bị đóng nhầm, C dịch vụ con gộp, D 2KTV-1DV) trong transaction rollback.
+  **Chưa áp** lên Supabase — chờ lệnh. Có hiệu lực ngay cho cả production và preview (chung DB).
+- Code `handleReleaseKTV.ts` (thông báo rõ lý do): đã commit phase1. **Không** cherry-pick sang `main`: file này trên phase1 đã là
+  bản sequential (khác main 35+/142−), cherry-pick xung đột; sẽ lên production cùng đợt merge phase1 → main.
+- Việc còn lại: migration dọn theo dịch vụ cho `dispatch_confirm_booking` bản sequential (mục 3.2) — làm sau khi script production chạy.

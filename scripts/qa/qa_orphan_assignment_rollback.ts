@@ -56,22 +56,7 @@ const ok = (n: string, c: boolean, extra = '') => console.log(`  ${c ? 'DAT ' : 
       ok('KTV con lai tren item cung khong bi coi la mo coi', other === 0);
     } else ok('(khong co item 2 KTV)', true);
 
-    console.log('E. dispatch_confirm_booking: don dong cu cua T027 khi item1 duoc dieu phoi lai duoi 002-B');
-    const sig = (await c.query(`select pg_get_function_arguments(oid) a from pg_proc where proname='dispatch_confirm_booking'`)).rows[0].a;
-    console.log('   chu ky:', sig.slice(0, 300));
-    await c.query(`update "KtvAssignments" set status='QUEUED' where employee_id='T027' and booking_item_id='11NDK-003-04102026-item1'`);
-    await c.query(`update "KtvAssignments" set status='ACTIVE' where employee_id='T027' and booking_item_id='11NDK-002-04102026-item1'`);
-    await c.query('SAVEPOINT e');
-    try {
-      const cur = (await c.query(`select b.status, b."technicianCode", b."bedId", b."roomName", b.notes from "Bookings" b where id='11NDK-002-04102026-B'`)).rows[0];
-      const res = (await c.query(`select dispatch_confirm_booking($1::text, $2::date, $3::text, $4::text, $5::text, $6::text, $7::text,
-          $8::jsonb, $9::jsonb) r`,
-        ['11NDK-002-04102026-B', '2026-10-04', cur.status, cur.technicianCode, cur.bedId, cur.roomName, cur.notes,
-         JSON.stringify([{ ktvId: 'EXT_34KCJ3', bookingItemId: '11NDK-002-04102026-item1' }]),
-         JSON.stringify([{ id: '11NDK-002-04102026-item1' }])])).rows[0].r;
-      const st2 = (await c.query(`select status from "KtvAssignments" where employee_id='T027' and booking_item_id='11NDK-002-04102026-item1'`)).rows[0].status;
-      ok('dong T027/item1 (booking 002-A) bi dong khi dieu phoi 002-B', st2 === 'COMPLETED', `rpc=${JSON.stringify(res).slice(0,120)}`);
-    } catch (e: any) { await c.query('ROLLBACK TO SAVEPOINT e'); ok('goi dispatch_confirm_booking voi payload toi gian', false, e.message.slice(0, 160)); }
+    console.log('E. dispatch_confirm_booking: bo qua — ban sequential se co migration rieng (plan muc 3.2)');
   } finally {
     await c.query('ROLLBACK');
     console.log('\n(da ROLLBACK toan bo — DB khong doi)');
